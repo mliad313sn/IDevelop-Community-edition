@@ -31,6 +31,51 @@
     <div class="about-card card"><div class="about-k"><%= __('admin:about_k_privacy') %></div><div class="about-v about-v-sm"><%= __('admin:about_v_privacy') %></div></div>
 </div>
 
+<!-- Security: documented controls (src/config/securityPosture.js), every one
+     backed by code and a test; the live state of the switchable ones for admins. -->
+<% if (typeof security !== 'undefined' && security) { %>
+<h3 class="about-section-title" id="security"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:about_sec_security') %></h3>
+<div class="card about-security">
+    <p class="about-fw-lead"><%= __('admin:about_security_lead', { controls: securityTotals.controls, suites: securityTotals.suites }) %></p>
+    <% if (securityLive) { %>
+    <div class="about-sec-live" role="list" aria-label="<%= __('admin:about_security_live') %>">
+        <% [[__('admin:about_live_https'), securityLive.https], [__('admin:about_live_secrets'), securityLive.secretsEncrypted], [__('admin:about_live_mfa'), securityLive.mfaPrivileged], [__('admin:about_live_sqlconsole'), securityLive.sqlConsoleOff], [__('admin:about_live_euonly'), securityLive.copilotEuOnly], [__('admin:about_live_noranking'), securityLive.copilotNoRanking]].forEach(function (row) { %>
+        <div class="about-sec-chip <%= row[1] ? 'is-ok' : 'is-warn' %>" role="listitem">
+            <i class="fas <%= row[1] ? 'fa-circle-check' : 'fa-triangle-exclamation' %>" aria-hidden="true"></i>
+            <span><%= row[0] %></span>
+            <strong><%= row[1] ? __('admin:about_live_ok') : __('admin:about_live_warn') %></strong>
+        </div>
+        <% }); %>
+    </div>
+    <% } %>
+    <div class="about-sec-grid">
+        <% security.forEach(function (cat) { %>
+        <section class="about-sec-cat" aria-labelledby="sec-<%= cat.id %>">
+            <h4 id="sec-<%= cat.id %>"><i class="fas <%= cat.icon %>" aria-hidden="true"></i> <%= cat.title %></h4>
+            <ul>
+                <% cat.controls.forEach(function (c) { %>
+                <li>
+                    <i class="fas fa-check" aria-hidden="true"></i>
+                    <div>
+                        <span><%= c.text %></span>
+                        <% if (showSystem !== false && (c.tests.length || c.evidence.length)) { %>
+                        <details class="about-sec-proof">
+                            <summary><%= __('admin:about_security_proof') %></summary>
+                            <div><strong><%= __('admin:about_security_code') %></strong> <% c.evidence.forEach(function (e) { %><code><%= e %></code> <% }); %></div>
+                            <div><strong><%= __('admin:about_security_tests') %></strong> <% if (c.tests.length) { c.tests.forEach(function (t) { %><code><%= t %></code> <% }); } else { %><%= __('admin:about_security_ci') %><% } %></div>
+                        </details>
+                        <% } %>
+                    </div>
+                </li>
+                <% }); %>
+            </ul>
+        </section>
+        <% }); %>
+    </div>
+    <p class="about-foot"><%= __('admin:about_security_foot') %></p>
+</div>
+<% } %>
+
 <!-- Live system detail — admins only (engine internals not shown to all staff). -->
 <% if (typeof showSystem === 'undefined' || showSystem) { %>
 <h3 class="about-section-title"><i class="fas fa-server" aria-hidden="true"></i> <%= __('admin:about_sec_system') %></h3>
@@ -131,7 +176,23 @@
 .about-mods li { margin:4px 0; }
 .about-links { display:flex; gap:10px; margin:10px 0; }
 .about-foot { color:var(--text-muted); font-size:.8rem; margin-top:8px; }
+.about-security { padding:18px 22px; margin-bottom:18px; }
+.about-sec-live { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; }
+.about-sec-chip { display:inline-flex; align-items:center; gap:8px; padding:6px 12px; border-radius:999px; font-size:.82rem; background:var(--bg-elevated); color:var(--text-secondary); }
+.about-sec-chip strong { color:var(--text-primary); font-weight:700; }
+.about-sec-chip.is-ok i { color:var(--success, #16a34a); }
+.about-sec-chip.is-warn i { color:var(--warning, #b45309); }
+.about-sec-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px; }
+.about-sec-cat { background:var(--bg-subtle); border-radius:14px; padding:14px 16px; }
+.about-sec-cat h4 { margin:0 0 10px; font-size:.95rem; color:var(--text-primary); }
+.about-sec-cat h4 i { color:var(--brand-text, var(--brand)); margin-right:6px; }
+.about-sec-cat ul { list-style:none; margin:0; padding:0; }
+.about-sec-cat li { display:flex; gap:10px; margin:0 0 10px; font-size:.86rem; color:var(--text-secondary); }
+.about-sec-cat li > i { margin-top:4px; color:var(--success, #16a34a); }
+.about-sec-proof { margin-top:4px; font-size:.78rem; }
+.about-sec-proof summary { cursor:pointer; color:var(--brand-text, var(--brand)); }
+.about-sec-proof code { font-size:.95em; word-break:break-all; }
 @media (max-width:1100px){ .about-grid{grid-template-columns:repeat(2,1fr);} .about-fw-stats{grid-template-columns:repeat(4,1fr);} }
-@media (max-width:680px){ .about-grid{grid-template-columns:1fr 1fr;} .about-mods{columns:1;} .about-fw-stats{grid-template-columns:repeat(2,1fr);} }
+@media (max-width:680px){ .about-sec-grid{grid-template-columns:1fr;} .about-grid{grid-template-columns:1fr 1fr;} .about-mods{columns:1;} .about-fw-stats{grid-template-columns:repeat(2,1fr);} }
 </style>
 <script nonce="<%= cspNonce %>"> document.getElementById('about-year').textContent = new Date().getFullYear(); </script>

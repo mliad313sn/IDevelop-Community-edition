@@ -216,7 +216,36 @@ router.get('/about', requireAuth, async (req, res) => {
     // Respect white-label branding for the product name.
     const brandName = (res.locals.branding && res.locals.branding.appName) || PRODUCT.name;
 
+    // Security posture: the documented controls for everyone; the live state of
+    // the switchable ones for administrators only.
+    const posture = require('../config/securityPosture');
+    let securityLive = null;
+    if (showSystem) {
+        const flag = async (fn) => {
+            try {
+                return await fn();
+            } catch (_) {
+                return null;
+            }
+        };
+        const AppSettings = require('../models/AppSettingsModel');
+        const Copilot = require('../services/CopilotService');
+        securityLive = {
+            https: Boolean(req.secure),
+            secretsEncrypted: require('../utils/secretBox').isEnabled(),
+            mfaPrivileged: await flag(() =>
+                AppSettings.getValue('mfaRequiredForPrivileged', false)
+            ),
+            sqlConsoleOff: !require('../services/SqlConsoleService').isEnabled(),
+            copilotEuOnly: await flag(() => Copilot.euOnlyProviders()),
+            copilotNoRanking: await flag(async () => !(await Copilot.allowNamedPersonRanking())),
+        };
+    }
+
     res.render('pages/about', {
+        security: posture.postureFor(req.language || (req.i18n && req.i18n.language) || 'fr'),
+        securityTotals: posture.totals(),
+        securityLive,
         title: req.t ? req.t('chrome:pt_about') : 'About',
         appName: PRODUCT.fullName,
         displayName: brandName,

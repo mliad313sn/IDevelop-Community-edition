@@ -218,6 +218,14 @@ function validate(key, storedType, raw) {
 }
 
 class AppSettingsModel {
+    /** Boolean value of a setting input: true/1/'true'/'1'/'on'/'yes' only. */
+    static toBool(value) {
+        if (typeof value === 'string') {
+            return ['true', '1', 'on', 'yes'].includes(value.trim().toLowerCase());
+        }
+        return value === true || value === 1;
+    }
+
     get CATALOG() {
         return CATALOG;
     }
@@ -291,7 +299,11 @@ class AppSettingsModel {
         if (type === 'json') {
             stringValue = JSON.stringify(value);
         } else if (type === 'boolean') {
-            stringValue = value ? 'true' : 'false';
+            // Strings are parsed, not tested for truthiness: 'false' and '0' are
+            // non-empty strings, so `value ? …` stored them as 'true' and every
+            // boolean default meant to be OFF (open signup, named AI ranking…)
+            // was seeded ON (fixed in migration 159).
+            stringValue = AppSettingsModel.toBool(value) ? 'true' : 'false';
         } else {
             stringValue = String(value);
         }

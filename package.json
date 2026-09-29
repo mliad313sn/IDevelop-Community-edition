@@ -34,7 +34,8 @@
     "db:seed:starter": "node scripts/seed-starter-framework.js",
     "import:esco": "node scripts/import-esco.js",
     "contracts:export": "node scripts/export-contracts.js",
-    "db:seed:demo-org": "node scripts/seed-demo-org.js"
+    "db:seed:demo-org": "node scripts/seed-demo-org.js",
+    "security:doc": "node scripts/export-security-measures.js"
   },
   "keywords": [
     "skills-matrix",

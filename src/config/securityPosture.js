@@ -1,0 +1,311 @@
+'use strict';
+
+/**
+ * Security posture shown on the About page and in docs/SECURITY-MEASURES.md.
+ *
+ * Every control names the files that implement it (`evidence`) and the Jest
+ * suites that prove it (`tests`). tests/unit/securityPostureEvidence.test.js
+ * fails when a cited file or suite disappears, so the page never claims a
+ * control the code no longer has.
+ */
+const CATEGORIES = [
+    {
+        id: 'identity',
+        icon: 'fa-user-lock',
+        title: { fr: 'Identité et accès', en: 'Identity and access' },
+        controls: [
+            {
+                id: 'passwords',
+                fr: 'Mots de passe hachés avec bcrypt, politique de complexité, changement imposé à la première connexion.',
+                en: 'Passwords hashed with bcrypt, a strength policy and a forced change at first sign-in.',
+                evidence: [
+                    'src/utils/passwordValidator.js',
+                    'src/middleware/forcePasswordChange.js',
+                ],
+                tests: ['passwordValidator.test.js', 'passwordResetEligibility.test.js'],
+            },
+            {
+                id: 'lockout',
+                fr: 'Verrouillage du compte et limitation du débit des connexions contre la force brute.',
+                en: 'Account lockout and login rate limiting against brute force.',
+                evidence: ['src/middleware/rateLimiter.js', 'src/controllers/AuthController.js'],
+                tests: ['loginRateLimiterCountsFailures.test.js', 'lotC-lockout-reminders.test.js'],
+            },
+            {
+                id: 'mfa',
+                fr: 'Double authentification TOTP avec codes de secours, obligatoire pour les super-administrateurs.',
+                en: 'Two-factor authentication (TOTP) with backup codes, mandatory for super-administrators.',
+                evidence: ['src/services/MfaService.js', 'src/middleware/mfaEnforcement.js'],
+                tests: ['mfaSetupIsSafeOnGet.test.js', 'authLogin.test.js'],
+            },
+            {
+                id: 'sessions',
+                fr: 'Cookies de session httpOnly, SameSite et Secure en HTTPS ; expiration d’inactivité et durée maximale.',
+                en: 'httpOnly, SameSite and Secure (over HTTPS) session cookies, with idle and absolute timeouts.',
+                evidence: ['server.js', 'src/middleware/sessionActivity.js'],
+                tests: ['c319-real-session.test.js', 'sessionBucketsBothTypes.test.js'],
+            },
+            {
+                id: 'sso',
+                fr: 'Authentification unique OpenID Connect (dont Microsoft Entra ID), SAML 2.0 et Google ; provisionnement SCIM.',
+                en: 'Single sign-on with OpenID Connect (including Microsoft Entra ID), SAML 2.0 and Google; SCIM provisioning.',
+                evidence: ['src/services/SsoService.js', 'src/routes/scim.js'],
+                tests: [
+                    'ssoService.test.js',
+                    'c319-sso-enforcement.test.js',
+                    'scimReadOnlyKeyCannotWrite.test.js',
+                ],
+            },
+            {
+                id: 'rbac',
+                fr: 'Droits fins par rôle, périmètres géographiques et organisationnels, validation à quatre yeux et revues d’accès.',
+                en: 'Fine-grained role permissions, geographic and organisational scopes, maker-checker approval and access reviews.',
+                evidence: [
+                    'src/services/RBACService.js',
+                    'src/utils/rbacScope.js',
+                    'src/services/AccessReviewService.js',
+                ],
+                tests: [
+                    'rbac-scope.test.js',
+                    'employeeScopeGuards.test.js',
+                    'c317-B-workflow-authz-makerchecker.test.js',
+                    'delegationOfAuthority.test.js',
+                ],
+            },
+            {
+                id: 'apikeys',
+                fr: 'Clés d’API par client, stockées sous forme de hachage, avec portée lecture ou écriture.',
+                en: 'Per-client API keys, stored hashed, with read or write scope.',
+                evidence: ['src/services/ApiKeyService.js', 'src/middleware/apiAuth.js'],
+                tests: [
+                    'apiKeyService.test.js',
+                    'apiWriteScope.test.js',
+                    'apiKeyDeactivatedOwner.test.js',
+                ],
+            },
+        ],
+    },
+    {
+        id: 'web',
+        icon: 'fa-shield-halved',
+        title: { fr: 'Protection de l’application web', en: 'Web application protection' },
+        controls: [
+            {
+                id: 'csp',
+                fr: 'Politique de sécurité du contenu avec un nonce par requête, en-têtes Helmet, HSTS en HTTPS, anti-clickjacking.',
+                en: 'Content Security Policy with a per-request nonce, Helmet headers, HSTS over HTTPS, clickjacking protection.',
+                evidence: ['server.js', 'src/utils/tlsServer.js'],
+                tests: ['webSecurityBaseline.test.js'],
+            },
+            {
+                id: 'csrf',
+                fr: 'Jeton anti-CSRF sur chaque formulaire et appel qui modifie des données.',
+                en: 'Anti-CSRF token on every form and call that changes data.',
+                evidence: ['server.js'],
+                tests: ['webSecurityBaseline.test.js'],
+            },
+            {
+                id: 'xss',
+                fr: 'Échappement systématique des sorties ; les zones à risque XSS sont vérifiées par des tests.',
+                en: 'Output escaped by default; XSS-prone sinks are checked by tests.',
+                evidence: ['views/partials/json-script.ejs'],
+                tests: ['c317-C-dom-xss.test.js', 'reauditXssSinks.test.js'],
+            },
+            {
+                id: 'injection',
+                fr: 'Requêtes SQL paramétrées ; exports CSV et Excel protégés contre l’injection de formules.',
+                en: 'Parameterised SQL queries; CSV and Excel exports protected against formula injection.',
+                evidence: ['src/database/PostgresDatabase.js', 'src/utils/csvSafe.js'],
+                tests: ['csvSafe.test.js', 'sqlIdentifierIntegrity.test.js'],
+            },
+            {
+                id: 'ssrf',
+                fr: 'Webhooks et fournisseurs d’IA : les adresses internes, locales et de métadonnées sont refusées.',
+                en: 'Webhooks and AI providers: internal, loopback and metadata addresses are refused.',
+                evidence: ['src/services/WebhookService.js', 'src/services/CopilotService.js'],
+                tests: ['securityControls.test.js', 'copilotPresetsAndEmails.test.js'],
+            },
+            {
+                id: 'redirects',
+                fr: 'Redirections limitées au site ; liens de réinitialisation construits depuis l’adresse configurée, jamais depuis l’en-tête Host.',
+                en: 'Redirects restricted to the site; reset links built from the configured address, never the Host header.',
+                evidence: ['src/utils/safeRedirect.js', 'src/controllers/AuthController.js'],
+                tests: ['safeRedirect.test.js', 'emailLinkOrigin.test.js'],
+            },
+            {
+                id: 'limits',
+                fr: 'Taille des requêtes bornée et limitation du débit des actions coûteuses.',
+                en: 'Request size capped and expensive actions rate limited.',
+                evidence: ['server.js', 'src/middleware/rateLimiter.js'],
+                tests: ['webSecurityBaseline.test.js', 'loginRateLimiterCountsFailures.test.js'],
+            },
+        ],
+    },
+    {
+        id: 'data',
+        icon: 'fa-database',
+        title: { fr: 'Protection des données et RGPD', en: 'Data protection and GDPR' },
+        controls: [
+            {
+                id: 'encryption',
+                fr: 'Secrets stockés (MFA, SSO, LMS, SMTP) chiffrés en AES-256-GCM avec APP_KEY ; rotation outillée.',
+                en: 'Stored secrets (MFA, SSO, LMS, SMTP) encrypted with AES-256-GCM under APP_KEY; tooled key rotation.',
+                evidence: ['src/utils/secretBox.js', 'scripts/rotate-app-key.js'],
+                tests: ['securityControls.test.js', 'installerSecretChannel.test.js'],
+            },
+            {
+                id: 'audit',
+                fr: 'Journal d’audit en ajout seul, chaîné par hachage et ancré chaque jour : toute altération est détectable.',
+                en: 'Append-only, hash-chained audit trail anchored daily: any tampering is detectable.',
+                evidence: ['src/middleware/activityTrail.js', 'src/jobs/audit-anchor.js'],
+                tests: ['c317-O-ops2-audit-anchor.test.js', 'c317-O-ops2-audit-owner.test.js'],
+            },
+            {
+                id: 'gdpr',
+                fr: 'Export et effacement RGPD avec gel juridique ; l’effacement survit à une restauration ; purge selon la durée de conservation.',
+                en: 'GDPR export and erasure with legal hold; erasure survives a restore; purge by retention period.',
+                evidence: ['src/services/DSRService.js'],
+                tests: [
+                    'lotE-dashboard-dsr.test.js',
+                    'c317-P-privacy-retention.test.js',
+                    'snapshotRestoreProtectsJournals.test.js',
+                ],
+            },
+            {
+                id: 'confidential',
+                fr: 'Données de talent confidentielles (9-box, risque de départ) protégées ; petits groupes masqués dans les statistiques.',
+                en: 'Confidential talent data (9-box, flight risk) protected; small groups suppressed in statistics.',
+                evidence: [
+                    'src/services/TalentConfidentialityService.js',
+                    'src/services/AnonymizationService.js',
+                ],
+                tests: [
+                    'nineBoxEmployeeVisibility.test.js',
+                    'anonymizationService.test.js',
+                    'recognitionFeedScope.test.js',
+                ],
+            },
+            {
+                id: 'transparency',
+                fr: 'Registre pour les représentants du personnel et page « Ce qui est enregistré sur moi » pour chaque salarié.',
+                en: 'Register for employee representatives and a "What is recorded about me" page for every employee.',
+                evidence: ['src/services/ComplianceRegisterService.js'],
+                tests: ['teamApprovalRuleAndRegister.test.js'],
+            },
+        ],
+    },
+    {
+        id: 'ai',
+        icon: 'fa-robot',
+        title: { fr: 'IA responsable (AI Act européen)', en: 'Responsible AI (EU AI Act)' },
+        controls: [
+            {
+                id: 'ai-off',
+                fr: 'Copilote désactivé par défaut ; noms et identifiants anonymisés avant tout envoi à un modèle externe.',
+                en: 'Copilot off by default; names and identifiers anonymised before anything reaches an external model.',
+                evidence: [
+                    'src/services/CopilotService.js',
+                    'src/services/AnonymizationService.js',
+                ],
+                tests: ['copilotPrivacyFilter.test.js'],
+            },
+            {
+                id: 'ai-guardrails',
+                fr: 'Mention « aide à la décision » sur chaque réponse, aucun classement nominatif par défaut, fournisseurs UE uniquement par défaut, supervision humaine journalisée.',
+                en: '"Decision support" label on every answer, no named-person ranking by default, EU-only providers by default, human oversight logged.',
+                evidence: ['src/services/CopilotService.js'],
+                tests: ['copilotEuAiActGuardrails.test.js', 'c317-H-analytics-copilot.test.js'],
+            },
+        ],
+    },
+    {
+        id: 'ops',
+        icon: 'fa-server',
+        title: { fr: 'Exploitation et chaîne logicielle', en: 'Operations and supply chain' },
+        controls: [
+            {
+                id: 'secrets-required',
+                fr: 'En production, démarrage refusé sans secrets forts ; aucun mot de passe par défaut livré.',
+                en: 'In production, start-up refused without strong secrets; no default password ships.',
+                evidence: ['src/config/app.js', 'src/utils/bootstrapAdmin.js'],
+                tests: ['bootstrapAdmin.test.js', 'c317-D-ops-security-installer.test.js'],
+            },
+            {
+                id: 'safe-defaults',
+                fr: 'Réglages sûrs par défaut : inscription publique, classement nominatif par l’IA et notifications désactivés à l’installation.',
+                en: 'Safe defaults: public signup, named-person AI ranking and notifications are off on a fresh install.',
+                evidence: [
+                    'src/models/AppSettingsModel.js',
+                    'db/postgres/159_boolean_settings_repair.sql',
+                ],
+                tests: ['booleanSettingsSeededOff.test.js'],
+            },
+            {
+                id: 'sql-console',
+                fr: 'Console SQL désactivée sauf activation explicite par l’exploitant (séparation des tâches).',
+                en: 'SQL console off unless the operator explicitly enables it (separation of duties).',
+                evidence: [
+                    'src/middleware/sqlConsoleEnabled.js',
+                    'src/services/SqlConsoleService.js',
+                ],
+                tests: ['sqlConsoleSeparationOfDuties.test.js', 'sqlConsoleTamperGuard.test.js'],
+            },
+            {
+                id: 'backups',
+                fr: 'Sauvegardes quotidiennes avec contrôle d’accès et exercices de restauration.',
+                en: 'Daily backups with access control and restore drills.',
+                evidence: ['scripts/Verify-BackupRestore.ps1'],
+                tests: [
+                    'c317-D-ops-security-backup-acl.test.js',
+                    'installerRestoreAndPatchProof.test.js',
+                ],
+            },
+            {
+                id: 'container',
+                fr: 'Image Docker exécutée sans privilèges root ; Compose refuse de démarrer sans secrets réels.',
+                en: 'Docker image runs as a non-root user; Compose refuses to start without real secrets.',
+                evidence: ['Dockerfile', 'docker-compose.yml'],
+                tests: ['securityControls.test.js'],
+            },
+            {
+                id: 'no-cdn',
+                fr: 'Aucune dépendance à un CDN : polices, icônes et scripts sont hébergés par l’application.',
+                en: 'No CDN dependency: fonts, icons and scripts are served by the application itself.',
+                evidence: ['public/vendor/fonts/plus-jakarta-sans/OFL.txt'],
+                tests: ['brandTokensAbsent.test.js'],
+            },
+            {
+                id: 'ci',
+                fr: 'Intégration continue sur PostgreSQL 16 et 17 : lint, format et suite de tests complète à chaque modification.',
+                en: 'Continuous integration on PostgreSQL 16 and 17: lint, format and the full test suite on every change.',
+                evidence: ['.github/workflows/ci.yml'],
+                tests: [],
+            },
+        ],
+    },
+];
+
+/** Controls and categories in one language, for rendering. */
+function postureFor(lang) {
+    const l = String(lang || 'fr').slice(0, 2) === 'en' ? 'en' : 'fr';
+    return CATEGORIES.map((c) => ({
+        id: c.id,
+        icon: c.icon,
+        title: c.title[l],
+        controls: c.controls.map((x) => ({
+            id: x.id,
+            text: x[l],
+            evidence: x.evidence,
+            tests: x.tests,
+        })),
+    }));
+}
+
+function totals() {
+    const controls = CATEGORIES.reduce((n, c) => n + c.controls.length, 0);
+    const suites = new Set();
+    for (const c of CATEGORIES) for (const x of c.controls) x.tests.forEach((t) => suites.add(t));
+    return { categories: CATEGORIES.length, controls, suites: suites.size };
+}
+
+module.exports = { CATEGORIES, postureFor, totals };
