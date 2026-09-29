@@ -83,6 +83,7 @@
   "thank_err_required": "Choose a colleague and write a message.",
   "thank_err_too_long": "Your message is too long (1,000 characters maximum).",
   "thank_err_self": "You cannot thank yourself.",
+  "thank_err_not_colleague": "You can thank colleagues from your team circle only.",
   "learn_title": "Suggested learning for my gaps",
   "learn_intro": "The most useful next steps, based on the measured gaps in your current role.",
   "learn_course": "Suggested course",

@@ -83,6 +83,7 @@
   "thank_err_required": "Choisissez un collègue et écrivez un message.",
   "thank_err_too_long": "Votre message est trop long (1 000 caractères au maximum).",
   "thank_err_self": "Vous ne pouvez pas vous remercier vous-même.",
+  "thank_err_not_colleague": "Vous pouvez remercier uniquement les collègues de votre cercle d’équipe.",
   "learn_title": "Suggestions pour mes écarts",
   "learn_intro": "Les pistes les plus utiles d’après les écarts mesurés sur votre poste actuel.",
   "learn_course": "Formation suggérée",

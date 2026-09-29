@@ -771,6 +771,22 @@ router.post(
                 code: 'recognition_self',
                 error: sayText(req, 'growth:thank_err_self', 'You cannot thank yourself.'),
             });
+        // Same circle as the form: an employee thanks a colleague; an admin or
+        // manager thanks someone in their scope. Never an arbitrary id.
+        const me = empId(req.user);
+        const allowed = me
+            ? (await Rec.isColleague(me, to)) || (await inScope(req.user, to))
+            : await inScope(req.user, to);
+        if (!allowed)
+            return res.status(403).json({
+                ok: false,
+                code: 'recognition_not_colleague',
+                error: sayText(
+                    req,
+                    'growth:thank_err_not_colleague',
+                    'You can thank colleagues from your team circle only.'
+                ),
+            });
         const row = await Rec.give({
             fromEmployeeId: empId(req.user),
             toEmployeeId: to,
