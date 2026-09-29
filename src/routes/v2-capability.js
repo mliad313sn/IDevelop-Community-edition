@@ -915,6 +915,7 @@ router.post(
             url: req.body.url,
             secret: req.body.secret,
             events: req.body.events || ['*'],
+            format: req.body.format || 'json',
             createdByAdminId: await adminId(req.user),
         });
         res.json({ ok: true, id: r.id });

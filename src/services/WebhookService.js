@@ -39,27 +39,101 @@ function assertSafeWebhookUrl(raw) {
     if (blocked) throw new Error('Webhook URL targets a private/loopback/internal address');
 }
 
+const FORMATS = ['json', 'slack', 'teams'];
+
+// Chat channels are wide audiences: a chat message carries the event name, a
+// link and a few harmless facts, never personal assessments. Keys that could
+// reveal a rating, a talent label, a risk or contact details are dropped.
+const SENSITIVE_KEY =
+    /(email|phone|mobile|address|birth|salary|pay|comp|risk|nine|box|potential|performance|rating|score|level|note|comment|reason|password|secret|token)/i;
+
+function chatFacts(data) {
+    const out = [];
+    for (const [k, v] of Object.entries(data || {})) {
+        if (out.length >= 6) break;
+        if (SENSITIVE_KEY.test(k)) continue;
+        if (v === null || v === undefined || typeof v === 'object') continue;
+        out.push({ title: k, value: String(v).slice(0, 120) });
+    }
+    return out;
+}
+
+/**
+ * Body for one delivery. `json` is the signed event envelope; `slack` and
+ * `teams` are chat messages built for incoming webhooks. Pure, for tests.
+ */
+function renderPayload(format, event, data, ts, baseUrl) {
+    if (format === 'slack' || format === 'teams') {
+        const title = `IDevelop · ${event}`;
+        const facts = chatFacts(data);
+        const link = baseUrl ? String(baseUrl).replace(/\/$/, '') : '';
+        if (format === 'slack') {
+            const blocks = [{ type: 'section', text: { type: 'mrkdwn', text: `*${title}*` } }];
+            if (facts.length) {
+                blocks.push({
+                    type: 'section',
+                    fields: facts.map((f) => ({
+                        type: 'mrkdwn',
+                        text: `*${f.title}*\n${f.value}`,
+                    })),
+                });
+            }
+            if (link) {
+                blocks.push({
+                    type: 'context',
+                    elements: [{ type: 'mrkdwn', text: `<${link}|Open IDevelop> · ${ts}` }],
+                });
+            }
+            return { text: title, blocks };
+        }
+        const body = [{ type: 'TextBlock', text: title, weight: 'Bolder', wrap: true }];
+        if (facts.length) body.push({ type: 'FactSet', facts });
+        body.push({ type: 'TextBlock', text: ts, isSubtle: true, size: 'Small' });
+        const content = {
+            $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+            type: 'AdaptiveCard',
+            version: '1.4',
+            body,
+        };
+        if (link) content.actions = [{ type: 'Action.OpenUrl', title: 'Open IDevelop', url: link }];
+        return {
+            type: 'message',
+            attachments: [{ contentType: 'application/vnd.microsoft.card.adaptive', content }],
+        };
+    }
+    return { event, data, ts };
+}
+
 class WebhookService {
-    async subscribe({ label, url, secret = null, events = ['*'], createdByAdminId = null }) {
+    async subscribe({
+        label,
+        url,
+        secret = null,
+        events = ['*'],
+        format = 'json',
+        createdByAdminId = null,
+    }) {
         if (!label || !url) throw new Error('label and url required');
+        if (!FORMATS.includes(format)) throw new Error('format must be json, slack or teams');
         assertSafeWebhookUrl(url);
         // Encrypt the signing secret at rest (decrypted only to sign on emit).
         const storedSecret = secret ? secretBox.encrypt(String(secret)) : null;
         return db.get(
-            `INSERT INTO webhook_subscriptions (label, url, secret, events, created_by_admin_id)
-             VALUES (?, ?, ?, ?, ?) RETURNING id, label, url, events, enabled`,
+            `INSERT INTO webhook_subscriptions (label, url, secret, events, format, created_by_admin_id)
+             VALUES (?, ?, ?, ?, ?, ?) RETURNING id, label, url, events, format, enabled`,
             [
                 label,
                 url,
                 storedSecret,
                 JSON.stringify(events && events.length ? events : ['*']),
+                format,
                 createdByAdminId,
             ]
         );
     }
     async list() {
         return db.all(
-            `SELECT id, label, url, events, enabled, last_status, last_delivery_at, created_at,
+            `SELECT id, label, url, events, format, enabled, last_status, last_delivery_at, created_at,
                     (secret IS NOT NULL) AS has_secret
              FROM webhook_subscriptions ORDER BY id DESC`
         );
@@ -95,7 +169,15 @@ class WebhookService {
             }
             let delivered = 0;
             for (const s of targets) {
-                const body = JSON.stringify({ event, data, ts: new Date().toISOString() });
+                const body = JSON.stringify(
+                    renderPayload(
+                        s.format || 'json',
+                        event,
+                        data,
+                        new Date().toISOString(),
+                        process.env.APP_BASE_URL
+                    )
+                );
                 const headers = { 'Content-Type': 'application/json', 'x-idevelop-event': event };
                 if (s.secret) {
                     const signingSecret = secretBox.decrypt(s.secret); // handles legacy clear too
@@ -149,3 +231,5 @@ class WebhookService {
 }
 
 module.exports = new WebhookService();
+module.exports.renderPayload = renderPayload;
+module.exports.FORMATS = FORMATS;
