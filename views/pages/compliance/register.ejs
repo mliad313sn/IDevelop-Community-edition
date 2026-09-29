@@ -1,0 +1,167 @@
+<%#
+  Employee-representative (works council / CSE) register.
+  Every figure comes from ComplianceRegisterService.register(), read from the
+  live configuration on each request. `null` is "not measured", never 0.
+  Printable: the app chrome is dropped by the print rules at the bottom.
+%>
+<%
+  var R = reg || {};
+  var NM = __('compliance:reg_not_measured');
+  function num(v) { return (v === null || v === undefined) ? NM : String(v); }
+  function onOff(b) { return b ? __('compliance:reg_on') : __('compliance:reg_off'); }
+  function yesNo(b) { return (b === null || b === undefined) ? NM : (b ? __('compliance:reg_yes') : __('compliance:reg_no')); }
+  function days(n) {
+    if (n === null || n === undefined) return NM;
+    return Number(n) > 0 ? __('compliance:reg_ret_days', { n: n }) : __('compliance:reg_ret_forever');
+  }
+  var mods = (R.modules && R.modules.items) || [];
+  var lic = R.modules ? R.modules.licence : null;
+  var ret = R.retention || {};
+  var acc = R.access || {};
+  var cop = R.copilot;
+  var idn = R.identity || {};
+  var aud = R.audit || {};
+  var cats = R.categories || [];
+%>
+<div class="reg-doc">
+<div class="page-header">
+  <h1><i class="fas fa-scale-balanced" aria-hidden="true"></i> <%= __('compliance:reg_title') %></h1>
+  <p class="text-muted"><%= __('compliance:reg_intro') %></p>
+  <p class="text-muted reg-meta"><%= __('compliance:reg_generated_on', { date: fmtDateTime(R.generatedAt) }) %></p>
+  <div class="reg-toolbar no-print">
+    <button type="button" class="btn btn-primary" data-reg-print><i class="fas fa-print" aria-hidden="true"></i> <%= __('compliance:reg_print') %></button>
+    <span class="text-muted reg-hint"><%= __('compliance:reg_print_hint') %></span>
+  </div>
+</div>
+
+<section class="card reg-section">
+  <h2><%= __('compliance:reg_sec_modules') %></h2>
+  <div class="table-wrapper"><table class="table">
+    <thead><tr><th><%= __('compliance:reg_th_module') %></th><th><%= __('compliance:reg_th_state') %></th></tr></thead>
+    <tbody>
+      <% mods.forEach(function (m) { %>
+      <tr><td><%= __('compliance:reg_mod_' + m.key) %></td><td><span class="badge <%= m.enabled ? 'badge-success' : 'badge-secondary' %>"><%= onOff(m.enabled) %></span></td></tr>
+      <% }); %>
+      <tr><td><%= __('compliance:reg_licence') %></td><td>
+        <% if (!lic) { %><%= NM %>
+        <% } else if (lic.unmanaged) { %><%= __('compliance:reg_licence_unmanaged') %>
+        <% } else { %><%= __('compliance:reg_licence_features', { list: (lic.features || []).indexOf('*') > -1 ? __('compliance:reg_licence_all') : (lic.features || []).join(', ') }) %><% } %>
+      </td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="card reg-section">
+  <h2><%= __('compliance:reg_sec_retention') %></h2>
+  <div class="table-wrapper"><table class="table">
+    <thead><tr><th><%= __('compliance:reg_th_data') %></th><th><%= __('compliance:reg_th_period') %></th><th><%= __('compliance:reg_th_action') %></th></tr></thead>
+    <tbody>
+      <% if (ret.periods === null || ret.periods === undefined) { %>
+      <tr><td><%= __('compliance:reg_ret_leaver', { country: '—' }) %></td><td><%= NM %></td><td><%= __('compliance:reg_ret_pseudonymise') %></td></tr>
+      <% } else if (!ret.periods.length) { %>
+      <tr><td colspan="3"><%= __('compliance:reg_ret_no_country') %></td></tr>
+      <% } else { ret.periods.forEach(function (p) { %>
+      <tr><td><%= __('compliance:reg_ret_leaver', { country: p.name || p.code }) %></td><td><%= (p.dsrSlaDays === null || p.dsrSlaDays === undefined) ? NM : __('compliance:reg_ret_days_after_leaving', { n: p.dsrSlaDays }) %></td><td><%= __('compliance:reg_ret_pseudonymise') %></td></tr>
+      <% }); } %>
+      <tr><td><%= __('compliance:reg_ret_perf') %></td><td><%= days(ret.perfEventsDays) %></td><td><%= __('compliance:reg_ret_delete') %></td></tr>
+      <tr><td><%= __('compliance:reg_ret_notif') %></td><td><%= days(ret.notificationDays) %></td><td><%= __('compliance:reg_ret_delete') %></td></tr>
+      <tr><td><%= __('compliance:reg_ret_reminder') %></td><td><%= days(ret.reminderLogDays) %></td><td><%= __('compliance:reg_ret_delete') %></td></tr>
+    </tbody>
+  </table></div>
+  <p class="reg-note"><strong><%= __('compliance:reg_ret_mode') %><%= colon %></strong>
+    <%= ret.mode === 'apply' ? __('compliance:reg_ret_mode_apply') : (ret.mode === 'report' ? __('compliance:reg_ret_mode_report') : NM) %>
+    · <%= __('compliance:reg_ret_tombstones', { n: num(ret.tombstones) }) %></p>
+</section>
+
+<section class="card reg-section">
+  <h2><%= __('compliance:reg_sec_access') %></h2>
+  <h3><%= __('compliance:reg_acc_ninebox') %></h3>
+  <div class="table-wrapper"><table class="table">
+    <thead><tr><th><%= __('compliance:reg_th_who') %></th><th class="num"><%= __('compliance:reg_th_count') %></th><th><%= __('compliance:reg_th_reach') %></th></tr></thead>
+    <tbody>
+      <tr><td><%= __('compliance:reg_acc_superadmins') %></td><td class="num"><%= num(acc.superadmins) %></td><td><%= __('compliance:reg_reach_all') %></td></tr>
+      <tr><td><%= __('compliance:reg_acc_scoped_admins') %></td><td class="num"><%= num(acc.scopedAdmins) %></td><td><%= __('compliance:reg_reach_scope') %></td></tr>
+      <tr><td><%= __('compliance:reg_acc_talent_deciders') %></td><td class="num"><%= num(acc.talentDeciders) %></td><td><%= __('compliance:reg_reach_scope') %></td></tr>
+      <tr><td><%= __('compliance:reg_acc_managers') %></td><td class="num"><%= num(acc.managers) %></td><td><%= __('compliance:reg_reach_line') %></td></tr>
+      <tr><td><%= __('compliance:reg_acc_employee') %></td><td class="num">—</td><td><%= __('compliance:reg_reach_disclosed') %></td></tr>
+    </tbody>
+  </table></div>
+  <h3><%= __('compliance:reg_acc_risk') %></h3>
+  <% if (!acc.riskModuleMounted) { %><p class="reg-note"><%= __('compliance:reg_risk_module_off') %></p><% } %>
+  <div class="table-wrapper"><table class="table">
+    <thead><tr><th><%= __('compliance:reg_th_who') %></th><th class="num"><%= __('compliance:reg_th_count') %></th><th><%= __('compliance:reg_th_reach') %></th></tr></thead>
+    <tbody>
+      <tr><td><%= __('compliance:reg_acc_superadmins') %></td><td class="num"><%= num(acc.superadmins) %></td><td><%= __('compliance:reg_reach_all') %></td></tr>
+      <tr><td><%= __('compliance:reg_acc_risk_viewers') %></td><td class="num"><%= num(acc.riskViewers) %></td><td><%= __('compliance:reg_reach_scope') %></td></tr>
+      <tr><td><%= __('compliance:reg_acc_managers') %></td><td class="num"><%= num(acc.managers) %></td><td><%= __('compliance:reg_reach_line') %></td></tr>
+      <tr><td><%= __('compliance:reg_acc_employee') %></td><td class="num">—</td><td><%= __('compliance:reg_reach_never') %></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="card reg-section">
+  <h2><%= __('compliance:reg_sec_copilot') %></h2>
+  <% if (!cop) { %><p><%= NM %></p>
+  <% } else if (!cop.enabled) { %><p><span class="badge badge-secondary"><%= __('compliance:reg_off') %></span> <%= __('compliance:reg_copilot_off') %></p>
+  <% } else { %><p><span class="badge badge-warning"><%= __('compliance:reg_on') %></span> <%= __('compliance:reg_copilot_on', { provider: cop.provider, model: cop.model || '—' }) %></p>
+  <p class="reg-note"><%= __('compliance:reg_copilot_note') %></p><% } %>
+</section>
+
+<section class="card reg-section">
+  <h2><%= __('compliance:reg_sec_identity') %></h2>
+  <p><% if (!idn.sso) { %><%= NM %><% } else if (idn.sso.enabled) { %><%= __('compliance:reg_sso_on', { list: idn.sso.providers.join(', ') }) %><% } else { %><%= __('compliance:reg_sso_off') %><% } %></p>
+  <p><% if (!idn.scim) { %><%= NM %><% } else { %><%= __('compliance:reg_scim', { active: idn.scim.activeKeys, write: idn.scim.writeKeys }) %><% } %></p>
+</section>
+
+<section class="card reg-section">
+  <h2><%= __('compliance:reg_sec_audit') %></h2>
+  <div class="table-wrapper"><table class="table">
+    <tbody>
+      <tr><th scope="row"><%= __('compliance:reg_audit_entries') %></th><td class="num"><%= num(aud.entries) %></td></tr>
+      <tr><th scope="row"><%= __('compliance:reg_audit_oldest') %></th><td class="num"><%= aud.oldest ? fmtDate(aud.oldest) : NM %></td></tr>
+      <tr><th scope="row"><%= __('compliance:reg_audit_chain') %></th><td class="num"><%= yesNo(aud.hashChained) %></td></tr>
+      <tr><th scope="row"><%= __('compliance:reg_audit_immutable') %></th><td class="num"><%= yesNo(aud.immutable) %></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="card reg-section">
+  <h2><%= __('compliance:reg_sec_categories') %></h2>
+  <p class="text-muted"><%= __('compliance:reg_categories_intro') %></p>
+  <div class="table-wrapper"><table class="table">
+    <thead><tr><th><%= __('compliance:reg_th_category') %></th><th><%= __('compliance:reg_th_group') %></th><th><%= __('compliance:reg_th_audience') %></th><th><%= __('compliance:reg_th_confidential') %></th></tr></thead>
+    <tbody>
+      <% cats.forEach(function (c) { %>
+      <tr><td><%= __('compliance:cat_' + c.key) %></td><td><%= __('compliance:catgrp_' + c.group) %></td><td><%= __('compliance:reg_aud_' + c.audience) %></td><td><%= c.confidential ? __('compliance:reg_yes') : __('compliance:reg_no') %></td></tr>
+      <% }); %>
+    </tbody>
+  </table></div>
+</section>
+
+<p class="text-muted reg-foot"><%= __('compliance:reg_footer') %></p>
+</div>
+
+<style>
+.reg-doc .reg-section { margin-bottom: 1rem; padding: 1rem 1.15rem; }
+.reg-doc .reg-section h2 { margin-top: 0; font-size: 1.1rem; }
+.reg-doc .reg-section h3 { font-size: .98rem; margin: .9rem 0 .4rem; }
+.reg-doc .reg-toolbar { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin-top: .5rem; }
+.reg-doc .reg-hint, .reg-doc .reg-meta { font-size: .85rem; }
+.reg-doc .reg-note { font-size: .88rem; margin: .6rem 0 0; }
+.reg-doc .reg-foot { font-size: .82rem; }
+@media print {
+  .no-print, .sidebar, .topbar, .breadcrumbs, .skip-link, .help-fab { display: none !important; }
+  body, .main-content, .content-wrapper { background: #fff !important; color: #000 !important; margin: 0 !important; padding: 0 !important; }
+  .reg-doc .reg-section { border: 1px solid #999 !important; box-shadow: none !important; page-break-inside: avoid; background: #fff !important; }
+  .reg-doc, .reg-doc .text-muted, .reg-doc .table th, .reg-doc .table td { color: #000 !important; }
+  .reg-doc .table th, .reg-doc .table td { border-color: #ccc !important; background: #fff !important; }
+  .reg-doc .badge { border: 1px solid #666; color: #000 !important; background: #fff !important; }
+  @page { margin: 14mm; }
+}
+</style>
+<script nonce="<%= cspNonce %>">
+document.addEventListener('click', function (e) {
+  var b = e.target && e.target.closest ? e.target.closest('[data-reg-print]') : null;
+  if (b) { e.preventDefault(); window.print(); }
+});
+</script>

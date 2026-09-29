@@ -297,8 +297,12 @@ const BEFORE = {
 // every signed-in account (routes/index.js: router.get('/account', requireAuth…)),
 // and the 3.23.18 safety-clearances page, for admins holding a compliance grant
 // and SuperAdmins (its route: requireManagerOrAnyPermission view/manage_compliance).
+// « Mes données » (/employee/my-data) is the person's OWN data register — the
+// route is requireEmployeeOrManager and keys on req.user.id — so it is a
+// legitimate addition for exactly the two accounts that have a « mine » section.
 const ALLOWED_ADDITIONS = {
-    employee: ['/account'],
+    employee: ['/account', '/employee/my-data'],
+    manager: ['/employee/my-data'],
     localadmin_ops: ['/safety-gate'],
     superadmin: ['/safety-gate'],
 };

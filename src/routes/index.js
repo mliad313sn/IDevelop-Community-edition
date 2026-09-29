@@ -431,11 +431,21 @@ router.get(
     requireEmployeeOrManager,
     EmployeePortalController.myCertifications
 );
-router.get('/supervisor/dashboard', requireManager, (req, res) =>
+// "My team": one row per DIRECT report (TeamRosterService scopes on the
+// reporting line of the person behind the account). A failure to read it
+// leaves `team` null, which the page says, rather than an empty team.
+router.get('/supervisor/dashboard', requireManager, async (req, res) => {
+    let team = null;
+    try {
+        team = await require('../services/TeamRosterService').forManager(req.user);
+    } catch (_) {
+        team = null;
+    }
     res.render('pages/supervisor/dashboard', {
         title: req.t ? req.t('chrome:mgr_workspace_title') : 'Manager workspace',
-    })
-);
+        team,
+    });
+});
 
 // Managers are employees too — let them complete their own self-assessment.
 router.get(
@@ -492,6 +502,14 @@ router.post(
     '/api/self-assessment/employee/:employeeId/approve-all',
     requireManagerOrAnyPermission('approve_assessments'),
     SelfAssessmentWorkflowController.bulkApprove
+);
+// "Approve all agreed ratings for my team": same guard and the same JSON/CSRF
+// contract as the per-employee approve-all above; the service loops that very
+// method, agreed ratings only, re-authorising every employee and every row.
+router.post(
+    '/api/self-assessment/team/approve-all',
+    requireManagerOrAnyPermission('approve_assessments'),
+    SelfAssessmentWorkflowController.teamApproveAgreed
 );
 // Per-employee assessment movement timeline (employee ↔ reviewer handoffs).
 router.get(
@@ -2860,6 +2878,12 @@ router.get(
     requireManagerOrAnyPermission('view_compliance'),
     _m55(_cc.page.bind(_cc))
 );
+// Employee-representative (works council / CSE) register — generated from the
+// live configuration, SuperAdmin only, printable to PDF from the browser.
+router.get('/compliance/register', requireSuperAdminPage, _m55(_cc.register.bind(_cc)));
+// « Ce qui est enregistré sur moi » — the signed-in person's own data only
+// (the controller keys on req.user.id; no :id, no query-string id).
+router.get('/employee/my-data', requireEmployeeOrManager, _m55(_cc.myData.bind(_cc)));
 router.get(
     '/api/compliance/certifications',
     requireManagerOrAnyPermission('view_compliance'),

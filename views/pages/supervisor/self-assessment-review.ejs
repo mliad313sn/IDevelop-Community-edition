@@ -47,6 +47,18 @@
   <span class="text-muted" style="font-size:.82rem"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('talentx:rvx_sort_hint') %></span>
 </div>
 
+<%# « Approuver les notes concordantes de mon équipe » — one click for the
+    ratings nobody needs to discuss. The rule is stated on the card and again
+    in the confirmation; the server (isAgreedRating) is what decides, and
+    everything it declines stays in the queue below. %>
+<div class="card sa-team-card">
+  <div class="sa-team-text">
+    <strong><%= __('talentx:sar_team_title') %></strong>
+    <p class="text-muted sa-team-rule"><%= __('talentx:sar_team_rule') %></p>
+  </div>
+  <button type="button" class="btn btn-success btn-sm" id="sa-team-approve"><i class="fas fa-check-double" aria-hidden="true"></i> <%= __('talentx:sar_team_btn') %></button>
+</div>
+
 <%
 // RENDU SERVEUR DE LA FILE (constat « la console du superviseur ne rend rien côté
 // serveur »). La zone ne contenait que « Chargement… » : sans JS — navigateur
@@ -140,6 +152,9 @@ function saCell(v) { return (v === null || v === undefined || v === '') ? '—' 
 .sa-hit>td:first-child{box-shadow:inset 3px 0 0 var(--accent, #6656f0)}
 .sa-tab{background:none;border:1px solid var(--border);border-radius:999px;padding:4px 12px;cursor:pointer;font-size:.85rem;color:inherit}
 .sa-tab.on{background:var(--accent,#6656f0);color:#111;border-color:transparent}
+.sa-team-card{margin-bottom:1rem;padding:.8rem 1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+.sa-team-text{flex:1;min-width:260px}
+.sa-team-rule{font-size:.85rem;margin:.25rem 0 0}
 .sa-cycle-chip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.72rem;background:rgba(127,127,127,.18)}
 </style>
 
@@ -156,6 +171,15 @@ const SA_T = {
   rateLbl: <%- JSON.stringify(__('talentx:sar_rate_lbl')) %>,
   rateTitle: <%- JSON.stringify(__('talentx:sar_rate_title')) %>,
   requestChanges: <%- JSON.stringify(__('talentx:sar_request_changes')) %>,
+  teamTitle: <%- JSON.stringify(__('talentx:sar_team_title')) %>,
+  teamConfirm: <%- JSON.stringify(__('talentx:sar_team_confirm')) %>,
+  teamOk: <%- JSON.stringify(__('talentx:sar_team_ok')) %>,
+  teamDone: <%- JSON.stringify(__('talentx:sar_team_done', { approved: '%approved%', held: '%held%' })) %>,
+  teamFailedN: <%- JSON.stringify(__('talentx:sar_team_failed_n', { n: '%n%' })) %>,
+  rcTitle: <%- JSON.stringify(__('talentx:sar_rc_title')) %>,
+  rcPick: <%- JSON.stringify(__('talentx:sar_rc_pick')) %>,
+  rcFreePh: <%- JSON.stringify(__('talentx:sar_rc_free_ph')) %>,
+  rcReasons: <%- include('../../partials/json-script', { v: [__('talentx:sar_rc_reason_evidence'), __('talentx:sar_rc_reason_level'), __('talentx:sar_rc_reason_justification'), __('talentx:sar_rc_reason_discuss')] }) %>,
   reject: <%- JSON.stringify(__('talentx:reject')) %>,
   discuss: <%- JSON.stringify(__('talentx:sar_discuss')) %>,
   askComment: <%- JSON.stringify(__('talentx:sar_ask_comment')) %>,
@@ -372,7 +396,7 @@ const SA = {
     let body = {};
     // Treat an empty box the same as cancel — the server now requires a reason, so
     // sending '' would just bounce back an error. Loop until we have text or a cancel.
-    if (action==='request-changes') { const c = await ask(SA_T.askComment); if (c===null || !String(c).trim()) return; body.comment = c.trim(); }
+    if (action==='request-changes') { const c = await askChanges(); if (c===null || !String(c).trim()) return; body.comment = c.trim(); }
     if (action==='reject') { const c = await ask(SA_T.askRejectReason); if (c===null || !String(c).trim()) return; body.reason = c.trim(); }
     // On approve, promote the reviewer's rating (defaults to the pre-filled self-rating).
     // When that rating DIFFERS from the employee's own, the supervisor must say why:
@@ -412,6 +436,22 @@ const SA = {
     } else {
       (window.toast||function(){})(SA_T.approvedN.replace('{n}', (r.approved!=null?r.approved:n)), 'success');
     }
+    await this.load();
+  },
+  /** Team-wide: agreed ratings only. Never announced before the server's proof. */
+  async approveTeam(){
+    const ok = await window.confirmDialog(SA_T.teamConfirm, { title: SA_T.teamTitle, confirmText: SA_T.teamOk });
+    if (!ok) return;
+    const j = await this.api('/api/self-assessment/team/approve-all', 'POST', {});
+    const r = j && j.result;
+    if (!r || r.approved === undefined) {
+      (window.toast||function(){})(SA_T.notConfirmed, 'error');
+      await this.load();
+      return;
+    }
+    let msg = this.fmt(SA_T.teamDone, { approved: r.approved, held: r.held || 0 });
+    if (r.failed) msg += ' ' + this.fmt(SA_T.teamFailedN, { n: r.failed });
+    (window.toast||function(){})(msg, r.failed ? 'warning' : 'success');
     await this.load();
   },
   async openThread(id){
@@ -568,6 +608,8 @@ const SA = {
 };
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function ask(msg){ return window.promptDialog(msg); }
+// « Demander des modifications » : four ready-made reasons plus free text.
+function askChanges(){ return window.promptDialog(SA_T.askComment, '', { title: SA_T.rcTitle, multiline: true, required: true, choices: SA_T.rcReasons, choicePlaceholder: SA_T.rcPick, placeholder: SA_T.rcFreePh }); }
 // Les boutons appellent SA.act/SA.approveAll par onclick : l'erreur déjà
 // montrée à l'utilisateur ressortait ensuite en « Uncaught (in promise) ». Un
 // refus se dit UNE fois, dans l'interface, pas deux fois dont une dans la console.
@@ -575,6 +617,8 @@ window.addEventListener('unhandledrejection', function(ev){
   if (ev.reason && ev.reason.__saReported) ev.preventDefault();
 });
 (function(){
+  const team = document.getElementById('sa-team-approve');
+  if (team) team.addEventListener('click', function(){ SA.approveTeam().catch(function(){ /* already shown */ }); });
   const sel = document.getElementById('sa-sort');
   if (sel) sel.addEventListener('change', function(){ SA.sortMode = sel.value; SA.applySort(); });
   const cyc = document.getElementById('sa-cycle');

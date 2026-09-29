@@ -90,6 +90,11 @@ class SelfAssessmentWorkflowController {
     bulkApprove = handle(async (req) => ({
         result: await svc.bulkApproveForEmployee(id(req, 'employeeId'), req.user, req),
     }));
+    // Team-wide: only the AGREED ratings (svc.isAgreedRating); everything else
+    // stays in the queue. Authority is re-checked per employee by the service.
+    teamApproveAgreed = handle(async (req) => ({
+        result: await svc.bulkApproveAgreedForTeam(req.user, req),
+    }));
     mine = handle(async (req) => ({ items: await svc.listForEmployee(req.user.id) }));
     movement = handle(async (req) => ({
         events: await svc.movementForEmployee(id(req), req.user),

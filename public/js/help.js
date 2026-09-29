@@ -3585,6 +3585,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 'Aucune expiration surprise : vous restez qualifié et le site reste conforme.'
             ),
         },
+        '/employee/my-data': {
+            title: L('What is recorded about me', 'Ce qui est enregistré sur moi'),
+            why: L(
+                '<strong>Process:</strong> Every category of personal data the platform keeps about you, how many records each holds, who can see it and how long it is kept — the same list a formal access request returns.',
+                "<strong>Processus :</strong> chaque catégorie de données personnelles que la plateforme conserve sur vous, le nombre d'enregistrements, qui peut les voir et combien de temps elles sont gardées — la même liste que celle d'une demande d'accès formelle."
+            ),
+            steps: [
+                {
+                    text: L(
+                        '<strong>Read each category</strong> and who can see it.',
+                        '<strong>Parcourez chaque catégorie</strong> et qui peut la consulter.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Ask HR or the data protection officer</strong> for a full export or an erasure.',
+                        '<strong>Adressez-vous aux RH ou au délégué à la protection des données</strong> pour un export complet ou un effacement.'
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'A category marked confidential is listed without a count; its full content is given to you on a formal access request.',
+                    "Une catégorie marquée confidentielle est listée sans nombre ; son contenu complet vous est remis sur demande d'accès formelle."
+                ),
+            ],
+            value: L(
+                'No hidden file: you know what is kept about you and how to exercise your rights.',
+                'Aucun dossier caché : vous savez ce qui est conservé sur vous et comment exercer vos droits.'
+            ),
+        },
         '/mon-acces': {
             title: L('My Access', 'Mon accès'),
             why: L(
