@@ -24,8 +24,29 @@ const LogService = require('./LogService');
  *                              so an admin can copy-paste it instead of uploading a file.
  *
  * SECURITY: every caller must already be gated to role === 'superadmin' at the route.
+ *
+ * SEPARATION OF DUTIES: the console is OFF unless the operator of the host sets
+ * SQL_CONSOLE_ENABLED=1 in the environment. A super administrator is an
+ * application role; raw SQL on the production database is an infrastructure
+ * power. Keeping the switch in the environment (not in App Settings) means the
+ * application's own super admin cannot turn it on for themselves — whoever runs
+ * the server has to. When off, every console route answers 404 and the menu
+ * entry is hidden (see isEnabled()).
  */
 class SqlConsoleService {
+    /**
+     * Whether the SQL console is switched on for this instance. Read on every call
+     * (never cached) so an operator can switch it off with a restart-free env
+     * reload in tests and a plain restart in production.
+     * @returns {boolean}
+     */
+    isEnabled() {
+        const v = String(process.env.SQL_CONSOLE_ENABLED || '')
+            .trim()
+            .toLowerCase();
+        return v === '1' || v === 'true';
+    }
+
     /**
      * The append-only audit tables, as real PostgreSQL names. ONE declared list,
      * owned by DatabaseCleanupService.IMMUTABLE_TABLES — used both by the editor's

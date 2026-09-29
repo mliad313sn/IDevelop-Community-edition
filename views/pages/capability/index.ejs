@@ -20,6 +20,7 @@
     <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('How many people are not assessed yet?')"><%= __('talentx:cap_q_coverage') %></button>
     <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('Open PIPs?')"><%= __('talentx:cap_q_pips') %></button>
   </div>
+  <p class="text-muted" style="font-size:.72em;margin:.5rem 0 0" data-ai-disclaimer><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('talentx:cap_ai_disclaimer') %></p>
   <div id="cop-a" style="margin-top:.6rem;font-size:.92em;white-space:pre-wrap"></div>
 </div>
 
@@ -164,6 +165,7 @@ const CAP_T = <%- include('../../partials/json-script', { v: {
   colon: colon,
   thinking: __('talentx:cap_thinking'), aiUnavail: __('talentx:cap_ai_unavail'),
   aiLlm: __('talentx:cap_ai_llm'), aiBuiltin: __('talentx:cap_ai_builtin'),
+  aiDisclaimer: __('talentx:cap_ai_disclaimer'),
   basedOn: __('talentx:cap_based_on'), person: __('talentx:cap_person'), people: __('talentx:cap_people'),
   inScope: __('talentx:cap_in_scope'), askError: __('talentx:cap_ask_error'),
   needTitle: __('talentx:cap_need_title'), topMatches: __('talentx:cap_top_matches'),
@@ -214,7 +216,9 @@ const CAP = {
       const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
       const src = j.mode==='fallback' ? CAP_T.aiUnavail : j.mode==='llm' ? CAP_T.aiLlm : CAP_T.aiBuiltin;
       const note = CAP_T.basedOn+' '+(j.scope||0)+' '+((j.scope===1)?CAP_T.person:CAP_T.people)+' '+CAP_T.inScope+' · '+src;
-      out.innerHTML = '<div>'+esc(j.answer)+'</div><div class="text-muted" style="font-size:.72em;margin-top:.4rem">'+esc(note)+'</div>';
+      // EU AI Act transparency: every answer is labelled as AI-generated decision support.
+      const label = j.disclaimer || CAP_T.aiDisclaimer;
+      out.innerHTML = '<div class="cop-ai-label" role="note" style="font-size:.75em;font-weight:600;margin-bottom:.3rem"><i class="fas fa-robot" aria-hidden="true"></i> '+esc(label)+'</div><div>'+esc(j.answer)+'</div><div class="text-muted" style="font-size:.72em;margin-top:.4rem">'+esc(note)+'</div>';
     // Le refus du catalogue dit POURQUOI (session, perimetre, reseau) et il est
     // dans la langue de la page ; CAP_T.askError ne reste que pour une erreur
     // sans code stable.

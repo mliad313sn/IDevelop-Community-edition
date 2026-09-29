@@ -65,6 +65,10 @@ const CATALOG = {
     copilotUrl: { kind: 'url', optional: true },
     copilotTimeoutMs: { min: 1000, max: 600000, integer: true },
     copilotAnonymizationMode: { enum: ['always', 'external-only'] },
+    // EU AI Act guardrails (CopilotService): named ranking of people is OFF by
+    // default; only EU-hosted / on-prem provider presets are allowed by default.
+    'copilot.allow_named_person_ranking': { type: 'boolean' },
+    'copilot.eu_only_providers': { type: 'boolean' },
     'dispute.l0SlaDays': { min: 0, max: 365, integer: true },
     'dispute.l1SlaDays': { min: 0, max: 365, integer: true },
     'dispute.l2SlaDays': { min: 0, max: 365, integer: true },
@@ -513,7 +517,7 @@ class AppSettingsModel {
                 value: 'none',
                 type: 'string',
                 description:
-                    'LLM connection: none (deterministic, no LLM) | ollama (local, sovereign) | a NAMED cloud engine — openai, anthropic, grok (xAI), groq, gemini (Google), mistral, deepseek, openrouter, together — where only the API key is required (endpoint + default model auto-fill; several have free tiers) | custom (generic completions: POST {model,prompt}). PRIVACY: external engines only ever receive PSEUDONYMIZED data (names replaced by EMP-nnn tokens; answers de-tokenized); full data goes only to internal/trusted AI servers. Every external call is audited (COPILOT_QUERY_EGRESS).',
+                    'LLM connection: none (deterministic, no LLM) | ollama (local, sovereign) | a NAMED cloud engine — mistral (EU), openai, anthropic, grok (xAI), groq, gemini (Google), deepseek, openrouter, together — where only the API key is required (endpoint + default model auto-fill; no preset defaults to a free tier, whose terms may allow training on your prompts) | custom (generic completions: POST {model,prompt}). RESIDENCY: while copilot.eu_only_providers is on (default), a non-EU preset is refused and the copilot answers with the built-in engine. PRIVACY: external engines only ever receive PSEUDONYMIZED data (names replaced by EMP-nnn tokens; answers de-tokenized); full data goes only to internal/trusted AI servers. Every external call is audited (COPILOT_QUERY_EGRESS).',
                 category: 'copilot',
             },
             {
@@ -541,6 +545,22 @@ class AppSettingsModel {
                 category: 'copilot',
             },
             {
+                key: 'copilot.allow_named_person_ranking',
+                value: 'false',
+                type: 'boolean',
+                description:
+                    'EU AI Act guardrail. Off (default): the copilot never ranks or names individual people (flight-risk lists, "who needs development", weakest/strongest, open PIPs by name) — it answers with aggregates, and named lists are withheld from any AI model. On: named answers are allowed; every answer still carries the "decision support only" label.',
+                category: 'copilot',
+            },
+            {
+                key: 'copilot.eu_only_providers',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    "Data residency. On (default): only on-prem (ollama) and EU-hosted (mistral) provider presets may be used; a non-EU preset (openai, anthropic, grok, groq, gemini, deepseek, openrouter, together) is refused and the copilot answers with the built-in engine. A custom or overridden endpoint URL is the administrator's declared choice.",
+                category: 'copilot',
+            },
+            {
                 key: 'invitationExpiryDays',
                 value: '14',
                 type: 'number',
@@ -561,7 +581,7 @@ class AppSettingsModel {
                 value: 'llama3.1',
                 type: 'string',
                 description:
-                    'Model name sent to the endpoint. Leave the default for a named cloud provider to use its default model (e.g. grok → grok-3-mini, gemini → gemini-2.0-flash, groq → llama-3.3-70b-versatile, openrouter → a :free model). Override for a specific model.',
+                    'Model name sent to the endpoint. Leave the default for a named cloud provider to use its default model (e.g. mistral → mistral-small-latest, grok → grok-3-mini, gemini → gemini-2.0-flash, groq → llama-3.3-70b-versatile). Override for a specific model — note that free-tier models (e.g. OpenRouter ":free") may allow the provider to train on your prompts.',
                 category: 'copilot',
             },
             {

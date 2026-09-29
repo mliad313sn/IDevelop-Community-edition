@@ -696,6 +696,9 @@ app.use(async (req, res, next) => {
     // Expose the V2 feature flag so navigation only links to V2-gated modules
     // when they are actually mounted (avoids dead links).
     res.locals.v2Features = process.env.V2_FEATURES === '1';
+    // SQL console is an operator switch (SQL_CONSOLE_ENABLED=1): hide its menu entry
+    // and its Data Management card when it is off (its routes answer 404 then).
+    res.locals.sqlConsoleEnabled = require('./src/services/SqlConsoleService').isEnabled();
     res.locals.success = req.flash('success');
     res.locals.errors = req.flash('error');
     // Advisories: the action succeeded but the person should read something

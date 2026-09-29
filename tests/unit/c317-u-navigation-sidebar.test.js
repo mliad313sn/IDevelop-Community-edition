@@ -310,6 +310,7 @@ function locals(role, { v2, lc, ws = true, currentPath = '/nowhere', lang = 'fr'
         can: (s) => r.perms === '*' || r.perms.includes(s),
         wsVisible: () => ws,
         v2Features: v2,
+        sqlConsoleEnabled: true,
         featureLocalContent: lc,
         currentPath,
         __: (k, o) => k + (o && o.name !== undefined ? '|' + o.name : ''),

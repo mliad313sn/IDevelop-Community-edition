@@ -35,6 +35,11 @@ function wireProvider({ anonMode = 'always' } = {}) {
                 copilotTrustedHosts: '',
                 copilotAnonymizationMode: anonMode,
                 copilotAnonymizeSkills: '0',
+                // These tests are about ciphering: let the named per-person lists
+                // into the context (so a leak would show) and let the non-EU
+                // gemini preset through the residency guard (default on).
+                'copilot.allow_named_person_ranking': true,
+                'copilot.eu_only_providers': false,
             })[key] ?? fb
     );
     mockRbac.getFilteredEmployees.mockResolvedValue([

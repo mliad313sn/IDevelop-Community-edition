@@ -4,13 +4,15 @@
  * Served at GET /api/v1/openapi.json. Extend as endpoints are added.
  * @module api/v1/openapi
  */
-const pkg = require('../../../package.json');
+const PRODUCT = require('../../config/product');
 
 module.exports = {
     openapi: '3.0.3',
     info: {
         title: 'IDevelop Community Edition API',
-        version: (pkg && pkg.version) || '2.0.0',
+        // One source of truth: package.json, read through src/config/product.js.
+        // No hard-coded fallback literal — it would silently drift from the release.
+        version: PRODUCT.version,
         description:
             'Versioned JSON API for IDevelop Community Edition (read endpoints). Session-cookie or API-key authenticated; RBAC-scoped.',
     },

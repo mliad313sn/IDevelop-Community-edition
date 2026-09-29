@@ -184,6 +184,9 @@ async function collect() {
         database,
         license,
         restorePoints,
+        // Separation of duties: the SQL console is an operator (env) switch, shown
+        // here so a super admin can see whether it is on without being able to flip it.
+        sqlConsoleEnabled: require('../services/SqlConsoleService').isEnabled(),
         resetBackups: listResetBackups(),
         jobsMode: process.env.REDIS_URL ? 'bullmq' : 'in-process',
         generatedAt: new Date(now),

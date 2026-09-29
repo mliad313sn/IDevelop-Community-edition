@@ -69,6 +69,7 @@
   "badge_superadmin": "Super admin",
   "sql_console_desc": "Convert a full-system Excel template into a SQL script — then review, copy, or run it directly against the database (with a dry-run preview). An alternative to uploading the Excel file.",
   "btn_open_sql_console": "Open SQL Console",
+  "sql_console_disabled": "The SQL console is switched off on this instance (separation of duties). Whoever operates the server can enable it by setting SQL_CONSOLE_ENABLED=1 in the environment and restarting.",
   "json_migration_title": "JSON System Migration (Portable)",
   "json_migration_desc_1": "A developer-friendly, portable format for",
   "json_migration_bold": "sharing, seeding, or backup",

@@ -586,6 +586,7 @@
   "cap_ai_unavail": "IA externe indisponible — réponse fournie par le moteur intégré.",
   "cap_ai_llm": "Réponse fournie par le modèle d'IA connecté.",
   "cap_ai_builtin": "Réponse fournie par le moteur intégré.",
+  "cap_ai_disclaimer": "Généré par IA — aide à la décision uniquement ; la décision revient à une personne.",
   "cap_based_on": "D'après",
   "cap_person": "personne",
   "cap_people": "personnes",

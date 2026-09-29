@@ -24,6 +24,22 @@
  * external calls as COPILOT_QUERY_EGRESS, internal-model and deterministic
  * answers as COPILOT_QUERY — with provider/model, egress flag, per-class cipher
  * counts, a SHA-256 of the question and the answer length (never raw text).
+ *
+ * EU AI ACT GUARDRAILS (employment is a high-risk domain — Annex III §4):
+ *  - Transparency: every answer carries `disclaimer` ("AI-generated — decision
+ *    support only; a person makes the decision"), translated by the route and
+ *    shown next to the answer in the UI.
+ *  - No automated ranking of people by default: intents that rank or name
+ *    individuals (flight-risk lists, "who needs development", weakest/strongest,
+ *    open PIPs by name) answer with aggregates unless the super admin switches on
+ *    `copilot.allow_named_person_ranking` (default OFF). The named lists are also
+ *    stripped from the context an LLM receives, so a model cannot name them either.
+ *  - Data residency: provider presets carry `region` / `euHosted`; with
+ *    `copilot.eu_only_providers` (default ON) a non-EU preset is refused and the
+ *    copilot falls back to the built-in engine — nothing leaves the box.
+ *  - Human oversight: the audit record of each query states that the answer was
+ *    shown as decision support, whether it was about people, and whether named
+ *    ranking was allowed or withheld.
  */
 const db = require('../config/database');
 const RBACService = require('./RBACService');
@@ -42,49 +58,101 @@ const LogService = require('./LogService');
  * DATA EGRESS: every one of these except ollama is a THIRD-PARTY cloud —
  * copilot questions send RBAC-scoped talent context (names, risk, PIP status)
  * to that provider, and each call is audited as COPILOT_QUERY_EGRESS.
+ *
+ * DATA RESIDENCY: `region` is where the stock endpoint processes the request
+ * ('local' = on the appliance, 'eu', 'us', 'cn'); `euHosted` is true only for
+ * 'local' and 'eu'. With `copilot.eu_only_providers` on (the default) a preset
+ * whose `euHosted` is false is refused. `trainsOnData` flags providers whose
+ * free tier / default terms allow prompts to be used for model training: no
+ * preset defaults to a free-tier model, so choosing one is a deliberate act.
+ * The guard applies to a preset's STOCK endpoint; an overridden copilotUrl (e.g.
+ * an EU-region Azure OpenAI deployment, or a LAN gateway) is the administrator's
+ * declared choice and is audited like every call.
  */
 const PROVIDER_PRESETS = {
-    ollama: { style: 'ollama', url: 'http://localhost:11434/api/generate', model: 'llama3.1' },
+    ollama: {
+        style: 'ollama',
+        url: 'http://localhost:11434/api/generate',
+        model: 'llama3.1',
+        region: 'local',
+        euHosted: true,
+        trainsOnData: false,
+    },
     openai: {
         style: 'openai',
         url: 'https://api.openai.com/v1/chat/completions',
         model: 'gpt-4o-mini',
+        region: 'us',
+        euHosted: false,
+        trainsOnData: false,
     },
     anthropic: {
         style: 'anthropic',
         url: 'https://api.anthropic.com/v1/messages',
         model: 'claude-haiku-4-5',
+        region: 'us',
+        euHosted: false,
+        trainsOnData: false,
     },
-    grok: { style: 'openai', url: 'https://api.x.ai/v1/chat/completions', model: 'grok-3-mini' },
+    grok: {
+        style: 'openai',
+        url: 'https://api.x.ai/v1/chat/completions',
+        model: 'grok-3-mini',
+        region: 'us',
+        euHosted: false,
+        trainsOnData: false,
+    },
     groq: {
         style: 'openai',
         url: 'https://api.groq.com/openai/v1/chat/completions',
         model: 'llama-3.3-70b-versatile',
+        region: 'us',
+        euHosted: false,
+        trainsOnData: false,
     },
     gemini: {
         style: 'openai',
         url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
         model: 'gemini-2.0-flash',
+        region: 'us',
+        euHosted: false,
+        // Gemini API free tier: prompts may be used to improve Google products.
+        trainsOnData: true,
     },
     mistral: {
         style: 'openai',
         url: 'https://api.mistral.ai/v1/chat/completions',
         model: 'mistral-small-latest',
+        region: 'eu',
+        euHosted: true,
+        trainsOnData: false,
     },
     deepseek: {
         style: 'openai',
         url: 'https://api.deepseek.com/chat/completions',
         model: 'deepseek-chat',
+        region: 'cn',
+        euHosted: false,
+        trainsOnData: true,
     },
     openrouter: {
         style: 'openai',
         url: 'https://openrouter.ai/api/v1/chat/completions',
-        model: 'meta-llama/llama-3.3-70b-instruct:free',
+        // Was the ':free' variant, whose upstream hosts may log and train on
+        // prompts. A free-tier model is never the default any more.
+        model: 'meta-llama/llama-3.3-70b-instruct',
+        region: 'us',
+        euHosted: false,
+        trainsOnData: true,
     },
     together: {
         style: 'openai',
         url: 'https://api.together.xyz/v1/chat/completions',
-        model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free',
+        // Was the '-Free' endpoint; never default to a free tier (see above).
+        model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+        region: 'us',
+        euHosted: false,
+        trainsOnData: false,
     },
 };
 // Spelling/branding aliases so a reasonable entry still resolves.
@@ -117,6 +185,26 @@ function isPrivateIp(ip) {
     );
 }
 
+/**
+ * Transparency label carried by EVERY copilot answer (EU AI Act Art. 13, 14, 50).
+ * The route translates `key`; `en` is the fallback for a caller with no request.
+ */
+const AI_DISCLAIMER = Object.freeze({
+    key: 'talentx:cap_ai_disclaimer',
+    en: 'AI-generated — decision support only; a person makes the decision.',
+});
+
+/** Setting keys (App Settings, category "copilot"). */
+const SETTING_ALLOW_NAMED = 'copilot.allow_named_person_ranking';
+const SETTING_EU_ONLY = 'copilot.eu_only_providers';
+
+/**
+ * Questions that rank or name individual people. Used to decide whether an
+ * answer is "about people" for the human-oversight audit record.
+ */
+const PEOPLE_QUESTION_RE =
+    /flight|risk|leav|attriti|retain|who |priorit|weakest|strongest|develop|ready|readiness|strong|weak|pip|underperform|rank|performer|best|worst|people|employee/;
+
 class CopilotService {
     /** The preset catalog (for the admin UI / docs). */
     presets() {
@@ -125,7 +213,72 @@ class CopilotService {
             url: p.url,
             defaultModel: p.model,
             style: p.style,
+            region: p.region,
+            euHosted: !!p.euHosted,
+            trainsOnData: !!p.trainsOnData,
         }));
+    }
+
+    /** The transparency label (for callers that need it outside ask()). */
+    disclaimer() {
+        return { ...AI_DISCLAIMER };
+    }
+
+    /**
+     * Read a boolean App Setting tolerantly: true/'true'/'1'/1 → true,
+     * false/'false'/'0'/0 → false, anything else (absent, '') → `def`.
+     */
+    async _boolSetting(key, def) {
+        try {
+            const AppSettingsModel = require('../models/AppSettingsModel');
+            const v = await AppSettingsModel.getValue(key, def);
+            if (v === true || v === 1 || v === '1' || v === 'true') return true;
+            if (v === false || v === 0 || v === '0' || v === 'false') return false;
+            return def;
+        } catch (_) {
+            return def;
+        }
+    }
+
+    /** Whether the copilot may rank/name individual people (default OFF). */
+    async allowNamedPersonRanking() {
+        return this._boolSetting(SETTING_ALLOW_NAMED, false);
+    }
+
+    /** Whether only EU-hosted (or on-prem) provider presets may be used (default ON). */
+    async euOnlyProviders() {
+        return this._boolSetting(SETTING_EU_ONLY, true);
+    }
+
+    /** True when the question is about people (ranking, risk, readiness, PIPs…). */
+    _isPeopleQuestion(question) {
+        return PEOPLE_QUESTION_RE.test(String(question || '').toLowerCase());
+    }
+
+    /**
+     * The context with every NAMED per-person list removed — what an LLM receives
+     * when named ranking is off. Counts and averages stay; names and orderings go.
+     */
+    _withoutNamedPeople(ctx) {
+        const out = { ...ctx };
+        delete out.lowestReadiness;
+        delete out.highestReadiness;
+        delete out.flightRiskWho;
+        delete out.openPipsWho;
+        out.namedPersonRanking = 'withheld';
+        return out;
+    }
+
+    /**
+     * EU-residency guard. Returns null when `cfg` may be used, else a reason code.
+     * Only a named preset on its STOCK endpoint is judged (see PROVIDER_PRESETS).
+     */
+    _residencyBlock(cfg, euOnly) {
+        if (!euOnly || !cfg || cfg.provider === 'none') return null;
+        const preset = PROVIDER_PRESETS[cfg.provider];
+        if (!preset) return null; // custom endpoint: the administrator's declared choice
+        if (cfg.url && cfg.url !== preset.url) return null; // overridden endpoint, same
+        return preset.euHosted ? null : 'non_eu_provider';
     }
     /**
      * Resolve the LLM connection from App Settings (category "copilot"), falling
@@ -193,6 +346,14 @@ class CopilotService {
                 cfg.model = preset.model;
         }
         if (cfg.provider !== 'none' && !cfg.url) cfg.provider = 'none'; // no URL = nothing to call
+        // Data residency: a non-EU preset is refused while copilot.eu_only_providers
+        // is on (default). The provider stays visible (admin UI, test button) but
+        // `blocked` stops every outbound call — ask() answers deterministically.
+        const blocked = this._residencyBlock(cfg, await this.euOnlyProviders());
+        if (blocked) {
+            cfg.blocked = blocked;
+            cfg.region = PROVIDER_PRESETS[cfg.provider].region;
+        }
         this._cfg = cfg;
         this._cfgAt = now;
         return cfg;
@@ -485,9 +646,17 @@ class CopilotService {
         return { ctx, roster };
     }
 
-    /** Deterministic answer (no LLM) — routed by intent keywords, names included. */
-    _deterministic(question, ctx) {
+    /**
+     * Deterministic answer (no LLM) — routed by intent keywords.
+     * Individuals are named / ranked ONLY when `allowNamedPersonRanking` is true
+     * (the copilot.allow_named_person_ranking setting, default off); otherwise the
+     * people intents answer with aggregates and say why no names are given.
+     */
+    _deterministic(question, ctx, { allowNamedPersonRanking = false } = {}) {
         const q = String(question || '').toLowerCase();
+        const named = allowNamedPersonRanking === true;
+        const noNames =
+            ' I do not rank or name individual people: that is a judgement for a person, not for the copilot (an administrator can change this in Settings → Copilot).';
         const pct = (v) => (v == null ? 'n/a' : v + '%');
         const names = (list, f) => (list || []).map(f).join(', ');
         // Every readiness figure leaves with its denominator: "62 %" alone is
@@ -504,6 +673,13 @@ class CopilotService {
         if (/flight|risk|leav|attriti|retain/.test(q)) {
             const fr =
                 names(ctx.flightRisk, (r) => `${r.flightRisk}: ${r.n}`) || 'no risk data yet';
+            if (!named) {
+                return (
+                    `Across your ${ctx.headcount} people, risk-of-loss breaks down as — ${fr}.` +
+                    noNames +
+                    ` The Continuity module shows each person's situation to those entitled to see it.`
+                );
+            }
             const who = names(ctx.flightRiskWho, (r) => r.name);
             return (
                 `Across your ${ctx.headcount} people, risk-of-loss breaks down as — ${fr}.` +
@@ -514,6 +690,15 @@ class CopilotService {
         // "Who needs development / development priorities" is a PEOPLE question →
         // answer with the weakest-readiness names, not the skill-gap list.
         if (/who needs|priorit|weakest|strongest|develop.*(first|who)/.test(q)) {
+            if (!named) {
+                const g = names(ctx.topGaps, (r) => `${r.skill} (${r.shortfall} measured short)`);
+                return ctx.measuredCount
+                    ? `Average role-readiness over the ${ctx.measuredCount} people measured is ${pct(ctx.avgReadinessPct)}.${cov}` +
+                          (g ? ` Where development is most needed, by skill: ${g}.` : '') +
+                          noNames +
+                          never
+                    : `No readiness data yet — nobody in your scope has an assessed requirement. Run assessments first.${never}`;
+            }
             const low = names(ctx.lowestReadiness, who);
             return low
                 ? `Development priorities (lowest MEASURED role-readiness): ${low}. Average over the ${ctx.measuredCount} people measured is ${pct(ctx.avgReadinessPct)}.${cov}${never}`
@@ -542,8 +727,8 @@ class CopilotService {
             return `Role-readiness by site: ${s}.`;
         }
         if (/ready|readiness|strong|weak|priorit/.test(q)) {
-            const low = names(ctx.lowestReadiness, who);
-            const high = names(ctx.highestReadiness, who);
+            const low = named ? names(ctx.lowestReadiness, who) : '';
+            const high = named ? names(ctx.highestReadiness, who) : '';
             return (
                 `Average role-readiness over the ${ctx.measuredCount} of your ${ctx.headcount} people measured is ${pct(ctx.avgReadinessPct)}.${cov}` +
                 (low ? ` Development priorities: ${low}.` : '') +
@@ -556,7 +741,7 @@ class CopilotService {
             return `Current 9-box distribution (latest cycle): ${nb}.`;
         }
         if (/pip|underperform/.test(q)) {
-            const who = names(ctx.openPipsWho, (r) => `${r.name} (${r.state})`);
+            const who = named ? names(ctx.openPipsWho, (r) => `${r.name} (${r.state})`) : '';
             return (
                 `You have ${ctx.openPips ? ctx.openPips.n : 0} open PIP(s) in scope.` +
                 (who ? ` — ${who}.` : '')
@@ -571,7 +756,10 @@ class CopilotService {
                 ) || 'no measured gaps found';
             return `Top measured skill gaps in your scope: ${g}.${cov}`;
         }
-        return `I can answer, for your ${ctx.headcount} people: role-readiness (avg ${pct(ctx.avgReadinessPct)} over the ${ctx.measuredCount || 0} measured, incl. weakest/strongest names), readiness by site, top skill gaps, who is at flight risk, open PIPs (with names), assessment coverage and the 9-box distribution. Try "who is at flight risk?", "readiness by site" or "who needs development first?". (Connect a local LLM via LLM_URL for free-form answers.)`;
+        if (named) {
+            return `I can answer, for your ${ctx.headcount} people: role-readiness (avg ${pct(ctx.avgReadinessPct)} over the ${ctx.measuredCount || 0} measured, incl. weakest/strongest names), readiness by site, top skill gaps, who is at flight risk, open PIPs (with names), assessment coverage and the 9-box distribution. Try "who is at flight risk?", "readiness by site" or "who needs development first?". (Connect a local LLM via LLM_URL for free-form answers.)`;
+        }
+        return `I can answer, for your ${ctx.headcount} people: role-readiness (avg ${pct(ctx.avgReadinessPct)} over the ${ctx.measuredCount || 0} measured), readiness by site, top skill gaps, risk-of-loss and open PIPs as counts, assessment coverage and the 9-box distribution. Try "readiness by site", "what are our top skill gaps?" or "how many people are not assessed yet?". (Connect a local LLM via LLM_URL for free-form answers.)`;
     }
 
     /**
@@ -667,9 +855,17 @@ class CopilotService {
         }
     }
 
-    async _askLlm(cfg, question, ctx, { anonymized = false } = {}) {
+    async _askLlm(
+        cfg,
+        question,
+        ctx,
+        { anonymized = false, allowNamedPersonRanking = false } = {}
+    ) {
         const system =
-            "You are IDevelop's talent copilot. Answer ONLY from the provided JSON context, which is already scoped to what the user is allowed to see. Be concise and actionable. If the context lacks the answer, say so." +
+            "You are IDevelop's talent copilot. Answer ONLY from the provided JSON context, which is already scoped to what the user is allowed to see. Be concise and actionable. If the context lacks the answer, say so. Your answer is decision support only: a person makes every decision about people." +
+            (allowNamedPersonRanking
+                ? ''
+                : ' Do NOT rank, score, shortlist or name individual people (for example by flight risk, readiness or performance); answer with aggregates, and if asked for a ranking of individuals, politely explain that this is a decision for a person.') +
             (anonymized
                 ? ' People, sites, departments, services, roles and the organization are identified only by pseudonymous tokens (EMP-xxxx, SITE-xxxx, DEPT-xxxx, SVC-xxxx, ROLE-xxxx, ORG-xxxx, SKILL-xxxx) — you do not know their real identities. When referring to any of them, use the token VERBATIM exactly as written; never invent names or guess identities.'
                 : '');
@@ -680,6 +876,17 @@ class CopilotService {
     /** Health/status of the configured LLM connection (for the admin UI / test button). */
     async llmStatus() {
         const cfg = await this.getConfig();
+        if (cfg.blocked)
+            return {
+                configured: true,
+                reachable: false,
+                mode: 'blocked',
+                provider: cfg.provider,
+                model: cfg.model,
+                region: cfg.region || null,
+                blocked: cfg.blocked,
+                error: `Provider "${cfg.provider}" is not EU-hosted (region: ${cfg.region || 'unknown'}) and copilot.eu_only_providers is on — no request was sent. The copilot answers with the built-in engine.`,
+            };
         if (cfg.provider === 'none')
             return {
                 configured: false,
@@ -749,6 +956,9 @@ class CopilotService {
             question = '',
             answer = '',
             subjectCount = null,
+            aboutPeople = false,
+            namedPersonRanking = false,
+            blocked = null,
         } = {}
     ) {
         try {
@@ -771,6 +981,17 @@ class CopilotService {
                 questionLength: String(question == null ? '' : question).length,
                 answerLength: String(answer == null ? '' : answer).length,
                 subjects: subjectCount,
+                // Human oversight (EU AI Act Art. 14): the answer was shown with the
+                // "decision support only; a person makes the decision" label. For a
+                // question about people this record is the acknowledgement that the
+                // output reached a human as advice, not as a decision.
+                humanOversight: {
+                    notice: 'decision_support_only',
+                    disclaimerShown: true,
+                    aboutPeople: !!aboutPeople,
+                    namedPersonRanking: namedPersonRanking ? 'allowed' : 'withheld',
+                },
+                residencyBlocked: blocked || null,
             };
             const summary = egress
                 ? anonymized
@@ -778,12 +999,17 @@ class CopilotService {
                     : `Copilot query: talent context (${subjectCount} people, incl. names/risk/PIP) sent to ${meta.provider} at ${meta.host}`
                 : llm
                   ? `Copilot query answered by internal model ${meta.provider} at ${meta.host} — no data egress`
-                  : 'Copilot query answered by the deterministic engine — no AI model, no data egress';
+                  : blocked
+                    ? `Copilot query answered by the deterministic engine — provider ${cfg.provider} refused (${blocked}), no data egress`
+                    : 'Copilot query answered by the deterministic engine — no AI model, no data egress';
+            const oversight = aboutPeople
+                ? ' — answer about people shown as decision support only; a person makes the decision'
+                : '';
             await LogService.log({
                 adminId: user && user.userType === 'admin' ? user.id : null,
                 action: egress ? 'COPILOT_QUERY_EGRESS' : 'COPILOT_QUERY',
                 entityType: 'copilot',
-                details: `${summary} ${JSON.stringify(meta)}`,
+                details: `${summary}${oversight} ${JSON.stringify(meta)}`,
                 actorRef: user ? `${user.userType}:${user.id}` : null,
             });
         } catch (_) {
@@ -806,18 +1032,31 @@ class CopilotService {
     async ask(user, question) {
         const { ctx, roster } = await this._buildContextAndRoster(user);
         const cfg = await this.getConfig();
-        if (cfg.provider !== 'none') {
+        const allowNamedPersonRanking = await this.allowNamedPersonRanking();
+        const oversight = {
+            aboutPeople: this._isPeopleQuestion(question),
+            namedPersonRanking: allowNamedPersonRanking,
+        };
+        // Transparency fields carried by EVERY answer, whatever produced it.
+        const guard = {
+            disclaimer: AI_DISCLAIMER.en,
+            disclaimerKey: AI_DISCLAIMER.key,
+            namedPersonRanking: allowNamedPersonRanking ? 'allowed' : 'withheld',
+        };
+        if (cfg.provider !== 'none' && !cfg.blocked) {
             const Anonymization = require('./AnonymizationService');
             const internal = await this._isInternalTarget(cfg.url);
             const anonMode = await Anonymization.mode();
             // External: always ciphered. Internal: ciphered unless 'external-only'.
             const active = !internal || anonMode === 'always';
-            let sendCtx = ctx,
+            // Named per-person lists never reach the model while ranking is off.
+            const baseCtx = allowNamedPersonRanking ? ctx : this._withoutNamedPeople(ctx);
+            let sendCtx = baseCtx,
                 sendQuestion = question,
                 session = null;
             if (active) {
                 session = await Anonymization.createSession(roster);
-                sendCtx = session.cipherObject(ctx);
+                sendCtx = session.cipherObject(baseCtx);
                 sendQuestion = session.cipherText(String(question || ''));
             }
             const auditBase = {
@@ -826,9 +1065,13 @@ class CopilotService {
                 stats: session && session.stats,
                 question,
                 subjectCount: ctx.headcount,
+                ...oversight,
             };
             try {
-                let answer = await this._askLlm(cfg, sendQuestion, sendCtx, { anonymized: active });
+                let answer = await this._askLlm(cfg, sendQuestion, sendCtx, {
+                    anonymized: active,
+                    allowNamedPersonRanking,
+                });
                 if (session) answer = session.decipher(answer);
                 await this._auditQuery(user, cfg, { ...auditBase, mode: 'llm', answer });
                 return {
@@ -837,6 +1080,7 @@ class CopilotService {
                     provider: cfg.provider,
                     scope: ctx.headcount,
                     sanitized: active,
+                    ...guard,
                 };
             } catch (e) {
                 // Keep the raw provider error OUT of the user-facing answer (it's
@@ -845,7 +1089,7 @@ class CopilotService {
                 console.warn(
                     `[copilot] LLM (${cfg.provider}) unavailable, using deterministic fallback: ${e.message}`
                 );
-                const answer = this._deterministic(question, ctx);
+                const answer = this._deterministic(question, ctx, { allowNamedPersonRanking });
                 // A failed call may still have transmitted the request body — record it.
                 await this._auditQuery(user, cfg, { ...auditBase, mode: 'fallback', answer });
                 return {
@@ -855,18 +1099,30 @@ class CopilotService {
                     scope: ctx.headcount,
                     sanitized: active,
                     llmError: e.message,
+                    ...guard,
                 };
             }
         }
-        const answer = this._deterministic(question, ctx);
+        const answer = this._deterministic(question, ctx, { allowNamedPersonRanking });
         await this._auditQuery(user, cfg, {
             mode: 'deterministic',
             question,
             answer,
             subjectCount: ctx.headcount,
+            blocked: cfg.blocked || null,
+            ...oversight,
         });
-        return { answer, mode: 'deterministic', scope: ctx.headcount };
+        const out = { answer, mode: 'deterministic', scope: ctx.headcount, ...guard };
+        if (cfg.blocked) {
+            out.provider = cfg.provider;
+            out.blocked = cfg.blocked;
+        }
+        return out;
     }
 }
 
 module.exports = new CopilotService();
+module.exports.PROVIDER_PRESETS = PROVIDER_PRESETS;
+module.exports.AI_DISCLAIMER = AI_DISCLAIMER;
+module.exports.SETTING_ALLOW_NAMED = SETTING_ALLOW_NAMED;
+module.exports.SETTING_EU_ONLY = SETTING_EU_ONLY;

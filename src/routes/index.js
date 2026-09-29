@@ -1999,7 +1999,12 @@ router.post(
 );
 
 // SQL Console (super-admin only): run raw SQL + convert an Excel template to SQL.
+// Separation of duties: the whole console is OFF unless the host operator sets
+// SQL_CONSOLE_ENABLED=1. While off, every console route answers 404 — before the
+// role check, so the console does not even reveal that it exists.
 const SqlConsoleController = require('../controllers/SqlConsoleController');
+const { requireSqlConsoleEnabled } = require('../middleware/sqlConsoleEnabled');
+router.use('/data-management/sql-console', requireSqlConsoleEnabled);
 router.get(
     '/data-management/sql-console',
     requireSuperAdmin,

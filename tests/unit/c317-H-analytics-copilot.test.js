@@ -41,6 +41,9 @@ function wire({ provider = 'gemini', anonMode = 'always' } = {}) {
                 copilotTrustedHosts: '',
                 copilotAnonymizationMode: anonMode,
                 copilotAnonymizeSkills: '0',
+                // gemini is a non-EU preset: these tests exercise the egress audit,
+                // so the EU-only residency guard (default on) is switched off here.
+                'copilot.eu_only_providers': false,
             })[key] ?? fb
     );
     mockRbac.getFilteredEmployees.mockResolvedValue([

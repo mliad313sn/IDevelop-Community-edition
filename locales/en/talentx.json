@@ -586,6 +586,7 @@
   "cap_ai_unavail": "External AI unavailable — answered by the built-in engine.",
   "cap_ai_llm": "Answered by the connected AI model.",
   "cap_ai_builtin": "Answered by the built-in engine.",
+  "cap_ai_disclaimer": "AI-generated — decision support only; a person makes the decision.",
   "cap_based_on": "Based on",
   "cap_person": "person",
   "cap_people": "people",

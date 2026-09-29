@@ -211,7 +211,9 @@ describe('F2 CopilotService: canonical readiness, coverage in every answer, no n
             coveragePct: 40,
         });
         for (const q of ['who needs development first?', 'readiness']) {
-            const a = CopilotService._deterministic(q, ctx);
+            // Named answers are opt-in (copilot.allow_named_person_ranking); this
+            // test is about HOW names are shown when they are allowed.
+            const a = CopilotService._deterministic(q, ctx, { allowNamedPersonRanking: true });
             expect(a).not.toMatch(/Never Assessed/);
             expect(a).toMatch(/4\/10 assessed/);
             expect(a).toMatch(/1 of your 3 people have no assessed requirement/);
