@@ -94,3 +94,55 @@ const today = new Date(); today.setHours(0, 0, 0, 0);
     </tbody>
   </table>
 </div>
+
+<%# « Suggestions pour mes écarts » — top three from
+    SkillsIntelligenceService.recommendLearning for the signed-in person. A
+    measured gap gets its mapped course (or "no course yet"); an UNMEASURED
+    requirement is never a gap: its next step is an assessment, not training. %>
+<% const sugg = (typeof suggestions !== 'undefined' && Array.isArray(suggestions)) ? suggestions : []; %>
+<section class="card ml-sugg" aria-labelledby="mlSuggH">
+  <h2 id="mlSuggH"><i class="fas fa-lightbulb" aria-hidden="true"></i> <%= __('growth:learn_title') %></h2>
+  <% if (!sugg.length) { %>
+    <%- include('../../partials/empty-state', { icon: 'fa-seedling', title: __('growth:learn_empty_title'), text: __('growth:learn_empty_text') }) %>
+  <% } else { %>
+  <p class="text-muted"><%= __('growth:learn_intro') %></p>
+  <ul class="ml-sugg-list">
+    <% sugg.forEach(function (s) { %>
+    <li class="ml-sugg-item">
+      <div class="ml-sugg-skill">
+        <strong><%= s.skillName %></strong>
+        <% if (s.status === 'gap') { %>
+          <span class="text-muted"><%= __('growth:gap_level_line', { current: s.current, required: s.required }) %> · <%= __('growth:gap_to_go', { n: s.gap }) %></span>
+        <% } else { %>
+          <span class="text-muted"><%= __('growth:gap_required_line', { required: s.required }) %> · <%= __('dash:rd_not_measured') %></span>
+        <% } %>
+      </div>
+      <div class="ml-sugg-next">
+        <% if (s.status !== 'gap') { %>
+          <span class="text-muted"><%= __('growth:learn_assess') %></span>
+          <a class="btn btn-sm btn-secondary" href="/employee/self-assessment"><%= __('growth:learn_assess_cta') %></a>
+        <% } else if (s.course) { %>
+          <span><span class="text-muted"><%= __('growth:learn_course') %><%= colon %></span> <%= s.course.title %><% if (s.course.provider) { %> <span class="text-muted">· <%= s.course.provider %></span><% } %></span>
+          <% if (s.course.url) { %>
+          <a class="btn btn-sm btn-primary" href="<%= s.course.url %>" target="_blank" rel="noopener noreferrer"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i> <%= __('growth:learn_open_course') %></a>
+          <% } %>
+        <% } else { %>
+          <span class="text-muted"><%= __('growth:learn_no_course') %></span>
+        <% } %>
+      </div>
+    </li>
+    <% }); %>
+  </ul>
+  <% } %>
+</section>
+
+<style>
+.ml-sugg{margin-top:16px}
+.ml-sugg h2{font-size:1.05rem;margin:0 0 .5rem}
+.ml-sugg-list{list-style:none;margin:0;padding:0}
+.ml-sugg-item{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:.65rem 0;border-bottom:1px solid var(--border,#e2e8f0)}
+.ml-sugg-item:last-child{border-bottom:0}
+.ml-sugg-skill{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ml-sugg-skill .text-muted{font-size:.82rem}
+.ml-sugg-next{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:.88rem}
+</style>

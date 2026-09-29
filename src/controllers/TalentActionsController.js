@@ -174,46 +174,19 @@ async function careerPathData(req, res) {
     // is unknown, not a gap from 0: current/gap are null and it is reported as
     // unmeasured, never as a red shortfall or a folded-in failure. required_level
     // = 0 means NOT REQUIRED and is excluded.
-    const rows = await db.all(
-        `SELECT s.name AS skill_name, d.name AS domain_name, rsr.required_level AS required, rsr.is_critical,
-                CASE WHEN cl.employee_id IS NOT NULL THEN 0 ELSE ra.level END AS current,
-                CASE WHEN ra.level IS NOT NULL THEN 1 ELSE 0 END AS is_assessed
-           FROM role_skill_requirements rsr
-           JOIN skills s ON s.id = rsr.skill_id
-           LEFT JOIN domains d ON d.id = s.domain_id
-           LEFT JOIN v_resolved_assessments ra ON ra.employee_id = ? AND ra.skill_id = rsr.skill_id
-           LEFT JOIN v_certification_lapsed cl ON cl.employee_id = ? AND cl.skill_id = rsr.skill_id
-          WHERE rsr.role_id = ? AND rsr.required_level > 0
-          ORDER BY rsr.is_critical DESC, s.name`,
-        [employeeId, employeeId, targetRoleId]
-    );
-    const mapped = rows.map((r) => {
-        const required = Number(r.required) || 0;
-        const assessed = Number(r.isAssessed) === 1;
-        const current = assessed ? Number(r.current) || 0 : null;
-        const gap = assessed ? Math.max(0, required - current) : null;
-        return {
-            skillName: r.skillName,
-            domainName: r.domainName,
-            required,
-            current,
-            gap,
-            met: assessed && gap === 0,
-            assessed,
-            critical: !!r.isCritical,
-        };
-    });
-    const total = mapped.length;
-    const measured = mapped.filter((r) => r.assessed).length;
-    const met = mapped.filter((r) => r.met).length;
-    const criticalGaps = mapped.filter((r) => r.assessed && !r.met && r.critical).length;
-    const unmeasured = total - measured;
-    // Readiness for the target role, over the requirements ACTUALLY measured;
-    // null (not 0) when none of the target role's skills have been assessed for
-    // this person. Coverage travels with it so a high fit on thin evidence is
-    // legible. A target role with no requirements yields null, not 0 %.
-    const readiness = measured > 0 ? Math.round((met / measured) * 100) : null;
-    const coverage = total > 0 ? Math.round((measured / total) * 100) : null;
+    // The query and the summary live in EmployeeGrowthService so the employee's
+    // own "gap against my target role" reads the SAME numbers as this tool.
+    const {
+        rows: mapped,
+        total,
+        measured,
+        met,
+        criticalGaps,
+        unmeasured,
+        readiness,
+        coverage,
+        gaps,
+    } = await require('../services/EmployeeGrowthService').roleGap(employeeId, targetRoleId);
 
     res.json({
         employee: {
@@ -228,7 +201,7 @@ async function careerPathData(req, res) {
         total,
         measured,
         unmeasured,
-        gaps: mapped.filter((r) => r.assessed && !r.met).length,
+        gaps,
         criticalGaps,
         rows: mapped,
     });
@@ -517,7 +490,16 @@ async function employeeTimeline(req, res) {
     // not leak through the timeline (a manager/admin viewing a report still sees
     // everything). Admins are not employee rows, so they are never "the subject".
     const viewerIsSubject = req.user && req.user.userType !== 'admin' && Number(req.user.id) === id;
-    const nbDisclosed = viewerIsSubject ? ' AND disclosed_to_employee = true' : '';
+    // And when the organisation hides the 9-box from employees entirely, the
+    // subject sees no placement in their timeline at all.
+    const nbHiddenFromSubject =
+        viewerIsSubject &&
+        !(await require('../services/TalentConfidentialityService').nineBoxVisibleToEmployees());
+    const nbDisclosed = nbHiddenFromSubject
+        ? ' AND false'
+        : viewerIsSubject
+          ? ' AND disclosed_to_employee = true'
+          : '';
     // French-first product: the development-dossier event text was English server-side.
     const fr = !req.language || String(req.language).startsWith('fr');
     const stateLbl = (s) =>

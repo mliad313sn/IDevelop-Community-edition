@@ -59,7 +59,7 @@
 </div>
 
 <!-- ─────────────────────────  Mes aspirations  ───────────────────────── -->
-<div class="report-section">
+<div class="report-section" id="my-aspirations">
     <h2><i class="fas fa-bullseye" aria-hidden="true"></i> <%= __('growth:aspirations') %></h2>
     <p class="text-muted"><%= __('growth:aspirations_hint') %></p>
     <form id="egAspForm" class="eg-form" onsubmit="return EG.saveAspirations(event)">
@@ -81,6 +81,94 @@
         </div>
         <button type="submit" class="btn btn-primary"><i class="fas fa-save" aria-hidden="true"></i> <%= __('growth:save') %></button>
     </form>
+
+    <%# « Mon écart avec mon poste visé » — the signed-in person's OWN levels
+        against their target role, from EmployeeGrowthService.targetRoleGap (the
+        same summary as the manager's career-path tool). An unmeasured requirement
+        is listed as NOT MEASURED — never printed as a level 0 or counted as a gap. %>
+    <% if (typeof targetGap !== 'undefined' && targetGap) { %>
+    <div class="eg-gap" id="my-target">
+        <h3 class="eg-gap-title"><i class="fas fa-route" aria-hidden="true"></i> <%= __('growth:gap_title') %></h3>
+        <p class="eg-meta"><%= __('growth:gap_intro', { role: targetGap.roleName }) %></p>
+        <% if (!targetGap.total) { %>
+            <p class="text-muted"><%= __('growth:gap_no_requirements') %></p>
+        <% } else { %>
+        <div class="eg-gap-score">
+            <% if (targetGap.readiness === null) { %>
+                <strong><%= __('growth:gap_readiness_label') %><%= colon %> —</strong>
+                <span class="eg-meta"><%= __('growth:gap_readiness_none') %></span>
+            <% } else { %>
+                <strong><%= __('growth:gap_readiness_label') %><%= colon %> <%= targetGap.readiness %>%</strong>
+                <span class="eg-meta"><%= __('growth:gap_readiness_basis', { measured: targetGap.measured, total: targetGap.total }) %></span>
+            <% } %>
+        </div>
+        <div class="eg-gap-cols">
+            <section class="eg-gap-col eg-gap-met" aria-labelledby="egGapMetH">
+                <h4 id="egGapMetH"><i class="fas fa-circle-check" aria-hidden="true"></i> <%= __('growth:gap_met') %> <span class="eg-count"><%= targetGap.metRows.length %></span></h4>
+                <% if (!targetGap.metRows.length) { %><p class="eg-meta"><%= __('growth:gap_list_none') %></p><% } else { %>
+                <ul class="eg-gap-list">
+                    <% targetGap.metRows.forEach(function(r){ %>
+                    <li><span><%= r.skillName %><% if (r.critical) { %> <span class="eg-crit"><%= __('employee:critical_badge') %></span><% } %></span><span class="eg-meta"><%= __('growth:gap_level_line', { current: r.current, required: r.required }) %></span></li>
+                    <% }); %>
+                </ul>
+                <% } %>
+            </section>
+            <section class="eg-gap-col eg-gap-grow" aria-labelledby="egGapGrowH">
+                <h4 id="egGapGrowH"><i class="fas fa-arrow-trend-up" aria-hidden="true"></i> <%= __('growth:gap_grow') %> <span class="eg-count"><%= targetGap.growRows.length %></span></h4>
+                <% if (!targetGap.growRows.length) { %><p class="eg-meta"><%= __('growth:gap_list_none') %></p><% } else { %>
+                <ul class="eg-gap-list">
+                    <% targetGap.growRows.forEach(function(r){ %>
+                    <li><span><%= r.skillName %><% if (r.critical) { %> <span class="eg-crit"><%= __('employee:critical_badge') %></span><% } %></span><span class="eg-meta"><%= __('growth:gap_level_line', { current: r.current, required: r.required }) %> · <%= __('growth:gap_to_go', { n: r.gap }) %></span></li>
+                    <% }); %>
+                </ul>
+                <% } %>
+            </section>
+            <section class="eg-gap-col eg-gap-unmeasured" aria-labelledby="egGapUnH">
+                <h4 id="egGapUnH"><i class="fas fa-circle-question" aria-hidden="true"></i> <%= __('growth:gap_unmeasured') %> <span class="eg-count"><%= targetGap.unmeasuredRows.length %></span></h4>
+                <% if (!targetGap.unmeasuredRows.length) { %><p class="eg-meta"><%= __('growth:gap_list_none') %></p><% } else { %>
+                <p class="eg-meta"><%= __('growth:gap_unmeasured_hint') %></p>
+                <ul class="eg-gap-list">
+                    <% targetGap.unmeasuredRows.forEach(function(r){ %>
+                    <li><span><%= r.skillName %><% if (r.critical) { %> <span class="eg-crit"><%= __('employee:critical_badge') %></span><% } %></span><span class="eg-meta"><%= __('growth:gap_required_line', { required: r.required }) %> · <%= __('dash:rd_not_measured') %></span></li>
+                    <% }); %>
+                </ul>
+                <% } %>
+            </section>
+        </div>
+        <% } %>
+    </div>
+    <% } %>
+</div>
+
+<!-- ─────────────────────────  Postes les plus proches  ───────────────────────── -->
+<%# Ranked by the canonical (assessed-only) readiness from ReadinessService, with
+    the measured denominator printed on every row ("3 met of 4 measured · 6 of
+    10 required not measured"). Roles resting on under half their requirements
+    rank after the well-measured ones and say so. %>
+<div class="report-section" id="closest-roles">
+    <h2><i class="fas fa-signs-post" aria-hidden="true"></i> <%= __('growth:closest_title') %></h2>
+    <p class="text-muted"><%= __('growth:closest_intro') %></p>
+    <% if (typeof closest === 'undefined' || !closest || !closest.length) { %>
+        <p class="text-muted"><%= __('growth:closest_none') %></p>
+    <% } else { %>
+    <ol class="eg-closest">
+        <% closest.forEach(function(c){ const isTarget = aspirations && Number(aspirations.targetRoleId) === Number(c.roleId); %>
+        <li class="eg-closest-row">
+            <div class="eg-closest-main">
+                <strong><%= c.roleName %></strong>
+                <% if (isTarget) { %><span class="badge eg-applied"><i class="fas fa-bullseye" aria-hidden="true"></i> <%= __('growth:closest_is_target') %></span><% } %>
+                <span class="eg-time"><%= __('growth:closest_basis', { met: c.met, measured: c.measured, unmeasured: c.unmeasured, total: c.total }) %></span>
+                <% if (c.thinEvidence) { %><span class="eg-time eg-thin"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('growth:closest_thin') %></span><% } %>
+            </div>
+            <div class="eg-closest-side">
+                <span class="eg-pct"><%= c.readiness %>%</span>
+                <progress class="eg-bar" max="100" value="<%= Math.max(0, Math.min(100, Number(c.readiness) || 0)) %>" aria-label="<%= c.readiness %>%"></progress>
+                <% if (!isTarget) { %><button type="button" class="btn btn-sm btn-link eg-set-target" data-role-id="<%= c.roleId %>"><%= __('growth:closest_set_target') %></button><% } %>
+            </div>
+        </li>
+        <% }); %>
+    </ol>
+    <% } %>
 </div>
 
 <!-- ─────────────────────────  Enquêtes ouvertes  ───────────────────────── -->
@@ -127,9 +215,72 @@
         <% }); %>
     </ul>
     <% } %>
+
+    <%# « Remercier un collègue » — the employee's own way to GIVE recognition
+        (POST /v2/cap/recognition). The list is the same circle a team-visible
+        recognition reaches (RecognitionService.colleaguesFor). %>
+    <div class="eg-thank" id="thank-colleague">
+        <h3 class="eg-gap-title"><i class="fas fa-hands-clapping" aria-hidden="true"></i> <%= __('growth:thank_title') %></h3>
+        <p class="eg-meta"><%= __('growth:thank_intro') %></p>
+        <% if (typeof colleagues === 'undefined' || !colleagues || !colleagues.length) { %>
+            <p class="text-muted"><%= __('growth:thank_no_colleagues') %></p>
+        <% } else { %>
+        <form id="egThankForm" class="eg-form" novalidate>
+            <div class="form-group">
+                <label for="egThankTo"><%= __('growth:thank_to') %></label>
+                <select id="egThankTo" class="form-control" required>
+                    <option value=""><%= __('growth:thank_choose') %></option>
+                    <% colleagues.forEach(function(c){ %>
+                    <option value="<%= c.id %>"><%= (c.firstName || c.first_name) %> <%= (c.lastName || c.last_name) %></option>
+                    <% }); %>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="egThankValue"><%= __('growth:thank_value') %></label>
+                <input type="text" id="egThankValue" class="form-control" maxlength="60" placeholder="<%= __('growth:thank_value_ph') %>">
+            </div>
+            <div class="form-group">
+                <label for="egThankMsg"><%= __('growth:thank_message') %></label>
+                <textarea id="egThankMsg" class="form-control" rows="3" maxlength="1000" required placeholder="<%= __('growth:thank_message_ph') %>"></textarea>
+            </div>
+            <fieldset class="form-group eg-thank-vis">
+                <legend><%= __('growth:thank_visibility') %></legend>
+                <label class="eg-check"><input type="radio" name="egThankVis" value="team" checked> <%= __('growth:thank_vis_team') %></label>
+                <label class="eg-check"><input type="radio" name="egThankVis" value="private"> <%= __('growth:thank_vis_private') %></label>
+            </fieldset>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('growth:thank_send') %></button>
+        </form>
+        <% } %>
+    </div>
 </div>
 
 <style>
+.eg-gap,.eg-thank{margin-top:18px;padding-top:14px;border-top:1px solid var(--border,#e2e8f0)}
+.eg-gap-title{font-size:1rem;margin:0 0 4px}
+.eg-gap-score{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin:10px 0 12px}
+.eg-gap-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.eg-gap-col{border:1px solid var(--border,#e2e8f0);border-radius:var(--radius-md,12px);padding:12px;background:var(--bg-card,#fff);min-width:0}
+.eg-gap-col h4{font-size:.9rem;margin:0 0 8px;display:flex;align-items:center;gap:6px}
+.eg-gap-met h4 i{color:var(--success,#0f8a3c)}
+.eg-gap-grow h4 i{color:var(--warning,#b45309)}
+.eg-gap-unmeasured h4 i{color:var(--text-muted,#64748b)}
+.eg-count{margin-left:auto;background:var(--bg-elevated,#f1eff9);border-radius:999px;padding:0 8px;font-size:.75rem;font-weight:700}
+.eg-gap-list{list-style:none;margin:0;padding:0}
+.eg-gap-list li{display:flex;flex-direction:column;gap:2px;padding:6px 0;border-bottom:1px solid var(--border-subtle,#f1f5f9)}
+.eg-gap-list li:last-child{border-bottom:0}
+.eg-crit{background:var(--danger-bg,#fee2e2);color:var(--danger,#b91c1c);border-radius:6px;padding:0 6px;font-size:.7rem;font-weight:700}
+.eg-closest{list-style:none;counter-reset:egc;padding:0;margin:0;max-width:760px}
+.eg-closest-row{counter-increment:egc;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border,#f1f5f9)}
+.eg-closest-row::before{content:counter(egc);font-weight:800;color:var(--brand-text,#4e3fd0);min-width:1.4em}
+.eg-closest-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.eg-closest-side{display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:120px}
+.eg-pct{font-size:1.2rem;font-weight:800;color:var(--brand-text,#4e3fd0)}
+.eg-bar{width:120px;height:6px;accent-color:var(--brand,#5b4be0)}
+.eg-thin{color:var(--warning,#b45309)}
+.eg-thank-vis{border:0;padding:0;margin:8px 0}
+.eg-thank-vis legend{font-size:.9rem;font-weight:600;margin-bottom:4px}
+@media(max-width:900px){.eg-gap-cols{grid-template-columns:1fr}}
+@media(max-width:560px){.eg-closest-row{flex-direction:column;align-items:flex-start}.eg-closest-side{align-items:flex-start}}
 .eg-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
 .eg-card{border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:14px;background:var(--bg-elevated,#fff);display:flex;flex-direction:column;gap:8px}
 .eg-card-head{display:flex;flex-direction:column;gap:4px}
@@ -179,8 +330,14 @@ const EG = {
     answerReq: <%- JSON.stringify(__('growth:answer_required')) %>,
     textPh: <%- JSON.stringify(__('growth:survey_text_ph')) %>,
     npsLow: <%- JSON.stringify(__('growth:nps_low')) %>,
-    npsHigh: <%- JSON.stringify(__('growth:nps_high')) %>
+    npsHigh: <%- JSON.stringify(__('growth:nps_high')) %>,
+    savedReload: <%- JSON.stringify(__('growth:gap_saved_reload')) %>,
+    thankOk: <%- JSON.stringify(__('growth:thank_ok')) %>,
+    thankReq: <%- JSON.stringify(__('growth:thank_err_required')) %>
   },
+  // The target role the page was rendered with: the gap and the ranking are
+  // server-rendered, so a changed target reloads the page to show its gap.
+  renderedTarget: <%- JSON.stringify(aspirations && aspirations.targetRoleId ? String(aspirations.targetRoleId) : '') %>,
   async apply(id, btn){
     // Confirm + optional motivation note in one step (was a one-tap instant
     // filing with no undo). promptDialog returns the note string, or null on cancel.
@@ -224,15 +381,51 @@ const EG = {
   },
   async saveAspirations(ev){
     ev.preventDefault();
+    const target = document.getElementById('egTargetRole').value || '';
     try {
       await this.post('/v2/cap/aspirations', {
-        targetRoleId: document.getElementById('egTargetRole').value || null,
+        targetRoleId: target || null,
         interests: document.getElementById('egInterests').value || null,
         openToMobility: document.getElementById('egOpenMobility').checked
       });
+      if (target !== this.renderedTarget) {
+        this.notify(this.T.savedReload, 'success');
+        window.location.hash = target ? 'my-target' : 'my-aspirations';
+        window.location.reload();
+        return false;
+      }
       this.notify(<%- JSON.stringify(__('growth:saved_ok')) %>, 'success');
     } catch(e){ this.notify(e.message, 'error'); }
     return false;
+  },
+  // « En faire mon poste visé » from the closest-roles ranking: the aspirations
+  // form stays the one place that saves, so interests and mobility are kept.
+  setTarget(roleId){
+    const sel = document.getElementById('egTargetRole');
+    if (!sel) return;
+    sel.value = String(roleId);
+    this.saveAspirations({ preventDefault(){} });
+  },
+  async thank(ev){
+    ev.preventDefault();
+    const form = ev.target;
+    const to = document.getElementById('egThankTo').value;
+    const message = document.getElementById('egThankMsg').value.trim();
+    if (!to || !message) { this.notify(this.T.thankReq, 'error'); return; }
+    const vis = form.querySelector('input[name="egThankVis"]:checked');
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    try {
+      await this.post('/v2/cap/recognition', {
+        toEmployeeId: Number(to),
+        valueTag: document.getElementById('egThankValue').value.trim() || null,
+        message: message,
+        visibility: vis ? vis.value : 'team'
+      });
+      form.reset();
+      this.notify(this.T.thankOk, 'success');
+    } catch(e){ this.notify(e.message, 'error'); }
+    finally { if (btn) btn.disabled = false; }
   },
   // Build a question field entirely via DOM (textContent for the label) so stored
   // question text can NEVER inject markup/handlers — the previous innerHTML concat
@@ -312,4 +505,11 @@ const EG = {
     } catch(e){ this.notify(e.message, 'error'); }
   }
 };
+(function(){
+  const thankForm = document.getElementById('egThankForm');
+  if (thankForm) thankForm.addEventListener('submit', function(ev){ EG.thank(ev); });
+  document.querySelectorAll('.eg-set-target').forEach(function(b){
+    b.addEventListener('click', function(){ EG.setTarget(b.dataset.roleId); });
+  });
+})();
 </script>
