@@ -503,6 +503,7 @@ class SkillDescriptionService {
         const ExcelJS = require('exceljs');
         const wb = new ExcelJS.Workbook();
         try {
+            require('../utils/importGuards').assertSafeXlsxBuffer(buffer); // zip-bomb guard (SA-09)
             await wb.xlsx.load(buffer);
         } catch (_) {
             throw httpError('workbook_unreadable');

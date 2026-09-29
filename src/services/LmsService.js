@@ -93,6 +93,25 @@ class LmsService {
     // but we DO block the dangerous SSRF targets: non-http(s) schemes, loopback, and
     // the cloud-metadata endpoint (169.254.169.254), so a crafted base_url can't be
     // used to reach the server's own localhost services or a cloud IMDS.
+    /**
+     * Loopback / unspecified / link-local (cloud metadata) IP literal, in ANY
+     * notation. SECURITY (audit 2026-09-29, SA-05): the prefix tests missed the
+     * IPv4-mapped IPv6 form — http://[::ffff:169.254.169.254]/ serialises to
+     * [::ffff:a9fe:a9fe] — and 0.0.0.0/8. net.BlockList judges a mapped IPv6
+     * address against the IPv4 rules, so one list covers every spelling.
+     */
+    static _isLoopbackOrLinkLocalIp(host) {
+        const fam = require('net').isIP(host);
+        if (!fam) return false;
+        const bl = new (require('net').BlockList)();
+        bl.addSubnet('0.0.0.0', 8, 'ipv4');
+        bl.addSubnet('127.0.0.0', 8, 'ipv4');
+        bl.addSubnet('169.254.0.0', 16, 'ipv4');
+        bl.addSubnet('::', 96, 'ipv6'); // ::, ::1 and the IPv4-compatible block
+        bl.addSubnet('fe80::', 10, 'ipv6');
+        return bl.check(host, fam === 4 ? 'ipv4' : 'ipv6');
+    }
+
     static _assertSafeLmsBaseUrl(raw) {
         if (!raw) return; // empty = no integration endpoint yet
         let u;
@@ -106,12 +125,8 @@ class LmsService {
         const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
         const blocked =
             host === 'localhost' ||
-            host === '0.0.0.0' ||
-            host === '::1' ||
-            host === '::' ||
-            /^127\./.test(host) ||
-            /^169\.254\./.test(host) ||
-            /^fe80:/i.test(host);
+            host.endsWith('.localhost') ||
+            LmsService._isLoopbackOrLinkLocalIp(host);
         if (blocked)
             throw new Error('LMS base URL cannot target loopback or link-local/metadata addresses');
     }

@@ -1,0 +1,44 @@
+# Keep secrets, local state and host-built modules OUT of the image.
+# Without this file `COPY . .` baked the operator's .env (SESSION_SECRET, APP_KEY,
+# DB password), TLS private keys, backups/uploads and .git into every image layer,
+# and replaced the Alpine-built node_modules with the host's (audit SA-10).
+
+# Secrets and TLS material
+.env
+.env.*
+!.env.example
+certs/
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Dependencies are installed in the build stage (npm ci --omit=dev)
+node_modules/
+
+# Runtime data: uploads, quarantine, temp imports, logs, backups
+uploads/
+tmp/
+logs/
+backups/
+AI_Engine_Docs/tmp/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
+
+# Source control, CI, editor and test artefacts
+.git/
+.github/
+.husky/
+.claude/
+coverage/
+playwright-report/
+test-results/
+tests/
+mobile/
+installer/
+*.md
+!README.md

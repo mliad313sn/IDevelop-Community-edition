@@ -89,6 +89,15 @@ class CornerstoneConnector extends LmsConnector {
     }
 
     // ---- Pagination -------------------------------------------------------
+    /** True when `url` has the configured base URL's origin (scheme+host+port). */
+    _sameOrigin(url) {
+        try {
+            return new URL(url).origin === new URL(this.base()).origin;
+        } catch (_) {
+            return false;
+        }
+    }
+
     /** Follow @odata.nextLink / nextPage / next across pages and flatten items. */
     async _fetchAllPages(firstUrl, { headers } = {}) {
         const out = [];
@@ -119,6 +128,12 @@ class CornerstoneConnector extends LmsConnector {
                 url = /^https?:/i.test(next)
                     ? next
                     : this.base() + (next.startsWith('/') ? next : '/' + next);
+                // SECURITY (audit 2026-09-29, SA-06): the next-page link comes from
+                // the LMS RESPONSE and is requested WITH the bearer token. An
+                // absolute link to another origin (or a protocol-relative one)
+                // handed the token to that host and let the response steer the
+                // sync worker at any internal address. Follow same-origin only.
+                if (!this._sameOrigin(url)) break;
             } else {
                 url = null;
             }

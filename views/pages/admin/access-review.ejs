@@ -206,7 +206,7 @@ const arExcClass = {
     err: <%- JSON.stringify(__('admin:ar_attest_err')) %>,
     done: <%- JSON.stringify(__('admin:ar_reviewed')) %>,
     revoke: <%- JSON.stringify(__('admin:ar_revoke_next')) %>,
-    by: <%- JSON.stringify(__('admin:ar_by', { who: (user && user.username) || '' })) %>,
+    by: <%- include('../../partials/json-script', { v: __('admin:ar_by', { who: (user && user.username) || '' }) }) %>,
     labels: { appropriate: <%- JSON.stringify(__('admin:ar_decision_appropriate')) %>, revoke: <%- JSON.stringify(__('admin:ar_decision_revoke')) %> }
   };
   var say = function (m, type) { (window.toast || function (x) { window.alert(x); })(m, type); };

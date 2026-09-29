@@ -327,6 +327,7 @@ class CertificationService {
     static async importWorkbook(filePath, { dryRun = true, actor = null } = {}) {
         const ExcelJS = require('exceljs');
         const workbook = new ExcelJS.Workbook();
+        require('../utils/importGuards').assertSafeXlsxFile(filePath); // zip-bomb guard (SA-09)
         await workbook.xlsx.readFile(filePath);
         const sheet =
             workbook.getWorksheet('Certifications') ||

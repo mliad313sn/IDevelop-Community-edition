@@ -839,7 +839,7 @@ router.post(
 // admin must not read them — restrict to SuperAdmin. Group counts are still
 // suppressed below the minimum in the service.
 const superOnly = (req, res, next) =>
-    req.user && req.user.role === 'superadmin'
+    RBACService.isSuperAdmin(req.user)
         ? next()
         : res.status(403).json({ ok: false, error: 'org-wide DEI analytics require superadmin' });
 router.get(

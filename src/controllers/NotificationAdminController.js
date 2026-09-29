@@ -9,6 +9,7 @@
 const NotificationAdminService = require('../services/NotificationAdminService');
 const { parsePage, buildPager } = require('../utils/listTools');
 const LogService = require('../services/LogService');
+const { safeBackUrl } = require('../utils/safeRedirect');
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -127,10 +128,11 @@ class NotificationAdminController {
             );
         }
         // Preserve the current filter/page view on return.
-        const back =
-            req.get('referer') && /\/admin\/notifications/.test(req.get('referer'))
-                ? req.get('referer')
-                : '/admin/notifications';
+        // Same-origin, relative only (safeBackUrl): the raw Referer used to be
+        // echoed whenever it merely CONTAINED /admin/notifications, so
+        // https://evil.example/admin/notifications was a valid way "back".
+        const rel = safeBackUrl(req, '/admin/notifications');
+        const back = /^\/admin\/notifications(?:[/?]|$)/.test(rel) ? rel : '/admin/notifications';
         res.redirect(back);
     }
 }

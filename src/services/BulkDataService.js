@@ -224,6 +224,7 @@ class BulkDataService {
      */
     async importFromExcel(filepath, options = {}) {
         const workbook = new ExcelJS.Workbook();
+        require('../utils/importGuards').assertSafeXlsxFile(filepath); // zip-bomb guard (SA-09)
         await workbook.xlsx.readFile(filepath);
 
         const results = {
@@ -514,6 +515,7 @@ class BulkDataService {
     async validateExcelFile(filepath) {
         try {
             const workbook = new ExcelJS.Workbook();
+            require('../utils/importGuards').assertSafeXlsxFile(filepath); // zip-bomb guard (SA-09)
             await workbook.xlsx.readFile(filepath);
 
             const errors = [];

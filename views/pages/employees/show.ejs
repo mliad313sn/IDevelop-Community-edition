@@ -215,7 +215,12 @@
     <div class="card" style="padding:14px 16px;">
         <h3 style="margin-top:0;"><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('admin:acc_id_admin_title') %></h3>
         <% if (linkedAdmin) { %>
-            <p class="help-text"><%- __('admin:acc_id_admin_has', { role: enumLabel('admin_role', linkedAdmin.role), username: linkedAdmin.username, id: linkedAdmin.id }) %><%= linkedAdmin.isActive ? '' : ' (' + __('admin:acc_id_admin_deactivated') + ')' %></p>
+            <%# The sentence carries markup (strong, a, code), so it is printed raw -
+                and every value placed INTO it is HTML-escaped first. i18next runs with
+                escapeValue:false, so an admin username such as an img onerror payload
+                used to reach the SuperAdmin's page as live markup (audit SA-02). %>
+            <% var _ehAcc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }; %>
+            <p class="help-text"><%- __('admin:acc_id_admin_has', { role: _ehAcc(enumLabel('admin_role', linkedAdmin.role)), username: _ehAcc(linkedAdmin.username), id: _ehAcc(linkedAdmin.id) }) %><%= linkedAdmin.isActive ? '' : ' (' + __('admin:acc_id_admin_deactivated') + ')' %></p>
             <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
                 <a href="/admins/<%= linkedAdmin.id %>" class="btn btn-secondary btn-sm"><i class="fas fa-sliders-h" aria-hidden="true"></i> <%= __('admin:acc_id_admin_manage') %></a>
                 <%# the twin of the button on /admins/:id — same mandatory reason. %>
