@@ -154,6 +154,7 @@ router.get(
             objectives,
             opportunities,
             surveys,
+            surveyTemplates: Sv.templates(req.language),
             deiRep,
             recognitions,
             title: req.t ? req.t('chrome:pt_talent_suite') : 'Talent suite',
@@ -583,16 +584,37 @@ router.post(
     '/survey',
     requireManagerOrAnyPermission('manage_surveys'),
     guarded(async (req, res) => {
-        const s = await Sv.create({
-            kind: req.body.kind,
-            title: req.body.title,
+        const common = {
             anonymous: req.body.anonymous,
             minResponses: req.body.minResponses,
             createdByAdminId: await adminId(req.user),
             actorEmployeeId: actorEmp(req.user),
-            questions: req.body.questions || [],
-        });
+        };
+        const hasQuestions = Array.isArray(req.body.questions) && req.body.questions.length > 0;
+        // A template id with no question list: take the template's questions as
+        // they are. With a (possibly edited) question list, the list wins.
+        const s =
+            req.body.templateId && !hasQuestions
+                ? await Sv.createFromTemplate(req.body.templateId, {
+                      ...common,
+                      lang: req.language,
+                      title: req.body.title,
+                  })
+                : await Sv.create({
+                      ...common,
+                      kind: req.body.kind,
+                      title: req.body.title,
+                      questions: req.body.questions || [],
+                  });
         res.json({ ok: true, id: s.id, minResponses: Number(s.minResponses ?? s.min_responses) });
+    })
+);
+/** The survey templates, in the reader's language. */
+router.get(
+    '/survey/templates',
+    requireManagerOrAnyPermission('manage_surveys'),
+    ah(async (req, res) => {
+        res.json({ ok: true, templates: Sv.templates(req.language) });
     })
 );
 /**

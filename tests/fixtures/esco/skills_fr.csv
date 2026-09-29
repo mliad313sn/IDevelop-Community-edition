@@ -1,0 +1,3 @@
+conceptType,conceptUri,skillType,reuseLevel,preferredLabel,altLabels,hiddenLabels,status,modifiedDate,scopeNote,definition,inScheme,description
+KnowledgeSkillCompetence,urn:test:skill/1,skill/competence,cross-sector,négocier les conditions avec les fournisseurs,,,released,2024-01-01,,,urn:test:scheme,"Convenir des prix, des délais et de la qualité avec les fournisseurs."
+KnowledgeSkillCompetence,urn:test:skill/4,knowledge,sector-specific,JavaScript,,,released,2024-01-01,,,urn:test:scheme,

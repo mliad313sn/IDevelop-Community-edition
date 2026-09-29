@@ -1,0 +1,9 @@
+conceptType,conceptUri,skillType,reuseLevel,preferredLabel,altLabels,hiddenLabels,status,modifiedDate,scopeNote,definition,inScheme,description
+KnowledgeSkillCompetence,urn:test:skill/1,skill/competence,cross-sector,negotiate supplier terms,"haggle
+bargain",,released,2024-01-01,,,urn:test:scheme,"Agree prices, delivery and quality with suppliers, the ""win-win"" way."
+KnowledgeSkillCompetence,urn:test:skill/2,skill/competence,sector-specific,draft sales contracts,,,released,2024-01-01,,,urn:test:scheme,Write binding sales agreements.
+KnowledgeSkillCompetence,urn:test:skill/3,skill/competence,sector-specific,draft framework agreements,,,released,2024-01-01,,,urn:test:scheme,Narrower skill of drafting sales contracts.
+KnowledgeSkillCompetence,urn:test:skill/4,knowledge,sector-specific,JavaScript,,,released,2024-01-01,,,urn:test:scheme,The JavaScript programming language.
+KnowledgeSkillCompetence,urn:test:skill/5,skill/competence,transversal,think critically,,,released,2024-01-01,,,urn:test:scheme,Assess information and arguments.
+KnowledgeSkillCompetence,urn:test:skill/6,skill/competence,occupation-specific,orphan skill,,,released,2024-01-01,,,urn:test:scheme,No group at all.
+KnowledgeSkillCompetence,urn:test:skill/7,skill/competence,occupation-specific,retired skill,,,obsolete,2024-01-01,,,urn:test:scheme,Must be skipped.

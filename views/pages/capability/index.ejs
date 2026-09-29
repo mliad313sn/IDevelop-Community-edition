@@ -78,6 +78,13 @@
   <!-- Minimal question editor. The builder used to create every survey with the
        same three hard-coded ENGLISH questions and an anonymity threshold of 4. -->
   <div id="svy-builder" hidden style="border:1px solid var(--border-color,#334155);border-radius:8px;padding:.8rem;margin-top:.6rem">
+    <% if ((typeof surveyTemplates !== 'undefined' ? surveyTemplates : []).length) { %>
+    <div style="margin-bottom:.5rem"><label for="svy-template"><%= __('talentx:cap_svy_template') %></label><br><select id="svy-template" class="form-control" style="max-width:420px" onchange="CAP.applyTemplate(this.value)">
+      <option value=""><%= __('talentx:cap_svy_template_none') %></option>
+      <% surveyTemplates.forEach(function(t){ %><option value="<%= t.id %>"><%= t.title %></option><% }); %>
+    </select>
+    <p class="text-muted" id="svy-template-desc" style="font-size:.8em;margin:.3rem 0"><%= __('talentx:cap_svy_template_hint') %></p></div>
+    <% } %>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
       <div style="flex:1;min-width:220px"><label for="svy-title"><%= __('talentx:cap_title') %></label><br><input id="svy-title" class="form-control" maxlength="200"></div>
       <div><label for="svy-kind"><%= __('talentx:cap_kind') %></label><br><select id="svy-kind" class="form-control">
@@ -179,6 +186,8 @@ const CAP_T = <%- include('../../partials/json-script', { v: {
     { text: __('talentx:cap_default_q2'), qtype: 'scale' },
     { text: __('talentx:cap_default_q3'), qtype: 'nps' }
   ],
+  templates: (typeof surveyTemplates !== 'undefined' ? surveyTemplates : []),
+  templateHint: __('talentx:cap_svy_template_hint'),
   openConfirm: __('talentx:cap_open_survey_confirm'), closeConfirm: __('talentx:cap_close_survey_confirm'),
   invited: __('talentx:cap_survey_invited'), avg: __('talentx:cap_avg'), textAnswers: __('talentx:cap_text_answers')
 } }) %>;
@@ -258,11 +267,24 @@ const CAP = {
     document.getElementById('svy-title').value=CAP_T.surveyDefault||'';
     const qs=document.getElementById('svy-questions'); qs.textContent='';
     (CAP_T.defaultQs||[]).forEach(q=>this.addQuestion(q));
+    const sel=document.getElementById('svy-template'); if(sel) sel.value='';
+    const d=document.getElementById('svy-template-desc'); if(d) d.textContent=CAP_T.templateHint||'';
     b.hidden=false; document.getElementById('svy-title').focus();
+  },
+  // "Start from a template": fills title, type and questions (all still editable).
+  applyTemplate(id){
+    const t=(CAP_T.templates||[]).find(x=>x.id===id);
+    const d=document.getElementById('svy-template-desc');
+    const qs=document.getElementById('svy-questions'); qs.textContent='';
+    if(!t){ document.getElementById('svy-title').value=CAP_T.surveyDefault||''; (CAP_T.defaultQs||[]).forEach(q=>this.addQuestion(q)); if(d) d.textContent=CAP_T.templateHint||''; return; }
+    document.getElementById('svy-title').value=t.title||'';
+    const k=document.getElementById('svy-kind'); if(k) k.value=t.kind;
+    (t.questions||[]).forEach(q=>this.addQuestion(q));
+    if(d) d.textContent=t.description||'';
   },
   addQuestion(q){
     q=q||{text:'',qtype:'scale'};
-    const row=document.createElement('div'); row.className='svy-q'; row.style.cssText='display:flex;gap:.4rem;margin:.3rem 0;flex-wrap:wrap';
+    const row=document.createElement('div'); row.className='svy-q'; if(q.category) row.dataset.category=q.category; row.style.cssText='display:flex;gap:.4rem;margin:.3rem 0;flex-wrap:wrap';
     const t=document.createElement('input'); t.className='form-control svy-q-text'; t.maxLength=500; t.placeholder=CAP_T.qTextPh; t.value=q.text||''; t.style.cssText='flex:1;min-width:220px'; t.setAttribute('aria-label',CAP_T.qTextPh);
     const s=document.createElement('select'); s.className='form-control svy-q-type'; s.style.width='auto';
     ['scale','nps','text'].forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=(CAP_T.qtypes||{})[k]||k; if(k===q.qtype) o.selected=true; s.appendChild(o); });
@@ -271,7 +293,7 @@ const CAP = {
   },
   async createSurvey(){
     const title=document.getElementById('svy-title').value.trim(); if(!title){ alert(CAP_T.needTitle); return; }
-    const questions=[...document.querySelectorAll('#svy-questions .svy-q')].map(r=>({text:r.querySelector('.svy-q-text').value.trim(),qtype:r.querySelector('.svy-q-type').value})).filter(q=>q.text);
+    const questions=[...document.querySelectorAll('#svy-questions .svy-q')].map(r=>({text:r.querySelector('.svy-q-text').value.trim(),qtype:r.querySelector('.svy-q-type').value,category:r.dataset.category||null})).filter(q=>q.text);
     if(!questions.length){ alert(CAP_T.needQuestion); return; }
     const min=Math.max(5,parseInt(document.getElementById('svy-min').value,10)||5);
     await this.api('POST','/v2/cap/survey',{kind:document.getElementById('svy-kind').value,title:title,anonymous:document.getElementById('svy-anon').checked,minResponses:min,questions:questions});

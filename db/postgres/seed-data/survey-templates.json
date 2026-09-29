@@ -1,0 +1,284 @@
+{
+  "name": "IDevelop survey templates",
+  "version": 1,
+  "license": "CC0-1.0",
+  "note": "Original questions written for IDevelop Community Edition and dedicated to the public domain (CC0). They are not taken from any proprietary survey instrument. Scale questions use the 1-5 agreement scale, eNPS questions the 0-10 scale. A survey created from a template is an ordinary draft: edit, add or remove questions before opening it.",
+  "templates": [
+    {
+      "id": "enps",
+      "kind": "enps",
+      "title": { "fr": "eNPS trimestriel", "en": "Quarterly eNPS" },
+      "description": {
+        "fr": "Une question de recommandation (0-10) et deux questions ouvertes pour comprendre la note.",
+        "en": "One recommendation question (0-10) and two open questions to understand the score."
+      },
+      "questions": [
+        {
+          "qtype": "nps",
+          "category": "enps",
+          "text": {
+            "fr": "Dans quelle mesure recommanderiez-vous notre organisation comme lieu de travail à un proche ?",
+            "en": "How likely are you to recommend our organisation as a place to work to a friend?"
+          }
+        },
+        {
+          "qtype": "text",
+          "category": "enps_reason",
+          "text": {
+            "fr": "Quelle est la principale raison de votre note ?",
+            "en": "What is the main reason for your score?"
+          }
+        },
+        {
+          "qtype": "text",
+          "category": "improvement",
+          "text": {
+            "fr": "Quelle seule chose améliorerait le plus votre expérience chez nous ?",
+            "en": "What one thing would most improve your experience here?"
+          }
+        }
+      ]
+    },
+    {
+      "id": "engagement-pulse",
+      "kind": "engagement",
+      "title": { "fr": "Baromètre d'engagement", "en": "Engagement pulse" },
+      "description": {
+        "fr": "Neuf affirmations courtes (1-5) sur la clarté, les moyens, la reconnaissance, le développement et l'intention de rester, plus une question ouverte.",
+        "en": "Nine short statements (1-5) on clarity, resources, recognition, growth and intention to stay, plus one open question."
+      },
+      "questions": [
+        {
+          "qtype": "scale",
+          "category": "clarity",
+          "text": {
+            "fr": "Je comprends clairement ce que l'on attend de moi dans mon poste.",
+            "en": "I clearly understand what is expected of me in my role."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "resources",
+          "text": {
+            "fr": "Je dispose des outils, des informations et des moyens nécessaires pour bien faire mon travail.",
+            "en": "I have the tools, information and resources I need to do my job well."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "recognition",
+          "text": {
+            "fr": "Mes contributions sont reconnues.",
+            "en": "My contributions are recognised."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "manager",
+          "text": {
+            "fr": "Mon manager se soucie sincèrement de mon bien-être.",
+            "en": "My manager genuinely cares about my wellbeing."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "growth",
+          "text": {
+            "fr": "Je peux développer mes compétences et ma carrière ici.",
+            "en": "I can develop my skills and my career here."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "voice",
+          "text": {
+            "fr": "Mon avis est écouté et suivi d'effets.",
+            "en": "My views are listened to and acted upon."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "workload",
+          "text": {
+            "fr": "Ma charge de travail est tenable.",
+            "en": "My workload is manageable."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "pride",
+          "text": {
+            "fr": "Je suis fier·ère de travailler pour notre organisation.",
+            "en": "I am proud to work for our organisation."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "intent_to_stay",
+          "text": {
+            "fr": "Je me vois encore travailler ici dans deux ans.",
+            "en": "I see myself still working here in two years' time."
+          }
+        },
+        {
+          "qtype": "text",
+          "category": "improvement",
+          "text": {
+            "fr": "Que devrions-nous commencer, arrêter ou continuer à faire ?",
+            "en": "What should we start, stop or continue doing?"
+          }
+        }
+      ]
+    },
+    {
+      "id": "onboarding-checkin",
+      "kind": "onboarding",
+      "title": { "fr": "Point d'intégration", "en": "Onboarding check-in" },
+      "description": {
+        "fr": "À envoyer aux nouveaux arrivants après 30 à 90 jours : accueil, équipement, objectifs et adéquation au poste.",
+        "en": "Send to new starters after 30 to 90 days: welcome, equipment, goals and fit with the role."
+      },
+      "questions": [
+        {
+          "qtype": "scale",
+          "category": "role_clarity",
+          "text": {
+            "fr": "Mon rôle et mes responsabilités m'ont été expliqués clairement.",
+            "en": "My role and responsibilities were explained clearly."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "equipment",
+          "text": {
+            "fr": "Dès mon premier jour, j'avais ce qu'il me fallait (équipement, accès, comptes).",
+            "en": "I had what I needed (equipment, access, accounts) from my first day."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "goals",
+          "text": {
+            "fr": "Mon manager a fixé des objectifs clairs pour mes premiers mois.",
+            "en": "My manager has set clear goals for my first months."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "support",
+          "text": {
+            "fr": "Je sais à qui m'adresser quand j'ai besoin d'aide.",
+            "en": "I know whom to ask when I need help."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "belonging",
+          "text": {
+            "fr": "Je me sens bien accueilli·e dans mon équipe.",
+            "en": "I feel welcome in my team."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "training",
+          "text": {
+            "fr": "La formation reçue jusqu'ici me prépare à mon poste.",
+            "en": "The training I have received so far prepares me for my role."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "expectations",
+          "text": {
+            "fr": "Le poste correspond à ce qui m'a été présenté lors du recrutement.",
+            "en": "The job matches what was described to me during recruitment."
+          }
+        },
+        {
+          "qtype": "text",
+          "category": "improvement",
+          "text": {
+            "fr": "Qu'est-ce qui aurait rendu vos premières semaines plus faciles ?",
+            "en": "What would have made your first weeks easier?"
+          }
+        }
+      ]
+    },
+    {
+      "id": "manager-effectiveness",
+      "kind": "pulse",
+      "title": { "fr": "Efficacité managériale", "en": "Manager effectiveness" },
+      "description": {
+        "fr": "Retour de l'équipe sur son manager : feedback, priorités, développement, équité et écoute.",
+        "en": "Team feedback on their manager: feedback, priorities, development, fairness and openness."
+      },
+      "questions": [
+        {
+          "qtype": "scale",
+          "category": "feedback",
+          "text": {
+            "fr": "Mon manager me donne un retour régulier et utile.",
+            "en": "My manager gives me regular, useful feedback."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "priorities",
+          "text": {
+            "fr": "Mon manager m'aide à fixer des priorités claires.",
+            "en": "My manager helps me set clear priorities."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "development",
+          "text": {
+            "fr": "Mon manager soutient activement mon développement.",
+            "en": "My manager actively supports my development."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "communication",
+          "text": {
+            "fr": "Mon manager tient l'équipe informée des changements qui la concernent.",
+            "en": "My manager keeps the team informed about changes that affect us."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "fairness",
+          "text": {
+            "fr": "Mon manager traite chaque membre de l'équipe avec équité.",
+            "en": "My manager treats everyone in the team fairly."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "psychological_safety",
+          "text": {
+            "fr": "Je me sens à l'aise pour faire part de mes inquiétudes ou de mes idées à mon manager.",
+            "en": "I feel comfortable raising concerns or ideas with my manager."
+          }
+        },
+        {
+          "qtype": "scale",
+          "category": "recognition",
+          "text": {
+            "fr": "Mon manager reconnaît le travail bien fait.",
+            "en": "My manager recognises good work."
+          }
+        },
+        {
+          "qtype": "text",
+          "category": "improvement",
+          "text": {
+            "fr": "Que pourrait faire différemment votre manager pour vous aider à réussir ?",
+            "en": "What could your manager do differently to help you succeed?"
+          }
+        }
+      ]
+    }
+  ]
+}

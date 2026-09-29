@@ -120,6 +120,31 @@ npm start                       # http://localhost:3000
 A one-shot installer (Node.js, PostgreSQL, service registration, backups,
 upgrades with automatic rollback) lives in [`installer/`](installer/README.md).
 
+### Importing a public taxonomy (ESCO)
+
+Instead of (or as well as) the starter framework, you can load skills from
+[ESCO](https://esco.ec.europa.eu), the European Commission's multilingual
+classification of skills. No ESCO data ships with this repository: download the
+CSV package (classification **skills**, format **CSV**, language **English**,
+optionally also **French**) and convert it:
+
+```bash
+# Convert: ESCO skill groups become pillars (depth 1) and sub-domains (depth 2)
+npm run import:esco -- --dir ~/esco-v1.2 --group "working with computers" --out esco.json
+#   --lang-fr <skills_fr.csv>  French descriptions (auto-detected in --dir)
+#   --group <uri|label>        keep a subset (repeatable); the full ESCO has ~13,900 skills
+#   --limit <n>                keep at most n skills; --type knowledge|skill/competence
+
+# Load it, like the starter framework: dry run first, then --commit
+npm run db:seed:starter -- --file esco.json
+npm run db:seed:starter -- --file esco.json --commit
+```
+
+The load is idempotent (rows are matched by name, never overwritten). ESCO is
+licensed under **CC BY 4.0**: if you import it, you must credit it where your
+users can see it (for example in your internal documentation or the framework
+description). See [NOTICE](NOTICE) for the attribution text.
+
 ## Configuration
 
 All configuration is environment-based; [`.env.example`](.env.example) documents

@@ -8,6 +8,41 @@
  */
 const db = require('../config/database');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+// Bilingual, own-authored (CC0) question sets: eNPS, engagement pulse,
+// onboarding check-in, manager effectiveness. Read once, on first use.
+const TEMPLATES_FILE = path.join(
+    __dirname,
+    '..',
+    '..',
+    'db',
+    'postgres',
+    'seed-data',
+    'survey-templates.json'
+);
+let templatesCache = null;
+function loadTemplates() {
+    if (!templatesCache) {
+        const raw = JSON.parse(fs.readFileSync(TEMPLATES_FILE, 'utf8'));
+        templatesCache = Array.isArray(raw.templates) ? raw.templates : [];
+    }
+    return templatesCache;
+}
+/** 'en', 'en-GB' → 'en'; anything else → 'fr' (the default language). */
+function langOf(lang) {
+    return String(lang || '')
+        .toLowerCase()
+        .startsWith('en')
+        ? 'en'
+        : 'fr';
+}
+function pick(obj, lang) {
+    if (obj == null) return '';
+    if (typeof obj === 'string') return obj;
+    return obj[lang] || obj.fr || obj.en || '';
+}
 
 // Pseudonymous respondent key for ANONYMOUS surveys: keyed HMAC of the
 // (survey, employee) pair so re-answers still dedupe, but no row carries the
@@ -50,6 +85,46 @@ function floorOf(stored) {
 class SurveyService {
     get MIN_RESPONSES_FLOOR() {
         return MIN_RESPONSES_FLOOR;
+    }
+
+    /**
+     * The survey templates, localised: [{ id, kind, title, description,
+     * questions: [{ text, qtype, category }] }]. Returns fresh copies — a
+     * caller may edit them freely.
+     */
+    templates(lang = 'fr') {
+        const l = langOf(lang);
+        return loadTemplates().map((t) => ({
+            id: String(t.id),
+            kind: KINDS.includes(t.kind) ? t.kind : 'pulse',
+            title: pick(t.title, l),
+            description: pick(t.description, l),
+            questions: (t.questions || []).map((q) => ({
+                text: pick(q.text, l),
+                qtype: QTYPES.includes(q.qtype) ? q.qtype : 'scale',
+                category: q.category || null,
+            })),
+        }));
+    }
+
+    /** One localised template, or null. */
+    template(id, lang = 'fr') {
+        return this.templates(lang).find((t) => t.id === String(id)) || null;
+    }
+
+    /**
+     * Create a DRAFT survey from a template. `title` overrides the template's
+     * title; every other option is the same as create().
+     */
+    async createFromTemplate(templateId, { lang = 'fr', title = null, ...rest } = {}) {
+        const t = this.template(templateId, lang);
+        if (!t) throw refuse(404, 'survey_template_not_found');
+        return this.create({
+            ...rest,
+            kind: t.kind,
+            title: String(title || '').trim() || t.title,
+            questions: t.questions,
+        });
     }
 
     /** Validate and normalise a question list (400 on anything unusable). */

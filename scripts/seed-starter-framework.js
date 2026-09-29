@@ -17,6 +17,12 @@
  *
  *   npm run db:seed:starter              # show what would be created (rolled back)
  *   npm run db:seed:starter -- --commit  # write it
+ *
+ * --file <path> loads another framework file of the same shape instead, for
+ * example one generated from ESCO by scripts/import-esco.js:
+ *
+ *   npm run db:seed:starter -- --file esco.json            # dry run
+ *   npm run db:seed:starter -- --file esco.json --commit
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -48,7 +54,7 @@ async function load(fw) {
             [pillar.name, pillar.description || null]
         );
         let pos = 0;
-        for (const sd of pillar.subDomains) {
+        for (const sd of pillar.subDomains || []) {
             pos += 1;
             const subId = await findOrCreate(
                 c('sub-domains'),
@@ -57,7 +63,7 @@ async function load(fw) {
                 'INSERT INTO sub_domains (domain_id, name, definition, position) VALUES ($1, $2, $3, $4)',
                 [domainId, sd.name, sd.definition || null, pos]
             );
-            for (const sk of sd.skills) {
+            for (const sk of sd.skills || []) {
                 const id = await findOrCreate(
                     c('skills'),
                     'SELECT id FROM skills WHERE domain_id = $1 AND lower(name) = lower($2)',
@@ -79,7 +85,7 @@ async function load(fw) {
     }
 
     const familyIds = new Map();
-    for (const f of fw.roleFamilies) {
+    for (const f of fw.roleFamilies || []) {
         const id = await findOrCreate(
             c('role families'),
             'SELECT id FROM role_families WHERE lower(name) = lower($1)',
@@ -107,7 +113,7 @@ async function load(fw) {
         }
     }
 
-    for (const role of fw.roles) {
+    for (const role of fw.roles || []) {
         const roleId = await findOrCreate(
             c('roles'),
             'SELECT id FROM roles WHERE lower(name) = lower($1)',
@@ -127,9 +133,32 @@ async function load(fw) {
     return stats;
 }
 
+/** The framework file: --file <path> (or --file=<path>), else the bundled starter. */
+function dataFile(argv) {
+    const i = argv.indexOf('--file');
+    if (i !== -1) {
+        if (!argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error('--file needs a path');
+        return path.resolve(argv[i + 1]);
+    }
+    const eq = argv.find((a) => a.startsWith('--file='));
+    return eq ? path.resolve(eq.slice('--file='.length)) : DATA;
+}
+
+function readFramework(file) {
+    const fw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!fw || !Array.isArray(fw.pillars))
+        throw new Error(`${file} is not a framework file (no "pillars" array)`);
+    for (const p of fw.pillars) {
+        if (!p || !p.name || !Array.isArray(p.subDomains))
+            throw new Error(`${file}: every pillar needs a name and a subDomains array`);
+    }
+    return fw;
+}
+
 (async () => {
     const commit = process.argv.includes('--commit');
-    const fw = JSON.parse(fs.readFileSync(DATA, 'utf8'));
+    const file = dataFile(process.argv.slice(2));
+    const fw = readFramework(file);
     await db.connect();
     let stats = null;
     try {
@@ -140,7 +169,8 @@ async function load(fw) {
     } catch (e) {
         if (e.message !== ROLLBACK) throw e;
     }
-    console.log(`\n${fw.name} (v${fw.version})`);
+    console.log(`\n${fw.name} (v${fw.version})${file === DATA ? '' : ` from ${file}`}`);
+    if (fw.attribution) console.log(`  ${fw.attribution}`);
     for (const [k, v] of Object.entries(stats || {}))
         console.log(`  ${k.padEnd(18)} ${v.created} new`);
     console.log(

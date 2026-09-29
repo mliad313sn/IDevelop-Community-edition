@@ -1,0 +1,9 @@
+conceptType,conceptUri,preferredLabel,altLabels,hiddenLabels,status,modifiedDate,scopeNote,inScheme,description,code
+SkillGroup,urn:test:group/S,skills,,,released,2024-01-01,,urn:test:scheme,Root of the test skills.,S
+SkillGroup,urn:test:group/S1,"communication, collaboration and creativity",,,released,2024-01-01,,urn:test:scheme,"Communicating, collaborating and creating.",S1
+SkillGroup,urn:test:group/S1.1,negotiating,,,released,2024-01-01,,urn:test:scheme,Reaching agreements.,S1.1
+SkillGroup,urn:test:group/S1.1.1,negotiating contracts,,,released,2024-01-01,,urn:test:scheme,Deep group folded into its parent.,S1.1.1
+SkillGroup,urn:test:group/S5,working with computers,,,released,2024-01-01,,urn:test:scheme,Using digital tools.,S5
+SkillGroup,urn:test:group/S5.1,programming computer systems,,,released,2024-01-01,,urn:test:scheme,Writing software.,S5.1
+SkillGroup,urn:test:group/T,transversal skills and competences,,,released,2024-01-01,,urn:test:scheme,Root of transversal skills.,T
+SkillGroup,urn:test:group/T2,thinking skills and competences,,,released,2024-01-01,,urn:test:scheme,Thinking.,T2
