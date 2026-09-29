@@ -3,6 +3,7 @@
 const fs = require('fs');
 const SqlConsoleService = require('../services/SqlConsoleService');
 const LogService = require('../services/LogService');
+const RBACService = require('../services/RBACService');
 const { bc } = require('../utils/breadcrumbLabel');
 
 // How much of a script the audit trail keeps verbatim. Long enough that ordinary
@@ -35,7 +36,7 @@ function truncateForAudit(sql) {
  */
 class SqlConsoleController {
     _denied(req, res) {
-        if (req.user && req.user.role === 'superadmin') return false;
+        if (RBACService.isSuperAdmin(req.user)) return false;
         res.status(403).json({ success: false, error: 'Super administrator privileges required.' });
         return true;
     }

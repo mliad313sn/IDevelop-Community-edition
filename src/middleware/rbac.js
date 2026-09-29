@@ -185,7 +185,7 @@ const rbacMiddleware = async (req, res, next) => {
         employeeIds: [],
     };
 
-    if (req.user.role === 'superadmin') {
+    if (req.user.userType === 'admin' && req.user.role === 'superadmin') {
         // SuperAdmin has no restrictions (empty scope object implies all access in Controller)
         req.scope = {};
         return next();

@@ -10,8 +10,33 @@ const crypto = require('crypto');
 const db = require('../config/database');
 const secretBox = require('../utils/secretBox');
 
+const dns = require('dns');
+const net = require('net');
+
+const DELIVERY_TIMEOUT_MS = 5000;
+
+/** Private/loopback/link-local/CGNAT/ULA/mapped… — the one classifier the SAML
+ *  metadata fetch and the safety-gate webhook already use. */
+function isPrivateAddress(ip) {
+    return require('./SamlMetadataService').isPrivateAddress(ip);
+}
+
+/** Operator opt-in for an on-prem receiver on the LAN (default: refused). */
+function allowPrivate() {
+    return process.env.WEBHOOK_ALLOW_PRIVATE === '1';
+}
+
 // Reject SSRF targets: a superadmin (or a compromised one) must not be able to
 // point a webhook at the server's own loopback/metadata/internal network.
+//
+// SECURITY (audit 2026-09-29, SA-04): the string checks alone were bypassable —
+//   - an IPv4-mapped IPv6 literal (http://[::ffff:127.0.0.1]/ serialises to
+//     [::ffff:7f00:1], which no prefix test matched), CGNAT 100.64/10, 0/8…;
+//   - any DNS name that RESOLVES to a private address (127.0.0.1.nip.io);
+//   - a public receiver answering 302 → http://169.254.169.254/… (fetch follows).
+// IP literals now go through the shared classifier here; names are resolved and
+// the connection is PINNED to the checked address at delivery (resolveTarget /
+// deliver), and redirects are never followed.
 function assertSafeWebhookUrl(raw) {
     let u;
     try {
@@ -21,22 +46,67 @@ function assertSafeWebhookUrl(raw) {
     }
     if (!['http:', 'https:'].includes(u.protocol))
         throw new Error('Only http(s) webhook URLs are allowed');
+    if (u.username || u.password) throw new Error('Webhook URL must not carry credentials');
+    if (allowPrivate()) return;
     const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
     const blocked =
         host === 'localhost' ||
+        host.endsWith('.localhost') ||
         host.endsWith('.local') ||
         host.endsWith('.internal') ||
-        host === '0.0.0.0' ||
-        host === '::1' ||
-        host === '::' ||
-        /^127\./.test(host) ||
-        /^10\./.test(host) ||
-        /^192\.168\./.test(host) ||
-        /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
-        /^169\.254\./.test(host) ||
-        /^(fc|fd)[0-9a-f]{2}:/i.test(host) ||
-        /^fe80:/i.test(host);
+        (net.isIP(host) !== 0 && isPrivateAddress(host));
     if (blocked) throw new Error('Webhook URL targets a private/loopback/internal address');
+}
+
+/**
+ * Validate the URL, resolve its host and refuse when ANY answer is private.
+ * Returns the address the delivery must connect to (pinned: no second lookup,
+ * so a DNS answer cannot change between the check and the connection).
+ */
+async function resolveTarget(raw) {
+    assertSafeWebhookUrl(raw);
+    const u = new URL(raw);
+    const host = u.hostname.replace(/^\[|\]$/g, '');
+    const addrs = await dns.promises.lookup(host, { all: true, verbatim: true });
+    if (!addrs || !addrs.length) throw new Error('Webhook host does not resolve');
+    if (!allowPrivate() && addrs.some((a) => isPrivateAddress(a.address)))
+        throw new Error('Webhook URL resolves to a private/loopback/internal address');
+    return { url: u, address: addrs[0] };
+}
+
+/**
+ * POST once to the CHECKED address. A 3xx is an answer (not followed), so a
+ * receiver cannot bounce the request to an internal host.
+ * @returns {Promise<{ok:boolean, status:number|null}>}
+ */
+async function deliver(raw, body, headers) {
+    const { url, address } = await resolveTarget(raw);
+    const lib = url.protocol === 'https:' ? require('https') : require('http');
+    return new Promise((resolve) => {
+        const req = lib.request(
+            url,
+            {
+                method: 'POST',
+                timeout: DELIVERY_TIMEOUT_MS,
+                headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
+                lookup: (_h, opts, cb) =>
+                    opts && opts.all
+                        ? cb(null, [{ address: address.address, family: address.family }])
+                        : cb(null, address.address, address.family),
+            },
+            (res) => {
+                res.resume();
+                const status = res.statusCode;
+                resolve({ ok: status >= 200 && status < 300, status });
+            }
+        );
+        req.on('timeout', () => {
+            req.destroy();
+            resolve({ ok: false, status: null });
+        });
+        req.on('error', () => resolve({ ok: false, status: null }));
+        req.end(body);
+    });
 }
 
 const FORMATS = ['json', 'slack', 'teams'];
@@ -145,6 +215,11 @@ class WebhookService {
         await db.run('DELETE FROM webhook_subscriptions WHERE id = ?', [id]);
     }
 
+    /** Delivery seam (pinned, no redirects) — overridable in tests. */
+    _deliver(url, body, headers) {
+        return deliver(url, body, headers);
+    }
+
     _matches(events, event) {
         const arr = Array.isArray(events) ? events : [];
         return arr.includes('*') || arr.includes(event);
@@ -160,13 +235,6 @@ class WebhookService {
             const subs = await db.all('SELECT * FROM webhook_subscriptions WHERE enabled = true');
             const targets = subs.filter((s) => this._matches(s.events, event));
             if (!targets.length) return { delivered: 0 };
-            const fetchImpl = globalThis.fetch;
-            if (!fetchImpl) {
-                console.error(
-                    '[webhooks] global fetch unavailable (Node 18+ required) — delivery skipped'
-                );
-                return { delivered: 0, error: 'no-fetch' };
-            }
             let delivered = 0;
             for (const s of targets) {
                 const body = JSON.stringify(
@@ -198,20 +266,17 @@ class WebhookService {
                 let code = null;
                 let ok = false;
                 try {
-                    const ctrl = new AbortController();
-                    const t = setTimeout(() => ctrl.abort(), 5000);
-                    const res = await fetchImpl(s.url, {
-                        method: 'POST',
-                        headers,
-                        body,
-                        signal: ctrl.signal,
-                    });
-                    clearTimeout(t);
-                    code = res.status;
-                    ok = res.ok;
+                    const r = await this._deliver(s.url, body, headers);
+                    code = r.status;
+                    ok = r.ok;
                 } catch (e) {
-                    code = null;
-                    ok = false;
+                    // resolveTarget refused the address at delivery time (a name
+                    // that now resolves privately): same outcome as the check above.
+                    db.run('UPDATE webhook_subscriptions SET last_status = ? WHERE id = ?', [
+                        'blocked-url',
+                        s.id,
+                    ]).catch(() => {});
+                    continue;
                 }
                 if (ok) delivered++;
                 db.run(
@@ -233,3 +298,6 @@ class WebhookService {
 module.exports = new WebhookService();
 module.exports.renderPayload = renderPayload;
 module.exports.FORMATS = FORMATS;
+module.exports.assertSafeWebhookUrl = assertSafeWebhookUrl;
+module.exports.resolveTarget = resolveTarget;
+module.exports.deliver = deliver;

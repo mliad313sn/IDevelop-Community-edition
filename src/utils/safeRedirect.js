@@ -21,7 +21,15 @@ function safeBackUrl(req, fallback = '/dashboard') {
     if (!ref) return fallback;
     try {
         const u = new URL(ref);
-        if (u.host === req.get('host')) return u.pathname + u.search; // relative only
+        if (u.host !== req.get('host')) return fallback;
+        // SECURITY (audit 2026-09-29, SA-08): a same-origin Referer can still
+        // carry a path that STARTS with `//` or `/\` (https://app//evil.example/x
+        // is a page of this host — a 404 — whose pathname is //evil.example/x).
+        // Handed to res.redirect, that path is a protocol-relative URL and the
+        // browser leaves for evil.example. Only a single leading slash is relative.
+        const rel = u.pathname + u.search;
+        if (!/^\/(?![/\\])/.test(rel)) return fallback;
+        return rel; // relative only
     } catch (_) {
         /* malformed Referer → fallback */
     }

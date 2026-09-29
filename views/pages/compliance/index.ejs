@@ -467,7 +467,11 @@
             .then(function (o) {
                 if (!o.ok || o.j.error) { resEl.style.color = '#b91c1c'; resEl.textContent = o.j.error || 'Import failed'; commitBtn.disabled = true; return; }
                 var r = o.j.results;
-                var errHtml = r.errors.slice(0, 8).map(function (e) { return 'Row ' + e.row + ': ' + e.error; }).join('<br>');
+                // Error texts quote the uploaded cells ("Unknown skill "…"") and are
+                // joined into innerHTML below: escape them, or a crafted workbook runs
+                // script in the importing admin's session (audit SA-07).
+                var escH = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+                var errHtml = r.errors.slice(0, 8).map(function (e) { return 'Row ' + escH(e.row) + ': ' + escH(e.error); }).join('<br>');
                 if (o.j.dryRun) {
                     resEl.style.color = r.errors.length ? '#b45309' : '#15803d';
                     resEl.innerHTML = 'Preview: <strong>' + r.valid + '</strong> row(s) would be imported, ' +

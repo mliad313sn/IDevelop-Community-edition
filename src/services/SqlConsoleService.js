@@ -1862,6 +1862,7 @@ class SqlConsoleService {
 
     async generateFromExcelFile(filepath) {
         const workbook = new ExcelJS.Workbook();
+        require('../utils/importGuards').assertSafeXlsxFile(filepath); // zip-bomb guard (SA-09)
         await workbook.xlsx.readFile(filepath);
         return this.generateFromWorkbook(workbook);
     }

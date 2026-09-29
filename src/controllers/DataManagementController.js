@@ -965,6 +965,7 @@ class DataManagementController {
             // Read Excel file using exceljs
             const ExcelJS = require('exceljs');
             const workbook = new ExcelJS.Workbook();
+            require('../utils/importGuards').assertSafeXlsxFile(req.file.path); // zip-bomb guard (SA-09)
             await workbook.xlsx.readFile(req.file.path);
 
             // Parse each sheet
@@ -1304,6 +1305,7 @@ class DataManagementController {
                 // Read Excel file using exceljs
                 const ExcelJS = require('exceljs');
                 const workbook = new ExcelJS.Workbook();
+                require('../utils/importGuards').assertSafeXlsxFile(req.file.path); // zip-bomb guard (SA-09)
                 await workbook.xlsx.readFile(req.file.path);
                 const worksheet = workbook.getWorksheet(1); // First sheet
 
@@ -2060,6 +2062,7 @@ class DataManagementController {
             // Preview validates file structure
             const ExcelJS = require('exceljs');
             const workbook = new ExcelJS.Workbook();
+            require('../utils/importGuards').assertSafeXlsxFile(req.file.path); // zip-bomb guard (SA-09)
             await workbook.xlsx.readFile(req.file.path);
 
             // Validate using the SAME sheet-name aliases the importer accepts

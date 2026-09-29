@@ -359,8 +359,11 @@ class DashboardController {
             const filters = this._buildFilters(req);
             const options = {
                 search: req.query.search,
-                page: parseInt(req.query.page) || 1,
-                pageSize: parseInt(req.query.pageSize) || 25,
+                // Clamped (audit SA-11): an unbounded ?pageSize= asked the database
+                // for the whole scoped table in one page, and a negative ?page=
+                // reached PostgreSQL as a negative OFFSET (a 500).
+                page: Math.max(1, parseInt(req.query.page, 10) || 1),
+                pageSize: Math.min(Math.max(parseInt(req.query.pageSize, 10) || 25, 1), 200),
                 sortBy: req.query.sortBy,
                 sortDir: req.query.sortDir,
                 supervisorId: req.query.supervisorId,

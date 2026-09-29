@@ -58,6 +58,7 @@ class UnifiedImportService {
      */
     async importFullFramework(filepath) {
         const workbook = new ExcelJS.Workbook();
+        require('../utils/importGuards').assertSafeXlsxFile(filepath); // zip-bomb guard (SA-09)
         await workbook.xlsx.readFile(filepath);
 
         const results = {
@@ -801,6 +802,7 @@ class UnifiedImportService {
      */
     async importAssessments(filepath) {
         const workbook = new ExcelJS.Workbook();
+        require('../utils/importGuards').assertSafeXlsxFile(filepath); // zip-bomb guard (SA-09)
         await workbook.xlsx.readFile(filepath);
         const sheet = workbook.getWorksheet('Assessments');
         if (!sheet) throw new Error('Missing sheet: Assessments');

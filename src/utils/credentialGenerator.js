@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto = require('crypto');
+
 /**
  * Credential generation for bulk-imported accounts (employees / admins).
  * Produces a deterministic-ish username from identity fields and a strong
@@ -11,10 +13,17 @@ const LO = 'abcdefghijkmnpqrstuvwxyz';
 const NU = '23456789';
 const SY = '!@#$%&*?';
 
+// SECURITY (audit 2026-09-29, SA-01): a temporary password IS a credential —
+// it opens the account until the person changes it, and it is e-mailed or
+// handed out in bulk. Math.random (V8 xorshift128+) is predictable from a few
+// observed outputs, so one known temp password could reveal the others issued
+// by the same process. Every draw uses the CSPRNG (crypto.randomInt, unbiased).
+function randomIndex(n) {
+    return crypto.randomInt(n);
+}
+
 function pick(set) {
-    // Math.random is acceptable here — these are one-time temp passwords the
-    // user is expected to rotate, not long-lived secrets.
-    return set[Math.floor(Math.random() * set.length)];
+    return set[randomIndex(set.length)];
 }
 
 /** One candidate: >=12 chars, all four classes, shuffled. */
@@ -24,7 +33,7 @@ function candidatePassword() {
     while (chars.length < 12) chars.push(pick(all));
     // Fisher-Yates-ish shuffle
     for (let i = chars.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = randomIndex(i + 1);
         [chars[i], chars[j]] = [chars[j], chars[i]];
     }
     return chars.join('');

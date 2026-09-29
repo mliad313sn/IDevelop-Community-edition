@@ -54,15 +54,15 @@ function tr(req, key, fallback, params) {
 }
 
 function denyIfNotSuperAdmin(req, res) {
-    if (!RBACService.isSuperAdmin || !RBACService.isSuperAdmin(req.user)) {
-        if (!(req.user && req.user.role === 'superadmin')) {
-            req.flash(
-                'error',
-                tr(req, 'sso_only_superadmin', 'Only SuperAdmins can manage Single Sign-On.')
-            );
-            res.redirect('/dashboard');
-            return true;
-        }
+    // userType AND role (RBACService.isSuperAdmin): a bare `role === 'superadmin'`
+    // fallback here would let any principal carrying that field through.
+    if (!RBACService.isSuperAdmin(req.user)) {
+        req.flash(
+            'error',
+            tr(req, 'sso_only_superadmin', 'Only SuperAdmins can manage Single Sign-On.')
+        );
+        res.redirect('/dashboard');
+        return true;
     }
     return false;
 }

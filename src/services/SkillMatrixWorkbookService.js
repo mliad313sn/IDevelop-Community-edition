@@ -871,6 +871,7 @@ class SkillMatrixWorkbookService {
         let model;
         if (fmt === 'excel') {
             const wb = new ExcelJS.Workbook();
+            require('../utils/importGuards').assertSafeXlsxFile(filepath); // zip-bomb guard (SA-09)
             await wb.xlsx.readFile(filepath);
             model = this._workbookToModel(wb);
         } else {
