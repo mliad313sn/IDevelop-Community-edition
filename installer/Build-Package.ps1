@@ -238,6 +238,7 @@ $productScripts = @(
     'rotate-app-key.js',       # server.js points the operator at it (APP_KEY rotation)
     'seed-cert-policies.js',   # apply a default certification policy (dry-run + --commit)
     'seed-starter-framework.js', # optional generic starter capability framework (npm run db:seed:starter)
+    'import-esco.js',          # ESCO CSV -> framework JSON for seed-starter-framework --file (npm run import:esco)
     'reset-superadmin-mfa.js', # Manage -ResetSuperadminMfa: OS-admin recovery of a SuperAdmin's MFA
     'Health-Watchdog.ps1',     # service watchdog (Scheduled Task)
     'Verify-BackupRestore.ps1' # quarterly restore drill

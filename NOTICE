@@ -32,3 +32,21 @@ Third-party components bundled in this repository
 Their licences are unaffected by this one and must be preserved. Do not edit
 vendored files. npm dependencies are installed from the public registry under
 their own licences (see package.json / package-lock.json).
+
+--------------------------------------------------------------------------------
+Optional third-party data you may import (not bundled)
+--------------------------------------------------------------------------------
+- ESCO (European Skills, Competences, Qualifications and Occupations),
+  (c) European Union, https://esco.ec.europa.eu, licensed under the Creative
+  Commons Attribution 4.0 International licence (CC BY 4.0,
+  https://creativecommons.org/licenses/by/4.0/).
+  No ESCO data is distributed with this project. scripts/import-esco.js converts
+  an ESCO CSV export that you download yourself. An installation that imports
+  ESCO data must give appropriate credit where its users can see it, state that
+  the data was converted (and filtered, if --group or --limit was used), and
+  link to the licence, for example:
+    "Skills taxonomy contains data from ESCO, (c) European Union,
+     https://esco.ec.europa.eu, used under CC BY 4.0. Converted and filtered
+     for this installation."
+  The generated file carries this attribution in its "attribution" field. The
+  European Commission does not endorse this project or your use of the data.
