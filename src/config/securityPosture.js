@@ -126,6 +126,13 @@ const CATEGORIES = [
                 tests: ['securityControls.test.js', 'copilotPresetsAndEmails.test.js'],
             },
             {
+                id: 'uploads',
+                fr: 'Fichiers importés contrôlés : taille et nombre d’entrées plafonnés (anti « zip bomb »), cellules échappées à l’affichage.',
+                en: 'Uploaded files checked: size and entry count capped (zip-bomb protection), cell values escaped on display.',
+                evidence: ['src/utils/importGuards.js'],
+                tests: ['securityAudit20260929.test.js'],
+            },
+            {
                 id: 'redirects',
                 fr: 'Redirections limitées au site ; liens de réinitialisation construits depuis l’adresse configurée, jamais depuis l’en-tête Host.',
                 en: 'Redirects restricted to the site; reset links built from the configured address, never the Host header.',
