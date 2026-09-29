@@ -52,6 +52,8 @@ async function init() {
                 'safety',
                 // Executive decision surfaces: key-person risk, exposure by site, board pack
                 'exec',
+                // AI companion (the « Assistant » tab of the help panel)
+                'companion',
                 // Form validation messages (utils/validators.js withMessage keys) —
                 'validation',
             ],

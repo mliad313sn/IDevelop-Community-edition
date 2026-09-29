@@ -39,6 +39,16 @@ First public release of **IDevelop Community Edition**.
   using hashed tokens.
 - CI on PostgreSQL 16 and 17 using the product's own migrator and a
   deterministic seed.
+- AI companion for every signed-in user: an "Assistant" tab (first, default) in
+  the help panel answers "how do I…", "what should I do next", "explain this
+  page" and "what is…" from a bilingual built-in knowledge base
+  (`src/config/companionKnowledge.js`) filtered by role and permissions, with no
+  language model required. Employees get only their own readiness and to-dos;
+  managers' and admins' data questions go through the RBAC-scoped copilot with
+  its EU AI Act guardrails. An allowed copilot model may rephrase product-guide
+  answers but never receives personal data. `POST /api/companion/ask`,
+  `GET /api/companion/suggestions`, admin switch `companion.enabled` (default
+  on), audited as `COMPANION_QUERY`.
 
 ### Changed
 

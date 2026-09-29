@@ -1,6 +1,10 @@
+<%# AI companion: the « Assistant » tab (first, default) unless the administrator
+    switched it off (companion.enabled). Default ON when the flag is absent. %>
+<% const _companionOn = typeof companionEnabled === 'undefined' || companionEnabled !== false; %>
 <!-- Floating Help Button -->
 <button id="helpFab" class="help-fab" aria-label="<%= __('chrome:help_aria') %>" aria-expanded="false">
     <span class="help-fab-icon">?</span>
+    <% if (_companionOn) { %><span class="hz-companion-dot" data-companion-dot data-nudge="<%= __('companion:nudge') %>" hidden aria-hidden="true"></span><% } %>
 </button>
 
 <!-- Help Panel -->
@@ -12,14 +16,55 @@
 
     <!-- Tabs -->
     <div class="help-tabs">
-        <button class="help-tab active" data-target="tab-guide"><%= __('chrome:help_tab_current') %></button>
-        <button class="help-tab" data-target="tab-manual"><%= __('chrome:help_tab_manual') %></button>
+        <% if (_companionOn) { %>
+        <button type="button" class="help-tab active" data-target="tab-assistant" aria-controls="tab-assistant"><i class="fas fa-comments" aria-hidden="true"></i> <%= __('companion:tab_assistant') %></button>
+        <% } %>
+        <button type="button" class="help-tab<%= _companionOn ? '' : ' active' %>" data-target="tab-guide" aria-controls="tab-guide"><%= __('chrome:help_tab_current') %></button>
+        <button type="button" class="help-tab" data-target="tab-manual" aria-controls="tab-manual"><%= __('chrome:help_tab_manual') %></button>
     </div>
 
     <!-- Content Area -->
     <div class="help-content">
+        <% if (_companionOn) { %>
+        <!-- Tab 0: AI companion (chat). History lives in sessionStorage, per user,
+             for this browser tab only; public/js/companion.js drives it. -->
+        <div id="tab-assistant" class="help-section active hz-companion" data-companion
+             data-user-key="<%= user.userType %>:<%= user.id %>"
+             data-i18n="<%= JSON.stringify({
+                 welcome: __('companion:welcome'), welcomeNote: __('companion:welcome_note'),
+                 you: __('companion:you'), assistant: __('companion:assistant'),
+                 error: __('companion:error'), tooLong: __('companion:too_long'),
+                 linksLabel: __('companion:links_label'),
+                 src_kb: __('companion:src_kb'), src_actions: __('companion:src_actions'),
+                 src_copilot: __('companion:src_copilot'), src_llm: __('companion:src_llm')
+             }) %>">
+            <div class="hz-companion__bar">
+                <p class="hz-companion__note"><%= __('companion:history_note') %></p>
+                <button type="button" class="hz-companion__clear" data-companion-clear>
+                    <i class="fas fa-eraser" aria-hidden="true"></i> <%= __('companion:clear') %>
+                </button>
+            </div>
+            <div class="hz-companion__thread" role="log" aria-live="polite" aria-relevant="additions"
+                 aria-label="<%= __('companion:thread_label') %>" tabindex="0" data-companion-thread></div>
+            <p class="hz-companion__typing" role="status" data-companion-typing hidden>
+                <span class="hz-companion__dots" aria-hidden="true"><span></span><span></span><span></span></span>
+                <%= __('companion:typing') %>
+            </p>
+            <div class="hz-companion__chips" role="group" aria-label="<%= __('companion:suggestions_label') %>" data-companion-chips></div>
+            <form class="hz-companion__form" data-companion-form novalidate>
+                <label for="companionInput" class="sr-only"><%= __('companion:input_label') %></label>
+                <textarea id="companionInput" class="hz-companion__input" rows="2" maxlength="500"
+                          placeholder="<%= __('companion:placeholder') %>" data-companion-input></textarea>
+                <button type="submit" class="hz-companion__send" data-companion-send
+                        aria-label="<%= __('companion:send') %>" title="<%= __('companion:send') %>">
+                    <i class="fas fa-paper-plane" aria-hidden="true"></i>
+                </button>
+            </form>
+        </div>
+        <% } %>
+
         <!-- Tab 1: Current Page Guide (Dynamic) -->
-        <div id="tab-guide" class="help-section active">
+        <div id="tab-guide" class="help-section<%= _companionOn ? '' : ' active' %>">
             <div id="guide-content">
                 <div class="help-block">
                     <p class="text-muted"><%= __('chrome:help_guide_placeholder') %></p>
@@ -160,3 +205,6 @@
     authenticated page. %>
 <link rel="stylesheet" href="/css/help.css?v=<%= assetVersion %>">
 <script src="/js/help.js?v=<%= assetVersion %>" defer></script>
+<% if (_companionOn) { %>
+<script src="/js/companion.js?v=<%= assetVersion %>" defer></script>
+<% } %>

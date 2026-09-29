@@ -236,14 +236,23 @@ async function careerPathData(req, res) {
 
 // ---- Action Center (G2, thin) -------------------------------------------
 // Live count of items waiting on THIS user, computed on read (no write pipeline).
-async function myActions(req, res) {
-    const user = req.user;
+/**
+ * The signed-in user's to-do items (the Action Center list), RBAC-scoped:
+ * managers/admins get their scoped queues, an employee only their OWN items.
+ * Shared by GET /api/my-actions and the AI companion's "what should I do next".
+ *
+ * @param {object} user       req.user
+ * @param {function} [translate] (fullKey, fallback, params) → label; defaults to
+ *                             the English fallback when no i18n is at hand
+ * @returns {Promise<Array<{label,count,href,icon,overdue?}>>}
+ */
+async function collectMyActions(user, translate) {
+    const tr = typeof translate === 'function' ? translate : (k, fallback) => fallback;
     const items = [];
     // Action Center is the app's most-viewed component (bell + "what awaits you"
     // strip) — labels must follow the user's locale, not ship English on a
     // French-first product. Resolve server-side; the client renders verbatim.
-    const t = (key, fallback) =>
-        req.t ? req.t('talentx:' + key, { defaultValue: fallback }) : fallback;
+    const t = (key, fallback) => tr('talentx:' + key, fallback);
     const isMgrAdmin = user.userType === 'admin' || user.userType === 'manager';
     try {
         if (isMgrAdmin) {
@@ -313,9 +322,7 @@ async function myActions(req, res) {
                     const overdue =
                         cycle.closesAt && new Date(cycle.closesAt).getTime() < Date.now();
                     const tc = (key, fallback) =>
-                        req.t
-                            ? req.t('admin:' + key, { defaultValue: fallback, cycle: cycle.code })
-                            : fallback;
+                        tr('admin:' + key, fallback, { cycle: cycle.code });
                     if (p.states.not_started.count) {
                         items.push({
                             label: tc(
@@ -478,6 +485,13 @@ async function myActions(req, res) {
     } catch (e) {
         /* never block the bell */
     }
+    return items;
+}
+
+async function myActions(req, res) {
+    const translate = (key, fallback, params) =>
+        req.t ? req.t(key, { defaultValue: fallback, ...(params || {}) }) : fallback;
+    const items = await collectMyActions(req.user, translate);
     res.json({ total: items.reduce((a, i) => a + i.count, 0), items });
 }
 
@@ -680,6 +694,7 @@ module.exports = {
     careerPathPage,
     careerPathData,
     myActions,
+    collectMyActions,
     employeeDevelopment,
     employeeTimeline,
 };

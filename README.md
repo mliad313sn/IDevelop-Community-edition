@@ -76,6 +76,11 @@ hold, retention policies, rate limiting, CSP with nonces.
 LMS connectors (LTI 1.3, xAPI LRS and more), SMTP notifications and digests,
 optional LLM "talent copilot" behind an anonymisation layer (off by default).
 
+**AI companion** — an "Assistant" tab in the help panel for every user: how-to
+answers with a link to the right screen, personalised next steps, page and
+concept explanations, in French and English. Works fully offline with no language
+model; employees only ever see their own data.
+
 **Operations** — health/readiness/metrics endpoints, in-process job scheduler
 (or BullMQ on Redis for multi-instance), daily database backups, restore drills,
 installable PWA, Windows installer, Docker image.

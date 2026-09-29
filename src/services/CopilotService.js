@@ -873,6 +873,50 @@ class CopilotService {
         return this._callLlm(cfg, system, userPrompt, cfg.timeoutMs);
     }
 
+    /**
+     * Whether a language model may be called at all: configured (provider not
+     * 'none') AND not refused by the EU-residency guard. Never calls the model.
+     */
+    async llmUsable() {
+        const cfg = await this.getConfig();
+        return cfg.provider !== 'none' && !cfg.blocked;
+    }
+
+    /**
+     * Public, NARROW wrapper for other in-app assistants (CompanionService): one
+     * completion over caller-supplied, NON-PERSONAL text (product-guide snippets),
+     * through the SAME connection, residency guard, SSRF guard and timeout as the
+     * copilot. It never touches talent data and never anonymises (there is
+     * nothing to anonymise — the caller guarantees the prompt carries no personal
+     * data). Returns `{ ok:false, reason }` when no model may be used (not
+     * configured / residency-blocked) or the call failed — the caller then answers
+     * deterministically — and `{ ok:true, text, provider, model, host, internal }`
+     * otherwise. The call is bounded by `maxTimeoutMs` (default 10 s).
+     */
+    async completeText(system, userPrompt, { maxTimeoutMs = 10000 } = {}) {
+        const cfg = await this.getConfig();
+        if (cfg.provider === 'none') return { ok: false, reason: 'not_configured' };
+        if (cfg.blocked)
+            return { ok: false, reason: cfg.blocked, provider: cfg.provider, blocked: true };
+        const meta = {
+            provider: cfg.provider,
+            model: cfg.model || null,
+            host: this._hostOf(cfg.url),
+        };
+        try {
+            const internal = await this._isInternalTarget(cfg.url);
+            const text = await this._callLlm(
+                cfg,
+                String(system || ''),
+                String(userPrompt || ''),
+                Math.min(Number(cfg.timeoutMs) || 20000, Number(maxTimeoutMs) || 10000)
+            );
+            return { ok: true, text: String(text || ''), internal, ...meta };
+        } catch (e) {
+            return { ok: false, reason: 'error', error: e.message, ...meta };
+        }
+    }
+
     /** Health/status of the configured LLM connection (for the admin UI / test button). */
     async llmStatus() {
         const cfg = await this.getConfig();
