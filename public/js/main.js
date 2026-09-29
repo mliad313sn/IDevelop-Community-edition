@@ -328,28 +328,87 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
-// ── Theme Toggle ────────────────────────────────────────────────────
-// Apply saved theme immediately (before paint) to avoid flash
-(function () {
-    const saved = localStorage.getItem('theme');
-    if (saved) {
-        document.documentElement.setAttribute('data-theme', saved);
+// ── Appearance: mode (light/dark) + colour theme ───────────────────
+// Light ("Daylight") is the default; dark is opt-in. The colour theme
+// (iris | meadow | sunrise | ocean) is a per-user preference kept in
+// localStorage. The inline script in each page's <head> applies both before
+// first paint; these helpers change them afterwards.
+const HZ_PALETTES = ['iris', 'meadow', 'sunrise', 'ocean'];
+
+function hzStore(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (_) {
+        /* private mode: the choice lasts for this page only */
     }
-    // Default is dark (no attribute needed, :root = dark)
-})();
-
-function toggleTheme() {
-    const current = document.documentElement.getAttribute('data-theme');
-    const next = current === 'light' ? 'dark' : 'light';
-
-    if (next === 'dark') {
-        document.documentElement.removeAttribute('data-theme');
-    } else {
-        document.documentElement.setAttribute('data-theme', 'light');
-    }
-
-    localStorage.setItem('theme', next);
 }
+
+function setThemeMode(mode) {
+    const root = document.documentElement;
+    if (mode === 'dark') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', 'light');
+    hzStore('theme', mode === 'dark' ? 'dark' : 'light');
+    hzSyncMenu();
+}
+
+function setPalette(name) {
+    const root = document.documentElement;
+    const pal = HZ_PALETTES.indexOf(name) === -1 ? 'iris' : name;
+    if (pal === 'iris') root.removeAttribute('data-palette');
+    else root.setAttribute('data-palette', pal);
+    hzStore('palette', pal);
+    hzSyncMenu();
+}
+
+// Kept for any caller of the old one-button toggle.
+function toggleTheme() {
+    const light = document.documentElement.getAttribute('data-theme') === 'light';
+    setThemeMode(light ? 'dark' : 'light');
+}
+
+function hzSyncMenu() {
+    const root = document.documentElement;
+    const mode = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    const pal = root.getAttribute('data-palette') || 'iris';
+    document.querySelectorAll('[data-hz-mode]').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-hz-mode') === mode));
+    });
+    document.querySelectorAll('[data-hz-palette]').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-hz-palette') === pal));
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    const btn = document.getElementById('hzPaletteBtn');
+    const menu = document.getElementById('hzPaletteMenu');
+    if (!btn || !menu) return;
+    const close = function () {
+        menu.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+    };
+    btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        const open = menu.hidden;
+        menu.hidden = !open;
+        btn.setAttribute('aria-expanded', String(open));
+        if (open) hzSyncMenu();
+    });
+    menu.addEventListener('click', function (e) {
+        e.stopPropagation();
+        const m = e.target.closest('[data-hz-mode]');
+        if (m) setThemeMode(m.getAttribute('data-hz-mode'));
+        const p = e.target.closest('[data-hz-palette]');
+        if (p) setPalette(p.getAttribute('data-hz-palette'));
+    });
+    document.addEventListener('click', close);
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !menu.hidden) {
+            close();
+            btn.focus();
+        }
+    });
+    hzSyncMenu();
+});
 
 // Toast notification system
 window.showToast = function (message, type = 'info', duration = 5000) {

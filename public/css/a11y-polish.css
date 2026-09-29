@@ -89,7 +89,7 @@ table a:focus-visible, table button:focus-visible { outline-offset: 1px; }
 /* Skip link — visually hidden until keyboard-focused (WCAG 2.4.1 bypass blocks). */
 .skip-link {
   position: absolute; left: 8px; top: -48px; z-index: 10000;
-  /* --brand is this theme's BRAND (#7C6CFF), so the previous hardcoded white
+  /* --brand is this theme's BRAND (var(--brand)), so the previous hardcoded white
      text scored 2.21:1 — the very first control a keyboard user meets was the
      least readable thing on the page. Dark ink on brand is the same pairing
      .btn-primary already uses and measures ~8:1. */

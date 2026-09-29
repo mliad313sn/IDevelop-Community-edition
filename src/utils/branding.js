@@ -99,8 +99,11 @@ function contrastRatio(hexA, hexB) {
 function buildAccentCss(hex) {
     const h = normalizeHex(hex);
     if (!h) return '';
+    // Four :root pseudo-classes out-rank the colour-theme selectors of
+    // public/css/horizon.css (:root[data-theme][data-palette]), so an
+    // organisation's own accent always wins over a user's colour theme.
     return (
-        ':root{' +
+        ':root:root:root:root{' +
         `--brand:${h};` +
         `--brand-hover:${shade(h, 0.1)};` +
         `--brand-pressed:${shade(h, -0.1)};` +

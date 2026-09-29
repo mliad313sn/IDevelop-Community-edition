@@ -546,5 +546,15 @@
   "home_todo_all": "All my notifications",
   "nav_safety_gate": "Safety clearances",
   "nav_safety_gate_title": "Who is blocked or expiring on critical safety competencies, by site and role",
-  "notif_family_safety": "Safety clearances"
+  "notif_family_safety": "Safety clearances",
+  "theme_menu_title": "Appearance",
+  "theme_menu_aria": "Change appearance: light or dark mode and colour theme",
+  "theme_mode": "Mode",
+  "theme_light": "Light",
+  "theme_dark": "Dark",
+  "theme_palette": "Colour theme",
+  "palette_iris": "Iris",
+  "palette_meadow": "Meadow",
+  "palette_sunrise": "Sunrise",
+  "palette_ocean": "Ocean"
 }

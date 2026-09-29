@@ -14,7 +14,7 @@
     --rb-text-primary: #E4E8F0;
     --rb-text-secondary: rgba(255, 255, 255, 0.55);
     --rb-text-muted: rgba(255, 255, 255, 0.28);
-    --rb-brand: #7C6CFF;
+    --rb-brand: var(--brand);
     --rb-brand-dim: rgba(124, 108, 255, 0.12);
     --rb-emerald: #2DD4A0;
     --rb-amber: #F5A623;
@@ -136,11 +136,11 @@
 .rb-btn.primary {
     background: var(--rb-brand-dim);
     color: var(--rb-brand);
-    border-color: rgba(124, 108, 255, 0.25);
+    border-color: color-mix(in srgb, var(--brand) 25%, transparent);
 }
 
 .rb-btn.primary:hover {
-    background: rgba(124, 108, 255, 0.2);
+    background: color-mix(in srgb, var(--brand) 20%, transparent);
     border-color: var(--rb-brand);
 }
 
@@ -277,7 +277,7 @@
     gap: 5px;
     padding: 3px 10px;
     background: var(--rb-brand-dim);
-    border: 1px solid rgba(124, 108, 255, 0.2);
+    border: 1px solid color-mix(in srgb, var(--brand) 20%, transparent);
     border-radius: 20px;
     font-size: 11px;
     color: var(--rb-brand);
@@ -1111,7 +1111,7 @@
     --rb-text-primary: #161A2E;
     --rb-text-secondary: #5F647C;
     --rb-text-muted: #8A8EA3;
-    --rb-brand: #5B4BE0;
+    --rb-brand: var(--brand);
     --rb-brand-dim: rgba(91, 75, 224, 0.10);
     --rb-emerald: #0F9B6E;
     --rb-amber: #D4900A;

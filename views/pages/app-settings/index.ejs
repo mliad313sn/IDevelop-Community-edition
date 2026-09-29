@@ -161,7 +161,7 @@
                                 <i id="brandPreviewIcon" class="fas fa-people-group" aria-hidden="true" style="font-size:1.6rem;color:var(--brand-text);<%= _b.logoUrl ? 'display:none;' : '' %>"></i>
                                 <div><strong id="brandPreviewName"><%= _b.appName || 'IDevelop' %></strong><br>
                                     <small style="color:var(--text-secondary);"><%= __('admin:brand_preview') %> ·
-                                        <span id="brandPreviewSwatch" style="display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;background:<%= _b.accentColor || '#7C6CFF' %>;"></span>
+                                        <span id="brandPreviewSwatch" style="display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;background:<%= _b.accentColor || 'var(--brand)' %>;"></span>
                                         <code id="brandPreviewHex"><%= _b.accentColor || '#7C6CFF' %></code></small>
                                 </div>
                             </div>

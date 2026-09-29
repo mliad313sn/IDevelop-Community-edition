@@ -1,0 +1,605 @@
+/* ═══════════════════════════════════════════════════════════════════
+   IDevelop Community Edition — "Open Horizon" theme layer
+   ───────────────────────────────────────────────────────────────────
+   Loaded LAST, after style.css and a11y-polish.css. It gives the product
+   its own visual language — friendly, airy, rounded — instead of the dense
+   dark console the code base started from:
+
+     • light-first ("Daylight"), with a soft plum-navy dark mode ("Dusk")
+     • four friendly colour themes: Iris (default), Meadow, Sunrise, Ocean
+       — chosen per user from the palette menu in the top bar
+     • generous radii, pill buttons and navigation, soft diffuse shadows
+     • sentence-case labels in the body font (no monospace console labels)
+     • gradient page banners instead of hard accent bars
+
+   Mode:    <html data-theme="light">  (no attribute = dark)
+   Palette: <html data-palette="meadow|sunrise|ocean"> (none = iris)
+   Every brand pairing below is measured ≥ 4.5:1 (see
+   tests/unit/horizonThemes.test.js). Organisation branding set in
+   Settings → Branding still overrides the accent (branding.js emits a
+   higher-specificity :root block).
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Tokens — Dusk (dark mode) ─────────────────────────────────── */
+:root {
+    --bg-base: #18172c;
+    --bg-panel: #1d1c35;
+    --bg-card: #23213f;
+    --bg-elevated: #2c2a4d;
+    --bg-input: #1d1c35;
+
+    --text-primary: #f2f1fa;
+    --text-secondary: #c4c2da;
+    --text-muted: #a9a7c4;
+    --text-inverse: #18172c;
+
+    --border: rgba(242, 241, 250, 0.08);
+    --border-subtle: rgba(242, 241, 250, 0.05);
+    --border-input: rgba(242, 241, 250, 0.22);
+
+    --brand: #8b7dff;
+    --brand-hover: #a194ff;
+    --brand-pressed: #7a6bf5;
+    --brand-text: #a99fff;
+    --brand-dim: rgba(139, 125, 255, 0.16);
+    --brand-subtle: rgba(139, 125, 255, 0.1);
+    --brand-glow: rgba(139, 125, 255, 0.35);
+    --spark: #ff8a66;
+    --spark-dim: rgba(255, 138, 102, 0.14);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25), 0 2px 10px rgba(0, 0, 0, 0.18);
+    --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.28);
+    --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.35);
+    --shadow-xl: 0 28px 64px rgba(0, 0, 0, 0.42);
+
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 18px;
+    --radius-xl: 24px;
+
+    --topbar-height: 64px;
+    --sidebar-width: 256px;
+
+    /* Friendly, readable figures without the console look: data uses the
+       body face with tabular numbers; code stays monospace (see §9). */
+    --font-data: var(--font-body);
+
+    --hz-glow-a: rgba(139, 125, 255, 0.16);
+    --hz-glow-b: rgba(255, 138, 102, 0.1);
+    /* Second colour of decorative gradients (avatars, help button). */
+    --hz-duo: #ff8a66;
+}
+
+/* ── 2. Tokens — Daylight (light mode, the default) ───────────────── */
+:root[data-theme='light'] {
+    --bg-base: #f7f6fc;
+    --bg-panel: #ffffff;
+    --bg-card: #ffffff;
+    --bg-elevated: #f1eff9;
+    --bg-input: #ffffff;
+
+    --text-primary: #1f1d3a;
+    --text-secondary: #514f6b;
+    --text-muted: #63617d;
+    --text-inverse: #ffffff;
+
+    --border: rgba(31, 29, 58, 0.08);
+    --border-subtle: rgba(31, 29, 58, 0.05);
+    --border-input: rgba(31, 29, 58, 0.24);
+
+    --brand: #5b4be0;
+    --brand-hover: #4e3fd0;
+    --brand-pressed: #4334b8;
+    --brand-text: #4e3fd0;
+    --brand-dim: rgba(91, 75, 224, 0.1);
+    --brand-subtle: rgba(91, 75, 224, 0.06);
+    --brand-glow: rgba(91, 75, 224, 0.28);
+    --spark: #c2410c;
+    --spark-dim: rgba(255, 122, 89, 0.12);
+
+    --shadow-sm: 0 1px 2px rgba(31, 29, 58, 0.04), 0 4px 14px rgba(31, 29, 58, 0.05);
+    --shadow-md: 0 8px 28px rgba(31, 29, 58, 0.08);
+    --shadow-lg: 0 18px 48px rgba(31, 29, 58, 0.12);
+    --shadow-xl: 0 28px 64px rgba(31, 29, 58, 0.16);
+
+    --hz-glow-a: rgba(91, 75, 224, 0.1);
+    --hz-glow-b: rgba(255, 122, 89, 0.1);
+}
+
+/* ── 3. Colour themes ─────────────────────────────────────────────── */
+/* Meadow — calm green */
+:root[data-palette='meadow'] {
+    --brand: #43c08a;
+    --brand-hover: #5ccf9c;
+    --brand-pressed: #36a877;
+    --brand-text: #6ad3a4;
+    --brand-dim: rgba(67, 192, 138, 0.16);
+    --brand-subtle: rgba(67, 192, 138, 0.1);
+    --brand-glow: rgba(67, 192, 138, 0.35);
+    --hz-glow-a: rgba(67, 192, 138, 0.14);
+    --hz-duo: #34b3c8;
+}
+:root[data-theme='light'][data-palette='meadow'] {
+    --brand: #1d7f55;
+    --brand-hover: #17734c;
+    --brand-pressed: #126440;
+    --brand-text: #17734c;
+    --brand-dim: rgba(29, 127, 85, 0.1);
+    --brand-subtle: rgba(29, 127, 85, 0.06);
+    --brand-glow: rgba(29, 127, 85, 0.28);
+    --hz-glow-a: rgba(29, 127, 85, 0.1);
+}
+/* Sunrise — warm coral */
+:root[data-palette='sunrise'] {
+    --brand: #ff8a5c;
+    --brand-hover: #ff9d76;
+    --brand-pressed: #f07744;
+    --brand-text: #ffa784;
+    --brand-dim: rgba(255, 138, 92, 0.16);
+    --brand-subtle: rgba(255, 138, 92, 0.1);
+    --brand-glow: rgba(255, 138, 92, 0.35);
+    --hz-glow-a: rgba(255, 138, 92, 0.14);
+    --hz-glow-b: rgba(139, 125, 255, 0.1);
+    --hz-duo: #f2b33d;
+}
+:root[data-theme='light'][data-palette='sunrise'] {
+    --brand: #c2410c;
+    --brand-hover: #b13a0a;
+    --brand-pressed: #9a3208;
+    --brand-text: #b13a0a;
+    --brand-dim: rgba(194, 65, 12, 0.1);
+    --brand-subtle: rgba(194, 65, 12, 0.06);
+    --brand-glow: rgba(194, 65, 12, 0.26);
+    --hz-glow-a: rgba(255, 122, 89, 0.12);
+    --hz-glow-b: rgba(91, 75, 224, 0.08);
+}
+/* Ocean — clear blue */
+:root[data-palette='ocean'] {
+    --brand: #5fa2ff;
+    --brand-hover: #7bb3ff;
+    --brand-pressed: #4a90f0;
+    --brand-text: #8bbbff;
+    --brand-dim: rgba(95, 162, 255, 0.16);
+    --brand-subtle: rgba(95, 162, 255, 0.1);
+    --brand-glow: rgba(95, 162, 255, 0.35);
+    --hz-glow-a: rgba(95, 162, 255, 0.14);
+    --hz-duo: #8b7dff;
+}
+:root[data-theme='light'][data-palette='ocean'] {
+    --brand: #1d6ac9;
+    --brand-hover: #195fb6;
+    --brand-pressed: #14519c;
+    --brand-text: #195fb6;
+    --brand-dim: rgba(29, 106, 201, 0.1);
+    --brand-subtle: rgba(29, 106, 201, 0.06);
+    --brand-glow: rgba(29, 106, 201, 0.26);
+    --hz-glow-a: rgba(29, 106, 201, 0.1);
+}
+
+/* ── 4. Canvas ─────────────────────────────────────────────────────── */
+body {
+    background:
+        radial-gradient(1100px 520px at 105% -8%, var(--hz-glow-a), transparent 62%),
+        radial-gradient(900px 480px at -12% 108%, var(--hz-glow-b), transparent 60%), var(--bg-base);
+    background-attachment: fixed;
+    font-size: 14.5px;
+}
+body::before {
+    display: none; /* no grid texture */
+}
+:root ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+:root ::-webkit-scrollbar-thumb {
+    background: var(--border-input);
+    border-radius: 999px;
+}
+
+/* ── 5. Sidebar — airy, pill navigation ───────────────────────────── */
+:root .sidebar {
+    background: var(--bg-panel);
+    border-right: 0;
+    box-shadow: var(--shadow-sm);
+}
+:root .sidebar-header {
+    border-bottom: 0;
+    padding: 0 18px;
+}
+:root .sidebar-logo-text {
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-size: 1.12rem;
+}
+:root .sidebar-logo-mark {
+    border-radius: 9px;
+    box-shadow: 0 6px 16px var(--brand-glow);
+}
+:root .sidebar-section-label {
+    font: 700 12px/1.2 var(--font-body);
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-muted);
+    padding: 14px 20px 6px;
+    min-height: 30px;
+}
+:root .sidebar-link {
+    border-radius: 999px;
+    margin: 2px 12px;
+    padding: 10px 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+:root .sidebar-link i {
+    opacity: 0.9;
+}
+:root .sidebar-link:hover {
+    background: var(--brand-subtle);
+    color: var(--text-primary);
+}
+:root .sidebar-link.active {
+    background: var(--brand-dim);
+    color: var(--brand-text);
+    font-weight: 700;
+    box-shadow: none;
+}
+:root .sidebar-link.active::before,
+:root .sidebar-link.active::after {
+    display: none; /* no accent rail */
+}
+:root .sidebar-user {
+    border-top: 1px solid var(--border-subtle);
+}
+
+/* ── 6. Top bar — frosted, no hard rule ───────────────────────────── */
+:root .topbar {
+    background: color-mix(in srgb, var(--bg-base) 78%, transparent);
+    backdrop-filter: saturate(160%) blur(14px);
+    -webkit-backdrop-filter: saturate(160%) blur(14px);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 0 28px;
+}
+:root .topbar-page-title {
+    font-weight: 700;
+    font-size: 1.02rem;
+    letter-spacing: -0.01em;
+}
+:root .topbar-avatar,
+:root .sidebar-user-avatar {
+    background: linear-gradient(135deg, var(--brand), var(--hz-duo));
+    color: #fff;
+}
+:root .theme-toggle,
+:root .ac-bell,
+:root .hz-palette-btn {
+    border-radius: 999px;
+}
+
+/* ── 7. Page banner — replaces the accent-bar header ──────────────── */
+:root .page-header {
+    border-left: 0;
+    border-radius: var(--radius-xl);
+    background:
+        radial-gradient(420px 180px at 100% 0%, var(--spark-dim), transparent 70%),
+        linear-gradient(120deg, var(--brand-dim), var(--brand-subtle) 55%, transparent),
+        var(--bg-card);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-subtle);
+    padding: 22px 26px;
+}
+:root .page-header h1 {
+    font-weight: 800;
+    letter-spacing: -0.025em;
+}
+:root .page-header h1 > i {
+    display: inline-grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    background: var(--bg-card);
+    color: var(--brand-text);
+    font-size: 1.05rem;
+    box-shadow: var(--shadow-sm);
+}
+
+/* ── 8. Surfaces ───────────────────────────────────────────────────── */
+:root .card,
+:root .stat-card,
+:root .table-wrapper,
+:root .dashboard-section,
+:root .report-section,
+:root .modal-content {
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-sm);
+    background: var(--bg-card);
+}
+:root .stat-card::before {
+    display: none;
+}
+:root .stat-card:hover,
+:root .card:hover {
+    box-shadow: var(--shadow-md);
+}
+:root .stat-card h3 {
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: var(--font-body);
+    font-weight: 600;
+}
+:root .empty-state {
+    border-radius: var(--radius-lg);
+    background: var(--bg-elevated);
+}
+
+/* ── 9. Type ───────────────────────────────────────────────────────── */
+:root h1,
+:root h2,
+:root h3 {
+    letter-spacing: -0.015em;
+}
+:root .stat-value,
+:root .kpi-value,
+:root td,
+:root .num {
+    font-variant-numeric: tabular-nums;
+}
+:root code,
+:root kbd,
+:root pre,
+:root samp {
+    font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+}
+:root .badge,
+:root .kpi-label,
+:root .filter-group label,
+:root .data-table th {
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* ── 10. Buttons & controls ────────────────────────────────────────── */
+:root .btn {
+    border-radius: 999px;
+    font-weight: 600;
+    padding-inline: 18px;
+    transition:
+        transform 0.12s ease,
+        box-shadow 0.15s ease,
+        background 0.15s ease;
+}
+:root .btn:active {
+    transform: translateY(1px);
+}
+:root .btn-primary {
+    background: var(--brand);
+    border-color: transparent;
+    color: var(--text-inverse);
+    box-shadow: 0 6px 18px var(--brand-glow);
+}
+:root .btn-primary:hover {
+    background: var(--brand-hover);
+    box-shadow: 0 8px 22px var(--brand-glow);
+}
+:root .form-control,
+:root .filter-select,
+:root .search-input,
+:root select,
+:root textarea,
+:root input[type='text'],
+:root input[type='email'],
+:root input[type='password'],
+:root input[type='search'],
+:root input[type='number'],
+:root input[type='date'] {
+    border-radius: var(--radius-md);
+}
+:root .search-input {
+    border-radius: 999px;
+}
+:root .badge,
+:root .badge-status {
+    border-radius: 999px;
+    font-weight: 600;
+}
+:root .tab,
+:root .tabs .tab-btn {
+    border-radius: 999px;
+}
+
+/* ── 11. Tables ────────────────────────────────────────────────────── */
+:root .table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+:root .table th {
+    font: 600 12.5px/1.3 var(--font-body);
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-secondary);
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border-subtle);
+}
+:root .table td {
+    border-bottom: 1px solid var(--border-subtle);
+}
+:root .table tbody tr:hover {
+    background: var(--brand-subtle);
+}
+:root .table tbody tr:hover td:first-child {
+    box-shadow: none;
+}
+
+/* ── 11b. Callouts, alerts, scope strip — no hard accent bars ────── */
+:root .hz-callout {
+    border: 1px solid var(--border-subtle);
+    background:
+        radial-gradient(360px 160px at 100% 0%, var(--spark-dim), transparent 70%),
+        linear-gradient(120deg, var(--brand-dim), transparent 70%), var(--bg-card);
+}
+:root .alert {
+    border-left: 0;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+}
+:root .exec-scope {
+    border-left: 0;
+    border-radius: var(--radius-lg);
+}
+:root .exec-scope.is-filtered {
+    box-shadow: inset 0 0 0 1px var(--brand);
+}
+:root .exec-scope-label {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.78rem;
+}
+:root .table-wrapper {
+    overflow-x: auto;
+}
+
+/* ── 12. Floating help button ─────────────────────────────────────── */
+:root .help-fab {
+    background: linear-gradient(135deg, var(--brand), var(--hz-duo));
+    box-shadow: 0 10px 26px var(--brand-glow);
+}
+
+/* ── 13. Palette menu (top bar) ───────────────────────────────────── */
+.hz-palette {
+    position: relative;
+}
+.hz-palette-btn {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.hz-palette-btn:hover {
+    color: var(--brand-text);
+    border-color: var(--brand);
+}
+.hz-palette-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 10px);
+    width: 264px;
+    padding: 16px;
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    z-index: 400;
+}
+.hz-palette-menu[hidden] {
+    display: none;
+}
+.hz-palette-title {
+    font-weight: 700;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+}
+.hz-mode {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    margin-bottom: 16px;
+}
+.hz-mode button {
+    border: 0;
+    border-radius: 999px;
+    padding: 8px 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font: 600 13px var(--font-body);
+    cursor: pointer;
+}
+.hz-mode button[aria-pressed='true'] {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+}
+.hz-swatches {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+.hz-swatch {
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    border: 0;
+    background: none;
+    padding: 6px 0;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font: 600 11.5px var(--font-body);
+    cursor: pointer;
+}
+.hz-swatch:hover {
+    background: var(--bg-elevated);
+}
+.hz-swatch-dot {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    box-shadow:
+        inset 0 0 0 3px var(--bg-card),
+        0 0 0 2px transparent;
+}
+.hz-swatch[aria-pressed='true'] .hz-swatch-dot {
+    box-shadow:
+        inset 0 0 0 3px var(--bg-card),
+        0 0 0 2px var(--text-primary);
+}
+.hz-swatch[aria-pressed='true'] {
+    color: var(--text-primary);
+}
+.hz-dot-iris {
+    background: linear-gradient(135deg, #9a8cff, #5b4be0);
+}
+.hz-dot-meadow {
+    background: linear-gradient(135deg, #6ad3a4, #1d7f55);
+}
+.hz-dot-sunrise {
+    background: linear-gradient(135deg, #ffb38a, #c2410c);
+}
+.hz-dot-ocean {
+    background: linear-gradient(135deg, #8bbbff, #1d6ac9);
+}
+
+/* ── 14. Standalone auth pages ────────────────────────────────────── */
+:root .login-page {
+    background:
+        radial-gradient(900px 520px at 90% -10%, var(--hz-glow-a), transparent 60%),
+        radial-gradient(800px 480px at -10% 110%, var(--hz-glow-b), transparent 60%), var(--bg-base);
+}
+:root .login-container {
+    border-radius: 28px;
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-lg);
+    background: var(--bg-card);
+}
+:root .login-container h1 {
+    color: var(--text-primary);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
+:root .login-container .btn,
+:root .login-container button[type='submit'] {
+    border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root .btn {
+        transition: none;
+    }
+}

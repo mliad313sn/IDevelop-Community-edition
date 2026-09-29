@@ -22,9 +22,15 @@ fairly, transparently and with a full audit trail. It runs on your own
 infrastructure (a single Node.js process and PostgreSQL), works offline-first
 on the shop floor, and every screen is available in French and English.
 
-| Dark theme                                        | Light theme                                              |
-| ------------------------------------------------- | -------------------------------------------------------- |
-| ![Executive dashboard](docs/images/dashboard.png) | ![Capability framework](docs/images/framework-light.png) |
+![Executive dashboard — Daylight mode, Iris theme](docs/images/dashboard-daylight.png)
+
+Friendly by default: a light, airy interface with rounded surfaces, and an
+**Appearance** menu where every user picks light or dark mode and one of four
+colour themes — **Iris**, **Meadow**, **Sunrise** or **Ocean**.
+
+| Meadow theme                                   | Dusk (dark) mode                                   | Appearance menu                                     |
+| ---------------------------------------------- | -------------------------------------------------- | --------------------------------------------------- |
+| ![Roles, Meadow](docs/images/roles-meadow.png) | ![Framework, Dusk](docs/images/framework-dusk.png) | ![Appearance menu](docs/images/appearance-menu.png) |
 
 ## Contents
 

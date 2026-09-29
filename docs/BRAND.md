@@ -1,9 +1,11 @@
 # IDevelop Community Edition — graphic chart
 
-**Design language: "Open Horizon".** Calm, indigo-tinted surfaces; one confident
-accent (Iris) for action and focus; one warm spark (Coral) used sparingly for
-highlights. The identity says _growth, openness, community_ — and it must never
-get in the way of reading data.
+**Design language: "Open Horizon".** Friendly, light-first and airy: soft
+lavender-white canvases, rounded surfaces, pill-shaped navigation and buttons,
+gentle gradients instead of hard accent bars, and sentence-case labels in a warm
+geometric typeface. One confident accent colour for action and focus, chosen by
+each user from four colour themes. The identity says _growth, openness,
+community_ — and it must never get in the way of reading data.
 
 <p align="center"><img src="../public/brand/social-card.png" alt="IDevelop Community Edition social card" width="640"></p>
 
@@ -36,36 +38,58 @@ line "COMMUNITY EDITION" in Coral, uppercase, tracking +2.6.
 
 ## 2. Colour
 
-### 2.1 Brand colours
+The interface theme lives in `public/css/horizon.css`. Each user chooses a
+**mode** and a **colour theme** from the **Appearance** menu (palette icon in the
+top bar); the choice is remembered per browser. Every combination is measured by
+`tests/unit/horizonThemes.test.js`.
 
-| Token             | Dark theme | Light theme | Role                                      |
-| ----------------- | ---------- | ----------- | ----------------------------------------- |
-| `--brand`         | `#7C6CFF`  | `#5B4BE0`   | Primary actions, active navigation, focus |
-| `--brand-hover`   | `#9084FF`  | `#4C3DCC`   | Hover state                               |
-| `--brand-pressed` | `#6656F0`  | `#4334B8`   | Pressed state                             |
-| `--brand-text`    | `#9084FF`  | `#4A3BC9`   | Brand colour used as **text**             |
-| `--spark`         | `#FF7A59`  | `#C2410C`   | Highlights, illustrations, the logo dot   |
-| `--text-inverse`  | `#0A0C18`  | `#FFFFFF`   | Text on a brand fill                      |
+### 2.1 Modes
 
-Measured contrast (WCAG 2.x): brand-as-text ≥ 4.99:1 on every dark surface and
-7.61:1 on white; button ink on brand fills 5.05:1 (dark) and 5.95–8.67:1 (light).
+| Token                | Daylight (light, default) | Dusk (dark)        |
+| -------------------- | ------------------------- | ------------------ |
+| `--bg-base` (canvas) | `#F7F6FC`                 | `#18172C`          |
+| `--bg-panel`         | `#FFFFFF`                 | `#1D1C35`          |
+| `--bg-card`          | `#FFFFFF`                 | `#23213F`          |
+| `--bg-elevated`      | `#F1EFF9`                 | `#2C2A4D`          |
+| `--text-primary`     | `#1F1D3A` (14.3:1)        | `#F2F1FA` (12.1:1) |
+| `--text-secondary`   | `#514F6B` (6.9:1)         | `#C4C2DA` (7.8:1)  |
+| `--text-muted`       | `#63617D` (5.2:1)         | `#A9A7C4` (5.8:1)  |
 
-### 2.2 Surfaces and text
+Ratios are measured against the raised surface (`--bg-elevated`), the hardest case.
 
-| Token                        | Dark       | Light                                             |
-| ---------------------------- | ---------- | ------------------------------------------------- |
-| `--bg-base` (page)           | `#0A0C18`  | `#F4F5FB`                                         |
-| `--bg-panel` (sidebar, bars) | `#0F1222`  | `#FFFFFF`                                         |
-| `--bg-card`                  | `#151931`  | `#FFFFFF`                                         |
-| `--bg-elevated`              | `#1F2442`  | `#F8F8FD`                                         |
-| `--text-primary`             | `#E4E8F0`  | `#161A2E`                                         |
-| `--text-secondary`           | 55 % white | `#4A4F68`                                         |
-| `--text-muted`               | 50 % white | `#5F647C` (≥ 5.04:1 on the darkest light surface) |
+### 2.2 Colour themes
+
+| Theme              | Light fill / text     | Dark fill / text      | White on light fill | Brand text on light card |
+| ------------------ | --------------------- | --------------------- | ------------------- | ------------------------ |
+| **Iris** (default) | `#5B4BE0` / `#4E3FD0` | `#8B7DFF` / `#A99FFF` | 5.95:1              | 7.13:1                   |
+| **Meadow**         | `#1D7F55` / `#17734C` | `#43C08A` / `#6AD3A4` | 4.98:1              | 5.84:1                   |
+| **Sunrise**        | `#C2410C` / `#B13A0A` | `#FF8A5C` / `#FFA784` | 5.18:1              | 6.04:1                   |
+| **Ocean**          | `#1D6AC9` / `#195FB6` | `#5FA2FF` / `#8BBBFF` | 5.31:1              | 6.26:1                   |
+
+In Dusk mode, buttons use dark ink on the brand fill (5.4–7.6:1) and brand text
+clears 5.9:1 on every surface. Decorative gradients (avatars, the help button)
+pair the brand with a friendly second colour per theme (Iris + Coral, Meadow +
+Lagoon, Sunrise + Honey, Ocean + Iris). The **Coral spark** `#FF7A59` belongs to
+the logo and highlights; it is never a status colour.
+
+An organisation's own accent (Settings → Branding) overrides the colour theme for
+everyone on that installation.
+
+### 2.3 Interface language
+
+| Element      | Rule                                                                           |
+| ------------ | ------------------------------------------------------------------------------ |
+| Radii        | 8 / 12 / 18 / 24 px; pills (999 px) for buttons, navigation, badges, search    |
+| Shadows      | Soft and diffuse (ink-tinted in Daylight); no hard borders on cards            |
+| Page banners | Brand-tinted gradient with a soft spark glow; icon in a white tile             |
+| Navigation   | Airy sidebar, sentence-case section labels, pill highlight for the active page |
+| Tables       | Sentence-case headers on a raised row, brand-tinted hover                      |
+| Canvas       | Two large, faint radial glows (brand and spark) — no grid texture              |
 
 Status colours (`--emerald`, `--amber`, `--red`, `--blue` and their `-text`
 variants) keep their meaning in every theme and are never replaced by the brand.
 
-### 2.3 Data-visualisation palette ("Horizon")
+### 2.4 Data-visualisation palette ("Horizon")
 
 Defined once in `src/utils/branding.js` (`CHART_IDENTITY.community`) and emitted
 as `--chart-*` custom properties; exported to `docs/contracts/chart-identity.json`.
@@ -102,7 +126,8 @@ Rules, all enforced by `tests/unit/chartIdentity.test.js`:
 ## 3. Typography
 
 System font stacks by default, so the product renders identically offline and on
-air-gapped hosts. When external fonts are allowed, **Plus Jakarta Sans** (UI —
+air-gapped hosts. Labels are sentence case in the body face; monospace is kept
+for code only, and figures use tabular numbers. When external fonts are allowed, **Plus Jakarta Sans** (UI —
 open, friendly geometric humanist) and **JetBrains Mono** (numbers, codes,
 identifiers) are loaded from Google Fonts; both are licensed under the SIL Open
 Font License. Set `DISABLE_EXTERNAL_FONTS=1` to forbid any external request.

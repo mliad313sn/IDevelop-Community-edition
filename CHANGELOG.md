@@ -10,6 +10,12 @@ First public release of **IDevelop Community Edition**.
 
 ### Added
 
+- Friendly "Open Horizon" interface (`public/css/horizon.css`): light-first
+  Daylight mode and a soft Dusk dark mode, rounded surfaces, pill navigation and
+  buttons, gradient page banners, sentence-case labels, no grid texture.
+- Appearance menu in the top bar: light/dark mode and four colour themes (Iris,
+  Meadow, Sunrise, Ocean), remembered per browser, all measured WCAG AA.
+
 - New product identity "Open Horizon": logo mark, horizontal logos (dark and
   light), favicons, PWA and Apple icons, social card (`public/brand/`,
   `public/icons/`), Iris / Coral colour system for both themes, Plus Jakarta Sans

@@ -25,7 +25,7 @@
  *   the offline page rather than a stale copy of someone's record.
  */
 
-const CACHE = 'app-shell-v6'; // v6 (3.23.21): + sa-skill-help.js/.css
+const CACHE = 'app-shell-v7'; // v7: + horizon.css theme layer and brand assets
 
 // Bumped whenever the caching RULES change, so an old worker's cache is discarded
 // wholesale by the activate handler rather than lingering with stale semantics.
@@ -36,6 +36,7 @@ const SHELL = [
     '/manifest.webmanifest',
     '/css/style.css',
     '/css/a11y-polish.css',
+    '/css/horizon.css',
     '/js/draft-store.js',
     '/js/sync-indicator.js',
     // 3.23.21: the self-assessment help runs offline too (descriptions themselves

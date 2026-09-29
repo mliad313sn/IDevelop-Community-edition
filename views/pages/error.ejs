@@ -15,9 +15,10 @@
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"></noscript>
     <% } %>
     <link rel="stylesheet" href="/css/style.css?v=<%= assetVersion %>">
+    <link rel="stylesheet" href="/css/horizon.css?v=<%= assetVersion %>">
     <!-- Prevent theme flash -->
     <script nonce="<%= cspNonce %>">
-        (function () { var t = localStorage.getItem('theme'); if (t === 'light') document.documentElement.setAttribute('data-theme', 'light'); })();
+        (function(){var d=document.documentElement,t=null,p=null;try{t=localStorage.getItem('theme');p=localStorage.getItem('palette');}catch(e){}if(t!=='dark')d.setAttribute('data-theme','light');if(p&&p!=='iris')d.setAttribute('data-palette',p);})();
     </script>
     <%- /* error.ejs is the ONLY page at views/pages/ depth 1 — every other page
            lives one level deeper (views/pages/<module>/index.ejs), where

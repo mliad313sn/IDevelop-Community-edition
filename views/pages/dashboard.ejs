@@ -2,7 +2,7 @@
 
     <% if (typeof setupPending !== 'undefined' && setupPending) { %>
     <!-- First-run setup banner (SuperAdmin, until complete or dismissed) -->
-    <div class="card" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:14px;border-left:3px solid var(--brand,#7C6CFF);">
+    <div class="card hz-callout" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:14px;">
         <i class="fas fa-list-check" aria-hidden="true" style="color:var(--brand,#7C6CFF);font-size:1.2rem;"></i>
         <div style="flex:1;">
             <strong><%= __('admin:setup_banner_title', { brand: (typeof brandName!=='undefined' && brandName) ? brandName : 'IDevelop' }) %></strong>
@@ -1081,7 +1081,7 @@
 @media (max-width:820px){ .measures-grid{grid-template-columns:repeat(2,1fr);} }
 @media (max-width:480px){ .measures-grid{grid-template-columns:1fr;} }
 .measure-card { min-width:0; background:var(--bg-subtle); border:1px solid var(--border-light,#2a3148); border-radius:12px; padding:16px 12px; display:flex; flex-direction:column; align-items:center; text-align:center; gap:7px; }
-.measure-ic { width:40px; height:40px; border-radius:10px; flex:none; display:flex; align-items:center; justify-content:center; font-size:1.05rem; background:var(--brand-dim,rgba(124, 108, 255,.15)); color:var(--brand,#7C6CFF); }
+.measure-ic { width:40px; height:40px; border-radius:10px; flex:none; display:flex; align-items:center; justify-content:center; font-size:1.05rem; background:var(--brand-dim,color-mix(in srgb, var(--brand) 15%, transparent)); color:var(--brand,#7C6CFF); }
 .measure-body { min-width:0; max-width:100%; display:flex; flex-direction:column; align-items:center; }
 .measure-val { font-size:1.5rem; font-weight:800; color:var(--text-primary); line-height:1.1; font-variant-numeric:tabular-nums; }
 .measure-lbl { font-size:.78rem; color:var(--text-secondary); overflow-wrap:anywhere; }

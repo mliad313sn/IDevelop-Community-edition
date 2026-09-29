@@ -546,5 +546,15 @@
   "home_todo_all": "Toutes mes notifications",
   "nav_safety_gate": "Habilitations sécurité",
   "nav_safety_gate_title": "Qui est bloqué ou arrive à échéance sur les compétences de sécurité critiques, par site et par poste",
-  "notif_family_safety": "Habilitations sécurité"
+  "notif_family_safety": "Habilitations sécurité",
+  "theme_menu_title": "Apparence",
+  "theme_menu_aria": "Changer l’apparence : mode clair ou sombre et thème de couleur",
+  "theme_mode": "Mode",
+  "theme_light": "Clair",
+  "theme_dark": "Sombre",
+  "theme_palette": "Thème de couleur",
+  "palette_iris": "Iris",
+  "palette_meadow": "Prairie",
+  "palette_sunrise": "Aurore",
+  "palette_ocean": "Océan"
 }

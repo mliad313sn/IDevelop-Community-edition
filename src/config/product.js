@@ -38,8 +38,8 @@ const PRODUCT = Object.freeze({
     /** Default sender for outgoing mail when SMTP has no From configured. */
     defaultMailFrom: 'no-reply@idevelop.invalid',
     /** Stock theme colour (PWA manifest / mobile address bar). */
-    themeColor: '#0A0C18',
-    accentColor: '#7C6CFF',
+    themeColor: '#5B4BE0',
+    accentColor: '#5B4BE0',
 });
 
 module.exports = PRODUCT;

@@ -28,11 +28,28 @@
                 <a class="ac-foot" href="/notifications"><%= __('chrome:notifications_view_all') %></a>
             </div>
         </div>
-        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="<%= __('chrome:theme_toggle_title') %>"
-            aria-label="<%= __('chrome:theme_toggle_aria') %>">
-            <i class="fas fa-moon" aria-hidden="true"></i>
-            <i class="fas fa-sun" aria-hidden="true"></i>
-        </button>
+        <div class="hz-palette" id="hzPalette">
+            <button type="button" class="hz-palette-btn" id="hzPaletteBtn" aria-haspopup="true" aria-expanded="false"
+                aria-controls="hzPaletteMenu" title="<%= __('chrome:theme_menu_title') %>" aria-label="<%= __('chrome:theme_menu_aria') %>">
+                <i class="fas fa-palette" aria-hidden="true"></i>
+            </button>
+            <div class="hz-palette-menu" id="hzPaletteMenu" role="dialog" aria-label="<%= __('chrome:theme_menu_title') %>" hidden>
+                <p class="hz-palette-title"><%= __('chrome:theme_mode') %></p>
+                <div class="hz-mode" role="group" aria-label="<%= __('chrome:theme_mode') %>">
+                    <button type="button" data-hz-mode="light" aria-pressed="false"><i class="fas fa-sun" aria-hidden="true"></i> <%= __('chrome:theme_light') %></button>
+                    <button type="button" data-hz-mode="dark" aria-pressed="false"><i class="fas fa-moon" aria-hidden="true"></i> <%= __('chrome:theme_dark') %></button>
+                </div>
+                <p class="hz-palette-title"><%= __('chrome:theme_palette') %></p>
+                <div class="hz-swatches" role="group" aria-label="<%= __('chrome:theme_palette') %>">
+                    <% [['iris', __('chrome:palette_iris')], ['meadow', __('chrome:palette_meadow')], ['sunrise', __('chrome:palette_sunrise')], ['ocean', __('chrome:palette_ocean')]].forEach(function (entry) { var pal = entry[0]; %>
+                    <button type="button" class="hz-swatch" data-hz-palette="<%= pal %>" aria-pressed="false">
+                        <span class="hz-swatch-dot hz-dot-<%= pal %>" aria-hidden="true"></span>
+                        <%= entry[1] %>
+                    </button>
+                    <% }) %>
+                </div>
+            </div>
+        </div>
         <div class="topbar-user" onclick="toggleUserMenu()" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-label="<%= __('chrome:account_menu_aria') %>" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleUserMenu();}">
             <span class="topbar-avatar">
                 <%= (user.username || user.employeeNumber || 'U' ).charAt(0).toUpperCase() %>

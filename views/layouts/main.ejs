@@ -29,13 +29,14 @@
     <link rel="stylesheet" href="/css/report-builder.css?v=<%= assetVersion %>">
     <!-- Accessibility & polish layer (loaded last so it refines the theme) -->
     <link rel="stylesheet" href="/css/a11y-polish.css?v=<%= assetVersion %>">
+    <link rel="stylesheet" href="/css/horizon.css?v=<%= assetVersion %>">
     <% if (_brand.accentCss) { %>
     <!-- White-label accent: overrides the gold token family with the customer's brand color -->
     <style nonce="<%= cspNonce %>"><%- _brand.accentCss %></style>
     <% } %>
     <!-- Prevent theme flash -->
     <script nonce="<%= cspNonce %>">
-        (function () { var t = localStorage.getItem('theme'); if (t === 'light') document.documentElement.setAttribute('data-theme', 'light'); })();
+        (function(){var d=document.documentElement,t=null,p=null;try{t=localStorage.getItem('theme');p=localStorage.getItem('palette');}catch(e){}if(t!=='dark')d.setAttribute('data-theme','light');if(p&&p!=='iris')d.setAttribute('data-palette',p);})();
     </script>
 </head>
 

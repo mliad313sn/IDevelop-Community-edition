@@ -21,6 +21,7 @@
     <% } %>
     <link rel="stylesheet" href="/css/style.css?v=<%= assetVersion %>">
     <link rel="stylesheet" href="/css/login.css?v=<%= assetVersion %>">
+    <link rel="stylesheet" href="/css/horizon.css?v=<%= assetVersion %>">
     <% if (_brand.accentCss) { %>
     <style nonce="<%= cspNonce %>"><%- _brand.accentCss %></style>
     <% } %>
@@ -38,7 +39,7 @@
     </style>
     <!-- Prevent theme flash: apply saved theme before paint -->
     <script nonce="<%= cspNonce %>">
-        (function () { var t = localStorage.getItem('theme'); if (t === 'light') document.documentElement.setAttribute('data-theme', 'light'); })();
+        (function(){var d=document.documentElement,t=null,p=null;try{t=localStorage.getItem('theme');p=localStorage.getItem('palette');}catch(e){}if(t!=='dark')d.setAttribute('data-theme','light');if(p&&p!=='iris')d.setAttribute('data-palette',p);})();
     </script>
     <%- include('../../partials/pwa-head') %>
 </head>
@@ -56,7 +57,7 @@
         <%- include('../../partials/flash') %>
 
         <% if (typeof notice !== 'undefined' && notice) { %>
-            <div class="login-notice" role="status" style="display:flex;align-items:center;gap:8px;margin:0 0 14px;padding:10px 14px;font-size:.88rem;border-radius:10px;background:rgba(124, 108, 255,.10);border:1px solid rgba(124, 108, 255,.35);color:var(--text-secondary,#94a3b8);">
+            <div class="login-notice" role="status" style="display:flex;align-items:center;gap:8px;margin:0 0 14px;padding:10px 14px;font-size:.88rem;border-radius:10px;background:color-mix(in srgb, var(--brand) 10%, transparent);border:1px solid color-mix(in srgb, var(--brand) 35%, transparent);color:var(--text-secondary,#94a3b8);">
                 <i class="fas fa-circle-info" aria-hidden="true" style="color:var(--brand,#7C6CFF);"></i> <%= notice %>
             </div>
         <% } %>

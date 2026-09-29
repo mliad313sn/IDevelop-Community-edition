@@ -66,7 +66,7 @@
     border:1px solid var(--border-light,#2a3148); border-radius:12px; background:var(--bg-subtle); position:relative;
     box-shadow:0 1px 3px rgba(0,0,0,.18); transition:box-shadow .15s ease, transform .15s ease; }
 .oc-node:hover { box-shadow:0 4px 12px rgba(0,0,0,.28); }
-.oc-node.oc-hit { border-color:var(--brand,#7C6CFF); box-shadow:0 0 0 2px rgba(124, 108, 255,.35); }
+.oc-node.oc-hit { border-color:var(--brand,#7C6CFF); box-shadow:0 0 0 2px color-mix(in srgb, var(--brand) 35%, transparent); }
 .oc-node.oc-group { background:var(--bg-inset,rgba(255,255,255,.04)); }
 .oc-av { width:34px; height:34px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.82rem;
     background:hsl(var(--av-h,42) 40% 30%); color:hsl(var(--av-h,42) 75% 82%); }
@@ -82,10 +82,10 @@ a.oc-name-link:hover { color:var(--brand,#7C6CFF); text-decoration:underline; }
 .oc-toggle { position:absolute; bottom:-12px; left:50%; transform:translateX(-50%); min-width:22px; height:22px; border-radius:999px; padding:0 6px; appearance:none; font-family:inherit;
     border:1px solid var(--border-light,#2a3148); background:var(--bg-card,#151931); color:var(--text-secondary); font-size:.72rem; line-height:20px; text-align:center; cursor:pointer; z-index:2; font-variant-numeric:tabular-nums; }
 .oc-toggle:hover { color:var(--brand,#7C6CFF); border-color:var(--brand,#7C6CFF); }
-.oc-root-badge { position:absolute; top:-9px; right:8px; font-size:.62rem; background:var(--brand-dim,rgba(124, 108, 255,.18)); color:var(--brand,#7C6CFF); border-radius:999px; padding:0 7px; }
+.oc-root-badge { position:absolute; top:-9px; right:8px; font-size:.62rem; background:var(--brand-dim,color-mix(in srgb, var(--brand) 18%, transparent)); color:var(--brand,#7C6CFF); border-radius:999px; padding:0 7px; }
 .oc-focus { flex:none; width:24px; height:24px; padding:0; appearance:none; border:1px solid var(--border-light,#2a3148); border-radius:7px; background:transparent; color:var(--text-secondary); cursor:pointer; font-size:.72rem; }
 .oc-focus:hover { color:var(--brand,#7C6CFF); border-color:var(--brand,#7C6CFF); }
-.oc-focus-banner { display:flex; align-items:center; gap:12px; margin-bottom:14px; padding:8px 12px; background:var(--brand-dim,rgba(124, 108, 255,.12)); border:1px solid var(--brand,#7C6CFF); border-radius:var(--radius-md,8px); color:var(--text-secondary); font-size:.86rem; text-align:left; }
+.oc-focus-banner { display:flex; align-items:center; gap:12px; margin-bottom:14px; padding:8px 12px; background:var(--brand-dim,color-mix(in srgb, var(--brand) 12%, transparent)); border:1px solid var(--brand,#7C6CFF); border-radius:var(--radius-md,8px); color:var(--text-secondary); font-size:.86rem; text-align:left; }
 
 /* No reporting line recorded at all: an absence of data, said in words. */
 .oc-empty { max-width:560px; margin:0 auto; padding:28px 20px; text-align:center; color:var(--text-secondary); font-size:.92rem; }
