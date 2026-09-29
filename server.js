@@ -743,6 +743,17 @@ app.use(async (req, res, next) => {
     } catch (_) {
         res.locals.featureLocalContent = false;
     }
+    // AI companion (help panel « Assistant » tab) — default ON; only an explicit
+    // off value hides it. Rendered pages only need it for signed-in users.
+    res.locals.companionEnabled = true;
+    if (req.user && !req.path.startsWith('/api/')) {
+        try {
+            res.locals.companionEnabled =
+                await require('./src/services/CompanionService').isEnabled();
+        } catch (_) {
+            res.locals.companionEnabled = true;
+        }
+    }
     // White-label branding (name / logo / accent) for every rendered view —
     // micro-cached, falls back to the stock identity if settings are unavailable.
     try {

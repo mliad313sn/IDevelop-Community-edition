@@ -105,6 +105,36 @@ Transactions propagate through `AsyncLocalStorage`, so a service called inside
 | Observability  | `/health`, `/readyz`, `/metrics`                                                   | Prometheus text format, job-run ledger, health page for super-admins            |
 | Offline        | `public/service-worker.js`, `public/js/draft-store.js`                             | Static-asset cache only; drafts in IndexedDB, replayed per owner                |
 
+### AI companion
+
+The "Assistant" tab of the help panel (`views/partials/contextual-help.ejs`,
+`public/js/companion.js`) talks to `POST /api/companion/ask` and
+`GET /api/companion/suggestions` (`src/routes/companion.js`: `requireAuth`, global
+CSRF, per-user `writeActionLimiter`, 500-character cap, 404 while the
+`companion.enabled` setting is off).
+
+`CompanionService` is **deterministic first**: keyword intent detection (FR + EN)
+routes a question to one of `capabilities`, `next`, `page`, `self`, `data`,
+`concept` or `howto`, and answers from `src/config/companionKnowledge.js` — a
+bilingual knowledge base whose entries carry the roles, permission slugs and
+V2 flag that may open their link, so an answer never points someone at a screen
+they cannot use. Personal answers stay narrow: `next` reuses
+`TalentActionsController.collectMyActions` (the Action Center list) plus the setup
+checklist for SuperAdmins; `self` reads only the asker's own row of
+`v_employee_assessment_coverage` / `v_employee_skill_gaps`; `data` questions from
+managers/admins are delegated to `CopilotService.ask`, which keeps its RBAC scope,
+anonymisation, EU AI Act guardrails and audit — an employee's data question is
+refused.
+
+When the copilot's model is configured and allowed (`CopilotService.llmUsable`,
+which honours `copilot.eu_only_providers`), `howto` / `concept` / `page` answers are
+rephrased through `CopilotService.completeText` with only the scrubbed question,
+the retrieved knowledge snippets and the page path with ids removed; any failure
+falls back to the deterministic text. Answers produced by a model or the copilot
+carry the AI disclaimer. Each question is audited as `COMPANION_QUERY` (hash and
+lengths, never the raw text). Chat history lives in the browser's
+`sessionStorage`, per user, for the tab only.
+
 ## 5. Language-neutral contracts
 
 These artefacts are the product's real interfaces. They are plain files that any

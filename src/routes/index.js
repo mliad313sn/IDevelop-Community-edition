@@ -693,6 +693,9 @@ router.get(
     asyncHandler(TalentActionsController.careerPathData)
 );
 router.get('/api/my-actions', requireAuth, asyncHandler(TalentActionsController.myActions));
+// AI companion (help panel « Assistant » tab) — every signed-in user; the
+// router carries its own requireAuth, rate limit and companion.enabled switch.
+router.use('/api/companion', require('./companion'));
 
 // Employee "Mon évolution" — surfaces the mobility/aspirations/surveys/recognition
 // features that were built but had no employee UI.

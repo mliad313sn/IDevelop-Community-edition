@@ -69,6 +69,8 @@ const CATALOG = {
     // default; only EU-hosted / on-prem provider presets are allowed by default.
     'copilot.allow_named_person_ranking': { type: 'boolean' },
     'copilot.eu_only_providers': { type: 'boolean' },
+    // AI companion (help panel « Assistant » tab) for every signed-in user.
+    'companion.enabled': { type: 'boolean' },
     'dispute.l0SlaDays': { min: 0, max: 365, integer: true },
     'dispute.l1SlaDays': { min: 0, max: 365, integer: true },
     'dispute.l2SlaDays': { min: 0, max: 365, integer: true },
@@ -581,6 +583,14 @@ class AppSettingsModel {
                 type: 'boolean',
                 description:
                     "Data residency. On (default): only on-prem (ollama) and EU-hosted (mistral) provider presets may be used; a non-EU preset (openai, anthropic, grok, groq, gemini, deepseek, openrouter, together) is refused and the copilot answers with the built-in engine. A custom or overridden endpoint URL is the administrator's declared choice.",
+                category: 'copilot',
+            },
+            {
+                key: 'companion.enabled',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    'AI companion. On (default): every signed-in user gets the « Assistant » tab in the help panel — how-to answers from the built-in product guide, their own next actions, page and concept explanations; managers/admins can ask data questions through the copilot. Works with no language model. When the copilot LLM is configured and allowed, it may rephrase product-guide answers (it never receives personal data). Off: the tab and its API are removed.',
                 category: 'copilot',
             },
             {
