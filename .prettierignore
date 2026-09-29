@@ -1,0 +1,12 @@
+node_modules/
+data/
+tmp/
+logs/
+coverage/
+playwright-report/
+test-results/
+public/vendor/
+AI_Engine_Docs/
+*.min.js
+*.min.css
+package-lock.json

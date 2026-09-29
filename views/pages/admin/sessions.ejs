@@ -1,0 +1,79 @@
+<div class="page-header">
+    <h1><i class="fas fa-tower-observation" aria-hidden="true"></i> <%= __('chrome:sessmon_title') %></h1>
+    <a href="/account/sessions" class="btn btn-sm btn-secondary"><i class="fas fa-desktop" aria-hidden="true"></i> <%= __('chrome:menu_active_sessions') %></a>
+</div>
+
+<div class="help-text" style="margin-bottom:1.25rem;">
+    <%= __('chrome:sessmon_help') %>
+    <% if (typeof anonymousCount !== 'undefined' && anonymousCount > 0) { %>
+        <br><span class="text-muted"><%= __('chrome:sessmon_anonymous', { n: anonymousCount }) %></span>
+    <% } %>
+</div>
+
+<%# Search + type filter compose (table-search.js); "close all sessions of one
+    account" lives on that account's page (/admins/:id). %>
+<div class="search-bar" style="margin:.6rem 0;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+    <div class="search-input-wrapper" style="flex:1;min-width:220px">
+        <input type="search" class="search-input" data-table-search="#sessmon-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>">
+    </div>
+    <select class="search-input" data-table-filter="#sessmon-table" data-filter-col="1" style="max-width:220px" aria-label="<%= __('chrome:sessmon_th_type') %>">
+        <option value=""><%= __('admin:adm_sess_type_all') %></option>
+        <option value="<%= __('admin:adm_sess_type_admin') %>"><%= __('admin:adm_sess_type_admin') %></option>
+        <option value="<%= __('admin:adm_sess_type_manager') %>"><%= __('admin:adm_sess_type_manager') %></option>
+        <option value="<%= __('admin:adm_sess_type_employee') %>"><%= __('admin:adm_sess_type_employee') %></option>
+    </select>
+</div>
+
+<div class="card" style="padding:0;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table" id="sessmon-table">
+            <thead>
+                <tr>
+                    <th><%= __('chrome:sessmon_th_user') %></th>
+                    <th><%= __('chrome:sessmon_th_type') %></th>
+                    <th><%= __('chrome:sessions_th_device') %></th>
+                    <th><%= __('chrome:sessions_th_ip') %></th>
+                    <th><%= __('chrome:sessions_th_signed_in') %></th>
+                    <th><%= __('chrome:sessions_th_last_active') %></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% (sessions || []).forEach(function(s){ %>
+                    <% const typeLabel = s.ownerType === 'admin' ? __('admin:adm_sess_type_admin') : (s.ownerType === 'manager' ? __('admin:adm_sess_type_manager') : __('admin:adm_sess_type_employee')); %>
+                    <tr>
+                        <td><strong><%= s.ownerName || '—' %></strong>
+                            <% if (s.current) { %> <span class="badge badge-success" style="margin-left:6px;"><%= __('chrome:sessions_this_device') %></span><% } %>
+                            <% if (s.ownerType === 'admin' && s.ownerId) { %> <a href="/admins/<%= s.ownerId %>" class="text-muted" style="font-size:.8rem" title="<%= __('admin:adm_sess_open_account') %>"><i class="fas fa-up-right-from-square" aria-hidden="true"></i></a><% } %>
+                        </td>
+                        <td><span class="badge badge-<%= s.ownerType === 'admin' ? 'info' : 'secondary' %>"><%= typeLabel %></span></td>
+                        <td>
+                            <i class="fas fa-<%= /iOS|Android/.test(s.device) ? 'mobile-screen' : 'display' %>" aria-hidden="true" style="color:var(--text-muted);margin-right:6px;"></i>
+                            <%= s.device %>
+                        </td>
+                        <td style="font-family:var(--font-data);font-size:.82rem;"><%= s.ip || '—' %></td>
+                        <td><%= fmtDateTime(s.loginAt) %></td>
+                        <td><%= fmtDateTime(s.lastActivity) %></td>
+                        <td style="text-align:right;">
+                            <% if (s.current) { %>
+                                <span class="text-muted" style="font-size:.8rem;"><%= __('chrome:sessions_current') %></span>
+                            <% } else { %>
+                                <form method="POST" action="/admin/sessions/revoke" style="margin:0;display:inline;"
+                                      data-confirm="<%= __('chrome:sessmon_close_confirm') %>" data-confirm-danger data-confirm-yes="<%= __('chrome:sessmon_close') %>">
+                                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                    <input type="hidden" name="sid" value="<%= s.sid %>">
+                                    <button type="submit" class="btn btn-sm btn-danger" title="<%= __('chrome:sessmon_close_tooltip') %>">
+                                        <i class="fas fa-right-from-bracket" aria-hidden="true"></i> <%= __('chrome:sessmon_close') %>
+                                    </button>
+                                </form>
+                            <% } %>
+                        </td>
+                    </tr>
+                <% }); %>
+                <% if (!sessions || !sessions.length) { %>
+                    <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted);"><%= __('chrome:sessions_empty') %></td></tr>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+</div>

@@ -1,0 +1,340 @@
+<div class="page-header">
+    <h1><%= __('compliance:da_title') %></h1>
+    <div class="page-actions">
+        <select id="trendMonths" class="btn btn-secondary" title="Trend window">
+            <option value="6"><%= __('compliance:da_months_6') %></option>
+            <option value="12" selected><%= __('compliance:da_months_12') %></option>
+            <option value="24"><%= __('compliance:da_months_24') %></option>
+        </select>
+    </div>
+</div>
+
+<div class="report-summary">
+    <h2><%= __('compliance:da_this_month') %></h2>
+    <div class="stats-grid" id="momCards">
+        <!-- filled by JS: one card per action type with MoM delta -->
+    </div>
+</div>
+
+<div class="report-section">
+    <h2><%= __('compliance:da_completion') %></h2>
+    <div style="position:relative;min-height:320px;">
+        <canvas id="completionChart" height="110"></canvas>
+    </div>
+    <div id="completionEmpty" class="text-muted" style="display:none;padding:1rem 0;"><%= __('reports:da_completion_empty') %></div>
+</div>
+
+<div class="report-section">
+    <h2><%= __('compliance:da_ninebox') %></h2>
+    <div style="position:relative;min-height:320px;">
+        <canvas id="nineboxChart" height="110"></canvas>
+    </div>
+    <div id="nineboxEmpty" class="text-muted" style="display:none;padding:1rem 0;"><%= __('reports:da_ninebox_empty') %></div>
+</div>
+
+<div class="report-section">
+    <h2><%= __('compliance:da_actions') %></h2>
+    <div style="position:relative;min-height:320px;">
+        <canvas id="trendChart" height="110"></canvas>
+    </div>
+</div>
+
+<div class="report-section">
+    <h2 id="burndownTitle"><%= __('compliance:da_burndown') %></h2>
+    <p class="section-subtitle" id="burndownSub" style="margin:.15rem 0 .7rem;"></p>
+    <div style="position:relative;min-height:280px;">
+        <canvas id="burndownChart" height="100"></canvas>
+    </div>
+    <div id="burndownEmpty" class="text-muted" style="display:none;padding:1rem 0;"><%= __('compliance:da_burndown_none') %></div>
+</div>
+
+<div class="report-section">
+    <h2><%= __('compliance:da_team_prog') %></h2>
+    <div style="position:relative;min-height:280px;">
+        <canvas id="teamProgressChart" height="100"></canvas>
+    </div>
+    <div id="teamProgressEmpty" class="text-muted" style="display:none;padding:1rem 0;"><%= __('compliance:da_team_prog_none') %></div>
+</div>
+
+<script src="/vendor/chart.umd.min.js?v=<%= assetVersion %>"></script>
+<script src="/js/chart-theme.js?v=<%= assetVersion %>"></script>
+<script src="/js/chart-axis-fit.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+(function () {
+    'use strict';
+    // Colours come from the shared theme so both editions stay in step. NOTE the
+    // two charts below use the SAME role for different questions: `progress` is
+    // "completion %" on the coverage chart and "in review" on the burndown. That
+    // reuse is inherited (both were the literal #3498db) and is preserved rather
+    // than silently re-coloured under a theming change — see the report.
+    const CT = window.ChartTheme || {};
+    if (!CT.ROLE) CT.ROLE = {};
+    // Localized chart strings (French-first product — the chart layer was English).
+    const T = {
+        completion: <%- JSON.stringify(__('compliance:da_c_completion')) %>,
+        met: <%- JSON.stringify(__('compliance:da_c_met')) %>,
+        employees: <%- JSON.stringify(__('compliance:da_c_employees')) %>,
+        cells: <%- JSON.stringify(__('compliance:da_c_cells')) %>,
+        vsLast: <%- JSON.stringify(__('compliance:da_c_vs_last')) %>,
+        burndown: <%- JSON.stringify(__('compliance:da_c_burndown')) %>,
+        daysClose: <%- JSON.stringify(__('compliance:da_c_days_close')) %>,
+        overdue: <%- JSON.stringify(__('compliance:da_c_overdue')) %>,
+        lowest: <%- JSON.stringify(__('compliance:da_c_lowest')) %>,
+        approved: <%- JSON.stringify(__('compliance:da_c_approved')) %>,
+        inReview: <%- JSON.stringify(__('compliance:da_c_inreview')) %>,
+        unsubmitted: <%- JSON.stringify(__('compliance:da_c_unsubmitted')) %>,
+        participants: <%- JSON.stringify(__('compliance:da_c_participants')) %>,
+        complete: <%- JSON.stringify(__('compliance:da_c_complete')) %>,
+        avgLevel: <%- JSON.stringify(__('compliance:da_c_avglevel')) %>,
+        box: <%- JSON.stringify(__('compliance:da_c_box')) %>,
+        completionEmpty: <%- JSON.stringify(__('reports:da_completion_empty')) %>,
+        nineboxEmpty: <%- JSON.stringify(__('reports:da_ninebox_empty')) %>,
+        loadError: <%- JSON.stringify(__('reports:da_load_error')) %>,
+        // Unmeasured cells are their own series — a department nobody assessed
+        // must never plot as "0 % met" (dash:rd_not_measured is the app-wide label).
+        notMeasured: <%- JSON.stringify(__('dash:rd_not_measured')) %>,
+        notMeasuredTitle: <%- JSON.stringify(__('dash:rd_not_measured_title')) %>,
+        notLaunched: <%- JSON.stringify(__('compliance:da_c_not_launched')) %>,
+        notStarted: <%- JSON.stringify(__('compliance:da_c_not_started')) %>,
+        enrolled: <%- JSON.stringify(__('compliance:da_c_enrolled')) %>,
+    };
+    const TYPE_LABELS = {
+        pip: 'PIP', idp: 'IDP',
+        coaching: <%- JSON.stringify(__('compliance:da_type_coaching')) %>,
+        mentoring: <%- JSON.stringify(__('compliance:da_type_mentoring')) %>,
+        self_assessment: <%- JSON.stringify(__('compliance:da_type_sa')) %>,
+    };
+    const TYPE_COLORS = {
+        pip: '#e74c3c', idp: '#2ecc71', coaching: '#3498db',
+        mentoring: '#9b59b6', self_assessment: '#f39c12',
+    };
+    // 9-box palette: 1 (low) → 9 (high). A NON-repeating red→amber→green ramp so
+    // adjacent stacked segments are distinguishable (the old palette repeated hues).
+    const BOX_COLORS = ['#c0392b','#e74c3c','#e67e22','#f39c12','#f1c40f','#d4e157','#9ccc65','#66bb6a','#27ae60'];
+    let completionChart, nineboxChart, trendChart;
+
+    async function getJson(url) {
+        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+    }
+
+    async function loadCompletion() {
+        const canvas = document.getElementById('completionChart');
+        const empty = document.getElementById('completionEmpty');
+        const data = await getJson('/api/analytics/department-completion');
+        if (!data.departments || !data.departments.length) {
+            if (completionChart) { completionChart.destroy(); completionChart = null; }
+            canvas.style.display = 'none';
+            empty.textContent = T.completionEmpty;
+            empty.style.display = '';
+            return;
+        }
+        canvas.style.display = '';
+        empty.style.display = 'none';
+        const labels = data.departments.map(d => d.siteName + ' / ' + d.departmentName);
+        if (completionChart) completionChart.destroy();
+        completionChart = new Chart(document.getElementById('completionChart'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: T.completion, data: data.departments.map(d => d.completionPct), backgroundColor: CT.ROLE.progress },
+                    // metPct is met / ASSESSED cells and NULL when nothing was assessed —
+                    // Chart.js skips a null, so no bar is drawn where there is no measurement.
+                    { label: T.met, data: data.departments.map(d => (d.metPct == null ? null : d.metPct)), backgroundColor: CT.ROLE.achievedAlt },
+                    // The unmeasured share of the required cells, as its own series.
+                    { label: T.notMeasured, data: data.departments.map(d => d.unmeasuredPct), backgroundColor: CT.ROLE.outstanding || '#9e9e9e' },
+                ],
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+                plugins: { tooltip: { callbacks: {
+                    label: (ctx) => {
+                        const d = data.departments[ctx.dataIndex];
+                        if (ctx.datasetIndex === 1 && d.metPct == null) return T.met + ': ' + T.notMeasured;
+                        return ctx.dataset.label + ': ' + (ctx.parsed.y == null ? T.notMeasured : ctx.parsed.y + '%');
+                    },
+                    afterLabel: (ctx) => {
+                        const d = data.departments[ctx.dataIndex];
+                        return d.headcount + ' ' + T.employees + ' · ' + d.assessedCells + '/' + d.requiredCells + ' ' + T.cells
+                            + (d.unmeasuredCells ? ' · ' + d.unmeasuredCells + ' ' + T.notMeasured.toLowerCase() : '');
+                    },
+                } } },
+            },
+        });
+    }
+
+    async function loadNinebox() {
+        const canvas = document.getElementById('nineboxChart');
+        const empty = document.getElementById('nineboxEmpty');
+        const data = await getJson('/api/analytics/ninebox-by-department');
+        if (!data.departments || !data.departments.length) {
+            if (nineboxChart) { nineboxChart.destroy(); nineboxChart = null; }
+            canvas.style.display = 'none';
+            empty.textContent = T.nineboxEmpty;
+            empty.style.display = '';
+            return;
+        }
+        canvas.style.display = '';
+        empty.style.display = 'none';
+        const labels = data.departments.map(d => d.siteName + ' / ' + d.departmentName);
+        const datasets = [];
+        for (let box = 1; box <= 9; box++) {
+            datasets.push({
+                label: T.box + ' ' + box,
+                data: data.departments.map(d => d.boxes[box] || 0),
+                backgroundColor: BOX_COLORS[box - 1],
+            });
+        }
+        if (nineboxChart) nineboxChart.destroy();
+        nineboxChart = new Chart(document.getElementById('nineboxChart'), {
+            type: 'bar',
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } },
+            },
+        });
+    }
+
+    async function loadTrend() {
+        const months = document.getElementById('trendMonths').value;
+        const data = await getJson('/api/analytics/perf-actions-trend?months=' + encodeURIComponent(months));
+
+        // MoM cards
+        const cards = document.getElementById('momCards');
+        cards.innerHTML = '';
+        for (const row of data.currentMonth) {
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            const deltaTxt = row.delta === 0 ? '±0'
+                : (row.delta > 0 ? '+' + row.delta : String(row.delta));
+            const pctTxt = row.deltaPct == null ? '' : ' (' + (row.deltaPct > 0 ? '+' : '') + row.deltaPct + '%)';
+            card.innerHTML = '<h3></h3><p class="stat-value"></p><p style="font-size:12px;color:' +
+                (row.delta > 0 ? '#c0392b' : row.delta < 0 ? '#27ae60' : '#888') + ';margin:0;"></p>';
+            card.querySelector('h3').textContent = TYPE_LABELS[row.actionType] || row.actionType;
+            card.querySelector('.stat-value').textContent = row.count;
+            card.querySelectorAll('p')[1].textContent = deltaTxt + pctTxt + ' ' + T.vsLast;
+            cards.appendChild(card);
+        }
+
+        if (trendChart) trendChart.destroy();
+        trendChart = new Chart(document.getElementById('trendChart'), {
+            type: 'line',
+            data: {
+                labels: data.months,
+                datasets: Object.keys(data.series).map(t => ({
+                    label: TYPE_LABELS[t] || t,
+                    data: data.series[t],
+                    borderColor: TYPE_COLORS[t] || '#888',
+                    backgroundColor: TYPE_COLORS[t] || '#888',
+                    tension: 0.25,
+                    fill: false,
+                })),
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+            },
+        });
+    }
+
+    let burndownChart, teamProgressChart;
+
+    async function loadBurndown() {
+        const data = await getJson('/api/analytics/campaign-burndown');
+        const empty = document.getElementById('burndownEmpty');
+        if (!data.cycle || !data.departments.length) {
+            empty.style.display = '';
+            return;
+        }
+        empty.style.display = 'none';
+        document.getElementById('burndownTitle').textContent =
+            T.burndown + ' — ' + data.cycle.label;
+        document.getElementById('burndownSub').textContent =
+            (data.cycle.daysLeft >= 0 ? data.cycle.daysLeft + ' ' + T.daysClose : T.overdue) +
+            ' · ' + T.lowest;
+        const labels = data.departments.map(d => d.siteName + ' / ' + d.departmentName);
+        if (burndownChart) burndownChart.destroy();
+        burndownChart = new Chart(document.getElementById('burndownChart'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: T.approved, data: data.departments.map(d => d.approved), backgroundColor: CT.ROLE.achieved },
+                    { label: T.inReview, data: data.departments.map(d => d.inReview), backgroundColor: CT.ROLE.progress },
+                    { label: T.unsubmitted, data: data.departments.map(d => d.unsubmitted), backgroundColor: CT.ROLE.outstanding },
+                ],
+            },
+            options: {
+                responsive: true, indexAxis: 'y',
+                scales: { x: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }, y: { stacked: true } },
+                plugins: { tooltip: { callbacks: { afterLabel: (ctx) => {
+                    const d = data.departments[ctx.dataIndex];
+                    // Roster-based (v_cycle_participant_status): enrolled = the people
+                    // asked; a department nobody was enrolled in was never launched
+                    // there — say so, never a percentage.
+                    if (d.launched === false || d.completionPct == null) return T.notLaunched;
+                    return d.enrolled + ' ' + T.enrolled + ' · ' + d.notStarted + ' ' + T.notStarted + ' · ' + d.completionPct + '% ' + T.complete;
+                } } } },
+            },
+        });
+    }
+
+    async function loadTeamProgression() {
+        const data = await getJson('/api/analytics/team-progression?months=12');
+        const empty = document.getElementById('teamProgressEmpty');
+        if (!data.rows.length) { empty.style.display = ''; return; }
+        empty.style.display = 'none';
+        const monthsAxis = [...new Set(data.rows.map(r => r.month))].sort();
+        const depts = [...new Set(data.rows.map(r => r.departmentLabel))];
+        const palette = ['#3498db', '#27ae60', '#9b59b6', '#e67e22', '#e74c3c', '#1abc9c', '#f39c12', '#34495e'];
+        if (teamProgressChart) teamProgressChart.destroy();
+        // Fit the level axis to the data (chart-axis-fit.js): pinned to 0-4, a
+        // department progressing by a few tenths of a level drew as a flat line.
+        const yFit = window.ChartAxisFit
+            ? ChartAxisFit.fitRange(data.rows.map(r => r.avgLevel), ChartAxisFit.LEVEL)
+            : { min: 0, max: 4 };
+        teamProgressChart = new Chart(document.getElementById('teamProgressChart'), {
+            type: 'line',
+            data: {
+                labels: monthsAxis,
+                datasets: depts.map((dep, i) => ({
+                    label: dep,
+                    data: monthsAxis.map(m => {
+                        const hit = data.rows.find(r => r.month === m && r.departmentLabel === dep);
+                        return hit ? hit.avgLevel : null;
+                    }),
+                    borderColor: palette[i % palette.length],
+                    backgroundColor: palette[i % palette.length],
+                    // spanGaps:false — a null month is "no data for this department
+                    // that month", not a value; bridging it fabricates a
+                    // department trend across a gap that was never measured.
+                    tension: 0.25, spanGaps: false,
+                })),
+            },
+            options: {
+                responsive: true,
+                scales: { y: { min: yFit.min, max: yFit.max, title: { display: true, text: T.avgLevel } } },
+            },
+        });
+    }
+
+    function showLoadError(canvasId, emptyId, chart) {
+        try { if (chart) chart.destroy(); } catch (e) { /* ignore */ }
+        const canvas = document.getElementById(canvasId);
+        const empty = document.getElementById(emptyId);
+        if (canvas) canvas.style.display = 'none';
+        if (empty) { empty.textContent = T.loadError; empty.style.display = ''; }
+    }
+
+    document.getElementById('trendMonths').addEventListener('change', () => { loadTrend().catch(console.error); });
+    loadCompletion().catch(err => { console.error(err); showLoadError('completionChart', 'completionEmpty', completionChart); });
+    loadNinebox().catch(err => { console.error(err); showLoadError('nineboxChart', 'nineboxEmpty', nineboxChart); });
+    loadTrend().catch(console.error);
+    loadBurndown().catch(console.error);
+    loadTeamProgression().catch(console.error);
+})();
+</script>

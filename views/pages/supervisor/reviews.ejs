@@ -1,0 +1,71 @@
+<div class="page-header">
+    <h1><%= __('talentx:rvs_title') %></h1>
+    <p><%= __('talentx:rvs_intro') %></p>
+</div>
+
+<div class="card" style="margin-bottom:18px">
+    <h2><i class="fas fa-hourglass-half" aria-hidden="true"></i> <%= __('talentx:rvs_pending') %> (<%= (pendingReviews || []).length %>)</h2>
+    <% if (!pendingReviews || pendingReviews.length === 0) { %>
+        <p style="color:#777"><%= __('talentx:rvs_no_pending') %></p>
+    <% } else { %>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th><%= __('talentx:employee') %></th>
+                    <th><%= __('talentx:skill') %></th>
+                    <th><%= __('talentx:rvs_self_rating') %></th>
+                    <th><%= __('talentx:rvs_submitted') %></th>
+                    <th><%= __('talentx:actions') %></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% pendingReviews.forEach(function(r){ %>
+                    <tr>
+                        <td><%= (r.firstName || '') + ' ' + (r.lastName || '') %></td>
+                        <td><%= r.skillName || r.skill_name || (__('talentx:rvs_skill_num') + (r.skillId || r.skill_id)) %></td>
+                        <td><%= r.selfRatedLevel != null ? r.selfRatedLevel : (r.self_rated_level || '-') %></td>
+                        <td><%= (function(d){ if(!d) return ''; try { return new Date(d).toLocaleDateString(typeof lang !== 'undefined' ? lang : 'fr'); } catch(e){ return d; } })(r.submittedAt || r.submitted_at) %></td>
+                        <td><a href="/supervisor/reviews/<%= r.id %>" class="btn btn-sm"><%= __('talentx:open') %></a></td>
+                    </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    <% } %>
+</div>
+
+<div class="card">
+    <h2><i class="fas fa-scroll" aria-hidden="true"></i> <%= __('talentx:rvs_recent') %> (<%= (allReviews || []).length %>)</h2>
+    <% if (!allReviews || allReviews.length === 0) { %>
+        <p style="color:#777"><%= __('talentx:rvs_no_reviews') %></p>
+    <% } else { %>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th><%= __('talentx:employee') %></th>
+                    <th><%= __('talentx:skill') %></th>
+                    <th><%= __('talentx:rvs_supervisor_rating') %></th>
+                    <th><%= __('talentx:status') %></th>
+                    <th><%= __('talentx:rvs_reviewed') %></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% allReviews.forEach(function(r){ %>
+                    <tr>
+                        <td><%= (r.firstName || '') + ' ' + (r.lastName || '') %></td>
+                        <td><%= r.skillName || r.skill_name || (__('talentx:rvs_skill_num') + (r.skillId || r.skill_id)) %></td>
+                        <td><%= r.supervisorRatedLevel != null ? r.supervisorRatedLevel : (r.supervisor_rated_level || '-') %></td>
+                        <td><%= enumLabel(r.status) %></td>
+                        <%# La date de revue se lit dans la langue de la page, comme celle de
+                            soumission juste au-dessus. Mesure de l'integrateur, 16/09/2026 :
+                            cette colonne rendait la valeur BRUTE, donc « Tue Sep 15 2026 23:11:53
+                            GMT+0000 (Greenwich Mean Time) » dans une interface francaise des que
+                            reviewed_at porte une heure. Defaut PREEXISTANT (ligne identique dans le
+                            build 3.23.4 livre), pas une regression d'un lot. Une date absente
+                            reste vide : on n'invente pas une mesure. %>
+                        <td><%= (function(d){ if(!d) return ''; try { return new Date(d).toLocaleDateString(typeof lang !== 'undefined' ? lang : 'fr'); } catch(e){ return d; } })(r.reviewedAt || r.reviewed_at) %></td>
+                    </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    <% } %>
+</div>

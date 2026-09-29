@@ -1,0 +1,66 @@
+<%#
+  « Qu'est-ce que c'est ? » — what a skill and each of its levels mean (3.23.21, D1/D2/D7/D10).
+
+  A native <details>: works with no JavaScript, on touch, by keyboard and with a
+  screen reader; it opens INLINE, below the name, so nothing above it moves.
+  Every text goes through the escaping output tag; the description keeps its line breaks through
+  CSS white-space:pre-line, never through markup.
+
+  include('../../partials/skill-help', { sh: {
+      id,        skill id (the description gets id="sk-desc-<id>")
+      raw,       SkillHelpService raw help, or null (nothing known → generic scale)
+      resolved,  optional: the same, already resolved by skillHelpCore.resolve()
+      mode,      'self' (the person rating) | 'review' (the reviewer)
+      selected,  the level currently chosen (self) / self-rated (review), or null
+      required,  the level the role requires, or null
+  } })
+
+  In 'self' mode the required level is marked only once the row is rated (PO
+  decision: no anchoring on the target); sa-skill-help.js reveals it on change.
+  The person's current validated level and skills.strategic_link are never shown.
+-%>
+<%
+  var _sh = sh || {};
+  var _lang = (typeof lang !== 'undefined' && lang === 'en') ? 'en' : 'fr';
+  var _core = (typeof skillHelpCore !== 'undefined' && skillHelpCore) ? skillHelpCore : null;
+  var _labels = {
+      words: [0, 1, 2, 3, 4].map(function (n) { return __('employee:scale_' + n + '_word'); }),
+      titles: [0, 1, 2, 3, 4].map(function (n) { return __('employee:scale_' + n + '_title'); })
+  };
+  var _h;
+  if (_sh.resolved) {
+      _h = _sh.resolved;
+  } else if (_core) {
+      _h = _core.resolve(_sh.raw || null, _lang, _labels);
+  } else {
+      _h = { description: null, subDomainName: null, subDomainDefinition: null,
+             levels: [0, 1, 2, 3, 4].map(function (n) { return { level: n, word: _labels.words[n], text: _labels.titles[n] }; }) };
+  }
+  var _lv = function (v) { if (v === null || v === undefined || v === '') return null; var n = Number(v); return (n >= 0 && n <= 4 && Math.floor(n) === n) ? n : null; };
+  var _sel = _lv(_sh.selected);
+  var _req = _lv(_sh.required);
+  var _review = _sh.mode === 'review';
+  var _showReq = _review || _sel !== null;
+  var _noDesc = _review ? __('talentx:sar_help_no_desc') : __('employee:sa_help_no_desc');
+  var _selTag = _review ? __('talentx:sar_help_self_tag') : __('employee:sa_help_your_choice');
+  var _reqTag = _review ? __('talentx:sar_help_required_tag') : __('employee:sa_help_required_tag');
+%>
+<details class="sa-skill-help" data-skill-help id="sk-help-<%= _sh.id %>">
+    <summary class="sa-skill-help-btn"><span class="sa-skill-help-icon" aria-hidden="true">ⓘ</span> <span class="sa-skill-help-label"><%= __('employee:sa_help_summary') %></span></summary>
+    <div class="sa-skill-help-panel">
+        <p class="sa-skill-desc<%= _h.description ? '' : ' sa-skill-desc-missing' %>" id="sk-desc-<%= _sh.id %>"><%= _h.description || _noDesc %></p>
+        <% if (_h.subDomainName) { %>
+        <p class="sa-skill-sub"><strong><%= __('employee:sa_help_subdomain') %></strong> <%= _h.subDomainName %><% if (_h.subDomainDefinition) { %> — <%= _h.subDomainDefinition %><% } %></p>
+        <% } %>
+        <p class="sa-skill-levels-title"><%= __('employee:sa_help_levels_title') %></p>
+        <ul class="sa-skill-levels">
+            <% _h.levels.forEach(function (L) { %>
+            <li data-level="<%= L.level %>" class="<%= _sel === L.level ? 'is-selected' : '' %><%= _req === L.level ? ' is-required' : '' %>">
+                <strong><%= L.level %><% if (L.word) { %> – <%= L.word %><% } %></strong> : <span class="sa-lvl-text"><%= L.text %></span>
+                <span class="sa-lvl-tag"<%= _sel === L.level ? '' : ' hidden' %>><%= _selTag %></span>
+                <% if (_req === L.level) { %><span class="sa-req-tag"<%= _showReq ? '' : ' hidden' %>><%= _reqTag %></span><% } %>
+            </li>
+            <% }); %>
+        </ul>
+    </div>
+</details>

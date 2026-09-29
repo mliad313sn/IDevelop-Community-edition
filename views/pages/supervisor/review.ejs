@@ -1,0 +1,196 @@
+<div class="page-header">
+    <h1><%= __('talentx:rv_title') %></h1>
+    <p><%= __('talentx:rv_employee') %> <strong><%= employee.firstName %> <%= employee.lastName %></strong></p>
+</div>
+
+<div class="review-section">
+    <h2><%= __('talentx:rv_skill') %> <%= review.skillName %></h2>
+    <%# 3.23.21: the same « Qu'est-ce que c'est ? » the employee saw, with the
+        self-rated and the required level marked. %>
+    <link rel="stylesheet" href="/css/sa-skill-help.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
+    <script src="/js/sa-skill-help.js?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>"></script>
+    <%- include('../../partials/skill-help', { sh: { id: 'rv-' + review.skillId, raw: (typeof skillHelp !== 'undefined') ? skillHelp : null, mode: 'review',
+        selected: selfAssessment ? selfAssessment.selfRatedLevel : review.selfRatedLevel,
+        required: (typeof requiredLevel !== 'undefined') ? requiredLevel : null } }) %>
+    <p><strong><%= __('talentx:rv_domain') %></strong> <%= review.domainName %></p>
+
+    <%# LE TOUR JUGÉ N'EST PLUS LE TOUR COURANT — ET IL FAUT LE DIRE.
+        `supervisor_reviews.self_assessment_id` désigne UN tour ; une nouvelle
+        campagne en crée un autre et remplace celui-ci. Le relecteur décidait
+        alors sur des chiffres datés sans qu'aucune ligne de la page ne l'en
+        avertisse. Le modèle remonte déjà supersededAt/supersededBy. %>
+    <% if (review.supersededAt) {
+           const _sd = new Date(review.supersededAt);
+           const _sdTxt = isNaN(_sd.getTime()) ? null
+               : _sd.toLocaleDateString(typeof lang !== 'undefined' && lang === 'en' ? 'en-GB' : 'fr-FR');
+    %>
+    <p class="text-muted" style="margin:-.5rem 0 1rem;">
+        <i class="fas fa-clock-rotate-left" aria-hidden="true"></i>
+        <% if (_sdTxt && review.supersededBy) { %><%= __('talentx:rv_round_superseded_by', { date: _sdTxt, id: review.supersededBy }) %>
+        <% } else if (_sdTxt) { %><%= __('talentx:rv_round_superseded', { date: _sdTxt }) %>
+        <% } else { %><%= __('talentx:rv_round_superseded_nodate') %><% } %>
+    </p>
+    <% } %>
+
+    <div class="review-comparison">
+        <div class="rating-box">
+            <h3><%= __('talentx:rv_employee_self_rating') %></h3>
+            <p class="rating-value"><%= selfAssessment ? selfAssessment.selfRatedLevel : (review.selfRatedLevel != null ? review.selfRatedLevel : '—') %></p>
+        </div>
+        <div class="rating-box">
+            <h3><%= __('talentx:rv_your_rating') %></h3>
+            <form id="reviewForm">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <select id="supervisorRating" name="supervisorRatedLevel" class="form-control" required>
+                    <%# An unreviewed row now holds NO rating. Without this empty
+                        first option the browser would silently pre-select "0" —
+                        the lowest level on the scale — as the supervisor's answer. %>
+                    <option value="" <%= review.supervisorRatedLevel == null ? 'selected' : '' %> disabled><%= __('talentx:rv_choose_rating') %></option>
+                    <option value="0" <%= review.supervisorRatedLevel === 0 ? 'selected' : '' %>>0 - <%= __('talentx:scale_0') %></option>
+                    <option value="1" <%= review.supervisorRatedLevel === 1 ? 'selected' : '' %>>1 - <%= __('talentx:scale_1') %></option>
+                    <option value="2" <%= review.supervisorRatedLevel === 2 ? 'selected' : '' %>>2 - <%= __('talentx:scale_2') %></option>
+                    <option value="3" <%= review.supervisorRatedLevel === 3 ? 'selected' : '' %>>3 - <%= __('talentx:scale_3') %></option>
+                    <option value="4" <%= review.supervisorRatedLevel === 4 ? 'selected' : '' %>>4 - <%= __('talentx:scale_4') %></option>
+                </select>
+            </form>
+        </div>
+    </div>
+
+    <div id="gapDisplay" style="margin: 20px 0; padding: 15px; background: var(--bg-elevated); border-radius: 4px;">
+        <h3><%= __('talentx:gap') %>: <span id="gapValue">0</span></h3>
+    </div>
+
+    <div class="form-group">
+        <label for="gapReason"><%= __('talentx:rv_gap_reason_label') %></label>
+        <textarea id="gapReason" name="gapReason" class="form-control" rows="3" placeholder="<%= __('talentx:rv_gap_reason_ph') %>"><%= review.gapReason || '' %></textarea>
+    </div>
+
+    <div class="form-group">
+        <label for="supervisorNotes"><%= __('talentx:rv_supervisor_notes') %></label>
+        <textarea id="supervisorNotes" name="supervisorNotes" class="form-control" rows="4" placeholder="<%= __('talentx:rv_notes_ph') %>"><%= review.supervisorNotes || '' %></textarea>
+    </div>
+
+    <%# « AUCUNE NOTE FOURNIE » ALORS QUE LA JUSTIFICATION EXISTE.
+        `selfAssessment` vient de SelfAssessmentModel.findById, c'est-à-dire de la
+        VUE `self_assessments` (= les tours NON remplacés) : dès que la personne a
+        été réinterrogée, elle rend null et cette case affirmait au relecteur que
+        le collaborateur n'avait rien justifié. Mesuré en HTTP sur une base de
+        développement, revue 1023 / tour 223929 remplacé le 2026-09-13 : la base
+        et le modèle portaient « 2026 round 1 », la page affichait « Aucune
+        note fournie ». Le modèle joint la TABLE des tours et remonte déjà la note
+        du tour jugé (selfAssessmentNotes) : c'est elle qui fait foi ici, la vue
+        n'étant plus qu'un premier choix. Le texte porte ses propres retours à la
+        ligne, d'où pre-wrap. %>
+    <div class="form-group">
+        <label><%= __('talentx:rv_employee_notes') %></label>
+        <% const _selfNotes = (selfAssessment && selfAssessment.notes) || review.selfAssessmentNotes || null; %>
+        <% if (_selfNotes) { %>
+        <p class="form-control-static" style="white-space:pre-wrap"><%= _selfNotes %></p>
+        <% } else { %>
+        <p class="form-control-static"><%= __('talentx:rv_no_notes') %></p>
+        <% } %>
+    </div>
+
+    <div class="action-buttons">
+        <button type="button" id="completeReviewBtn" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i> <%= __('talentx:rv_complete_review') %></button>
+        <a href="/supervisor/reviews" class="btn btn-secondary"><%= __('talentx:cancel') %></a>
+    </div>
+</div>
+
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+// UNE AUTO-ÉVALUATION ABSENTE N'EST PAS UN ZÉRO. Le repli valait 0, donc un
+// relecteur saisissant 3 lisait « écart +3 » là où rien n'avait été mesuré.
+// `null` ici, et l'écart n'est pas calculé du tout (voir updateGap).
+const selfRating = <%- include('../../partials/json-script', { v: (selfAssessment && selfAssessment.selfRatedLevel != null) ? Number(selfAssessment.selfRatedLevel) : (review.selfRatedLevel != null ? Number(review.selfRatedLevel) : null) }) %>;
+const supervisorRatingSelect = document.getElementById('supervisorRating');
+const gapValue = document.getElementById('gapValue');
+
+function updateGap() {
+    const supervisorRating = parseInt(supervisorRatingSelect.value);
+    const gapDisplay = document.getElementById('gapDisplay');
+    const cs = getComputedStyle(document.documentElement);
+    const tint = (name) => (cs.getPropertyValue('--' + name + '-dim').trim() || 'var(--bg-elevated)');
+    const line = (name) => (cs.getPropertyValue('--' + name).trim() || 'var(--border)');
+
+    // No rating chosen yet — or nothing to compare against, because this review
+    // carries no self-assessment at all: there is no gap to show. Rendering the
+    // arithmetic on an empty select printed "NaN" in the employee-facing figure,
+    // and on a missing self-rating it printed a gap measured against zero.
+    if (Number.isNaN(supervisorRating) || selfRating === null) {
+        gapValue.textContent = '—';
+        gapDisplay.style.background = 'var(--bg-elevated)';
+        gapDisplay.style.border = '1px solid var(--border)';
+        return;
+    }
+
+    const gap = supervisorRating - selfRating;
+    gapValue.textContent = gap > 0 ? '+' + gap : gap;
+
+    if (gap > 0) {
+        gapDisplay.style.background = tint('amber');
+        gapDisplay.style.border = '1px solid ' + line('amber');
+    } else if (gap < 0) {
+        gapDisplay.style.background = tint('blue');
+        gapDisplay.style.border = '1px solid ' + line('blue');
+    } else {
+        gapDisplay.style.background = tint('emerald');
+        gapDisplay.style.border = '1px solid ' + line('emerald');
+    }
+}
+
+supervisorRatingSelect.addEventListener('change', updateGap);
+updateGap();
+
+document.getElementById('completeReviewBtn').addEventListener('click', async function() {
+    // The button is outside the <form>, so `required` never fires — check here.
+    if (supervisorRatingSelect.value === '') {
+        supervisorRatingSelect.focus();
+        alert(<%- JSON.stringify(__('talentx:rv_choose_rating')) %>);
+        return;
+    }
+    const data = {
+        supervisorRatedLevel: parseInt(supervisorRatingSelect.value),
+        gapReason: document.getElementById('gapReason').value,
+        supervisorNotes: document.getElementById('supervisorNotes').value,
+        _csrf: '<%= csrfToken %>'
+    };
+
+    try {
+        // Une réponse REDIRIGÉE ou non-JSON est un ÉCHEC nommé, pas un « Erreur
+        // lors de la finalisation » générique : sur une session expirée l'ancien
+        // code recevait la page de connexion en 200 et tombait dans le catch
+        // avec « Unexpected token '<' ». Le refus se dit maintenant en clair.
+        const result = await SAConsoleNet.api('/supervisor/reviews/<%= review.id %>/complete', 'POST', data);
+        if (result.success) {
+            // toast is non-blocking; give it a moment to show before navigating
+            // (a bare alert+immediate redirect would discard the confirmation).
+            alert(<%- JSON.stringify(__('talentx:rv_completed')) %>);
+            setTimeout(() => { window.location.href = '/supervisor/reviews'; }, 900);
+        } else {
+            alert(<%- JSON.stringify(__('talentx:rv_error_prefix')) %> + ' ' + (result.error || <%- JSON.stringify(__('talentx:rv_failed')) %>));
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        // err.message vient du catalogue (session expirée, périmètre, serveur…) ;
+        // le libellé générique ne sert plus que de dernier recours.
+        alert(error.message || <%- JSON.stringify(__('talentx:rv_error_completing')) %>);
+        if (error.code === 'session') SAConsoleNet.navigate('/login?expired=1');
+    }
+});
+</script>
+
+
+

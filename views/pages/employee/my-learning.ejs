@@ -1,0 +1,96 @@
+<%
+// The learner end of the LMS loop. Pure server render — no JS is required to
+// read your assignments or to open a course, because this page is the target of
+// a notification and must work the moment it loads.
+const L = (k) => __('lms:' + k);
+const STATUS_LABEL = {
+    assigned: L('ml_st_assigned'), in_progress: L('ml_st_in_progress'),
+    completed: L('ml_st_completed'), failed: L('ml_st_failed'), cancelled: L('ml_st_cancelled'),
+};
+const STATUS_COLOR = {
+    assigned: '#64748b', in_progress: '#1b56b8', completed: '#0f8a3c',
+    failed: '#b00020', cancelled: '#8a8a8a',
+};
+const locale = typeof lang !== 'undefined' ? lang : 'fr';
+const fmtDate = (d) => { if (!d) return null; try { return new Date(d).toLocaleDateString(locale); } catch (_) { return String(d).slice(0, 10); } };
+const rows = (typeof items !== 'undefined' && Array.isArray(items)) ? items : [];
+const today = new Date(); today.setHours(0, 0, 0, 0);
+%>
+<div class="page-header">
+  <h1><i class="fas fa-graduation-cap" aria-hidden="true"></i> <%= L('ml_title') %></h1>
+  <p class="text-muted"><%= L('ml_subtitle') %></p>
+</div>
+
+<div class="card table-wrapper" style="padding:0;">
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col"><%= L('ml_th_course') %></th>
+        <th scope="col"><%= L('ml_th_provider') %></th>
+        <th scope="col"><%= L('ml_th_status') %></th>
+        <th scope="col"><%= L('ml_th_due') %></th>
+        <th scope="col"><%= L('ml_th_assigned') %></th>
+        <th scope="col"><%= L('ml_th_action') %></th>
+      </tr>
+    </thead>
+    <tbody>
+    <% if (rows.length) { %>
+      <% rows.forEach(function (r) {
+           const status = String(r.status || 'assigned');
+           const label = STATUS_LABEL[status] || (typeof enumLabel === 'function' ? enumLabel(status) : status);
+           const color = STATUS_COLOR[status] || '#555';
+           const due = r.dueAt ? new Date(r.dueAt) : null;
+           const overdue = due && status !== 'completed' && due < today;
+           let host = null;
+           try { host = r.courseUrl ? new URL(String(r.courseUrl)).host : null; } catch (_) { host = null; }
+      %>
+        <tr>
+          <td>
+            <strong><%= r.courseTitle %></strong>
+            <% if (r.durationMinutes) { %>
+              <span class="text-muted" style="font-size:.82rem"> · <%= r.durationMinutes %> <%= L('ml_duration') %></span>
+            <% } %>
+            <% if (host) { %>
+              <div class="text-muted" style="font-size:.78rem"><i class="fas fa-link" aria-hidden="true"></i> <%= host %></div>
+            <% } else { %>
+              <div class="text-muted" style="font-size:.78rem"><%= L('ml_no_url') %></div>
+            <% } %>
+            <% if (r.pushState === 'failed') { %>
+              <div style="font-size:.78rem;color:#b45309">
+                <i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= L('ml_push_failed') %>
+              </div>
+            <% } %>
+          </td>
+          <td><%= r.provider %></td>
+          <td>
+            <span style="padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:<%= color %>"><%= label %></span>
+            <% if (status === 'completed' && r.completedAt) { %>
+              <div class="text-muted" style="font-size:.78rem"><%= L('ml_completed_on') %> <%= fmtDate(r.completedAt) %></div>
+            <% } %>
+          </td>
+          <td>
+            <% if (due) { %>
+              <span style="<%= overdue ? 'color:#b00020;font-weight:600' : '' %>"><%= fmtDate(r.dueAt) %></span>
+              <% if (overdue) { %> <span style="color:#b00020;font-size:.78rem">(<%= L('ml_overdue') %>)</span><% } %>
+            <% } else { %>
+              <span class="text-muted"><%= L('ml_no_due') %></span>
+            <% } %>
+          </td>
+          <td><%= fmtDate(r.createdAt) || '—' %></td>
+          <td>
+            <% if (host) { %>
+              <a class="btn btn-sm btn-primary" href="/employee/my-learning/<%= r.id %>/open" target="_blank" rel="noopener noreferrer">
+                <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i> <%= L('ml_open') %>
+              </a>
+            <% } else { %>
+              <span class="text-muted">—</span>
+            <% } %>
+          </td>
+        </tr>
+      <% }); %>
+    <% } else { %>
+      <tr><td colspan="6"><em><%= L('ml_none') %></em></td></tr>
+    <% } %>
+    </tbody>
+  </table>
+</div>

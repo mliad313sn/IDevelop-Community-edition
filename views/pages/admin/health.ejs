@@ -1,0 +1,223 @@
+<%
+/*
+ * Santé de l'instance. Every value on this page
+ * is a measurement (job ledger, backup directory, database, settings written
+ * by the jobs); anything not measured renders as « — », never as 0.
+ */
+var _fdt = (typeof fmtDateTime === 'function') ? fmtDateTime : function (d) { return d ? FMT.dateTime(d) : FMT.UNMEASURED; };
+/*
+ * La date du jeu de sauvegarde est une CLÉ technique en base (elle est reprise
+ * telle quelle dans le nom du fichier de vidage) mais elle était AFFICHÉE en
+ * ISO, à côté d'un tableau qui imprime déjà 14/09/2026 : deux formats de date
+ * sur une même page, ce que la règle maison interdit. On affiche donc la date
+ * dans la langue du lecteur, et le NOM DE FICHIER reste inchangé plus bas,
+ * dans son <code> — c'est lui la clé, pas la phrase.
+ * Une valeur qui n'est pas une date (un message d'erreur du moteur de
+ * sauvegarde) est rendue telle quelle : on ne déguise jamais une panne en date.
+ */
+var _bkDate = function (v) {
+  if (!v) return '—';
+  var d = new Date(v);
+  if (isNaN(d.getTime())) return String(v);
+  return (typeof fmtPeriodBound === 'function') ? fmtPeriodBound(d) : FMT.date(d);
+};
+var mb = function (b) { return (b == null || !Number.isFinite(Number(b))) ? '—' : (Number(b) / 1048576).toFixed(1) + ' MB'; };
+var gb = function (b) { return (b == null || !Number.isFinite(Number(b))) ? '—' : (Number(b) / 1073741824).toFixed(1) + ' GB'; };
+var dur = function (ms) { return ms == null ? '—' : (ms < 1000 ? ms + ' ms' : (ms / 1000).toFixed(1) + ' s'); };
+var sched = function (s) {
+  if (!s) return '—';
+  if (s.kind === 'every') return __('admin:health_sched_every', { n: s.minutes });
+  if (s.kind === 'hourly') return __('admin:health_sched_hourly', { m: String(s.minute).padStart(2, '0') });
+  return s.cron;
+};
+var failed = (ticks || []).filter(function (t) { return t.last && t.last.ok === false; }).length;
+var stale = (ticks || []).filter(function (t) { return t.stale; }).length;
+var never = (ticks || []).filter(function (t) { return !t.last; }).length;
+%>
+<div class="page-header">
+  <h1><i class="fas fa-heart-pulse" aria-hidden="true"></i> <%= __('admin:health_title') %></h1>
+  <p class="text-muted"><%= __('admin:health_subtitle') %></p>
+</div>
+
+<!-- ── Summary strip ─────────────────────────────────────────────────────── -->
+<div class="hl-grid">
+  <div class="card hl-card <%= failed ? 'hl-bad' : '' %>"><div class="hl-k"><%= __('admin:health_kpi_failed') %></div><div class="hl-v"><%= failed %></div><div class="hl-sub"><%= __('admin:health_kpi_of_ticks', { n: ticks.length }) %></div></div>
+  <div class="card hl-card <%= stale ? 'hl-bad' : '' %>"><div class="hl-k"><%= __('admin:health_kpi_stale') %></div><div class="hl-v"><%= stale %></div><div class="hl-sub"><%= __('admin:health_kpi_stale_hint') %></div></div>
+  <div class="card hl-card <%= backup && backup.stale ? 'hl-bad' : '' %>"><div class="hl-k"><%= __('admin:health_kpi_backup') %></div><div class="hl-v hl-v-sm"><%= backup && backup.lastRunOn ? _bkDate(backup.lastRunOn) : '—' %></div><div class="hl-sub"><%= backup && backup.lastStatus ? backup.lastStatus : __('admin:health_never_measured') %></div></div>
+  <div class="card hl-card <%= smtp.lastFailure ? 'hl-warn' : '' %>"><div class="hl-k"><%= __('admin:health_kpi_smtp') %></div><div class="hl-v hl-v-sm"><%= smtp.host ? (smtp.enabled ? __('admin:health_smtp_on') : __('admin:health_smtp_off')) : __('admin:health_smtp_unset') %></div><div class="hl-sub"><%= smtp.verifiedAt ? __('admin:health_smtp_verified', { at: _fdt(smtp.verifiedAt), by: smtp.verifiedBy || '—' }) : __('admin:health_smtp_never_verified') %></div></div>
+  <div class="card hl-card <%= database.migrations && database.migrations.pending.length ? 'hl-warn' : '' %>"><div class="hl-k"><%= __('admin:health_kpi_migrations') %></div><div class="hl-v"><%= database.migrations ? database.migrations.pending.length : '—' %></div><div class="hl-sub"><%= database.migrations ? __('admin:health_migrations_applied', { n: database.migrations.applied, latest: database.migrations.latest || '—' }) : __('admin:health_never_measured') %></div></div>
+  <div class="card hl-card <%= license && license.warn ? 'hl-bad' : '' %>"><div class="hl-k"><%= __('admin:health_kpi_license') %></div><div class="hl-v hl-v-sm"><% if (!license) { %>—<% } else if (license.unmanaged) { %><%= __('admin:health_license_unmanaged') %><% } else if (license.expired) { %><%= __('admin:health_license_expired') %><% } else if (license.overSeat) { %><%= __('admin:health_license_overseat') %><% } else { %><%= __('admin:health_license_ok') %><% } %></div><div class="hl-sub"><% if (license && license.seats != null) { %><%= license.seatsUsed %> / <%= license.seats %> <%= __('admin:health_license_seats') %><% } else if (license) { %><%= license.seatsUsed %> <%= __('admin:health_license_seats') %><% } %> · <a href="/admin/license"><%= __('admin:lic_banner_manage') %></a></div></div>
+</div>
+
+<!-- ── Ticks ─────────────────────────────────────────────────────────────── -->
+<section class="card hl-section" id="ticks">
+  <h2 class="hl-h2"><i class="fas fa-clock" aria-hidden="true"></i> <%= __('admin:health_ticks_title') %> <span class="chip"><%= ticks.length %></span> <span class="text-muted hl-mode"><%= jobsMode === 'bullmq' ? __('admin:health_mode_bullmq') : __('admin:health_mode_inproc') %></span></h2>
+  <p class="text-muted hl-hint"><%= __('admin:health_ticks_hint') %></p>
+  <div class="hl-scroll">
+    <table class="table" id="hl-ticks">
+      <thead><tr>
+        <th><%= __('admin:health_col_tick') %></th>
+        <th><%= __('admin:health_col_schedule') %></th>
+        <th><%= __('admin:health_col_last_run') %></th>
+        <th><%= __('admin:health_col_status') %></th>
+        <th><%= __('admin:health_col_duration') %></th>
+        <th><%= __('admin:health_col_next') %></th>
+        <th><%= __('admin:health_col_last_ok') %></th>
+        <th><%= __('admin:health_col_error') %></th>
+        <th class="hl-right"><%= __('admin:health_col_action') %></th>
+      </tr></thead>
+      <tbody>
+      <% ticks.forEach(function (t) { var l = t.last; %>
+        <tr class="<%= l && l.ok === false ? 'hl-row-bad' : (t.stale ? 'hl-row-warn' : '') %>">
+          <td><code><%= t.name %></code><% if (t.daily) { %> <span class="chip" title="<%= __('admin:health_daily_hint') %>"><%= __('admin:health_daily') %></span><% } %><% if (t.bootRun) { %> <span class="chip"><%= __('admin:health_boot') %></span><% } %></td>
+          <td><%= sched(t.schedule) %></td>
+          <td><%= l ? _fdt(l.startedAt) : __('admin:health_never_run') %><% if (l && l.trigger === 'manual') { %> <span class="chip"><%= __('admin:health_trigger_manual') %><%= l.actorRef ? ' · ' + l.actorRef : '' %></span><% } else if (l && l.trigger === 'boot') { %> <span class="chip"><%= __('admin:health_trigger_boot') %></span><% } %></td>
+          <td><% if (!l) { %>—<% } else if (t.running) { %><span class="badge badge-info"><%= __('admin:health_status_running') %></span><% } else if (l.ok) { %><span class="badge badge-success"><%= __('admin:health_status_ok') %></span><% } else { %><span class="badge badge-danger"><%= __('admin:health_status_failed') %></span><% } %><% if (t.stale) { %> <span class="badge badge-warning"><%= __('admin:health_status_stale') %></span><% } %></td>
+          <td><%= dur(t.durationMs) %></td>
+          <td><% if (t.next) { %><%= _fdt(t.next.at) %><% if (t.next.overdue) { %> <span class="badge badge-warning"><%= __('admin:health_overdue') %></span><% } %><% } else { %>—<% } %></td>
+          <td><%= t.lastOkAt ? _fdt(t.lastOkAt) : '—' %></td>
+          <td class="hl-err"><%= l && l.error ? l.error : (l && l.result ? JSON.stringify(l.result).slice(0, 120) : '—') %></td>
+          <td class="hl-right">
+            <form method="POST" action="/admin/health/run/<%= encodeURIComponent(t.name) %>" data-confirm="<%= __('admin:health_run_confirm', { tick: t.name }) %>" data-confirm-title="<%= __('admin:health_run_now') %>" style="display:inline">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <button type="submit" class="btn btn-sm"><i class="fas fa-play" aria-hidden="true"></i> <%= __('admin:health_run_now') %></button>
+            </form>
+          </td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% if (failures && failures.length) { %>
+  <h3 class="hl-h3"><%= __('admin:health_failures_title') %></h3>
+  <ul class="hl-fail">
+    <% failures.forEach(function (f) { %><li><span class="text-muted"><%= _fdt(f.startedAt) %></span> · <code><%= f.tickName %></code> · <%= f.error %></li><% }); %>
+  </ul>
+  <% } %>
+</section>
+
+<!-- ── Backups ───────────────────────────────────────────────────────────── -->
+<section class="card hl-section" id="backups">
+  <h2 class="hl-h2"><i class="fas fa-database" aria-hidden="true"></i> <%= __('admin:health_backups_title') %></h2>
+  <% if (!backup) { %><p class="text-muted"><%= __('admin:health_never_measured') %></p><% } else { %>
+  <div class="hl-kv">
+    <div><span class="hl-k"><%= __('admin:health_bk_dir') %></span><code><%= backup.dir %></code></div>
+    <div><span class="hl-k"><%= __('admin:health_bk_last') %></span><%= backup.lastRunOn ? _bkDate(backup.lastRunOn) : '—' %> · <%= backup.lastStatus || '—' %><% if (backup.stale === true) { %> <span class="badge badge-danger"><%= __('admin:health_bk_stale') %></span><% } else if (backup.stale === false) { %> <span class="badge badge-success"><%= __('admin:health_bk_fresh') %></span><% } %></div>
+    <div><span class="hl-k"><%= __('admin:health_bk_file') %></span><% if (backup.lastFile) { %><code><%= backup.lastFile %></code> (<%= mb(backup.lastSizeBytes) %>)<% } else { %>—<% } %></div>
+    <div><span class="hl-k"><%= __('admin:health_bk_next') %></span><%= _fdt(backup.nextRunAt) %> · <%= __('admin:health_bk_keep', { n: backup.keep || __('admin:health_bk_keep_all') }) %></div>
+    <div><span class="hl-k"><%= __('admin:health_bk_disk') %></span><%= backup.files.length %> <%= __('admin:health_bk_files') %> · <%= mb(backup.totalBytes) %><% if (backup.disk) { %> · <%= __('admin:health_bk_free', { free: gb(backup.disk.freeBytes), total: gb(backup.disk.totalBytes) }) %><% } %></div>
+  </div>
+  <form method="POST" action="/admin/health/backup" data-confirm="<%= __('admin:health_backup_confirm') %>" data-confirm-title="<%= __('admin:health_backup_now') %>" style="margin:.6rem 0 1rem">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <button type="submit" class="btn btn-primary"><i class="fas fa-download" aria-hidden="true"></i> <%= __('admin:health_backup_now') %></button>
+  </form>
+  <%# Renvoi d'un bilan de departement deja archive : le contenu GELE est
+      re-rendu tel quel, jamais recalcule. Meme forme que « Sauvegarder
+      maintenant » : formulaire POST, jeton CSRF, confirmation. %>
+  <form method="POST" action="/admin/health/resend-brief" data-confirm="<%= __('admin:health_resend_confirm') %>" data-confirm-title="<%= __('admin:health_resend_brief') %>" style="margin:.2rem 0 1rem;display:flex;gap:.4rem;flex-wrap:wrap;align-items:flex-end">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div>
+      <label for="rsCadence" class="hl-k"><%= __('admin:health_resend_cadence') %></label>
+      <select id="rsCadence" name="cadence" required>
+        <option value="weekly"><%= __('admin:set_name_deptBriefWeeklyEnabled') %></option>
+        <option value="monthly" selected><%= __('admin:set_name_deptBriefMonthlyEnabled') %></option>
+        <option value="quarterly"><%= __('admin:set_name_deptBriefQuarterlyEnabled') %></option>
+        <option value="yearly"><%= __('admin:set_name_deptBriefYearlyEnabled') %></option>
+      </select>
+    </div>
+    <div>
+      <label for="rsPeriod" class="hl-k"><%= __('admin:health_resend_period') %></label>
+      <input id="rsPeriod" name="period" required placeholder="2026-08" size="10">
+    </div>
+    <div>
+      <label for="rsType" class="hl-k"><%= __('admin:health_resend_type') %></label>
+      <select id="rsType" name="userType" required>
+        <option value="employee"><%= __('admin:health_resend_type_employee') %></option>
+        <option value="admin"><%= __('admin:health_resend_type_admin') %></option>
+      </select>
+    </div>
+    <div>
+      <label for="rsId" class="hl-k"><%= __('admin:health_resend_id') %></label>
+      <input id="rsId" name="userId" type="number" min="1" required size="8">
+    </div>
+    <button type="submit" class="btn"><i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('admin:health_resend_brief') %></button>
+  </form>
+  <% if (backup.files.length) { %>
+  <div class="hl-scroll">
+    <table class="table">
+      <thead><tr><th><%= __('admin:health_col_file') %></th><th><%= __('admin:health_col_size') %></th><th><%= __('admin:health_col_date') %></th></tr></thead>
+      <tbody>
+      <% backup.files.slice(0, 20).forEach(function (f) { %>
+        <tr class="<%= f.empty ? 'hl-row-bad' : '' %>"><td><code><%= f.name %></code><% if (f.empty) { %> <span class="badge badge-danger"><%= __('admin:health_bk_empty') %></span><% } %></td><td><%= mb(f.sizeBytes) %></td><td><%= _fdt(f.modifiedAt) %></td></tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% } else { %><p class="text-muted"><%= __('admin:health_bk_none') %></p><% } %>
+  <% } %>
+  <h3 class="hl-h3"><%= __('admin:health_rp_title') %> <span class="chip"><%= restorePoints.length %></span></h3>
+  <% if (restorePoints.length) { %>
+  <ul class="hl-list"><% restorePoints.forEach(function (r) { %><li><code><%= r.name %></code> · <%= mb(r.sizeBytes) %> · <%= _fdt(r.createdAt) %></li><% }); %></ul>
+  <% } else { %><p class="text-muted"><%= __('admin:health_rp_none') %></p><% } %>
+  <h3 class="hl-h3"><%= __('admin:health_reset_bk_title') %> <span class="chip"><%= resetBackups.length %></span></h3>
+  <% if (resetBackups.length) { %>
+  <ul class="hl-list"><% resetBackups.forEach(function (r) { %><li><code><%= r.name %></code> · <%= mb(r.sizeBytes) %> · <%= _fdt(r.createdAt) %></li><% }); %></ul>
+  <% } else { %><p class="text-muted"><%= __('admin:health_reset_bk_none') %></p><% } %>
+</section>
+
+<!-- ── SMTP ──────────────────────────────────────────────────────────────── -->
+<section class="card hl-section" id="smtp">
+  <h2 class="hl-h2"><i class="fas fa-envelope" aria-hidden="true"></i> <%= __('admin:health_smtp_title') %></h2>
+  <div class="hl-kv">
+    <div><span class="hl-k"><%= __('admin:health_smtp_host') %></span><%= smtp.host ? smtp.host : __('admin:health_smtp_unset') %></div>
+    <div><span class="hl-k"><%= __('admin:health_smtp_master') %></span><%= smtp.enabled ? __('admin:enabled') : __('admin:disabled') %></div>
+    <div><span class="hl-k"><%= __('admin:health_smtp_verified_k') %></span><%= smtp.verifiedAt ? __('admin:health_smtp_verified', { at: _fdt(smtp.verifiedAt), by: smtp.verifiedBy || '—' }) : __('admin:health_smtp_never_verified') %></div>
+    <div><span class="hl-k"><%= __('admin:health_smtp_last_failure') %></span><%= smtp.lastFailure || '—' %></div>
+    <div><span class="hl-k"><%= __('admin:health_smtp_failures_7d') %></span><%= smtp.failures7d != null ? smtp.failures7d : '—' %><% if (smtp.scheduleFailures) { %> · <%= __('admin:health_smtp_schedule_failures', { n: smtp.scheduleFailures }) %><% } %></div>
+  </div>
+  <p><a href="/app-settings" class="btn btn-sm btn-secondary"><%= __('admin:health_smtp_test_link') %></a></p>
+</section>
+
+<!-- ── Database ──────────────────────────────────────────────────────────── -->
+<section class="card hl-section" id="database">
+  <h2 class="hl-h2"><i class="fas fa-server" aria-hidden="true"></i> <%= __('admin:health_db_title') %></h2>
+  <div class="hl-kv">
+    <div><span class="hl-k"><%= __('admin:health_db_size') %></span><%= mb(database.sizeBytes) %></div>
+    <div><span class="hl-k"><%= __('admin:health_db_migrations') %></span><% if (database.migrations) { %><%= __('admin:health_migrations_applied', { n: database.migrations.applied, latest: database.migrations.latest || '—' }) %> · <strong><%= __('admin:health_migrations_pending', { n: database.migrations.pending.length }) %></strong><% if (database.migrations.pending.length) { %><%= colon %> <code><%= database.migrations.pending.join(', ') %></code><% } %><% if (database.migrations.ahead.length) { %> · <span class="badge badge-danger"><%= __('admin:health_migrations_ahead', { keys: database.migrations.ahead.join(', ') }) %></span><% } %><% } else { %>—<% } %></div>
+    <div><span class="hl-k"><%= __('admin:health_db_audit') %></span><%= __('admin:health_db_rows', { logs: database.systemLogs != null ? database.systemLogs : '—', perf: database.perfEvents != null ? database.perfEvents : '—', runs: database.jobRuns != null ? database.jobRuns : '—' }) %></div>
+    <div><span class="hl-k"><%= __('admin:health_db_retention') %></span><%= __('admin:health_db_retention_v', { perf: database.retention.perfEventsDays != null ? database.retention.perfEventsDays : '—', notif: database.retention.notificationDays != null ? database.retention.notificationDays : '—', rem: database.retention.reminderLogDays != null ? database.retention.reminderLogDays : '—' }) %></div>
+  </div>
+  <% if (database.tables && database.tables.length) { %>
+  <div class="hl-scroll">
+    <table class="table">
+      <thead><tr><th><%= __('admin:health_col_table') %></th><th><%= __('admin:health_col_size') %></th><th><%= __('admin:health_col_rows_est') %></th></tr></thead>
+      <tbody><% database.tables.forEach(function (t) { %><tr><td><code><%= t.name %></code></td><td><%= mb(t.bytes) %></td><td><%= t.rows != null ? Number(t.rows).toLocaleString('fr-FR') : '—' %></td></tr><% }); %></tbody>
+    </table>
+  </div>
+  <% } %>
+</section>
+
+<style>
+  .hl-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:14px}
+  .hl-card{padding:12px 14px;border-left:4px solid transparent}
+  .hl-bad{border-left-color:#ef4444}.hl-warn{border-left-color:#f59e0b}
+  .hl-k{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary)}
+  .hl-v{font-size:1.5rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--text-primary)}
+  .hl-v-sm{font-size:1rem}
+  .hl-sub{font-size:.76rem;color:var(--text-muted)}
+  .hl-section{padding:1.1rem;margin-bottom:1rem}
+  .hl-h2{margin-top:0;font-size:1.05rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+  .hl-h3{font-size:.95rem;margin:1rem 0 .4rem}
+  .hl-mode{font-size:.8rem;font-weight:400}
+  .hl-hint{font-size:.82rem;margin:.2rem 0 .8rem}
+  .hl-scroll{overflow-x:auto}
+  .hl-right{text-align:right}
+  .hl-err{max-width:28rem;white-space:normal;font-size:.8rem;color:var(--text-secondary)}
+  .hl-row-bad td{background:rgba(239,68,68,.08)}.hl-row-warn td{background:rgba(245,158,11,.08)}
+  .hl-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:6px 18px;font-size:.9rem}
+  .hl-kv .hl-k{display:block}
+  .hl-list,.hl-fail{margin:0;padding-left:18px;font-size:.85rem}
+  .chip{display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(127,127,127,.15);font-size:.75rem}
+  @media (max-width:1100px){.hl-grid{grid-template-columns:repeat(3,1fr)}}
+  @media (max-width:680px){.hl-grid{grid-template-columns:1fr 1fr}}
+</style>

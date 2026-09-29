@@ -1,0 +1,14 @@
+{
+  "name": "IDevelop",
+  "edition": "Community Edition",
+  "fullName": "IDevelop Community Edition",
+  "slug": "idevelop",
+  "description": "Open-source skills, talent and continuous-performance platform: capability frameworks, assessments, readiness, 9-box calibration, development plans and analytics.",
+  "legalNotice": "Free software — licensed under the GNU AGPL v3.0 or later.",
+  "license": "AGPL-3.0-or-later",
+  "version": "1.0.0",
+  "homepage": "https://github.com/mliad313sn/IDevelop-Community-edition#readme",
+  "defaultMailFrom": "no-reply@idevelop.invalid",
+  "themeColor": "#0A0C18",
+  "accentColor": "#7C6CFF"
+}

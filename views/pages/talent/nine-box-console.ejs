@@ -1,0 +1,507 @@
+<div class="page-header">
+  <h1><i class="fas fa-th" aria-hidden="true"></i> <%= __('talentx:nb_title') %></h1>
+  <p class="text-muted">
+    <%= __('talentx:nb_intro') %>
+  </p>
+</div>
+
+<div class="nb-tabs" style="display:flex;gap:.5rem;margin-bottom:1rem;">
+  <button class="btn btn-primary" id="nb-tab-roster" onclick="NB.show('roster')"><%= __('talentx:nb_tab_roster') %></button>
+  <button class="btn btn-secondary" id="nb-tab-grid" onclick="NB.show('grid')"><%= __('talentx:nb_tab_grid') %></button>
+</div>
+
+<!-- ROSTER -->
+<div id="nb-roster-panel">
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem;border-bottom:1px solid #eee">
+      <strong><%= __('talentx:nb_roster_heading') %></strong>
+      <label class="sr-only" for="nb-search"><%= __('talentx:nb_search_ph') %></label>
+      <input id="nb-search" type="search" class="form-control" placeholder="<%= __('talentx:nb_search_ph') %>" aria-label="<%= __('talentx:nb_search_ph') %>" style="max-width:280px" oninput="NB.renderRoster()">
+    </div>
+    <div class="nb-table-scroll">
+    <table style="width:100%;border-collapse:collapse;font-size:.92rem">
+      <thead><tr style="text-align:left;background:var(--bg-elevated);color:var(--text-secondary);font-size:.78rem;text-transform:uppercase">
+        <th style="padding:.5rem .75rem"><%= __('talentx:employee') %></th><th style="padding:.5rem"><%= __('talentx:role') %></th>
+        <th style="padding:.5rem"><%= __('talentx:nb_service_site') %></th><th style="padding:.5rem"><%= __('talentx:nb_status') %></th>
+        <th style="padding:.5rem;text-align:right"><%= __('talentx:nb_action') %></th>
+      </tr></thead>
+      <tbody id="nb-roster-body"><tr><td style="padding:1rem"><%= __('talentx:loading') %></td></tr></tbody>
+    </table>
+    </div>
+    <div style="padding:.5rem .75rem;color:#94a3b8;font-size:.8rem" id="nb-roster-count"></div>
+  </div>
+</div>
+
+<!-- GRID -->
+<div id="nb-grid-panel" style="display:none"></div>
+
+<!-- DETAIL -->
+<div id="nb-detail" class="card" style="display:none;padding:1rem;margin-top:1rem;"></div>
+
+<!-- ASSESS MODAL -->
+<%# UX-08 (3.23.17): Performance and Potential used to arrive pre-set to
+    "medium", so an unexamined click on "Create draft" filed a Core placement
+    nobody had judged — an absence of assessment recorded as a result. They now
+    start EMPTY and are required. The popup is a real modal dialog: role/aria-
+    modal, labelled by its heading, Escape closes it, Tab stays inside, and the
+    focus returns to the button that opened it. %>
+<div id="nb-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:1000;align-items:center;justify-content:center">
+  <div class="card" id="nb-modal-box" role="dialog" aria-modal="true" aria-labelledby="nb-modal-title" style="width:420px;max-width:92vw;padding:1.25rem">
+    <h3 id="nb-modal-title" style="margin-top:0"><%= __('talentx:nb_assess') %> <span id="nb-modal-name"></span></h3>
+    <input type="hidden" id="nb-emp">
+    <div style="display:flex;gap:.75rem;margin:.5rem 0;flex-wrap:wrap">
+      <div style="flex:1 1 140px"><label for="nb-perf"><%= __('talentx:performance') %> *</label>
+        <select id="nb-perf" class="form-control" required aria-required="true"><option value="" selected disabled><%= __('common:choose_placeholder') %></option><option value="low"><%= __('talentx:low') %></option><option value="medium"><%= __('talentx:medium') %></option><option value="high"><%= __('talentx:high') %></option></select></div>
+      <div style="flex:1 1 140px"><label for="nb-pot"><%= __('talentx:potential') %> *</label>
+        <select id="nb-pot" class="form-control" required aria-required="true"><option value="" selected disabled><%= __('common:choose_placeholder') %></option><option value="low"><%= __('talentx:low') %></option><option value="medium"><%= __('talentx:medium') %></option><option value="high"><%= __('talentx:high') %></option></select></div>
+    </div>
+    <p id="nb-required-msg" role="alert" style="display:none;margin:.2rem 0;font-size:.82rem;color:var(--red-text)"><%= __('common:choose_required_fields') %></p>
+    <div style="display:flex;gap:.75rem;margin:.5rem 0;flex-wrap:wrap">
+      <div style="flex:1 1 140px"><label for="nb-tier"><%= __('talentx:nb_position_in_box') %></label>
+        <select id="nb-tier" class="form-control"><option value="1"><%= __('talentx:nb_tier1') %></option><option value="2" selected><%= __('talentx:nb_tier2') %></option><option value="3"><%= __('talentx:nb_tier3') %></option></select></div>
+      <div style="flex:1 1 140px"><label for="nb-trend"><%= __('talentx:nb_trend') %></label>
+        <select id="nb-trend" class="form-control"><option value="up"><%= __('talentx:nb_trend_up') %></option><option value="stable" selected><%= __('talentx:nb_trend_stable') %></option><option value="down"><%= __('talentx:nb_trend_down') %></option></select></div>
+    </div>
+    <div id="nb-sugg" style="display:none;margin:.4rem 0;padding:8px 10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:.82rem;color:#1e3a8a">
+      <i class="fas fa-lightbulb" aria-hidden="true"></i> <strong><%= __('talentx:nb_sugg') %></strong> <span id="nb-sugg-text"></span>
+      <button type="button" class="btn btn-sm btn-primary" style="margin-left:6px;padding:2px 10px" onclick="NB.useSuggestion()"><%= __('talentx:nb_use_sugg') %></button>
+      <span id="nb-pos-src" style="margin-left:6px;font-style:italic;color:#3b82f6"></span>
+    </div>
+    <p style="font-size:.78rem;color:#94a3b8;margin:.1rem 0 .4rem"><%= __('talentx:nb_sugg_hint') %></p>
+    <div style="margin:.5rem 0"><label for="nb-comments"><%= __('talentx:nb_comments') %></label>
+      <textarea id="nb-comments" class="form-control" rows="2"></textarea></div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.75rem">
+      <button type="button" class="btn btn-secondary" onclick="NB.closeModal()"><%= __('talentx:cancel') %></button>
+      <button type="button" class="btn btn-primary" onclick="NB.create()"><%= __('talentx:nb_create_draft') %></button>
+    </div>
+  </div>
+</div>
+
+<%# UNE SEULE discipline de reseau pour toute l application :
+    public/js/sa-console-net.js. Une reponse REDIRIGEE, non-JSON, 401/440 est
+    un ECHEC -- jamais un succes -- et le refus est ecrit dans la langue de la
+    page. Charge AVANT le script de la page (non differe) pour que SAConsoleNet
+    existe au premier appel. %>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  // Titre de la carte de refus : neutre, car ces ecrans ne sont pas la console de
+  // revue (sans cela ils affichaient « La file de revue n a pas pu etre chargee »).
+  load_failed: __('dash:unable_to_load'),
+  pending_failed: __('dash:unable_to_load'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+const NB_T = {
+  noEmployees: <%- JSON.stringify(__('talentx:nb_no_employees')) %>,
+  dueTitle: <%- JSON.stringify(__('talentx:nb_due_title')) %>,
+  due: <%- JSON.stringify(__('talentx:nb_due')) %>,
+  moAgo: <%- JSON.stringify(__('talentx:nb_mo_ago')) %>,
+  notAssessed: <%- JSON.stringify(__('talentx:nb_not_assessed')) %>,
+  open: <%- JSON.stringify(__('talentx:open')) %>,
+  reassess: <%- JSON.stringify(__('talentx:nb_reassess')) %>,
+  assess: <%- JSON.stringify(__('talentx:nb_assess')) %>,
+  count: <%- JSON.stringify(__('talentx:nb_count')) %>,
+  improving: <%- JSON.stringify(__('talentx:nb_improving')) %>,
+  stable: <%- JSON.stringify(__('talentx:nb_stable')) %>,
+  declining: <%- JSON.stringify(__('talentx:nb_declining')) %>,
+  tierWord: <%- JSON.stringify(__('talentx:nb_tier_word')) %>,
+  usingSugg: <%- JSON.stringify(__('talentx:nb_using_sugg')) %>,
+  adjusted: <%- JSON.stringify(__('talentx:nb_adjusted')) %>,
+  employeeRequired: <%- JSON.stringify(__('talentx:nb_employee_required')) %>,
+  boxWord: <%- JSON.stringify(__('talentx:nb_box_word')) %>,
+  performance: <%- JSON.stringify(__('talentx:performance')) %>,
+  potential: <%- JSON.stringify(__('talentx:potential')) %>,
+  clearance: <%- JSON.stringify(__('talentx:nb_clearance')) %>,
+  inboxPos: <%- JSON.stringify(__('talentx:nb_inbox_pos')) %>,
+  trendWord: <%- JSON.stringify(__('talentx:nb_trend_word')) %>,
+  srcSystem: <%- JSON.stringify(__('talentx:nb_src_system')) %>,
+  srcManager: <%- JSON.stringify(__('talentx:nb_src_manager')) %>,
+  approveManager: <%- JSON.stringify(__('talentx:nb_approve_manager')) %>,
+  <%# M-06 : ce que lit un superviseur là où le manager voit les commandes. %>
+  managerDecides: <%- JSON.stringify(__('talentx:nb_manager_decides')) %>,
+  reject: <%- JSON.stringify(__('talentx:reject')) %>,
+  submitReview: <%- JSON.stringify(__('talentx:nb_submit_review')) %>,
+  archive: <%- JSON.stringify(__('talentx:nb_archive')) %>,
+  hide: <%- JSON.stringify(__('talentx:nb_hide')) %>,
+  disclose: <%- JSON.stringify(__('talentx:nb_disclose')) %>,
+  visible: <%- JSON.stringify(__('talentx:nb_visible')) %>,
+  confidential: <%- JSON.stringify(__('talentx:nb_confidential')) %>,
+  audit: <%- JSON.stringify(__('talentx:nb_audit')) %>,
+  reason: <%- JSON.stringify(__('talentx:nb_reason')) %>,
+  placementApproved: <%- JSON.stringify(__('talentx:nb_placement_approved')) %>,
+  <%# nb_red_intro / nb_created_pip / nb_reused_pip / nb_with_coaching /
+      nb_coaching_existed / nb_coaching_failed / nb_open_pip announced a plan the
+      software had just opened by itself. A3 removed that path, so the strings are
+      gone from here; the keys stay in locales/{fr,en}/talentx.json, unused. %>
+  discloseReason: <%- JSON.stringify(__('talentx:nb_disclose_reason')) %>,
+  hideReason: <%- JSON.stringify(__('talentx:nb_hide_reason')) %>,
+  redTaskCreated: <%- JSON.stringify(__('talentx:nb_red_task_created')) %>,
+  redTaskExisting: <%- JSON.stringify(__('talentx:nb_red_task_existing')) %>,
+  openTasks: <%- JSON.stringify(__('talentx:nb_open_tasks')) %>,
+  blueIntro: <%- JSON.stringify(__('talentx:nb_blue_intro')) %>,
+  createdIdp: <%- JSON.stringify(__('talentx:nb_created_idp')) %>,
+  reusedIdp: <%- JSON.stringify(__('talentx:nb_reused_idp')) %>,
+  withObjectives: <%- JSON.stringify(__('talentx:nb_with_objectives')) %>,
+  openIdp: <%- JSON.stringify(__('talentx:nb_open_idp')) %>,
+  followupError: <%- JSON.stringify(__('talentx:nb_followup_error')) %>,
+  axisPerf: <%- JSON.stringify(__('talentx:nb_axis_perf')) %>,
+  axisPot: <%- JSON.stringify(__('talentx:nb_axis_pot')) %>,
+  cellDiamond: <%- JSON.stringify(__('talentx:nb_cell_diamond')) %>,
+  cellDiamondDesc: <%- JSON.stringify(__('talentx:nb_cell_diamond_desc')) %>,
+  cellShooting: <%- JSON.stringify(__('talentx:nb_cell_shooting')) %>,
+  cellShootingDesc: <%- JSON.stringify(__('talentx:nb_cell_shooting_desc')) %>,
+  cellGold: <%- JSON.stringify(__('talentx:nb_cell_gold')) %>,
+  cellGoldDesc: <%- JSON.stringify(__('talentx:nb_cell_gold_desc')) %>,
+  cellDilemma: <%- JSON.stringify(__('talentx:nb_cell_dilemma')) %>,
+  cellDilemmaDesc: <%- JSON.stringify(__('talentx:nb_cell_dilemma_desc')) %>,
+  cellCritical: <%- JSON.stringify(__('talentx:nb_cell_critical')) %>,
+  cellCriticalDesc: <%- JSON.stringify(__('talentx:nb_cell_critical_desc')) %>,
+  cellEmerging: <%- JSON.stringify(__('talentx:nb_cell_emerging')) %>,
+  cellEmergingDesc: <%- JSON.stringify(__('talentx:nb_cell_emerging_desc')) %>,
+  cellConcern: <%- JSON.stringify(__('talentx:nb_cell_concern')) %>,
+  cellConcernDesc: <%- JSON.stringify(__('talentx:nb_cell_concern_desc')) %>,
+  cellEssential: <%- JSON.stringify(__('talentx:nb_cell_essential')) %>,
+  cellEssentialDesc: <%- JSON.stringify(__('talentx:nb_cell_essential_desc')) %>,
+  cellTrusted: <%- JSON.stringify(__('talentx:nb_cell_trusted')) %>,
+  cellTrustedDesc: <%- JSON.stringify(__('talentx:nb_cell_trusted_desc')) %>
+};
+const NB_LANG = <%- include('../../partials/json-script', { v: (typeof lang !== 'undefined' && lang === 'fr') ? 'fr' : 'en' }) %>;
+const NB = {
+  POT:['high','medium','low'], PERF:['low','medium','high'],
+  data:[], roster:[],
+  // L assistant reseau ne se recopie plus ici : il vit dans
+  // public/js/sa-console-net.js (SAConsoleNet.call). L ancien corps avalait
+  // `r.json` en `{}` ; sur une session expiree le serveur repondait
+  // `302 -> /login`, le fetch de navigateur SUIVAIT la redirection, la page de
+  // connexion arrivait en `200 text/html`, `r.ok` valait donc true et `j`
+  // valait `{}` : le test `if(!r.ok||j.ok===false)` ne voyait rien.
+  // Sur la lecture de la file, `{}` rendait `roster` vide : une organisation VIDE presentee comme une mesure.
+  async api(p,m,b){ try { return await SAConsoleNet.call(p,m,b); } catch(e){ alert(e.message); throw e; } },
+
+  show(which){
+    document.getElementById('nb-roster-panel').style.display = which==='roster'?'':'none';
+    document.getElementById('nb-grid-panel').style.display  = which==='grid'?'':'none';
+    document.getElementById('nb-tab-roster').className = 'btn '+(which==='roster'?'btn-primary':'btn-secondary');
+    document.getElementById('nb-tab-grid').className   = 'btn '+(which==='grid'?'btn-primary':'btn-secondary');
+    if(which==='grid') this.loadGrid();
+  },
+
+  // ── Roster ──
+  async loadRoster(){
+    const j = await this.api('/api/ninebox/roster'); this.roster = j.employees || [];
+    this.renderRoster();
+  },
+  renderRoster(){
+    const q = (document.getElementById('nb-search').value||'').toLowerCase();
+    const rows = this.roster.filter(e=>{
+      const hay = (e.firstName+' '+e.lastName+' '+(e.roleName||'')+' '+(e.serviceName||'')+' '+(e.siteName||'')+' '+(e.employeeNumber||'')).toLowerCase();
+      return !q || hay.includes(q);
+    });
+    const body = document.getElementById('nb-roster-body');
+    if(!rows.length){ body.innerHTML='<tr><td style="padding:1rem;color:#94a3b8" colspan="5">'+NB_T.noEmployees+'</td></tr>'; document.getElementById('nb-roster-count').textContent=''; return; }
+    body.innerHTML = rows.map(e=>{
+      const p = e.placement;
+      // The name is carried on a data-name attribute (HTML-escaped) and read
+      // back by assessBtn. The old `esc(name).replace(/'/g,...)` was a no-op —
+      // esc had already turned every ' into &#39;, which the browser decodes
+      // back to ' inside the onclick attribute, so an employee name executed
+      // arbitrary JS (and O'Brien threw a SyntaxError). Never splice a value
+      // into a JS-string-in-an-HTML-attribute.
+      const nmAttr = esc(e.firstName + ' ' + e.lastName);
+      const dueBadge = e.dueForReassessment
+        ? '<span class="nb-due" title="'+NB_T.dueTitle.replace('{n}', e.cadenceMonths)+'">'+NB_T.due+'</span>'
+        : (e.monthsSince!=null?'<span style="color:#94a3b8;font-size:.74rem">'+NB_T.moAgo.replace('{n}', e.monthsSince)+'</span>':'');
+      // A DRAFT IS A PROPOSAL, NOT A POSITION.
+      // The badge used to show whichever row was touched last — so an unapproved
+      // draft was rendered exactly like an approved placement, with no marker, while
+      // the dashboard tile showed the approved one. The badge now always shows the
+      // person's POSITION (the approved placement), and a proposal is marked:
+      //   · no approval yet  -> the badge itself is dashed and carries its state
+      //   · approval + draft -> the badge is the approval, the draft is a side chip
+      const stateLbl = (s) => (window.EL ? EL(s) : String(s || ''));
+      const provTag = (s, box) => '<span class="nb-prov" title="'+esc(stateLbl(s))+'">◌ '+esc(stateLbl(s))
+        + (box != null ? ' → '+esc(NB.boxLabelFor(box)) : '')+'</span>';
+      const status = p
+        ? '<span class="badge nb-badge'+(e.provisional?' nb-badge-prov':'')+'">'+esc(NB.boxLabelFor(p.box))+'</span> '
+            +(e.provisional?provTag(p.status):'')
+            +(e.pendingProposal?provTag(e.pendingProposal.status, e.pendingProposal.box):'')+' '+dueBadge
+        : '<span style="color:var(--text-muted)">'+NB_T.notAssessed+'</span> '+dueBadge;
+      const action = p
+        ? '<button class="btn btn-sm btn-secondary" onclick="NB.open('+p.id+')">'+NB_T.open+'</button> <button class="btn btn-sm '+(e.dueForReassessment?'btn-primary':'btn-secondary')+'" data-emp="'+e.employeeId+'" data-name="'+nmAttr+'" onclick="NB.assessBtn(this)">'+NB_T.reassess+'</button>'
+        : '<button class="btn btn-sm btn-primary" data-emp="'+e.employeeId+'" data-name="'+nmAttr+'" onclick="NB.assessBtn(this)">'+NB_T.assess+'</button>';
+      return '<tr style="border-top:1px solid #f1f5f9">'+
+        '<td style="padding:.5rem .75rem"><strong>'+esc(e.firstName+' '+e.lastName)+'</strong><div style="color:#94a3b8;font-size:.78rem">'+esc(e.employeeNumber||'')+'</div></td>'+
+        '<td style="padding:.5rem">'+esc(e.roleName||'—')+'</td>'+
+        '<td style="padding:.5rem;color:#64748b">'+esc((e.serviceName||'—')+' · '+(e.siteName||'—'))+'</td>'+
+        '<td style="padding:.5rem">'+status+'</td>'+
+        '<td style="padding:.5rem;text-align:right">'+action+'</td></tr>';
+    }).join('');
+    document.getElementById('nb-roster-count').textContent = NB_T.count.replace('{shown}', rows.length).replace('{total}', this.roster.length);
+  },
+
+  // ── Assess modal ──
+  get TRENDLBL(){ return {up:NB_T.improving,stable:NB_T.stable,down:NB_T.declining}; },
+  suggested:null,
+  // Read the employee off the button's data attributes. dataset.name returns
+  // the decoded original string (safe: it is only ever assigned via textContent
+  // below), so no value is ever spliced into markup.
+  assessBtn(btn){ this.assess(btn.dataset.emp, btn.dataset.name); },
+  assess(empId, name){
+    document.getElementById('nb-emp').value = empId;
+    document.getElementById('nb-modal-name').textContent = name;
+    document.getElementById('nb-comments').value = '';
+    // UX-08: no preset — the two axes are a judgement the manager must make,
+    // every time (they used to carry over from the previous employee, too).
+    ['nb-perf','nb-pot'].forEach(id=>{ const s=document.getElementById(id); s.value=''; s.removeAttribute('aria-invalid'); });
+    document.getElementById('nb-required-msg').style.display='none';
+    document.getElementById('nb-tier').value = '2';
+    document.getElementById('nb-trend').value = 'stable';
+    this.suggested = null;
+    document.getElementById('nb-sugg').style.display='none';
+    document.getElementById('nb-pos-src').textContent='';
+    this._openDialog();
+    // Fetch the system suggestion and pre-fill (the manager may accept or readjust).
+    this.api('/api/ninebox/employee/'+empId+'/suggest-position').then(j=>{
+      const s=j.suggestion; this.suggested=s;
+      document.getElementById('nb-sugg-text').textContent=NB_T.tierWord+' '+s.tier+' · '+(this.TRENDLBL[s.trend]||s.trend)+' — '+s.rationale;
+      document.getElementById('nb-sugg').style.display='';
+      document.getElementById('nb-tier').value=String(s.tier);
+      document.getElementById('nb-trend').value=s.trend;
+      this._refreshSrc();
+    }).catch(()=>{});
+    document.getElementById('nb-tier').onchange = ()=>this._refreshSrc();
+    document.getElementById('nb-trend').onchange = ()=>this._refreshSrc();
+  },
+  useSuggestion(){
+    if(!this.suggested) return;
+    document.getElementById('nb-tier').value=String(this.suggested.tier);
+    document.getElementById('nb-trend').value=this.suggested.trend;
+    this._refreshSrc();
+  },
+  _matchesSuggestion(){
+    const t=Number(document.getElementById('nb-tier').value), tr=document.getElementById('nb-trend').value;
+    return !!(this.suggested && this.suggested.tier===t && this.suggested.trend===tr);
+  },
+  _refreshSrc(){
+    const el=document.getElementById('nb-pos-src');
+    if(!this.suggested){ el.textContent=''; return; }
+    el.textContent = this._matchesSuggestion() ? NB_T.usingSugg : NB_T.adjusted;
+  },
+  _prevFocus:null,
+  _onKey:null,
+  _openDialog(){
+    const modal=document.getElementById('nb-modal'), box=document.getElementById('nb-modal-box');
+    this._prevFocus=document.activeElement;
+    modal.style.display='flex';
+    const focusables=()=>Array.prototype.filter.call(
+      box.querySelectorAll('button:not([disabled]),select:not([disabled]),textarea,input:not([type="hidden"]),a[href]'),
+      el=>el.offsetParent!==null);
+    if(this._onKey) document.removeEventListener('keydown',this._onKey,true);
+    this._onKey=(e)=>{
+      if(e.key==='Escape'){ e.preventDefault(); this.closeModal(); return; }
+      if(e.key!=='Tab') return;
+      const f=focusables(); if(!f.length) return;
+      const first=f[0], last=f[f.length-1];
+      if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown',this._onKey,true);
+    const perf=document.getElementById('nb-perf'); if(perf) perf.focus();
+  },
+  closeModal(){
+    document.getElementById('nb-modal').style.display='none';
+    if(this._onKey){ document.removeEventListener('keydown',this._onKey,true); this._onKey=null; }
+    const p=this._prevFocus; this._prevFocus=null;
+    if(p && p.focus && document.contains(p)){ try{ p.focus(); }catch(_){ /* gone */ } }
+  },
+  async create(){
+    // UX-08: both axes are required — never file a placement nobody chose.
+    const missing=['nb-perf','nb-pot'].map(id=>document.getElementById(id)).filter(s=>!s.value);
+    ['nb-perf','nb-pot'].forEach(id=>{ const s=document.getElementById(id); if(s.value) s.removeAttribute('aria-invalid'); else s.setAttribute('aria-invalid','true'); });
+    if(missing.length){ document.getElementById('nb-required-msg').style.display=''; missing[0].focus(); return; }
+    document.getElementById('nb-required-msg').style.display='none';
+    const src=this._matchesSuggestion()?'system':'manager';
+    const body={employeeId:Number(document.getElementById('nb-emp').value),performance:document.getElementById('nb-perf').value,potential:document.getElementById('nb-pot').value,cellTier:Number(document.getElementById('nb-tier').value),cellTrend:document.getElementById('nb-trend').value,positionSource:src,comments:document.getElementById('nb-comments').value};
+    if(!body.employeeId){alert(NB_T.employeeRequired);return;}
+    await this.api('/api/ninebox','POST',body);
+    this.closeModal();
+    await this.loadRoster();
+  },
+
+  // ── Detail / workflow ──
+  async open(id){const j=await this.api('/api/ninebox/'+id);const ev=j.evaluation;const h=await this.api('/api/ninebox/'+id+'/history');
+    const d=document.getElementById('nb-detail');d.style.display='block';d.scrollIntoView({block:'center'});
+    d.innerHTML='<h3>'+esc(NB.boxLabelFor(ev.box))+' — '+esc(window.EL?EL(ev.status):ev.status)+'</h3>'+
+      '<p>'+NB_T.performance+': <strong>'+esc(window.EL?EL(ev.performance):ev.performance)+'</strong> · '+NB_T.potential+': <strong>'+esc(window.EL?EL(ev.potential):ev.potential)+'</strong> · '+NB_T.clearance+': '+esc(ev.clearance)+'</p>'+
+      '<p>'+NB_T.inboxPos+' <strong>'+NB_T.tierWord+' '+(ev.cellTier||2)+'</strong> · '+NB_T.trendWord+' <strong>'+(ev.cellTrend||'stable')+'</strong> <span style="color:#64748b">('+(ev.positionSource==='system'?NB_T.srcSystem:NB_T.srcManager)+')</span></p>'+
+      '<p>'+esc(ev.comments||'')+'</p>'+
+      // M-06 — UNE COMMANDE OFFERTE EST UNE COMMANDE QUE L'ON PEUT PASSER.
+      // Ces boutons se construisaient sur le seul `ev.status`, si bien qu'un
+      // SUPERVISEUR se voyait proposer « Approuver (manager) », « Rejeter »,
+      // « Archiver » et « Communiquer au collaborateur » — et recevait 403 sur
+      // les quatre (mesuré sur l'évaluation 4042). Le 403 est l'arbitrage A4,
+      // pas le défaut : le superviseur PROPOSE, le manager DÉCIDE. Le défaut
+      // était l'affordance. La charge de `GET /api/ninebox/:id` porte désormais
+      // `canApprove` / `canDraft` — les MÊMES drapeaux que la garde du service —
+      // et la page n'offre que ce qui passera. Aucun droit n'est accordé ici.
+      // Strictement `=== true` : une charge sans drapeau n'ouvre rien.
+      (function(){
+        const mayApprove = ev.canApprove === true, mayDraft = ev.canDraft === true;
+        const open = ['draft','under_review'].includes(ev.status);
+        return '<div style="margin:.5rem 0">'+
+        (open && mayApprove?'<button class="btn btn-sm btn-success" onclick="NB.act('+id+',\'approve\')">'+NB_T.approveManager+'</button> <button class="btn btn-sm btn-danger" onclick="NB.act('+id+',\'reject\')">'+NB_T.reject+'</button> ':'')+
+        (ev.status==='draft' && mayDraft?'<button class="btn btn-sm btn-secondary" onclick="NB.act('+id+',\'submit\')">'+NB_T.submitReview+'</button> ':'')+
+        (ev.status==='approved' && mayApprove?'<button class="btn btn-sm" onclick="NB.act('+id+',\'archive\')">'+NB_T.archive+'</button> '+
+          '<button class="btn btn-sm '+(ev.disclosedToEmployee?'btn-secondary':'btn-primary')+'" onclick="NB.disclose('+id+','+(ev.disclosedToEmployee?'false':'true')+')">'+(ev.disclosedToEmployee?'<i class=\'fas fa-eye-slash\' aria-hidden=\'true\'></i> '+NB_T.hide:'<i class=\'fas fa-eye\' aria-hidden=\'true\'></i> '+NB_T.disclose)+'</button> ':'')+
+        // L'état de confidentialité est une INFORMATION, pas une commande : il
+        // reste affiché au superviseur, qui perd les boutons, pas ce qu'il sait.
+        (ev.status==='approved'?'<span style="margin-left:8px;font-size:.82rem;color:#64748b">'+(ev.disclosedToEmployee?NB_T.visible:NB_T.confidential)+'</span>':'')+
+        // Et dire POURQUOI il n'y a rien à cliquer vaut mieux qu'une zone muette.
+        (!mayApprove && (open || ev.status==='approved')?'<div style="margin-top:.35rem;font-size:.82rem;color:var(--text-muted,#64748b)"><i class="fas fa-circle-info" aria-hidden="true"></i> '+esc(NB_T.managerDecides)+'</div>':'')+
+      '</div>';
+      })()+
+      '<h4>'+NB_T.audit+'</h4>'+h.events.map(e=>'<div style="font-size:.85em;color:#555">'+FMT.dateTime(e.createdAt)+' — <strong>'+e.action+'</strong> '+(e.actorType||'')+(e.toStatus?(' → '+e.toStatus):'')+'</div>').join('');
+  },
+  async act(id,a){let body={};
+    if(a==='reject'){
+      // Reason is mandatory — use the styled dialog and abort on cancel/empty
+      // (native prompt + ||'' let an Escape submit an empty rejection).
+      const c = await window.promptDialog(NB_T.reason, '');
+      if(c===null||!String(c).trim())return;
+      body.reason=String(c).trim();
+    }
+    const res=await this.api('/api/ninebox/'+id+'/'+a,'POST',body);
+    if(a==='approve'){const t=res&&res.evaluation&&res.evaluation.autoTrigger;
+      // a low box no longer opens a plan. Say what actually happened — a task
+      // for the manager — instead of announcing a plan nobody decided to open.
+      if(t&&t.zone==='red')alert(NB_T.placementApproved+'\n\n'+(t.existingPlan?NB_T.redTaskExisting:NB_T.redTaskCreated)+'\n'+NB_T.openTasks);
+      else if(t&&t.zone==='blue')alert(NB_T.placementApproved+'\n\n'+NB_T.blueIntro+' '+(t.createdIdp?NB_T.createdIdp:NB_T.reusedIdp)+(t.objectives?NB_T.withObjectives.replace('{n}', t.objectives):'')+'.\n'+NB_T.openIdp);
+      else if(t&&t.error)alert(NB_T.followupError+' '+t.error);}
+    document.getElementById('nb-detail').style.display='none';await this.loadRoster();if(document.getElementById('nb-grid-panel').style.display!=='none')await this.loadGrid();},
+  // disclosing a placement to the person — and taking it back — is a
+  // deliberate act that must say WHY. Abort on cancel/empty, like reject above.
+  async disclose(id,flag){
+    const why=await window.promptDialog(flag?NB_T.discloseReason:NB_T.hideReason,'');
+    if(why===null||!String(why).trim())return;
+    await this.api('/api/ninebox/'+id+'/disclose','POST',{disclosed:flag,reason:String(why).trim()});
+    await this.open(id);if(document.getElementById('nb-grid-panel').style.display!=='none')await this.loadGrid();},
+
+  // ── Colour-coded matrix grid ──
+  // Category colours. These are BACKGROUNDS for white text (.nb-box{color:#fff}),
+  // so each must clear 4.5:1 against #fff — the label is 16px/800 and the desc is
+  // .78rem, neither of which qualifies as WCAG large text. The original hues failed
+  // badly (top #e6921e was 2.47:1, core 3.42:1, hp 4.20:1); these are the same hue
+  // and saturation darkened only until they pass, so the colour language is intact.
+  CATS:{ nd:{c:'#c0392b',en:'Needs Development',fr:'À développer'}, core:{c:'#27864a',en:'Core Performer',fr:'Performeur clé'}, hp:{c:'#2d79ba',en:'High Potential',fr:'Haut potentiel'}, top:{c:'#a56712',en:'Top Talent',fr:'Talent supérieur'} },
+  get CELLS(){ return {
+    'high-low':{label:NB_T.cellDiamond,cat:'nd',desc:NB_T.cellDiamondDesc},
+    'high-medium':{label:NB_T.cellShooting,cat:'hp',desc:NB_T.cellShootingDesc},
+    'high-high':{label:NB_T.cellGold,cat:'top',desc:NB_T.cellGoldDesc},
+    'medium-low':{label:NB_T.cellDilemma,cat:'nd',desc:NB_T.cellDilemmaDesc},
+    'medium-medium':{label:NB_T.cellCritical,cat:'core',desc:NB_T.cellCriticalDesc},
+    'medium-high':{label:NB_T.cellEmerging,cat:'hp',desc:NB_T.cellEmergingDesc},
+    'low-low':{label:NB_T.cellConcern,cat:'nd',desc:NB_T.cellConcernDesc},
+    'low-medium':{label:NB_T.cellEssential,cat:'core',desc:NB_T.cellEssentialDesc},
+    'low-high':{label:NB_T.cellTrusted,cat:'core',desc:NB_T.cellTrustedDesc},
+  }; },
+  // box number -> CELLS key. box = BAND[potential]*3 + BAND[performance] + 1
+  // (low=0, medium=1, high=2), so the order below is fixed by that formula.
+  BOXKEY:['low-low','low-medium','low-high','medium-low','medium-medium','medium-high','high-low','high-medium','high-high'],
+  // The LOCALIZED cell name for a stored placement. `box_label` in the database is
+  // a hardcoded English string written at placement time ('Gold Star', 'Shooting
+  // Star'…), so rendering it put raw English on a French user's screen — including
+  // an employee's own dashboard. Derive the label from `box` instead; the stored
+  // column is left alone so history stays intact.
+  boxLabelFor(box){
+    const key=this.BOXKEY[Number(box)-1];
+    const cell=key&&this.CELLS[key];
+    return (cell&&cell.label)||(NB_T.boxWord+' '+box);
+  },
+  TRENDCOL:{down:0,stable:1,up:2}, TRENDARROW:{up:'↑',down:'↓',stable:''},
+  cellHtml(pot,perf){
+    const meta=this.CELLS[pot+'-'+perf]; const c=this.CATS[meta.cat].c;
+    const items=this.data.filter(x=>x.potential===pot&&x.performance===perf);
+    // Place each person in a 3×3 micro-grid: row = tier (1 top → 3 bottom),
+    // col = trend (down=left, stable=center, up=right).
+    const slots=Array.from({length:9},()=>[]);
+    items.forEach(x=>{
+      const tier=[1,2,3].includes(Number(x.cellTier))?Number(x.cellTier):2;
+      const col=this.TRENDCOL[x.cellTrend]!=null?this.TRENDCOL[x.cellTrend]:1;
+      slots[(tier-1)*3+col].push(x);
+    });
+    // ONE CHIP PER PERSON. The API now returns the single CURRENT row for
+    // each employee, so nobody can appear twice here. `provisional` marks a chip that
+    // is a proposal with no approval behind it (dashed, ◌); `pendingProposal` marks an
+    // approved position that has a newer draft awaiting a decision.
+    const micro=items.length
+      ? '<div class="nb-micro">'+slots.map(arr=>'<div class="nb-slot">'+arr.map(x=>{
+          const ar=this.TRENDARROW[x.cellTrend]||'';
+          const st=window.EL?EL(x.status):String(x.status||'');
+          const mark=x.provisional?'◌ ':(x.pendingProposal?'• ':'');
+          return '<a class="nb-chip'+(x.provisional?' nb-chip-prov':'')+(x.pendingProposal?' nb-chip-pend':'')+'" href="#" onclick="NB.open('+x.id+');return false" title="'+NB_T.tierWord+' '+(x.cellTier||2)+' · '+NB_T.trendWord+' '+(x.cellTrend||'stable')+' · '+esc(st)+'">'+mark+(ar?('<b>'+ar+'</b> '):'')+esc(x.firstName+' '+x.lastName)+'</a>';
+        }).join('')+'</div>').join('')+'</div>'
+      : '';
+    return '<div class="nb-box" style="background:'+c+'">'+
+      '<div class="nb-box-h"><span class="nb-box-label">'+esc(meta.label)+'</span><span class="nb-box-count">'+items.length+'</span></div>'+
+      '<div class="nb-box-desc">'+esc(meta.desc)+'</div>'+
+      micro+
+    '</div>';
+  },
+  async loadGrid(){
+    const g=await this.api('/api/ninebox/grid'); this.data=g.placements;
+    let cells='';
+    for(const pot of this.POT){ for(const perf of this.PERF){ cells+=this.cellHtml(pot,perf); } }
+    const legend=Object.keys(this.CATS).map(k=>'<span class="nb-leg"><span class="nb-sw" style="background:'+this.CATS[k].c+'"></span>'+esc(this.CATS[k][NB_LANG]||this.CATS[k].en)+'</span>').join('');
+    document.getElementById('nb-grid-panel').innerHTML=
+      '<div class="nb-axis-x">'+NB_T.axisPerf+'</div>'+
+      '<div class="nb-grid-wrap"><div class="nb-axis-y">'+NB_T.axisPot+'</div>'+
+        '<div class="nb-grid">'+cells+'</div></div>'+
+      '<div class="nb-legend">'+legend+'</div>';
+  }
+};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+NB.loadRoster();
+</script>
+
+<style>
+/* Phone-first: the roster table has 5 columns and its card clips overflow —
+   scroll it inside the card so Statut / Action stay reachable on a handset. */
+.nb-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.nb-table-scroll > table{min-width:640px}
+.nb-due{background:#fee2e2;color:#b91c1c;border-radius:999px;padding:2px 9px;font-size:.74rem;font-weight:800}
+/* A proposal must never look like a decision. Solid = approved position;
+   dashed + ◌ = a draft / under-review proposal. Colour alone is not the signal —
+   the shape of the border and the ◌ glyph carry it too. */
+.nb-badge{background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:999px;font-size:.78rem;border:1px solid #c7d2fe}
+.nb-badge-prov{background:#fff;color:#475569;border:1px dashed #94a3b8}
+.nb-prov{display:inline-block;margin-left:4px;font-size:.72rem;color:#64748b;border:1px dashed #cbd5e1;border-radius:999px;padding:1px 7px;white-space:nowrap}
+.nb-chip-prov{background:rgba(255,255,255,.70);border:1px dashed rgba(15,23,42,.45);font-style:italic}
+.nb-chip-pend{box-shadow:inset 0 0 0 1px rgba(15,23,42,.35)}
+.nb-axis-x{font-weight:800;color:var(--ink,#0f172a);margin:0 0 6px 26px}
+.nb-grid-wrap{display:flex;align-items:stretch;gap:6px}
+.nb-axis-y{writing-mode:vertical-rl;transform:rotate(180deg);text-align:center;font-weight:800;color:var(--ink,#0f172a);padding:4px 0}
+.nb-grid{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.nb-box{color:#fff;border-radius:10px;padding:12px 14px;min-height:150px;display:flex;flex-direction:column;box-shadow:0 4px 12px rgba(2,32,71,.12)}
+.nb-box-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.nb-box-label{font-weight:800;font-size:1rem;text-shadow:0 1px 2px rgba(0,0,0,.18)}
+.nb-box-count{background:rgba(255,255,255,.28);border-radius:999px;min-width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:.82rem;padding:0 7px}
+.nb-box-desc{font-size:.78rem;line-height:1.35;opacity:.95;margin-top:6px}
+.nb-micro{margin-top:auto;padding-top:10px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,auto);gap:3px}
+.nb-slot{min-height:20px;display:flex;flex-direction:column;gap:3px;align-items:stretch;background:rgba(255,255,255,.10);border-radius:6px;padding:2px}
+.nb-chip{background:rgba(255,255,255,.92);color:#0f172a;border-radius:6px;padding:2px 7px;font-size:.72rem;font-weight:600;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.nb-chip b{color:#15803d}
+.nb-chip:hover{background:#fff}
+.nb-legend{display:flex;gap:18px;flex-wrap:wrap;margin:14px 0 0 26px}
+.nb-leg{display:flex;align-items:center;gap:7px;font-size:.85rem;color:var(--ink,#0f172a)}
+.nb-sw{width:16px;height:16px;border-radius:4px;display:inline-block}
+@media(max-width:760px){.nb-box-desc{display:none}.nb-box{min-height:90px}}
+</style>

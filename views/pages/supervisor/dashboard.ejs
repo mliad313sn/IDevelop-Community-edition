@@ -1,0 +1,82 @@
+<div class="page-header">
+    <h1><%= __('chrome:mgr_dash_title') %></h1>
+    <p><%= __('chrome:mgr_dash_sub') %></p>
+</div>
+
+<%# A manager arriving here for the first time has no counts yet and nothing on
+    the page said what the console is FOR. One plain sentence, above everything
+    else, so the purpose survives an empty state. %>
+<p class="mgr-purpose"><%= __('talentx:mgr_purpose') %></p>
+
+<!-- Live "what needs you" strip — populated from /api/my-actions (RBAC-scoped counts). -->
+<div class="card" style="margin-bottom:1rem;padding:1rem 1.15rem">
+    <h2 style="margin-top:0;font-size:1.05rem"><i class="fas fa-bell" aria-hidden="true"></i> <%= __('chrome:mgr_needs_you') %></h2>
+    <div id="mgr-actions" style="display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.5rem">
+        <span class="text-muted" style="font-size:.9em"><%= __('talentx:loading') %></span>
+    </div>
+</div>
+
+<%# ONE primary action. Reviewing the team's self-assessments is the job that
+    unblocks every other surface on this page (gaps, coaching, plans all read
+    from validated assessments), so it carries the emphasis and the rest are
+    secondary rather than four buttons of identical weight. %>
+<div class="row">
+    <div class="col card">
+        <h2><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('chrome:mgr_reviews') %></h2>
+        <p><%= __('chrome:mgr_reviews_sub') %></p>
+        <a href="/supervisor/self-assessment-reviews" class="btn btn-primary"><%= __('chrome:mgr_open_reviews') %></a>
+    </div>
+    <div class="col card">
+        <h2><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('chrome:mgr_gap') %></h2>
+        <p><%= __('chrome:mgr_gap_sub') %></p>
+        <a href="/supervisor/gap-analysis" class="btn btn-secondary"><%= __('chrome:mgr_gap_btn') %></a>
+    </div>
+    <div class="col card">
+        <h2><i class="fas fa-compass" aria-hidden="true"></i> <%= __('chrome:mgr_coaching') %></h2>
+        <p><%= __('chrome:mgr_coaching_sub') %></p>
+        <a href="/coaching/plans" class="btn btn-secondary"><%= __('chrome:mgr_coaching_btn') %></a>
+    </div>
+    <div class="col card">
+        <h2><i class="fas fa-book" aria-hidden="true"></i> <%= __('chrome:mgr_my_dev') %></h2>
+        <p><%= __('chrome:mgr_my_dev_sub') %></p>
+        <a href="/employee/self-assessment" class="btn btn-secondary"><%= __('chrome:mgr_my_sa') %></a>
+    </div>
+</div>
+
+<style>
+.mgr-purpose{margin:0 0 1rem;color:var(--text-secondary,#64748b);font-size:.92rem;max-width:70ch}
+.mgr-next{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
+.mgr-next-note{color:var(--text-secondary,#64748b);font-size:.9em}
+</style>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+    var box = document.getElementById('mgr-actions');
+    var allClear = <%- JSON.stringify(__('chrome:mgr_all_clear')) %>;
+    // An empty queue is good news, but "nothing to do" is not an answer to
+    // "what now?" — always name one useful next step, and say plainly when the
+    // counts could not be fetched instead of leaving a silent blank panel.
+    var nextLabel = <%- JSON.stringify(__('talentx:mgr_next_step')) %>;
+    var failed = <%- JSON.stringify(__('talentx:mgr_actions_failed')) %>;
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+    function fallback(note) {
+        box.innerHTML = '<div class="mgr-next">'
+            + '<span class="mgr-next-note">' + esc(note) + '</span>'
+            + '<a href="/supervisor/gap-analysis" class="btn btn-sm btn-secondary" style="display:inline-flex;align-items:center;gap:.45rem">'
+            + '<i class="fas fa-chart-column" aria-hidden="true"></i> ' + esc(nextLabel) + '</a>'
+            + '</div>';
+    }
+    fetch('/api/my-actions', { headers: { 'Accept': 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : { items: [] }; })
+        .then(function (j) {
+            var items = (j && j.items) || [];
+            if (!items.length) { fallback(allClear); return; }
+            box.innerHTML = items.map(function (it) {
+                return '<a href="' + esc(it.href) + '" class="btn btn-sm btn-secondary" style="display:inline-flex;align-items:center;gap:.45rem">'
+                    + '<i class="fas ' + esc(it.icon || 'fa-circle') + '" aria-hidden="true"></i> '
+                    + '<strong>' + esc(String(it.count)) + '</strong> ' + esc(it.label) + '</a>';
+            }).join('');
+        })
+        .catch(function () { fallback(failed); });
+})();
+</script>

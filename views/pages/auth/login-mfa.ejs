@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="<%= (typeof lang !== 'undefined' && lang) ? lang : 'fr' %>">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= __('chrome:mfa_page_title', { brand: (typeof brandName!=='undefined' && brandName) ? brandName : 'IDevelop' }) %></title>
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css?v=6.4.0">
+    <% if (typeof externalFonts !== 'undefined' && externalFonts === true) { %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+        rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript>
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    </noscript>
+    <% } %>
+    <link rel="stylesheet" href="/css/style.css?v=<%= assetVersion %>">
+    <link rel="stylesheet" href="/css/login.css?v=<%= assetVersion %>">
+    <!-- Prevent theme flash: apply saved theme before paint -->
+    <script nonce="<%= cspNonce %>">
+        (function () { var t = localStorage.getItem('theme'); if (t === 'light') document.documentElement.setAttribute('data-theme', 'light'); })();
+    </script>
+    <%- include('../../partials/pwa-head') %>
+</head>
+
+<body class="login-page">
+    <div class="login-container">
+        <img src="/brand/idevelop-mark.svg" alt="" class="login-mark" width="56" height="56">
+        <h1>IDevelop</h1>
+        <h2><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('chrome:mfa_heading') %></h2>
+
+        <%- include('../../partials/flash') %>
+
+        <form action="/login/mfa" method="POST" class="login-form">
+            <% if (typeof csrfToken !=='undefined' && csrfToken) { %>
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <% } %>
+            <div class="form-group">
+                <label for="code"><%= __('chrome:mfa_code_label') %></label>
+                <input type="text" id="code" name="code" required autofocus inputmode="numeric"
+                    autocomplete="one-time-code" maxlength="12" placeholder="<%= __('chrome:mfa_code_placeholder') %>"
+                    class="form-control" style="text-align:center; letter-spacing:0.3em; font-size:1.15rem;">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block"><%= __('chrome:btn_verify') %></button>
+            <p class="login-help-text">
+                <%= __('chrome:mfa_help_text') %>
+            </p>
+        </form>
+
+        <p style="text-align:center; margin-top: 16px;">
+            <a href="/login" style="font-size: 0.85rem;">← <%= __('chrome:mfa_back_to_sign_in') %></a>
+        </p>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,463 @@
+<%#
+    the whole SSO screen was hard-coded English on the
+    French UI. Every visible string is now a locale key; field and provider
+    labels resolve through `labelKey` with the English structure string as
+    defaultValue (the config/permissions.js pattern), and every control has a
+    <label for> or an aria-label.
+%>
+<div class="page-header">
+    <h1><i class="fas fa-right-to-bracket" aria-hidden="true"></i> <%= __('admin:sso_h1') %></h1>
+    <div class="page-actions">
+        <a href="/app-settings" class="btn btn-secondary"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('admin:sso_back_to_settings') %></a>
+    </div>
+</div>
+
+<div class="help-text" style="margin-bottom: 1.5rem;">
+    <%- __('admin:sso_intro') %>
+</div>
+
+<%# 3.23.19 (amendment A1/A5): SSO is ENFORCED while a provider is active — only
+    the SuperAdmin keeps a password door (break-glass). The readiness report lists
+    who would have no way in, so the SuperAdmin can close the gaps. %>
+<% var rd = sso.readiness;
+   var roleLabel = { superadmin: __('admin:enum_admin_role_superadmin'), localadmin: __('admin:enum_admin_role_localadmin'), viewer: __('admin:enum_admin_role_viewer') };
+   var methodLabel = { sso_email: __('admin:sso_link_method_sso_email'), migration_mapping: __('admin:sso_link_method_migration_mapping'), legacy: __('admin:sso_link_method_legacy'), delegated_link: __('admin:sso_link_method_delegated_link'), unknown: __('admin:sso_link_method_unknown') }; %>
+<div class="dashboard-section" id="sso-readiness">
+  <h2><i class="fas fa-user-lock" aria-hidden="true"></i> <%= __('admin:sso_enforce_title') %>
+    <% if (rd && rd.enforced) { %><span class="badge badge-success"><%= __('admin:sso_enforce_on') %></span><% } else { %><span class="badge badge-secondary"><%= __('admin:sso_enforce_off') %></span><% } %></h2>
+  <p class="help-text"><%= __('admin:sso_enforce_help') %></p>
+  <% if (!rd) { %>
+    <p class="text-muted"><%= __('admin:sso_ready_unavailable') %></p>
+  <% } else if (!rd.hasGaps) { %>
+    <p><i class="fas fa-circle-check" aria-hidden="true"></i> <%= __('admin:sso_ready_ok') %></p>
+  <% } else { %>
+    <div class="alert alert-warning" role="status" data-sso-readiness-warning>
+      <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+      <%= rd.enforced ? __('admin:sso_ready_warn_enforced') : __('admin:sso_ready_warn_before') %>
+    </div>
+    <%# 3.23.20: a SuperAdmin never signs in through SSO — its only door
+        is the break-glass password + TOTP. One without MFA is a RED item. %>
+    <% if (rd.superadminsWithoutMfa && rd.superadminsWithoutMfa.length) { %>
+      <div class="alert alert-danger" role="alert" data-sso-superadmin-nomfa>
+        <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+        <strong><%= __('admin:sso_ready_super_nomfa_title', { n: rd.superadminsWithoutMfa.length }) %></strong>
+        <p><%= __('admin:sso_ready_super_nomfa_help') %></p>
+        <ul>
+          <% rd.superadminsWithoutMfa.forEach(function (a) { %>
+            <li><a href="/admins/<%= a.id %>"><%= a.username %></a></li>
+          <% }); %>
+        </ul>
+      </div>
+    <% } %>
+    <% if (rd.superadminMfaShortfall) { %>
+      <div class="alert alert-danger" role="alert" data-sso-superadmin-shortfall>
+        <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+        <strong><%= __('admin:sso_ready_super_shortfall_title', { n: rd.superadminsWithMfa }) %></strong>
+        <p><%= __('admin:sso_ready_super_shortfall_help') %></p>
+      </div>
+    <% } %>
+    <% if (rd.superadminIdentities && rd.superadminIdentities.length) { %>
+      <div class="alert alert-danger" role="alert" data-sso-superadmin-identities>
+        <strong><%= __('admin:sso_ready_super_idents_title', { n: rd.superadminIdentities.length }) %></strong>
+        <p><%= __('admin:sso_ready_super_idents_help') %></p>
+        <ul>
+          <% rd.superadminIdentities.forEach(function (i) { %>
+            <li><a href="/admins/<%= i.adminId %>"><%= i.username %></a> — <code><%= i.provider %>:<%= i.uid %></code></li>
+          <% }); %>
+        </ul>
+      </div>
+    <% } %>
+    <% if (rd.demotedWithSso && rd.demotedWithSso.length) { %>
+      <h3><%= __('admin:sso_ready_demoted_title', { n: rd.demotedWithSso.length }) %></h3>
+      <p class="help-text"><%= __('admin:sso_ready_demoted_help') %></p>
+      <ul data-sso-demoted>
+        <% rd.demotedWithSso.forEach(function (a) { %>
+          <li><a href="/admins/<%= a.id %>"><%= a.username %></a> — <%= roleLabel[a.role] || a.role %></li>
+        <% }); %>
+      </ul>
+    <% } %>
+    <% if (rd.adminsWithoutSso.length) { %>
+      <h3><%= __('admin:sso_ready_admins_title', { n: rd.adminsWithoutSso.length }) %></h3>
+      <p class="help-text"><%= __('admin:sso_ready_admins_help') %></p>
+      <ul>
+        <% rd.adminsWithoutSso.forEach(function (a) { %>
+          <li><a href="/admins/<%= a.id %>"><%= a.username %></a> — <%= roleLabel[a.role] || a.role %></li>
+        <% }); %>
+      </ul>
+    <% } %>
+    <% if (rd.adminsUnconfirmed && rd.adminsUnconfirmed.length) { %>
+      <h3><%= __('admin:sso_ready_unconfirmed_title', { n: rd.adminsUnconfirmed.length }) %></h3>
+      <p class="help-text"><%= __('admin:sso_ready_unconfirmed_help') %></p>
+      <ul>
+        <% rd.adminsUnconfirmed.forEach(function (a) { %>
+          <li><a href="/admins/<%= a.id %>"><%= a.username %></a>
+            <ul>
+              <% a.identities.forEach(function (i) { %>
+                <li><code><%= i.provider %>:<%= i.uid %></code> — <%= methodLabel[i.linkMethod] || methodLabel.unknown %>
+                  <form action="/app-settings/sso/identities/<%= i.id %>/confirm-admin" method="POST" style="display:inline;">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <button type="submit" class="btn btn-sm btn-secondary"><%= __('admin:sso_confirm_identity_btn') %></button>
+                  </form>
+                </li>
+              <% }); %>
+            </ul>
+          </li>
+        <% }); %>
+      </ul>
+    <% } %>
+    <% var localNoMfa = (rd.adminsWithoutMfa || []).filter(function (a) { return a.role !== 'superadmin'; }); %>
+    <% if (localNoMfa.length) { %>
+      <h3><%= __('admin:sso_ready_nomfa_title', { n: localNoMfa.length }) %></h3>
+      <p class="help-text"><%= __('admin:sso_ready_nomfa_help') %></p>
+      <ul>
+        <% localNoMfa.forEach(function (a) { %>
+          <li><a href="/admins/<%= a.id %>"><%= a.username %></a> — <%= roleLabel[a.role] || a.role %></li>
+        <% }); %>
+      </ul>
+    <% } %>
+    <% if (rd.adminsLocalOnly.length) { %>
+      <h3><%= __('admin:sso_ready_localonly_title', { n: rd.adminsLocalOnly.length }) %></h3>
+      <p class="help-text"><%= __('admin:sso_ready_localonly_help') %></p>
+      <ul>
+        <% rd.adminsLocalOnly.forEach(function (a) { %>
+          <li><a href="/admins/<%= a.id %>"><%= a.username %></a></li>
+        <% }); %>
+      </ul>
+    <% } %>
+    <% if (rd.employeesWithoutSso > 0) { %>
+      <p><strong><%= __('admin:sso_ready_employees', { n: rd.employeesWithoutSso }) %></strong>
+        <a href="/admin/sso-migration"><%= __('admin:ssom_title') %></a></p>
+    <% } %>
+  <% } %>
+  <%# EXC (3.23.21): the employees a SuperAdmin listed as SSO exceptions — not a gap. %>
+  <% if (rd && rd.employeesExcepted && rd.employeesExcepted.length) { %>
+    <h3><%= __('admin:sso_ready_exc_title', { n: rd.employeesExcepted.length }) %></h3>
+    <p class="help-text"><%= __('admin:sso_ready_exc_help') %></p>
+    <ul data-sso-exceptions>
+      <% rd.employeesExcepted.forEach(function (x) { %>
+        <li><a href="/employees/<%= x.id %>"><%= x.name || ('#' + x.id) %></a><%= x.employeeNumber ? ' (' + x.employeeNumber + ')' : '' %> — <%= x.reason || '' %></li>
+      <% }); %>
+    </ul>
+  <% } %>
+</div>
+
+<%# SSO facilitator (phase 1): connect an enterprise IdP like any SaaS app —
+    the values to paste, one metadata URL to import, a test that signs nobody in. %>
+<% var saml = sso.saml || {}; var samlProv = (sso.providers || []).find(function (p) { return p.key === 'saml'; }) || {}; %>
+<div class="dashboard-section ssof-connect" id="ssof-connect">
+  <h2><i class="fas fa-plug-circle-check" aria-hidden="true"></i> <%= __('admin:ssof_connect_title') %>
+    <% if (samlProv.active) { %><span class="badge badge-success"><%= __('admin:sso_active') %></span><% } else { %><span class="badge badge-secondary"><%= __('admin:sso_inactive') %></span><% } %></h2>
+  <p class="help-text"><%= __('admin:ssof_connect_intro') %></p>
+
+  <h3 class="ssof-step"><span>1</span> <%= __('admin:ssof_step_paste') %></h3>
+  <p class="help-text"><%= __('admin:ssof_step_paste_help') %></p>
+  <div style="overflow-x:auto">
+  <table class="table ssof-values">
+    <tbody>
+      <% [
+          ['ssof_v_entity', spValues.entityId],
+          ['ssof_v_acs', spValues.acsUrl],
+          ['ssof_v_signon', spValues.signOnUrl],
+          ['ssof_v_metadata', spValues.metadataUrl]
+        ].forEach(function (row, i) { %>
+        <tr>
+          <th scope="row"><%= __('admin:' + row[0]) %></th>
+          <td><code id="ssof-val-<%= i %>"><%= row[1] %></code></td>
+          <td><button type="button" class="btn btn-sm btn-secondary ssof-copy" data-copy="ssof-val-<%= i %>" aria-label="<%= __('admin:ssof_copy') %> — <%= __('admin:' + row[0]) %>"><i class="fas fa-copy" aria-hidden="true"></i> <%= __('admin:ssof_copy') %></button></td>
+        </tr>
+      <% }); %>
+    </tbody>
+  </table>
+  </div>
+  <details class="ssof-claims">
+    <summary><%= __('admin:ssof_claims_title') %></summary>
+    <table class="table">
+      <thead><tr><th scope="col"><%= __('admin:ssof_th_claim') %></th><th scope="col"><%= __('admin:ssof_th_source') %></th><th scope="col"><%= __('admin:ssof_th_required') %></th></tr></thead>
+      <tbody>
+        <% spValues.claims.forEach(function (c) { %>
+          <tr>
+            <td><% if (c.nameId) { %><strong><%= __('admin:ssof_claim_nameid') %></strong><% } else { %><code><%= c.name %></code><% } %></td>
+            <td><code><%= c.source %></code><% if (c.nameId) { %> — <%= __('admin:ssof_claim_nameid_format') %><% } %></td>
+            <td><%= c.entraDefault ? __('admin:ssof_entra_default') : (c.required ? __('admin:ssof_yes') : __('admin:ssof_optional')) %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </details>
+  <% if (!publicBase || !/^https:\/\//i.test(publicBase)) { %>
+    <p class="help-text ssof-warn"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('admin:ssof_base_warn') %></p>
+  <% } %>
+
+  <h3 class="ssof-step"><span>2</span> <%= __('admin:ssof_step_import') %></h3>
+  <p class="help-text"><%= __('admin:ssof_step_import_help') %></p>
+  <div class="form-group">
+    <label for="ssof-md-url"><%= __('admin:ssof_md_url') %></label>
+    <input type="url" id="ssof-md-url" class="form-control" value="<%= saml.metadataUrl || '' %>" placeholder="https://login.microsoftonline.com/…/federationmetadata/2007-06/federationmetadata.xml?appid=…" autocomplete="off">
+  </div>
+  <details>
+    <summary><%= __('admin:ssof_md_or_xml') %></summary>
+    <div class="form-group">
+      <label for="ssof-md-xml"><%= __('admin:ssof_md_xml') %></label>
+      <textarea id="ssof-md-xml" class="form-control" rows="5" autocomplete="off"></textarea>
+    </div>
+  </details>
+  <button type="button" class="btn btn-secondary" id="ssof-md-preview"><i class="fas fa-magnifying-glass" aria-hidden="true"></i> <%= __('admin:ssof_md_preview') %></button>
+  <div id="ssof-md-result" class="card ssof-md-result" hidden aria-live="polite"></div>
+
+  <h3 class="ssof-step"><span>3</span> <%= __('admin:ssof_step_trust') %></h3>
+  <% if (!saml.certs || !saml.certs.length) { %>
+    <p class="text-muted"><%= __('admin:ssof_no_cert') %></p>
+  <% } else { %>
+    <p><%= __('admin:ssof_idp') %> <code><%= saml.idpIssuer || '—' %></code></p>
+    <ul class="ssof-certs">
+      <% saml.certs.forEach(function (c) {
+           var days = c.notAfter ? Math.floor((Date.parse(c.notAfter) - Date.now()) / 86400000) : null; %>
+        <li><i class="fas fa-certificate" aria-hidden="true"></i> <code><%= c.sha256 || '?' %></code>
+          <% if (days !== null) { %>
+            <span class="badge <%= days < 0 ? 'badge-danger' : (days < 60 ? 'badge-warning' : 'badge-success') %>"><%= days < 0 ? __('admin:ssof_cert_expired') : (days < 1 ? __('admin:ssof_cert_today') : __('admin:ssof_cert_days', { n: days })) %></span>
+          <% } %></li>
+      <% }); %>
+    </ul>
+  <% } %>
+
+  <h3 class="ssof-step"><span>4</span> <%= __('admin:ssof_step_test') %></h3>
+  <p class="help-text"><%= __('admin:ssof_step_test_help') %></p>
+  <p class="help-text"><%= __('admin:ssof_test_before_activation') %></p>
+  <% if (samlProv.testable || samlProv.active) { %>
+    <a class="btn btn-primary" href="/app-settings/sso/test-signin/saml"><i class="fas fa-vial" aria-hidden="true"></i> <%= __('admin:ssof_test_start') %></a>
+  <% } else { %>
+    <button type="button" class="btn btn-primary" disabled><i class="fas fa-vial" aria-hidden="true"></i> <%= __('admin:ssof_test_start') %></button>
+    <small class="text-muted"><%= __('admin:ssof_test_needs_active') %></small>
+  <% } %>
+  <p class="help-text" style="margin-top:.75rem"><i class="fas fa-right-left" aria-hidden="true"></i> <%= __('admin:ssof_next_migration') %> <a href="/admin/sso-migration"><%= __('admin:ssom_title') %></a></p>
+</div>
+
+<style nonce="<%= cspNonce %>">
+  .ssof-step{display:flex;align-items:center;gap:.5rem;margin-top:1.5rem;font-size:1.05rem}
+  .ssof-step span{display:inline-flex;align-items:center;justify-content:center;width:1.6rem;height:1.6rem;border-radius:50%;background:var(--brand,#7C6CFF);color:#111;font-weight:700;font-size:.85rem}
+  .ssof-values th{white-space:nowrap;width:1%}
+  .ssof-values code{word-break:break-all}
+  .ssof-certs{list-style:none;padding-left:0;line-height:2}
+  .ssof-md-result{padding:1rem;margin-top:1rem}
+  .ssof-warn{color:var(--warn,#b45309)}
+</style>
+<script nonce="<%= cspNonce %>">
+(function () {
+  'use strict';
+  var CSRF = <%- include('../../partials/json-script', { v: typeof csrfToken !== 'undefined' ? csrfToken : '' }) %>;
+  var T = <%- include('../../partials/json-script', { v: {
+    copied: __('admin:ssof_copied'), err: __('admin:ssof_md_err'), entity: __('admin:ssof_md_entity'),
+    sso: __('admin:ssof_md_sso'), certs: __('admin:ssof_md_certs'), added: __('admin:ssof_md_added'),
+    removed: __('admin:ssof_md_removed'), confirm: __('admin:ssof_md_confirm'), apply: __('admin:ssof_md_apply'),
+    applied: __('admin:ssof_md_applied'), expires: __('admin:ssof_md_expires'),
+    appliedInactive: __('admin:ssof_md_applied_inactive'), selected: __('admin:ssof_copy_selected'),
+    confirmFirst: __('admin:ssof_md_confirm_certs'), lang: (typeof lang !== 'undefined' && lang === 'en') ? 'en-GB' : 'fr-FR'
+  } }) %>;
+  var say = function (m, t) { (window.toast || function (x) { window.alert(x); })(m, t); };
+  var el = function (tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+  document.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest ? e.target.closest('.ssof-copy') : null;
+    if (!b) return;
+    var src = document.getElementById(b.getAttribute('data-copy'));
+    if (!src) return;
+    var text = src.textContent;
+    var fallback = function () {
+      var r = document.createRange(); r.selectNodeContents(src); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      var done = false; try { done = document.execCommand('copy'); } catch (_) { done = false; }
+      say(done ? T.copied : T.selected, done ? 'success' : 'info');
+    };
+    // navigator.clipboard exists only on https (or localhost): plain http falls back.
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(function () { say(T.copied, 'success'); }, fallback);
+    else fallback();
+  });
+
+  function payload() {
+    return { url: document.getElementById('ssof-md-url').value.trim(), xml: document.getElementById('ssof-md-xml').value };
+  }
+  function post(url, body) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-csrf-token': CSRF }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return { ok: false }; }); });
+  }
+  function certLine(c) {
+    var li = el('li'); li.appendChild(el('code', null, c.sha256));
+    if (c.notAfter) {
+      var d = new Date(c.notAfter);
+      li.appendChild(el('span', 'text-muted', ' — ' + T.expires + ' ' + (isNaN(d) ? c.notAfter : d.toLocaleDateString(T.lang, { year: 'numeric', month: 'long', day: 'numeric' }))));
+    }
+    return li;
+  }
+  document.getElementById('ssof-md-preview').addEventListener('click', function () {
+    var btn = this; btn.disabled = true;
+    var box = document.getElementById('ssof-md-result');
+    post('/app-settings/sso/saml/metadata/preview', payload()).then(function (j) {
+      btn.disabled = false; box.hidden = false; box.innerHTML = '';
+      if (!j || !j.ok) { box.appendChild(el('p', 'ssof-warn', (j && j.error) || T.err)); return; }
+      var dl = el('dl');
+      [[T.entity, j.entityId], [T.sso, j.ssoUrl]].forEach(function (kv) { dl.appendChild(el('dt', null, kv[0])); var dd = el('dd'); dd.appendChild(el('code', null, kv[1])); dl.appendChild(dd); });
+      box.appendChild(dl);
+      box.appendChild(el('strong', null, T.certs)); var ul = el('ul', 'ssof-certs'); j.certs.forEach(function (c) { ul.appendChild(certLine(c)); }); box.appendChild(ul);
+      if (j.added.length) { box.appendChild(el('strong', null, T.added)); var ua = el('ul', 'ssof-certs'); j.added.forEach(function (c) { ua.appendChild(certLine(c)); }); box.appendChild(ua); }
+      if (j.removed.length) { box.appendChild(el('strong', null, T.removed)); var ur = el('ul', 'ssof-certs'); j.removed.forEach(function (c) { ur.appendChild(certLine(c)); }); box.appendChild(ur); }
+      var confirmBox = null;
+      if (j.needsConfirmation) {
+        var lab = el('label', 'ssof-warn'); confirmBox = el('input'); confirmBox.type = 'checkbox';
+        lab.appendChild(confirmBox); lab.appendChild(document.createTextNode(' ' + T.confirm)); box.appendChild(lab);
+      }
+      var apply = el('button', 'btn btn-primary', T.apply); apply.type = 'button'; apply.style.display = 'block'; apply.style.marginTop = '.75rem';
+      apply.addEventListener('click', function () {
+        if (confirmBox && !confirmBox.checked) { say(T.confirmFirst, 'error'); confirmBox.focus(); return; }
+        apply.disabled = true;
+        var body = payload();
+        // Bind Apply to exactly the certificates shown above (never a bare "yes").
+        body.confirmCerts = confirmBox && confirmBox.checked ? j.added.map(function (c) { return c.sha256; }) : [];
+        post('/app-settings/sso/saml/metadata/apply', body).then(function (r) {
+          if (!r || !r.ok) { apply.disabled = false; say((r && r.error) || T.err, 'error'); return; }
+          say(r.samlActive ? T.applied : T.appliedInactive, r.samlActive ? 'success' : 'info');
+          setTimeout(function () { window.location.reload(); }, r.samlActive ? 900 : 2500);
+        }).catch(function () { apply.disabled = false; say(T.err, 'error'); });
+      });
+      box.appendChild(apply);
+    }).catch(function () { btn.disabled = false; say(T.err, 'error'); });
+  });
+})();
+</script>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  'use strict';
+  // UX-1: « Activer le SSO obligatoire ? {{n}} compte(s)… » before the switch goes on.
+  var Q = <%- include('../../partials/json-script', { v: {
+    msg: __('admin:sso_enable_confirm', { n: (sso.readiness && typeof sso.readiness.noSsoAccessCount === 'number') ? sso.readiness.noSsoAccessCount : '?' }),
+    title: __('admin:sso_enable_confirm_title'), yes: __('admin:sso_enable_confirm_yes')
+  } }) %>;
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!f || f.getAttribute('action') !== '/app-settings/sso') return;
+    var sw = f.querySelector('input[name="enabled"]');
+    var ok = f.querySelector('#sso-confirm-enforce');
+    var viaTest = e.submitter && e.submitter.getAttribute('formaction');
+    if (viaTest || !sw || !sw.checked || !ok || ok.checked || typeof window.confirmDialog !== 'function') return;
+    e.preventDefault();
+    window.confirmDialog(Q.msg, { title: Q.title, confirmText: Q.yes, danger: true }).then(function (yes) {
+      if (!yes) return;
+      ok.checked = true;
+      f.submit();
+    });
+  }, true);
+})();
+</script>
+
+<form action="/app-settings/sso" method="POST">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <div class="dashboard-section">
+        <h2><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:sso_master_switch') %></h2>
+        <label style="display:flex; align-items:center; gap:.6rem; font-weight:600;">
+            <input type="checkbox" name="enabled" value="1" <%= sso.enabled ? 'checked' : '' %>>
+            <%= __('admin:sso_enable') %>
+        </label>
+        <% if (sso.enabledFromEnv) { %>
+            <small style="color:#7f8c8d;"><%- __('admin:sso_from_env') %></small>
+        <% } %>
+
+        <%# UX-1 (3.23.21): switching SSO ON is confirmed against the readiness
+            count (SSO exceptions excluded). The server refuses the switch without
+            it; with JavaScript the same question is asked in a dialog. %>
+        <% var _noSso = (sso.readiness && typeof sso.readiness.noSsoAccessCount === 'number') ? sso.readiness.noSsoAccessCount : '?'; %>
+        <% if (!sso.enabled) { %>
+        <input type="hidden" name="enforceGate" value="1">
+        <label class="sso-confirm-enforce" for="sso-confirm-enforce" style="display:flex; align-items:flex-start; gap:.6rem; margin-top:.6rem;">
+            <input type="checkbox" name="confirmEnforce" value="1" id="sso-confirm-enforce" data-n="<%= _noSso %>">
+            <span><%= __('admin:sso_enable_confirm_check', { n: _noSso }) %></span>
+        </label>
+        <% } %>
+
+        <div class="form-group" style="margin-top:1rem;">
+            <label for="sso-mfa-acr"><%= __('admin:sso_mfa_acr_label') %></label>
+            <input type="text" id="sso-mfa-acr" name="mfaAcrValues" class="form-control" value="<%= sso.mfaAcrValues || '' %>" autocomplete="off">
+            <small style="color:#7f8c8d; display:block; margin-top:.3rem;"><%= __('admin:sso_mfa_acr_help') %></small>
+        </div>
+        <%# 3.23.20 (C3e/C3h): printed under the SSO button and in every SSO migration invitation. %>
+        <div class="form-group" style="margin-top:1rem;">
+            <label for="sso-help-contact"><%= __('admin:sso_help_contact_label') %></label>
+            <input type="text" id="sso-help-contact" name="helpContact" class="form-control" maxlength="200" value="<%= sso.helpContact || '' %>" autocomplete="off">
+            <small style="color:#7f8c8d; display:block; margin-top:.3rem;"><%= __('admin:sso_help_contact_help') %></small>
+        </div>
+    </div>
+
+    <%# ANN (3.23.21): the planned go-live and the one-time announcement 48 h before. %>
+    <% var ann = sso.announcement || {}; %>
+    <div class="dashboard-section" id="sso-golive">
+        <h2><i class="fas fa-bullhorn" aria-hidden="true"></i> <%= __('admin:sso_golive_title') %></h2>
+        <div class="form-group">
+            <label for="sso-golive"><%= __('admin:sso_golive_label') %></label>
+            <input type="datetime-local" id="sso-golive" name="goLiveAt" class="form-control" style="max-width:260px;" value="<%= ann.raw || '' %>" aria-describedby="sso-golive-help">
+            <small id="sso-golive-help" class="help-text" style="display:block; margin-top:.3rem;"><%= __('admin:sso_golive_help') %></small>
+        </div>
+        <div class="form-group">
+            <label for="sso-lead"><%= __('admin:sso_lead_label') %></label>
+            <input type="number" id="sso-lead" name="announceLeadHours" class="form-control" style="max-width:120px;" min="24" max="168" step="1" value="<%= ann.leadHours || 48 %>" aria-describedby="sso-lead-help">
+            <small id="sso-lead-help" class="help-text" style="display:block; margin-top:.3rem;"><%= __('admin:sso_lead_help') %></small>
+        </div>
+        <p data-sso-ann-status>
+            <% if (!ann.goLiveAt) { %><%= __('admin:sso_ann_none') %><% } else { %>
+                <%= __('admin:sso_ann_due', { date: (typeof fmtDateTime === 'function') ? fmtDateTime(ann.dueAt) : ann.dueAt }) %>
+            <% } %>
+            <% if (ann.announced !== null && ann.announced !== undefined) { %> <%= __('admin:sso_ann_status', { n: ann.announced }) %><% } %>
+        </p>
+    </div>
+
+
+    <% sso.providers.forEach(function (p) { %>
+        <div class="dashboard-section">
+            <h2 style="display:flex; align-items:center; gap:.5rem;">
+                <i class="<%= p.icon %>" aria-hidden="true"></i> <%= __('admin:' + (p.labelKey || ''), { defaultValue: p.label }) %>
+                <% if (p.active) { %>
+                    <span class="badge badge-success"><%= __('admin:sso_active') %></span>
+                <% } else { %>
+                    <span class="badge badge-secondary"><%= __('admin:sso_inactive') %></span>
+                <% } %>
+            </h2>
+            <p class="help-text"><%= __('admin:sso_callback_hint') %>
+                <code><%= p.callbackHint %></code> <%= __('admin:sso_callback_suffix') %></p>
+
+            <% p.fields.forEach(function (f) { %>
+                <% const fLabel = __('admin:' + (f.labelKey || ''), { defaultValue: f.label }); %>
+                <div class="form-group">
+                    <label for="<%= p.key %>_<%= f.name %>">
+                        <%= fLabel %>
+                        <% if (f.fromEnv) { %><small style="color:#7f8c8d;"><%= __('admin:sso_field_from_env') %></small><% } %>
+                        <% if (f.undecryptable) { %><small class="ssof-warn" role="status"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('admin:ssof_secret_undecryptable') %></small><% } %>
+                    </label>
+                    <% if (f.bool) { %>
+                        <div><input type="checkbox" id="<%= p.key %>_<%= f.name %>" name="<%= p.key %>.<%= f.name %>" value="1" <%= f.checked ? 'checked' : '' %>></div>
+                    <% } else if (f.secret && f.multiline) { %>
+                        <textarea id="<%= p.key %>_<%= f.name %>" name="<%= p.key %>.<%= f.name %>" rows="5"
+                            class="form-control" autocomplete="off" aria-label="<%= fLabel %>"
+                            placeholder="<%= f.isSet ? __('admin:sso_ph_stored') : __('admin:sso_ph_not_set') %>"></textarea>
+                    <% } else if (f.secret) { %>
+                        <input type="password" id="<%= p.key %>_<%= f.name %>" name="<%= p.key %>.<%= f.name %>"
+                            class="form-control" autocomplete="new-password" aria-label="<%= fLabel %>"
+                            placeholder="<%= f.isSet ? __('admin:sso_ph_secret_stored') : __('admin:sso_ph_not_set') %>">
+                    <% } else if (f.multiline) { %>
+                        <textarea id="<%= p.key %>_<%= f.name %>" name="<%= p.key %>.<%= f.name %>" rows="3"
+                            class="form-control" aria-label="<%= fLabel %>" placeholder="<%= f.placeholder %>"><%= f.value %></textarea>
+                    <% } else { %>
+                        <input type="text" id="<%= p.key %>_<%= f.name %>" name="<%= p.key %>.<%= f.name %>"
+                            class="form-control" aria-label="<%= fLabel %>" value="<%= f.value %>" placeholder="<%= f.placeholder %>">
+                    <% } %>
+                </div>
+            <% }); %>
+
+            <button type="submit" class="btn btn-sm btn-secondary" name="provider" value="<%= p.key %>"
+                formaction="/app-settings/sso/test" formnovalidate>
+                <i class="fas fa-circle-check" aria-hidden="true"></i> <%= __('admin:sso_test', { provider: p.key }) %>
+            </button>
+        </div>
+    <% }); %>
+
+    <div style="margin: 1.5rem 0;">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('admin:sso_save') %></button>
+    </div>
+</form>

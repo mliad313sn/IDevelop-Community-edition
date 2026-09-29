@@ -1,0 +1,311 @@
+<div class="page-header">
+    <h1><%= __('employee:sr_title') %></h1>
+    <p><%= __('employee:sr_subtitle') %></p>
+</div>
+
+<!-- WHERE YOUR FILE IS, AND WHY IT CAME BACK THE WAY IT DID.
+     The table below lists decisions that are already final. This block answers the
+     question that came first and had no answer anywhere in the product: my
+     assessment is gone — who has it now? It reads the enriched
+     /api/self-assessment/mine projection (SelfAssessmentWorkflowService.listForEmployee),
+     which carries the current holder's NAME plus, once a supervisor has ruled, the
+     level they retained, their reason and their notes. -->
+<section class="card" style="margin-bottom:1.25rem;padding:1rem;">
+    <h2 style="margin-top:0;"><i class="fas fa-route" aria-hidden="true"></i> <%= __('employee:loop_flow_header') %></h2>
+    <p class="text-muted" style="margin-top:-.25rem;"><%= __('employee:loop_flow_intro') %></p>
+    <!-- Default content is the NO-JS message, not a spinner: with scripting off
+         (slow mine-site browsers) a permanent "Chargement…" is a lie. The script
+         swaps in the loading line itself before it fetches. -->
+    <div id="loop-flow" aria-live="polite"><p class="text-muted"><%= __('employee:loop_flow_nojs') %></p></div>
+</section>
+
+<h2><%= __('employee:loop_decisions_header') %></h2>
+<%# E-02 — LE RECOURS EST OFFERT LÀ OÙ SE LIT LA DÉCISION.
+    C'est ici, sous les décisions déjà finales, que se lit précisément ce qu'une
+    personne voudrait contester : le menu seul laissait cet écran sans href. %>
+<p class="text-muted" style="margin:-.25rem 0 1rem;">
+    <%= __('employee:loop_acr_note') %>
+    <a href="/assessment-changes" title="<%= __('chrome:nav_acr_title') %>">
+        <i class="fas fa-pen-to-square" aria-hidden="true"></i> <%= __('employee:loop_acr_link') %></a>
+</p>
+<% if (reviews.length === 0) { %>
+    <div class="empty-state">
+        <p><%= __('employee:sr_none') %></p>
+    </div>
+<% } else { %>
+    <div class="table-wrapper">
+    <table class="table">
+        <thead>
+            <tr>
+                <th><%= __('employee:th_skill') %></th>
+                <th><%= __('employee:th_domain') %></th>
+                <th><%= __('employee:th_your_rating') %></th>
+                <th><%= __('employee:th_supervisor_rating') %></th>
+                <th><%= __('employee:th_gap') %></th>
+                <th><%= __('employee:th_gap_reason') %></th>
+                <th><%= __('employee:th_supervisor_notes') %></th>
+                <th><%= __('employee:th_status') %></th>
+                <th><%= __('employee:th_reviewed_at') %></th>
+                <th><%= __('employee:th_actions') %></th>
+            </tr>
+        </thead>
+        <tbody>
+            <% reviews.forEach(function(review) { %>
+            <tr>
+                <td><%= review.skillName %></td>
+                <td><%= review.domainName %></td>
+                <td><%= review.selfRatedLevel %></td>
+                <%
+                   // A review nobody has decided yet has no rating and no gap.
+                   // Showing a number here — and a green "0" — told the employee
+                   // their supervisor agreed before anyone had opened the file.
+                   const srReviewed = review.supervisorRatedLevel != null && review.gap != null;
+                %>
+                <td><%= srReviewed ? review.supervisorRatedLevel : '—' %></td>
+                <td>
+                    <% if (!srReviewed) { %>
+                        <span class="badge badge-secondary" title="<%= __('employee:sr_gap_pending_title') %>"><%= __('employee:sr_pending') %></span>
+                    <% } else if (review.gap > 0) { %>
+                        <span class="badge badge-warning">+<%= review.gap %></span>
+                    <% } else if (review.gap < 0) { %>
+                        <span class="badge badge-info"><%= review.gap %></span>
+                    <% } else { %>
+                        <span class="badge badge-success">0</span>
+                    <% } %>
+                </td>
+                <td><%= review.gapReason || '-' %></td>
+                <td><%= review.supervisorNotes || '-' %></td>
+                <td>
+                    <% if (review.status === 'completed') { %>
+                        <span class="badge badge-success"><%= __('employee:sr_completed') %></span>
+                    <% } else if (review.status === 'pending') { %>
+                        <span class="badge badge-warning"><%= __('employee:sr_pending') %></span>
+                    <% } else { %>
+                        <span class="badge badge-secondary"><%= review.status %></span>
+                    <% } %>
+                </td>
+                <td><%= review.reviewedAt ? new Date(review.reviewedAt).toLocaleDateString(typeof lang!=='undefined'&&lang==='en'?'en-GB':'fr-FR') : '-' %></td>
+                <td>
+                    <% if (review.status === 'completed') { %>
+                        <button class="btn btn-sm btn-warning" onclick="disputeReview(<%= review.id %>)">
+                            <%= __('employee:btn_dispute') %>
+                        </button>
+                    <% } else if (review.status === 'disputed') { %>
+                        <span class="badge badge-warning"><%= __('employee:sr_disputed') %></span>
+                    <% } %>
+                </td>
+            </tr>
+            <% }); %>
+        </tbody>
+    </table>
+    </div>
+<% } %>
+
+<% if (disputes && disputes.length > 0) { %>
+<div class="disputes-section" style="margin-top: 30px;">
+    <h2><%= __('employee:sr_disputes_header') %></h2>
+    <div class="table-wrapper">
+    <table class="table">
+        <thead>
+            <tr>
+                <th><%= __('employee:th_skill') %></th>
+                <th><%= __('employee:th_your_rating') %></th>
+                <th><%= __('employee:th_reviewer_rating') %></th>
+                <th><%= __('employee:th_gap') %></th>
+                <th><%= __('employee:th_status') %></th>
+            </tr>
+        </thead>
+        <tbody>
+            <% disputes.forEach(function(dispute) { %>
+            <tr>
+                <td><%= dispute.skillName %></td>
+                <td><%= dispute.selfRatedLevel %></td>
+                <td><%= dispute.supervisorRatedLevel %></td>
+                <td><%= dispute.gap %></td>
+                <%# DEUX PERSONNES ONT PARLÉ — LA PAGE DOIT DIRE LAQUELLE.
+                    `assessment_disputes.reason` porte le motif écrit par la personne
+                    puis, sous un marqueur interne, la note du décideur. Ce bloc
+                    servait la colonne entière d'un seul tenant, sans libellé, sous
+                    « Note finale » : la phrase du manager se lisait comme celle du
+                    collaborateur, le saut de ligne étant un saut de ligne HTML les
+                    deux se collaient en une seule ligne, et « [resolution:L0] »
+                    arrivait tel quel sous les yeux de l'intéressé. Et le motif n'était
+                    rendu QUE dans l'état « resolved » : tant que son litige était en
+                    cours, la personne ne pouvait pas relire son propre dossier.
+                    DisputeServiceV2.splitReason() rend désormais les morceaux séparés
+                    (le découpage se fait sur le marqueur, il ne se lit pas) ; ils sont
+                    affichés étiquetés, avec l'auteur, et dans TOUS les états. %>
+                <td>
+                    <% if (dispute.state === 'resolved') { %>
+                        <span class="badge badge-success"><%= __('employee:sr_resolved') %></span>
+                    <% } else if (dispute.state === 'escalated') { %>
+                        <span class="badge badge-info"><%= __('employee:sr_escalated') %></span>
+                    <% } else { %>
+                        <span class="badge badge-warning"><%= __('employee:sr_open') %></span>
+                    <% } %>
+                    <% if (dispute.decidedRating !== null && dispute.decidedRating !== undefined) { %>
+                        <div class="text-muted" style="font-size:.85em"><%= __('employee:sr_final_rating') %> <%= dispute.decidedRating %></div>
+                    <% } %>
+                    <%# Le texte porte ses propres retours à la ligne : pre-wrap est posé
+                        sur le SEUL <span> du texte, jamais sur le bloc, sinon
+                        l'indentation du gabarit serait rendue elle aussi. %>
+                    <% if (dispute.employeeReason) { %>
+                        <div class="text-muted" style="font-size:.85em"><strong><%= __('employee:sr_reason_yours') %></strong> <span style="white-space:pre-wrap"><%= dispute.employeeReason %></span></div>
+                    <% } %>
+                    <% if (dispute.resolutionNote) { %>
+                        <div class="text-muted" style="font-size:.85em"><strong><%= dispute.deciderName ? __('employee:sr_reason_decider_by', { name: dispute.deciderName }) : __('employee:sr_reason_decider') %></strong> <span style="white-space:pre-wrap"><%= dispute.resolutionNote %></span></div>
+                    <% } %>
+                    <% (dispute.systemNotes || []).forEach(function (code) { %>
+                        <div class="text-muted" style="font-size:.85em"><em><%= __('employee:sr_sysnote_' + code) %></em></div>
+                    <% }); %>
+                </td>
+            </tr>
+            <% }); %>
+        </tbody>
+    </table>
+    </div>
+</div>
+<% } %>
+
+<%# Une réponse REDIRIGÉE ou non-JSON est un ÉCHEC nommé : sur une session expirée
+    la contestation tombait dans le catch avec « Unexpected token '<' » et la
+    personne lisait un message générique au lieu de « votre session a expiré ». %>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+const SR_I18N = {
+    promptReason: <%- JSON.stringify(__('employee:sr_prompt_reason')) %>,
+    confirmDispute: <%- JSON.stringify(__('employee:sr_confirm_dispute')) %>,
+    disputeBtn: <%- JSON.stringify(__('employee:btn_dispute')) %>,
+    toastDisputed: <%- JSON.stringify(__('employee:sr_toast_disputed')) %>,
+    errPrefix: <%- JSON.stringify(__('employee:err_prefix')) %>,
+    errDispute: <%- JSON.stringify(__('employee:sr_err_dispute')) %>,
+    errGeneric: <%- JSON.stringify(__('employee:sr_err_generic')) %>
+};
+async function disputeReview(reviewId) {
+    // styled modal dialogs only — ui-feedback.js is on every page.
+    const reason = await window.promptDialog(SR_I18N.promptReason, '', { required: true, multiline: true });
+    if (!reason || !reason.trim()) return;
+
+    const ok = await window.confirmDialog(SR_I18N.confirmDispute, { okText: SR_I18N.disputeBtn });
+    if (!ok) return;
+
+    try {
+        const result = await SAConsoleNet.api(`/employee/reviews/${reviewId}/dispute`, 'POST', { disputeReason: reason.trim(), _csrf: '<%= csrfToken %>' });
+        if (result.success) {
+            (window.toast || window.alert)(SR_I18N.toastDisputed, 'success');
+            location.reload();
+        } else {
+            (window.toast || window.alert)(SR_I18N.errPrefix + (result.error || SR_I18N.errDispute), 'error');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        (window.toast || window.alert)(error.message || SR_I18N.errGeneric, 'error');
+        if (error.code === 'session') SAConsoleNet.navigate('/login?expired=1');
+    }
+}
+</script>
+
+<script nonce="<%= cspNonce %>">
+// ---- "Où en sont vos évaluations" -----------------------------------------
+// Reads the enriched /api/self-assessment/mine projection. It only DISPLAYS what
+// the supervisor already decided; it offers no control that skips, confirms or
+// removes a skill from the ask.
+(function () {
+    const LOOP = {
+        L: {
+            with: <%- JSON.stringify(__('employee:loop_with')) %>,
+            withYou: <%- JSON.stringify(__('employee:loop_with_you')) %>,
+            withUnassigned: <%- JSON.stringify(__('employee:loop_with_unassigned')) %>,
+            retained: <%- JSON.stringify(__('employee:loop_retained_level')) %>,
+            youIndicated: <%- JSON.stringify(__('employee:loop_you_indicated')) %>,
+            reason: <%- JSON.stringify(__('employee:loop_reason')) %>,
+            notes: <%- JSON.stringify(__('employee:loop_notes')) %>,
+            decidedOn: <%- JSON.stringify(__('employee:loop_decided_on')) %>,
+            noDecision: <%- JSON.stringify(__('employee:loop_no_decision_yet')) %>,
+            loading: <%- JSON.stringify(__('employee:loop_flow_loading')) %>,
+            empty: <%- JSON.stringify(__('employee:loop_flow_empty')) %>,
+            error: <%- JSON.stringify(__('employee:loop_flow_error')) %>,
+            statusLink: <%- JSON.stringify(__('employee:loop_flow_status_link')) %>
+        },
+        STATES: <%- include('../../partials/json-script', { v: {
+            submitted: __('employee:state_submitted'),
+            under_review: __('employee:state_under_review'),
+            changes_requested: __('employee:state_changes_requested'),
+            reviewed: __('employee:state_reviewed'),
+            arbitration: __('employee:state_arbitration')
+        } }) %>,
+        LOCALE: <%- include('../../partials/json-script', { v: typeof lang !== 'undefined' && lang === 'en' ? 'en-GB' : 'fr-FR' }) %>
+    };
+    const PENDING = ['submitted', 'under_review', 'changes_requested', 'reviewed', 'arbitration'];
+    const box = document.getElementById('loop-flow');
+    if (!box) return;
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+    function fmtDate(v) {
+        if (!v) return '';
+        const d = new Date(v);
+        return isNaN(d.getTime()) ? '' : d.toLocaleDateString(LOOP.LOCALE);
+    }
+    function holder(it) {
+        if (it.workflowState === 'changes_requested') return LOOP.L.withYou;
+        if (it.currentReviewerName && String(it.currentReviewerName).trim()) return String(it.currentReviewerName).trim();
+        return LOOP.L.withUnassigned;
+    }
+
+    function render(items) {
+        const pending = items.filter((it) => PENDING.indexOf(it.workflowState) !== -1);
+        if (!pending.length) {
+            box.innerHTML = '<div class="empty-state"><p>' + esc(LOOP.L.empty) + '</p></div>';
+            return;
+        }
+        box.innerHTML = pending.map((it) => {
+            const parts = [];
+            parts.push('<h3 style="margin:0 0 .25rem;font-size:1rem;">' + esc(it.skillName || ('#' + it.skillId)) +
+                ' <span class="badge badge-info" style="font-weight:400;">' +
+                esc(LOOP.STATES[it.workflowState] || it.workflowState) + '</span></h3>');
+            // Who currently holds the file.
+            parts.push('<p style="margin:.15rem 0;">' + esc(LOOP.L.with) + ' <strong>' + esc(holder(it)) + '</strong></p>');
+            // The decision itself, in plain words, next to what the person had said.
+            if (it.supervisorRatedLevel !== null && it.supervisorRatedLevel !== undefined) {
+                parts.push('<p style="margin:.15rem 0;">' + esc(LOOP.L.retained) + ' <strong>' +
+                    esc(it.supervisorRatedLevel) + '</strong> <span class="text-muted">(' +
+                    esc(LOOP.L.youIndicated) + ' ' + esc(it.selfRatedLevel) + ')</span></p>');
+                if (it.gapReason) parts.push('<p style="margin:.15rem 0;">' + esc(LOOP.L.reason) + ' ' + esc(it.gapReason) + '</p>');
+                if (it.supervisorNotes) parts.push('<p style="margin:.15rem 0;">' + esc(LOOP.L.notes) + ' ' + esc(it.supervisorNotes) + '</p>');
+                const d = fmtDate(it.reviewedAt);
+                if (d) parts.push('<p class="text-muted" style="margin:.15rem 0;font-size:.85em;">' + esc(LOOP.L.decidedOn) + ' ' + esc(d) + '</p>');
+            } else {
+                parts.push('<p class="text-muted" style="margin:.15rem 0;font-size:.9em;">' + esc(LOOP.L.noDecision) + '</p>');
+            }
+            return '<article style="padding:.6rem 0;border-bottom:1px solid var(--border,#e3e3e3);">' + parts.join('') + '</article>';
+        }).join('');
+    }
+
+    box.innerHTML = '<p class="text-muted"><em>' + esc(LOOP.L.loading) + '</em></p>';
+    fetch('/api/self-assessment/mine', { headers: { Accept: 'application/json' } })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error('http ' + r.status))))
+        .then((j) => render(Array.isArray(j.items) ? j.items : []))
+        .catch(() => {
+            box.innerHTML = '<p class="text-muted">' + esc(LOOP.L.error) +
+                ' <a href="/employee/assessment-status">' + esc(LOOP.L.statusLink) + '</a></p>';
+        });
+})();
+</script>
+
+

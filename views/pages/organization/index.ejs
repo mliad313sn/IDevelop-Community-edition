@@ -1,0 +1,667 @@
+<%
+/* Write access comes from the permission SLUG, never from the role shape — a
+   delegated admin holding manage_organization gets the same controls a SuperAdmin
+   does. (Fallback keeps the page renderable if a caller forgets the local.) */
+const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user && user.role === 'superadmin');
+%>
+<div class="page-header">
+    <h1><i class="fas fa-building" aria-hidden="true"></i> <%= __('admin:organization_management') %></h1>
+    <div class="page-actions">
+        <a href="/organization/sites" class="btn btn-secondary" title="<%= __('admin:geo_manage_tip') %>">
+            <i class="fas fa-earth-africa" aria-hidden="true"></i> <%= __('admin:geo_manage') %></a>
+    </div>
+</div>
+
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#org-sites-table, #org-depts-table, #org-svcs-table, #org-emps-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+<div class="tabs">
+    <button class="tab <%= activeTab === 'sites' ? 'active' : '' %>" onclick="showTab(event, 'sites')"><i class="fas fa-building" aria-hidden="true"></i> <%= __('admin:sites') %><span data-ts-count="#org-sites-table"></span></button>
+    <button class="tab <%= activeTab === 'departments' ? 'active' : '' %>" onclick="showTab(event, 'departments')"><i class="fas fa-landmark" aria-hidden="true"></i>
+        <%= __('admin:departments') %><span data-ts-count="#org-depts-table"></span></button>
+    <button class="tab <%= activeTab === 'services' ? 'active' : '' %>" onclick="showTab(event, 'services')"><i class="fas fa-gear" aria-hidden="true"></i>
+        <%= __('admin:services') %><span data-ts-count="#org-svcs-table"></span></button>
+    <button class="tab <%= activeTab === 'employees' ? 'active' : '' %>" onclick="showTab(event, 'employees')"><i class="fas fa-users" aria-hidden="true"></i>
+        <%= __('admin:employees') %><span data-ts-count="#org-emps-table"></span></button>
+</div>
+
+<!-- Sites Tab -->
+<div id="sites-tab" class="tab-content <%= activeTab === 'sites' ? 'active' : '' %>">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2><%= __('admin:sites') %></h2>
+        <% if (canManage ) { %>
+            <button class="btn btn-primary" onclick="showModal('createSiteModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:create_site') %></button>
+            <% } %>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="table" id="org-sites-table">
+            <thead>
+                <tr>
+                    <th class="sortable"><%= __('admin:name') %></th>
+                    <th class="sortable"><%= __('admin:code') %></th>
+                    <th class="sortable"><%= __('admin:lc_country') %></th>
+                    <th class="sortable"><%= __('admin:description') %></th>
+                    <% if (canManage ) { %>
+                        <th><%= __('admin:actions') %></th>
+                        <% } %>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (sites.length===0) { %>
+                    <tr class="empty-row">
+                        <td colspan="<%= canManage ? 5 : 4 %>"
+                            style="text-align: center; padding: 3rem;">
+                            <div class="empty-state">
+                                <div class="empty-state-icon"><i class="fas fa-building" aria-hidden="true"></i></div>
+                                <h3><%= __('admin:no_sites_found') %></h3>
+                                <p><%= __('admin:get_started_site') %></p>
+                                <% if (canManage ) { %>
+                                    <button class="btn btn-primary" onclick="showModal('createSiteModal')"><%= __('admin:create_site') %></button>
+                                    <% } %>
+                            </div>
+                        </td>
+                    </tr>
+                    <% } else { %>
+                        <% sites.forEach(function(site) { %>
+                            <tr>
+                                <td><strong>
+                                        <%= site.name %>
+                                    </strong>
+                                    <button type="button" class="btn btn-sm" style="margin-left:6px;"
+                                        title="<%= __('admin:drill_departments') %>" aria-label="<%= __('admin:drill_departments') %>"
+                                        data-org-drill="departments" data-org-term="<%= site.name %>">
+                                        <i class="fas fa-landmark" aria-hidden="true"></i> <%= __('admin:departments') %> <i class="fas fa-arrow-right" aria-hidden="true" style="font-size:.7em"></i>
+                                    </button>
+                                </td>
+                                <td>
+                                    <%= site.code || '-' %>
+                                </td>
+                                <td>
+                                    <%= site.countryName || '—' %>
+                                </td>
+                                <td>
+                                    <%= site.description || '-' %>
+                                </td>
+                                <% if (canManage ) { %>
+                                    <td>
+                                        <div class="table-actions">
+                                            <button class="btn btn-sm"
+                                                onclick='editSite(<%= JSON.stringify(site) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                            <%- include('./_unit-actions', { kind: 'site', unit: site, from: 'hub' }) %>
+                                        </div>
+                                    </td>
+                                    <% } %>
+                            </tr>
+                            <% }); %>
+                                <% } %>
+            </tbody>
+        </table>
+    </div>
+    <% if (canManage) { %>
+        <%- include('./_deactivated-panel', { kinds: ['site'], from: 'hub' }) %>
+    <% } %>
+</div>
+
+<!-- Departments Tab -->
+<div id="departments-tab" class="tab-content <%= activeTab === 'departments' ? 'active' : '' %>">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2><%= __('admin:departments') %></h2>
+        <% if (canManage ) { %>
+            <button class="btn btn-primary" onclick="showModal('createDepartmentModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:create_department') %></button>
+            <% } %>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="table" id="org-depts-table">
+            <thead>
+                <tr>
+                    <th class="sortable"><%= __('admin:site') %></th>
+                    <th class="sortable"><%= __('admin:name') %></th>
+                    <th class="sortable"><%= __('admin:code') %></th>
+                    <th class="sortable"><%= __('admin:description') %></th>
+                    <% if (canManage ) { %>
+                        <th><%= __('admin:actions') %></th>
+                        <% } %>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (departments.length===0) { %>
+                    <tr class="empty-row">
+                        <td colspan="<%= canManage ? 5 : 4 %>"
+                            style="text-align: center; padding: 3rem;">
+                            <div class="empty-state">
+                                <div class="empty-state-icon"><i class="fas fa-landmark" aria-hidden="true"></i></div>
+                                <h3><%= __('admin:no_departments_found') %></h3>
+                                <p><%= __('admin:get_started_department') %></p>
+                                <% if (canManage ) { %>
+                                    <button class="btn btn-primary" onclick="showModal('createDepartmentModal')"><%= __('admin:create_department') %></button>
+                                    <% } %>
+                            </div>
+                        </td>
+                    </tr>
+                    <% } else { %>
+                        <% departments.forEach(function(dept) { %>
+                            <tr>
+                                <td>
+                                    <%= dept.siteName %>
+                                </td>
+                                <td><strong>
+                                        <%= dept.name %>
+                                    </strong>
+                                    <button type="button" class="btn btn-sm" style="margin-left:6px;"
+                                        title="<%= __('admin:drill_services') %>" aria-label="<%= __('admin:drill_services') %>"
+                                        data-org-drill="services" data-org-term="<%= dept.name %>">
+                                        <i class="fas fa-gear" aria-hidden="true"></i> <%= __('admin:services') %> <i class="fas fa-arrow-right" aria-hidden="true" style="font-size:.7em"></i>
+                                    </button>
+                                </td>
+                                <td>
+                                    <%= dept.code || '-' %>
+                                </td>
+                                <td>
+                                    <%= dept.description || '-' %>
+                                </td>
+                                <% if (canManage ) { %>
+                                    <td>
+                                        <div class="table-actions">
+                                            <button class="btn btn-sm"
+                                                onclick='editDepartment(<%= JSON.stringify(dept) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                            <%- include('./_unit-actions', { kind: 'department', unit: dept, from: 'hub' }) %>
+                                        </div>
+                                    </td>
+                                    <% } %>
+                            </tr>
+                            <% }); %>
+                                <% } %>
+            </tbody>
+        </table>
+    </div>
+    <% if (canManage) { %>
+        <%- include('./_deactivated-panel', { kinds: ['department'], from: 'hub' }) %>
+    <% } %>
+</div>
+
+<!-- Services Tab -->
+<div id="services-tab" class="tab-content <%= activeTab === 'services' ? 'active' : '' %>">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2><%= __('admin:services') %></h2>
+        <% if (canManage ) { %>
+            <button class="btn btn-primary" onclick="showModal('createServiceModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:create_service') %></button>
+            <% } %>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="table" id="org-svcs-table">
+            <thead>
+                <tr>
+                    <th class="sortable"><%= __('admin:site') %></th>
+                    <th class="sortable"><%= __('admin:department') %></th>
+                    <th class="sortable"><%= __('admin:name') %></th>
+                    <th class="sortable"><%= __('admin:code') %></th>
+                    <th class="sortable"><%= __('admin:description') %></th>
+                    <% if (canManage ) { %>
+                        <th><%= __('admin:actions') %></th>
+                        <% } %>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (services.length===0) { %>
+                    <tr class="empty-row">
+                        <td colspan="<%= canManage ? 6 : 5 %>"
+                            style="text-align: center; padding: 3rem;">
+                            <div class="empty-state">
+                                <div class="empty-state-icon"><i class="fas fa-gear" aria-hidden="true"></i></div>
+                                <h3><%= __('admin:no_services_found') %></h3>
+                                <p><%= __('admin:get_started_service') %></p>
+                                <% if (canManage ) { %>
+                                    <button class="btn btn-primary" onclick="showModal('createServiceModal')"><%= __('admin:create_service') %></button>
+                                    <% } %>
+                            </div>
+                        </td>
+                    </tr>
+                    <% } else { %>
+                        <% services.forEach(function(service) { %>
+                            <tr>
+                                <td>
+                                    <%= service.siteName %>
+                                </td>
+                                <td>
+                                    <%= service.departmentName %>
+                                </td>
+                                <td><strong>
+                                        <%= service.name %>
+                                    </strong></td>
+                                <td>
+                                    <%= service.code || '-' %>
+                                </td>
+                                <td>
+                                    <%= service.description || '-' %>
+                                </td>
+                                <% if (canManage ) { %>
+                                    <td>
+                                        <div class="table-actions">
+                                            <button class="btn btn-sm"
+                                                onclick='editService(<%= JSON.stringify(service) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                            <%- include('./_unit-actions', { kind: 'service', unit: service, from: 'hub' }) %>
+                                        </div>
+                                    </td>
+                                    <% } %>
+                            </tr>
+                            <% }); %>
+                                <% } %>
+            </tbody>
+        </table>
+    </div>
+    <% if (canManage) { %>
+        <%- include('./_deactivated-panel', { kinds: ['service'], from: 'hub' }) %>
+    <% } %>
+</div>
+
+<!-- Employees Tab -->
+<div id="employees-tab" class="tab-content <%= activeTab === 'employees' ? 'active' : '' %>">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2><%= __('admin:employees') %></h2>
+        <a href="/employees/create" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:create_employee') %></a>
+    </div>
+
+    <div class="search-bar">
+        <div class="search-input-wrapper">
+            <input type="search" class="search-input" data-table-search="#org-emps-table"
+                aria-label="<%= __('admin:search_org_placeholder') %>"
+                placeholder="<%= __('admin:search_org_placeholder') %>">
+        </div>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="table" id="org-emps-table">
+            <thead>
+                <tr>
+                    <th class="sortable"><%= __('admin:employee_number_short') %></th>
+                    <th class="sortable"><%= __('admin:name') %></th>
+                    <th class="sortable"><%= __('admin:role') %></th>
+                    <th class="sortable"><%= __('admin:site') %></th>
+                    <th class="sortable"><%= __('admin:department') %></th>
+                    <th class="sortable"><%= __('admin:service') %></th>
+                    <th><%= __('admin:actions') %></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (employees && employees.length===0) { %>
+                    <tr class="empty-row">
+                        <td colspan="7" style="text-align: center; padding: 3rem;">
+                            <div class="empty-state">
+                                <div class="empty-state-icon"><i class="fas fa-users" aria-hidden="true"></i></div>
+                                <h3><%= __('admin:no_employees_found') %></h3>
+                                <p><%= __('admin:get_started_employee') %></p>
+                                <a href="/employees/create" class="btn btn-primary"><%= __('admin:create_employee') %></a>
+                            </div>
+                        </td>
+                    </tr>
+                    <% } else { %>
+                        <% let currentSite=null; employees.forEach(function(employee) { if (currentSite
+                            !==employee.siteName) { currentSite=employee.siteName; %>
+                            <tr class="site-separator">
+                                <td colspan="7"
+                                    style="background-color: var(--bg-subtle); padding: 8px 12px; font-weight: 600; color: var(--text-secondary); border-top: 2px solid var(--border);">
+                                    <i class="fas fa-building" aria-hidden="true"></i> <%= employee.siteName %>
+                                </td>
+                            </tr>
+                            <% } %>
+                                <tr>
+                                    <td>
+                                        <%= employee.employeeNumber %>
+                                    </td>
+                                    <td><strong>
+                                            <%= employee.firstName %>
+                                                <%= employee.lastName %>
+                                        </strong></td>
+                                    <td>
+                                        <%= employee.roleName %>
+                                    </td>
+                                    <td>
+                                        <%= employee.siteName %>
+                                    </td>
+                                    <td>
+                                        <%= employee.departmentName %>
+                                    </td>
+                                    <td>
+                                        <%= employee.serviceName %>
+                                    </td>
+                                    <td>
+                                        <div class="table-actions">
+                                            <a href="/employees/<%= employee.id %>" class="btn btn-sm"
+                                                title="<%= __('admin:view_details') %>"><i class="fas fa-eye" aria-hidden="true"></i> <%= __('admin:view') %></a>
+                                            <a href="/employees/<%= employee.id %>/assessments" class="btn btn-sm"
+                                                title="<%= __('admin:assess_skills') %>"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('admin:assess') %></a>
+                                            <a href="/employees/<%= employee.id %>/edit" class="btn btn-sm"
+                                                title="<%= __('admin:edit_employee') %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <% }); %>
+                                    <% } %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<% if (canManage ) { %>
+    <!-- Site Modals -->
+    <div id="createSiteModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><%= __('admin:create_site') %></h2>
+                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('createSiteModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form action="/organization/sites" method="POST">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <div class="form-group">
+                        <label for="orgf-1" class="required"><%= __('admin:name') %></label>
+                        <input id="orgf-1" type="text" name="name" required aria-label="<%= __('admin:name') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="orgf-2"><%= __('admin:code') %></label>
+                        <input id="orgf-2" type="text" name="code" aria-label="<%= __('admin:code') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="orgf-3"><%= __('admin:description') %></label>
+                        <textarea id="orgf-3" name="description" aria-label="<%= __('admin:description') %>"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary"><%= __('admin:create') %></button>
+                        <button type="button" class="btn btn-secondary"
+                            onclick="hideModal('createSiteModal')"><%= __('admin:cancel') %></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="editSiteModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><%= __('admin:edit_site') %></h2>
+                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editSiteModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="editSiteForm" method="POST">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <div class="form-group">
+                        <label for="editSiteName" class="required"><%= __('admin:name') %></label>
+                        <input type="text" name="name" id="editSiteName" required aria-label="<%= __('admin:name') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="editSiteCode"><%= __('admin:code') %></label>
+                        <input type="text" name="code" id="editSiteCode" aria-label="<%= __('admin:code') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="editSiteDescription"><%= __('admin:description') %></label>
+                        <textarea name="description" id="editSiteDescription" aria-label="<%= __('admin:description') %>"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary"><%= __('admin:update') %></button>
+                        <button type="button" class="btn btn-secondary"
+                            onclick="hideModal('editSiteModal')"><%= __('admin:cancel') %></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Department Modals -->
+    <div id="createDepartmentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><%= __('admin:create_department') %></h2>
+                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('createDepartmentModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form action="/organization/departments" method="POST">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <div class="form-group">
+                        <label for="orgf-4" class="required"><%= __('admin:site') %></label>
+                        <select id="orgf-4" name="siteId" required aria-label="<%= __('admin:site') %>">
+                            <option value=""><%= __('admin:select_site') %></option>
+                            <% allSites.forEach(function(site) { %>
+                                <option value="<%= site.id %>">
+                                    <%= site.name %>
+                                </option>
+                                <% }); %>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="orgf-5" class="required"><%= __('admin:name') %></label>
+                        <input id="orgf-5" type="text" name="name" required aria-label="<%= __('admin:name') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="orgf-6"><%= __('admin:code') %></label>
+                        <input id="orgf-6" type="text" name="code" aria-label="<%= __('admin:code') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="orgf-7"><%= __('admin:description') %></label>
+                        <textarea id="orgf-7" name="description" aria-label="<%= __('admin:description') %>"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary"><%= __('admin:create') %></button>
+                        <button type="button" class="btn btn-secondary"
+                            onclick="hideModal('createDepartmentModal')"><%= __('admin:cancel') %></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="editDepartmentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><%= __('admin:edit_department') %></h2>
+                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editDepartmentModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="editDepartmentForm" method="POST">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <div class="form-group">
+                        <label for="editDepartmentSiteId" class="required"><%= __('admin:site') %></label>
+                        <select name="siteId" id="editDepartmentSiteId" required aria-label="<%= __('admin:site') %>">
+                            <option value=""><%= __('admin:select_site') %></option>
+                            <% allSites.forEach(function(site) { %>
+                                <option value="<%= site.id %>">
+                                    <%= site.name %>
+                                </option>
+                                <% }); %>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editDepartmentName" class="required"><%= __('admin:name') %></label>
+                        <input type="text" name="name" id="editDepartmentName" required aria-label="<%= __('admin:name') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="editDepartmentCode"><%= __('admin:code') %></label>
+                        <input type="text" name="code" id="editDepartmentCode" aria-label="<%= __('admin:code') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="editDepartmentDescription"><%= __('admin:description') %></label>
+                        <textarea name="description" id="editDepartmentDescription" aria-label="<%= __('admin:description') %>"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary"><%= __('admin:update') %></button>
+                        <button type="button" class="btn btn-secondary"
+                            onclick="hideModal('editDepartmentModal')"><%= __('admin:cancel') %></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Service Modals -->
+    <div id="createServiceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><%= __('admin:create_service') %></h2>
+                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('createServiceModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form action="/organization/services" method="POST">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <div class="form-group">
+                        <label for="orgf-8" class="required"><%= __('admin:department') %></label>
+                        <select id="orgf-8" name="departmentId" required aria-label="<%= __('admin:department') %>">
+                            <option value=""><%= __('admin:select_department') %></option>
+                            <% allDepartments.forEach(function(dept) { %>
+                                <option value="<%= dept.id %>">
+                                    <%= dept.siteName %> - <%= dept.name %>
+                                </option>
+                                <% }); %>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="orgf-9" class="required"><%= __('admin:name') %></label>
+                        <input id="orgf-9" type="text" name="name" required aria-label="<%= __('admin:name') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="orgf-10"><%= __('admin:code') %></label>
+                        <input id="orgf-10" type="text" name="code" aria-label="<%= __('admin:code') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="orgf-11"><%= __('admin:description') %></label>
+                        <textarea id="orgf-11" name="description" aria-label="<%= __('admin:description') %>"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary"><%= __('admin:create') %></button>
+                        <button type="button" class="btn btn-secondary"
+                            onclick="hideModal('createServiceModal')"><%= __('admin:cancel') %></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="editServiceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><%= __('admin:edit_service') %></h2>
+                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editServiceModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="editServiceForm" method="POST">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <div class="form-group">
+                        <label for="editServiceDepartmentId" class="required"><%= __('admin:department') %></label>
+                        <select name="departmentId" id="editServiceDepartmentId" required aria-label="<%= __('admin:department') %>">
+                            <option value=""><%= __('admin:select_department') %></option>
+                            <% allDepartments.forEach(function(dept) { %>
+                                <option value="<%= dept.id %>">
+                                    <%= dept.siteName %> - <%= dept.name %>
+                                </option>
+                                <% }); %>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editServiceName" class="required"><%= __('admin:name') %></label>
+                        <input type="text" name="name" id="editServiceName" required aria-label="<%= __('admin:name') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="editServiceCode"><%= __('admin:code') %></label>
+                        <input type="text" name="code" id="editServiceCode" aria-label="<%= __('admin:code') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="editServiceDescription"><%= __('admin:description') %></label>
+                        <textarea name="description" id="editServiceDescription" aria-label="<%= __('admin:description') %>"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary"><%= __('admin:update') %></button>
+                        <button type="button" class="btn btn-secondary"
+                            onclick="hideModal('editServiceModal')"><%= __('admin:cancel') %></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script nonce="<%= cspNonce %>">
+        /* Deactivation is reversible but it hides the unit from every list, dropdown,
+           cascade and report filter — so it gets a real explanation (unit name, how
+           many child units go with it, where to restore it) instead of a bare
+           confirm(). The message is rendered server-side onto the form's data-msg.
+           Forms whose unit still has active employees are never rendered as
+           submittable at all, and the server refuses that case regardless. */
+        document.addEventListener('submit', function (e) {
+            const form = e.target;
+            if (!form || !form.hasAttribute || !form.hasAttribute('data-org-deactivate')) return;
+            e.preventDefault();
+            window.confirmDialog(form.getAttribute('data-msg'), {
+                title: form.getAttribute('data-title'),
+                confirmText: form.getAttribute('data-yes'),
+                cancelText: form.getAttribute('data-no'),
+                danger: true
+            }).then(function (ok) {
+                if (ok) HTMLFormElement.prototype.submit.call(form);
+            });
+        }, true);
+
+        // Drill-down: jump to a tab pre-filtered by a parent's name (site → its
+        // departments, department → its services) using the shared search box.
+        function orgDrill(tabName, term) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+            const pane = document.getElementById(tabName + '-tab');
+            if (pane) pane.classList.add('active');
+            const btn = document.querySelector('.tab[onclick*="\'' + tabName + '\'"]');
+            if (btn) btn.classList.add('active');
+            const q = document.querySelector('input[data-table-search]');
+            if (q) { q.value = term || ''; q.dispatchEvent(new Event('input', { bubbles: true })); }
+        }
+        // Drill buttons carry the parent's NAME in an HTML-escaped data attribute: a
+        // name holding « & » or « < » used to reach the handler as raw markup.
+        document.addEventListener('click', function (ev) {
+            const b = ev.target && ev.target.closest ? ev.target.closest('[data-org-drill]') : null;
+            if (!b) return;
+            ev.preventDefault();
+            orgDrill(b.getAttribute('data-org-drill'), b.getAttribute('data-org-term') || '');
+        });
+
+        // Tab switching
+        function showTab(event, tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected tab. Use currentTarget (the button) — event.target could be
+            // the inner <i> glyph, which would leave the tab button un-highlighted.
+            document.getElementById(tabName + '-tab').classList.add('active');
+            (event.currentTarget || event.target).classList.add('active');
+        }
+
+        // Site edit function
+        function editSite(site) {
+            document.getElementById('editSiteName').value = site.name || '';
+            document.getElementById('editSiteCode').value = site.code || '';
+            document.getElementById('editSiteDescription').value = site.description || '';
+            document.getElementById('editSiteForm').action = '/organization/sites/' + site.id;
+            showModal('editSiteModal');
+        }
+
+        // Department edit function
+        function editDepartment(dept) {
+            document.getElementById('editDepartmentSiteId').value = dept.siteId || '';
+            document.getElementById('editDepartmentName').value = dept.name || '';
+            document.getElementById('editDepartmentCode').value = dept.code || '';
+            document.getElementById('editDepartmentDescription').value = dept.description || '';
+            document.getElementById('editDepartmentForm').action = '/organization/departments/' + dept.id;
+            showModal('editDepartmentModal');
+        }
+
+        // Service edit function
+        function editService(service) {
+            document.getElementById('editServiceDepartmentId').value = service.departmentId || '';
+            document.getElementById('editServiceName').value = service.name || '';
+            document.getElementById('editServiceCode').value = service.code || '';
+            document.getElementById('editServiceDescription').value = service.description || '';
+            document.getElementById('editServiceForm').action = '/organization/services/' + service.id;
+            showModal('editServiceModal');
+        }
+    </script>
+    <% } %>

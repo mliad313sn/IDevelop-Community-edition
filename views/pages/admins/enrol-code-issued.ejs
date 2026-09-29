@@ -1,0 +1,17 @@
+<%#
+    3.23.19 (security review): the one-time MFA enrolment code, rendered
+    ONCE directly in this response — never stored in a flash or the session. It
+    is kept only as a hash; reloading this page does not show it again.
+%>
+<div class="page-header">
+    <h1><i class="fas fa-key" aria-hidden="true"></i> <%= __('admin:adm_mfa_enrol_code_label') %></h1>
+    <div class="page-actions">
+        <a href="/admins/<%= adminId %>" class="btn btn-secondary"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= username %></a>
+    </div>
+</div>
+<div class="card adm-otp" role="status" style="padding:14px 16px; max-width:560px;">
+    <label for="admEnrolCode"><strong><%= __('admin:adm_mfa_enrol_code_for', { username: username }) %></strong></label>
+    <input type="text" id="admEnrolCode" readonly value="<%= code %>" autocomplete="off"
+        style="font-family:var(--font-data);min-width:220px;letter-spacing:.15em;font-size:1.2rem;margin:.5rem 0;">
+    <small class="text-muted" style="display:block;"><%= __('admin:adm_mfa_enrol_code_once') %></small>
+</div>

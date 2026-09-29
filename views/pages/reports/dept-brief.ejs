@@ -1,0 +1,123 @@
+<%#
+    LOT BILAN B3 — the archived department briefs of the signed-in reader.
+
+    ONE LANGUAGE PER SESSION: every visible string is a locale key
+    (reports:db_*). The e-mail is bilingual by construction because there is no
+    per-user language column in the schema; the PAGE localises itself for free at
+    READ time through the `lang` cookie, and the two regimes must not be mixed —
+    no "Fréquence / Frequency" label on this page.
+
+    The payload the rows carry is FROZEN. This page lists it; it never recomputes
+    anything, and it never renders a missing figure as 0.
+%>
+<div class="page-header">
+    <h1><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('reports:db_title') %></h1>
+    <div class="page-actions">
+        <a href="/account/notifications#dept-brief-prefs" class="btn btn-sm btn-secondary">
+            <i class="fas fa-sliders" aria-hidden="true"></i> <%= __('reports:db_manage_frequency') %>
+        </a>
+    </div>
+</div>
+
+<p class="text-muted" style="margin:.1rem 0 1rem;font-size:.9rem;"><%= __('reports:db_intro') %></p>
+
+<% if (deptOutOfScope) { %>
+<%# A department outside the scope says so. An EMPTY table would itself be a
+    signal — and the wrong one: "nothing here" reads as "nothing to report". %>
+<div class="alert alert-warning" style="margin-bottom:1rem;">
+    <i class="fas fa-location-crosshairs" aria-hidden="true"></i> <%= __('reports:db_dept_out_of_scope') %>
+</div>
+<% } %>
+
+<p class="text-muted" style="margin:0 0 1rem;font-size:.85rem;">
+    <% if (unrestricted) { %><%= __('reports:db_scope_unrestricted') %><% } else { %><%= __('reports:db_scope_people', { n: scopeSize }) %><% } %>
+    <% if (viewingAsSuperAdmin) { %><br><%= __('reports:db_superadmin_note') %><% } %>
+</p>
+
+<form method="GET" action="/reports/dept-brief" class="card" style="padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+    <div class="form-group" style="margin:0;">
+        <label for="db-cadence"><%= __('reports:db_filter_cadence') %></label>
+        <select id="db-cadence" name="cadence" class="form-control">
+            <option value=""><%= __('reports:db_all') %></option>
+            <% cadences.forEach(function (c) { %>
+            <option value="<%= c %>" <%= filters.cadence === c ? 'selected' : '' %>><%= __('reports:db_cadence_' + c) %></option>
+            <% }); %>
+        </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+        <label for="db-period"><%= __('reports:db_filter_period') %></label>
+        <input id="db-period" name="period" class="form-control" value="<%= filters.period %>" maxlength="10" placeholder="2026-W37">
+    </div>
+    <div class="form-group" style="margin:0;">
+        <label for="db-dept"><%= __('reports:db_filter_dept') %></label>
+        <select id="db-dept" name="dept" class="form-control">
+            <option value=""><%= __('reports:db_all_depts') %></option>
+            <% units.forEach(function (u) { %>
+            <option value="<%= u.departmentId %>" <%= String(filters.dept) === String(u.departmentId) ? 'selected' : '' %>><%= u.label[lang] || u.label.fr %></option>
+            <% }); %>
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('reports:db_filter_apply') %></button>
+    <a href="/reports/dept-brief" class="btn btn-secondary"><%= __('reports:db_filter_reset') %></a>
+</form>
+
+<% if (!briefs.length) { %>
+<div class="card" style="padding:1.25rem;">
+    <p class="text-muted" style="margin:0;"><%= __('reports:db_no_briefs') %></p>
+</div>
+<% } else { %>
+<div class="table-responsive">
+    <table class="table">
+        <thead>
+            <tr>
+                <th><%= __('reports:db_col_period') %></th>
+                <th><%= __('reports:db_col_cadence') %></th>
+                <th><%= __('reports:db_col_window') %></th>
+                <th><%= __('reports:db_col_computed') %></th>
+                <th><%= __('reports:db_col_sent') %></th>
+                <th><%= __('reports:db_col_scope') %></th>
+                <th><%= __('reports:db_col_state') %></th>
+                <% if (viewingAsSuperAdmin) { %><th><%= __('reports:db_col_recipient') %></th><% } %>
+                <th><%= __('reports:db_col_actions') %></th>
+            </tr>
+        </thead>
+        <tbody>
+            <% briefs.forEach(function (b) { %>
+            <tr>
+                <td><strong><%= b.period %></strong></td>
+                <td><%= __('reports:db_cadence_' + b.cadence) %></td>
+                <%# Period bounds are printed in UTC through fmtPeriodBound, with
+                    the upper bound made INCLUSIVE (periodEnd − 1 day). %>
+                <td style="white-space:nowrap;"><%= __('reports:db_window', { start: fmtPeriodBound(b.periodStart), end: fmtPeriodBound(new Date(new Date(b.periodEnd).getTime() - 86400000)) }) %></td>
+                <td style="white-space:nowrap;"><%= fmtDateTime(b.computedAt) %></td>
+                <td style="white-space:nowrap;">
+                    <%# "Not sent" is a real state (an empty brief is archived and
+                        not mailed); it is never printed as a date of nothing. %>
+                    <% if (b.sentAt) { %><%= fmtDateTime(b.sentAt) %><% } else { %><span class="text-muted"><%= __('reports:db_not_sent') %></span><% } %>
+                </td>
+                <td><%= b.scopeSize %></td>
+                <td>
+                    <% if (b.isEmpty) { %>
+                    <span class="badge badge-secondary"><%= __('reports:db_state_empty') %></span>
+                    <% } else { %>
+                    <span class="badge badge-info"><%= __('reports:db_state_actions') %></span>
+                    <% } %>
+                </td>
+                <% if (viewingAsSuperAdmin) { %><td><code style="font-size:.78rem;"><%= b.recipientType %>:<%= b.recipientId %></code></td><% } %>
+                <td><a class="btn btn-sm btn-secondary" href="/reports/dept-brief/<%= b.id %>"><%= __('reports:db_open') %></a></td>
+            </tr>
+            <% }); %>
+        </tbody>
+    </table>
+</div>
+<% } %>
+
+<% if (series && series.length) { %>
+<div class="card" style="padding:1rem 1.25rem;margin-top:1.25rem;">
+    <ul style="list-style:none;padding:0;margin:0;font-size:.85rem;" class="text-muted">
+        <% series.forEach(function (s) { %>
+        <li style="padding:.2rem 0;"><%= __('reports:db_series_start', { cadence: __('reports:db_cadence_' + s.cadence), date: fmtPeriodBound(s.firstEnd) }) %></li>
+        <% }); %>
+    </ul>
+</div>
+<% } %>

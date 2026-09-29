@@ -1,0 +1,288 @@
+<%
+  // Comptes / Accounts console.
+  // Server-side filters + sort + paging (utils/listTools); every row carries its
+  // account STATE, sign-in KIND, last login (SSO included) and lock state; per-row
+  // and bulk actions post JSON to /admin/accounts/bulk (scope-checked per id).
+  const pg = (typeof pager !== 'undefined' && pager) || null;
+  const sc = (typeof sortCols !== 'undefined' && sortCols) || {};
+  const f = filters || {};
+  const qs = (patch) => { const p = new URLSearchParams(); const cur = { siteId: f.siteId || '', departmentId: f.departmentId || '', q: f.q || '', perPage: perPage || '' , ...patch }; Object.keys(cur).forEach((k) => { if (cur[k] !== '' && cur[k] != null) p.set(k, cur[k]); }); return '/admin/accounts?' + p.toString(); };
+  const stateCls = (s) => ({ active: 'badge-success', locked: 'badge-danger', expired: 'badge-danger', disabled: 'badge-danger', none: 'badge-danger', stale: 'badge-warning', pending: 'badge-warning', never_invited: 'badge-warning', sso: 'badge-info' })[s] || 'badge-secondary';
+%>
+<style nonce="<%= cspNonce %>">
+  .acc-kpis{display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:1rem}
+  .acc-kpi{flex:1 1 9rem;padding:.6rem .8rem;border:1px solid var(--border,#e2e8f0);border-radius:8px;text-decoration:none;color:inherit;background:var(--bg-elevated,transparent)}
+  .acc-kpi:hover,.acc-kpi[aria-current="true"]{border-color:var(--brand-text,#b8860b)}
+  .acc-kpi-n{display:block;font:600 1.3rem/1.2 var(--font-data,system-ui)}
+  .acc-kpi-l{font-size:.78rem;color:var(--text-muted)}
+  .acc-muted{font-size:.75rem;color:var(--text-muted)}
+  th.sortable a.th-sort{color:inherit;text-decoration:none}
+  th[aria-sort="ascending"] a.th-sort,th[aria-sort="descending"] a.th-sort{color:var(--brand-text,inherit)}
+  .acc-actions .btn{padding:2px 7px;font-size:.78rem}
+  .acc-bulk{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-top:.6rem}
+  .badge-info{background:#dbeafe;color:#1e40af}
+  .acc-req{border-left:4px solid #b45309}
+</style>
+
+<div class="page-header">
+  <h1><i class="fas fa-users-gear" aria-hidden="true"></i> <%= __('admin:acc_title') %></h1>
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="/admin/accounts/export.csv?<%= new URLSearchParams(Object.fromEntries(Object.entries({ siteId: f.siteId || '', departmentId: f.departmentId || '', state: f.state || '', q: f.q || '', sort: sort && sort.key, dir: sort && sort.dir }).filter(([k, v]) => v))).toString() %>">
+      <i class="fas fa-file-csv" aria-hidden="true"></i> <%= __('admin:acc_export') %></a>
+  </div>
+</div>
+<p class="help-text" style="margin-bottom:1rem;"><%- __('admin:acc_intro', { days: expiryDays, stale: staleDays, attempts: lockout.maxAttempts, minutes: lockout.lockoutMinutes }) %></p>
+
+<% if (!emailEnabled) { %>
+<div class="card" style="padding:.8rem 1.1rem;margin-bottom:1rem;border-left:4px solid #b45309;">
+  <strong style="color:#b45309;"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('admin:inv_smtp_off_title') %></strong>
+  <%= __('admin:acc_smtp_off_body') %>
+</div>
+<% } %>
+
+<%# Headline counters — each one is the matching filter . "Never signed in" is the
+    exact SQL census (is_active AND password_hash IS NOT NULL AND last_login_at IS NULL). %>
+<div class="acc-kpis">
+  <a class="acc-kpi" href="<%= qs({ state: '' }) %>" <%- !f.state ? 'aria-current="true"' : '' %>><span class="acc-kpi-n" data-kpi="total"><%= counters.total %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_total') %></span></a>
+  <a class="acc-kpi" href="<%= qs({ state: 'never_logged' }) %>" <%- f.state === 'never_logged' ? 'aria-current="true"' : '' %>><span class="acc-kpi-n" data-kpi="never"><%= counters.neverLogged %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_never_logged') %></span></a>
+  <a class="acc-kpi" href="<%= qs({ state: 'locked' }) %>" <%- f.state === 'locked' ? 'aria-current="true"' : '' %>><span class="acc-kpi-n" data-kpi="locked"><%= counters.locked %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_locked') %></span></a>
+  <a class="acc-kpi" href="<%= qs({ state: 'expired' }) %>" <%- f.state === 'expired' ? 'aria-current="true"' : '' %>><span class="acc-kpi-n" data-kpi="expired"><%= counters.expired %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_expired') %></span></a>
+  <a class="acc-kpi" href="<%= qs({ state: 'no_email' }) %>" <%- f.state === 'no_email' ? 'aria-current="true"' : '' %>><span class="acc-kpi-n" data-kpi="no_email"><%= counters.noEmail %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_no_email') %></span></a>
+  <a class="acc-kpi" href="<%= qs({ state: 'disabled' }) %>" <%- f.state === 'disabled' ? 'aria-current="true"' : '' %>><span class="acc-kpi-n" data-kpi="disabled"><%= counters.disabled %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_disabled') %></span></a>
+  <a class="acc-kpi" href="<%= qs({ state: 'dormant' }) %>" <%- f.state === 'dormant' ? 'aria-current="true"' : '' %>><span class="acc-kpi-n" data-kpi="dormant"><%= counters.dormant %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_dormant', { days: dormantDays }) %></span></a>
+  <a class="acc-kpi" href="<%= qs({ state: 'sso' }) %>" <%- f.state === 'sso' ? 'aria-current="true"' : '' %>><span class="acc-kpi-n" data-kpi="sso"><%= counters.sso %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_sso') %></span></a>
+  <%# 3.23.20 (C3g): the SSO migration — migrated / invited / signed in by SSO. %>
+  <% if (counters.ssoMigrated) { %>
+  <a class="acc-kpi" href="<%= qs({ state: 'sso_migrated' }) %>" <%- f.state === 'sso_migrated' ? 'aria-current="true"' : '' %>><span class="acc-kpi-n" data-kpi="sso_migrated"><%= counters.ssoMigrated %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_sso_migrated') %></span></a>
+  <a class="acc-kpi" href="<%= qs({ state: 'sso_invited_not_signed' }) %>" <%- f.state === 'sso_invited_not_signed' ? 'aria-current="true"' : '' %>><span class="acc-kpi-n" data-kpi="sso_invited"><%= counters.ssoInvited %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_sso_invited') %></span></a>
+  <span class="acc-kpi"><span class="acc-kpi-n" data-kpi="sso_signed"><%= counters.ssoSigned %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_sso_signed') %></span></span>
+  <% if (counters.ssoNoticeDue) { %><a class="acc-kpi acc-req" href="<%= qs({ state: 'sso_notice_due' }) %>" <%- f.state === 'sso_notice_due' ? 'aria-current="true"' : '' %>><span class="acc-kpi-n" data-kpi="sso_notice_due"><%= counters.ssoNoticeDue %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_sso_notice_due') %></span></a><% } %>
+  <% } %>
+  <% if (counters.requests) { %>
+  <a class="acc-kpi acc-req" href="<%= qs({ requests: '1' }) %>" <%- f.requests ? 'aria-current="true"' : '' %>><span class="acc-kpi-n" data-kpi="requests"><%= counters.requests %></span><span class="acc-kpi-l"><%= __('admin:acc_kpi_requests') %></span></a>
+  <% } %>
+</div>
+
+<div class="card" style="padding:1rem 1.25rem;margin-bottom:1rem;">
+  <form method="GET" action="/admin/accounts" class="search-form" data-filter-memory style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;">
+    <div class="search-input-wrapper" style="min-width:220px;">
+      <input type="search" name="q" class="search-input form-control" value="<%= f.q || '' %>" placeholder="<%= __('admin:acc_search_ph') %>" aria-label="<%= __('admin:acc_search_ph') %>">
+    </div>
+    <select name="siteId" class="form-control" data-auto-submit aria-label="<%= __('admin:site') %>" style="max-width:200px;">
+      <%# %><% if ((sites||[]).length !== 1) { %><option value=""><%= __('admin:inv_all_sites') %></option><% } %>
+      <% (sites||[]).forEach(function (s) { %><option value="<%= s.id %>" <%= String(f.siteId||'') === String(s.id) ? 'selected' : '' %>><%= s.name %></option><% }); %>
+    </select>
+    <select name="departmentId" class="form-control" data-auto-submit aria-label="<%= __('admin:department') %>" style="max-width:220px;">
+      <option value=""><%= __('admin:acc_all_departments') %></option>
+      <% (departments||[]).forEach(function (d) { %><option value="<%= d.id %>" <%= String(f.departmentId||'') === String(d.id) ? 'selected' : '' %>><%= d.name %><%= d.siteName && !f.siteId ? ' (' + d.siteName + ')' : '' %></option><% }); %>
+    </select>
+    <select name="state" class="form-control" data-auto-submit aria-label="<%= __('admin:acc_th_state') %>" style="max-width:240px;">
+      <option value=""><%= __('admin:acc_state_all') %></option>
+      <% (states||[]).forEach(function (s) { %><option value="<%= s %>" <%= f.state === s ? 'selected' : '' %>><%= __('admin:acc_state_' + s) %></option><% }); %>
+      <% (flagFilters||[]).forEach(function (s) { %><option value="<%= s %>" <%= f.state === s ? 'selected' : '' %>><%= __('admin:acc_filter_' + s) %></option><% }); %>
+    </select>
+    <% if (f.requests) { %><input type="hidden" name="requests" value="1"><% } %>
+    <select name="perPage" class="form-control" data-per-page aria-label="<%= __('admin:rows_per_page') %>" style="max-width:130px;">
+      <% (perPageOptions||[]).forEach(function (n) { %><option value="<%= n %>" <%= String(perPage) === String(n) ? 'selected' : '' %>><%= n %> / <%= __('admin:page') %></option><% }); %>
+    </select>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:search') %></button>
+  </form>
+  <div class="acc-bulk">
+    <span id="acc-count" class="acc-muted"><%= __('admin:acc_selected', { n: 0 }) %></span>
+    <button type="button" class="btn btn-secondary btn-sm acc-bulk-btn" data-action="resend" disabled><i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('admin:acc_act_resend') %></button>
+    <button type="button" class="btn btn-secondary btn-sm acc-bulk-btn" data-action="reset" disabled><i class="fas fa-key" aria-hidden="true"></i> <%= __('admin:acc_act_reset') %></button>
+    <button type="button" class="btn btn-secondary btn-sm acc-bulk-btn" data-action="unlock" disabled><i class="fas fa-lock-open" aria-hidden="true"></i> <%= __('admin:acc_act_unlock') %></button>
+    <button type="button" class="btn btn-secondary btn-sm acc-bulk-btn" data-action="disable" disabled><i class="fas fa-user-slash" aria-hidden="true"></i> <%= __('admin:acc_act_disable') %></button>
+    <button type="button" class="btn btn-secondary btn-sm acc-bulk-btn" data-action="enable" disabled><i class="fas fa-user-check" aria-hidden="true"></i> <%= __('admin:acc_act_enable') %></button>
+    <button type="button" class="btn btn-secondary btn-sm acc-bulk-btn" data-action="sso_resend" disabled><i class="fas fa-right-to-bracket" aria-hidden="true"></i> <%= __('admin:acc_act_sso_resend') %></button>
+    <button type="button" class="btn btn-secondary btn-sm acc-bulk-btn" data-action="sso_handed_over" disabled><i class="fas fa-hand-holding" aria-hidden="true"></i> <%= __('admin:acc_act_sso_handed_over') %></button>
+    <a class="btn btn-secondary btn-sm" id="acc-sso-print" href="/admin/accounts/sso-notices<%= f.siteId ? '?siteId=' + f.siteId : '' %>" target="_blank" rel="noopener"><i class="fas fa-print" aria-hidden="true"></i> <%= __('admin:acc_act_sso_print') %></a>
+    <% if (isSuperAdmin) { %>
+    <select id="acc-policy" class="form-control" style="max-width:190px;" aria-label="<%= __('admin:ap_policy_label') %>">
+      <option value="any"><%= __('admin:ap_policy_any') %></option><option value="sso_only"><%= __('admin:ap_policy_sso') %></option><option value="local_only"><%= __('admin:ap_policy_local') %></option><option value="mfa_required"><%= __('admin:ap_policy_mfa') %></option>
+    </select>
+    <button type="button" class="btn btn-secondary btn-sm acc-bulk-btn" data-action="policy" disabled><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('admin:acc_act_policy') %></button>
+    <% } %>
+  </div>
+  <div id="acc-result" style="margin-top:.6rem;font-size:.85rem;"></div>
+  <div id="acc-creds" hidden style="margin-top:.6rem;">
+    <button type="button" class="btn btn-secondary" id="acc-creds-dl"><i class="fas fa-file-csv" aria-hidden="true"></i> <%= __('admin:inv_creds_dl') %></button>
+    <span style="font-size:.8rem;color:#b45309;margin-left:8px;"><%= __('admin:inv_creds_warn') %></span>
+  </div>
+</div>
+
+<p class="text-muted" style="margin:.25rem 0 .75rem;font-size:.9rem;">
+  <% if (pg && pg.total > 0) { %><%= __('admin:list_range', { from: pg.from, to: pg.to, total: pg.total }) %><% } else { %><%= __('admin:acc_no_match') %><% } %>
+</p>
+
+<div class="card" style="padding:0;">
+  <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+    <table class="table" id="acc-table">
+      <thead><tr>
+        <th style="width:34px;"><input type="checkbox" id="acc-all" title="<%= __('admin:inv_select_all') %>" aria-label="<%= __('admin:inv_select_all') %>"></th>
+        <% [['name', 'admin:inv_th_employee'], ['site', 'admin:inv_th_site_dept'], ['username', 'admin:acc_th_username'], ['state', 'admin:acc_th_state'], ['invited', 'admin:inv_th_invitation'], ['lastLogin', 'admin:acc_th_last_login']].forEach(function (col) {
+             const c = sc[col[0]]; const label = __(col[1]); %>
+        <th class="sortable" aria-sort="<%= c ? c.ariaSort : 'none' %>"><a href="<%= c.url %>" class="th-sort" aria-label="<%= __('admin:list_sort_by', { col: label }) %>"><%= label %><% if (c.active) { %> <i class="fas fa-arrow-<%= c.dir === 'desc' ? 'down' : 'up' %>" aria-hidden="true"></i><% } %></a></th>
+        <% }); %>
+        <th><%= __('admin:actions') %></th>
+      </tr></thead>
+      <tbody>
+        <% if (!employees.length) { %>
+          <tr class="empty-row"><td colspan="8" style="text-align:center;padding:2rem;"><%= __('admin:acc_no_match') %> — <a href="/admin/accounts?reset=1"><%= __('admin:reset_filters') %></a></td></tr>
+        <% } %>
+        <% employees.forEach(function (e) { %>
+        <tr data-acc-state="<%= e.state %>" data-emp="<%= e.id %>">
+          <td><input type="checkbox" class="acc-check" value="<%= e.id %>" aria-label="<%= personName(e) %>"></td>
+          <td>
+            <%# « Prénom Nom » — the order this page's own search box
+                indexes on (InvitationController :113) and the order its CSV export now
+                writes, so a label read here can be searched and reconciled elsewhere.
+                Rows stay sorted on last_name; only the label order changed. %>
+            <% if (canViewEmployees) { %><a href="/employees/<%= e.id %>"><strong><%= personName(e) %></strong></a><% } else { %><strong><%= personName(e) %></strong><% } %>
+            <div class="acc-muted"><%= e.employeeNumber %> · <%= e.roleName %><% if (e.noEmail) { %> · <span style="color:#b45309;"><%= __('admin:acc_no_email_chip') %></span><% } else { %> · <%= e.email %><% } %></div>
+            <% if (e.openRequestKind) { %><div class="acc-muted" style="color:#b45309;"><i class="fas fa-hand" aria-hidden="true"></i> <%= __('admin:acc_request_' + e.openRequestKind, { who: e.openRequestBy || '', date: fmtDate(e.openRequestAt) }) %>
+              <button type="button" class="btn btn-sm acc-decline" data-req="<%= e.openRequestId %>" style="padding:0 6px;font-size:.72rem;"><%= __('admin:acc_request_decline') %></button></div><% } %>
+          </td>
+          <td style="font-size:.85rem;"><%= e.siteName %> / <%= e.departmentName %></td>
+          <td style="font-size:.85rem;"><code><%= e.username || '—' %></code><div class="acc-muted"><%= __('admin:acc_kind_' + e.kind) %><% if (e.authPolicy && e.authPolicy !== 'any') { %> · <%= __('admin:ap_policy_' + (e.authPolicy === 'sso_only' ? 'sso' : e.authPolicy === 'local_only' ? 'local' : 'mfa')) %><% } %></div></td>
+          <td>
+            <span class="badge <%= stateCls(e.state) %>" title="<%= __('admin:acc_state_' + e.state + '_title') %>"><%= __('admin:acc_state_' + e.state) %></span>
+            <% if (e.state === 'locked') { %><div class="acc-muted"><%= __('admin:acc_locked_until', { time: fmtDateTime(e.lockedUntil), n: e.failedAttempts }) %></div><% } %>
+            <%# 3.23.20 (C3g): the SSO migration state of this account. %>
+            <% if (e.ssoSignedAt) { %><div class="acc-muted" data-sso-state="signed"><i class="fas fa-right-to-bracket" aria-hidden="true"></i> <%= __('admin:acc_sso_signed_on', { date: fmtDate(e.ssoSignedAt) }) %></div>
+            <% } else if (e.ssoInvite) { var si = e.ssoInvite; %><div class="acc-muted" data-sso-state="<%= si.status %>"><i class="fas fa-right-to-bracket" aria-hidden="true"></i> <%= __('admin:acc_sso_status_' + si.status, { date: fmtDate(si.sentAt || si.createdAt) }) %><% if (si.status === 'skipped_no_email' && si.handedOverAt) { %> · <%= __('admin:acc_sso_handed_on', { date: fmtDate(si.handedOverAt) }) %><% } %></div><% } %>
+          </td>
+          <td style="font-size:.8rem;"><% if (e.invitedAt) { %><%= fmtDate(e.invitedAt) %><% if (e.invitedByName) { %> <span class="acc-muted"><%= __('admin:inv_by') %> <%= e.invitedByName %></span><% } %><% } else { %><span class="text-muted">—</span><% } %></td>
+          <td style="font-size:.8rem;"><%= e.lastLoginAt ? fmtDateTime(e.lastLoginAt) : __('admin:acc_never') %></td>
+          <td class="acc-actions" style="white-space:nowrap;">
+            <% if (e.state === 'locked') { %><button type="button" class="btn btn-sm btn-secondary acc-row" data-action="unlock" data-id="<%= e.id %>" title="<%= __('admin:ap_unlock_title') %>"><i class="fas fa-lock-open" aria-hidden="true"></i></button><% } %>
+            <button type="button" class="btn btn-sm btn-secondary acc-row" data-action="resend" data-id="<%= e.id %>" title="<%= __('admin:acc_act_resend_title') %>"><i class="fas fa-paper-plane" aria-hidden="true"></i></button>
+            <button type="button" class="btn btn-sm btn-secondary acc-setpw" data-id="<%= e.id %>" title="<%= __('admin:acc_act_setpw_title') %>"><i class="fas fa-key" aria-hidden="true"></i></button>
+            <% if (e.state === 'disabled') { %><button type="button" class="btn btn-sm btn-secondary acc-row" data-action="enable" data-id="<%= e.id %>" title="<%= __('admin:acc_act_enable') %>"><i class="fas fa-user-check" aria-hidden="true"></i></button>
+            <% } else if (e.hasPassword) { %><button type="button" class="btn btn-sm btn-secondary acc-row" data-action="disable" data-id="<%= e.id %>" title="<%= __('admin:acc_act_disable') %>"><i class="fas fa-user-slash" aria-hidden="true"></i></button><% } %>
+            <a href="/admin/invitations/<%= e.id %>/preview" target="_blank" class="btn btn-sm btn-secondary" title="<%= __('admin:inv_preview_title') %>"><i class="fas fa-eye" aria-hidden="true"></i></a>
+          </td>
+        </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<% if (pg && pg.totalPages > 1) { %>
+<nav class="pagination" aria-label="<%= __('admin:page') %>">
+  <% if (pg.hasPrev) { %><a href="<%= pg.prevUrl %>" rel="prev">« <%= __('admin:previous') %></a><% } %>
+  <% pg.items.forEach(function (it) { if (it.gap) { %><span>...</span><% } else { %><a href="<%= it.url %>" class="<%= it.active ? 'active' : '' %>" <%- it.active ? 'aria-current="page"' : '' %>><%= it.n %></a><% } }); %>
+  <% if (pg.hasNext) { %><a href="<%= pg.nextUrl %>" rel="next"><%= __('admin:next') %> »</a><% } %>
+</nav>
+<% } %>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+    'use strict';
+    var T = <%- include('../../partials/json-script', { v: {
+        confirmResend: __('admin:acc_js_confirm_resend'),
+        confirmReset: __('admin:acc_js_confirm_reset'),
+        confirmActive: __('admin:inv_js_confirm_active'),
+        confirmDisable: __('admin:acc_js_confirm_disable'),
+        confirmPolicy: __('admin:acc_js_confirm_policy'),
+        working: __('admin:acc_js_working'),
+        netErr: __('admin:inv_js_neterr'),
+        setPw: __('admin:acc_js_setpw_prompt'),
+        setPwOk: __('admin:acc_js_setpw_ok'),
+        declineNote: __('admin:acc_js_decline_note'),
+        failures: __('admin:inv_js_failures'),
+        csv: __('admin:inv_csv_headers')
+    } }) %>;
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#acc-table tbody tr[data-emp]'));
+    var countEl = document.getElementById('acc-count');
+    var resultEl = document.getElementById('acc-result');
+    var credsBox = document.getElementById('acc-creds');
+    var lastCredentials = null;
+    var SEL_TXT = countEl.textContent;
+
+    function selected() { return rows.map(function (r) { return r.querySelector('.acc-check'); }).filter(function (c) { return c.checked; }).map(function (c) { return Number(c.value); }); }
+    function refresh() {
+        var n = selected().length;
+        countEl.textContent = SEL_TXT.replace(/\d+/, n);
+        Array.prototype.forEach.call(document.querySelectorAll('.acc-bulk-btn'), function (b) { b.disabled = n === 0; });
+        // C3g: « Imprimer les notices SSO » prints the selection, else the filter.
+        var pl = document.getElementById('acc-sso-print');
+        if (pl) { if (!pl.dataset.base) pl.dataset.base = pl.getAttribute('href'); var s = selected(); pl.setAttribute('href', s.length ? '/admin/accounts/sso-notices?ids=' + s.join(',') : pl.dataset.base); }
+    }
+    document.getElementById('acc-all').addEventListener('change', function () { var on = this.checked; rows.forEach(function (r) { r.querySelector('.acc-check').checked = on; }); refresh(); });
+    rows.forEach(function (r) { r.querySelector('.acc-check').addEventListener('change', refresh); });
+
+    function show(msg, ok) { resultEl.style.color = ok ? '#15803d' : '#b91c1c'; resultEl.textContent = msg; if (window.toast) window.toast(msg, ok ? 'success' : 'error'); }
+    function post(url, body) {
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+            .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j.__status = r.status; return j; }); });
+    }
+    async function run(action, ids, opts) {
+        opts = opts || {};
+        var includeActive = false;
+        if (action === 'resend' || action === 'reset') {
+            var activeSel = ids.some(function (id) { var r = document.querySelector('tr[data-emp="' + id + '"]'); return r && r.getAttribute('data-acc-state') === 'active'; });
+            var msg = (action === 'resend' ? T.confirmResend : T.confirmReset).replace('{{n}}', ids.length) + (activeSel ? '\n\n' + T.confirmActive : '');
+            if (!(await window.confirmDialog(msg, { danger: activeSel }))) return;
+            includeActive = activeSel;
+        } else if (action === 'disable') {
+            if (!(await window.confirmDialog(T.confirmDisable.replace('{{n}}', ids.length), { danger: true }))) return;
+        } else if (action === 'policy') {
+            if (!(await window.confirmDialog(T.confirmPolicy.replace('{{n}}', ids.length)))) return;
+        }
+        resultEl.style.color = 'var(--text-muted)'; resultEl.textContent = T.working;
+        credsBox.hidden = true; lastCredentials = null;
+        var body = { action: action, employeeIds: ids, includeActive: includeActive ? '1' : '0' };
+        if (action === 'policy') body.policy = (document.getElementById('acc-policy') || {}).value;
+        var j = await post('/admin/accounts/bulk', body).catch(function () { return { __status: 0 }; });
+        if (!j || j.__status === 0) { show(T.netErr, false); return; }
+        if (j.__status >= 400) { show(j.error || ('HTTP ' + j.__status), false); return; }
+        var r = j.results || {};
+        var text = j.message || '';
+        if (r.failed && r.failed.length) text += ' — ' + T.failures + ': ' + r.failed.slice(0, 5).map(function (x) { return '#' + x.id + ' ' + x.error; }).join(' · ');
+        show(text, !(r.failed && r.failed.length));
+        if (r.credentials && r.credentials.length) { lastCredentials = r.credentials; credsBox.hidden = false; }
+        else if (j.__status < 400 && !opts.keep) setTimeout(function () { location.reload(); }, 1200);
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('.acc-bulk-btn'), function (b) { b.addEventListener('click', function () { var ids = selected(); if (ids.length) run(b.getAttribute('data-action'), ids); }); });
+    Array.prototype.forEach.call(document.querySelectorAll('.acc-row'), function (b) { b.addEventListener('click', function () { run(b.getAttribute('data-action'), [Number(b.getAttribute('data-id'))]); }); });
+
+    // Set a password from the console:
+    // POST /employees/:id/credentials, guarded by reset_employee_password + scope.
+    Array.prototype.forEach.call(document.querySelectorAll('.acc-setpw'), function (b) {
+        b.addEventListener('click', async function () {
+            var pw = await window.promptDialog(T.setPw, '', { required: true });
+            if (pw === null) return;
+            var j = await post('/employees/' + b.getAttribute('data-id') + '/credentials', { password: pw, forcePasswordChange: true }).catch(function () { return { __status: 0 }; });
+            if (j && j.__status < 400 && j.success) { show(T.setPwOk, true); setTimeout(function () { location.reload(); }, 1000); }
+            else show((j && j.error) || T.netErr, false);
+        });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.acc-decline'), function (b) {
+        b.addEventListener('click', async function () {
+            var note = await window.promptDialog(T.declineNote, '', { required: true, multiline: true });
+            if (note === null) return;
+            var j = await post('/admin/accounts/requests/' + b.getAttribute('data-req') + '/decline', { note: note }).catch(function () { return { __status: 0 }; });
+            if (j && j.__status < 400 && j.ok) { show(j.message, true); setTimeout(function () { location.reload(); }, 900); }
+            else show((j && j.error) || T.netErr, false);
+        });
+    });
+
+    // One-time credentials sheet (CSV built client-side from the response — never stored).
+    document.getElementById('acc-creds-dl').addEventListener('click', function () {
+        if (!lastCredentials || !lastCredentials.length) return;
+        var lines = [T.csv];
+        lastCredentials.forEach(function (c) {
+            lines.push([c.employeeNumber, c.name, c.username, c.tempPassword, c.reason].map(function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }).join(';'));
+        });
+        var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'credentials-' + new Date().toISOString().slice(0, 10) + '.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+    });
+    refresh();
+})();
+</script>

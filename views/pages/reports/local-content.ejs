@@ -1,0 +1,435 @@
+<%
+    var curTab = (typeof tab !== 'undefined' && tab) ? tab : 'overview';
+    var csrf = (typeof csrfToken !== 'undefined' && csrfToken) ? csrfToken : '';
+    function pct(n, d) { return d ? Math.round(100*n/d) : null; }
+    // The share is computed on the population whose nationality is KNOWN
+    // (nationals + expatriates), like the KPI; no base → "—", never 0 %.
+    function natBar(nat, expats) {
+        var base = Number(nat) + Number(expats);
+        var p = pct(Number(nat), base);
+        if (p === null) return '<span class="lc-muted">—</span>';
+        return '<div class="lc-bar"><div class="lc-bar-fill ' + (p>=80?'fit-good':(p>=50?'fit-mid':'fit-low')) + '" style="width:' + p + '%;"></div><span class="lc-bar-label">' + p + '%</span></div>';
+    }
+    function statusClass(s) {
+        return ({ achieved: 'badge-success', in_progress: 'badge-info', planned: 'badge-secondary', at_risk: 'badge-warning', overdue: 'badge-danger', cancelled: 'badge-secondary' })[s] || 'badge-secondary';
+    }
+    // UX-7: a calendar date (YYYY-MM-DD) prints as a period bound (UTC-safe);
+    // an instant prints in the reader's format. Fallbacks keep the view testable.
+    function dDate(v) { if (!v) return '—'; return (typeof fmtPeriodBound === 'function') ? fmtPeriodBound(v) : String(v).slice(0, 10); }
+    function dTime(v) { if (!v) return '—'; return (typeof fmtDateTime === 'function') ? fmtDateTime(v) : new Date(v).toISOString().slice(0,16).replace('T',' '); }
+    // UX-7: IDP status through the IDP module's own labels.
+    function idpStatusLabel(s) { return s ? __('idp:st_' + s) : '—'; }
+%>
+<div class="page-header">
+    <h1><i class="fas fa-flag" aria-hidden="true"></i> <%= __('admin:lc_title') %></h1>
+    <% if (curTab === 'overview') { %>
+    <a href="/reports/local-content?format=csv" class="btn btn-sm btn-secondary"><i class="fas fa-file-csv" aria-hidden="true"></i> <%= __('admin:lc_export_csv') %></a>
+    <% } %>
+</div>
+
+<nav class="tabs lc-tabs" aria-label="<%= __('localcontent:tabs_label') %>">
+    <a class="tab <%= curTab === 'overview' ? 'active' : '' %>" href="/reports/local-content" <%- curTab === 'overview' ? 'aria-current="page"' : '' %>><i class="fas fa-chart-pie" aria-hidden="true"></i> <%= __('localcontent:tab_overview') %></a>
+    <a class="tab <%= curTab === 'nationalisation' ? 'active' : '' %>" href="/reports/local-content?tab=nationalisation" <%- curTab === 'nationalisation' ? 'aria-current="page"' : '' %>><i class="fas fa-people-arrows" aria-hidden="true"></i> <%= __('localcontent:tab_nationalisation') %></a>
+    <a class="tab <%= curTab === 'regulatory' ? 'active' : '' %>" href="/reports/local-content?tab=regulatory" <%- curTab === 'regulatory' ? 'aria-current="page"' : '' %>><i class="fas fa-file-shield" aria-hidden="true"></i> <%= __('localcontent:tab_regulatory') %></a>
+</nav>
+
+<% if (typeof tabError !== 'undefined' && tabError) { %>
+    <div class="card lc-notice lc-notice-error"><%= __('localcontent:err_tab_load') %></div>
+<% } %>
+
+<% if (curTab === 'overview') { %>
+<div class="help-text" style="margin-bottom:1.25rem;">
+    <%= __('admin:lc_help') %>
+</div>
+
+<% if (!home) { %>
+    <div class="card" style="padding:14px 18px;border-left:3px solid var(--amber,#F5A623);margin-bottom:1.25rem;">
+        <i class="fas fa-triangle-exclamation" aria-hidden="true" style="color:var(--amber,#F5A623);"></i>
+        <%= __('admin:lc_no_home_country') %> <a href="/app-settings"><%= __('admin:lc_open_settings') %></a>
+    </div>
+<% } %>
+
+<!-- KPIs -->
+<div class="dashboard-stats" style="margin-bottom:1.25rem;">
+    <div class="stat-card"><h3><%= __('admin:lc_kpi_workforce') %></h3><p class="stat-value"><%= kpi.total %></p></div>
+    <div class="stat-card"><h3><%= __('admin:lc_kpi_national_pct') %></h3><p class="stat-value"><%= kpi.nationalPct === null || kpi.nationalPct === undefined ? '—' : kpi.nationalPct + '%' %></p></div>
+    <div class="stat-card"><h3><%= __('admin:lc_kpi_expats') %></h3><p class="stat-value"><%= kpi.expats %></p></div>
+    <div class="stat-card"><h3><%= __('admin:lc_kpi_unspecified') %></h3><p class="stat-value"><%= kpi.unspecified %></p></div>
+</div>
+
+<div class="lc-grid">
+    <div class="card" style="padding:0;grid-column:1/-1;">
+        <div class="emp-section-h" style="padding:12px 16px;font-weight:600;border-bottom:1px solid var(--border);"><i class="fas fa-earth-africa" aria-hidden="true"></i> <%= __('admin:lc_by_country') %></div>
+        <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+            <table class="table">
+                <thead><tr><th><%= __('admin:lc_country') %></th><th style="text-align:center;"><%= __('admin:lc_headcount') %></th><th style="min-width:130px;"><%= __('admin:lc_national_pct') %></th><th style="text-align:center;"><%= __('admin:lc_expats') %></th></tr></thead>
+                <tbody>
+                    <% (typeof byCountry !== 'undefined' ? byCountry : []).forEach(function(r){ %>
+                        <tr>
+                            <td><strong><%= r.name %></strong></td>
+                            <td style="text-align:center;"><%= r.headcount %></td>
+                            <td><%- natBar(r.nationals, r.expats) %></td>
+                            <td style="text-align:center;<%= r.expats>0?'color:var(--amber-text);font-weight:600;':'' %>"><%= r.expats %></td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card" style="padding:0;">
+        <div class="emp-section-h" style="padding:12px 16px;font-weight:600;border-bottom:1px solid var(--border);"><i class="fas fa-people-group" aria-hidden="true"></i> <%= __('admin:lc_by_family') %></div>
+        <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+            <table class="table">
+                <thead><tr><th><%= __('admin:lc_role_family') %></th><th style="text-align:center;"><%= __('admin:lc_headcount') %></th><th style="min-width:130px;"><%= __('admin:lc_national_pct') %></th><th style="text-align:center;"><%= __('admin:lc_expats') %></th></tr></thead>
+                <tbody>
+                    <% (byDepartment||[]).forEach(function(r){ %>
+                        <tr>
+                            <td><strong><%= r.name %></strong></td>
+                            <td style="text-align:center;"><%= r.headcount %></td>
+                            <td><%- natBar(r.nationals, r.expats) %></td>
+                            <td style="text-align:center;<%= r.expats>0?'color:var(--amber-text);font-weight:600;':'' %>"><%= r.expats %></td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card" style="padding:0;">
+        <div class="emp-section-h" style="padding:12px 16px;font-weight:600;border-bottom:1px solid var(--border);"><i class="fas fa-sitemap" aria-hidden="true"></i> <%= __('admin:lc_by_rolefamily') %></div>
+        <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+            <table class="table">
+                <thead><tr><th><%= __('admin:role_family_label') %></th><th style="text-align:center;"><%= __('admin:lc_headcount') %></th><th style="min-width:130px;"><%= __('admin:lc_national_pct') %></th><th style="text-align:center;"><%= __('admin:lc_expats') %></th></tr></thead>
+                <tbody>
+                    <% (byFamily||[]).forEach(function(r){ %>
+                        <tr>
+                            <td><strong><%= r.name %></strong></td>
+                            <td style="text-align:center;"><%= r.headcount %></td>
+                            <td><%- natBar(r.nationals, r.expats) %></td>
+                            <td style="text-align:center;<%= r.expats>0?'color:var(--amber-text);font-weight:600;':'' %>"><%= r.expats %></td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card" style="padding:0;">
+        <div class="emp-section-h" style="padding:12px 16px;font-weight:600;border-bottom:1px solid var(--border);"><i class="fas fa-location-dot" aria-hidden="true"></i> <%= __('admin:lc_by_site') %></div>
+        <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+            <table class="table">
+                <thead><tr><th><%= __('admin:lc_site') %></th><th style="text-align:center;"><%= __('admin:lc_headcount') %></th><th style="min-width:130px;"><%= __('admin:lc_national_pct') %></th><th style="text-align:center;"><%= __('admin:lc_expats') %></th></tr></thead>
+                <tbody>
+                    <% (bySite||[]).forEach(function(r){ %>
+                        <tr>
+                            <td><strong><%= r.name %></strong></td>
+                            <td style="text-align:center;"><%= r.headcount %></td>
+                            <td><%- natBar(r.nationals, r.expats) %></td>
+                            <td style="text-align:center;"><%= r.expats %></td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Nationalization pipeline: expatriate-held positions -->
+<div class="section-divider" style="margin-top:22px;">
+    <h2 class="section-title"><span class="section-icon"><i class="fas fa-arrows-turn-to-dots" aria-hidden="true"></i></span> <%= __('admin:lc_expat_positions') %></h2>
+    <p class="section-subtitle"><%= __('admin:lc_expat_positions_sub') %></p>
+</div>
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#expat-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+<div class="table-wrapper">
+    <table class="table" id="expat-table">
+        <thead><tr><th><%= __('admin:lc_employee') %></th><th><%= __('admin:lc_nationality') %></th><th><%= __('admin:lc_role') %></th><th><%= __('admin:lc_site') %></th><th><%= __('admin:lc_country') %></th><th style="text-align:center;"><%= __('admin:lc_national_peers') %></th><th></th></tr></thead>
+        <tbody>
+            <% (expatPositions||[]).forEach(function(p){ %>
+                <tr>
+                    <td><strong><%= p.name %></strong></td>
+                    <td><%= p.nationality %></td>
+                    <td><%= p.roleName || '—' %></td>
+                    <td><%= p.siteName || '—' %></td>
+                    <td><%= p.countryName || '—' %></td>
+                    <td style="text-align:center;"><%= p.nationalPeers %></td>
+                    <td style="text-align:right;"><% if (p.roleId) { %><a href="/benchmark/role/<%= p.roleId %>" class="btn btn-xs btn-secondary" title="<%= __('admin:lc_view_succession') %>"><%= __('admin:lc_succession') %></a><% } %></td>
+                </tr>
+            <% }); %>
+            <% if (!expatPositions || !expatPositions.length) { %>
+                <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted);"><%= __('admin:lc_no_expats') %></td></tr>
+            <% } %>
+        </tbody>
+    </table>
+</div>
+<% } %>
+
+<% if (curTab === 'nationalisation') { %>
+<div class="help-text" style="margin-bottom:1.25rem;"><%= __('localcontent:nat_help') %></div>
+<% if (typeof natAllowed === 'undefined' || !natAllowed) { %>
+    <div class="card lc-notice"><%= __('localcontent:nat_not_allowed') %></div>
+<% } else { %>
+    <div class="section-divider">
+        <h2 class="section-title"><span class="section-icon"><i class="fas fa-list-check" aria-hidden="true"></i></span> <%= __('localcontent:nat_plans_title') %></h2>
+        <p class="section-subtitle"><%= __('localcontent:nat_plans_sub') %></p>
+    </div>
+    <% if (!natPlans.length) { %>
+        <div class="card lc-notice"><%= __('localcontent:nat_no_plans') %></div>
+    <% } %>
+    <% natPlans.forEach(function(p){ %>
+    <div class="card lc-plan">
+        <div class="lc-plan-head">
+            <div>
+                <strong><%= p.roleName %></strong>
+                <span class="lc-muted"> · <%= p.siteName || '—' %> · <%= p.countryName || __('localcontent:country_unknown') %></span>
+                <div class="lc-muted"><%= __('localcontent:nat_incumbent') %><%= colon %> <%= p.incumbentName %> (<%= p.incumbentNationality || '—' %>)</div>
+            </div>
+            <div class="lc-plan-status">
+                <span class="badge <%= statusClass(p.status) %>"><%= __('localcontent:status_' + p.status) %></span>
+                <% if (p.statusReason) { %><div class="lc-muted lc-small"><%= __('localcontent:status_reason_' + p.statusReason) %></div><% } %>
+                <div class="lc-small"><%= __('localcontent:nat_target_date') %><%= colon %> <strong><%= dDate(p.targetDate) %></strong></div>
+            </div>
+        </div>
+        <% if (p.needsDecision) { %>
+            <div class="lc-flag" role="note">
+                <strong><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('localcontent:flag_needs_decision') %><%= colon %></strong>
+                <%= (p.flags || []).map(function(f){ return __('localcontent:flag_' + f); }).join(' ') %>
+            </div>
+        <% } %>
+        <% if (p.state !== 'active' && p.stateReason) { %>
+            <div class="lc-small lc-muted"><%= __('localcontent:nat_closed_reason') %><%= colon %> <%= p.stateReason %></div>
+        <% } %>
+        <div class="table-wrapper" style="margin:.5rem 0;">
+            <table class="table">
+                <thead><tr>
+                    <th><%= __('localcontent:nat_successor') %></th>
+                    <th style="text-align:center;"><%= __('localcontent:nat_readiness') %></th>
+                    <th style="text-align:center;"><%= __('localcontent:nat_coverage') %></th>
+                    <th style="text-align:center;"><%= __('localcontent:nat_gaps') %></th>
+                    <th><%= __('localcontent:nat_idp') %></th>
+                    <th><span class="sr-only"><%= __('common:actions') %></span></th>
+                </tr></thead>
+                <tbody>
+                <% p.successors.forEach(function(s){ var sName = s.outOfScope ? __('localcontent:nat_out_of_scope') : s.name; %>
+                    <tr class="<%= s.state !== 'active' || s.left ? 'lc-withdrawn' : '' %>">
+                        <td><%= sName %>
+                            <% if (s.state !== 'active') { %><div class="lc-small lc-muted"><%= __('localcontent:nat_withdrawn') %> — <%= s.stateReason %></div><% } %>
+                            <% if (s.left) { %><div class="lc-small"><span class="badge badge-warning"><%= __('localcontent:nat_successor_left') %></span></div><% } %></td>
+                        <% if (s.state === 'active' && s.left) { %>
+                        <td colspan="4" class="lc-small lc-muted"><%= __('localcontent:nat_successor_left_help') %></td>
+                        <td style="text-align:right;white-space:nowrap;">
+                            <% if (natCanWrite && p.state === 'active' && !s.outOfScope) { %>
+                            <form method="post" action="/reports/local-content/nationalisation/successors/<%= s.id %>/withdraw" class="lc-inline">
+                                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                                <input type="text" name="reason" required maxlength="500" placeholder="<%= __('localcontent:reason_placeholder') %>" aria-label="<%= __('localcontent:nat_withdraw_reason_for', { name: sName }) %>" class="lc-input-sm">
+                                <button type="submit" class="btn btn-xs btn-secondary" aria-label="<%= __('localcontent:nat_withdraw_for', { name: sName }) %>"><%= __('localcontent:nat_withdraw') %></button>
+                            </form>
+                            <% } %>
+                        </td>
+                        <% } else if (s.state === 'active') { %>
+                        <td style="text-align:center;"><%= s.readinessPercent === null ? __('localcontent:not_measured') : s.readinessPercent + ' %' %><% if (s.isReady) { %> <span class="badge badge-success"><%= __('localcontent:ready') %></span><% } %></td>
+                        <td style="text-align:center;"><%= s.coveragePercent === null ? '—' : s.coveragePercent + ' %' %></td>
+                        <td style="text-align:center;"><%= s.gapsMeasured === null ? '—' : s.gapsMeasured %><% if (s.gapsUnmeasured) { %> <span class="lc-small lc-muted">(+<%= s.gapsUnmeasured %> <%= __('localcontent:nat_unmeasured') %>)</span><% } %></td>
+                        <td><% if (s.idpId) { %><a href="/v2/idp/<%= s.idpId %>" aria-label="<%= __('localcontent:nat_idp_open_for', { name: sName }) %>"><%= __('localcontent:nat_idp_open') %></a> <span class="lc-small lc-muted">(<%= idpStatusLabel(s.idpStatus) %>)</span><% } else { %><span class="lc-muted">—</span><% } %></td>
+                        <td style="text-align:right;white-space:nowrap;">
+                            <% if (natCanWrite && p.state === 'active' && !s.outOfScope) { %>
+                            <form method="post" action="/reports/local-content/nationalisation/successors/<%= s.id %>/idp" class="lc-inline">
+                                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                                <button type="submit" class="btn btn-xs btn-secondary" aria-label="<%= (s.idpId ? __('localcontent:nat_idp_relink') : __('localcontent:nat_idp_create')) + ' — ' + sName %>"><%= s.idpId ? __('localcontent:nat_idp_relink') : __('localcontent:nat_idp_create') %></button>
+                            </form>
+                            <form method="post" action="/reports/local-content/nationalisation/successors/<%= s.id %>/withdraw" class="lc-inline">
+                                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                                <input type="text" name="reason" required maxlength="500" placeholder="<%= __('localcontent:reason_placeholder') %>" aria-label="<%= __('localcontent:nat_withdraw_reason_for', { name: sName }) %>" class="lc-input-sm">
+                                <button type="submit" class="btn btn-xs btn-secondary" aria-label="<%= __('localcontent:nat_withdraw_for', { name: sName }) %>"><%= __('localcontent:nat_withdraw') %></button>
+                            </form>
+                            <% } %>
+                        </td>
+                        <% } else { %>
+                        <td colspan="5"></td>
+                        <% } %>
+                    </tr>
+                <% }); %>
+                <% if (!p.successors.length) { %>
+                    <tr><td colspan="6" class="lc-muted" style="text-align:center;"><%= __('localcontent:nat_no_successor') %></td></tr>
+                <% } %>
+                </tbody>
+            </table>
+        </div>
+        <% if (natCanWrite && p.state === 'active') { %>
+        <div class="lc-actions">
+            <form method="post" action="/reports/local-content/nationalisation/plans/<%= p.id %>/successors" class="lc-inline">
+                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                <% var cands = (natCandidates && natCandidates[p.id]) || []; %>
+                <select name="employeeId" required aria-label="<%= __('localcontent:nat_add_successor') %>" <%= cands.length ? '' : 'disabled' %>>
+                    <option value=""><%= cands.length ? __('localcontent:nat_choose_national') : __('localcontent:nat_no_candidate') %></option>
+                    <% cands.forEach(function(c){ %><option value="<%= c.id %>"><%= c.name %><%= c.roleName ? ' — ' + c.roleName : '' %></option><% }); %>
+                </select>
+                <button type="submit" class="btn btn-xs btn-primary" <%= cands.length ? '' : 'disabled' %>><%= __('localcontent:nat_add_successor') %></button>
+            </form>
+            <form method="post" action="/reports/local-content/nationalisation/plans/<%= p.id %>/target" class="lc-inline">
+                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                <input type="date" name="targetDate" required value="<%= p.targetDate %>" aria-label="<%= __('localcontent:nat_target_date') %>">
+                <input type="text" name="reason" required maxlength="500" placeholder="<%= __('localcontent:reason_placeholder') %>" aria-label="<%= __('localcontent:nat_move_reason') %>" class="lc-input-sm">
+                <button type="submit" class="btn btn-xs btn-secondary"><%= __('localcontent:nat_move_target') %></button>
+            </form>
+            <form method="post" action="/reports/local-content/nationalisation/plans/<%= p.id %>/close" class="lc-inline">
+                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                <select name="state" required aria-label="<%= __('localcontent:nat_close') %>">
+                    <option value="achieved"><%= __('localcontent:nat_close_achieved') %></option>
+                    <option value="cancelled"><%= __('localcontent:nat_close_cancelled') %></option>
+                </select>
+                <input type="text" name="reason" required maxlength="500" placeholder="<%= __('localcontent:reason_placeholder') %>" aria-label="<%= __('localcontent:nat_close_reason') %>" class="lc-input-sm">
+                <button type="submit" class="btn btn-xs btn-secondary"><%= __('localcontent:nat_close') %></button>
+            </form>
+        </div>
+        <% } %>
+    </div>
+    <% }); %>
+
+    <div class="section-divider" style="margin-top:22px;">
+        <h2 class="section-title"><span class="section-icon"><i class="fas fa-plus" aria-hidden="true"></i></span> <%= __('localcontent:nat_unplanned_title') %></h2>
+        <p class="section-subtitle"><%= __('localcontent:nat_unplanned_sub') %></p>
+    </div>
+    <div class="table-wrapper">
+        <table class="table">
+            <thead><tr><th><%= __('admin:lc_employee') %></th><th><%= __('admin:lc_nationality') %></th><th><%= __('admin:lc_role') %></th><th><%= __('admin:lc_site') %></th><th><%= __('admin:lc_country') %></th><th><span class="sr-only"><%= __('common:actions') %></span></th></tr></thead>
+            <tbody>
+            <% natUnplanned.forEach(function(u){ %>
+                <tr>
+                    <td><strong><%= u.name %></strong></td>
+                    <td><%= u.nationality %></td>
+                    <td><%= u.roleName %></td>
+                    <td><%= u.siteName || '—' %></td>
+                    <td><%= u.countryName || '—' %></td>
+                    <td style="text-align:right;white-space:nowrap;">
+                        <% if (natCanWrite) { %>
+                        <form method="post" action="/reports/local-content/nationalisation/plans" class="lc-inline">
+                            <input type="hidden" name="_csrf" value="<%= csrf %>">
+                            <input type="hidden" name="incumbentEmployeeId" value="<%= u.employeeId %>">
+                            <input type="date" name="targetDate" required aria-label="<%= __('localcontent:nat_target_date_for', { name: u.name }) %>">
+                            <button type="submit" class="btn btn-xs btn-primary" aria-label="<%= __('localcontent:nat_create_plan_for', { name: u.name }) %>"><%= __('localcontent:nat_create_plan') %></button>
+                        </form>
+                        <% } %>
+                    </td>
+                </tr>
+            <% }); %>
+            <% if (!natUnplanned.length) { %>
+                <tr><td colspan="6" class="lc-muted" style="text-align:center;padding:1.5rem;"><%= __('localcontent:nat_all_planned') %></td></tr>
+            <% } %>
+            </tbody>
+        </table>
+    </div>
+<% } %>
+<% } %>
+
+<% if (curTab === 'regulatory') { %>
+<div class="help-text" style="margin-bottom:1.25rem;"><%= __('localcontent:pack_help') %></div>
+<% if (typeof packAllowed === 'undefined' || !packAllowed) { %>
+    <div class="card lc-notice"><%= __('localcontent:pack_not_allowed') %></div>
+<% } else { %>
+    <% if (packCanManage) { %>
+    <div class="card lc-plan">
+        <% if (!packCountries.length) { %>
+            <div class="lc-muted"><%= __('localcontent:pack_no_country') %></div>
+        <% } else { %>
+        <form method="post" action="/reports/local-content/packs" class="lc-inline lc-gen">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <label><%= __('localcontent:pack_country') %>
+                <select name="countryId" required>
+                    <% packCountries.forEach(function(c){ %><option value="<%= c.id %>"><%= c.name %></option><% }); %>
+                </select>
+            </label>
+            <label><%= __('localcontent:pack_period_type') %>
+                <select name="periodType" required>
+                    <option value="quarter"><%= __('localcontent:pack_quarter') %></option>
+                    <option value="year"><%= __('localcontent:pack_year') %></option>
+                </select>
+            </label>
+            <label><%= __('localcontent:pack_period') %>
+                <input type="text" name="periodLabel" required pattern="\d{4}(-[Qq][1-4])?" placeholder="2026-Q3 / 2026" class="lc-input-sm">
+            </label>
+            <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-camera" aria-hidden="true"></i> <%= __('localcontent:pack_generate') %></button>
+        </form>
+        <div class="lc-small lc-muted" style="margin-top:.4rem;"><%= __('localcontent:pack_generate_help') %></div>
+        <% } %>
+    </div>
+    <% } %>
+    <div class="table-wrapper">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('localcontent:pack_country') %></th>
+                <th><%= __('localcontent:pack_period') %></th>
+                <th style="text-align:center;"><%= __('localcontent:pack_version') %></th>
+                <th><%= __('localcontent:pack_state') %></th>
+                <th><%= __('localcontent:pack_unspecified_share') %></th>
+                <th><%= __('localcontent:pack_generated_at') %></th>
+                <th><%= __('localcontent:pack_published_at') %></th>
+                <th><span class="sr-only"><%= __('common:actions') %></span></th>
+            </tr></thead>
+            <tbody>
+            <% packs.forEach(function(k){ var q = k.quality || { pct: null, level: 'empty' }; var packName = k.countryName + ' ' + k.periodLabel + ' v' + k.version; var qId = 'lc-q-' + k.id; %>
+                <tr>
+                    <td><%= k.countryName %></td>
+                    <td><%= k.periodLabel %></td>
+                    <td style="text-align:center;">v<%= k.version %></td>
+                    <td><span class="badge <%= k.state === 'published' ? 'badge-success' : (k.state === 'draft' ? 'badge-warning' : 'badge-secondary') %>"><%= __('localcontent:pack_state_' + k.state) %></span>
+                        <% if (k.state !== 'draft' && k.exactFigures !== null && k.exactFigures !== undefined) { %><div class="lc-small lc-muted"><%= k.exactFigures ? __('localcontent:pack_exact_yes') : __('localcontent:pack_exact_no') %></div><% } %>
+                        <% if (k.stateReason) { %><div class="lc-small lc-muted"><%= k.stateReason %></div><% } %></td>
+                    <td class="lc-small" id="<%= qId %>">
+                        <%= q.pct === null || q.pct === undefined ? '—' : q.pct + ' %' %>
+                        <% if (q.level === 'warn') { %><div><span class="badge badge-warning"><%= __('localcontent:pack_unspecified_warn', { pct: q.warnPct }) %></span></div><% } %>
+                        <% if (q.level === 'block') { %><div><span class="badge badge-danger"><%= __('localcontent:pack_unspecified_block', { pct: q.blockPct }) %></span></div><% } %>
+                    </td>
+                    <td class="lc-small"><%= dTime(k.generatedAt) %></td>
+                    <td class="lc-small"><%= dTime(k.publishedAt) %></td>
+                    <td style="text-align:right;white-space:nowrap;">
+                        <a class="btn btn-xs btn-secondary" href="/reports/local-content/packs/<%= k.id %>/print" target="_blank" rel="noopener" aria-label="<%= __('localcontent:pack_print') + ' — ' + packName %>"><i class="fas fa-print" aria-hidden="true"></i> <%= __('localcontent:pack_print') %></a>
+                        <a class="btn btn-xs btn-secondary" href="/reports/local-content/packs/<%= k.id %>/xlsx" aria-label="XLSX — <%= packName %>"><i class="fas fa-file-excel" aria-hidden="true"></i> XLSX</a>
+                        <% if (packCanManage && k.state === 'draft') { %>
+                        <form method="post" action="/reports/local-content/packs/<%= k.id %>/publish" class="lc-inline lc-publish"
+                              data-confirm="<%= __('localcontent:pack_publish_confirm', { pack: packName }) %>" data-confirm-title="<%= __('localcontent:pack_publish') %>">
+                            <input type="hidden" name="_csrf" value="<%= csrf %>">
+                            <label class="lc-check"><input type="checkbox" name="exactFigures" value="1"> <%= __('localcontent:pack_exact_figures') %></label>
+                            <% if (q.level === 'block') { %>
+                            <label class="lc-check"><input type="checkbox" name="acknowledgeUnspecified" value="1" required aria-describedby="<%= qId %>"> <%= __('localcontent:pack_ack_unspecified', { pct: q.pct }) %></label>
+                            <% } %>
+                            <button type="submit" class="btn btn-xs btn-primary" aria-label="<%= __('localcontent:pack_publish') + ' — ' + packName %>"><%= __('localcontent:pack_publish') %></button>
+                        </form>
+                        <form method="post" action="/reports/local-content/packs/<%= k.id %>/discard" class="lc-inline">
+                            <input type="hidden" name="_csrf" value="<%= csrf %>">
+                            <input type="text" name="reason" required maxlength="500" placeholder="<%= __('localcontent:reason_placeholder') %>" aria-label="<%= __('localcontent:pack_discard_reason') + ' — ' + packName %>" class="lc-input-sm">
+                            <button type="submit" class="btn btn-xs btn-secondary" aria-label="<%= __('localcontent:pack_discard') + ' — ' + packName %>"><%= __('localcontent:pack_discard') %></button>
+                        </form>
+                        <% } %>
+                    </td>
+                </tr>
+            <% }); %>
+            <% if (!packs.length) { %>
+                <tr><td colspan="8" class="lc-muted" style="text-align:center;padding:1.5rem;"><%= __('localcontent:pack_none') %></td></tr>
+            <% } %>
+            </tbody>
+        </table>
+    </div>
+<% } %>
+<% } %>
+
+<style>
+.lc-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.lc-bar { position:relative; height:18px; background:var(--bg-subtle); border-radius:6px; overflow:hidden; min-width:120px; }
+.lc-bar-fill { height:100%; } .lc-bar-fill.fit-good { background:var(--emerald,#2DD4A0); } .lc-bar-fill.fit-mid { background:var(--amber,#F5A623); } .lc-bar-fill.fit-low { background:var(--red,#F06060); }
+.lc-bar-label { position:absolute; top:0; left:8px; line-height:18px; font-size:.72rem; font-weight:600; color:var(--text-primary); }
+.btn-xs { padding:2px 9px; font-size:.72rem; border-radius:6px; }
+.lc-tabs a.tab { text-decoration:none; }
+.lc-notice { padding:14px 18px; margin-bottom:1rem; }
+.lc-notice-error { border-left:3px solid var(--red,#F06060); }
+.lc-plan { padding:14px 18px; margin-bottom:1rem; }
+.lc-plan-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.lc-plan-status { text-align:right; }
+.lc-muted { color:var(--text-muted); }
+.lc-small { font-size:.78rem; }
+.lc-inline { display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap; margin:2px 0; }
+.lc-actions { display:flex; gap:14px; flex-wrap:wrap; margin-top:.4rem; }
+.lc-input-sm { max-width:190px; }
+.lc-gen label { display:inline-flex; flex-direction:column; font-size:.78rem; gap:2px; }
+.lc-withdrawn td { opacity:.6; }
+.lc-flag { margin:.5rem 0; padding:8px 12px; border-left:3px solid var(--amber,#F5A623); background:var(--bg-subtle); font-size:.82rem; }
+.lc-check { display:inline-flex; gap:4px; align-items:center; font-size:.75rem; white-space:normal; max-width:260px; text-align:left; }
+@media (max-width:1000px){ .lc-grid { grid-template-columns:1fr; } .lc-plan-status { text-align:left; } }
+</style>

@@ -1,0 +1,406 @@
+<%
+// the export carries the CURRENT filters, the
+// filter bar exposes every facet the model accepts, an invalid value stays on
+// the page with a message next to its field, dates render through fmtDateTime.
+var _f = (typeof filters !== 'undefined' && filters) ? filters : {};
+var _fe = (typeof filterErrors !== 'undefined' && filterErrors) ? filterErrors : {};
+var _q = (typeof query !== 'undefined' && query) ? query : {};
+var _xq = (typeof exportQs !== 'undefined' && exportQs) ? '&' + exportQs : '';
+var _facets = (typeof facets !== 'undefined' && facets) ? facets : { categories: [], actions: [] };
+var pg = (typeof pager !== 'undefined' && pager) || null;
+var _fd = (typeof fmtDateTime === 'function') ? fmtDateTime : function (d) { return d ? FMT.dateTime(d) : FMT.UNMEASURED; };
+// The filter bar builds its controls as strings (one helper for label + error);
+// every value that reaches an attribute or option goes through this.
+var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+var opt = function (value, label, selected) { return '<option value="' + esc(value) + '"' + (selected ? ' selected' : '') + '>' + esc(label) + '</option>'; };
+%>
+<div class="page-header">
+    <h1><%= __('syslogs:title') %></h1>
+    <div class="page-actions">
+        <a href="/system-logs/export?format=csv<%= _xq %>" class="btn btn-secondary" title="<%= __('syslogs:log_export_filtered_title') %>"><%= __('syslogs:export_csv') %></a>
+        <a href="/system-logs/export?format=json<%= _xq %>" class="btn btn-secondary" title="<%= __('syslogs:log_export_filtered_title') %>"><%= __('syslogs:export_json') %></a>
+    </div>
+</div>
+
+<div class="sl-tabs" role="tablist" aria-label="<%= __('syslogs:views_label') %>">
+    <button class="btn btn-primary" id="sl-tab-entries-btn" role="tab" aria-selected="true" aria-controls="sl-tab-entries" onclick="SL.tab('entries')"><i class="fas fa-list" aria-hidden="true"></i> <%= __('syslogs:tab_entries') %></button>
+    <button class="btn btn-secondary" id="sl-tab-issues-btn" role="tab" aria-selected="false" aria-controls="sl-tab-issues" onclick="SL.tab('issues')"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('syslogs:tab_issues') %></button>
+    <button class="btn btn-secondary" id="sl-tab-analytics-btn" role="tab" aria-selected="false" aria-controls="sl-tab-analytics" onclick="SL.tab('analytics')"><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('syslogs:tab_analytics') %></button>
+</div>
+
+<div id="sl-tab-entries" role="tabpanel" aria-labelledby="sl-tab-entries-btn">
+<%# The typed value is kept in the field even when refused (`_q`), so the admin
+    corrects it instead of retyping; the refused value is NOT applied (`_f`). %>
+<% function fld(name, label, extra) { var err = _fe[name]; %>
+    <div class="sl-fg <%= err ? 'sl-fg-err' : '' %>">
+        <label for="slf-<%= name %>"><%= label %></label>
+        <%- extra %>
+        <% if (err) { %><span class="sl-err" role="alert"><%= err %></span><% } %>
+    </div>
+<% } %>
+<!-- Filter bar -->
+<form method="GET" action="/system-logs" class="sl-filterbar" data-filter-memory>
+    <% fld('actor', __('syslogs:f_actor'), '<input id="slf-actor" name="actor" value="' + esc(_q.actor) + '" placeholder="' + esc(__('syslogs:f_actor_ph')) + '">') %>
+    <% fld('category', __('syslogs:log_f_category'), '<select id="slf-category" name="category">' + opt('', __('syslogs:f_any')) + (_facets.categories || []).map(function (c) { return opt(c.v, c.v + ' (' + c.n + ')', _f.category === c.v); }).join('') + '</select>') %>
+    <% fld('action', __('syslogs:th_action'), '<select id="slf-action" name="action">' + opt('', __('syslogs:f_any')) + (_facets.actions || []).map(function (a) { return opt(a.v, a.v + ' (' + a.n + ')', _f.action === a.v); }).join('') + '</select>') %>
+    <% fld('route', __('syslogs:f_route'), '<input id="slf-route" name="route" value="' + esc(_q.route) + '" placeholder="' + esc(__('syslogs:f_route_ph')) + '">') %>
+    <% fld('status', __('syslogs:f_status'), '<input id="slf-status" name="status" value="' + esc(_q.status) + '" placeholder="' + esc(__('syslogs:log_f_status_ph')) + '" style="width:110px">') %>
+    <% fld('severity', __('syslogs:f_severity'), '<select id="slf-severity" name="severity">' + opt('', __('syslogs:f_any')) + (severities || []).map(function (s) { return opt(s, __('syslogs:log_sev_' + s), _f.severity === s); }).join('') + '</select>') %>
+    <% fld('entityType', __('syslogs:log_f_entity_type'), '<select id="slf-entityType" name="entityType">' + opt('', __('syslogs:f_any')) + (entityTypes || []).map(function (t) { return opt(t, __('syslogs:log_entity_' + t), _f.entityType === t); }).join('') + '</select>') %>
+    <% fld('entityId', __('syslogs:log_f_entity_id'), '<input id="slf-entityId" name="entityId" inputmode="numeric" value="' + esc(_q.entityId) + '" style="width:90px">') %>
+    <% fld('employeeId', __('syslogs:log_f_employee_id'), '<input id="slf-employeeId" name="employeeId" inputmode="numeric" value="' + esc(_q.employeeId) + '" style="width:90px" title="' + esc(__('syslogs:log_f_employee_id_title')) + '">') %>
+    <% fld('requestId', __('syslogs:f_request_id'), '<input id="slf-requestId" name="requestId" value="' + esc(_q.requestId) + '" placeholder="' + esc(__('syslogs:f_request_id_ph')) + '">') %>
+    <% fld('from', __('syslogs:f_from'), '<input id="slf-from" type="date" name="from" value="' + esc(_q.from) + '" style="width:145px">') %>
+    <% fld('to', __('syslogs:f_to'), '<input id="slf-to" type="date" name="to" value="' + esc(_q.to) + '" style="width:145px">') %>
+    <div class="sl-fg" style="align-self:flex-end;"><label class="sl-chk"><input type="checkbox" name="errorsOnly" value="1" <%= _f.errorsOnly?'checked':'' %>> <%= __('syslogs:problems_only') %></label></div>
+    <div class="sl-fg" style="align-self:flex-end;"><label class="sl-chk"><input type="checkbox" name="excludeHttp" value="1" <%= _f.excludeHttp?'checked':'' %>> <%= __('syslogs:log_exclude_http') %></label></div>
+    <div class="sl-fg" style="align-self:flex-end;">
+        <select name="perPage" data-per-page aria-label="<%= __('admin:rows_per_page') %>">
+            <% [50, 100, 250].forEach(function (n) { %><option value="<%= n %>" <%= String(perPage) === String(n) ? 'selected' : '' %>><%= n %> / <%= __('admin:page') %></option><% }); %>
+        </select>
+    </div>
+    <div class="sl-fg" style="align-self:flex-end;">
+        <button type="submit" class="btn btn-sm btn-primary"><%= __('syslogs:filter_btn') %></button>
+        <a href="/system-logs?reset=1" class="btn btn-sm btn-secondary"><%= __('syslogs:clear_btn') %></a>
+    </div>
+</form>
+<% if (Object.keys(_fe).length) { %>
+<div class="alert alert-warning" role="status" style="margin-bottom:12px"><%= __('syslogs:log_filters_ignored', { n: Object.keys(_fe).length }) %></div>
+<% } %>
+<div class="logs-info">
+    <p><%= __('syslogs:total_entries') %> <strong><%= total %></strong><%= Object.keys(_f).length ? __('syslogs:filtered') : '' %>
+    <% if (pg && pg.total > 0) { %> · <%= __('admin:list_range', { from: pg.from, to: pg.to, total: pg.total }) %><% } %></p>
+</div>
+
+<% if (logs && logs.length > 0) { %>
+<div class="table-wrapper">
+<table class="table">
+    <thead>
+        <tr>
+            <th><%= __('syslogs:th_datetime') %></th>
+            <th><%= __('syslogs:th_user') %></th>
+            <th><%= __('syslogs:th_action') %></th>
+            <th><%= __('syslogs:log_th_category') %></th>
+            <th><%= __('syslogs:f_severity') %></th>
+            <th><%= __('syslogs:log_th_entity') %></th>
+            <th><%= __('syslogs:th_status') %></th>
+            <th><%= __('syslogs:th_latency') %></th>
+            <th><%= __('syslogs:th_details') %></th>
+            <th><%= __('syslogs:th_ip') %></th>
+            <th><%= __('syslogs:th_req') %></th>
+        </tr>
+    </thead>
+    <tbody>
+        <% logs.forEach(function(log) { var det = log.details == null ? '' : (typeof log.details === 'object' ? JSON.stringify(log.details) : String(log.details)); %>
+        <tr>
+            <td><%= _fd(log.createdAt) %></td>
+            <td><%= log.username || log.actorRef || log.actor_ref || __('syslogs:system') %></td>
+            <td><span class="badge badge-info"><%= log.action %></span></td>
+            <td><%= log.category || '—' %></td>
+            <td><% if (log.severity) { %><span class="sl-sev sl-sev-<%= log.severity %>"><%= __('syslogs:log_sev_' + log.severity, { defaultValue: log.severity }) %></span><% } else { %>—<% } %></td>
+            <td><% if (log.entityType) { %><%= log.entityType %><%= log.entityId != null ? ' #' + log.entityId : '' %><% } else { %>—<% } %></td>
+            <td><% if (log.statusCode) { %><span class="sl-sc sl-sc-<%= String(log.statusCode).charAt(0) %>"><%= log.statusCode %></span><% } else { %>—<% } %></td>
+            <td class="<%= log.latencyMs != null && log.latencyMs >= 1500 ? 'sl-slow' : '' %>"><%= log.latencyMs != null ? log.latencyMs + 'ms' : '—' %></td>
+            <td class="log-details" title="<%= det %>"><%= det || '—' %></td>
+            <td><%= log.ipAddress || '—' %></td>
+            <td><% if (log.requestId) { %><button type="button" class="sl-reqlink" title="<%= __('syslogs:view_trail_title') %>" data-request-id="<%= log.requestId %>" onclick="SL.openTrail(this.dataset.requestId)"><i class="fas fa-link" aria-hidden="true"></i></button><% } else { %>—<% } %></td>
+        </tr>
+        <% }); %>
+    </tbody>
+</table>
+</div>
+
+<%# Every pager link is built from the FULL current query (utils/listTools.buildPager). %>
+<% if (pg && pg.totalPages > 1) { %>
+<nav class="pagination" aria-label="<%= __('admin:page') %>">
+    <% if (pg.hasPrev) { %><a href="<%= pg.prevUrl %>" rel="prev" class="btn btn-sm">« <%= __('syslogs:previous') %></a><% } %>
+    <% pg.items.forEach(function (it) { if (it.gap) { %><span>…</span><% } else { %>
+        <a href="<%= it.url %>" class="btn btn-sm <%= it.active ? 'btn-primary' : '' %>" <%- it.active ? 'aria-current="page"' : '' %>><%= it.n %></a>
+    <% } }); %>
+    <% if (pg.hasNext) { %><a href="<%= pg.nextUrl %>" rel="next" class="btn btn-sm"><%= __('syslogs:next') %> »</a><% } %>
+</nav>
+<% } %>
+
+<% } else { %>
+<p><%= __('syslogs:no_logs') %></p>
+<% } %>
+</div><!-- /sl-tab-entries -->
+
+<!-- Events & reconciliation: conditions driving issues -->
+<div id="sl-tab-issues" style="display:none" role="tabpanel" aria-labelledby="sl-tab-issues-btn">
+    <div class="sl-controls">
+        <label for="sl-idays"><%= __('syslogs:window') %></label>
+        <select id="sl-idays" onchange="SL.loadIssues(true)">
+            <option value="1"><%= __('syslogs:last_24h') %></option>
+            <option value="7" selected><%= __('syslogs:last_7d') %></option>
+            <option value="30"><%= __('syslogs:last_30d') %></option>
+        </select>
+        <span id="sl-istatus" class="sl-status"></span>
+    </div>
+    <div class="sl-kpis">
+        <div class="sl-kpi sl-kpi-risk"><div class="sl-kpi-n" id="sl-i-5xx">—</div><div class="sl-kpi-l"><%= __('syslogs:kpi_5xx') %></div></div>
+        <div class="sl-kpi"><div class="sl-kpi-n" id="sl-i-denied">—</div><div class="sl-kpi-l"><%= __('syslogs:kpi_denied') %></div></div>
+        <div class="sl-kpi"><div class="sl-kpi-n" id="sl-i-slow">—</div><div class="sl-kpi-l"><%= __('syslogs:kpi_slow') %></div></div>
+        <div class="sl-kpi"><div class="sl-kpi-n" id="sl-i-db">—</div><div class="sl-kpi-l"><%= __('syslogs:kpi_db') %></div></div>
+    </div>
+    <div class="sl-issue-grid">
+        <div class="sl-chart"><h3><%= __('syslogs:chart_failing') %></h3><div id="sl-i-failing" class="sl-mini"></div></div>
+        <div class="sl-chart"><h3><%= __('syslogs:chart_slowest') %></h3><div id="sl-i-slowest" class="sl-mini"></div></div>
+        <div class="sl-chart"><h3><%= __('syslogs:chart_db') %></h3><div id="sl-i-perf" class="sl-mini"></div></div>
+        <div class="sl-chart"><h3><%= __('syslogs:chart_lockouts') %></h3><div id="sl-i-lockouts" class="sl-mini"></div></div>
+        <div class="sl-chart sl-chart-wide"><h3><%= __('syslogs:chart_recent') %> <small style="color:var(--text-muted);font-weight:400"><%= __('syslogs:chart_recent_hint') %></small></h3><div id="sl-i-recent" class="sl-mini"></div></div>
+    </div>
+</div>
+
+<!-- Request trail modal -->
+<div id="sl-trail" class="sl-trail-overlay" style="display:none" onclick="if(event.target===this)SL.closeTrail()">
+    <div class="sl-trail-card" role="dialog" aria-modal="true" aria-label="<%= __('syslogs:trail_title') %>">
+        <div class="sl-trail-head">
+            <strong><%= __('syslogs:trail_title') %> <code id="sl-trail-id"></code></strong>
+            <button class="btn btn-sm btn-secondary" onclick="SL.closeTrail()"><%= __('syslogs:close') %></button>
+        </div>
+        <div id="sl-trail-body" class="sl-trail-body"><%= __('syslogs:js_loading') %></div>
+    </div>
+</div>
+
+<div id="sl-tab-analytics" style="display:none" role="tabpanel" aria-labelledby="sl-tab-analytics-btn">
+    <div class="sl-controls">
+        <label for="sl-days"><%= __('syslogs:window') %></label>
+        <select id="sl-days" onchange="SL.loadAnalytics(true)">
+            <option value="7"><%= __('syslogs:last_7d') %></option>
+            <option value="30" selected><%= __('syslogs:last_30d') %></option>
+            <option value="90"><%= __('syslogs:last_90d') %></option>
+        </select>
+        <span id="sl-status" class="sl-status"></span>
+    </div>
+    <div class="sl-kpis">
+        <div class="sl-kpi"><div class="sl-kpi-n" id="sl-kpi-total">—</div><div class="sl-kpi-l"><%= __('syslogs:kpi_events') %></div></div>
+        <div class="sl-kpi sl-kpi-risk"><div class="sl-kpi-n" id="sl-kpi-risk">—</div><div class="sl-kpi-l"><%= __('syslogs:kpi_risk') %></div></div>
+        <div class="sl-kpi"><div class="sl-kpi-n" id="sl-kpi-actors">—</div><div class="sl-kpi-l"><%= __('syslogs:kpi_actors') %></div></div>
+        <div class="sl-kpi"><div class="sl-kpi-n" id="sl-kpi-ips">—</div><div class="sl-kpi-l"><%= __('syslogs:kpi_ips') %></div></div>
+    </div>
+    <div id="sl-anomaly" class="sl-anomaly" style="display:none"></div>
+    <div class="sl-charts">
+        <div class="sl-chart sl-chart-wide"><h3><%= __('syslogs:chart_activity') %></h3><canvas id="slcByDay" height="90" role="img" aria-label="<%= __('syslogs:aria_activity') %>"></canvas></div>
+        <div class="sl-chart sl-chart-wide"><h3><%= __('syslogs:chart_risk_time') %></h3><canvas id="slcRisk" height="90" role="img" aria-label="<%= __('syslogs:aria_risk') %>"></canvas></div>
+        <div class="sl-chart"><h3><%= __('syslogs:chart_actions') %></h3><canvas id="slcAction" height="160" role="img" aria-label="<%= __('syslogs:aria_actions') %>"></canvas></div>
+        <div class="sl-chart"><h3><%= __('syslogs:chart_active_users') %></h3><canvas id="slcActor" height="160" role="img" aria-label="<%= __('syslogs:aria_active_users') %>"></canvas></div>
+        <div class="sl-chart"><h3><%= __('syslogs:chart_by_hour') %></h3><canvas id="slcHour" height="160" role="img" aria-label="<%= __('syslogs:aria_by_hour') %>"></canvas></div>
+        <div class="sl-chart"><h3><%= __('syslogs:chart_top_ips') %></h3><canvas id="slcIp" height="160" role="img" aria-label="<%= __('syslogs:aria_top_ips') %>"></canvas></div>
+    </div>
+</div>
+
+<script src="/vendor/chart.umd.min.js?v=<%= assetVersion %>"></script>
+<script src="/js/chart-theme.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+// This page carried its own six loose hex colours — a third palette no theme
+// could reach. They now come from the shared theme, so these charts follow the
+// running identity like every other chart in the product.
+const D = (window.ChartTheme && window.ChartTheme.DIAG) || ['#3b82f6', '#dc2626', '#6366f1', '#0ea5e9', '#10b981', '#f59e0b'];
+const SL = {
+  charts:{}, loaded:false, issuesLoaded:false,
+  t:{
+    loading: <%- JSON.stringify(__('syslogs:js_loading')) %>,
+    nothing: <%- JSON.stringify(__('syslogs:js_nothing')) %>,
+    error: <%- JSON.stringify(__('syslogs:js_error')) %>,
+    loadFailed: <%- JSON.stringify(__('syslogs:js_load_failed')) %>,
+    fails: <%- JSON.stringify(__('syslogs:js_fails')) %>,
+    noTrail: <%- JSON.stringify(__('syslogs:js_no_trail')) %>,
+    anomalyPrefix: <%- JSON.stringify(__('syslogs:js_anomaly_prefix')) %>,
+    anomalySuffix: <%- JSON.stringify(__('syslogs:js_anomaly_suffix')) %>
+  },
+  tab(which){
+    document.getElementById('sl-tab-entries').style.display   = which==='entries'?'':'none';
+    document.getElementById('sl-tab-issues').style.display    = which==='issues'?'':'none';
+    document.getElementById('sl-tab-analytics').style.display = which==='analytics'?'':'none';
+    const eb=document.getElementById('sl-tab-entries-btn'), ib=document.getElementById('sl-tab-issues-btn'), ab=document.getElementById('sl-tab-analytics-btn');
+    eb.className   = 'btn '+(which==='entries'?'btn-primary':'btn-secondary');   eb.setAttribute('aria-selected', which==='entries'?'true':'false');
+    ib.className = 'btn '+(which==='issues'?'btn-primary':'btn-secondary'); ib.setAttribute('aria-selected', which==='issues'?'true':'false');
+    ab.className = 'btn '+(which==='analytics'?'btn-primary':'btn-secondary'); ab.setAttribute('aria-selected', which==='analytics'?'true':'false');
+    if(which==='analytics' && !this.loaded) this.loadAnalytics();
+    if(which==='issues' && !this.issuesLoaded) this.loadIssues();
+  },
+  esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); },
+  async loadIssues(reload){
+    const days=document.getElementById('sl-idays').value;
+    const st=document.getElementById('sl-istatus'); st.textContent=this.t.loading;
+    try{
+      const r=await fetch('/system-logs/issues?days='+days,{headers:{'Accept':'application/json'}});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error||this.t.loadFailed);
+      const t=d.totals||{};
+      document.getElementById('sl-i-5xx').textContent=t.errors5xx||0;
+      document.getElementById('sl-i-denied').textContent=t.denied||0;
+      document.getElementById('sl-i-slow').textContent=t.slowRequests||0;
+      document.getElementById('sl-i-db').textContent=t.dbIssues||0;
+      const rows=(arr,cols)=>!arr||!arr.length?'<p class="sl-empty">'+this.esc(this.t.nothing)+'</p>':
+        '<table class="sl-mini-t"><tbody>'+arr.map(cols).join('')+'</tbody></table>';
+      document.getElementById('sl-i-failing').innerHTML=rows(d.topFailingRoutes,x=>
+        '<tr><td>'+this.esc(x.route)+'</td><td><span class="sl-sc sl-sc-'+String(x.statusCode).charAt(0)+'">'+x.statusCode+'</span></td><td class="sl-n">'+x.n+'</td></tr>');
+      document.getElementById('sl-i-slowest').innerHTML=rows(d.slowestRoutes,x=>
+        '<tr><td>'+this.esc(x.route)+'</td><td class="sl-n">max '+x.maxMs+'ms</td><td class="sl-n sl-muted">avg '+x.avgMs+'</td></tr>');
+      document.getElementById('sl-i-perf').innerHTML=rows(d.perfByKind,x=>
+        '<tr><td>'+this.esc(x.kind)+'</td><td><code>'+this.esc(x.pgCode)+'</code></td><td class="sl-n">'+x.n+'</td></tr>');
+      document.getElementById('sl-i-lockouts').innerHTML=rows(d.lockouts,x=>
+        '<tr><td>'+this.esc(x.who)+'</td><td class="sl-n">'+x.fails+' '+this.esc(this.t.fails)+'</td></tr>');
+      document.getElementById('sl-i-recent').innerHTML=rows(d.recentSlow,x=>
+        '<tr><td>'+this.esc(x.at)+'</td><td>'+this.esc(x.kind)+'</td><td>'+this.esc(x.route||'')+'</td><td class="sl-n">'+(x.latencyMs!=null?x.latencyMs+'ms':'')+(x.pgCode?' '+this.esc(x.pgCode):'')+'</td><td>'+(x.requestId?'<button type="button" class="sl-reqlink" data-request-id="'+this.esc(x.requestId)+'" onclick="SL.openTrail(this.dataset.requestId)"><i class="fas fa-link"></i></button>':'')+'</td></tr>');
+      this.issuesLoaded=true; st.textContent='';
+    }catch(e){ st.textContent=this.t.error+e.message; }
+  },
+  async openTrail(id){
+    document.getElementById('sl-trail').style.display='flex';
+    document.getElementById('sl-trail-id').textContent=id;
+    const body=document.getElementById('sl-trail-body'); body.textContent=this.t.loading;
+    try{
+      const r=await fetch('/system-logs/request/'+encodeURIComponent(id),{headers:{'Accept':'application/json'}});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error||this.t.loadFailed);
+      const items=[];
+      (d.logs||[]).forEach(l=>items.push({t:l.createdAt,type:'log',label:(l.action||'')+' '+(l.statusCode||'')+(l.latencyMs!=null?' ('+l.latencyMs+'ms)':''),detail:l.details||'',sev:l.severity}));
+      (d.perf||[]).forEach(p=>items.push({t:p.createdAt,type:'perf',label:p.kind+(p.pgCode?' ['+p.pgCode+']':'')+(p.latencyMs!=null?' '+p.latencyMs+'ms':''),detail:p.sqlSnippet||p.route||'',sev:p.kind==='db_error'?'error':'warn'}));
+      items.sort((a,b)=>new Date(a.t)-new Date(b.t));
+      body.innerHTML = items.length ? items.map(i=>
+        '<div class="sl-trail-row sl-trail-'+(i.sev||'info')+'"><span class="sl-trail-t">'+this.esc(FMT.time(i.t))+'</span><span class="sl-trail-badge">'+this.esc(i.type)+'</span><span class="sl-trail-label">'+this.esc(i.label)+'</span><div class="sl-trail-detail">'+this.esc(i.detail)+'</div></div>'
+      ).join('') : '<p class="sl-empty">'+this.esc(this.t.noTrail)+'</p>';
+    }catch(e){ body.textContent=this.t.error+e.message; }
+  },
+  closeTrail(){ document.getElementById('sl-trail').style.display='none'; },
+  axis(){ const c=getComputedStyle(document.documentElement).getPropertyValue('--text-secondary')||'#94a3b8';
+    return {ticks:{color:c},grid:{color:'rgba(148,163,184,.15)'}}; },
+  bar(id,labels,data,color){ if(this.charts[id])this.charts[id].destroy();
+    this.charts[id]=new Chart(document.getElementById(id),{type:'bar',
+      data:{labels,datasets:[{data,backgroundColor:color,borderRadius:4}]},
+      options:{indexAxis: id==='slcAction'||id==='slcActor'||id==='slcIp'?'y':'x',plugins:{legend:{display:false}},
+        scales:{x:this.axis(),y:this.axis()},maintainAspectRatio:true}});
+  },
+  line(id,labels,data,color){ if(this.charts[id])this.charts[id].destroy();
+    this.charts[id]=new Chart(document.getElementById(id),{type:'line',
+      data:{labels,datasets:[{data,borderColor:color,backgroundColor:color+'22',fill:true,tension:.3,pointRadius:2}]},
+      options:{plugins:{legend:{display:false}},scales:{x:this.axis(),y:this.axis()},maintainAspectRatio:true}});
+  },
+  async loadAnalytics(reload){
+    const days=document.getElementById('sl-days').value;
+    const st=document.getElementById('sl-status'); st.textContent=this.t.loading;
+    try{
+      const r=await fetch('/system-logs/analytics?days='+days,{headers:{'Accept':'application/json'}});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error||this.t.loadFailed);
+      document.getElementById('sl-kpi-total').textContent=(d.totals&&d.totals.total)||0;
+      document.getElementById('sl-kpi-risk').textContent=(d.totals&&d.totals.risk)||0;
+      document.getElementById('sl-kpi-actors').textContent=(d.totals&&d.totals.actors)||0;
+      document.getElementById('sl-kpi-ips').textContent=(d.totals&&d.totals.ips)||0;
+      // simple anomaly hint: a day whose risk count is >3x the daily average
+      const rb=d.riskByDay||[]; const avg=rb.length?rb.reduce((s,x)=>s+x.n,0)/rb.length:0;
+      const spikes=rb.filter(x=>avg>0 && x.n>=Math.max(5,avg*3));
+      const an=document.getElementById('sl-anomaly');
+      if(spikes.length){an.style.display='';an.innerHTML='<i class="fas fa-triangle-exclamation" aria-hidden="true"></i> '+this.esc(this.t.anomalyPrefix)+this.esc(spikes.map(s=>s.day+' ('+s.n+')').join(', '))+this.esc(this.t.anomalySuffix);}
+      else{an.style.display='none';}
+      this.line('slcByDay',(d.byDay||[]).map(x=>x.day),(d.byDay||[]).map(x=>x.n),D[0]);
+      this.line('slcRisk',(rb).map(x=>x.day),(rb).map(x=>x.n),D[1]);
+      this.bar('slcAction',(d.byAction||[]).map(x=>x.action),(d.byAction||[]).map(x=>x.n),D[2]);
+      this.bar('slcActor',(d.byActor||[]).map(x=>x.actor),(d.byActor||[]).map(x=>x.n),D[3]);
+      const hours=Array.from({length:24},(_,h)=>h); const hmap={}; (d.byHour||[]).forEach(x=>hmap[x.hour]=x.n);
+      this.bar('slcHour',hours.map(h=>h+':00'),hours.map(h=>hmap[h]||0),D[4]);
+      this.bar('slcIp',(d.topIps||[]).map(x=>x.ip),(d.topIps||[]).map(x=>x.n),D[5]);
+      this.loaded=true; st.textContent='';
+    }catch(e){ st.textContent=this.t.error+e.message; }
+  }
+};
+</script>
+
+<style>
+.logs-info {
+    margin-bottom: 20px;
+    padding: 10px 14px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+/* Analytics tab */
+.sl-tabs { display:flex; gap:8px; margin: 4px 0 18px; }
+.sl-controls { display:flex; align-items:center; gap:10px; margin-bottom:14px; color:var(--text-secondary); font-size:.85rem; }
+.sl-controls select { padding:6px 8px; background:var(--bg-subtle); color:var(--text-primary); border:1px solid var(--border-light); border-radius:var(--radius-sm); }
+.sl-status { color:var(--text-muted); }
+.sl-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px; }
+.sl-kpi { background:var(--bg-subtle); border:1px solid var(--border-light); border-radius:var(--radius-md); padding:14px 16px; }
+.sl-kpi-n { font-size:1.6rem; font-weight:700; color:var(--text-primary); font-variant-numeric:tabular-nums; }
+.sl-kpi-l { font-size:.78rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.04em; }
+.sl-kpi-risk .sl-kpi-n { color:#ef4444; }
+.sl-anomaly { background:rgba(220,38,38,.10); border:1px solid rgba(220,38,38,.35); color:#fca5a5; padding:10px 14px; border-radius:var(--radius-md); margin-bottom:14px; font-size:.86rem; }
+.sl-charts { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+.sl-chart { background:var(--bg-subtle); border:1px solid var(--border-light); border-radius:var(--radius-md); padding:14px 16px; }
+.sl-chart-wide { grid-column:1 / -1; }
+.sl-chart h3 { margin:0 0 10px; font-size:.95rem; color:var(--text-primary); }
+@media (max-width:900px){ .sl-kpis{grid-template-columns:repeat(2,1fr);} .sl-charts{grid-template-columns:1fr;} }
+
+/* Keep log rows compact & scannable: short columns stay on one line, the long
+   Details / User-Agent columns truncate with an ellipsis (full text on hover). */
+.table th,
+.table td {
+    white-space: nowrap;
+}
+
+.log-details {
+    max-width: 360px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+.user-agent {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-tertiary);
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+/* Filter bar */
+.sl-filterbar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; background:var(--bg-subtle); border:1px solid var(--border-light); border-radius:var(--radius-md); padding:10px 12px; margin-bottom:12px; }
+.sl-fg { display:flex; flex-direction:column; gap:4px; }
+.sl-fg label { font-size:.7rem; text-transform:uppercase; letter-spacing:.03em; color:var(--text-secondary); }
+.sl-fg input, .sl-fg select { padding:5px 8px; background:var(--bg-elevated); color:var(--text-primary); border:1px solid var(--border-light); border-radius:var(--radius-sm); font-size:.85rem; }
+.sl-chk { flex-direction:row; align-items:center; gap:6px; font-size:.85rem; color:var(--text-primary); text-transform:none; }
+.sl-fg-err input, .sl-fg-err select { border-color:#ef4444; }
+.sl-err { font-size:.72rem; color:#f87171; text-transform:none; letter-spacing:0; max-width:220px; }
+.sl-sev { display:inline-block; padding:1px 7px; border-radius:6px; font-size:.74rem; font-weight:600; }
+.sl-sev-info { background:rgba(59,130,246,.15); color:#60a5fa; } .sl-sev-warn { background:rgba(245,158,11,.18); color:#fbbf24; }
+.sl-sev-error, .sl-sev-critical { background:rgba(239,68,68,.20); color:#f87171; }
+/* Status code chips */
+.sl-sc { display:inline-block; padding:1px 7px; border-radius:6px; font-size:.76rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.sl-sc-2 { background:rgba(16,185,129,.18); color:#34d399; } .sl-sc-3 { background:rgba(59,130,246,.18); color:#60a5fa; }
+.sl-sc-4 { background:rgba(245,158,11,.18); color:#fbbf24; } .sl-sc-5 { background:rgba(239,68,68,.20); color:#f87171; }
+.sl-slow { color:#fbbf24; font-weight:700; }
+.sl-reqlink { background:none; border:0; cursor:pointer; color:var(--brand,#7C6CFF); padding:2px 6px; border-radius:6px; }
+.sl-reqlink:hover { background:rgba(124, 108, 255,.15); }
+/* Issues tab */
+.sl-issue-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+.sl-mini { max-height:280px; overflow:auto; }
+.sl-mini-t { width:100%; border-collapse:collapse; font-size:.82rem; }
+.sl-mini-t td { padding:5px 8px; border-bottom:1px solid var(--border-light); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px; }
+.sl-mini-t .sl-n { text-align:right; font-variant-numeric:tabular-nums; color:var(--text-secondary); }
+.sl-mini-t .sl-muted { color:var(--text-muted); }
+.sl-empty { color:var(--text-muted); font-size:.85rem; padding:10px 4px; }
+/* Trail modal */
+.sl-trail-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:2000; align-items:center; justify-content:center; }
+.sl-trail-card { background:var(--bg-elevated,#1b1b1b); border:1px solid var(--border-light); border-radius:12px; width:min(780px,92vw); max-height:82vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+.sl-trail-head { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid var(--border-light); }
+.sl-trail-body { padding:12px 16px; overflow:auto; }
+.sl-trail-row { padding:8px 10px; border-left:3px solid var(--border-light); margin-bottom:8px; background:var(--bg-subtle); border-radius:0 8px 8px 0; }
+.sl-trail-row.sl-trail-error { border-left-color:#ef4444; } .sl-trail-row.sl-trail-warn { border-left-color:#f59e0b; } .sl-trail-row.sl-trail-info { border-left-color:#3b82f6; }
+.sl-trail-t { color:var(--text-muted); font-size:.78rem; margin-right:8px; font-variant-numeric:tabular-nums; }
+.sl-trail-badge { display:inline-block; font-size:.68rem; text-transform:uppercase; background:var(--bg-elevated); border:1px solid var(--border-light); border-radius:6px; padding:0 6px; margin-right:8px; color:var(--text-secondary); }
+.sl-trail-label { font-weight:600; font-size:.86rem; }
+.sl-trail-detail { color:var(--text-secondary); font-size:.8rem; margin-top:4px; word-break:break-word; font-family:ui-monospace,monospace; }
+@media (max-width:900px){ .sl-issue-grid{grid-template-columns:1fr;} }
+</style>
+

@@ -1,0 +1,167 @@
+<!-- Top Bar (slim header, only shows when sidebar is present) -->
+<header class="topbar" id="appTopbar" role="banner">
+    <div class="topbar-left">
+        <button class="topbar-menu-btn" id="mobileMenuToggle" onclick="toggleSidebar()" title="<%= __('chrome:topbar_menu_title') %>"
+            aria-label="<%= __('chrome:topbar_menu_aria') %>">
+            <i class="fas fa-bars" aria-hidden="true"></i>
+        </button>
+        <div class="topbar-breadcrumb">
+            <%# White-label: fall back to the configured brand (same expression as sidebar.ejs),
+                never to the hardcoded product name, so a rebranded install stays consistent. %>
+            <% const _tbBrand = (typeof branding !== 'undefined' && branding && branding.appName) ? branding.appName : 'IDevelop'; %>
+            <span class="topbar-page-title" id="pageTitle">
+                <%= (typeof title !== 'undefined' && title) ? title : _tbBrand %>
+            </span>
+        </div>
+    </div>
+    <div class="topbar-right">
+        <div class="action-center" id="actionCenter">
+            <button class="ac-bell" id="acBell" onclick="toggleActionCenter()" title="<%= __('chrome:ac_pending_actions') %>" aria-label="<%= __('chrome:ac_pending_actions') %>">
+                <i class="fas fa-bell" aria-hidden="true"></i>
+                <span class="ac-badge" id="acBadge" hidden>0</span>
+            </button>
+            <div class="ac-dropdown" id="acDropdown" hidden>
+                <div class="ac-head"><%= __('chrome:ac_my_actions') %></div>
+                <div class="ac-body" id="acBody"><div class="ac-empty"><%= __('chrome:ac_loading') %></div></div>
+                <div class="ac-subhead"><%= __('chrome:notifications_recent') %></div>
+                <div class="ac-body" id="acNotifs"></div>
+                <a class="ac-foot" href="/notifications"><%= __('chrome:notifications_view_all') %></a>
+            </div>
+        </div>
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="<%= __('chrome:theme_toggle_title') %>"
+            aria-label="<%= __('chrome:theme_toggle_aria') %>">
+            <i class="fas fa-moon" aria-hidden="true"></i>
+            <i class="fas fa-sun" aria-hidden="true"></i>
+        </button>
+        <div class="topbar-user" onclick="toggleUserMenu()" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-label="<%= __('chrome:account_menu_aria') %>" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleUserMenu();}">
+            <span class="topbar-avatar">
+                <%= (user.username || user.employeeNumber || 'U' ).charAt(0).toUpperCase() %>
+            </span>
+            <span class="topbar-username">
+                <%= user.username || user.employeeNumber || __('chrome:topbar_user_fallback') %>
+            </span>
+            <i class="fas fa-chevron-down topbar-arrow" aria-hidden="true"></i>
+        </div>
+        <%# THE account menu (UX-17). The sidebar footer used to open a SECOND
+            dropdown with different contents (it had « À propos » and « Sessions
+            actives » for everyone; this one had « Mon profil », the notification
+            preferences and « Mon accès »), and one click opened both. There is now
+            one menu, here, with the same entries on every page; the sidebar footer
+            simply links to the profile. Order: me → my security → language → help
+            → sign out. « Mon accès » stays admin-only because the page itself
+            bounces employees and managers. %>
+        <div class="user-dropdown" id="userDropdown">
+            <%# The profile page is where a person sets the email the password-reset
+                flow depends on, so it must be reachable from the chrome. %>
+            <a href="/account" class="dropdown-item">
+                <i class="fas fa-user" aria-hidden="true"></i> <%= __('chrome:menu_my_profile') %>
+            </a>
+            <a href="/account/notifications" class="dropdown-item">
+                <i class="fas fa-bell" aria-hidden="true"></i> <%= __('chrome:menu_notif_prefs') %>
+            </a>
+            <% if (typeof user !== 'undefined' && user && user.userType === 'admin') { %>
+            <%# « Mon accès » — self-service view of one's own scope + capabilities. %>
+            <a href="/mon-acces" class="dropdown-item">
+                <i class="fas fa-id-card" aria-hidden="true"></i> <%= __('admin:acc_menu_my_access', { defaultValue: 'Mon accès' }) %>
+            </a>
+            <% } %>
+            <%# UX-8 (3.23.21): hidden while SSO is enforced, except the super
+                administrator and employees listed as SSO exceptions. %>
+            <% if (typeof passwordChangeAllowed === 'undefined' || passwordChangeAllowed !== false) { %>
+            <a href="/change-password" class="dropdown-item">
+                <i class="fas fa-key" aria-hidden="true"></i> <%= __('chrome:menu_change_password') %>
+            </a>
+            <% } %>
+            <a href="/v2/uam/mfa/manage" class="dropdown-item">
+                <i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('chrome:menu_two_factor') %>
+            </a>
+            <%# Self-service device list: open to EVERY signed-in person (routes/index.js). %>
+            <a href="/account/sessions" class="dropdown-item">
+                <i class="fas fa-desktop" aria-hidden="true"></i> <%= __('chrome:menu_active_sessions') %>
+            </a>
+            <% const _hlng = (typeof lang !== 'undefined' && lang) ? lang : 'fr'; %>
+            <a href="/lang/<%= _hlng === 'fr' ? 'en' : 'fr' %>" class="dropdown-item" lang="<%= _hlng === 'fr' ? 'en' : 'fr' %>">
+                <i class="fas fa-language" aria-hidden="true"></i> <%= _hlng === 'fr' ? 'English' : 'Français' %>
+            </a>
+            <a href="/guide" class="dropdown-item">
+                <i class="fas fa-circle-question" aria-hidden="true"></i> <%= __('chrome:menu_user_guide') %>
+            </a>
+            <a href="/about" class="dropdown-item">
+                <i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('chrome:menu_about') %>
+            </a>
+            <form action="/logout" method="POST" class="dropdown-item-form">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button type="submit" class="dropdown-item-btn">
+                    <i class="fas fa-right-from-bracket" aria-hidden="true"></i> <%= __('chrome:menu_logout') %>
+                </button>
+            </form>
+        </div>
+    </div>
+</header>
+
+<style>
+.action-center{position:relative}
+.ac-bell{position:relative;background:none;border:0;cursor:pointer;font-size:1.05rem;color:inherit;padding:6px 8px;border-radius:8px}
+.ac-bell:hover{background:rgba(148,163,184,.18)}
+.ac-badge{position:absolute;top:0;right:0;background:#b91c1c;color:#fff;border-radius:999px;font-size:.62rem;font-weight:800;min-width:16px;height:16px;line-height:16px;text-align:center;padding:0 3px}
+.ac-dropdown{position:absolute;right:0;top:120%;width:300px;background:var(--bg-elevated,#fff);color:var(--text-primary,#0f172a);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;box-shadow:0 14px 40px rgba(2,32,71,.35);z-index:1200;overflow:hidden}
+.ac-head{padding:11px 14px;font-weight:700;border-bottom:1px solid var(--border-color,#eef2f7);font-size:.92rem}
+.ac-body{max-height:340px;overflow:auto}
+.ac-item{display:flex;align-items:center;gap:10px;padding:11px 14px;text-decoration:none;color:var(--text-primary,#0f172a);border-bottom:1px solid var(--border-color,#f4f6fb)}
+.ac-item:hover{background:var(--bg-subtle,#f8fafc)}
+.ac-item i{color:var(--brand,#2563eb);width:18px;text-align:center}
+.ac-item .ac-count{margin-left:auto;background:var(--bg-subtle,#eef2ff);color:var(--brand,#3730a3);border-radius:999px;font-size:.72rem;font-weight:800;padding:1px 8px}
+.ac-empty{padding:18px 14px;color:var(--text-muted,#94a3b8);font-size:.86rem;text-align:center}
+.ac-subhead{padding:9px 14px 5px;font-size:.72rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted,#94a3b8);border-top:1px solid var(--border-color,#eef2f7)}
+.ac-foot{display:block;text-align:center;padding:10px 14px;font-weight:700;font-size:.84rem;text-decoration:none;color:var(--brand,#2563eb);border-top:1px solid var(--border-color,#eef2f7)}
+.ac-foot:hover{background:var(--bg-subtle,#f8fafc)}
+.ac-note{display:flex;align-items:center;gap:10px;padding:10px 14px;text-decoration:none;color:var(--text-primary,#0f172a);border-bottom:1px solid var(--border-color,#f4f6fb)}
+.ac-note:hover{background:var(--bg-subtle,#f8fafc)}
+.ac-note.is-unread{background:rgba(185,147,31,.06)}
+.ac-note i{color:var(--brand,#2563eb);width:18px;text-align:center}
+.ac-note .ac-note-t{font-size:.86rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+<script nonce="<%= cspNonce %>">
+function toggleActionCenter(){
+  var d=document.getElementById('acDropdown');
+  if(!d)return; d.hidden=!d.hidden;
+}
+document.addEventListener('click',function(e){
+  var ac=document.getElementById('actionCenter'), d=document.getElementById('acDropdown');
+  if(ac && d && !ac.contains(e.target)) d.hidden=true;
+});
+(function(){
+  var acCaughtUp = <%- JSON.stringify(__('chrome:ac_caught_up')) %>;
+  var acNoneRecent = <%- JSON.stringify(__('chrome:notifications_none_recent')) %>;
+  var badge=document.getElementById('acBadge');
+  var pendingCount=0, unreadCount=0;
+  // Full 5-character escaper. The old textContent->innerHTML trick escapes & < >
+  // but NOT quotes, and this helper feeds href="..." and class="..." attributes:
+  // a value holding a double quote closed the attribute and added its own.
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  // Action links are app-relative paths. Anything else (javascript:, //host,
+  // https://elsewhere) is refused rather than rendered as a live link.
+  function safeHref(h){h=String(h==null?'':h);return (h.charAt(0)==='/'&&h.charAt(1)!=='/'&&h.charAt(1)!=='\\')?h:'#';}
+  function paintBadge(){ var t=pendingCount+unreadCount; if(t>0){ badge.textContent=t>99?'99+':t; badge.hidden=false; } else { badge.hidden=true; } }
+  // 1) Live pending actions (Action Center).
+  fetch('/api/my-actions',{headers:{'Accept':'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(j){
+    if(!j)return;
+    var body=document.getElementById('acBody');
+    pendingCount = j.total||0; paintBadge();
+    if(!j.items||!j.items.length){ body.innerHTML='<div class="ac-empty">'+esc(acCaughtUp)+'</div>'; return; }
+    body.innerHTML=j.items.map(function(i){
+      return '<a class="ac-item" href="'+esc(safeHref(i.href))+'"><i class="fas '+esc(i.icon||'fa-circle-dot')+'"></i><span>'+esc(i.label)+'</span><span class="ac-count">'+esc(i.count)+'</span></a>';
+    }).join('');
+  }).catch(function(){});
+  // 2) Recent notifications (in-app inbox).
+  fetch('/api/notifications',{headers:{'Accept':'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(j){
+    if(!j)return;
+    var box=document.getElementById('acNotifs');
+    unreadCount = j.unread||0; paintBadge();
+    if(!j.items||!j.items.length){ box.innerHTML='<div class="ac-empty">'+esc(acNoneRecent)+'</div>'; return; }
+    box.innerHTML=j.items.slice(0,6).map(function(n){
+      return '<a class="ac-note'+(n.read?'':' is-unread')+'" href="/notifications/'+encodeURIComponent(n.id)+'/go"><i class="fas '+esc(n.icon||'fa-bell')+'"></i><span class="ac-note-t">'+esc(n.title)+'</span></a>';
+    }).join('');
+  }).catch(function(){});
+})();
+</script>

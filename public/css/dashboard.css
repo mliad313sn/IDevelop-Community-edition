@@ -1,0 +1,1348 @@
+/* Dashboard — Aligned with Enterprise Design System */
+
+/* Layout & Container */
+.dashboard-container {
+    padding: 0;
+    background-color: transparent;
+    min-height: auto;
+    font-family: inherit;
+}
+
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.dashboard-header h1 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 1.65rem;
+    font-weight: 700;
+}
+
+.last-updated {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    padding: 4px 11px 4px 10px;
+    background: var(--emerald-dim);
+    border-radius: var(--radius-pill);
+}
+
+.last-updated::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--emerald);
+    box-shadow: 0 0 0 0 var(--emerald);
+    animation: livePulse 2s ease-out infinite;
+}
+
+@keyframes livePulse {
+    0% { box-shadow: 0 0 0 0 rgba(45, 212, 160, 0.5); }
+    70% { box-shadow: 0 0 0 5px rgba(45, 212, 160, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(45, 212, 160, 0); }
+}
+
+/* Global Filters */
+.dashboard-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    background: var(--bg-surface);
+    padding: 14px 18px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 20px;
+    align-items: flex-end;
+    border: 1px solid var(--border-light);
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-group label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-bottom: 3px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.dashboard-filters select {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    min-width: 150px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: var(--text-primary);
+    background: var(--bg-surface);
+    transition: border-color var(--transition-fast);
+}
+
+.dashboard-filters select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+/* Keyboard focus must remain visible (incl. Windows High-Contrast where box-shadow
+   is stripped) — keep a real outline rather than removing it. */
+.dashboard-filters select:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.filter-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+}
+
+/* Tabs */
+.dashboard-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    background: var(--bg-inset);
+    padding: 4px;
+    border-radius: var(--radius-lg);
+}
+
+.tab-btn {
+    padding: 9px 20px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-secondary);
+    transition: all var(--transition-fast);
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+
+.tab-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.tab-btn.active {
+    background: var(--bg-surface);
+    color: var(--accent);
+    box-shadow: var(--shadow-sm);
+}
+
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+/* The fade is reserved for a tab that is NOT yet loaded (dashboard.js sets
+   .tab-fresh from state.loadedTabs). A cached tab re-shown from memory must
+   paint on the same frame: the old `animation` on .tab-panel replayed a 300ms
+   fade on every switch, longer than the 72ms the cached tab actually took.
+   0.1s = --motion-quick (lot 3 token; the fallback is today's value). */
+.tab-panel.active.tab-fresh {
+    animation: fadeIn var(--motion-quick, 0.1s) ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.tab-extra-filters {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 14px;
+    align-items: center;
+}
+
+/* KPI Grid */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+.kpi-card {
+    background: var(--bg-surface);
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-light);
+    border-top: 3px solid var(--text-tertiary);
+    display: flex;
+    flex-direction: column;
+    transition: all var(--transition-fast);
+}
+
+.kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.kpi-card.good {
+    border-top-color: var(--success);
+}
+
+.kpi-card.warning {
+    border-top-color: var(--warning);
+}
+
+.kpi-card.critical {
+    border-top-color: var(--danger);
+}
+
+/* Nothing has been measured yet. This is deliberately NOT one of the three
+   judgement colours: an unmeasured figure is not good, not a warning and not
+   a failure, and colouring it red would state a result nobody produced. */
+.kpi-card.neutral {
+    border-top-color: var(--text-muted, #8a8f98);
+}
+
+.kpi-unmeasured {
+    color: var(--text-muted, #8a8f98);
+    font-style: italic;
+    font-weight: 500;
+}
+
+.kpi-value {
+    font-size: 1.85rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.kpi-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.kpi-sub {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-top: auto;
+    padding-top: 10px;
+}
+
+/* Charts */
+.chart-row,
+.action-board-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.chart-box {
+    flex: 1;
+    /* Let the flex item shrink below its canvas's intrinsic width so a row of
+       charts never overflows; the responsive Chart.js canvas resizes with it. */
+    min-width: 0;
+    background: var(--bg-surface);
+    padding: 16px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-light);
+}
+
+.chart-box.wide {
+    width: 100%;
+}
+
+.chart-box h3 {
+    margin-top: 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border-light);
+    padding-bottom: 10px;
+    font-weight: 700;
+}
+
+.chart-container-inner {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+
+.box-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-light);
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
+.box-header h3 {
+    border: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* Data Table */
+.table-responsive {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.data-table th,
+.data-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.data-table th {
+    background-color: var(--bg-subtle);
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.5px;
+}
+
+.data-table tr.clickable:hover {
+    background-color: var(--accent-light);
+    cursor: pointer;
+}
+
+/* Heatmap */
+.heatmap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+
+.heatmap-table th {
+    text-align: center;
+}
+
+.heatmap-table td {
+    text-align: center;
+    border: 1px solid var(--border-light);
+    padding: 8px;
+}
+
+.heatmap-table .row-header {
+    text-align: right;
+    padding-right: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.heatmap-table .rotate {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    height: 100px;
+}
+
+.heat-0 {
+    background-color: rgba(240, 96, 96, 0.25);
+    color: #F06060;
+}
+
+.heat-1 {
+    background-color: rgba(245, 166, 35, 0.2);
+    color: #F5A623;
+}
+
+.heat-2 {
+    background-color: rgba(245, 245, 80, 0.15);
+    color: #E8D44D;
+}
+
+.heat-3 {
+    background-color: rgba(45, 212, 160, 0.2);
+    color: #2DD4A0;
+}
+
+.heat-4 {
+    background-color: rgba(45, 212, 160, 0.4);
+    color: white;
+}
+
+.heat-empty {
+    background-color: var(--bg-subtle);
+    color: var(--text-tertiary);
+}
+
+/* Detail Panel */
+.detail-row td {
+    padding: 0 !important;
+    background-color: var(--bg-subtle);
+}
+
+.detail-panel {
+    padding: 18px;
+    border-left: 4px solid var(--accent);
+}
+
+.detail-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.detail-body {
+    display: grid;
+    gap: 16px;
+}
+
+.domain-group {
+    background: var(--bg-surface);
+    padding: 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-light);
+}
+
+.domain-header {
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: var(--text-primary);
+}
+
+.skill-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+}
+
+.skill-card {
+    padding: 8px 10px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    transition: background var(--transition-fast);
+}
+
+.skill-card.status-gap {
+    background-color: var(--danger-bg);
+    border-color: var(--danger);
+}
+
+.skill-card.status-met {
+    background-color: var(--success-bg);
+    border-color: var(--success);
+}
+
+/* Readiness Badges */
+.readiness-good {
+    background-color: var(--success);
+    color: white;
+}
+
+.readiness-warning {
+    background-color: var(--warning);
+    color: white;
+}
+
+.readiness-critical {
+    background-color: var(--danger);
+    color: white;
+}
+
+/* Never assessed — missing data, NOT a level 0. Deliberately neutral: it must
+   not read as the red "critical" state the null used to render as. */
+.readiness-unmapped {
+    background-color: rgba(148, 163, 184, 0.18);
+    /* --text-secondary, not --text-muted: this label must stay legible. */
+    color: var(--text-secondary, #64748b);
+    border: 1px dashed rgba(148, 163, 184, 0.55);
+    font-style: italic;
+}
+
+/* Loaders */
+.hidden {
+    display: none !important;
+}
+
+#loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 12, 24, 0.85);
+    backdrop-filter: blur(2px);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.spinner {
+    width: 44px;
+    height: 44px;
+    border: 4px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Scale Legend */
+.scale-legend {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg-surface);
+    padding: 8px;
+    border-top: 1px solid var(--border-light);
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    font-size: 0.75rem;
+    z-index: 900;
+    box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .chart-row {
+        flex-direction: column;
+    }
+
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .dashboard-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    /* A <select> is sized by its LONGEST <option> ("Tous les départements"), and a
+       flex item's default min-width:auto refuses to shrink below that intrinsic
+       width — which pushed the filter row to 419px inside a 375px viewport and
+       dragged the whole page (and the topbar) into horizontal overflow. Allow the
+       controls to shrink and clip instead. */
+    .dashboard-filters .filter-group {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .dashboard-filters select {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    /* Same non-shrinking problem for the action row (Appliquer / Réinitialiser /
+       Analytique): a nowrap flex row of three buttons is wider than the phone. */
+    .dashboard-filters .filter-actions {
+        margin-left: 0;
+        width: 100%;
+        min-width: 0;
+        flex-wrap: wrap;
+    }
+
+    .dashboard-filters .filter-actions > * {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .kpi-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-tabs {
+        flex-wrap: wrap;
+    }
+
+    .tab-btn {
+        flex: 1 1 40%;
+        text-align: center;
+    }
+}
+
+/* Utilities */
+.badge-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: var(--danger);
+    border-radius: 50%;
+    margin-left: 5px;
+}
+
+.data-table.small {
+    font-size: 0.75rem;
+}
+
+.drilldown-row td {
+    background-color: var(--bg-subtle);
+    padding: 0;
+}
+
+/* Empty State */
+.empty-state {
+    padding: 40px;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-style: italic;
+    background: var(--bg-subtle);
+    border-radius: var(--radius-md);
+}
+
+/* Dashboard Alerts */
+.alert {
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    border: none;
+    border-radius: var(--radius-md);
+    border-left: 4px solid transparent;
+}
+
+.alert-danger {
+    color: var(--red-text);
+    background-color: var(--danger-bg);
+    border-left-color: var(--danger);
+}
+
+/* Radar Controls */
+.radar-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+/* Organization Radar — Executive Tab */
+.chart-subtitle {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    font-weight: 400;
+}
+
+.radar-legend-inline {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    padding: 10px 0 4px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.radar-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+}
+
+.radar-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.radar-dot.actual {
+    background-color: #2E75B6;
+    box-shadow: 0 0 0 3px rgba(46, 117, 182, 0.2);
+}
+
+.radar-dot.required {
+    background-color: transparent;
+    border: 2px dashed #F44336;
+}
+
+.data-table.compact th,
+.data-table.compact td {
+    padding: 7px 10px;
+    font-size: 0.8rem;
+}
+
+.data-table.compact {
+    font-size: 0.8rem;
+}
+
+.text-danger {
+    color: var(--red-text) !important;
+    font-weight: 600;
+}
+
+.text-success {
+    color: var(--emerald-text) !important;
+    font-weight: 600;
+}
+
+/* Comparator Filter Bar */
+.comparator-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: var(--bg-surface);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    align-items: flex-end;
+}
+
+.comparator-filter-bar .filter-group {
+    flex: 1;
+    min-width: 150px;
+}
+
+.comparator-filter-bar .filter-group label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.comparator-filter-bar .form-control-sm {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    border-radius: 6px;
+}
+
+/* Comparator Grid — 2×2 Radar Layout */
+.comparator-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    padding: 0;
+}
+
+.comparator-panel {
+    margin: 0 !important;
+    flex: none !important;
+}
+
+.comparator-panel h3 {
+    font-size: 1rem;
+    margin-bottom: 2px;
+}
+
+.comparator-panel .chart-subtitle {
+    margin: 0 0 10px;
+}
+
+@media (max-width: 768px) {
+    .comparator-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Light Theme Overrides ───────────────────────────────────────── */
+[data-theme="light"] .heat-0 {
+    background-color: #fecaca;
+    color: #991b1b;
+}
+
+[data-theme="light"] .heat-1 {
+    background-color: #fed7aa;
+    color: #9a3412;
+}
+
+[data-theme="light"] .heat-2 {
+    background-color: #fef08a;
+    color: #854d0e;
+}
+
+[data-theme="light"] .heat-3 {
+    background-color: #bbf7d0;
+    color: #166534;
+}
+
+[data-theme="light"] .heat-4 {
+    background-color: #16a34a;
+    color: white;
+}
+
+[data-theme="light"] #loading-overlay {
+    background: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="light"] .tab-btn:hover {
+    background: rgba(255, 255, 255, 0.6);
+}
+
+[data-theme="light"] .alert-danger {
+    color: #991b1b;
+}
+
+[data-theme="light"] .comparator-filter-bar {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+}
+
+[data-theme="light"] .comparator-filter-bar .filter-group label {
+    color: var(--text-tertiary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* STRATEGIC INSIGHTS — Executive Dashboard Components                        */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Section Divider */
+.section-divider {
+    margin: 2rem 0 1.5rem;
+    padding: 1rem 0 0.5rem;
+    border-top: 2px solid rgba(255, 255, 255, 0.08);
+}
+
+.section-divider.first-section {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+.section-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text-primary, #e0e0e0);
+    margin: 0 0 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.section-icon {
+    font-size: 1.4rem;
+}
+
+.section-subtitle {
+    font-size: 0.82rem;
+    color: var(--text-tertiary, #999);
+    margin: 0;
+}
+
+/* Strategic Row */
+.strategic-row {
+    gap: 1rem;
+}
+
+/* ── Risk Gauge ──────────────────────────────────────────────── */
+.risk-gauge-box {
+    min-width: 260px;
+    max-width: 320px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.risk-gauge-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 180px;
+}
+
+.risk-gauge {
+    position: relative;
+    width: 180px;
+    height: 180px;
+}
+
+.gauge-svg {
+    width: 100%;
+    height: 100%;
+}
+
+.gauge-bg {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.08);
+    stroke-width: 12;
+}
+
+.gauge-fill {
+    fill: none;
+    stroke-width: 12;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1.2s ease-out;
+}
+
+.gauge-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+}
+
+.gauge-score {
+    display: block;
+    font-size: 2.4rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.gauge-label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--text-tertiary, #999);
+    margin-top: 4px;
+}
+
+/* Says how many of the five dimensions the score actually rests on, so a
+   composite built from one axis is not read as a verdict on all five. */
+.gauge-caveat {
+    margin-top: 0.4rem;
+    text-align: center;
+    font-size: 0.7rem;
+    font-style: italic;
+    color: var(--text-muted, #8a8f98);
+}
+
+/* An unmeasured breakdown axis: muted, not the red of a failing score. */
+.breakdown-row.is-unmeasured .breakdown-label,
+.breakdown-row.is-unmeasured .breakdown-value {
+    color: var(--text-muted, #8a8f98);
+    font-style: italic;
+}
+
+/* ── Risk Breakdown Bars ──────────────────────────────────────── */
+.risk-breakdown {
+    width: 100%;
+    padding: 0.5rem 0.25rem;
+}
+
+.breakdown-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 3px 0;
+}
+
+.breakdown-label {
+    flex: 0 0 110px;
+    font-size: 0.75rem;
+    color: var(--text-secondary, #bbb);
+    text-align: right;
+}
+
+.breakdown-label small {
+    opacity: 0.6;
+}
+
+.breakdown-bar-track {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.breakdown-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.8s ease-out;
+}
+
+.breakdown-value {
+    flex: 0 0 28px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary, #e0e0e0);
+    text-align: right;
+}
+
+/* ── Org Health Scorecard ────────────────────────────────────── */
+.org-health-box {
+    min-width: 0;
+}
+
+.org-health-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+}
+
+.health-metric-card {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 10px;
+    padding: 1rem 0.75rem;
+    text-align: center;
+    border-left: 3px solid transparent;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.health-metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.health-metric-card.good {
+    border-left-color: #4CAF50;
+}
+
+.health-metric-card.warning {
+    border-left-color: #FF9800;
+}
+
+.health-metric-card.critical {
+    border-left-color: #F44336;
+}
+
+/* See .kpi-card.neutral — unmeasured is its own state, not a bad score. */
+.health-metric-card.neutral {
+    border-left-color: var(--text-muted, #8a8f98);
+}
+
+.health-metric-card.neutral .health-value {
+    color: var(--text-muted, #8a8f98);
+    font-style: italic;
+}
+
+.health-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.health-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--text-primary, #e0e0e0);
+    line-height: 1.2;
+}
+
+.health-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary, #bbb);
+    margin-top: 2px;
+}
+
+.health-unit {
+    font-size: 0.68rem;
+    color: var(--text-tertiary, #888);
+    margin-top: 2px;
+}
+
+/* ── Critical Roles Table ──────────────────────────────────── */
+.badge-count {
+    background: #F44336;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    min-width: 24px;
+    text-align: center;
+}
+
+.risk-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+
+.risk-badge.severe {
+    background: rgba(244, 67, 54, 0.2);
+    color: #ef5350;
+}
+
+.risk-badge.warning {
+    background: rgba(255, 152, 0, 0.2);
+    color: #FFA726;
+}
+
+.risk-row.severe td {
+    border-left: 2px solid #F44336;
+}
+
+.risk-row.warning td:first-child {
+    border-left: 2px solid #FF9800;
+}
+
+.success-state {
+    color: #4CAF50;
+    font-weight: 500;
+}
+
+/* ── Impact Gaps Bars ──────────────────────────────────────── */
+.impact-gaps-container {
+    padding: 0.5rem 0;
+}
+
+.impact-gap-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.impact-gap-row:last-child {
+    border-bottom: none;
+}
+
+.impact-gap-info {
+    flex: 0 0 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.impact-skill-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary, #e0e0e0);
+}
+
+.critical-tag {
+    display: inline-block;
+    background: rgba(244, 67, 54, 0.2);
+    color: #ef5350;
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+    width: fit-content;
+}
+
+/* Base Risk Badge */
+.risk-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.risk-badge.severe {
+    background: rgba(244, 67, 54, 0.2);
+    color: #ef5350;
+}
+
+.risk-badge.critical {
+    background: rgba(255, 87, 34, 0.2);
+    color: #ff8a65;
+    border: 1px solid rgba(255, 87, 34, 0.3);
+}
+
+.risk-badge.warning {
+    background: rgba(255, 152, 0, 0.2);
+    color: #ffb74d;
+}
+
+.risk-badge.capacity-risk {
+    /* distinct purple/magenta for single point of failure */
+    background: rgba(233, 30, 99, 0.2);
+    color: #f06292;
+    border: 1px solid rgba(233, 30, 99, 0.3);
+}
+
+.risk-badge.capability-risk {
+    /* bright red for no capability */
+    background: rgba(211, 47, 47, 0.25);
+    color: #ffcdd2;
+    border: 1px solid rgba(211, 47, 47, 0.4);
+}
+
+.impact-meta {
+    font-size: 0.7rem;
+    color: var(--text-tertiary, #888);
+}
+
+.impact-bar-track {
+    flex: 1;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.impact-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s ease-out;
+}
+
+.impact-value {
+    flex: 0 0 40px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-primary, #e0e0e0);
+    text-align: right;
+}
+
+/* ── Responsive Adjustments ────────────────────────────────── */
+@media (max-width: 900px) {
+    .org-health-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .risk-gauge-box {
+        max-width: none;
+    }
+
+    .impact-gap-info {
+        flex: 0 0 140px;
+    }
+}
+
+@media (max-width: 600px) {
+    .org-health-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .strategic-row {
+        flex-direction: column;
+    }
+}
+
+/* ── Light Theme — Strategic Insights ───────────────────────── */
+[data-theme="light"] .section-divider {
+    border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .gauge-bg {
+    stroke: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .health-metric-card {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="light"] .health-metric-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .breakdown-bar-track,
+[data-theme="light"] .impact-bar-track {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .impact-gap-row {
+    border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .risk-badge.severe {
+    background: rgba(244, 67, 54, 0.12);
+}
+
+[data-theme="light"] .risk-badge.warning {
+    background: rgba(255, 152, 0, 0.12);
+}
+
+/* ── Talent Development tab ────────────────────────────────── */
+.td-empty { padding: 24px 8px; text-align: center; }
+
+/* Pipeline bars (PIP / IDP) */
+.td-pipe-block { margin-bottom: 16px; }
+.td-pipe-block h4 {
+    margin: 0 0 8px;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.td-bar-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.td-bar-label { flex: 0 0 130px; font-size: 0.82rem; color: var(--text-secondary); }
+.td-bar-track {
+    flex: 1; height: 14px; border-radius: 7px;
+    background: var(--border-light); overflow: hidden;
+}
+.td-bar-fill { display: block; height: 100%; border-radius: 7px; min-width: 2px; transition: width var(--transition-fast); }
+.td-bar-val { flex: 0 0 28px; text-align: right; font-weight: 700; font-size: 0.85rem; color: var(--text-primary); }
+
+/* 9-box mini grid */
+.td-ninebox-grid { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.td-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+    width: 100%; max-width: 320px;
+}
+.td-cell {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 10px 6px; text-align: center;
+    display: flex; flex-direction: column; gap: 2px;
+    min-height: 58px; justify-content: center;
+}
+.td-cell-count { font-size: 1.3rem; font-weight: 800; color: var(--text-primary); }
+.td-cell-label { font-size: 0.66rem; color: var(--text-tertiary); line-height: 1.1; }
+.td-grid-axis-pot { align-self: flex-start; font-size: 0.7rem; color: var(--text-tertiary); }
+.td-grid-axis-perf { align-self: flex-end; font-size: 0.7rem; color: var(--text-tertiary); }
+
+/* Needs-attention list */
+.td-attn-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; margin-bottom: 8px;
+    border: 1px solid var(--border-light);
+    border-left: 4px solid var(--warning);
+    border-radius: var(--radius-md);
+    text-decoration: none; color: var(--text-primary);
+    transition: all var(--transition-fast);
+}
+.td-attn-row:hover { box-shadow: var(--shadow-sm); transform: translateX(2px); }
+.td-attn-count { font-size: 1.3rem; font-weight: 800; color: var(--amber-text); flex: 0 0 auto; min-width: 26px; }
+.td-attn-label { flex: 1; font-size: 0.88rem; }
+.td-attn-go { color: var(--text-tertiary); font-weight: 700; }
+/* Heatmap color key (audit fix: heatmap had no legend) */
+.heatmap-legend { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; margin-top:10px; font-size:.76rem; color:var(--text-secondary); }
+.hm-legend-label { font-weight:600; }
+.hm-legend-item { display:inline-flex; align-items:center; gap:5px; }
+.hm-swatch { display:inline-flex; align-items:center; justify-content:center; width:20px; height:18px; border-radius:4px; font-variant-numeric:tabular-nums; color:var(--text-primary); }

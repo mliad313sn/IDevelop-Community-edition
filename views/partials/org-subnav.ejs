@@ -1,0 +1,9 @@
+<%# Sub-navigation shared by the standalone organization pages (sites / departments /
+    services) — these were unreachable except by URL; this strip links them to each
+    other and back to the main Organization hub. %>
+<div class="tabs" style="margin-bottom:1rem;">
+    <a href="/organization" class="tab" style="text-decoration:none;"><i class="fas fa-building" aria-hidden="true"></i> <%= __('admin:org_hub') %></a>
+    <a href="/organization/sites" class="tab <%= currentPath === '/organization/sites' ? 'active' : '' %>" style="text-decoration:none;"><i class="fas fa-earth-africa" aria-hidden="true"></i> <%= __('admin:sites') %> &amp; <%= __('admin:lc_country') %></a>
+    <a href="/organization/departments" class="tab <%= currentPath === '/organization/departments' ? 'active' : '' %>" style="text-decoration:none;"><i class="fas fa-landmark" aria-hidden="true"></i> <%= __('admin:departments') %></a>
+    <a href="/organization/services" class="tab <%= currentPath === '/organization/services' ? 'active' : '' %>" style="text-decoration:none;"><i class="fas fa-gear" aria-hidden="true"></i> <%= __('admin:services') %></a>
+</div>

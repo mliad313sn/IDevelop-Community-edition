@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="<%= (typeof lang !== 'undefined' && lang) ? lang : 'fr' %>">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <% const _brand = (typeof branding !== 'undefined' && branding) ? branding : { appName: 'IDevelop', logoUrl: null, faviconUrl: null, tagline: null, accentCss: '' }; %>
+    <title><%= __('chrome:login_page_title', { brand: (typeof brandName!=='undefined' && brandName) ? brandName : 'IDevelop' }) %></title>
+    <% if (_brand.faviconUrl) { %>
+    <link rel="icon" href="<%= _brand.faviconUrl %>">
+    <% } %>
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css?v=6.4.0">
+    <% if (typeof externalFonts !== 'undefined' && externalFonts === true) { %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+        rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript>
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    </noscript>
+    <% } %>
+    <link rel="stylesheet" href="/css/style.css?v=<%= assetVersion %>">
+    <link rel="stylesheet" href="/css/login.css?v=<%= assetVersion %>">
+    <% if (_brand.accentCss) { %>
+    <style nonce="<%= cspNonce %>"><%- _brand.accentCss %></style>
+    <% } %>
+    <style>
+        .login-divider { display: flex; align-items: center; text-align: center; margin: 1.25rem 0; color: var(--text-muted, #888); font-size: .85rem; }
+        .login-divider::before, .login-divider::after { content: ""; flex: 1; border-bottom: 1px solid var(--border-color, #444); }
+        .login-divider span { padding: 0 .75rem; }
+        .sso-btn { display: flex; align-items: center; justify-content: center; gap: .5rem; text-decoration: none; }
+        .sso-btn .fa-microsoft { font-size: 1rem; }
+        .login-sso-only { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1rem; }
+        .login-sso-only .sso-btn { padding-top: .8rem; padding-bottom: .8rem; font-weight: 600; }
+        .login-breakglass-link { text-align: center; margin-top: 1.5rem; font-size: .78rem; }
+        .login-breakglass-link a { color: var(--text-muted, #888); }
+        .login-breakglass-banner { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 14px; padding: 10px 14px; font-size: .88rem; border-radius: 10px; background: rgba(220, 38, 38, .08); border: 1px solid rgba(220, 38, 38, .35); }
+    </style>
+    <!-- Prevent theme flash: apply saved theme before paint -->
+    <script nonce="<%= cspNonce %>">
+        (function () { var t = localStorage.getItem('theme'); if (t === 'light') document.documentElement.setAttribute('data-theme', 'light'); })();
+    </script>
+    <%- include('../../partials/pwa-head') %>
+</head>
+
+<body class="login-page">
+    <div class="login-container">
+        <% if (_brand.logoUrl) { %>
+        <img src="<%= _brand.logoUrl %>" alt="" style="height:64px;max-width:220px;object-fit:contain;display:block;margin:0 auto 10px;">
+        <% } else { %>
+        <img src="/brand/idevelop-mark.svg" alt="" class="login-mark" width="56" height="56">
+        <% } %>
+        <h1><%= _brand.appName %></h1>
+        <h2><%= _brand.tagline || __('chrome:login_subtitle') %></h2>
+
+        <%- include('../../partials/flash') %>
+
+        <% if (typeof notice !== 'undefined' && notice) { %>
+            <div class="login-notice" role="status" style="display:flex;align-items:center;gap:8px;margin:0 0 14px;padding:10px 14px;font-size:.88rem;border-radius:10px;background:rgba(124, 108, 255,.10);border:1px solid rgba(124, 108, 255,.35);color:var(--text-secondary,#94a3b8);">
+                <i class="fas fa-circle-info" aria-hidden="true" style="color:var(--brand,#7C6CFF);"></i> <%= notice %>
+            </div>
+        <% } %>
+
+        <%#
+            3.23.19 (amendment A1) — three pages in one:
+              - no SSO provider: the password form, exactly as before;
+              - SSO ENFORCED (≥ 1 provider): the SSO button(s) ONLY — no password
+                form is rendered — and one discreet SuperAdmin break-glass link;
+              - /login?breakglass=1 while enforced: the password form under a
+                « réservé au super administrateur » banner, no reset/signup links.
+            The page is only the UX: middleware/auth.js refuses a password for
+            every account but an active SuperAdmin while enforced.
+        %>
+        <%
+            const _providers = (typeof ssoProviders !== 'undefined' && ssoProviders) ? ssoProviders : [];
+            const _enforced = (typeof ssoEnforced !== 'undefined') ? !!ssoEnforced : _providers.length > 0;
+            const _breakglass = _enforced && typeof breakglass !== 'undefined' && !!breakglass;
+            const _showForm = !_enforced || _breakglass;
+            // EXC (3.23.21): employees listed by a SuperAdmin as SSO exceptions
+            // use the same password page; its wording then names them too.
+            const _exc = _enforced && typeof ssoExceptions !== 'undefined' && !!ssoExceptions;
+            const _ssoText = function (p) {
+                if (p.customLabel) return p.label;
+                return p.name ? __('auth:login_sso_with', { name: p.name }) : __('auth:login_sso_org');
+            };
+        %>
+
+        <% if (_enforced && typeof ssoDegraded !== 'undefined' && ssoDegraded) { %>
+            <div class="alert alert-error" role="alert" data-sso-degraded>
+                <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                <%= __('auth:login_sso_degraded') %>
+            </div>
+        <% } %>
+
+        <% if (_enforced && !_breakglass) { %>
+            <div class="login-sso-only">
+                <% _providers.forEach(function (p) { %>
+                    <a href="/auth/sso/<%= p.key %>" class="btn btn-primary btn-block sso-btn" role="button" data-sso-provider="<%= p.key %>">
+                        <i class="<%= p.icon %>" aria-hidden="true"></i>
+                        <%= _ssoText(p) %>
+                    </a>
+                <% }); %>
+                <p class="login-help-text"><%= __('auth:login_sso_help') %></p>
+                <%# 3.23.20 (C3h): a permanent help line under the SSO button. %>
+                <p class="login-help-text" data-sso-first-help><%= __('auth:login_sso_first_help', { contact: (typeof ssoHelpContact !== 'undefined' && ssoHelpContact) ? ssoHelpContact : __('auth:ssoinv_contact_default') }) %></p>
+            </div>
+        <% } %>
+
+        <% if (_breakglass) { %>
+            <div class="login-breakglass-banner" role="note">
+                <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                <span><%= _exc ? __('auth:login_breakglass_banner_exc') : __('auth:login_breakglass_banner') %></span>
+            </div>
+        <% } %>
+
+        <% if (_showForm) { %>
+            <form action="/login" method="POST" class="login-form">
+                <% if (typeof csrfToken !=='undefined' && csrfToken) { %>
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <% } %>
+                        <div class="form-group">
+                            <label for="username"><%= __('chrome:login_username_label') %></label>
+                            <input type="text" id="username" name="username" required autofocus
+                                placeholder="<%= __('chrome:login_username_placeholder') %>" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="password"><%= __('chrome:login_password_label') %></label>
+                            <input type="password" id="password" name="password" required
+                                placeholder="<%= __('chrome:login_password_placeholder') %>" class="form-control">
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block"><%= __('chrome:btn_sign_in') %></button>
+                        <% if ((!_enforced || _exc) && typeof emailEnabled !== 'undefined' && emailEnabled) { %>
+                        <p class="login-help-text" style="text-align:center;margin-top:10px;">
+                            <a href="/forgot-password"><%= __('auth:login_forgot_link') %></a>
+                        </p>
+                        <% } %>
+                        <% if (!_enforced) { %>
+                        <p class="login-help-text">
+                            <%= __('chrome:login_help_text') %>
+                        </p>
+                        <% } %>
+            </form>
+        <% } %>
+
+        <% if (_breakglass) { %>
+            <p class="login-breakglass-link"><a href="/login"><%= __('auth:login_breakglass_back') %></a></p>
+        <% } %>
+
+        <% if (!_breakglass && typeof signupEnabled !== 'undefined' && signupEnabled) { %>
+            <p class="login-help-text" style="margin-top:1rem;">
+                <%= __('chrome:login_new_here') %> <a href="/signup"><%= __('chrome:login_create_account') %></a> &mdash; <%= __('chrome:login_admin_access') %>
+            </p>
+        <% } %>
+
+        <% if (_enforced && !_breakglass) { %>
+            <p class="login-breakglass-link"><a href="/login?breakglass=1" rel="nofollow"><%= _exc ? __('auth:login_breakglass_link_exc') : __('auth:login_breakglass_link') %></a></p>
+        <% } %>
+    </div>
+</body>
+
+</html>

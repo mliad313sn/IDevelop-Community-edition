@@ -1,0 +1,315 @@
+<div class="page-header">
+    <h1><i class="fas fa-compass" aria-hidden="true"></i> <%= __('chrome:nav_my_growth') %></h1>
+</div>
+
+<input type="hidden" id="egCsrf" value="<%= csrfToken %>">
+
+<!-- ─────────────────────────  Opportunités internes  ───────────────────────── -->
+<div class="report-section">
+    <h2><i class="fas fa-briefcase" aria-hidden="true"></i> <%= __('growth:opportunities') %></h2>
+    <% if (!opportunities || !opportunities.length) { %>
+        <p class="text-muted"><%= __('growth:opportunities_none') %></p>
+    <% } else { %>
+    <div class="eg-cards">
+        <% opportunities.forEach(function(o){ %>
+        <div class="eg-card">
+            <div class="eg-card-head">
+                <span class="eg-kind"><%= enumLabel(o.kind) %></span>
+                <strong><%= o.title %></strong>
+            </div>
+            <% if (o.roleName || o.role_name) { %><div class="eg-meta"><%= __('growth:target_role') %>: <%= o.roleName || o.role_name %></div><% } %>
+            <% if (o.description) { %><p class="eg-desc"><%= o.description %></p><% } %>
+            <% if (o.closesOn || o.closes_on) { %><div class="eg-meta"><%= __('growth:closes_on') %><%= colon %> <%= fmtDate(o.closesOn || o.closes_on) %></div><% } %>
+            <div class="eg-card-foot">
+                <% if (o.applicationStatus === 'accepted' || o.applicationStatus === 'declined') { %>
+                    <span class="badge <%= o.applicationStatus === 'accepted' ? 'eg-applied' : 'eg-declined' %>"><%= __('growth:app_st_' + o.applicationStatus) %></span>
+                <% } else if (o.applied) { %>
+                    <span class="badge eg-applied"><i class="fas fa-check" aria-hidden="true"></i> <%= __('growth:applied') %></span>
+                    <button class="btn btn-sm btn-link eg-withdraw" onclick="EG.withdraw(<%= o.id %>, this)"><%= __('growth:withdraw') %></button>
+                <% } else { %>
+                    <button class="btn btn-sm btn-primary" onclick="EG.apply(<%= o.id %>, this)"><i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('growth:apply') %></button>
+                <% } %>
+            </div>
+        </div>
+        <% }); %>
+    </div>
+    <% } %>
+</div>
+
+<!-- ─────────────────────────  Mes candidatures  ───────────────────────── -->
+<div class="report-section" id="my-applications">
+    <h2><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('growth:my_applications') %></h2>
+    <% if (!applications || !applications.length) { %>
+        <p class="text-muted"><%= __('growth:my_applications_none') %></p>
+    <% } else { %>
+    <ul class="eg-list">
+        <% applications.forEach(function(a){ var st = a.status; var ost = a.opportunityState || a.opportunity_state; %>
+        <li class="eg-list-row">
+            <span>
+                <strong><%= a.title %></strong> <span class="text-muted">· <%= enumLabel(a.kind) %></span>
+                <span class="eg-time"><%= __('growth:applied_on') %> <%= fmtDate(a.createdAt || a.created_at) %><% if (a.decidedAt || a.decided_at) { %> · <%= __('growth:decided_on') %> <%= fmtDate(a.decidedAt || a.decided_at) %><% } %></span>
+                <% if (st === 'declined' && (a.decisionNote || a.decision_note)) { %><span class="eg-time"><%= __('growth:decision_reason') %><%= colon %> <%= a.decisionNote || a.decision_note %></span><% } %>
+                <% if (st === 'applied' && ost && ost !== 'open') { %><span class="eg-time"><%= __('growth:opp_st_' + (ost === 'filled' ? 'filled' : 'closed')) %></span><% } %>
+            </span>
+            <span class="badge <%= st === 'accepted' ? 'eg-applied' : (st === 'declined' ? 'eg-declined' : 'eg-anon-tag') %>"><%= __('growth:app_st_' + (['accepted','declined'].indexOf(st) > -1 ? st : 'applied')) %></span>
+        </li>
+        <% }); %>
+    </ul>
+    <% } %>
+</div>
+
+<!-- ─────────────────────────  Mes aspirations  ───────────────────────── -->
+<div class="report-section">
+    <h2><i class="fas fa-bullseye" aria-hidden="true"></i> <%= __('growth:aspirations') %></h2>
+    <p class="text-muted"><%= __('growth:aspirations_hint') %></p>
+    <form id="egAspForm" class="eg-form" onsubmit="return EG.saveAspirations(event)">
+        <div class="form-group">
+            <label for="egTargetRole"><%= __('growth:target_role') %></label>
+            <select id="egTargetRole" class="form-control">
+                <option value=""><%= __('growth:no_preference') %></option>
+                <% (roles||[]).forEach(function(r){ %>
+                <option value="<%= r.id %>" <%= (aspirations && Number(aspirations.targetRoleId)===Number(r.id))?'selected':'' %>><%= r.name %></option>
+                <% }); %>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="egInterests"><%= __('growth:interests') %></label>
+            <textarea id="egInterests" class="form-control" rows="2" placeholder="<%= __('growth:interests_ph') %>"><%= aspirations ? (aspirations.interests||'') : '' %></textarea>
+        </div>
+        <div class="form-group">
+            <label class="eg-check"><input type="checkbox" id="egOpenMobility" <%= (!aspirations || aspirations.openToMobility)?'checked':'' %>> <%= __('growth:open_to_mobility') %></label>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save" aria-hidden="true"></i> <%= __('growth:save') %></button>
+    </form>
+</div>
+
+<!-- ─────────────────────────  Enquêtes ouvertes  ───────────────────────── -->
+<div class="report-section">
+    <h2><i class="fas fa-clipboard-question" aria-hidden="true"></i> <%= __('growth:surveys') %></h2>
+    <% if (!surveys || !surveys.length) { %>
+        <p class="text-muted"><%= __('growth:surveys_none') %></p>
+    <% } else { %>
+    <ul class="eg-list">
+        <% surveys.forEach(function(s){ %>
+        <li class="eg-list-row">
+            <span>
+                <strong><%= s.title %></strong> <span class="text-muted">· <%= enumLabel(s.kind) %></span>
+                <span class="badge eg-anon-tag"><i class="fas <%= (s.anonymous ? 'fa-user-secret' : 'fa-id-badge') %>" aria-hidden="true"></i> <%= s.anonymous ? __('growth:anonymous_tag') : __('growth:named_tag') %></span>
+            </span>
+            <% if (s.answered) { %>
+                <span class="badge eg-applied"><i class="fas fa-check" aria-hidden="true"></i> <%= __('growth:already_answered') %></span>
+            <% } else { %>
+                <button class="btn btn-sm btn-secondary" onclick="EG.respond(<%= s.id %>, this)"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('growth:respond') %></button>
+            <% } %>
+        </li>
+        <div class="eg-survey-form" id="eg-survey-<%= s.id %>" hidden></div>
+        <% }); %>
+    </ul>
+    <% } %>
+</div>
+
+<!-- ─────────────────────────  Reconnaissances reçues  ───────────────────────── -->
+<div class="report-section">
+    <h2><i class="fas fa-award" aria-hidden="true"></i> <%= __('growth:recognition') %></h2>
+    <% if (!recognition || !recognition.length) { %>
+        <p class="text-muted"><%= __('growth:recognition_none') %></p>
+    <% } else { %>
+    <ul class="eg-list">
+        <% recognition.forEach(function(r){ %>
+        <li class="eg-reco">
+            <i class="fas fa-award" aria-hidden="true"></i>
+            <span>
+                <% if (r.valueTag || r.value_tag) { %><span class="badge" style="background:var(--brand,#5140d9)"><%= r.valueTag || r.value_tag %></span> <% } %>
+                <%= r.message %>
+                <% if (r.createdAt || r.created_at) { %><span class="eg-time"><%= new Date(r.createdAt||r.created_at).toLocaleDateString(typeof lang!=='undefined'&&lang==='en'?'en-GB':'fr-FR') %></span><% } %>
+            </span>
+        </li>
+        <% }); %>
+    </ul>
+    <% } %>
+</div>
+
+<style>
+.eg-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.eg-card{border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:14px;background:var(--bg-elevated,#fff);display:flex;flex-direction:column;gap:8px}
+.eg-card-head{display:flex;flex-direction:column;gap:4px}
+.eg-kind{font-size:.72rem;font-weight:800;text-transform:uppercase;color:var(--brand,#5140d9)}
+.eg-meta{font-size:.82rem;color:var(--text-muted,#94a3b8)}
+.eg-desc{font-size:.88rem;color:var(--text-secondary,#475569);margin:0}
+.eg-card-foot{margin-top:auto}
+.eg-form{max-width:620px}
+.eg-check{display:flex;align-items:center;gap:8px;font-weight:500}
+.eg-list{list-style:none;padding:0;margin:0;max-width:760px}
+.eg-list-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-color,#f1f5f9)}
+.eg-reco{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-color,#f1f5f9)}
+.eg-reco i{color:var(--brand,#5140d9);margin-top:3px}
+.eg-time{display:block;font-size:.74rem;color:var(--text-muted,#94a3b8)}
+.eg-survey-form{padding:10px 0 14px}
+.eg-survey-form .form-group{margin:8px 0}
+.eg-applied{background:var(--success,#0f8a3c);color:#fff}
+.eg-declined{background:var(--text-muted,#64748b);color:#fff}
+.eg-anon-tag{background:var(--bg-elevated,#1e2530);color:var(--text-muted,#94a3b8);border:1px solid var(--border-color,#334155);font-size:.68rem;font-weight:600;margin-left:6px}
+.eg-withdraw{color:var(--text-muted,#94a3b8);padding-left:6px}
+.eg-nps{display:flex;flex-wrap:wrap;gap:6px}
+.eg-nps button{min-width:38px;padding:6px 0;border:1px solid var(--border-color,#334155);background:var(--bg-elevated,#1e2530);color:var(--text-primary,#e4e8f0);border-radius:8px;cursor:pointer}
+.eg-nps button[aria-pressed="true"]{background:var(--brand,#5140d9);color:#111;border-color:var(--brand,#5140d9)}
+.eg-nps-scale{display:flex;justify-content:space-between;font-size:.72rem;color:var(--text-muted,#94a3b8);margin-top:4px}
+</style>
+<script nonce="<%= cspNonce %>">
+const EG = {
+  csrf(){ return document.getElementById('egCsrf').value; },
+  async post(path, body){
+    const r = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json','CSRF-Token':this.csrf(),'x-csrf-token':this.csrf()}, body: JSON.stringify(body||{}) });
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok || j.ok === false) throw new Error(j.error || ('HTTP '+r.status));
+    return j;
+  },
+  notify(m, t){ (window.toast||function(x){alert(x);})(m, t); },
+  T: {
+    applied: <%- JSON.stringify(__('growth:applied')) %>,
+    applyOk: <%- JSON.stringify(__('growth:apply_ok')) %>,
+    applyTitle: <%- JSON.stringify(__('growth:apply_confirm_title')) %>,
+    applyNotePh: <%- JSON.stringify(__('growth:apply_note_ph')) %>,
+    applyBtn: <%- JSON.stringify(__('growth:apply_confirm_btn')) %>,
+    withdraw: <%- JSON.stringify(__('growth:withdraw')) %>,
+    withdrawOk: <%- JSON.stringify(__('growth:withdraw_ok')) %>,
+    withdrawConfirm: <%- JSON.stringify(__('growth:withdraw_confirm')) %>,
+    send: <%- JSON.stringify(__('growth:send')) %>,
+    thanks: <%- JSON.stringify(__('growth:thanks')) %>,
+    answerReq: <%- JSON.stringify(__('growth:answer_required')) %>,
+    textPh: <%- JSON.stringify(__('growth:survey_text_ph')) %>,
+    npsLow: <%- JSON.stringify(__('growth:nps_low')) %>,
+    npsHigh: <%- JSON.stringify(__('growth:nps_high')) %>
+  },
+  async apply(id, btn){
+    // Confirm + optional motivation note in one step (was a one-tap instant
+    // filing with no undo). promptDialog returns the note string, or null on cancel.
+    // promptDialog is loaded on every page (layouts/main.ejs),
+    // so the native-confirm fallback was dead code.
+    let note = '';
+    const v = await window.promptDialog(this.T.applyTitle, '');
+    if (v === null) return;
+    note = String(v || '');
+    try {
+      await this.post('/v2/cap/opportunity/'+id+'/apply', { note: note || null });
+      // Rebuild the footer safely via DOM (no innerHTML of user data).
+      const foot = btn.parentNode;
+      foot.textContent = '';
+      const badge = document.createElement('span');
+      badge.className = 'badge eg-applied';
+      badge.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i> ';
+      badge.append(this.T.applied);
+      const wd = document.createElement('button');
+      wd.className = 'btn btn-sm btn-link eg-withdraw';
+      wd.textContent = this.T.withdraw;
+      wd.onclick = () => this.withdraw(id, wd);
+      foot.append(badge, ' ', wd);
+      this.notify(this.T.applyOk, 'success');
+    } catch(e){ this.notify(e.message, 'error'); }
+  },
+  async withdraw(id, btn){
+    if (window.confirmDialog) { const ok = await window.confirmDialog(this.T.withdrawConfirm); if (!ok) return; }
+    try {
+      await this.post('/v2/cap/opportunity/'+id+'/withdraw', {});
+      const foot = btn.parentNode;
+      foot.textContent = '';
+      const b = document.createElement('button');
+      b.className = 'btn btn-sm btn-primary';
+      b.innerHTML = '<i class="fas fa-paper-plane" aria-hidden="true"></i> ';
+      b.append(<%- JSON.stringify(__('growth:apply')) %>);
+      b.onclick = () => this.apply(id, b);
+      foot.append(b);
+      this.notify(this.T.withdrawOk, 'success');
+    } catch(e){ this.notify(e.message, 'error'); }
+  },
+  async saveAspirations(ev){
+    ev.preventDefault();
+    try {
+      await this.post('/v2/cap/aspirations', {
+        targetRoleId: document.getElementById('egTargetRole').value || null,
+        interests: document.getElementById('egInterests').value || null,
+        openToMobility: document.getElementById('egOpenMobility').checked
+      });
+      this.notify(<%- JSON.stringify(__('growth:saved_ok')) %>, 'success');
+    } catch(e){ this.notify(e.message, 'error'); }
+    return false;
+  },
+  // Build a question field entirely via DOM (textContent for the label) so stored
+  // question text can NEVER inject markup/handlers — the previous innerHTML concat
+  // was a stored-XSS sink. Widget shape follows the question's qtype.
+  buildField(q){
+    const wrap = document.createElement('div');
+    wrap.className = 'form-group';
+    const label = document.createElement('label');
+    label.textContent = q.text || q.prompt || ('#' + q.id);   // safe: text, not HTML
+    wrap.appendChild(label);
+    const qtype = String(q.qtype || 'scale');
+    if (qtype === 'text') {
+      const ta = document.createElement('textarea');
+      ta.className = 'form-control eg-ans'; ta.setAttribute('data-q', q.id); ta.setAttribute('data-type', 'text');
+      ta.rows = 2; ta.placeholder = this.T.textPh;
+      wrap.appendChild(ta);
+    } else if (qtype === 'nps') {
+      const row = document.createElement('div');
+      row.className = 'eg-nps'; row.setAttribute('data-q', q.id); row.setAttribute('data-type', 'nps');
+      for (let n = 0; n <= 10; n++) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = String(n); b.setAttribute('data-v', n); b.setAttribute('aria-pressed', 'false');
+        b.onclick = function(){ row.querySelectorAll('button').forEach(function(x){ x.setAttribute('aria-pressed','false'); }); b.setAttribute('aria-pressed','true'); row.setAttribute('data-val', n); };
+        row.appendChild(b);
+      }
+      wrap.appendChild(row);
+      const scale = document.createElement('div');
+      scale.className = 'eg-nps-scale';
+      const lo = document.createElement('span'); lo.textContent = this.T.npsLow;
+      const hi = document.createElement('span'); hi.textContent = this.T.npsHigh;
+      scale.append(lo, hi); wrap.appendChild(scale);
+    } else {
+      const sel = document.createElement('select');
+      sel.className = 'form-control eg-ans'; sel.setAttribute('data-q', q.id); sel.setAttribute('data-type', 'scale');
+      const empty = document.createElement('option'); empty.value = ''; empty.textContent = '—'; sel.appendChild(empty);
+      [1,2,3,4,5].forEach(function(n){ const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); });
+      wrap.appendChild(sel);
+    }
+    return wrap;
+  },
+  async respond(id, btn){
+    const box = document.getElementById('eg-survey-'+id);
+    if (!box.hidden) { box.hidden = true; return; }
+    try {
+      const j = await (await fetch('/v2/cap/survey/'+id+'/questions', {headers:{'Accept':'application/json'}})).json();
+      const qs = (j && j.questions) || [];
+      box.textContent = '';
+      const self = this;
+      qs.forEach(function(q){ box.appendChild(self.buildField(q)); });
+      const send = document.createElement('button');
+      send.className = 'btn btn-sm btn-primary'; send.textContent = this.T.send;
+      send.onclick = function(){ self.submitSurvey(id, send); };
+      box.appendChild(send);
+      box.hidden = false;
+    } catch(e){ this.notify(e.message, 'error'); }
+  },
+  async submitSurvey(id, btn){
+    const box = document.getElementById('eg-survey-'+id);
+    const answers = [];
+    box.querySelectorAll('[data-q]').forEach(function(el){
+      const qid = Number(el.getAttribute('data-q'));
+      const type = el.getAttribute('data-type');
+      if (type === 'text') { const t = String(el.value||'').trim(); if (t) answers.push({ questionId: qid, text: t }); }
+      else if (type === 'nps') { const v = el.getAttribute('data-val'); if (v !== null && v !== '') answers.push({ questionId: qid, score: Number(v) }); }
+      else { if (el.value) answers.push({ questionId: qid, score: Number(el.value) }); }
+    });
+    if (!answers.length) { this.notify(this.T.answerReq, 'error'); return; }
+    try {
+      await this.post('/v2/cap/survey/'+id+'/respond', { answers: answers });
+      box.textContent = '';
+      const badge = document.createElement('span');
+      badge.className = 'badge eg-applied';
+      badge.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i> ';
+      badge.append(this.T.thanks);
+      box.appendChild(badge);
+      this.notify(this.T.thanks, 'success');
+    } catch(e){ this.notify(e.message, 'error'); }
+  }
+};
+</script>

@@ -1,0 +1,189 @@
+<div class="page-header">
+  <h1><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('employee:status_title') %></h1>
+  <p class="text-muted"><%= __('employee:status_subtitle') %></p>
+</div>
+
+<%# E-02 — LE RECOURS EST OFFERT LÀ OÙ SE LIT LA DÉCISION.
+    L'entrée de menu seule ne suffisait pas : cette page est l'un des DEUX écrans
+    porteurs, celui où la personne lit l'état de son dossier. Le lot demandait
+    « une entrée de menu ET un href sur les écrans porteurs » ; le comptage ne
+    valait que 1 partout, c'est-à-dire le menu seul. %>
+<p class="text-muted" style="margin:-.35rem 0 1rem;">
+  <%= __('employee:loop_acr_note') %>
+  <a href="/assessment-changes" title="<%= __('chrome:nav_acr_title') %>">
+    <i class="fas fa-pen-to-square" aria-hidden="true"></i> <%= __('employee:loop_acr_link') %></a>
+</p>
+
+<%
+// THE CAMPAIGN THE PERSON IS ACTUALLY IN.
+// Until now this page opened on a list of skill rows with no frame around them:
+// no cycle name, no deadline, no sense of how far through the ask you are. The
+// roster view (migration 70) knows all three, and listForEmployee carries it here.
+// `expected` is the FULL requirement count designed by the department — it is
+// displayed as the denominator, never trimmed.
+var camp = (typeof items !== 'undefined' && items && items.campaign) ? items.campaign : null;
+var campExpected = camp ? Number(camp.expectedSkills || 0) : 0;
+var campDays = null;
+if (camp && camp.closesAt) {
+  var _cl = new Date(camp.closesAt);
+  if (!isNaN(_cl.getTime())) campDays = Math.ceil((_cl.getTime() - Date.now()) / 86400000);
+}
+var campLocale = (typeof lang !== 'undefined' && lang === 'en') ? 'en-GB' : 'fr-FR';
+function campPct(n) { return campExpected > 0 ? Math.min(100, Math.round((Number(n || 0) / campExpected) * 100)) : 0; }
+// A locked/closed campaign is NOT "en cours": a rating saved now is filed under
+// the OPEN cycle only (SelfAssessmentService), so these counters can never move
+// again. Say so, and do not offer a "Continue" that cannot feed them.
+var campOpen = !!(camp && (camp.isOpen === true || camp.isOpen === 't' || (camp.isOpen == null && camp.cycleStatus === 'open')));
+var campHeaderKey = campOpen ? 'loop_campaign_header'
+  : (camp && camp.cycleStatus === 'closed' ? 'loop_campaign_header_closed' : 'loop_campaign_header_locked');
+%>
+<% if (camp) { %>
+<section class="card" style="margin-bottom:1rem;padding:1rem;" data-campaign-state="<%= campOpen ? 'open' : (camp.cycleStatus || 'locked') %>">
+  <h2 style="margin-top:0;"><i class="fas <%= campOpen ? 'fa-bullhorn' : 'fa-lock' %>" aria-hidden="true"></i> <%= __('employee:' + campHeaderKey) %></h2>
+  <% if (!campOpen) { %>
+  <p class="alert alert-warning" role="status" style="margin:.35rem 0 .6rem;"><%= __('employee:loop_campaign_locked_note') %></p>
+  <% } %>
+  <p style="margin:.15rem 0;">
+    <strong><%= camp.cycleLabel || camp.cycleCode %></strong>
+    <% if (camp.cycleLabel && camp.cycleCode && camp.cycleLabel !== camp.cycleCode) { %><span class="text-muted">(<%= camp.cycleCode %>)</span><% } %>
+    — <%= __('employee:loop_campaign_closes') %>
+    <strong><%= camp.closesAt ? new Date(camp.closesAt).toLocaleDateString(campLocale) : '—' %></strong>
+    <% if (campDays !== null && campDays >= 0) { %>
+      <span class="badge <%= campDays <= 7 ? 'badge-warning' : 'badge-info' %>"><%= campDays %> <%= __('employee:loop_campaign_days_left') %></span>
+    <% } else if (campDays !== null) { %>
+      <span class="badge badge-warning"><%= __('employee:loop_campaign_overdue') %></span>
+    <% } %>
+  </p>
+  <p style="margin:.15rem 0;">
+    <%= __('employee:loop_campaign_state') %>
+    <strong><%= __('employee:loop_pstate_' + (camp.participantState || 'not_started')) %></strong>
+  </p>
+  <p class="text-muted" style="margin:.15rem 0 .6rem;font-size:.9em;"><%= __('employee:loop_campaign_all_required') %></p>
+
+  <ul style="list-style:none;padding:0;margin:0;">
+    <% [
+         { k: 'loop_campaign_rated',     n: camp.ratedSkills },
+         { k: 'loop_campaign_submitted', n: camp.submittedSkills },
+         { k: 'loop_campaign_approved',  n: camp.approvedSkills }
+       ].forEach(function (row) { %>
+      <li style="margin:.35rem 0;">
+        <span style="display:inline-block;min-width:14rem;"><%= __('employee:' + row.k) %></span>
+        <strong><%= Number(row.n || 0) %></strong> <%= __('employee:loop_campaign_of') %> <strong><%= campExpected %></strong>
+        <span class="text-muted" style="font-size:.9em;">(<%= __('employee:loop_campaign_expected') %>)</span>
+        <span role="img" aria-label="<%= __('employee:' + row.k) %><%= colon %> <%= Number(row.n || 0) %> / <%= campExpected %>"
+              style="display:inline-block;vertical-align:middle;width:8rem;height:.5rem;border-radius:4px;background:var(--border,#e3e3e3);margin-left:.4rem;">
+          <span style="display:block;height:100%;border-radius:4px;background:var(--primary,#1b56b8);width:<%= campPct(row.n) %>%;"></span>
+        </span>
+      </li>
+    <% }); %>
+  </ul>
+  <p style="margin:.6rem 0 0;">
+    <% if (campOpen) { %>
+    <a class="btn btn-sm btn-primary" href="/employee/self-assessment"><%= __('employee:loop_campaign_continue') %></a>
+    <% } else { %>
+    <a class="btn btn-sm btn-secondary" href="/employee/self-assessment"><%= __('employee:loop_campaign_off_campaign_link') %></a>
+    <% } %>
+  </p>
+</section>
+<% } else if (typeof items !== 'undefined') { %>
+<section class="card" style="margin-bottom:1rem;padding:1rem;">
+  <p class="text-muted" style="margin:0;"><%= __('employee:loop_campaign_none') %></p>
+</section>
+<% } %>
+
+<div class="card table-wrapper" style="padding:0;">
+  <table class="table" id="my-sa">
+    <thead><tr><th><%= __('employee:th_skill') %></th><th><%= __('employee:th_self_level') %></th><th><%= __('employee:th_state') %></th><th><%= __('employee:th_comments') %></th><th><%= __('employee:th_actions') %></th></tr></thead>
+    <tbody>
+    <% if (typeof items !== 'undefined' && items && items.length) { %>
+      <% items.forEach(function(it){ var cr = it.workflowState==='changes_requested'; %>
+        <tr<%- cr ? ' style="background:rgba(198,40,40,.08)"' : '' %>>
+          <td><%= it.skillName || ('#'+it.skillId) %><% if (cr) { %> <span style="color:var(--danger,#c62828);font-weight:600;font-size:.8em">· <%= __('employee:action_needed') %></span><% } %></td>
+          <td><%= it.selfRatedLevel %></td>
+          <td><%= __('employee:state_'+it.workflowState) %></td>
+          <td><%= it.commentCount %></td>
+          <td><% if (cr) { %><a class="btn btn-sm btn-primary" href="/employee/self-assessment"><%= __('employee:btn_revise_resubmit') %></a><% } %></td>
+        </tr>
+      <% }); %>
+    <% } else if (typeof items !== 'undefined') { %>
+      <tr><td colspan="5"><em><%= __('employee:status_none') %></em></td></tr>
+    <% } else { %>
+      <tr><td colspan="5"><%= __('employee:loading') %></td></tr>
+    <% } %>
+    </tbody>
+  </table>
+</div>
+
+<div id="my-thread" class="card" style="display:none;margin-top:1rem;padding:1rem;">
+  <h2><%= __('employee:status_discussion') %> <button class="btn btn-sm" onclick="document.getElementById('my-thread').style.display='none'"><%= __('employee:btn_close') %></button></h2>
+  <div id="my-thread-body"></div>
+  <div style="margin-top:.5rem;display:flex;gap:.5rem;">
+    <input id="my-thread-input" class="form-control" placeholder="<%= __('employee:status_respond_placeholder') %>" style="flex:1;">
+    <button class="btn btn-secondary" onclick="MY.respond()"><%= __('employee:btn_respond') %></button>
+  </div>
+</div>
+
+<%# UNE SEULE discipline de reseau pour toute l application :
+    public/js/sa-console-net.js. Une reponse REDIRIGEE, non-JSON, 401/440 est
+    un ECHEC -- jamais un succes -- et le refus est ecrit dans la langue de la
+    page. Charge AVANT le script de la page (non differe) pour que SAConsoleNet
+    existe au premier appel. %>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  // Titre de la carte de refus : neutre, car ces ecrans ne sont pas la console de
+  // revue (sans cela ils affichaient « La file de revue n a pas pu etre chargee »).
+  load_failed: __('dash:unable_to_load'),
+  pending_failed: __('dash:unable_to_load'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+const MY = {
+  current: null,
+  STATES: { draft:'#5f6570', submitted:'#1b56b8', under_review:'#a15400', changes_requested:'#c62828', reviewed:'#1b7e3a', arbitration:'#7a3cc4', approved:'#0f8a3c', rejected:'#b00020' },
+  LABELS: {
+    draft: <%- JSON.stringify(__('employee:state_draft')) %>,
+    submitted: <%- JSON.stringify(__('employee:state_submitted')) %>,
+    under_review: <%- JSON.stringify(__('employee:state_under_review')) %>,
+    changes_requested: <%- JSON.stringify(__('employee:state_changes_requested')) %>,
+    reviewed: <%- JSON.stringify(__('employee:state_reviewed')) %>,
+    arbitration: <%- JSON.stringify(__('employee:state_arbitration')) %>,
+    approved: <%- JSON.stringify(__('employee:state_approved')) %>,
+    rejected: <%- JSON.stringify(__('employee:state_rejected')) %>
+  },
+  I18N: {
+    noComments: <%- JSON.stringify(__('employee:status_no_comments')) %>,
+    actionNeeded: <%- JSON.stringify(__('employee:action_needed')) %>,
+    discussRespond: <%- JSON.stringify(__('employee:btn_discuss_respond')) %>,
+    reviseResubmit: <%- JSON.stringify(__('employee:btn_revise_resubmit')) %>,
+    noAssessments: <%- JSON.stringify(__('employee:status_none')) %>,
+    errGeneric: <%- JSON.stringify(__('employee:mc_err_generic')) %>,
+    AUTH: <%- include('../../partials/json-script', { v: { employee: __('talentx:sar_author_employee'), manager: __('talentx:sar_author_manager'), supervisor: __('talentx:sar_author_supervisor'), admin: __('talentx:sar_author_admin') } }) %>
+  },
+  // L assistant reseau ne se recopie plus ici : il vit dans
+  // public/js/sa-console-net.js (SAConsoleNet.call). L ancien corps avalait
+  // `r.json` en `{}` ; sur une session expiree le serveur repondait
+  // `302 -> /login`, le fetch de navigateur SUIVAIT la redirection, la page de
+  // connexion arrivait en `200 text/html`, `r.ok` valait donc true et `j`
+  // valait `{}` : le test `if(!r.ok||j.ok===false)` ne voyait rien.
+  // Sur un refus, l ecran de suivi affichait un etat VIDE comme s il etait mesure.
+  async api(p,m,b){ try { return await SAConsoleNet.call(p,m,b); } catch(e){ (window.toast||alert)(e.message,'error'); throw e; } },
+  badge(s){ return '<span style="padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:'+(this.STATES[s]||'#555')+'">'+(this.LABELS[s]||s)+'</span>'; },
+  async openThread(id){ this.current=id; const j=await this.api('/api/self-assessment/'+id+'/thread');
+    document.getElementById('my-thread').style.display='block';
+    document.getElementById('my-thread-body').innerHTML = j.comments.length ? j.comments.map(c=>'<div style="padding:.4rem 0;border-bottom:1px solid #eee;"><strong>'+esc((this.I18N.AUTH&&this.I18N.AUTH[c.authorType])||c.authorType)+'</strong>: '+esc(c.body)+'</div>').join('') : '<em>'+esc(this.I18N.noComments)+'</em>'; },
+  async respond(){ const v=document.getElementById('my-thread-input').value.trim(); if(!v||!this.current)return; await this.api('/api/self-assessment/'+this.current+'/respond','POST',{body:v}); document.getElementById('my-thread-input').value=''; await this.openThread(this.current); await this.load(); },
+  async load(){ const j=await this.api('/api/self-assessment/mine'); const tb=document.querySelector('#my-sa tbody');
+    tb.innerHTML = j.items.length ? j.items.map(it=>{ var cr = it.workflowState==='changes_requested'; return '<tr'+(cr?' style="background:rgba(198,40,40,.08)"':'')+'><td>'+esc(it.skillName||('#'+it.skillId))+(cr?' <span style="color:#c62828;font-weight:600;font-size:.8em">· '+esc(this.I18N.actionNeeded)+'</span>':'')+'</td><td>'+it.selfRatedLevel+'</td><td>'+this.badge(it.workflowState)+'</td><td>'+it.commentCount+'</td><td><button class="btn btn-sm" onclick="MY.openThread('+it.id+')">'+esc(this.I18N.discussRespond)+'</button>'+(cr?' <a class="btn btn-sm btn-primary" href="/employee/self-assessment">'+esc(this.I18N.reviseResubmit)+'</a>':'')+'</td></tr>'; }).join('') : '<tr><td colspan="5"><em>'+esc(this.I18N.noAssessments)+'</em></td></tr>'; }
+};
+function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+MY.load();
+</script>

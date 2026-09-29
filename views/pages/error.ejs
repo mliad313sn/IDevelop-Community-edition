@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="<%= (typeof lang !== 'undefined' && lang) ? lang : 'fr' %>">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>
+        <%= typeof title !=='undefined' ? title : __('chrome:error_title') %> - IDevelop
+    </title>
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css?v=6.4.0">
+    <% if (typeof externalFonts !== 'undefined' && externalFonts === true) { %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"></noscript>
+    <% } %>
+    <link rel="stylesheet" href="/css/style.css?v=<%= assetVersion %>">
+    <!-- Prevent theme flash -->
+    <script nonce="<%= cspNonce %>">
+        (function () { var t = localStorage.getItem('theme'); if (t === 'light') document.documentElement.setAttribute('data-theme', 'light'); })();
+    </script>
+    <%- /* error.ejs is the ONLY page at views/pages/ depth 1 — every other page
+           lives one level deeper (views/pages/<module>/index.ejs), where
+           '../../partials' is right. Copying that prefix here resolved to
+           views/../partials, outside the view root, so the include threw and the
+           error page itself could never render. */ include('../partials/pwa-head') %>
+</head>
+
+<body>
+    <div class="error-page">
+        <h1>
+            <%= typeof title !=='undefined' ? title : __('chrome:error_title') %>
+        </h1>
+        <p>
+            <%= typeof message !=='undefined' ? message : __('chrome:error_message') %>
+        </p>
+        <a href="/dashboard" class="btn btn-primary"><%= __('chrome:error_go_dashboard') %></a>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,40 @@
+<div class="page-header">
+    <h1><i class="fas fa-qrcode" aria-hidden="true"></i> <%= __('chrome:mfa_setup_title') %></h1>
+</div>
+
+<div class="card" style="max-width: 640px;">
+    <div class="card-body">
+        <p style="margin-bottom: 16px;">
+            <strong>1.</strong> <%= __('chrome:mfa_setup_step1') %>
+        </p>
+
+        <div style="text-align:center; margin-bottom: 16px;">
+            <img src="<%= qrDataUrl %>" alt="<%= __('chrome:mfa_setup_qr_alt') %>"
+                style="border-radius: 8px; background:var(--bg-card); padding: 8px;">
+        </div>
+
+        <p class="form-text" style="margin-bottom: 16px; text-align:center;">
+            <%= __('chrome:mfa_setup_manual') %>&nbsp;
+            <code style="font-size: 1.05em; letter-spacing: 0.08em;"><%= secret %></code>
+        </p>
+
+        <p style="margin-bottom: 10px;">
+            <strong>2.</strong> <%= __('chrome:mfa_setup_step2') %>
+        </p>
+
+        <form method="post" action="/v2/uam/mfa/verify">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <input type="text" name="code" required inputmode="numeric" autocomplete="one-time-code"
+                    maxlength="6" placeholder="123456" class="form-control"
+                    style="max-width: 180px; text-align:center; letter-spacing:0.3em; font-size:1.15rem;">
+                <button type="submit" class="btn btn-primary"><%= __('chrome:mfa_setup_confirm') %></button>
+                <a href="/v2/uam/mfa/manage" class="btn btn-secondary"><%= __('chrome:btn_cancel') %></a>
+            </div>
+        </form>
+
+        <p class="form-text" style="margin-top: 14px;">
+            <%= __('chrome:mfa_setup_backup_note') %>
+        </p>
+    </div>
+</div>

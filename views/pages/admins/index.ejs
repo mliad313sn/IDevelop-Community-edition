@@ -1,0 +1,419 @@
+<%
+/*
+ * Admin console — ACCESS TRIAGE.
+ *
+ * One screen answers the weekly review: who can do nothing, who has no
+ * perimeter, whose access lapsed or is about to, who is locked out, who has
+ * no MFA — with server-side filters (role / site / profile / state / text),
+ * sortable headers, a scoped CSV export and row-level actions (unlock,
+ * extend, deactivate-with-reason, reactivate). The full capability list
+ * survives in the title= tooltip. KPI tiles are links that set the state
+ * filter, so a count and the rows it reveals always match.
+ */
+const triScopeLabel = function (t) {
+    if (t === 'site') return __('admin:tri_scope_site');
+    if (t === 'department') return __('admin:tri_scope_department');
+    if (t === 'service') return __('admin:tri_scope_service');
+    if (t === 'country') return __('admin:tri_scope_country');
+    if (t === 'region') return __('admin:tri_scope_region');
+    return t;
+};
+const triRoleLabel = function (r) { return enumLabel('admin_role', r); };
+// permissionCatalog arrives already localized from AdminController
+// (admin:perm.<slug>.label). Built ONCE, not per row.
+const triPermLabels = {};
+(typeof permissionCatalog !== 'undefined' ? permissionCatalog : []).forEach(function (p) { triPermLabels[p.slug] = p.label; });
+const triPermLabel = function (slug) { return triPermLabels[slug] || slug; };
+const F = (typeof filters !== 'undefined' && filters) || {};
+const pg = (typeof pager !== 'undefined' && pager) || null;
+const SC = (typeof sortCols !== 'undefined' && sortCols) || {};
+// A KPI tile is a link carrying every other filter; the active one clears itself.
+const stateUrl = function (state) {
+    const qs = new URLSearchParams();
+    if (F.q) qs.set('q', F.q);
+    if (F.role) qs.set('role', F.role);
+    if (F.siteId) qs.set('siteId', String(F.siteId));
+    if (F.profile) qs.set('profile', F.profile);
+    if (state && F.state !== state) qs.set('state', state);
+    const s = qs.toString();
+    return '/admins' + (s ? '?' + s : '');
+};
+const exportQs = (function () {
+    const qs = new URLSearchParams();
+    ['q', 'role', 'siteId', 'profile', 'state'].forEach(function (k) { if (F[k]) qs.set(k, String(F[k])); });
+    const s = qs.toString();
+    return s ? '?' + s : '';
+})();
+%>
+<div class="page-header">
+    <div>
+        <h1><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('admin:admin_management') %></h1>
+        <p class="page-subtitle"><%= __('admin:admin_subtitle') %></p>
+    </div>
+    <div class="tri-header-actions">
+        <a href="/admin/delegation" class="btn btn-secondary" title="<%= __('admin:adm_delegation_link_title') %>"><i class="fas fa-sitemap" aria-hidden="true"></i> <%= __('admin:adm_delegation_link') %></a>
+        <% if ((typeof can==='function') && (can('export_data')||can('import_data'))) { %>
+        <a href="/data-management" class="btn btn-info">
+            <i class="fas fa-database" aria-hidden="true"></i> <%= __('admin:data_management') %>
+        </a>
+        <% } %>
+        <a href="/admin/admin-accounts/export.csv<%= exportQs %>" class="btn btn-secondary" title="<%= __('admin:adm_export_csv_title') %>"><i class="fas fa-download" aria-hidden="true"></i> <%= __('admin:adm_export_csv') %></a>
+        <a href="/admins/create" class="btn btn-primary"><%= __('admin:create_admin') %></a>
+    </div>
+</div>
+
+<% if (typeof ssoGaps !== 'undefined' && ssoGaps) { %>
+<div class="alert alert-warning" role="status" data-sso-readiness-warning>
+    <i class="fas fa-user-lock" aria-hidden="true"></i>
+    <%= __('admin:sso_ready_admin_list_banner', { n: ssoGaps.n }) %>
+    <a href="/app-settings/sso#sso-readiness"><%= __('admin:sso_ready_admin_list_link') %></a>
+</div>
+<% } %>
+
+<% if (summary.scopedButPowerless > 0) { %>
+<div class="tri-banner" role="status">
+    <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+    <span><%= __('admin:tri_banner_powerless', { n: summary.scopedButPowerless }) %></span>
+    <a href="/admin/access-review" class="tri-banner-cta"><%= __('admin:tri_banner_cta') %></a>
+</div>
+<% } %>
+
+<nav class="tri-kpis" aria-label="<%= __('admin:tri_filter_label') %>">
+    <a class="tri-kpi" href="<%= stateUrl('') %>" aria-pressed="<%= F.state ? 'false' : 'true' %>">
+        <span class="tri-kpi-n"><%= summary.total %></span>
+        <span class="tri-kpi-l"><%= __('admin:tri_kpi_total') %></span>
+    </a>
+    <a class="tri-kpi <%= summary.powerless ? 'is-danger' : '' %>" href="<%= stateUrl('~powerless') %>" aria-pressed="<%= F.state === '~powerless' %>">
+        <span class="tri-kpi-n"><%= summary.powerless %></span>
+        <span class="tri-kpi-l"><%= __('admin:tri_kpi_powerless') %></span>
+    </a>
+    <a class="tri-kpi <%= summary.noScope ? 'is-warn' : '' %>" href="<%= stateUrl('~noscope') %>" aria-pressed="<%= F.state === '~noscope' %>">
+        <span class="tri-kpi-n"><%= summary.noScope %></span>
+        <span class="tri-kpi-l"><%= __('admin:tri_kpi_noscope') %></span>
+    </a>
+    <a class="tri-kpi <%= summary.expiring ? 'is-warn' : '' %>" href="<%= stateUrl('~expiring') %>" aria-pressed="<%= F.state === '~expiring' %>">
+        <span class="tri-kpi-n"><%= summary.expiring %></span>
+        <span class="tri-kpi-l"><%= __('admin:tri_kpi_expiring', { n: summary.expiringDays }) %></span>
+    </a>
+    <a class="tri-kpi <%= summary.expired ? 'is-warn' : '' %>" href="<%= stateUrl('~expired') %>" aria-pressed="<%= F.state === '~expired' %>">
+        <span class="tri-kpi-n"><%= summary.expired %></span>
+        <span class="tri-kpi-l"><%= __('admin:adm_kpi_expired') %></span>
+    </a>
+    <a class="tri-kpi <%= summary.locked ? 'is-danger' : '' %>" href="<%= stateUrl('~locked') %>" aria-pressed="<%= F.state === '~locked' %>">
+        <span class="tri-kpi-n"><%= summary.locked %></span>
+        <span class="tri-kpi-l"><%= __('admin:adm_kpi_locked') %></span>
+    </a>
+    <a class="tri-kpi <%= summary.noMfa ? 'is-warn' : '' %>" href="<%= stateUrl('~nomfa') %>" aria-pressed="<%= F.state === '~nomfa' %>">
+        <span class="tri-kpi-n"><%= summary.noMfa %></span>
+        <span class="tri-kpi-l"><%= __('admin:adm_kpi_nomfa') %></span>
+    </a>
+    <% if (summary.siteInactive) { %>
+    <a class="tri-kpi is-warn" href="<%= stateUrl('~siteinactive') %>" aria-pressed="<%= F.state === '~siteinactive' %>">
+        <span class="tri-kpi-n"><%= summary.siteInactive %></span>
+        <span class="tri-kpi-l"><%= __('admin:adm_kpi_siteinactive') %></span>
+    </a>
+    <% } %>
+    <a class="tri-kpi" href="<%= stateUrl('~inactive') %>" aria-pressed="<%= F.state === '~inactive' %>">
+        <span class="tri-kpi-n"><%= summary.inactive %></span>
+        <span class="tri-kpi-l"><%= __('admin:tri_kpi_inactive') %></span>
+    </a>
+</nav>
+
+<%# Server-side filters: every select submits on change, the last set is
+    remembered per browser (list-tools.js), and the export carries the same query. %>
+<form action="/admins" method="GET" class="search-form tri-filters" data-filter-memory>
+    <input type="hidden" name="state" value="<%= F.state || '' %>">
+    <% if (typeof sort !== 'undefined' && sort && !sort.isDefault) { %>
+        <input type="hidden" name="sort" value="<%= sort.key %>"><input type="hidden" name="dir" value="<%= sort.dir %>">
+    <% } %>
+    <div class="search-input-wrapper">
+        <input type="search" name="q" class="search-input" value="<%= F.q || '' %>" placeholder="<%= __('admin:adm_filter_q_ph') %>" aria-label="<%= __('admin:adm_filter_q_ph') %>">
+    </div>
+    <select name="role" class="search-input" data-auto-submit aria-label="<%= __('admin:adm_filter_role') %>">
+        <option value=""><%= __('admin:adm_filter_role_all') %></option>
+        <% ['superadmin', 'localadmin', 'viewer'].forEach(function (r) { %>
+            <option value="<%= r %>" <%= F.role === r ? 'selected' : '' %>><%= triRoleLabel(r) %></option>
+        <% }); %>
+    </select>
+    <select name="siteId" class="search-input" data-auto-submit aria-label="<%= __('admin:adm_filter_site') %>">
+        <option value=""><%= __('admin:adm_filter_site_all') %></option>
+        <% (typeof sites !== 'undefined' ? sites : []).forEach(function (s) { %>
+            <option value="<%= s.id %>" <%= Number(F.siteId) === Number(s.id) ? 'selected' : '' %>><%= s.name %><%= s.isActive === false ? ' ' + __('admin:adm_site_inactive_suffix') : '' %></option>
+        <% }); %>
+    </select>
+    <select name="profile" class="search-input" data-auto-submit aria-label="<%= __('admin:adm_filter_profile') %>">
+        <option value=""><%= __('admin:adm_filter_profile_all') %></option>
+        <% (typeof profiles !== 'undefined' ? profiles : []).forEach(function (p) { %>
+            <option value="<%= p.key %>" <%= F.profile === p.key ? 'selected' : '' %>><%= p.label %></option>
+        <% }); %>
+        <option value="custom" <%= F.profile === 'custom' ? 'selected' : '' %>><%= __('admin:tri_profile_custom') %></option>
+    </select>
+    <button type="submit" class="btn btn-secondary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:adm_filter_apply') %></button>
+    <% if (F.q || F.role || F.siteId || F.profile || F.state) { %>
+        <a href="/admins?reset=1" class="btn btn-secondary"><%= __('admin:reset_filters') %></a>
+    <% } %>
+</form>
+
+<form action="/admin/admin-accounts/bulk" method="POST" id="tri-bulk-form">
+<input type="hidden" name="_csrf" value="<%= csrfToken %>">
+<div class="table-wrapper">
+    <%# Bulk bar: one confirmed batch, every account guarded individually. %>
+    <div class="tri-bulk" id="tri-bulk-bar" hidden>
+        <span class="tri-bulk-count" id="tri-bulk-count">0</span>
+        <label for="tri-bulk-action" class="tri-bulk-label"><%= __('admin:adm_bulk_label') %></label>
+        <select name="action" id="tri-bulk-action" class="search-input">
+            <option value="extend"><%= __('admin:adm_bulk_extend') %></option>
+            <option value="profile"><%= __('admin:adm_bulk_profile') %></option>
+            <option value="deactivate"><%= __('admin:adm_bulk_deactivate') %></option>
+        </select>
+        <select name="profileKey" id="tri-bulk-profile" class="search-input" hidden aria-label="<%= __('admin:adm_filter_profile') %>">
+            <% (typeof profiles !== 'undefined' ? profiles : []).forEach(function (p) { %>
+                <option value="<%= p.key %>"><%= p.label %></option>
+            <% }); %>
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm" id="tri-bulk-submit"><%= __('admin:adm_bulk_apply') %></button>
+    </div>
+    <table class="table" id="admins-table">
+        <thead>
+            <tr>
+                <th class="tri-col-check"><input type="checkbox" id="tri-check-all" aria-label="<%= __('admin:adm_bulk_select_all') %>"></th>
+                <th class="sortable" aria-sort="<%= SC.username ? SC.username.ariaSort : 'none' %>"><a class="th-sort" href="<%= SC.username ? SC.username.url : '#' %>"><%= __('admin:username') %></a></th>
+                <th class="sortable" aria-sort="<%= SC.role ? SC.role.ariaSort : 'none' %>"><a class="th-sort" href="<%= SC.role ? SC.role.url : '#' %>"><%= __('admin:role_account') %></a></th>
+                <th class="sortable" aria-sort="<%= SC.profile ? SC.profile.ariaSort : 'none' %>"><a class="th-sort" href="<%= SC.profile ? SC.profile.url : '#' %>"><%= __('admin:tri_th_access') %></a></th>
+                <th><%= __('admin:tri_th_scope') %></th>
+                <th class="sortable" aria-sort="<%= SC.lastLogin ? SC.lastLogin.ariaSort : 'none' %>"><a class="th-sort" href="<%= SC.lastLogin ? SC.lastLogin.url : '#' %>"><%= __('admin:adm_th_last_login') %></a></th>
+                <th class="sortable" aria-sort="<%= SC.expires ? SC.expires.ariaSort : 'none' %>"><a class="th-sort" href="<%= SC.expires ? SC.expires.url : '#' %>"><%= __('admin:tri_th_expires') %></a></th>
+                <th class="sortable" aria-sort="<%= SC.status ? SC.status.ariaSort : 'none' %>"><a class="th-sort" href="<%= SC.status ? SC.status.url : '#' %>"><%= __('admin:status') %></a></th>
+                <th><%= __('admin:actions') %></th>
+            </tr>
+        </thead>
+        <tbody>
+            <% if (!admins.length) { %>
+                <tr class="empty-row"><td colspan="9" style="text-align:center;padding:1.5rem;color:var(--text-muted)"><%= __('admin:adm_no_match') %></td></tr>
+            <% } %>
+            <% admins.forEach(function(admin) { %>
+                <%
+                    const states = [];
+                    if (admin.isActive && !admin.superadmin && admin.permCount === 0 && !admin.expired) states.push('~powerless');
+                    if (admin.isActive && !admin.superadmin && admin.scopeCount === 0 && !admin.expired) states.push('~noscope');
+                    if (admin.isActive && admin.expiringSoon) states.push('~expiring');
+                    if (admin.isActive && admin.expired) states.push('~expired');
+                    if (admin.isActive && admin.locked) states.push('~locked');
+                    if (admin.isActive && !admin.mfaEnrolled) states.push('~nomfa');
+                    if (admin.isActive && admin.siteInactive) states.push('~siteinactive');
+                    if (!admin.isActive) states.push('~inactive');
+                    const permTexts = admin.superadmin ? [__('admin:all_superadmin')] : (admin.permissions || []).map(triPermLabel);
+                    const scopeTexts = admin.superadmin ? [__('admin:tri_scope_org')]
+                        // A-11 — même auxiliaire partagé que partout ailleurs : le
+                        // deux-points suit la langue. Écrit en dur ici, il servait
+                        // « Service : », « Site : », « Department : » sur la page
+                        // ANGLAISE (mesuré : 30 occurrences sur /admins en EN).
+                        : (admin.scopes || []).map(function (s) { return triScopeLabel(s.type) + colon + ' ' + s.name; });
+                    const profileText = admin.superadmin ? __('admin:all_superadmin') : (admin.accessProfileName || __('admin:tri_profile_custom'));
+                    const isSelf = Number(admin.id) === Number(user.id);
+                    const actionable = !admin.outOfScope && !isSelf && !admin.superadmin;
+                %>
+                <tr class="<%= admin.isActive ? '' : 'tri-row-inactive' %>" data-state="<%= states.join(' ') %>" data-id="<%= admin.id %>">
+                    <td class="tri-col-check">
+                        <% if (actionable) { %><input type="checkbox" name="ids" value="<%= admin.id %>" class="tri-row-check" aria-label="<%= admin.username %>"><% } %>
+                    </td>
+                    <td>
+                        <strong><%= admin.username %></strong>
+                        <% if (admin.email) { %><div class="text-muted" style="font-size:.8rem"><%= admin.email %></div><% } %>
+                        <% if (admin.authProvider) { %><span class="tri-chip tri-chip-muted"><%= admin.authProvider %></span><% } %>
+                        <% if (admin.outOfScope) { %><span class="tri-chip tri-chip-muted" title="<%= __('flash:admin_target_out_of_scope') %>"><%= __('admin:adm_chip_out_of_scope') %></span><% } %>
+                    </td>
+                    <td><span class="tri-chip tri-chip-role"><%= triRoleLabel(admin.role) %></span></td>
+                    <td>
+                        <% if (admin.superadmin) { %>
+                            <div class="tri-profile"><%= __('admin:superadmin_label') %></div>
+                            <span class="tri-chip tri-chip-ok" title="<%= __('admin:superadmin_tooltip') %>"><%= __('admin:all_superadmin') %></span>
+                        <% } else { %>
+                            <div class="tri-profile" title="<%= __('admin:tri_profile_title') %>"><%= profileText %><% if (admin.accessProfileDrift) { %> <span class="tri-chip tri-chip-warn" title="<%= __('admin:tri_drift_title') %>"><%= __('admin:tri_drift') %></span><% } %></div>
+                            <% if (admin.expired) { %>
+                                <span class="tri-chip tri-chip-warn" title="<%= __('admin:adm_chip_expired_title') %>"><%= __('admin:adm_chip_expired', { date: fmtDate(admin.lastExpiredAt) }) %></span>
+                            <% } else if (admin.permCount === 0) { %>
+                                <span class="tri-chip tri-chip-danger" title="<%= __('admin:tri_no_capability_title') %>"><%= __('admin:tri_no_capability') %></span>
+                            <% } else { %>
+                                <span class="tri-chip tri-chip-ok" title="<%= __('admin:tri_perm_title') %> <%= permTexts.join(', ') %>"><%= admin.permCount === 1 ? __('admin:tri_capability_one') : __('admin:tri_capability_other', { n: admin.permCount }) %></span>
+                            <% } %>
+                        <% } %>
+                    </td>
+                    <td style="max-width:260px;font-size:.85rem">
+                        <% if (admin.superadmin) { %>
+                            <span class="text-muted"><%= __('admin:tri_scope_org') %></span>
+                        <% } else if (scopeTexts.length) { %>
+                            <span title="<%= scopeTexts.join(' · ') %>"><%= scopeTexts.join(' · ') %></span>
+                            <% if (admin.siteInactive) { %><span class="tri-chip tri-chip-warn" title="<%= __('admin:adm_chip_site_inactive_title') %>"><%= __('admin:adm_chip_site_inactive') %></span><% } %>
+                        <% } else if (admin.expired) { %>
+                            <span class="text-muted"><%= __('admin:adm_scope_expired_short') %></span>
+                        <% } else { %>
+                            <span class="tri-chip tri-chip-warn"><%= __('admin:tri_no_scope') %></span>
+                        <% } %>
+                    </td>
+                    <td style="white-space:nowrap;font-size:.85rem">
+                        <% if (admin.lastLoginAt) { %><%= fmtDateTime(admin.lastLoginAt) %><% } else { %><span class="text-muted"><%= __('admin:adm_never_signed_in') %></span><% } %>
+                    </td>
+                    <td style="white-space:nowrap;font-size:.85rem">
+                        <% if (admin.expiresAt) { %>
+                            <span class="<%= admin.expiringSoon ? 'tri-expiring' : '' %>" title="<%= admin.expiringSoon ? __('admin:tri_expiring_title', { n: summary.expiringDays }) : '' %>"><%= fmtDate(admin.expiresAt) %></span>
+                        <% } else if (admin.expired) { %>
+                            <span class="tri-expiring"><%= __('admin:adm_expired_on', { date: fmtDate(admin.lastExpiredAt) }) %></span>
+                        <% } else { %>
+                            <span class="text-muted"><%= __('admin:tri_never_expires') %></span>
+                        <% } %>
+                    </td>
+                    <td style="font-size:.85rem">
+                        <% if (admin.isActive) { %>
+                            <span class="tri-status-ok"><%= __('admin:active') %></span>
+                        <% } else { %>
+                            <span class="tri-chip tri-chip-muted" title="<%= admin.deactivationReason ? __('admin:adm_deactivation_reason', { reason: admin.deactivationReason }) : '' %>"><%= __('admin:inactive') %><%= admin.deactivatedAt ? ' · ' + fmtDate(admin.deactivatedAt) : '' %></span>
+                        <% } %>
+                        <% if (admin.isActive && admin.locked) { %>
+                            <span class="tri-chip tri-chip-danger" title="<%= __('admin:adm_chip_locked_title', { n: admin.failedAttempts, minutes: summary.lockoutMinutes }) %>"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:adm_chip_locked') %></span>
+                        <% } %>
+                        <% if (admin.isActive) { %>
+                            <% if (admin.mfaEnrolled) { %><span class="tri-chip tri-chip-ok" title="<%= __('admin:ar_mfa_yes') %>"><%= __('admin:adm_chip_mfa_on') %></span><% } else { %><span class="tri-chip tri-chip-warn" title="<%= __('admin:ar_mfa_no') %>"><%= __('admin:adm_chip_mfa_off') %></span><% } %>
+                        <% } %>
+                        <%# 3.23.20 (C3g): the SSO migration invitation of this admin account. %>
+                        <% if (admin.ssoInvite) { %>
+                            <div class="text-muted" style="font-size:.78rem;" data-sso-state="<%= admin.ssoInvite.status %>"><i class="fas fa-right-to-bracket" aria-hidden="true"></i> <%= __('admin:acc_sso_status_' + admin.ssoInvite.status, { date: (admin.ssoInvite.sentAt || admin.ssoInvite.createdAt) ? fmtDate(admin.ssoInvite.sentAt || admin.ssoInvite.createdAt) : '' }) %></div>
+                        <% } %>
+                    </td>
+                    <td>
+                        <div class="table-actions">
+                            <% if (!admin.outOfScope) { %>
+                                <a href="/admins/<%= admin.id %>" class="btn btn-sm"><%= __('admin:view') %></a>
+                            <% } %>
+                            <% if (!admin.outOfScope && admin.isActive && admin.locked) { %>
+                                <form action="/admins/<%= admin.id %>/unlock" method="POST" style="display:inline" data-confirm="<%= __('admin:unlock_account_confirm') %>" data-confirm-yes="<%= __('admin:adm_unlock') %>">
+                                    <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="returnTo" value="list">
+                                    <button type="submit" class="btn btn-sm btn-secondary"><i class="fas fa-lock-open" aria-hidden="true"></i> <%= __('admin:adm_unlock') %></button>
+                                </form>
+                            <% } %>
+                            <% if (actionable && admin.isActive && (admin.expiringSoon || admin.expired)) { %>
+                                <form action="/admins/<%= admin.id %>/extend-access" method="POST" style="display:inline" data-confirm="<%= __('admin:ap_extend_confirm', { username: admin.username }) %>" data-confirm-yes="<%= __('admin:adm_extend') %>">
+                                    <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="returnTo" value="list">
+                                    <button type="submit" class="btn btn-sm btn-secondary" title="<%= __('admin:ap_extend_title') %>"><i class="fas fa-calendar-plus" aria-hidden="true"></i> <%= __('admin:adm_extend') %></button>
+                                </form>
+                            <% } %>
+                            <%# Deactivate = a state + a mandatory reason, never a delete. %>
+                            <% if (actionable && admin.isActive) { %>
+                                <form action="/admins/<%= admin.id %>/deactivate" method="POST" style="display:inline"
+                                      data-confirm="<%= __('admin:adm_deactivate_confirm', { username: admin.username }) %>" data-confirm-title="<%= __('admin:adm_deactivate_title') %>"
+                                      data-confirm-yes="<%= __('admin:adm_deactivate') %>" data-confirm-danger data-confirm-reason="reason">
+                                    <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="returnTo" value="list">
+                                    <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-user-slash" aria-hidden="true"></i> <%= __('admin:adm_deactivate') %></button>
+                                </form>
+                            <% } else if (actionable && !admin.isActive) { %>
+                                <form action="/admins/<%= admin.id %>/reactivate" method="POST" style="display:inline"
+                                      data-confirm="<%= __('admin:adm_reactivate_confirm', { username: admin.username }) %>" data-confirm-title="<%= __('admin:adm_reactivate_title') %>"
+                                      data-confirm-yes="<%= __('admin:adm_reactivate') %>" data-confirm-reason="reason">
+                                    <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="returnTo" value="list">
+                                    <button type="submit" class="btn btn-sm btn-secondary"><i class="fas fa-user-check" aria-hidden="true"></i> <%= __('admin:adm_reactivate') %></button>
+                                </form>
+                            <% } %>
+                        </div>
+                    </td>
+                </tr>
+            <% }); %>
+        </tbody>
+    </table>
+    <% if (pg && pg.total > 0) { %>
+    <div class="tri-pager">
+        <span class="text-muted"><%= __('admin:list_range', { from: pg.from, to: pg.to, total: pg.total }) %></span>
+        <% if (pg.totalPages > 1) { %>
+        <nav class="pagination" aria-label="<%= __('admin:adm_pager_label') %>">
+            <% if (pg.hasPrev) { %><a class="btn btn-sm" href="<%= pg.prevUrl %>">&laquo;</a><% } %>
+            <% pg.items.forEach(function (it) { %>
+                <% if (it.gap) { %><span class="text-muted">…</span><% } else { %><a class="btn btn-sm <%= it.active ? 'btn-primary' : '' %>" href="<%= it.url %>" <%= it.active ? 'aria-current="page"' : '' %>><%= it.n %></a><% } %>
+            <% }); %>
+            <% if (pg.hasNext) { %><a class="btn btn-sm" href="<%= pg.nextUrl %>">&raquo;</a><% } %>
+        </nav>
+        <% } %>
+    </div>
+    <% } %>
+</div>
+</form>
+
+<style>
+  .tri-header-actions{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end}
+  .tri-banner{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:.75rem 0;padding:.7rem .9rem;border-radius:8px;
+      background:rgba(180,83,9,.12);border:1px solid rgba(180,83,9,.45);color:#b45309;font-size:.9rem}
+  .tri-banner-cta{margin-left:auto;font-weight:600;text-decoration:underline;color:inherit}
+  .tri-kpis{display:flex;gap:.6rem;flex-wrap:wrap;margin:.75rem 0}
+  .tri-kpi{display:flex;flex-direction:column;align-items:center;gap:.15rem;min-width:110px;padding:.6rem .9rem;cursor:pointer;text-decoration:none;
+      background:var(--surface-2,rgba(127,127,127,.08));border:1px solid rgba(127,127,127,.25);border-radius:10px;color:inherit;font:inherit}
+  .tri-kpi:hover{border-color:rgba(127,127,127,.55)}
+  .tri-kpi[aria-pressed="true"]{border-color:var(--accent,#6656f0);box-shadow:0 0 0 1px var(--accent,#6656f0) inset}
+  .tri-kpi-n{font-size:1.5rem;font-weight:800;line-height:1}
+  .tri-kpi-l{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted,#9aa1ac);text-align:center}
+  .tri-kpi.is-danger .tri-kpi-n{color:var(--danger,#c8514b)}
+  .tri-kpi.is-warn .tri-kpi-n{color:#b45309}
+  .tri-filters{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.6rem 0}
+  .tri-filters .search-input-wrapper{flex:1;min-width:200px}
+  .tri-filters select.search-input{max-width:220px}
+  .tri-bulk{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;padding:.5rem .75rem;margin:.4rem 0;border-radius:8px;
+      background:rgba(201,162,39,.12);border:1px solid rgba(201,162,39,.5)}
+  .tri-bulk-count{font-weight:800;min-width:1.5rem;text-align:center}
+  .tri-bulk-label{font-size:.85rem}
+  .tri-col-check{width:2rem}
+  .tri-chip{display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(127,127,127,.15);font-size:.75rem;white-space:nowrap;margin-top:2px}
+  .tri-chip-muted{color:var(--text-muted,#9aa1ac)}
+  .tri-chip-role{background:rgba(91,139,208,.2)}
+  .tri-chip-ok{background:rgba(46,158,87,.16)}
+  .tri-chip-warn{background:rgba(180,83,9,.16);color:#b45309}
+  .tri-chip-danger{background:rgba(200,81,75,.16);color:var(--danger,#c8514b);font-weight:700}
+  .tri-profile{font-size:.85rem;font-weight:600;margin-bottom:.2rem}
+  .tri-expiring{color:#b45309;font-weight:600}
+  .tri-status-ok{color:var(--good,#2e9e57)}
+  .tri-row-inactive{opacity:.6}
+  .tri-pager{display:flex;justify-content:space-between;align-items:center;gap:.75rem;flex-wrap:wrap;padding:.6rem .25rem}
+  .tri-pager .pagination{display:flex;gap:.25rem;align-items:center}
+  th.sortable a.th-sort{color:inherit;text-decoration:none}
+  th.sortable a.th-sort:hover{text-decoration:underline}
+  th.sortable[aria-sort="ascending"] a.th-sort::after{content:" \25B2";font-size:.65em}
+  th.sortable[aria-sort="descending"] a.th-sort::after{content:" \25BC";font-size:.65em}
+  .table-actions{display:flex;gap:.3rem;flex-wrap:wrap}
+</style>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+    var T = {
+        extend: <%- JSON.stringify(__('admin:adm_bulk_confirm_extend')) %>,
+        profile: <%- JSON.stringify(__('admin:adm_bulk_confirm_profile')) %>,
+        deactivate: <%- JSON.stringify(__('admin:adm_bulk_confirm_deactivate')) %>,
+        title: <%- JSON.stringify(__('admin:adm_bulk_title')) %>
+    };
+    var form = document.getElementById('tri-bulk-form');
+    var bar = document.getElementById('tri-bulk-bar');
+    var count = document.getElementById('tri-bulk-count');
+    var action = document.getElementById('tri-bulk-action');
+    var profile = document.getElementById('tri-bulk-profile');
+    var all = document.getElementById('tri-check-all');
+    if (!form || !bar) return;
+    var checks = function () { return Array.prototype.slice.call(document.querySelectorAll('.tri-row-check')); };
+    function refresh() {
+        var n = checks().filter(function (c) { return c.checked; }).length;
+        count.textContent = String(n);
+        bar.hidden = n === 0;
+    }
+    document.addEventListener('change', function (e) {
+        if (e.target === all) { checks().forEach(function (c) { c.checked = all.checked; }); refresh(); }
+        else if (e.target && e.target.classList && e.target.classList.contains('tri-row-check')) refresh();
+    });
+    // The confirmation (with a mandatory reason for a deactivation) is the shared
+    // data-confirm handler; only the attributes change with the chosen action.
+    function syncAction() {
+        var a = action.value;
+        profile.hidden = a !== 'profile';
+        form.setAttribute('data-confirm', T[a] || T.extend);
+        form.setAttribute('data-confirm-title', T.title);
+        if (a === 'deactivate') { form.setAttribute('data-confirm-reason', 'reason'); form.setAttribute('data-confirm-danger', ''); }
+        else { form.removeAttribute('data-confirm-reason'); form.removeAttribute('data-confirm-danger'); }
+    }
+    action.addEventListener('change', syncAction);
+    syncAction();
+    refresh();
+})();
+</script>

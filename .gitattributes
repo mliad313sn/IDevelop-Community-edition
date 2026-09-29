@@ -1,0 +1,22 @@
+# Normalise line endings — Unix LF in repo, working-tree converted on Windows checkout.
+* text=auto eol=lf
+
+# Windows scripts stay CRLF
+*.bat        text eol=crlf
+*.cmd        text eol=crlf
+*.ps1        text eol=crlf
+
+# Binary
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.gif        binary
+*.ico        binary
+*.pdf        binary
+*.zip        binary
+*.db         binary
+*.sqlite     binary
+*.xlsx       binary
+*.xls        binary
+*.docx       binary
+*.pptx       binary

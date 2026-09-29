@@ -1,0 +1,8 @@
+{
+  "queue": { "title": "Maker-Checker queue" },
+  "kind": "Kind",
+  "maker": "Maker",
+  "created_at": "Created at",
+  "payload": "Payload",
+  "reason": "Reason"
+}

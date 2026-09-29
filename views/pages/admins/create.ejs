@@ -1,0 +1,444 @@
+<%
+    // a refused submission comes back with its safe body in
+    // `draft` (never the passwords); the scalar fields are prefilled here and the
+    // JS-built parts (scopes, permissions, profile, duration) are restored below.
+    const d = (typeof draft !== 'undefined' && draft) || {};
+    const dv = function (k) { return d[k] != null ? String(d[k]) : ''; };
+%>
+<div class="page-header">
+    <h1><%= __('admin:create_admin') %></h1>
+</div>
+<% if (d.__from) { %>
+<p class="text-muted" style="margin:-.5rem 0 1rem;"><i class="fas fa-rotate-left" aria-hidden="true"></i> <%= __('validation:draft_kept') %></p>
+<% } %>
+
+<form action="/admins" method="POST" class="form">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <div class="form-group">
+        <label for="newAdminUsername"><%= __('admin:username') %> *</label>
+        <input type="text" name="username" id="newAdminUsername" required value="<%= dv('username') %>">
+    </div>
+
+    <div class="form-group">
+        <label for="newAdminEmail"><%= __('admin:email') %></label>
+        <%# the same rule as the edit form — a bare host (`admin@localhost`) is
+            accepted, and explained in one sentence rather than silently refused. %>
+        <% const emailNoDomain = typeof emailHasNoPublicDomain === 'function' && emailHasNoPublicDomain(dv('email')); %>
+        <input type="email" name="email" id="newAdminEmail" autocomplete="email" data-email-check aria-describedby="emailSharedNote<%= emailNoDomain ? ' admEmailNoDomain' : '' %>" value="<%= dv('email') %>">
+        <% if (emailNoDomain) { %>
+        <small id="admEmailNoDomain" class="text-muted" style="display:block;margin-top:.35rem"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:adm_email_no_domain_note') %></small>
+        <% } %>
+        <%# A shared address is allowed (a person may hold several accounts): this note only advises. %>
+        <small id="emailSharedNote" class="email-shared-note text-muted" hidden></small>
+        <script src="/js/email-shared-check.js" nonce="<%= cspNonce %>" defer></script>
+    </div>
+
+    <div class="form-group">
+        <label for="password"><%= __('admin:password') %> *</label>
+        <div style="position: relative; display: flex; align-items: center;">
+            <input type="password" name="password" id="password" required minlength="12" autocomplete="new-password"
+                style="flex: 1; padding-right: 35px;">
+            <button type="button" onclick="togglePasswordVisibility('password', this)"
+                style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px 8px;"
+                title="<%= __('admin:toggle_visibility') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
+        </div>
+        <small style="color: #666; font-size: 0.85em; display: block; margin-top: 4px;">
+            <%= __('admin:password_requirements') %>
+        </small>
+    </div>
+
+    <div class="form-group">
+        <label for="passwordConfirm"><%= __('admin:confirm_password') %> *</label>
+        <div style="position: relative; display: flex; align-items: center;">
+            <input type="password" name="passwordConfirm" id="passwordConfirm" required minlength="12"
+                autocomplete="new-password" style="flex: 1; padding-right: 35px;">
+            <button type="button" onclick="togglePasswordVisibility('passwordConfirm', this)"
+                style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px 8px;"
+                title="<%= __('admin:toggle_visibility') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label for="newAdminRole"><%= __('admin:role_account') %> *</label>
+        <select name="role" id="newAdminRole" required onchange="onRoleChange(this.value)">
+            <option value=""><%= __('admin:select_role') %></option>
+            <% if (typeof granterIsSuper === 'undefined' || granterIsSuper) { %>
+                <option value="superadmin" <%= dv('role') === 'superadmin' ? 'selected' : '' %>><%= __('admin:superadmin_label') %></option>
+            <% } %>
+            <option value="localadmin" <%= dv('role') === 'localadmin' ? 'selected' : '' %>><%= __('admin:localadmin_label') %></option>
+            <option value="viewer" <%= dv('role') === 'viewer' ? 'selected' : '' %>><%= __('admin:viewer_label') %></option>
+        </select>
+        <small style="color:#888; display:block; margin-top:4px;">
+            <%- __('admin:role_hint_html') %>
+        </small>
+    </div>
+
+    <div id="scopes-section" style="display:none;">
+        <div class="form-group">
+            <label><%= __('admin:scopes') %> <small style="color:#888;">— <%= __('admin:scopes_hint') %></small></label>
+            <div id="scopes-container"></div>
+            <button type="button" class="btn btn-sm" onclick="addScope()"><%= __('admin:add_scope') %></button>
+        </div>
+    </div>
+
+    <%# ---- Durée de l'accès -------------------------------------------------
+        Always visible, and never a free-text "leave blank for forever" field:
+        the two radios make the choice explicit, and the server refuses an
+        unreadable or past date rather than reading it as permanent. %>
+    <%
+        const _pad = function (n) { return String(n).padStart(2, '0'); };
+        const _dtLocal = function (d) {
+            return d.getFullYear() + '-' + _pad(d.getMonth() + 1) + '-' + _pad(d.getDate())
+                + 'T' + _pad(d.getHours()) + ':' + _pad(d.getMinutes());
+        };
+        const _defaultUntil = new Date();
+        _defaultUntil.setMonth(_defaultUntil.getMonth() + 12);
+    %>
+    <fieldset class="form-group" id="access-duration-group"
+        style="border:1px solid var(--border,#ddd); border-radius:8px; padding:10px 14px; margin:8px 0;">
+        <legend style="font-size:0.85rem; font-weight:700; padding:0 6px;"><%= __('admin:ap_duration_title') %></legend>
+        <small style="color:#888; display:block; margin-bottom:8px;"><%= __('admin:ap_duration_hint') %></small>
+        <label style="display:flex; align-items:center; gap:8px; padding:4px 0; flex-wrap:wrap;">
+            <input type="radio" name="accessDurationMode" value="until" id="apDurationUntil" checked>
+            <span><%= __('admin:ap_duration_until') %></span>
+            <input type="datetime-local" id="accessExpiresAt" name="accessExpiresAt"
+                aria-label="<%= __('admin:ap_duration_until_aria') %>"
+                value="<%= _dtLocal(_defaultUntil) %>" style="max-width:260px;">
+        </label>
+        <label style="display:flex; align-items:flex-start; gap:8px; padding:4px 0;">
+            <input type="radio" name="accessDurationMode" value="permanent" id="apDurationPermanent" style="margin-top:4px;">
+            <span><%= __('admin:ap_duration_permanent') %>
+                <br><small style="color:#888;"><%= __('admin:ap_duration_permanent_hint') %></small></span>
+        </label>
+        <small style="color:#888; display:block; margin-top:6px;"><%= __('admin:ap_duration_default_note') %></small>
+    </fieldset>
+
+    <%# ---- Profil d'accès (contrôle principal) -------------------------------
+        Choosing a profile ticks its bundle into the checkbox grid below and posts
+        that SNAPSHOT through the existing permissions[] field — no new storage
+        path, so the access review and the anti-escalation clamp are untouched. %>
+    <% const _apProfiles = (typeof accessProfileList !== 'undefined' ? accessProfileList : []); %>
+    <% const _permLabel = {}; (typeof permissionGroups !== 'undefined' ? permissionGroups : []).forEach(function (g) { g.items.forEach(function (i) { _permLabel[i.slug] = i.label; }); }); %>
+    <% const _scopeLabel = { site: __('admin:ap_scope_site'), department: __('admin:ap_scope_department'), service: __('admin:ap_scope_service'), country: __('admin:ap_scope_country') }; %>
+    <% const _roleLabel = { localadmin: __('admin:ap_role_localadmin'), viewer: __('admin:ap_role_viewer') }; %>
+    <div id="access-profile-section" style="display:none;">
+        <div class="form-group">
+            <label for="accessProfile"><strong><%= __('admin:ap_profile_group_label') %></strong>
+                <small style="color:#888;">— <%= __('admin:ap_profile_hint') %></small></label>
+            <select id="accessProfile" name="accessProfile" style="max-width:520px;">
+                <option value=""><%= __('admin:ap_profile_placeholder') %></option>
+                <% _apProfiles.forEach(function (p) { %>
+                    <option value="<%= p.key %>" data-role="<%= p.role %>" data-days="<%= p.defaultDays %>"
+                        data-slugs="<%= p.slugs.join(' ') %>" <%= p.unavailable ? 'disabled' : '' %>>
+                        <%= p.label %><%= p.unavailable ? ' ' + __('admin:ap_profile_unavailable_suffix') : '' %>
+                    </option>
+                <% }); %>
+                <option value="custom"><%= __('admin:ap_profile_custom') %></option>
+            </select>
+            <%# Proof the page's script ran. Absent (JS off) → the server expands the
+                named profile itself, so picking one is never a silent no-op. %>
+            <input type="hidden" name="apProfileApplied" id="apProfileApplied" value="">
+
+            <% _apProfiles.forEach(function (p) { %>
+                <div class="ap-profile-summary" data-profile="<%= p.key %>" hidden
+                    style="border-left:3px solid var(--accent,#6656f0); background:rgba(127,127,127,.06); border-radius:6px; padding:10px 12px; margin-top:10px;">
+                    <p style="margin:0 0 6px;"><%= p.description %></p>
+                    <p style="margin:0 0 6px; font-size:.85rem; color:#888;">
+                        <%= __('admin:ap_profile_summary_scope', { scope: _scopeLabel[p.defaultScopeType] || p.defaultScopeType }) %>
+                        · <%= __('admin:ap_profile_summary_duration', { days: p.defaultDays }) %>
+                        · <%= __('admin:ap_profile_summary_role', { role: _roleLabel[p.role] || p.role }) %>
+                    </p>
+                    <% if (p.partial && !p.unavailable) { %>
+                        <p style="margin:0 0 6px; color:#b45309; font-size:.85rem;">
+                            <%= __('admin:ap_profile_partial', { granted: p.slugs.length, total: p.total }) %>
+                        </p>
+                    <% } %>
+                    <strong style="font-size:.85rem;"><%= __('admin:ap_profile_summary_heading') %> —
+                        <%= __('admin:ap_profile_summary_rights', { n: p.slugs.length }) %></strong>
+                    <ul style="margin:6px 0 0; padding-left:18px; font-size:.85rem;">
+                        <% p.slugs.forEach(function (s) { %><li><%= _permLabel[s] || s %></li><% }); %>
+                    </ul>
+                </div>
+            <% }); %>
+            <small id="apProfileAppliedNote" hidden style="display:block; margin-top:8px; color:#15803d;"><%= __('admin:ap_profile_applied_note') %></small>
+            <small id="apProfileNoneNote" hidden style="display:block; margin-top:8px; color:#888;"><%= __('admin:ap_profile_none_note') %></small>
+        </div>
+    </div>
+
+    <div id="permissions-section" style="display:none;">
+        <details id="apAdvancedPermissions" class="form-group" style="border:1px solid var(--border,#ddd); border-radius:8px; padding:8px 12px;">
+        <summary style="cursor:pointer; font-weight:600;"><%= __('admin:ap_advanced_summary') %></summary>
+        <div class="form-group" style="margin-top:8px;">
+            <small style="color:#888; display:block; margin-bottom:6px;"><%= __('admin:ap_advanced_hint') %></small>
+            <label><%= __('admin:permissions') %> <small style="color:#888;">— <%= __('admin:permissions_hint') %></small></label>
+            <% (typeof permissionGroups !== 'undefined' ? permissionGroups : []).forEach(function(grp) { %>
+                <fieldset class="perm-group" style="border:1px solid var(--border,#ddd); border-radius:8px; padding:10px 12px; margin:8px 0;">
+                    <legend style="font-size:0.8rem; font-weight:700; padding:0 6px;"><%= grp.group %></legend>
+                    <% grp.items.forEach(function(p) { %>
+                        <% if (p.assignable) { %>
+                            <label class="perm-option" style="display:flex; align-items:flex-start; gap:8px; padding:5px 0;">
+                                <input type="checkbox" name="permissions[]" value="<%= p.slug %>"
+                                    data-write="<%= p.write ? '1' : '0' %>" style="margin-top:3px;">
+                                <span>
+                                    <strong><%= p.label %></strong>
+                                    <% if (p.write) { %><span class="badge badge-warning" style="font-size:0.65rem;"><%= __('admin:write_badge') %></span><% } %>
+                                    <br><small style="color:#888;"><%= p.description %></small>
+                                </span>
+                            </label>
+                        <% } %>
+                    <% }); %>
+                </fieldset>
+            <% }); %>
+            <small id="viewer-perm-note" style="display:none; color:#b8860b;">
+                <%= __('admin:viewer_perm_note') %>
+            </small>
+        </div>
+        </details>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary"><%= __('admin:create_admin') %></button>
+        <a href="/admins" class="btn btn-secondary"><%= __('admin:cancel') %></a>
+    </div>
+</form>
+
+<script nonce="<%= cspNonce %>">
+    // togglePasswordVisibility is provided globally by /js/main.js (masked by default + eye reveal).
+
+    // Validate password confirmation on form submit
+    document.querySelector('form').addEventListener('submit', function (e) {
+        const password = document.getElementById('password').value;
+        const passwordConfirm = document.getElementById('passwordConfirm').value;
+
+        if (password !== passwordConfirm) {
+            e.preventDefault();
+            alert(<%- JSON.stringify(__('admin:passwords_no_match')) %>);
+            return false;
+        }
+    });
+
+    // ---- Access profile: the primary granting control ----------------------
+    // The profile does not store anything of its own. Picking one ticks its
+    // bundle into the checkbox grid below, and THAT snapshot is what posts
+    // through permissions[] — so what gets saved is exactly what is shown.
+    (function accessProfileControl() {
+        const sel = document.getElementById('accessProfile');
+        if (!sel) return;
+        const appliedFlag = document.getElementById('apProfileApplied');
+        const appliedNote = document.getElementById('apProfileAppliedNote');
+        const noneNote = document.getElementById('apProfileNoneNote');
+        const advanced = document.getElementById('apAdvancedPermissions');
+        const boxes = function () {
+            return document.querySelectorAll('#permissions-section input[name="permissions[]"]');
+        };
+
+        function showSummary(key) {
+            document.querySelectorAll('.ap-profile-summary').forEach(function (el) {
+                el.hidden = (el.getAttribute('data-profile') !== key);
+            });
+        }
+
+        function setDuration(days) {
+            const until = document.getElementById('apDurationUntil');
+            const input = document.getElementById('accessExpiresAt');
+            if (!until || !input || !days) return;
+            const d = new Date();
+            d.setDate(d.getDate() + Number(days));
+            const p = function (n) { return String(n).padStart(2, '0'); };
+            input.value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+                + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+            until.checked = true;
+        }
+
+        function applyProfile(opt) {
+            const slugs = (opt.getAttribute('data-slugs') || '').split(' ').filter(Boolean);
+            const wanted = {};
+            slugs.forEach(function (s) { wanted[s] = true; });
+
+            // The profile decides the account type too — a read-only bundle on a
+            // localadmin (or a write bundle on a viewer) would be half-applied.
+            const roleSel = document.querySelector('select[name="role"]');
+            const role = opt.getAttribute('data-role');
+            if (roleSel && role && roleSel.value !== role) {
+                roleSel.value = role;
+                onRoleChange(role);
+            }
+            boxes().forEach(function (cb) { cb.checked = !!wanted[cb.value] && !cb.disabled; });
+            setDuration(opt.getAttribute('data-days'));
+            if (appliedFlag) appliedFlag.value = '1';
+            if (appliedNote) appliedNote.hidden = false;
+            if (noneNote) noneNote.hidden = true;
+        }
+
+        function onSelect() {
+            const key = sel.value;
+            showSummary(key);
+            if (key && key !== 'custom') {
+                applyProfile(sel.options[sel.selectedIndex]);
+                return;
+            }
+            // "Personnalisé" / no profile: leave the grid exactly as the operator
+            // left it and open the advanced section so they can work in it.
+            if (appliedFlag) appliedFlag.value = '';
+            if (appliedNote) appliedNote.hidden = true;
+            if (noneNote) noneNote.hidden = (key !== 'custom');
+            if (advanced && key === 'custom') advanced.open = true;
+        }
+
+        sel.addEventListener('change', onSelect);
+
+        // Hand-editing a checkbox means the grant is no longer that profile —
+        // say so instead of leaving a label that no longer describes the grant.
+        document.addEventListener('change', function (e) {
+            const t = e.target;
+            if (!t || t.name !== 'permissions[]') return;
+            if (sel.value && sel.value !== 'custom') {
+                sel.value = 'custom';
+                showSummary('custom');
+                if (appliedFlag) appliedFlag.value = '';
+                if (appliedNote) appliedNote.hidden = true;
+                if (noneNote) noneNote.hidden = false;
+            }
+        });
+    })();
+
+    // ---- Access duration ---------------------------------------------------
+    // Typing a date implies "until that date"; the field is disabled (and thus
+    // not posted) under "permanent", so the server sees an unambiguous choice.
+    (function accessDurationControl() {
+        const until = document.getElementById('apDurationUntil');
+        const perm = document.getElementById('apDurationPermanent');
+        const input = document.getElementById('accessExpiresAt');
+        if (!until || !perm || !input) return;
+        function sync() { input.disabled = perm.checked; }
+        until.addEventListener('change', sync);
+        perm.addEventListener('change', sync);
+        input.addEventListener('input', function () { until.checked = true; sync(); });
+        sync();
+    })();
+
+    function onRoleChange(role) {
+        const scoped = (role === 'localadmin' || role === 'viewer');
+        const scopesSection = document.getElementById('scopes-section');
+        const permsSection = document.getElementById('permissions-section');
+        const profileSection = document.getElementById('access-profile-section');
+        scopesSection.style.display = scoped ? 'block' : 'none';
+        if (permsSection) permsSection.style.display = scoped ? 'block' : 'none';
+        if (profileSection) profileSection.style.display = scoped ? 'block' : 'none';
+        if (!scoped) {
+            document.getElementById('scopes-container').innerHTML = '';
+        }
+        // Viewers are read-only: disable (and uncheck) any write permission.
+        const note = document.getElementById('viewer-perm-note');
+        const isViewer = role === 'viewer';
+        document.querySelectorAll('#permissions-section input[name="permissions[]"]').forEach(function (cb) {
+            if (cb.getAttribute('data-write') === '1') {
+                cb.disabled = isViewer;
+                if (isViewer) cb.checked = false;
+            }
+        });
+        if (note) note.style.display = isViewer ? 'block' : 'none';
+    }
+
+    function addScope() {
+        const container = document.getElementById('scopes-container');
+        const index = new Date().getTime(); // Unique index for grouping
+        const div = document.createElement('div');
+        div.className = 'scope-item';
+        div.innerHTML = `
+        <select name="scopes[${index}][type]" onchange="updateScopeOptions(this)">
+            <% if (typeof regions !== 'undefined' && regions && regions.length) { %><option value="region">${<%- JSON.stringify(__('admin:adm_region_widest')) %>}</option><% } %>
+            <% if (countries && countries.length) { %><option value="country">${<%- JSON.stringify(__('admin:country_widest')) %>}</option><% } %>
+            <option value="site">${<%- JSON.stringify(__('admin:site')) %>}</option>
+            <option value="department">${<%- JSON.stringify(__('admin:department')) %>}</option>
+            <option value="service">${<%- JSON.stringify(__('admin:service')) %>}</option>
+        </select>
+        <select name="scopes[${index}][value]"></select>
+        <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">${<%- JSON.stringify(__('admin:remove')) %>}</button>
+    `;
+        container.appendChild(div);
+        updateScopeOptions(div.querySelector('select[name*="[type]"]'));
+    }
+
+    function updateScopeOptions(select) {
+        const type = select.value;
+        const valueSelect = select.parentElement.querySelector('select[name*="[value]"]');
+        valueSelect.innerHTML = '<option value="">' + <%- JSON.stringify(__('admin:select_label')) %> + '</option>';
+
+    <% if (typeof regions !== 'undefined' && regions && regions.length > 0) { %>
+    if (type === 'region') {
+        <% regions.forEach(function (r) { %>
+            valueSelect.innerHTML += '<option value="<%= r.id %>"><%= r.name %></option>';
+        <% }); %>
+    }
+    <% } %>
+
+    <% if (countries && countries.length > 0) { %>
+    if (type === 'country') {
+        <% countries.forEach(function (c) { %>
+            valueSelect.innerHTML += '<option value="<%= c.id %>"><%= c.name %></option>';
+        <% }); %>
+    }
+    <% } %>
+
+    <% if (sites && sites.length > 0) { %>
+    if (type === 'site') {
+        <% sites.forEach(function (site) { %>
+            valueSelect.innerHTML += '<option value="<%= site.id %>"><%= site.name %></option>';
+        <% }); %>
+    }
+    <% } %>
+
+    <% if (departments && departments.length > 0) { %>
+    if (type === 'department') {
+        <% departments.forEach(function (dept) { %>
+                valueSelect.innerHTML += '<option value="<%= dept.id %>"><%= dept.siteName %> - <%= dept.name %></option>';
+        <% }); %>
+    }
+    <% } %>
+
+    <% if (services && services.length > 0) { %>
+    if (type === 'service') {
+        <% services.forEach(function (service) { %>
+                    valueSelect.innerHTML += '<option value="<%= service.id %>"><%= service.siteName %> - <%= service.departmentName %> - <%= service.name %></option>';
+        <% }); %>
+    }
+    <% } %>
+}
+
+    // ---- Restore a kept draft ------------------------------------
+    // Scopes, duration, profile and the permission grid are JS-built, so they are
+    // restored here exactly as POSTED (no re-expansion of a profile: what the
+    // operator saw is what comes back).
+    (function restoreDraft() {
+        const D = <%- include('../../partials/json-script', { v: d }) %>;
+        if (!D.__from) return;
+        const roleSel = document.querySelector('select[name="role"]');
+        if (roleSel && roleSel.value) onRoleChange(roleSel.value);
+        const scopes = D.scopes && typeof D.scopes === 'object' ? Object.values(D.scopes) : [];
+        scopes.forEach(function (s) {
+            if (!s || !s.type) return;
+            addScope();
+            const items = document.querySelectorAll('#scopes-container .scope-item');
+            const item = items[items.length - 1];
+            const t = item.querySelector('select[name*="[type]"]');
+            t.value = s.type; updateScopeOptions(t);
+            if (s.value) item.querySelector('select[name*="[value]"]').value = String(s.value);
+        });
+        if (D.accessDurationMode) {
+            const r = document.querySelector('input[name="accessDurationMode"][value="' + D.accessDurationMode + '"]');
+            if (r) { r.checked = true; r.dispatchEvent(new Event('change')); }
+        }
+        if (D.accessExpiresAt) { const i = document.getElementById('accessExpiresAt'); if (i) i.value = D.accessExpiresAt; }
+        const prof = document.getElementById('accessProfile');
+        if (prof && D.accessProfile != null) {
+            prof.value = D.accessProfile;
+            document.querySelectorAll('.ap-profile-summary').forEach(function (el) { el.hidden = el.getAttribute('data-profile') !== D.accessProfile; });
+        }
+        const perms = [].concat(D.permissions || []);
+        document.querySelectorAll('input[name="permissions[]"]').forEach(function (cb) { cb.checked = perms.indexOf(cb.value) !== -1 && !cb.disabled; });
+        if (perms.length) { const adv = document.getElementById('apAdvancedPermissions'); if (adv) adv.open = true; }
+        const flag = document.getElementById('apProfileApplied'); if (flag) flag.value = D.apProfileApplied || '';
+    })();
+</script>

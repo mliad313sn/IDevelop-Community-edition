@@ -1,0 +1,46 @@
+<%
+/*  Deactivate control for ONE org unit (site | department | service).
+
+    Deactivating a unit is not a delete — the row survives with is_active = false —
+    but it removes the unit from every dropdown, cascade and report filter, so it
+    used to amputate the tree behind a bare confirm(). Two things stop that here:
+      1. while active employees are still attached the control is refused outright
+         (the server refuses it too — this is only the visible half of the guard);
+      2. otherwise the confirmation states exactly what disappears, how many child
+         units go with it, and that it can be restored from "Unités désactivées".
+
+    Locals: kind ('site'|'department'|'service'), unit (with empCount/deptCount/
+    svcCount), from ('hub'|'page'). */
+const _u = unit;
+const _kind = kind;
+const _emp = Number(_u.empCount || 0);
+const _path = { site: 'sites', department: 'departments', service: 'services' }[_kind];
+const _impact = _kind === 'site'
+    ? __('admin:org_impact_site', { departments: Number(_u.deptCount || 0), services: Number(_u.svcCount || 0) })
+    : (_kind === 'department'
+        ? __('admin:org_impact_department', { services: Number(_u.svcCount || 0) })
+        : __('admin:org_impact_service'));
+%>
+<% if (_emp > 0) { %>
+    <button type="button" class="btn btn-sm btn-danger" disabled
+        aria-disabled="true"
+        title="<%= __('admin:org_deactivate_blocked', { count: _emp }) %>">
+        <i class="fas fa-power-off" aria-hidden="true"></i> <%= __('admin:org_deactivate') %>
+    </button>
+    <span class="badge badge-warning" style="margin-left:.35rem;">
+        <i class="fas fa-users" aria-hidden="true"></i> <%= __('admin:org_deactivate_blocked_badge', { count: _emp }) %>
+    </span>
+<% } else { %>
+    <form action="/organization/<%= _path %>/<%= _u.id %>/delete" method="POST" style="display:inline;"
+        data-org-deactivate="<%= _kind %>"
+        data-msg="<%= __('admin:org_deactivate_confirm', { name: _u.name, impact: _impact }) %>"
+        data-title="<%= __('admin:org_deactivate_title') %>"
+        data-yes="<%= __('admin:org_deactivate') %>"
+        data-no="<%= __('admin:cancel') %>">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="from" value="<%= from %>">
+        <button type="submit" class="btn btn-sm btn-danger" title="<%= __('admin:org_deactivate_title') %>">
+            <i class="fas fa-power-off" aria-hidden="true"></i> <%= __('admin:org_deactivate') %>
+        </button>
+    </form>
+<% } %>

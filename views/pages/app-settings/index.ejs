@@ -1,0 +1,496 @@
+<div class="page-header">
+    <h1><i class="fas fa-gear" aria-hidden="true"></i> <%= __('admin:app_settings') %></h1>
+    <div class="page-actions">
+        <% if (user && user.role === 'superadmin') { %>
+            <a href="/app-settings/sso" class="btn btn-secondary"><i class="fas fa-right-to-bracket" aria-hidden="true"></i> <%= __('admin:sso_link') %></a>
+        <% } %>
+        <% if (typeof can !== 'function' || can('manage_app_settings')) { %>
+        <%# the shared confirmation dialog, not the browser's native confirm. %>
+        <form action="/app-settings/reset" method="POST" style="display: inline;"
+            data-confirm="<%= __('admin:reset_settings_confirm') %>" data-confirm-danger>
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button type="submit" class="btn btn-secondary"><i class="fas fa-arrows-rotate" aria-hidden="true"></i> <%= __('admin:reset_to_defaults') %></button>
+        </form>
+        <% } %>
+    </div>
+</div>
+<% if (typeof can === 'function' && !can('manage_app_settings')) { %>
+<div class="alert alert-info" role="status" style="margin:0 0 1rem;padding:.6rem .9rem;border-radius:8px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.35);font-size:.88rem;"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:read_only_notice') %></div>
+<% } %>
+
+<div class="help-text" style="margin-bottom: 2rem;">
+    <%= __('admin:settings_help') %>
+</div>
+
+<% const categories={ 'general' : { name: __('admin:cat_general') , icon: 'fa-gear' }, 'readiness' : { name: __('admin:cat_readiness') , icon: 'fa-chart-simple'
+    }, 'security' : { name: __('admin:cat_security') , icon: 'fa-lock' }, 'notifications' : { name: __('admin:cat_notifications') , icon: 'fa-bell' },
+    'email' : { name: __('admin:cat_email') , icon: 'fa-envelope' }, 'emailEvents' : { name: __('admin:cat_email_triggers') , icon: 'fa-envelope-open-text' }, 'onboarding' : { name: __('admin:cat_onboarding') , icon: 'fa-user-plus' }, 'disputes'
+    : { name: __('admin:cat_disputes') , icon: 'fa-scale-balanced' }, 'modules' : { name: __('admin:cat_modules') , icon: 'fa-puzzle-piece' }, 'copilot'
+    : { name: __('admin:cat_copilot') , icon: 'fa-robot' }, 'jobs'
+    : { name: __('admin:cat_jobs') , icon: 'fa-clock' }, 'data'
+    : { name: __('admin:cat_data') , icon: 'fa-database' } };
+    const isSecretKey = (k) => /password|secret|pass$/i.test(k || '');
+    // Friendly names are locale keys `admin:set_name_<key>` (dots → underscores:
+    // i18next reads a dot as a path separator) — French hard-coded names used to
+    // show on the English page too. Unknown key → the raw key.
+    const settingName = (k) => { const key = 'admin:set_name_' + String(k || '').replace(/\./g, '_'); const s = __(key); return (s && s !== key && s !== key.slice(6)) ? s : ''; };
+    // descriptions are stored in the DATABASE in English. They now
+    // resolve through `admin:set_desc_<key>` (dots to underscores) with the stored
+    // text as the last-resort default, so a French admin never reads English and a
+    // setting added later still shows something.
+    const settingDesc = (s) => { const key = 'admin:set_desc_' + String(s.settingKey || '').replace(/\./g, '_'); const v = __(key, { defaultValue: '' }); return v || s.description || ''; };
+    const _fdt = (typeof fmtDateTime === 'function') ? fmtDateTime : (d) => (d ? FMT.dateTime(d) : FMT.UNMEASURED);
+    // "Modifié le · par". A row nobody ever edited says so, instead of a
+    // blank that reads like a missing value.
+    const modifiedCell = (s) => (s.updatedAt ? _fdt(s.updatedAt) + ' · ' + (s.updatedByUsername || __('admin:set_modified_by_system')) : __('admin:set_never_modified'));
+    const _se = (typeof settingError !== 'undefined' && settingError) ? settingError : null;
+    const refusedValueOf = (s) => (_se && Number(_se.id) === Number(s.id) ? String(_se.value == null ? '' : _se.value) : s.settingValue); %>
+
+    <% Object.keys(categories).forEach(category=> { %>
+        <% if (settingsByCategory[category] && settingsByCategory[category].length> 0) { %>
+            <div class="dashboard-section">
+                <h2>
+                    <i class="fas <%= categories[category].icon %>" aria-hidden="true"></i>
+                        <%= categories[category].name %>
+                </h2>
+
+                <div class="table-wrapper">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th><%= __('admin:setting') %></th>
+                                <th><%= __('admin:value') %></th>
+                                <th><%= __('admin:description') %></th>
+                                <th><%= __('admin:set_modified') %></th>
+                                <th><%= __('admin:actions') %></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% settingsByCategory[category].forEach(function(setting) { const nm = settingName(setting.settingKey); %>
+                                <tr>
+                                    <td>
+                                        <strong><%= nm || setting.settingKey %></strong>
+                                        <% if (nm) { %><br><small style="color:var(--text-muted,#94a3b8)"><code><%= setting.settingKey %></code></small><% } %>
+                                        <% if (setting.rule && setting.rule.restart) { %> <span class="badge badge-warning" title="<%= __('admin:set_restart_required_hint') %>"><%= __('admin:set_restart_required') %></span><% } %>
+                                    </td>
+                                    <td>
+                                        <% if (setting.settingType==='boolean' ) { %>
+                                            <span
+                                                class="badge <%= setting.settingValue === 'true' ? 'badge-success' : 'badge-secondary' %>">
+                                                <%= setting.settingValue==='true' ? __('admin:enabled') : __('admin:disabled') %>
+                                            </span>
+                                            <% } else if (isSecretKey(setting.settingKey)) { %>
+                                                <code><%= setting.settingValue ? '••••••••' : __('admin:not_set') %></code>
+                                            <% } else { %>
+                                                <code><%= setting.settingValue %></code>
+                                                <% } %>
+                                    </td>
+                                    <td>
+                                        <small style="color: #7f8c8d;">
+                                            <%= settingDesc(setting) || __('admin:no_description_setting') %>
+                                        </small>
+                                    </td>
+                                    <td><small style="color:var(--text-muted,#94a3b8)"><%= modifiedCell(setting) %></small></td>
+                                    <td>
+                                        <% const editPayload = Object.assign({}, isSecretKey(setting.settingKey)
+                                              ? Object.assign({}, setting, { settingValue: '' })
+                                              : setting, { rule: setting.rule || {} }); %>
+                                        <button class="btn btn-sm"
+                                            onclick='editSetting(<%= JSON.stringify(editPayload) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                    </td>
+                                </tr>
+                                <% }); %>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <% } %>
+                <% }); %>
+
+                    <% if (typeof jobState !== 'undefined' && jobState && jobState.length) { %>
+                    <!-- Job-state markers : written by the jobs, read-only here — the
+                         health page is where they are acted on. -->
+                    <div class="dashboard-section">
+                        <h2><i class="fas fa-heart-pulse" aria-hidden="true"></i> <%= __('admin:set_job_state_title') %></h2>
+                        <div class="help-text" style="margin-bottom: 1rem;"><%= __('admin:set_job_state_hint') %> <a href="/admin/health"><%= __('admin:set_job_state_link') %></a></div>
+                        <div class="table-wrapper">
+                            <table class="table">
+                                <thead><tr><th><%= __('admin:setting') %></th><th><%= __('admin:value') %></th><th><%= __('admin:description') %></th><th><%= __('admin:set_modified') %></th></tr></thead>
+                                <tbody>
+                                <% jobState.forEach(function (setting) { const nm = settingName(setting.settingKey); %>
+                                    <tr>
+                                        <td><strong><%= nm || setting.settingKey %></strong><% if (nm) { %><br><small style="color:var(--text-muted,#94a3b8)"><code><%= setting.settingKey %></code></small><% } %> <span class="badge badge-secondary"><%= __('admin:set_readonly_badge') %></span></td>
+                                        <td><code><%= setting.settingValue || '—' %></code></td>
+                                        <td><small style="color:#7f8c8d;"><%= settingDesc(setting) %></small></td>
+                                        <td><small style="color:var(--text-muted,#94a3b8)"><%= modifiedCell(setting) %></small></td>
+                                    </tr>
+                                <% }); %>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <% } %>
+
+                    <!-- Send Test Email -->
+                    <div class="dashboard-section">
+                        <h2><i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('admin:email_delivery_test') %></h2>
+                        <div class="help-text" style="margin-bottom: 1rem;">
+                            <%= __('admin:email_test_help') %>
+                        </div>
+                        <form action="/app-settings/test-email" method="POST"
+                            style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <input type="email" name="testEmailTo" id="testEmailTo" aria-label="<%= __('admin:send_test_email') %>"
+                                placeholder="<%= (typeof user !== 'undefined' && user && user.email) ? user.email : 'recipient@example.com' %>"
+                                style="flex: 1; min-width: 260px; padding: 0.6rem 0.9rem; border: 2px solid var(--border); border-radius: 6px;">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('admin:send_test_email') %>
+                            </button>
+                        </form>
+                    </div>
+
+                    <% if (typeof can !== 'function' || can('manage_app_settings')) { %>
+                    <!-- White-label branding -->
+                    <div class="dashboard-section">
+                        <h2><i class="fas fa-palette" aria-hidden="true"></i> <%= __('admin:brand_title') %></h2>
+                        <div class="help-text" style="margin-bottom: 1rem;"><%= __('admin:brand_help') %></div>
+                        <% const _b = (typeof branding !== 'undefined' && branding) ? branding : {}; %>
+                        <div style="display:flex;gap:16px;align-items:center;margin-bottom:1rem;flex-wrap:wrap;">
+                            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--border-light,#2a3148);border-radius:12px;background:var(--bg-subtle);">
+                                <img id="brandPreviewImg" src="<%= _b.logoUrl || '' %>" alt="" style="height:40px;max-width:120px;object-fit:contain;<%= _b.logoUrl ? '' : 'display:none;' %>">
+                                <i id="brandPreviewIcon" class="fas fa-people-group" aria-hidden="true" style="font-size:1.6rem;color:var(--brand-text);<%= _b.logoUrl ? 'display:none;' : '' %>"></i>
+                                <div><strong id="brandPreviewName"><%= _b.appName || 'IDevelop' %></strong><br>
+                                    <small style="color:var(--text-secondary);"><%= __('admin:brand_preview') %> ·
+                                        <span id="brandPreviewSwatch" style="display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;background:<%= _b.accentColor || '#7C6CFF' %>;"></span>
+                                        <code id="brandPreviewHex"><%= _b.accentColor || '#7C6CFF' %></code></small>
+                                </div>
+                            </div>
+                        </div>
+                        <form id="brandingForm" action="/app-settings/branding" method="POST" enctype="multipart/form-data"
+                              style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;align-items:end;">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <div class="form-group" style="margin:0;">
+                                <label for="brandAppName"><%= __('admin:brand_name') %></label>
+                                <input type="text" id="brandAppName" name="appName" value="<%= _b.appName || '' %>" maxlength="60" class="form-control">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label for="brandTagline"><%= __('admin:brand_tagline') %></label>
+                                <input type="text" id="brandTagline" name="brandTagline" value="<%= _b.tagline || '' %>" maxlength="120" class="form-control" placeholder="<%= __('chrome:login_subtitle') %>">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label for="brandAccentColor"><%= __('admin:brand_accent') %></label>
+                                <div style="display:flex;gap:8px;align-items:center;">
+                                    <input type="color" id="brandAccentPick" aria-label="<%= __('admin:brand_accent') %>" value="<%= _b.accentColor || '#7C6CFF' %>" style="width:44px;height:38px;padding:2px;border:1px solid var(--border-light);border-radius:8px;background:transparent;"
+                                        oninput="document.getElementById('brandAccentColor').value=this.value">
+                                    <input type="text" id="brandAccentColor" name="brandAccentColor" value="<%= _b.accentColor || '' %>" placeholder="#7C6CFF" pattern="#?[0-9a-fA-F]{6}" class="form-control" style="max-width:120px;">
+                                    <label style="font-size:.8rem;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" name="clearAccent" value="1"> <%= __('admin:brand_clear') %></label>
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label for="logoFile"><%= __('admin:brand_logo') %></label>
+                                <input type="file" id="logoFile" name="logoFile" accept=".png,.jpg,.jpeg,.webp,.svg,.ico" class="form-control">
+                                <small style="color:var(--text-secondary);">PNG/JPG/WEBP/SVG/ICO ≤ 300 KB · <label style="white-space:nowrap;"><input type="checkbox" name="clearLogo" value="1"> <%= __('admin:brand_clear') %></label></small>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label for="faviconFile"><%= __('admin:brand_favicon') %></label>
+                                <input type="file" id="faviconFile" name="faviconFile" accept=".png,.svg,.ico" class="form-control">
+                                <small style="color:var(--text-secondary);">≤ 100 KB · <label style="white-space:nowrap;"><input type="checkbox" name="clearFavicon" value="1"> <%= __('admin:brand_clear') %></label></small>
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('admin:brand_save') %></button>
+                            </div>
+                        </form>
+                        <div id="brandingError" role="alert" aria-live="assertive" style="display:none;margin-top:.6rem;color:#ff6b6b;font-size:.88rem;"></div>
+                        <%# shared dialog. %>
+                        <form action="/app-settings/branding/reset" method="POST" style="margin-top:.75rem;"
+                              data-confirm="<%= __('admin:brand_reset_confirm', { brand: (typeof brandName!=='undefined' && brandName) ? brandName : 'IDevelop' }) %>" data-confirm-danger>
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-arrows-rotate" aria-hidden="true"></i> <%= __('admin:brand_reset') %></button>
+                        </form>
+                        <script nonce="<%= cspNonce %>">
+                            // Live preview: reflect name / accent / logo choices in the preview
+                            // card BEFORE saving, so an admin can tune without repeated save-reloads.
+                            (function () {
+                                var pick = document.getElementById('brandAccentPick');
+                                var hexIn = document.getElementById('brandAccentColor');
+                                var nameIn = document.getElementById('brandAppName');
+                                var logoIn = document.getElementById('logoFile');
+                                var sw = document.getElementById('brandPreviewSwatch');
+                                var hexOut = document.getElementById('brandPreviewHex');
+                                var nameOut = document.getElementById('brandPreviewName');
+                                var img = document.getElementById('brandPreviewImg');
+                                var icon = document.getElementById('brandPreviewIcon');
+                                function applyColor(v) { if (/^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(v)) { var c = v[0] === '#' ? v : '#' + v; sw.style.background = c; hexOut.textContent = c; } }
+                                if (pick) pick.addEventListener('input', function () { hexIn.value = this.value; applyColor(this.value); });
+                                if (hexIn) hexIn.addEventListener('input', function () { applyColor(this.value.trim()); });
+                                if (nameIn) nameIn.addEventListener('input', function () { nameOut.textContent = this.value.trim() || 'IDevelop'; });
+                                if (logoIn) logoIn.addEventListener('change', function () {
+                                    var f = this.files && this.files[0]; if (!f) return;
+                                    var r = new FileReader();
+                                    r.onload = function () { img.src = r.result; img.style.display = ''; if (icon) icon.style.display = 'none'; };
+                                    r.readAsDataURL(f);
+                                });
+                            })();
+
+                            // Multipart posts are parsed by multer AFTER the CSRF middleware,
+                            // so the token must travel in the x-csrf-token header — submit via
+                            // fetch instead of a native form post (keeps CSRF fully enforced).
+                            document.getElementById('brandingForm').addEventListener('submit', async function (e) {
+                                e.preventDefault();
+                                const btn = this.querySelector('button[type="submit"]');
+                                const errBox = document.getElementById('brandingError');
+                                const orig = btn.innerHTML;
+                                btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> …';
+                                errBox.style.display = 'none';
+                                try {
+                                    const r = await fetch(this.action, {
+                                        method: 'POST',
+                                        headers: { 'x-csrf-token': this.querySelector('input[name="_csrf"]').value },
+                                        body: new FormData(this)
+                                    });
+                                    if (r.ok) {
+                                        window.location.href = '/app-settings'; // success → show the outcome flash
+                                        return;
+                                    }
+                                    // Surface the failure inline instead of silently reloading.
+                                    errBox.textContent = (r.status === 413)
+                                        ? 'Upload too large — the logo must be ≤ 300 KB and the favicon ≤ 100 KB.'
+                                        : ('Could not save branding (HTTP ' + r.status + '). Check the file type/size and try again.');
+                                    errBox.style.display = 'block';
+                                } catch (err) {
+                                    errBox.textContent = 'Network error while saving branding: ' + err.message;
+                                    errBox.style.display = 'block';
+                                } finally {
+                                    btn.disabled = false; btn.innerHTML = orig;
+                                }
+                            });
+                        </script>
+                    </div>
+                    <% } %>
+
+                    <!-- Test Copilot LLM Connection -->
+                    <div class="dashboard-section">
+                        <h2><i class="fas fa-robot" aria-hidden="true"></i> <%= __('admin:copilot_test_title') %></h2>
+                        <div class="help-text" style="margin-bottom: 1rem;">
+                            <%= __('admin:copilot_test_help') %>
+                        </div>
+                        <form action="/app-settings/test-copilot" method="POST" style="display:inline;">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-plug-circle-bolt" aria-hidden="true"></i> <%= __('admin:copilot_test_button') %>
+                            </button>
+                        </form>
+                        <% if (typeof copilotPresets !== 'undefined' && copilotPresets && copilotPresets.length) { %>
+                        <div style="margin-top:1rem;font-size:.82rem;">
+                            <div style="color:var(--text-muted);margin-bottom:.4rem;">
+                                Moteurs pris en charge — définissez <code>copilotProvider</code> sur un nom ci-dessous, collez la clé API,
+                                laissez URL/modèle vides pour les valeurs par défaut.
+                                <span style="color:var(--text-muted);">/ Supported engines — set <code>copilotProvider</code> to a name below, paste the API key, leave URL/model blank for defaults.</span>
+                            </div>
+                            <% copilotPresets.forEach(function (p) { %>
+                                <span style="display:inline-block;margin:2px 8px 2px 0;padding:2px 8px;background:var(--bg-secondary);color:var(--text-secondary);border-radius:10px;"
+                                      title="<%= p.url %>">
+                                    <code><%= p.name %></code> → <%= p.defaultModel %>
+                                </span>
+                            <% }); %>
+                            <div style="color:#15803d;margin-top:.4rem;">
+                                <i class="fas fa-shield-halved" aria-hidden="true"></i> Moteur d'anonymisation : par défaut, <strong>chaque</strong> requête IA (interne ET externe) ne transporte que des
+                                données chiffrées — noms des personnes, sites, départements, services, postes et identité de l'organisation remplacés
+                                par des jetons aléatoires par requête (EMP-xxxx, SITE-xxxx, DEPT-xxxx…) ; les réponses sont déchiffrées avant affichage.
+                                Les cibles EXTERNES sont toujours anonymisées, sans exception. Réglages : <code>copilotAnonymizationMode</code>,
+                                <code>copilotAnonymizeSkills</code>, <code>copilotTrustedHosts</code>. Chaque appel externe reste audité.
+                                <span style="color:var(--text-muted);">/ Anonymization engine: by default EVERY AI request (internal and external)
+                                carries only ciphered data — people, sites, departments, services, roles and the org identity become per-request
+                                randomized tokens; answers are deciphered before display. External targets are always anonymized. Every external call is audited.</span>
+                            </div>
+                        </div>
+                        <% } %>
+                    </div>
+
+                    <% if (typeof envInfo !== 'undefined' && envInfo && envInfo.length) { %>
+                    <!-- Server environment (.env) — read-only, super admin only -->
+                    <div class="dashboard-section">
+                        <h2><i class="fas fa-server" aria-hidden="true"></i> <%= __('admin:env_panel_title') %></h2>
+                        <div class="help-text" style="margin-bottom: 1rem;">
+                            <%= __('admin:env_panel_help') %>
+                        </div>
+                        <div class="table-wrapper">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th><%= __('admin:env_variable') %></th>
+                                        <th><%= __('admin:env_effective_value') %></th>
+                                        <th><%= __('admin:description') %></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <% envInfo.forEach(function(row) { %>
+                                        <tr>
+                                            <td><code><%= row.name %></code> <span class="badge badge-warning" title="<%= __('admin:set_restart_required_hint') %>"><%= __('admin:set_restart_required') %></span></td>
+                                            <td><code><%= row.value %></code></td>
+                                            <td><small style="color:#7f8c8d;"><%= row.note %></small></td>
+                                        </tr>
+                                    <% }); %>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <% } %>
+
+                    <!-- Edit Setting Modal -->
+                    <div id="editSettingModal" class="modal">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h2><%= __('admin:edit_setting') %></h2>
+                                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editSettingModal')">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="editSettingForm" method="POST">
+                                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                    <input type="hidden" name="id" id="editSettingId">
+                                    <input type="hidden" name="settingType" id="editSettingType">
+
+                                    <div class="form-group">
+                                        <label for="editSettingKey"><strong><%= __('admin:setting_key') %></strong></label>
+                                        <input type="text" id="editSettingKey" readonly
+                                            style="background: var(--bg-elevated); cursor: not-allowed;">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="required" for="editSettingValue"><%= __('admin:value') %></label>
+                                        <div id="editSettingValueContainer">
+                                            <!-- Value input is inserted here based on type; it always
+                                                 carries id="editSettingValue" so this label points at it. -->
+                                        </div>
+                                        <div class="form-help" id="editSettingHelp"></div>
+                                        <div class="form-help" id="editSettingRule" style="color:var(--text-muted,#94a3b8)"></div>
+                                        <div id="editSettingError" role="alert" aria-live="assertive" style="display:none;margin-top:.4rem;color:#ff6b6b;font-size:.88rem;"></div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="editSettingDescription"><%= __('admin:description') %></label>
+                                        <textarea id="editSettingDescription" readonly
+                                            style="background: var(--bg-elevated); cursor: not-allowed; min-height: 60px;"></textarea>
+                                    </div>
+
+                                    <div class="modal-footer">
+                                        <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('admin:save_changes') %></button>
+                                        <button type="button" class="btn btn-secondary"
+                                            onclick="hideModal('editSettingModal')"><%= __('admin:cancel') %></button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <script nonce="<%= cspNonce %>">
+                        // What the server will accept, said before the save. The
+                        // rule object comes from AppSettingsModel.CATALOG through the row.
+                        const RULE_T = {
+                            range: <%- JSON.stringify(__('admin:set_hint_range')) %>,
+                            integer: <%- JSON.stringify(__('admin:set_hint_integer')) %>,
+                            hour: <%- JSON.stringify(__('admin:set_hint_hour')) %>,
+                            dow: <%- JSON.stringify(__('admin:set_hint_dow')) %>,
+                            enum: <%- JSON.stringify(__('admin:set_hint_enum')) %>,
+                            url: <%- JSON.stringify(__('admin:set_hint_url')) %>,
+                            email: <%- JSON.stringify(__('admin:set_hint_email')) %>,
+                            host: <%- JSON.stringify(__('admin:set_hint_host')) %>,
+                            domains: <%- JSON.stringify(__('admin:set_hint_domains')) %>,
+                            optional: <%- JSON.stringify(__('admin:set_hint_optional')) %>
+                        };
+                        function ruleText(rule) {
+                            rule = rule || {};
+                            const parts = [];
+                            if (rule.kind === 'hour') parts.push(RULE_T.hour);
+                            else if (rule.kind === 'dow') parts.push(RULE_T.dow);
+                            else if (rule.min != null || rule.max != null) parts.push(RULE_T.range.replace('{{min}}', rule.min != null ? rule.min : '−∞').replace('{{max}}', rule.max != null ? rule.max : '+∞'));
+                            if (rule.integer && rule.kind !== 'hour' && rule.kind !== 'dow') parts.push(RULE_T.integer);
+                            if (rule.enum) parts.push(RULE_T.enum.replace('{{values}}', rule.enum.join(', ')));
+                            if (rule.kind === 'url') parts.push(RULE_T.url);
+                            if (rule.kind === 'email') parts.push(RULE_T.email);
+                            if (rule.kind === 'host') parts.push(RULE_T.host);
+                            if (rule.kind === 'domains') parts.push(RULE_T.domains);
+                            if (rule.optional) parts.push(RULE_T.optional);
+                            return parts.join(' · ');
+                        }
+                        function editSetting(setting, error) {
+                            document.getElementById('editSettingId').value = setting.id;
+                            document.getElementById('editSettingKey').value = setting.settingKey;
+                            document.getElementById('editSettingType').value = setting.settingType;
+                            document.getElementById('editSettingDescription').value = setting.description || '';
+                            document.getElementById('editSettingForm').action = '/app-settings';
+                            document.getElementById('editSettingRule').textContent = ruleText(setting.rule);
+                            const errBox = document.getElementById('editSettingError');
+                            errBox.style.display = error ? 'block' : 'none';
+                            errBox.textContent = error || '';
+
+                            const container = document.getElementById('editSettingValueContainer');
+                            const help = document.getElementById('editSettingHelp');
+
+                            container.innerHTML = '';
+
+                            if (setting.settingType === 'boolean') {
+                                const select = document.createElement('select');
+                                select.id = 'editSettingValue';
+                                select.setAttribute('aria-describedby', 'editSettingHelp');
+                                select.name = 'settingValue';
+                                select.className = 'form-group';
+                                select.style.width = '100%';
+                                select.style.padding = '0.75rem 1rem';
+                                select.style.border = '2px solid var(--border)';
+                                select.style.borderRadius = '6px';
+                                select.innerHTML = `
+            <option value="true" ${setting.settingValue === 'true' ? 'selected' : ''}>${<%- JSON.stringify(__('admin:enabled')) %>}</option>
+            <option value="false" ${setting.settingValue === 'false' ? 'selected' : ''}>${<%- JSON.stringify(__('admin:disabled')) %>}</option>
+        `;
+                                container.appendChild(select);
+                                help.textContent = <%- JSON.stringify(__('admin:boolean_help')) %>;
+                            } else if (setting.settingType === 'number') {
+                                const input = document.createElement('input');
+                                input.type = 'number';
+                                input.id = 'editSettingValue';
+                                input.setAttribute('aria-describedby', 'editSettingHelp');
+                                input.name = 'settingValue';
+                                input.value = setting.settingValue;
+                                input.required = true;
+                                input.className = 'form-group';
+                                input.style.width = '100%';
+                                input.style.padding = '0.75rem 1rem';
+                                input.style.border = '2px solid var(--border)';
+                                input.style.borderRadius = '6px';
+                                container.appendChild(input);
+                                help.textContent = <%- JSON.stringify(__('admin:number_help')) %>;
+                            } else {
+                                const isSecret = /password|secret|pass$/i.test(setting.settingKey || '');
+                                const input = document.createElement('input');
+                                input.type = isSecret ? 'password' : 'text';
+                                input.id = 'editSettingValue';
+                                input.setAttribute('aria-describedby', 'editSettingHelp');
+                                input.name = 'settingValue';
+                                input.value = setting.settingValue;
+                                input.required = !isSecret;
+                                input.autocomplete = isSecret ? 'new-password' : 'off';
+                                input.className = 'form-group';
+                                input.style.width = '100%';
+                                input.style.padding = '0.75rem 1rem';
+                                input.style.border = '2px solid var(--border)';
+                                input.style.borderRadius = '6px';
+                                container.appendChild(input);
+                                help.textContent = isSecret
+                                    ? <%- JSON.stringify(__('admin:secret_help')) %>
+                                    : <%- JSON.stringify(__('admin:text_help')) %>;
+                            }
+
+                            showModal('editSettingModal');
+                            if (error) { const v = document.getElementById('editSettingValue'); if (v) { v.setAttribute('aria-invalid', 'true'); v.focus(); } }
+                        }
+                        <% if (_se) { %>
+                        // A refused save: reopen the dialog on that setting with the typed
+                        // value and the message under the field (never a page-level flash).
+                        (function () {
+                            var refused = <%- include('../../partials/json-script', { v: _se }) %>;
+                            var row = <%- include('../../partials/json-script', { v: (settings || []).filter(function (s) { return Number(s.id) === Number(_se.id); }).map(function (s) { return Object.assign({}, s, { settingValue: isSecretKey(s.settingKey) ? '' : refusedValueOf(s), rule: s.rule || {} }); })[0] || null }) %>;
+                            if (row) editSetting(row, refused.msg);
+                        })();
+                        <% } %>
+                    </script>

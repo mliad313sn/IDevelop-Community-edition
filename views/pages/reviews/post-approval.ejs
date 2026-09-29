@@ -1,0 +1,78 @@
+<div class="page-header">
+    <h1><i class="fas fa-scale-balanced" aria-hidden="true"></i> <%= __('chrome:nav_post_reviews') %></h1>
+</div>
+
+<p class="help-text" style="margin-bottom:1rem;"><%= __('admin:par_intro') %></p>
+
+<% if (!canDecide) { %>
+<div class="card" style="padding:.7rem 1.1rem;margin-bottom:1rem;border-left:4px solid #b45309;">
+    <strong style="color:#b45309;">ⓘ</strong> <%= __('admin:par_admin_only_note') %>
+</div>
+<% } %>
+
+<form method="GET" action="/reviews/post-approval" class="card" style="display:flex;gap:8px;align-items:center;padding:.8rem 1.1rem;margin-bottom:1rem;">
+    <label for="par-filter-state" class="sr-only"><%= __('admin:a11y_par_filter_state') %></label>
+    <select name="state" id="par-filter-state" class="form-control" style="max-width:220px;">
+        <option value=""><%= __('admin:par_all_states') %></option>
+        <% ['pending', 'approved', 'rejected', 'withdrawn'].forEach(function (s) { %>
+        <option value="<%= s %>" <%= filterState === s ? 'selected' : '' %>><%= __('admin:par_state_' + s) %></option>
+        <% }); %>
+    </select>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:mv_apply') %></button>
+</form>
+
+<div class="card" style="padding:0;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('admin:par_th_employee') %></th>
+                <th><%= __('admin:par_th_skill') %></th>
+                <th><%= __('admin:par_th_levels') %></th>
+                <th><%= __('admin:par_th_reason') %></th>
+                <th><%= __('admin:par_th_raised') %></th>
+                <th><%= __('admin:par_th_state') %></th>
+                <th></th>
+            </tr></thead>
+            <tbody>
+                <% if (!items.length) { %>
+                <tr><td colspan="7" class="text-muted" style="text-align:center;padding:1.5rem;"><%= __('admin:par_empty') %></td></tr>
+                <% } %>
+                <% items.forEach(function (r) { %>
+                <tr>
+                    <td><a href="/employees/<%= r.employeeId %>"><%= r.employeeName %></a>
+                        <div style="font-size:.74rem;color:var(--text-muted);"><%= r.employeeNumber %> · <%= r.siteName || '—' %></div></td>
+                    <td style="font-size:.85rem;"><%= r.skillName || '—' %></td>
+                    <td style="white-space:nowrap;">
+                        <span class="text-muted"><%= r.approvedLevel === null ? '—' : r.approvedLevel %></span>
+                        → <strong><%= r.proposedLevel %></strong>
+                    </td>
+                    <td style="font-size:.82rem;max-width:280px;"><%= r.reason %>
+                        <% if (r.decisionNote) { %><div style="font-size:.76rem;color:var(--text-muted);margin-top:.2rem;"><%= __('admin:par_note') %>: <%= r.decisionNote %></div><% } %></td>
+                    <td style="font-size:.8rem;"><%= r.raisedByName || '—' %>
+                        <div style="color:var(--text-muted);"><%= fmtDate(r.raisedAt) %></div></td>
+                    <td>
+                        <span class="badge <%= r.state === 'pending' ? 'badge-warning' : (r.state === 'approved' ? 'badge-success' : 'badge-danger') %>">
+                            <%= __('admin:par_state_' + r.state) %></span>
+                        <% if (r.decidedByName) { %><div style="font-size:.74rem;color:var(--text-muted);"><%= r.decidedByName %></div><% } %>
+                    </td>
+                    <td style="text-align:right;white-space:nowrap;">
+                        <% if (r.state === 'pending' && canDecide) { %>
+                        <form method="POST" action="/reviews/post-approval/<%= r.id %>/decide" style="display:inline-flex;gap:4px;align-items:center;">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <input type="text" name="note" class="form-control" style="width:150px;padding:3px 6px;font-size:.8rem;" placeholder="<%= __('admin:par_note_ph') %>" aria-label="<%= __('admin:par_note_ph') %>">
+                            <button name="decision" value="approve" class="btn btn-sm btn-primary"><%= __('admin:par_approve') %></button>
+                            <button name="decision" value="reject" class="btn btn-sm btn-secondary"><%= __('admin:par_reject') %></button>
+                        </form>
+                        <% } else if (r.state === 'pending') { %>
+                        <form method="POST" action="/reviews/post-approval/<%= r.id %>/withdraw" style="display:inline;">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <button class="btn btn-sm btn-secondary"><%= __('admin:par_withdraw') %></button>
+                        </form>
+                        <% } %>
+                    </td>
+                </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>

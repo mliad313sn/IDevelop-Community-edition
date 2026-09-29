@@ -1,0 +1,215 @@
+<%
+// Every flag and origin is a KEY resolved here: the service
+// never ships a sentence, so an English session reads English.
+const dgFlag = function (f) { return __('admin:deleg_flag_' + f.key, f.params || {}); };
+const dgScopeType = function (t) {
+    if (t === 'site') return __('admin:tri_scope_site');
+    if (t === 'department') return __('admin:tri_scope_department');
+    if (t === 'service') return __('admin:tri_scope_service');
+    if (t === 'country') return __('admin:tri_scope_country');
+    if (t === 'region') return __('admin:tri_scope_region');
+    return t;
+};
+%>
+<div class="page-header">
+  <div>
+    <h1><i class="fas fa-sitemap" aria-hidden="true"></i> <%= __('admin:deleg_title') %></h1>
+    <p class="text-muted"><%= __('admin:deleg_intro') %></p>
+  </div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    <a href="/admins" class="btn btn-secondary btn-sm"><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('admin:deleg_back_admins') %></a>
+    <% if (user && user.role === 'superadmin') { %><a href="/admin/access-review" class="btn btn-secondary btn-sm"><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('admin:ar_title') %></a><% } %>
+  </div>
+</div>
+
+<%# Findings first. A reviewer should not have to read forty rows to notice that a
+    delegation cannot work, or that a site has nobody who can act on its people. %>
+<% if (issues.length || uncovered.length) { %>
+<div class="card dg-findings">
+  <h2 class="dg-h"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('admin:deleg_findings') %></h2>
+  <ul class="dg-issues">
+    <% issues.forEach(function (a) { %>
+      <% a.flags.filter(f => f.level === 'warn' || f.level === 'danger').forEach(function (f) { %>
+        <li class="dg-issue dg-<%= f.level %>">
+          <a href="/admins/<%= a.id %>"><strong><%= a.username %></strong></a>
+          — <%= dgFlag(f) %>
+        </li>
+      <% }); %>
+    <% }); %>
+    <% uncovered.forEach(function (u) { %>
+      <li class="dg-issue dg-warn">
+        <strong><%= u.site %></strong> (<%= u.country %>) —
+        <%= __('admin:deleg_uncovered', { n: u.headcount }) %>
+      </li>
+    <% }); %>
+  </ul>
+</div>
+<% } %>
+
+<%# ── Who holds what ─────────────────────────────────────────────────────── %>
+<div class="card" style="padding:0">
+  <div class="emp-section-h"><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('admin:deleg_by_admin') %></div>
+  <div class="search-bar" style="margin:.5rem .75rem"><div class="search-input-wrapper">
+    <input type="search" class="search-input" data-table-search="#dg-admins" placeholder="<%= __('admin:deleg_search_ph') %>" aria-label="<%= __('admin:deleg_search_ph') %>">
+  </div></div>
+  <div class="table-wrapper" style="margin:0;box-shadow:none;border:none">
+    <table class="table" id="dg-admins">
+      <thead>
+        <tr>
+          <th><%= __('admin:deleg_th_admin') %></th>
+          <th><%= __('admin:deleg_th_role') %></th>
+          <th><%= __('admin:deleg_th_scope') %></th>
+          <th style="text-align:right"><%= __('admin:deleg_th_reach') %></th>
+          <th style="text-align:right"><%= __('admin:deleg_th_caps') %></th>
+          <th><%= __('admin:deleg_th_state') %></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% admins.forEach(function (a) { %>
+        <%
+          const scopeText = a.unrestricted ? __('admin:deleg_all_org') : a.scopeSummary.map(function (s) { return s.label || (s.labelKey ? __(s.labelKey) : ''); }).join(' ');
+          const flagText = a.flags.map(dgFlag).join(' ');
+        %>
+        <tr<%= a.isActive ? '' : ' class="dg-inactive"' %> data-search="<%= [a.username, a.email || '', enumLabel('admin_role', a.role), scopeText, flagText].join(' ') %>">
+          <td>
+            <a href="/admins/<%= a.id %>"><%= a.username %></a>
+            <% if (a.email) { %><div class="dg-sub"><%= a.email %></div><% } %>
+          </td>
+          <td><span class="dg-role dg-role-<%= a.role %>"><%= enumLabel('admin_role', a.role) %></span></td>
+          <td>
+            <% if (a.unrestricted) { %>
+              <span class="dg-all"><%= __('admin:deleg_all_org') %></span>
+            <% } else if (!a.scopeSummary.length) { %>
+              <span class="text-muted"><%= __('admin:deleg_no_scope') %></span>
+            <% } else { %>
+              <% a.scopeSummary.forEach(function (s) { %>
+                <span class="dg-chip" title="<%= dgScopeType(s.type) %>"><%= s.label || (s.labelKey ? __(s.labelKey) : '') %></span>
+              <% }); %>
+            <% } %>
+          </td>
+          <%# Reach is the honest measure of a delegation: how many real people it
+              touches. It is frequently a surprise to whoever granted it. %>
+          <td style="text-align:right" class="dg-num">
+            <%= a.reach === null ? __('admin:deleg_all') : a.reach %>
+          </td>
+          <td style="text-align:right" class="dg-num">
+            <%= a.capabilityCount %>
+            <% if (a.capabilities && a.capabilities.length) { %>
+              <%# Provenance per grant: who, when, and whether the ledger
+                  knows — "origine inconnue" is said out loud, never left blank. %>
+              <details class="dg-caps">
+                <summary><%= __('admin:deleg_caps_detail') %></summary>
+                <ul>
+                  <% a.capabilities.forEach(function (c) { %>
+                    <li>
+                      <span><%= __('admin:perm.' + c.slug + '.label', { defaultValue: c.label }) %></span>
+                      <small class="dg-sub">
+                        <% if (c.origin === 'unknown') { %><%= __('admin:deleg_origin_unknown') %><% } else { %><%= __('admin:deleg_granted_by', { who: c.grantedBy }) %><% if (c.origin === 'backfill') { %> · <%= __('admin:deleg_origin_backfill') %><% } %><% } %>
+                        <% if (c.expiresAt) { %> · <%= __('admin:deleg_until', { date: fmtDate(c.expiresAt) }) %><% } %>
+                      </small>
+                    </li>
+                  <% }); %>
+                </ul>
+              </details>
+            <% } %>
+          </td>
+          <td>
+            <% if (!a.flags.length) { %>
+              <span class="dg-ok">✓</span>
+            <% } else { %>
+              <% a.flags.forEach(function (f) { %>
+                <span class="dg-flag dg-<%= f.level %>"><%= dgFlag(f) %></span>
+              <% }); %>
+            <% } %>
+          </td>
+        </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<%# ── The inverse view: who has authority over MY people ─────────────────── %>
+<div class="card" style="padding:0;margin-top:1.25rem">
+  <div class="emp-section-h"><i class="fas fa-earth-africa" aria-hidden="true"></i> <%= __('admin:deleg_by_unit') %></div>
+  <div class="dg-cov">
+    <% coverage.forEach(function (c) { %>
+      <div class="dg-country">
+        <div class="dg-country-h">
+          <strong><%= c.countryName %></strong>
+          <span class="dg-sub"><%= c.headcount %> <%= __('admin:deleg_people') %></span>
+        </div>
+        <table class="table table-cards">
+          <thead>
+            <tr>
+              <th><%= __('admin:deleg_th_site') %></th>
+              <th style="text-align:right"><%= __('admin:deleg_th_people') %></th>
+              <th><%= __('admin:deleg_th_holders') %></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% c.sites.forEach(function (s) { %>
+            <tr<%= s.uncovered ? ' class="dg-uncovered"' : '' %>>
+              <td data-label="<%= __('admin:deleg_th_site') %>"><%= s.siteName %></td>
+              <td data-label="<%= __('admin:deleg_th_people') %>" style="text-align:right" class="dg-num"><%= s.headcount %></td>
+              <td data-label="<%= __('admin:deleg_th_holders') %>">
+                <% if (!s.holders.length) { %>
+                  <span class="dg-flag dg-warn"><%= __('admin:deleg_nobody') %></span>
+                <% } else { %>
+                  <% s.holders.forEach(function (h) { %>
+                    <a class="dg-chip" href="/admins/<%= h.id %>"><%= h.username %></a>
+                  <% }); %>
+                <% } %>
+              </td>
+            </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    <% }); %>
+  </div>
+</div>
+
+<style>
+  .dg-h{font-size:1rem;margin:0 0 .6rem;display:flex;align-items:center;gap:.5rem}
+  .dg-findings{padding:1rem 1.15rem;margin-bottom:1.25rem;
+      border-left:3px solid var(--amber-text,#b45309)}
+  .dg-issues{margin:0;padding-left:1.1rem}
+  .dg-issue{margin-bottom:.35rem;font-size:.92rem}
+  .dg-issue:last-child{margin-bottom:0}
+  .dg-sub{font-size:.78rem;color:var(--text-muted)}
+  .dg-num{font-variant-numeric:tabular-nums}
+  .dg-chip{display:inline-block;padding:2px 9px;margin:1px 3px 1px 0;border-radius:999px;
+      background:var(--bg-subtle);border:1px solid var(--border);font-size:.8rem;
+      color:var(--text-primary);text-decoration:none}
+  a.dg-chip:hover{border-color:var(--brand)}
+  .dg-role{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600;
+      color:var(--text-secondary)}
+  .dg-role-superadmin{color:var(--brand)}
+  .dg-all{font-weight:600;color:var(--brand)}
+  .dg-ok{color:var(--emerald-text,#1b7e3a)}
+  .dg-flag{display:inline-block;font-size:.76rem;padding:1px 8px;border-radius:4px;margin:1px 0;
+      background:var(--bg-subtle);border:1px solid var(--border)}
+  .dg-flag.dg-warn,.dg-issue.dg-warn{color:var(--amber-text,#b45309)}
+  .dg-flag.dg-danger,.dg-issue.dg-danger{color:var(--rose-text,#b00020);font-weight:600}
+  .dg-flag.dg-muted{color:var(--text-muted)}
+  .dg-inactive td{opacity:.55}
+  .dg-uncovered td{background:rgba(180,83,9,.07)}
+  .dg-caps{text-align:left;font-size:.78rem;margin-top:.25rem}
+  .dg-caps summary{cursor:pointer;color:var(--text-secondary)}
+  .dg-caps ul{margin:.25rem 0 0;padding-left:1rem}
+  .dg-caps li{margin:.15rem 0;font-variant-numeric:normal}
+  .dg-cov{padding:.25rem 1rem 1rem}
+  .dg-country{margin-top:1rem}
+  .dg-country-h{display:flex;justify-content:space-between;align-items:baseline;
+      padding:.4rem 0;border-bottom:1px solid var(--border);margin-bottom:.35rem}
+  @media (max-width:780px){
+    .dg-cov .table-cards tbody,.dg-cov .table-cards tr,
+    .dg-cov .table-cards td,.dg-cov .table-cards th{display:block;width:100%}
+    .dg-cov .table-cards thead{display:none}
+    .dg-cov .table-cards tr{border:1px solid var(--border);border-radius:10px;margin:8px 0;padding:8px}
+    .dg-cov .table-cards td{border:none;padding:3px 0;text-align:left !important}
+    .dg-cov .table-cards td[data-label]::before{content:attr(data-label) ' : ';
+        font-weight:600;color:var(--text-secondary);font-size:.8rem}
+  }
+</style>

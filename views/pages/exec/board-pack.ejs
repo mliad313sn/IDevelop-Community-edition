@@ -1,0 +1,285 @@
+<%
+  // Board pack — ONE print-ready brief a director takes into the room.
+  //
+  // Every figure comes from the same services the dashboard uses, over the same
+  // RBAC scope, so the pack can never be contradicted by the app it was printed
+  // from. Nothing here is hardcoded to a product name: the masthead reads
+  // res.locals.branding, which App Settings drives (white-label).
+  //
+  // "Not measured" is printed as a dash with a footnote, never as 0.
+  var K       = kpis || null;
+  var TR      = trend || null;
+  var SERIES  = (TR && Array.isArray(TR.series)) ? TR.series : [];
+  var R       = exposure || [];
+  var T       = totals || {};
+  var SCOPE   = scope || {};
+  var KP      = keyPerson || null;
+  var KPS     = keyPersonSummary || null;
+  var SHOWKP  = typeof showKeyPerson !== 'undefined' ? showKeyPerson : false;
+
+  var brand   = (typeof branding !== 'undefined' && branding && branding.appName) ? branding.appName : '';
+  // logoUrl is the cached /branding/logo route every rendered page uses.
+  var brandLogo = (typeof branding !== 'undefined' && branding && branding.logoUrl) ? branding.logoUrl : null;
+  var _lang   = (typeof lang !== 'undefined' ? lang : 'fr');
+
+  function d(v) {
+    if (!v) return '—';
+    try { return new Date(v).toLocaleDateString(_lang, { year: 'numeric', month: 'long', day: 'numeric' }); }
+    catch (e) { return String(v).slice(0, 10); }
+  }
+  function pv(v, suffix) { return (v === null || v === undefined) ? '—' : (v + (suffix || '')); }
+%>
+
+<article class="board-pack">
+
+  <!-- ============================ MASTHEAD ============================ -->
+  <header class="bp-head">
+    <div class="bp-brand">
+      <% if (brandLogo) { %><img src="<%= brandLogo %>" alt="" class="bp-logo"><% } %>
+      <% if (brand) { %><span class="bp-brandname"><%= brand %></span><% } %>
+    </div>
+    <h1><%= __('exec:bp_title') %></h1>
+    <p class="bp-sub"><%= __('exec:bp_subtitle') %></p>
+    <p class="bp-meta">
+      <%= __('exec:bp_generated').replace('{d}', d(generatedAt)) %>
+      &nbsp;·&nbsp;
+      <strong><%= __('exec:bp_prepared_for') %>:</strong>
+      <% if (SCOPE.unrestricted) { %><%= __('exec:scope_org') %>
+      <% } else { %><%= __('exec:scope_limited').replace('{n}', SCOPE.employeeCount == null ? '—' : SCOPE.employeeCount) %><% } %>
+    </p>
+    <p class="bp-actions no-print">
+      <button type="button" class="btn btn-primary" data-print><i class="fas fa-print" aria-hidden="true"></i> <%= __('exec:print') %></button>
+      <a class="btn btn-secondary" href="/dashboard"><%= __('exec:back_dashboard') %></a>
+    </p>
+  </header>
+
+  <!-- ============================ 1. KPIs ============================ -->
+  <section class="bp-section">
+    <h2><%= __('exec:bp_section_kpi') %></h2>
+    <% if (!K) { %>
+      <p class="text-muted"><em><%= __('exec:se_empty_body') %></em></p>
+    <% } else { %>
+      <div class="bp-kpis">
+        <div class="bp-kpi">
+          <div class="bp-kpi-v"><%= pv(K.avgReadiness, ' %') %></div>
+          <div class="bp-kpi-l"><%= __('exec:bp_kpi_readiness') %></div>
+        </div>
+        <div class="bp-kpi">
+          <div class="bp-kpi-v"><%= (K.assessedRequirements || 0) %> / <%= (K.expectedRequirements || 0) %></div>
+          <div class="bp-kpi-l"><%= __('exec:bp_kpi_coverage') %></div>
+        </div>
+        <div class="bp-kpi">
+          <div class="bp-kpi-v"><%= (K.roleReadyCount || 0) %> / <%= (K.measuredEmployees || 0) %></div>
+          <div class="bp-kpi-l"><%= __('exec:bp_kpi_roleready') %></div>
+        </div>
+        <div class="bp-kpi">
+          <div class="bp-kpi-v"><%= pv(K.criticalCompliance, ' %') %></div>
+          <div class="bp-kpi-l"><%= __('exec:bp_kpi_critical') %></div>
+        </div>
+        <% if (SHOWKP) { %>
+        <div class="bp-kpi">
+          <div class="bp-kpi-v"><%= T.soleHolder || 0 %></div>
+          <div class="bp-kpi-l"><%= __('exec:bp_kpi_soleholders') %></div>
+        </div>
+        <% } %>
+      </div>
+    <% } %>
+  </section>
+
+  <!-- ============================ 2. TREND ============================ -->
+  <section class="bp-section">
+    <h2><%= __('exec:bp_section_trend') %></h2>
+    <%
+      // Recorded snapshots only. With zero or one point there is no movement to
+      // report and the pack says so plainly rather than drawing a flat line
+      // that a reader would take for "no change".
+    %>
+    <% if (!SERIES.length) { %>
+      <p class="text-muted"><%= __('exec:bp_no_trend') %></p>
+    <% } else if (SERIES.length === 1) { %>
+      <p><%= __('exec:bp_trend_single').replace('{a}', d(SERIES[0].date)).replace('{x}', SERIES[0].avg) %></p>
+    <% } else {
+         var a = SERIES[0], b = SERIES[SERIES.length - 1];
+         var delta = Math.round((b.avg - a.avg) * 10) / 10;
+    %>
+      <p>
+        <%= __('exec:bp_trend_from_to').replace('{a}', d(a.date)).replace('{x}', a.avg).replace('{b}', d(b.date)).replace('{y}', b.avg) %>
+        <strong class="<%= delta > 0 ? 'good' : (delta < 0 ? 'bad' : '') %>">
+          <%= delta > 0 ? '▲ +' : (delta < 0 ? '▼ ' : '') %><%= delta %> pts
+        </strong>
+      </p>
+      <table class="table bp-table">
+        <thead><tr><th><%= __('exec:bp_generated').replace('{d}', '') %></th><th class="num"><%= __('exec:bp_kpi_readiness') %></th><th class="num"><%= __('exec:se_coverage') %></th></tr></thead>
+        <tbody>
+          <% SERIES.slice(-12).forEach(function (p) { %>
+            <tr><td><%= d(p.date) %></td><td class="num"><%= p.avg %> %</td><td class="num"><%= p.coverage === null ? '—' : p.coverage + ' %' %></td></tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </section>
+
+  <!-- ============================ 3. SITES ============================ -->
+  <section class="bp-section">
+    <h2><%= __('exec:bp_section_sites') %></h2>
+    <% if (!R.length) { %>
+      <p class="text-muted"><%= __('exec:se_empty_body') %></p>
+    <% } else { %>
+      <table class="table bp-table">
+        <thead>
+          <tr>
+            <th><%= __('exec:se_site') %></th>
+            <th class="num"><%= __('exec:se_headcount') %></th>
+            <th class="num"><%= __('exec:se_readiness') %></th>
+            <th class="num"><%= __('exec:se_coverage') %></th>
+            <% if (SHOWKP) { %><th class="num"><%= __('exec:se_sole_holders') %></th><th class="num"><%= __('exec:se_never_measured') %></th><% } %>
+            <th class="num"><%= __('exec:se_certs_expiring') %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% R.forEach(function (r) { %>
+            <tr>
+              <td><%= r.siteName %></td>
+              <td class="num"><%= r.headcount %></td>
+              <td class="num"><%= r.readiness === null ? '—' : r.readiness + ' %' %></td>
+              <td class="num"><%= r.coverage === null ? '—' : r.coverage + ' %' %></td>
+              <% if (SHOWKP) { %><td class="num"><%= r.soleHolder %></td><td class="num muted"><%= r.neverMeasured %></td><% } %>
+              <td class="num"><%= r.certsExpiring90d %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td><strong><%= __('exec:se_total') %></strong></td>
+            <td class="num"><strong><%= T.headcount || 0 %></strong></td>
+            <td class="num">—</td>
+            <td class="num"><strong><%= T.coverage === null ? '—' : T.coverage + ' %' %></strong></td>
+            <% if (SHOWKP) { %><td class="num"><strong><%= T.soleHolder || 0 %></strong></td><td class="num muted"><%= T.neverMeasured || 0 %></td><% } %>
+            <td class="num"><strong><%= T.certsExpiring90d || 0 %></strong></td>
+          </tr>
+        </tfoot>
+      </table>
+    <% } %>
+  </section>
+
+  <!-- ========================= 4. KEY PERSON ========================= -->
+  <section class="bp-section">
+    <h2><%= __('exec:bp_section_keyperson') %></h2>
+    <% if (!SHOWKP) { %>
+      <%# Not rendered blank — the section states that it is grant-gated. %>
+      <p class="text-muted"><em><%= __('exec:bp_keyperson_hidden') %></em></p>
+    <% } else if (!KP || !KP.length) { %>
+      <p class="text-muted"><%= __('exec:bp_no_keyperson') %></p>
+      <% if (KPS && KPS.neverMeasured) { %>
+        <p class="text-muted"><em><%= __('exec:kp_empty_never_hint').replace('{n}', KPS.neverMeasured) %></em></p>
+      <% } %>
+    <% } else { %>
+      <table class="table bp-table">
+        <thead>
+          <tr>
+            <th><%= __('exec:kp_skill') %></th>
+            <th><%= __('exec:kp_unit') %></th>
+            <th class="num"><%= __('exec:kp_required_level') %></th>
+            <th class="num"><%= __('exec:kp_required_of') %></th>
+            <th><%= __('exec:kp_holders') %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% KP.forEach(function (r) { %>
+            <tr>
+              <td><%= r.skillName %><% if (r.isCritical) { %> <span class="bp-crit"><%= __('exec:kp_critical') %></span><% } %></td>
+              <td><%= r.unitName %></td>
+              <td class="num"><%= r.requiredLevel %></td>
+              <td class="num"><%= r.requiredOf %></td>
+              <td><% r.holders.forEach(function (h, i) { %><% if (i) { %>, <% } %><%= h.name %><% if (h.roleName) { %> (<%= h.roleName %>)<% } %><% }); %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+      <%# The table is capped for print. Say so, with the real total, or a board
+          reads a shortlist as the whole exposure. %>
+      <% if (KPS && KPS.soleHolder && KP.length < KPS.soleHolder) { %>
+        <p class="bp-caveat"><%= __('exec:kp_truncated').replace('{shown}', KP.length).replace('{total}', KPS.soleHolder) %></p>
+      <% } %>
+      <% if (KPS && KPS.criticalNeverMeasured) { %>
+        <p class="bp-caveat"><%= __('exec:kp_unknown_banner').replace('{n}', KPS.criticalNeverMeasured) %></p>
+      <% } %>
+    <% } %>
+  </section>
+
+  <!-- ========================== 5. DECISIONS ========================== -->
+  <section class="bp-section">
+    <h2><%= __('exec:bp_section_actions') %></h2>
+    <p><%= __('exec:bp_actions_intro') %></p>
+    <ul class="bp-actions-list">
+      <% if (SHOWKP && KPS && KPS.criticalNeverMeasured) { %>
+        <li><%= __('exec:bp_action_assess').replace('{n}', KPS.criticalNeverMeasured) %></li>
+      <% } %>
+      <% if (SHOWKP && KP && KP.length) { %>
+        <li><%= __('exec:bp_action_bench').replace('{n}', (KPS && KPS.soleHolder) || KP.length) %></li>
+      <% } %>
+      <% if ((T.certsExpiring90d || 0) > 0) { %>
+        <li><%= __('exec:bp_action_certs').replace('{n}', T.certsExpiring90d) %></li>
+      <% } %>
+      <li><%= __('exec:bp_action_designate') %></li>
+    </ul>
+  </section>
+
+  <footer class="bp-foot">
+    <p><%= __('exec:bp_footnote') %></p>
+  </footer>
+</article>
+
+<script nonce="<%= cspNonce %>">
+  // The Print button must actually print. (The report builder's Print button
+  // only toggled a CSS class and never called window.print, leaving the user
+  // to discover Ctrl+P.) Delegated so it survives any re-render.
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('[data-print]') : null;
+    if (btn) { e.preventDefault(); window.print(); }
+  });
+</script>
+
+<style>
+.board-pack { max-width:1100px; margin:0 auto; }
+.bp-head { border-bottom:2px solid var(--border-light,rgba(255,255,255,.18)); padding-bottom:1rem; margin-bottom:1.5rem; }
+.bp-brand { display:flex; align-items:center; gap:.6rem; margin-bottom:.6rem; }
+.bp-logo { height:34px; width:auto; max-width:180px; }
+.bp-brandname { font-weight:800; letter-spacing:.02em; }
+.bp-head h1 { margin:.2rem 0; }
+.bp-sub { color:var(--text-secondary); margin:.1rem 0; }
+.bp-meta { font-size:.82rem; color:var(--text-muted,#8a93a6); margin:.5rem 0 0; }
+.bp-actions { margin:.9rem 0 0; display:flex; gap:.5rem; flex-wrap:wrap; }
+.bp-section { margin:0 0 1.8rem; break-inside:avoid; }
+.bp-section h2 { font-size:1.1rem; border-bottom:1px solid var(--border-light,rgba(255,255,255,.12)); padding-bottom:.35rem; margin:0 0 .8rem; }
+.bp-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.75rem; }
+.bp-kpi { padding:.7rem .85rem; border:1px solid var(--border-light,rgba(255,255,255,.12)); border-radius:8px; }
+.bp-kpi-v { font-size:1.5rem; font-weight:800; }
+.bp-kpi-l { font-size:.75rem; color:var(--text-muted,#8a93a6); margin-top:.15rem; }
+.bp-table { width:100%; font-size:.85rem; }
+.bp-table .num { text-align:right; }
+.bp-table .muted { color:var(--text-muted,#8a93a6); }
+.bp-crit { font-size:.62rem; font-weight:700; padding:.05rem .35rem; border-radius:3px;
+    background:rgba(240,96,96,.18); color:var(--danger,#F06060); }
+.bp-caveat { margin-top:.6rem; font-size:.8rem; padding:.55rem .75rem; border-radius:6px;
+    background:rgba(138,147,166,.12); border:1px solid rgba(138,147,166,.3); }
+.bp-actions-list { margin:.4rem 0 0 1.1rem; line-height:1.7; }
+.bp-foot { border-top:1px solid var(--border-light,rgba(255,255,255,.12)); padding-top:.7rem;
+    font-size:.75rem; color:var(--text-muted,#8a93a6); }
+.board-pack .good { color:var(--success,#2DD4A0); }
+.board-pack .bad  { color:var(--danger,#F06060); }
+
+/* Print: drop the app chrome, force legible ink-on-paper, keep sections whole. */
+@media print {
+  .no-print, .sidebar, .app-sidebar, .topbar, .app-header, .help-fab, nav { display:none !important; }
+  body, .board-pack { background:#fff !important; color:#000 !important; }
+  .board-pack { max-width:none; margin:0; padding:0; }
+  .bp-section { page-break-inside:avoid; }
+  .bp-section h2, .bp-head { border-color:#999 !important; }
+  .bp-kpi, .bp-caveat { border-color:#999 !important; }
+  .bp-table th, .bp-table td { border-color:#ccc !important; color:#000 !important; }
+  .bp-sub, .bp-meta, .bp-foot, .bp-kpi-l, .bp-table .muted { color:#444 !important; }
+  a { color:#000 !important; text-decoration:none !important; }
+  @page { margin:14mm; }
+}
+</style>

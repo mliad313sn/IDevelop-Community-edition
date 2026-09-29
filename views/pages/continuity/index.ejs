@@ -1,0 +1,556 @@
+<div class="page-header">
+  <h1><i class="fas fa-sitemap" aria-hidden="true"></i> <%= __('talentx:ct_title') %></h1>
+  <p class="text-muted"><%= __('talentx:ct_intro_1') %> <em><%= __('talentx:ct_ready_now') %></em> <%= __('talentx:ct_intro_2') %></p>
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#cov-table, #plan-table, #ho-table, #ret-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+</div>
+
+<!-- ============================ COMMENCER ============================ -->
+<%
+  // « Commencer » — succession stays dormant unless the page tells a leader what
+  // to do next. Three ordered prompts, each row actionable.
+  var SH = (typeof startHere !== 'undefined' && startHere) ? startHere : null;
+  var SH_NEED = (SH && SH.needCriticality) || [];
+  var SH_GAP  = (SH && SH.noSuccessor) || [];
+  var SH_DUE  = (SH && SH.dueForReview) || [];
+  var SH_MONTHS = (SH && SH.reviewIntervalMonths) || 6;
+  // The unscored-roles list is capped; the counter must state the real total.
+  var SH_NEED_TOTAL = (SH && SH.needCriticalityTotal != null) ? Number(SH.needCriticalityTotal) : SH_NEED.length;
+  var SH_TOTAL = SH_NEED_TOTAL + SH_GAP.length + SH_DUE.length;
+  var _sLang = (typeof lang !== 'undefined' ? lang : 'fr');
+  // the server-side twin of ctDate below. This used to be
+  // `new Date(String(v).slice(0,10) + 'T00:00:00Z').toLocaleDateString(lang)`,
+  // which has TWO faults of the same family: a `date` column arrives as a Date
+  // object, so String(v).slice(0,10) is « Tue Sep 15 », the reconstructed date
+  // is invalid and the catch prints that English head verbatim; and when it did
+  // parse, toLocaleDateString('en') wrote « 9/15/2026 » on a product whose ONE
+  // date rendering is dd/MM/yyyy in both languages (src/utils/dateFormat).
+  // Forced to UTC: a review date is a calendar day, not an instant.
+  function sDate(v) {
+    if (!v) return '—';
+    var x = new Date(typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v + 'T00:00:00Z' : v);
+    if (isNaN(x.getTime())) return '—';
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return p(x.getUTCDate()) + '/' + p(x.getUTCMonth() + 1) + '/' + x.getUTCFullYear();
+  }
+%>
+<div class="card start-card" style="padding:0;margin-bottom:1rem">
+  <div style="padding:.75rem 1rem;border-bottom:1px solid rgba(148,163,184,.2);display:flex;justify-content:space-between;align-items:center;gap:.75rem;flex-wrap:wrap">
+    <h3 style="margin:0"><i class="fas fa-flag-checkered" aria-hidden="true"></i> <%= __('talentx:succ_start_heading') %></h3>
+    <% if (SH_TOTAL) { %><span class="badge badge-danger"><%= __('talentx:succ_start_count').replace('{n}', SH_TOTAL) %></span><% } %>
+  </div>
+  <div style="padding:.75rem 1rem">
+    <p class="text-muted" style="margin:0 0 .75rem"><%= __('talentx:succ_start_intro') %></p>
+    <% if (!SH_TOTAL) { %>
+      <p style="margin:0"><span class="badge badge-success"><i class="fas fa-check" aria-hidden="true"></i></span> <%= __('talentx:succ_all_clear') %></p>
+    <% } %>
+
+    <!-- 1) Roles nobody has scored ------------------------------------------->
+    <h4 style="margin:.5rem 0 .25rem"><%= __('talentx:succ_step1_title') %> <span class="text-muted">(<%= SH_NEED_TOTAL %>)</span></h4>
+    <p class="text-muted" style="margin:0 0 .35rem;font-size:.85em"><%= __('talentx:succ_step1_hint') %><% if (SH_NEED_TOTAL > SH_NEED.length) { %> <%= __('talentx:succ_showing_first').replace('{n}', SH_NEED.length) %><% } %></p>
+    <% if (!SH_NEED.length) { %>
+      <p class="text-muted" style="margin:0 0 .75rem"><em><%= __('talentx:succ_no_unscored') %></em></p>
+    <% } else { %>
+      <table class="table start-table" id="succ-need-table">
+        <thead><tr><th><%= __('talentx:succ_role') %></th><th><%= __('talentx:succ_occupants') %></th><th><%= __('talentx:succ_actions') %></th></tr></thead>
+        <tbody>
+          <% SH_NEED.forEach(function(r){ %>
+            <tr>
+              <td><%= r.roleName %></td>
+              <td><%= r.occupantCount || 0 %></td>
+              <td><button type="button" class="btn btn-sm btn-primary" onclick="CONT.scoreRole(<%= r.roleId %>)"><%= __('talentx:succ_score_now') %></button></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+
+    <!-- 2) Critical roles with an empty bench --------------------------------->
+    <h4 style="margin:.9rem 0 .25rem"><%= __('talentx:succ_step2_title') %> <span class="text-muted">(<%= SH_GAP.length %>)</span></h4>
+    <p class="text-muted" style="margin:0 0 .35rem;font-size:.85em"><%= __('talentx:succ_step2_hint') %></p>
+    <% if (!SH_GAP.length) { %>
+      <p class="text-muted" style="margin:0 0 .75rem"><em><%= __('talentx:succ_no_gap') %></em></p>
+    <% } else { %>
+      <table class="table start-table" id="succ-gap-table">
+        <thead><tr><th><%= __('talentx:succ_role') %></th><th><%= __('talentx:succ_criticality') %></th><th><%= __('talentx:succ_incumbent') %></th><th><%= __('talentx:succ_bench') %></th><th><%= __('talentx:succ_actions') %></th></tr></thead>
+        <tbody>
+          <% SH_GAP.forEach(function(g){ %>
+            <tr>
+              <td><%= g.roleName %></td>
+              <td><span class="crit crit-<%= g.criticalityScore %>"><%= g.criticalityScore %>/5</span> <span class="risk risk-<%= g.vacancyRisk %>"><%= enumLabel(g.vacancyRisk) %></span></td>
+              <td><% if (g.incumbentFirst || g.incumbentLast) { %><%= (g.incumbentFirst||'') + ' ' + (g.incumbentLast||'') %><% } else { %><span class="text-muted"><%= __('talentx:succ_no_incumbent') %></span><% } %></td>
+              <td><% if (!g.planId) { %><span class="badge badge-danger"><%= __('talentx:succ_no_plan_badge') %></span><% } else { %><span class="badge badge-danger"><%= __('talentx:succ_bench_empty_badge') %></span><% } %></td>
+              <td style="white-space:nowrap">
+                <% if (!g.planId) { %>
+                  <button type="button" class="btn btn-sm btn-primary" onclick="CONT.openPlanFor(<%= g.roleId %>)"><%= __('talentx:succ_open_plan') %></button>
+                <% } else { %>
+                  <button type="button" class="btn btn-sm btn-secondary" onclick="CONT.jumpToPlan(<%= g.planId %>)"><%= __('talentx:succ_open_plan') %></button>
+                  <button type="button" class="btn btn-sm btn-success" onclick="CONT.seed(<%= g.planId %>)"><%= __('talentx:succ_build_bench') %></button>
+                <% } %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+
+    <!-- 3) Plans past their review date ---------------------------------------->
+    <h4 style="margin:.9rem 0 .25rem"><%= __('talentx:succ_step3_title') %> <span class="text-muted">(<%= SH_DUE.length %>)</span></h4>
+    <p class="text-muted" style="margin:0 0 .35rem;font-size:.85em"><%= __('talentx:succ_step3_hint').replace('{n}', SH_MONTHS) %></p>
+    <% if (!SH_DUE.length) { %>
+      <p class="text-muted" style="margin:0"><em><%= __('talentx:succ_none_due') %></em></p>
+    <% } else { %>
+      <table class="table start-table" id="succ-due-table">
+        <thead><tr><th><%= __('talentx:succ_role') %></th><th><%= __('talentx:succ_incumbent') %></th><th><%= __('talentx:succ_bench') %></th><th><%= __('talentx:succ_review_due') %></th><th><%= __('talentx:succ_last_reviewed') %></th><th><%= __('talentx:succ_actions') %></th></tr></thead>
+        <tbody>
+          <% SH_DUE.forEach(function(p){ %>
+            <tr>
+              <td><%= p.roleName %></td>
+              <td><% if (p.incumbentFirst || p.incumbentLast) { %><%= (p.incumbentFirst||'') + ' ' + (p.incumbentLast||'') %><% } else { %><span class="text-muted"><%= __('talentx:succ_no_incumbent') %></span><% } %></td>
+              <td><%= p.benchDepth || 0 %> · <%= __('talentx:ct_ready_now_col') %> <%= p.readyNowCount || 0 %></td>
+              <td>
+                <%= sDate(p.reviewDueYmd) %><br>
+                <% if (Number(p.daysOverdue) > 0) { %>
+                  <span class="badge badge-danger"><%= __('talentx:succ_overdue_days').replace('{n}', Number(p.daysOverdue)) %></span>
+                <% } else { %>
+                  <span class="badge"><%= __('talentx:succ_due_today') %></span>
+                <% } %>
+              </td>
+              <td><% if (p.lastReviewedYmd) { %><%= sDate(p.lastReviewedYmd) %><% } else { %><span class="text-muted"><%= __('talentx:succ_never_reviewed') %></span><% } %></td>
+              <td style="white-space:nowrap">
+                <button type="button" class="btn btn-sm btn-secondary" onclick="CONT.jumpToPlan(<%= p.id %>)"><%= __('talentx:succ_open_plan') %></button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="CONT.review(<%= p.id %>)"><%= __('talentx:succ_review_now') %></button>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+</div>
+
+<!-- ============================ COVERAGE ============================ -->
+<div class="card" style="padding:0;margin-bottom:1rem">
+  <div style="padding:.75rem 1rem;border-bottom:1px solid rgba(148,163,184,.2)"><h3 style="margin:0"><%= __('talentx:ct_coverage') %></h3></div>
+  <table class="table" id="cov-table">
+    <thead><tr><th><%= __('talentx:role') %></th><th><%= __('talentx:ct_criticality') %></th><th><%= __('talentx:ct_vacancy_risk') %></th><th><%= __('talentx:ct_business_impact') %></th><th><%= __('talentx:ct_bench') %></th><th><%= __('talentx:ct_ready_now_col') %></th><th><%= __('talentx:ct_coverage_col') %></th><th><%= __('talentx:ct_incumbent_risk') %></th></tr></thead>
+    <tbody>
+      <% if (!coverage || !coverage.length) { %>
+        <tr><td colspan="8"><em><%= __('talentx:ct_no_critical') %></em></td></tr>
+      <% } else { coverage.forEach(function(c){ %>
+        <tr>
+          <td><%= c.roleName %></td>
+          <td><span class="crit crit-<%= c.criticalityScore %>"><%= c.criticalityScore %>/5</span></td>
+          <td><span class="risk risk-<%= c.vacancyRisk %>"><%= c.vacancyRisk %></span></td>
+          <td><% if (c.businessImpact) { %><%= c.businessImpact %><% } else { %><span class="text-muted">—</span><% } %></td>
+          <td><%= c.benchDepth || 0 %></td>
+          <td><%= c.readyNowCount || 0 %></td>
+          <td><% if (c.hasCoverageGap) { %><span class="badge badge-danger"><%= __('talentx:ct_gap_badge') %></span><% } else { %><span class="badge badge-success"><%= __('talentx:ct_covered') %></span><% } %></td>
+          <td><% if (c.incumbentFlightRisk) { %><span class="risk risk-<%= c.incumbentFlightRisk %>"><%= __('talentx:ct_flight') %> <%= c.incumbentFlightRisk %></span><% } else { %><span class="text-muted">—</span><% } %></td>
+        </tr>
+      <% }); } %>
+    </tbody>
+  </table>
+</div>
+
+<!-- ====================== DESIGNATE CRITICAL ROLE ====================== -->
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0" id="designate-heading"><%= __('talentx:ct_designate_heading') %></h3>
+  <p id="crit-hint" class="text-muted" role="status" style="display:none;margin:.15rem 0 .6rem"><%= __('talentx:succ_role_preselected') %></p>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div><label for="crit-role"><%= __('talentx:role') %> *</label><br>
+      <select id="crit-role" class="form-control" data-searchable>
+        <option value=""><%= __('talentx:cp_select') %></option>
+        <% (roles||[]).forEach(function(r){ %><option value="<%= r.id %>"><%= r.name %></option><% }); %>
+      </select>
+    </div>
+    <div><label for="crit-score"><%= __('talentx:ct_criticality_1_5') %></label><br>
+      <select id="crit-score" class="form-control"><% for (var i=1;i<=5;i++){ %><option value="<%= i %>" <%= i===3?'selected':'' %>><%= i %></option><% } %></select>
+    </div>
+    <div><label for="crit-vac"><%= __('talentx:ct_vacancy_risk') %></label><br>
+      <select id="crit-vac" class="form-control"><option>low</option><option selected>medium</option><option>high</option></select>
+    </div>
+    <div><label for="crit-ttf"><%= __('talentx:ct_ttf') %></label><br><input id="crit-ttf" type="number" min="0" class="form-control" style="width:120px"></div>
+    <div style="flex:1;min-width:200px"><label for="crit-impact"><%= __('talentx:ct_business_impact') %></label><br><input id="crit-impact" class="form-control" placeholder="<%= __('talentx:ct_business_impact_ph') %>"></div>
+    <div style="flex:1;min-width:200px"><label for="crit-rationale"><%= __('talentx:ct_rationale') %></label><br><input id="crit-rationale" class="form-control" placeholder="<%= __('talentx:ct_rationale_ph') %>"></div>
+    <button class="btn btn-primary" onclick="CONT.designate()"><%= __('talentx:ct_designate') %></button>
+  </div>
+</div>
+
+<!-- ============================ PLANS ============================ -->
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><%= __('talentx:ct_open_plan_heading') %></h3>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div><label for="plan-role"><%= __('talentx:role') %> *</label><br>
+      <select id="plan-role" class="form-control" data-searchable>
+        <option value=""><%= __('talentx:cp_select') %></option>
+        <% (roles||[]).forEach(function(r){ %><option value="<%= r.id %>"><%= r.name %></option><% }); %>
+      </select>
+    </div>
+    <div><label for="plan-incumbent"><%= __('talentx:ct_incumbent_opt') %></label><br>
+      <select id="plan-incumbent" class="form-control">
+        <option value=""><%= __('talentx:ct_none') %></option>
+        <% (employees||[]).forEach(function(e){ %><option value="<%= e.id %>"><%= e.name %></option><% }); %>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="CONT.openPlan()"><%= __('talentx:ct_open_plan') %></button>
+  </div>
+</div>
+
+<div class="card" style="padding:0;margin-bottom:1rem">
+  <div style="padding:.75rem 1rem;border-bottom:1px solid rgba(148,163,184,.2)"><h3 style="margin:0"><%= __('talentx:ct_plans') %></h3></div>
+  <table class="table" id="plan-table">
+    <thead><tr><th><%= __('talentx:role') %></th><th><%= __('talentx:ct_incumbent') %></th><th><%= __('talentx:status') %></th><th><%= __('talentx:ct_bench') %></th><th><%= __('talentx:succ_next_review') %></th><th><%= __('talentx:actions') %></th></tr></thead>
+    <tbody>
+      <% if (!plans || !plans.length) { %>
+        <tr><td colspan="6"><em><%= __('talentx:ct_no_plans') %></em></td></tr>
+      <% } else { plans.forEach(function(p){ %>
+        <tr data-plan="<%= p.id %>">
+          <td><%= p.roleName %></td>
+          <td><%= (p.incumbentFirst||'') + ' ' + (p.incumbentLast||'') %></td>
+          <td><span class="badge"><%= enumLabel(p.status) %></span></td>
+          <td><%= p.benchDepth || 0 %></td>
+          <td style="white-space:nowrap">
+            <% if (p.reviewDueYmd) { %>
+              <%= sDate(p.reviewDueYmd) %>
+              <% if (Number(p.daysOverdue) >= 0) { %> <span class="badge badge-danger"><%= Number(p.daysOverdue) > 0 ? __('talentx:succ_overdue_days').replace('{n}', Number(p.daysOverdue)) : __('talentx:succ_due_today') %></span><% } %>
+            <% } else { %><span class="text-muted">—</span><% } %>
+          </td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-sm btn-secondary" onclick="CONT.toggle(<%= p.id %>)"><%= __('talentx:open') %></button>
+            <button class="btn btn-sm btn-success" onclick="CONT.seed(<%= p.id %>)" title="<%= __('talentx:ct_seed_title') %>"><%= __('talentx:ct_seed_bench') %></button>
+            <button class="btn btn-sm btn-primary" onclick="CONT.review(<%= p.id %>)"><%= __('talentx:succ_review_now') %></button>
+            <button class="btn btn-sm btn-danger" onclick="CONT.archive(<%= p.id %>)"><%= __('talentx:nb_archive') %></button>
+          </td>
+        </tr>
+        <tr class="plan-detail" id="detail-<%= p.id %>" style="display:none"><td colspan="6"><div class="detail-body"><em><%= __('talentx:loading') %></em></div></td></tr>
+      <% }); } %>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================ HANDOVER ============================ -->
+<div class="card" style="padding:0;margin-bottom:1rem">
+  <div style="padding:.75rem 1rem;border-bottom:1px solid rgba(148,163,184,.2);display:flex;justify-content:space-between;align-items:center">
+    <h3 style="margin:0"><%= __('talentx:ct_handover') %></h3>
+    <button class="btn btn-sm btn-secondary" onclick="CONT.loadHandover()"><%= __('talentx:refresh') %></button>
+  </div>
+  <div style="padding:.75rem 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;border-bottom:1px solid rgba(148,163,184,.15)">
+    <div><label for="ho-out"><%= __('talentx:ct_outgoing') %> *</label><br>
+      <select id="ho-out" class="form-control"><option value=""><%= __('talentx:cp_select') %></option>
+        <% (employees||[]).forEach(function(e){ %><option value="<%= e.id %>"><%= e.name %></option><% }); %>
+      </select></div>
+    <div><label for="ho-in"><%= __('talentx:ct_incoming_opt') %></label><br>
+      <select id="ho-in" class="form-control"><option value=""><%= __('talentx:ct_none') %></option>
+        <% (employees||[]).forEach(function(e){ %><option value="<%= e.id %>"><%= e.name %></option><% }); %>
+      </select></div>
+    <div><label for="ho-due"><%= __('talentx:ct_due') %></label><br><input id="ho-due" type="date" class="form-control"></div>
+    <button class="btn btn-primary" onclick="CONT.createHandover()"><%= __('talentx:ct_start_handover') %></button>
+    <span class="text-muted" style="font-size:.82em"><%= __('talentx:ct_auto_create') %></span>
+  </div>
+  <table class="table" id="ho-table">
+    <thead><tr><th><%= __('talentx:ct_outgoing') %></th><th><%= __('talentx:ct_incoming') %></th><th><%= __('talentx:status') %></th><th><%= __('talentx:ta_progress') %></th><th><%= __('talentx:ct_due') %></th><th></th></tr></thead>
+    <tbody><tr><td colspan="6"><em><%= __('talentx:ct_click_refresh_ho') %></em></td></tr></tbody>
+  </table>
+</div>
+
+<!-- ============================ RETENTION ============================ -->
+<div class="card" style="padding:0">
+  <div style="padding:.75rem 1rem;border-bottom:1px solid rgba(148,163,184,.2);display:flex;justify-content:space-between;align-items:center">
+    <h3 style="margin:0"><%= __('talentx:ct_risk_of_loss') %></h3>
+    <button class="btn btn-sm btn-secondary" onclick="CONT.loadRetention()"><%= __('talentx:refresh') %></button>
+  </div>
+  <table class="table" id="ret-table">
+    <thead><tr><th><%= __('talentx:employee') %></th><th><%= __('talentx:ct_flight_risk') %></th><th><%= __('talentx:ct_impact') %></th><th><%= __('talentx:ct_score') %></th><th><%= __('talentx:ct_source') %></th><th><%= __('talentx:actions') %></th></tr></thead>
+    <tbody><tr><td colspan="6"><em><%= __('talentx:ct_click_refresh_ret') %></em></td></tr></tbody>
+  </table>
+</div>
+
+<style>
+  .crit{padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:#64748b}
+  .crit-4,.crit-5{background:#b00020}.crit-3{background:#d97706}.crit-1,.crit-2{background:#0f8a3c}
+  .risk{padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:#64748b}
+  .risk-high{background:#b00020}.risk-medium{background:#d97706}.risk-low{background:#0f8a3c}
+  /* Not one of the three verdicts: nobody has judged this person yet. Muted and
+     transparent on purpose — an unmeasured cell must not read as a green pass. */
+  .risk-unknown{background:transparent;color:#94a3b8;border:1px dashed rgba(148,163,184,.5)}
+  .badge{padding:2px 8px;border-radius:10px;font-size:.8em;background:#334155;color:#e2e8f0}
+  .badge-danger{background:#b00020;color:#fff}.badge-success{background:#0f8a3c;color:#fff}
+  #ret-table td,#cov-table td,#plan-table td{vertical-align:middle}
+  .start-card{border-left:4px solid #d97706}
+  .start-card h4{font-size:1rem}
+  .start-table{margin:0 0 .35rem}
+  .start-table td,.start-table th{vertical-align:middle;font-size:.9em}
+</style>
+
+<%# UNE SEULE discipline de reseau pour toute l application :
+    public/js/sa-console-net.js. Une reponse REDIRIGEE, non-JSON, 401/440 est
+    un ECHEC -- jamais un succes -- et le refus est ecrit dans la langue de la
+    page. Charge AVANT le script de la page (non differe) pour que SAConsoleNet
+    existe au premier appel. %>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  // Titre de la carte de refus : neutre, car ces ecrans ne sont pas la console de
+  // revue (sans cela ils affichaient « La file de revue n a pas pu etre chargee »).
+  load_failed: __('dash:unable_to_load'),
+  pending_failed: __('dash:unable_to_load'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+// Everything this page builds goes through innerHTML, and much of it is text
+// a person typed: employee names, and the title/detail of a handover item.
+// Escape before injecting, exactly as public/js/dashboard.js does.
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+  (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+// An unmeasured verdict prints as a dash, never as the word "null" and never
+// as a band class (`risk-null`) that quietly styles it like a real rating.
+const band = (v) => v == null
+  ? '<span class="risk risk-unknown" title="' + esc(CT_T.notMeasuredTitle) + '">—</span>'
+  : '<span class="risk risk-' + esc(v) + '">' + esc(v) + '</span>';
+const CT_T = {
+  notMeasuredTitle: <%- JSON.stringify(__('dash:rd_not_measured_title')) %>,
+  selectRole: <%- JSON.stringify(__('talentx:ct_select_role')) %>,
+  seeded: <%- JSON.stringify(__('talentx:ct_seeded')) %>,
+  archiveConfirm: <%- JSON.stringify(__('talentx:ct_archive_confirm')) %>,
+  bandNow: <%- JSON.stringify(__('talentx:ct_band_now')) %>,
+  band12: <%- JSON.stringify(__('talentx:ct_band_12')) %>,
+  band3: <%- JSON.stringify(__('talentx:ct_band_3')) %>,
+  bandEmergency: <%- JSON.stringify(__('talentx:ct_band_emergency')) %>,
+  bench: <%- JSON.stringify(__('talentx:ct_bench')) %>,
+  benchEmpty: <%- JSON.stringify(__('talentx:ct_bench_empty')) %>,
+  candidate: <%- JSON.stringify(__('talentx:ct_candidate')) %>,
+  readiness: <%- JSON.stringify(__('talentx:ct_readiness')) %>,
+  source: <%- JSON.stringify(__('talentx:ct_source')) %>,
+  gaps: <%- JSON.stringify(__('talentx:ct_gaps_col')) %>,
+  gapsUnmeasured: <%- JSON.stringify(__('talentx:ct_gaps_unmeasured')) %>,
+  remove: <%- JSON.stringify(__('talentx:remove')) %>,
+  addSuccessor: <%- JSON.stringify(__('talentx:ct_add_successor')) %>,
+  select: <%- JSON.stringify(__('talentx:cp_select')) %>,
+  add: <%- JSON.stringify(__('talentx:add')) %>,
+  setCover: <%- JSON.stringify(__('talentx:ct_set_cover')) %>,
+  removeConfirm: <%- JSON.stringify(__('talentx:ct_remove_confirm')) %>,
+  selectEmployee: <%- JSON.stringify(__('talentx:ct_select_employee')) %>,
+  pickCover: <%- JSON.stringify(__('talentx:ct_pick_cover')) %>,
+  coverNote: <%- JSON.stringify(__('talentx:ct_cover_note')) %>,
+  coverSet: <%- JSON.stringify(__('talentx:ct_cover_set')) %>,
+  noRisk: <%- JSON.stringify(__('talentx:ct_no_risk')) %>,
+  manual: <%- JSON.stringify(__('talentx:ct_manual')) %>,
+  computed: <%- JSON.stringify(__('talentx:ct_computed')) %>,
+  recompute: <%- JSON.stringify(__('talentx:ct_recompute')) %>,
+  override: <%- JSON.stringify(__('talentx:ct_override')) %>,
+  selectOutgoing: <%- JSON.stringify(__('talentx:ct_select_outgoing')) %>,
+  noHandovers: <%- JSON.stringify(__('talentx:ct_no_handovers')) %>,
+  open: <%- JSON.stringify(__('talentx:open')) %>,
+  loading: <%- JSON.stringify(__('talentx:loading')) %>,
+  item: <%- JSON.stringify(__('talentx:ct_item')) %>,
+  kind: <%- JSON.stringify(__('talentx:ct_kind')) %>,
+  status: <%- JSON.stringify(__('talentx:status')) %>,
+  stOpen: <%- JSON.stringify(__('talentx:ct_st_open')) %>,
+  stInProgress: <%- JSON.stringify(__('talentx:ct_st_in_progress')) %>,
+  stCompleted: <%- JSON.stringify(__('talentx:ct_st_completed')) %>,
+  addItem: <%- JSON.stringify(__('talentx:ct_add_item')) %>,
+  itemPh: <%- JSON.stringify(__('talentx:ct_item_ph')) %>,
+  enterItem: <%- JSON.stringify(__('talentx:ct_enter_item')) %>,
+  promptFlight: <%- JSON.stringify(__('talentx:ct_prompt_flight')) %>,
+  promptImpact: <%- JSON.stringify(__('talentx:ct_prompt_impact')) %>,
+  reviewConfirm: <%- JSON.stringify(__('talentx:succ_review_confirm')) %>,
+  reviewTitle: <%- JSON.stringify(__('talentx:succ_review_title')) %>,
+  reviewed: <%- JSON.stringify(__('talentx:succ_reviewed')) %>,
+  reviewNow: <%- JSON.stringify(__('talentx:succ_review_now')) %>,
+  planOpened: <%- JSON.stringify(__('talentx:succ_plan_opened')) %>,
+  reviewMonths: <%- include('../../partials/json-script', { v: String(SH_MONTHS) }) %>,
+  lang: <%- include('../../partials/json-script', { v: _sLang }) %>
+};
+/* the client-rendered twin of the server defect. A handover row
+   printed String(h.dueDate).slice(0,10), i.e. the raw head of whatever the API
+   sent (ISO over JSON, an English weekday head the day a route hands over a
+   Date object rather than a string). The
+   product has ONE date rendering — dd/MM/yyyy in both languages, src/utils/
+   dateFormat.fmtDate — and an absent value is « — », never a blank cell.
+   Forced to UTC: a due date is a calendar day, not an instant. */
+function ctDate(v){
+  if(!v) return '—';
+  const d=new Date(typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)?v+'T00:00:00Z':v);
+  if(isNaN(d.getTime())) return '—';
+  const p=(n)=>String(n).padStart(2,'0');
+  return p(d.getUTCDate())+'/'+p(d.getUTCMonth()+1)+'/'+d.getUTCFullYear();
+}
+const CONT = {
+  // L assistant reseau ne se recopie plus ici : il vit dans
+  // public/js/sa-console-net.js (SAConsoleNet.call). L ancien corps avalait
+  // `r.json` en `{}` ; sur une session expiree le serveur repondait
+  // `302 -> /login`, le fetch de navigateur SUIVAIT la redirection, la page de
+  // connexion arrivait en `200 text/html`, `r.ok` valait donc true et `j`
+  // valait `{}` : le test `if(!r.ok||j.ok===false)` ne voyait rien.
+  // Les deux assistants — POST et GET — portaient le meme defaut.
+  async api(p,b){ try { return await SAConsoleNet.call(p,'POST',b||{}); } catch(e){ alert(e.message); throw e; } },
+  async get(p){ try { return await SAConsoleNet.call(p,'GET'); } catch(e){ alert(e.message); throw e; } },
+
+  async designate(){
+    const roleId=Number(document.getElementById('crit-role').value);
+    if(!roleId){alert(CT_T.selectRole);return;}
+    // businessImpact was a dead column: the route accepted it and the service
+    // wrote it, but the form never sent it and nothing ever displayed it.
+    await this.api('/v2/continuity/criticality',{roleId,score:document.getElementById('crit-score').value,businessImpact:document.getElementById('crit-impact').value||null,vacancyRisk:document.getElementById('crit-vac').value,timeToFillDays:document.getElementById('crit-ttf').value||null,rationale:document.getElementById('crit-rationale').value||null});
+    location.reload();
+  },
+  async openPlan(){
+    const roleId=Number(document.getElementById('plan-role').value);
+    if(!roleId){alert(CT_T.selectRole);return;}
+    await this.api('/v2/continuity/plan',{roleId,incumbentEmployeeId:document.getElementById('plan-incumbent').value||null});
+    location.reload();
+  },
+  async seed(id){ const j=await this.api('/v2/continuity/plan/'+id+'/seed',{}); this.say(CT_T.seeded.replace('{n}', j.added),'success'); location.reload(); },
+
+  // ---- « Commencer » actions ------------------------------------------------
+  say(msg,type){ if(typeof window.toast==='function'){window.toast(msg,type||'info');} else {alert(msg);} },
+  /** Pre-select an unscored role in the designate form and take the user there. */
+  scoreRole(roleId){
+    const sel=document.getElementById('crit-role');
+    if(sel){ sel.value=String(roleId); sel.dispatchEvent(new Event('change',{bubbles:true})); }
+    const hint=document.getElementById('crit-hint'); if(hint) hint.style.display='';
+    const head=document.getElementById('designate-heading');
+    if(head&&head.scrollIntoView) head.scrollIntoView({behavior:'smooth',block:'center'});
+    const score=document.getElementById('crit-score'); if(score) score.focus();
+  },
+  /** Open the (missing) plan for a critical role, straight from the queue. */
+  async openPlanFor(roleId){
+    await this.api('/v2/continuity/plan',{roleId});
+    this.say(CT_T.planOpened,'success');
+    location.reload();
+  },
+  /** Scroll to an existing plan row and expand its bench. */
+  jumpToPlan(planId){
+    const row=document.querySelector('tr[data-plan="'+planId+'"]');
+    if(!row) return;
+    if(row.scrollIntoView) row.scrollIntoView({behavior:'smooth',block:'center'});
+    const detail=document.getElementById('detail-'+planId);
+    if(detail&&detail.style.display==='none') this.toggle(planId);
+  },
+  /** Mark a plan reviewed — stamps who/when and pushes review_due forward. */
+  async review(planId){
+    // one confirmation component; ui-feedback.js is on every page.
+    const ask=window.confirmDialog(CT_T.reviewConfirm.replace('{n}',CT_T.reviewMonths),{title:CT_T.reviewTitle,okText:CT_T.reviewNow});
+    if(!(await ask)) return;
+    const j=await this.api('/v2/continuity/plan/'+planId+'/review',{});
+    let due=j.reviewDue||'';
+    try { if(due) due=new Date(due+'T00:00:00Z').toLocaleDateString(CT_T.lang); } catch(e){ /* keep ISO */ }
+    this.say(CT_T.reviewed.replace('{date}',due),'success');
+    location.reload();
+  },
+
+  async archive(id){ if(!(await window.confirmDialog(CT_T.archiveConfirm,{danger:true})))return; await this.api('/v2/continuity/plan/'+id+'/archive',{}); location.reload(); },
+
+  async toggle(id){
+    const row=document.getElementById('detail-'+id);
+    if(row.style.display!=='none'){row.style.display='none';return;}
+    row.style.display='';
+    const j=await this.get('/v2/continuity/plan/'+id);
+    row.querySelector('.detail-body').innerHTML=this.renderDetail(j.plan);
+  },
+  renderDetail(plan){
+    const bands={ready_now:CT_T.bandNow,ready_1_2y:CT_T.band12,ready_3y:CT_T.band3,emergency:CT_T.bandEmergency};
+    let h='<div style="padding:.75rem 0"><strong>'+CT_T.bench+'</strong>';
+    if(!plan.successors||!plan.successors.length){h+=' <em>'+CT_T.benchEmpty+'</em>';}
+    h+='<table class="table" style="margin:.5rem 0"><thead><tr><th>'+CT_T.candidate+'</th><th>'+CT_T.readiness+'</th><th>'+CT_T.source+'</th><th>'+CT_T.gaps+'</th><th></th></tr></thead><tbody>';
+    (plan.successors||[]).forEach(function(s){
+      // scoreRows deliberately keeps every never-assessed requirement in the
+      // gap list — the department-designed set is never hidden — and marks it
+      // `current: null`. Flattening the list to skill names threw that marker
+      // away, so "8 measured shortfalls + 12 nobody has looked at" was shown
+      // as one undifferentiated list of 20 under a header reading "Gaps".
+      // A shortfall is evidence; an unmeasured requirement is a question.
+      const _gs=(s.gapSummary||[]);
+      const _short=_gs.filter(function(g){return g.current!=null;});
+      const _unmeas=_gs.length-_short.length;
+      const gaps=(_short.length?_short.map(function(g){return g.skillName;}).join(', '):'—');
+      const gapsNote=_unmeas?CT_T.gapsUnmeasured.replace('{n}',_unmeas):'';
+      h+='<tr><td>'+esc(s.firstName||'')+' '+esc(s.lastName||'')+'</td>'
+        +'<td><select class="form-control" onchange="CONT.band('+s.id+',this.value)">'
+        +Object.keys(bands).map(function(b){return '<option value="'+b+'"'+(s.readinessBand===b?' selected':'')+'>'+bands[b]+'</option>';}).join('')
+        +'</select></td><td>'+esc(s.source)+'</td><td style="max-width:240px;font-size:.85em">'+esc(gaps)
+        +(gapsNote?'<div style="color:#94a3b8;font-size:.92em;margin-top:.15rem" title="'+esc(CT_T.notMeasuredTitle)+'">'+esc(gapsNote)+'</div>':'')+'</td>'
+        +'<td><button class="btn btn-sm btn-danger" onclick="CONT.removeSucc('+s.id+')">'+CT_T.remove+'</button></td></tr>';
+    });
+    h+='</tbody></table>';
+    h+='<div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap"><div><label for="add-succ-'+plan.id+'">'+CT_T.addSuccessor+'</label><br><select id="add-succ-'+plan.id+'" class="form-control"><option value="">'+CT_T.select+'</option>'
+      +(window.__contEmployees||[]).map(function(e){return '<option value="'+esc(e.id)+'">'+esc(e.name)+'</option>';}).join('')
+      +'</select></div><button class="btn btn-sm btn-primary" onclick="CONT.addSucc('+plan.id+')">'+CT_T.add+'</button>'
+      +'<button class="btn btn-sm btn-secondary" onclick="CONT.cover('+plan.id+')">'+CT_T.setCover+'</button></div></div>';
+    return h;
+  },
+  async band(id,band){ await this.api('/v2/continuity/successor/'+id+'/band',{band}); },
+  async removeSucc(id){ if(!(await window.confirmDialog(CT_T.removeConfirm,{danger:true})))return; await this.api('/v2/continuity/successor/'+id+'/remove',{}); location.reload(); },
+  async addSucc(planId){ const sel=document.getElementById('add-succ-'+planId); const employeeId=Number(sel.value); if(!employeeId){alert(CT_T.selectEmployee);return;} await this.api('/v2/continuity/plan/'+planId+'/successor',{employeeId}); this.toggle(planId); this.toggle(planId); location.reload(); },
+  async cover(planId){ const sel=document.getElementById('add-succ-'+planId); const employeeId=Number(sel.value); if(!employeeId){alert(CT_T.pickCover);return;} const note=(await window.promptDialog(CT_T.coverNote,''))||''; await this.api('/v2/continuity/plan/'+planId+'/emergency-cover',{employeeId,note}); alert(CT_T.coverSet); },
+
+  async loadRetention(){
+    const j=await this.get('/v2/continuity/retention');
+    const tb=document.querySelector('#ret-table tbody');
+    if(!j.list||!j.list.length){tb.innerHTML='<tr><td colspan="6"><em>'+CT_T.noRisk+'</em></td></tr>';}
+    else{tb.innerHTML=j.list.map(function(r){
+      return '<tr><td>'+esc(r.firstName||'')+' '+esc(r.lastName||'')+'<div style="color:#94a3b8;font-size:.78rem">'+esc(r.employeeNumber||'')+'</div></td>'
+        +'<td>'+band(r.flightRisk)+'</td>'
+        +'<td>'+band(r.impactOfLoss)+'</td>'
+        +'<td>'+(r.computedScore!=null?r.computedScore:'—')+'</td>'
+        +'<td>'+(r.manualOverride?CT_T.manual:CT_T.computed)+'</td>'
+        +'<td style="white-space:nowrap"><button class="btn btn-sm btn-secondary" onclick="CONT.recompute('+r.employeeId+')">'+CT_T.recompute+'</button> '
+        +'<button class="btn btn-sm btn-primary" onclick="CONT.override('+r.employeeId+')">'+CT_T.override+'</button></td></tr>';
+    }).join('');}
+  },
+  async createHandover(){
+    const outgoingEmployeeId=Number(document.getElementById('ho-out').value);
+    if(!outgoingEmployeeId){alert(CT_T.selectOutgoing);return;}
+    await this.api('/v2/continuity/handover',{outgoingEmployeeId,incomingEmployeeId:document.getElementById('ho-in').value||null,dueDate:document.getElementById('ho-due').value||null});
+    this.loadHandover();
+  },
+  async loadHandover(){
+    const j=await this.get('/v2/continuity/handover');
+    const tb=document.querySelector('#ho-table tbody');
+    if(!j.list||!j.list.length){tb.innerHTML='<tr><td colspan="6"><em>'+CT_T.noHandovers+'</em></td></tr>';return;}
+    tb.innerHTML=j.list.map(function(h){
+      const prog=(h.itemCount?Math.round((h.doneCount/h.itemCount)*100):0);
+      return '<tr><td>'+esc(h.outFirst||'')+' '+esc(h.outLast||'')+'</td>'
+        +'<td>'+((h.inFirst||h.inLast)?(esc(h.inFirst||'')+' '+esc(h.inLast||'')):'<span class="text-muted">—</span>')+'</td>'
+        +'<td><span class="badge">'+esc(h.status)+'</span></td>'
+        +'<td>'+h.doneCount+'/'+h.itemCount+' ('+prog+'%)</td>'
+        +'<td>'+ctDate(h.dueDate)+'</td>'
+        +'<td><button class="btn btn-sm btn-secondary" onclick="CONT.openHandover('+h.id+')">'+CT_T.open+'</button></td></tr>'
+        +'<tr id="ho-detail-'+h.id+'" style="display:none"><td colspan="6"><div class="ho-body"><em>'+CT_T.loading+'</em></div></td></tr>';
+    }).join('');
+  },
+  async openHandover(id){
+    const row=document.getElementById('ho-detail-'+id);
+    if(row.style.display!=='none'){row.style.display='none';return;}
+    row.style.display='';
+    const j=await this.get('/v2/continuity/handover/'+id);
+    const p=j.plan;
+    let h='<table class="table" style="margin:.5rem 0"><thead><tr><th>'+CT_T.item+'</th><th>'+CT_T.kind+'</th><th>'+CT_T.status+'</th></tr></thead><tbody>';
+    const stLabels={open:CT_T.stOpen,in_progress:CT_T.stInProgress,completed:CT_T.stCompleted};
+    (p.items||[]).forEach(function(it){
+      h+='<tr><td><strong>'+esc(it.title)+'</strong>'+(it.detail?'<div style="color:#94a3b8;font-size:.82em">'+esc(it.detail)+'</div>':'')+'</td><td>'+esc(it.kind)+'</td>'
+        +'<td><select class="form-control" onchange="CONT.itemStatus('+it.id+',this.value)">'
+        +['open','in_progress','completed'].map(function(s){return '<option value="'+s+'"'+(it.status===s?' selected':'')+'>'+(stLabels[s]||s)+'</option>';}).join('')
+        +'</select></td></tr>';
+    });
+    h+='</tbody></table><div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap"><div><label for="ho-it-'+id+'">'+CT_T.addItem+'</label><br><input id="ho-it-'+id+'" class="form-control" placeholder="'+CT_T.itemPh+'"></div><button class="btn btn-sm btn-primary" onclick="CONT.addHandoverItem('+id+')">'+CT_T.add+'</button></div>';
+    row.querySelector('.ho-body').innerHTML=h;
+  },
+  async itemStatus(itemId,status){ await this.api('/v2/continuity/handover/item/'+itemId+'/status',{status}); this.loadHandover(); },
+  async addHandoverItem(id){ const inp=document.getElementById('ho-it-'+id); const title=inp.value.trim(); if(!title){alert(CT_T.enterItem);return;} await this.api('/v2/continuity/handover/'+id+'/item',{title}); this.openHandover(id); this.openHandover(id); },
+  async recompute(empId){ await this.api('/v2/continuity/retention/'+empId+'/recompute',{}); this.loadRetention(); },
+  async override(empId){ const fr=await window.promptDialog(CT_T.promptFlight,''); if(!fr)return; const il=(await window.promptDialog(CT_T.promptImpact,''))||undefined; await this.api('/v2/continuity/retention/'+empId+'/override',{flightRisk:fr,impactOfLoss:il}); this.loadRetention(); }
+};
+window.__contEmployees = <%- include('../../partials/json-script', { v: (employees||[]).map(function(e){return {id:e.id,name:e.name};}) }) %>;
+// Auto-load the flight-risk + handover tables so leaders see them without a hidden
+// click; the Refresh buttons remain for a manual re-fetch.
+document.addEventListener('DOMContentLoaded', function(){ try { CONT.loadRetention(); CONT.loadHandover(); } catch (e) { /* optional */ } });
+</script>

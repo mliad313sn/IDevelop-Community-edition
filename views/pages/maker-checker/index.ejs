@@ -1,0 +1,127 @@
+<%#
+    the approvals queue rebuilt on
+    the /cancellations pattern — GET filters (state / kind / site), a pager,
+    translated states and kinds, the maker's NAME, localised dates, a readable
+    summary instead of a <pre> JSON dump, labelled controls and an empty state.
+    Locals: items, filters, states, kinds, sites, pager, me.
+%>
+<div class="page-header">
+    <h1><i class="fas fa-clipboard-check" aria-hidden="true"></i> <%= __('mc:queue.title') %></h1>
+</div>
+
+<p class="help-text" style="margin-bottom:1rem;"><%= __('admin:mcq_intro') %></p>
+
+<form method="GET" action="/v2/uam/maker-checker/queue" class="card"
+      style="display:flex;gap:8px;align-items:center;padding:.8rem 1.1rem;margin-bottom:1rem;flex-wrap:wrap;"
+      data-filter-memory>
+    <label class="sr-only" for="mcq-state"><%= __('admin:mcq_filter_state') %></label>
+    <select id="mcq-state" name="state" class="form-control" style="max-width:200px;" aria-label="<%= __('admin:mcq_filter_state') %>">
+        <option value="all" <%= filters.state === 'all' ? 'selected' : '' %>><%= __('admin:mcq_all_states') %></option>
+        <% states.forEach(function (s) { %>
+        <option value="<%= s %>" <%= filters.state === s ? 'selected' : '' %>><%= __('admin:mcq_state_' + s) %></option>
+        <% }); %>
+    </select>
+    <label class="sr-only" for="mcq-kind"><%= __('admin:mcq_filter_kind') %></label>
+    <select id="mcq-kind" name="kind" class="form-control" style="max-width:260px;" aria-label="<%= __('admin:mcq_filter_kind') %>">
+        <option value=""><%= __('admin:mcq_all_kinds') %></option>
+        <% kinds.forEach(function (k) { %>
+        <option value="<%= k %>" <%= filters.kind === k ? 'selected' : '' %>><%= __('admin:mcq_kind_' + k.replace(/\./g, '_'), { defaultValue: k }) %></option>
+        <% }); %>
+    </select>
+    <label class="sr-only" for="mcq-site"><%= __('admin:mcq_filter_site') %></label>
+    <select id="mcq-site" name="siteId" class="form-control" style="max-width:200px;" aria-label="<%= __('admin:mcq_filter_site') %>">
+        <%# a single-site scope never offers « Tous les sites » — it would mean « my one site ». %>
+        <% if (sites.length !== 1) { %><option value=""><%= __('admin:mcq_all_sites') %></option><% } %>
+        <% sites.forEach(function (s) { %>
+        <option value="<%= s.id %>" <%= String(filters.siteId) === String(s.id) ? 'selected' : '' %>><%= s.name %></option>
+        <% }); %>
+    </select>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:mv_apply') %></button>
+</form>
+
+<div class="card" style="padding:0;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('admin:mcq_th_request') %></th>
+                <th><%= __('admin:mcq_th_subject') %></th>
+                <th><%= __('admin:mcq_th_maker') %></th>
+                <th><%= __('admin:mcq_th_created') %></th>
+                <th><%= __('admin:mcq_th_state') %></th>
+                <th><%= __('admin:mcq_th_decision') %></th>
+            </tr></thead>
+            <tbody>
+                <% if (!items.length) { %>
+                <tr><td colspan="6" class="text-muted" style="text-align:center;padding:1.5rem;">
+                    <%= filters.state === 'pending' ? __('admin:mcq_empty_pending') : __('admin:mcq_empty') %>
+                </td></tr>
+                <% } %>
+                <% items.forEach(function (r) { %>
+                <tr>
+                    <td>
+                        <span class="mcq-tag"><%= r.kindLabel %></span>
+                        <div style="font-size:.8rem;margin-top:.25rem;"><%= r.summary %></div>
+                    </td>
+                    <td>
+                        <% if (r.employeeId) { %><a href="/employees/<%= r.employeeId %>"><%= r.employeeName %></a><% } else { %><span class="text-muted">—</span><% } %>
+                        <div style="font-size:.74rem;color:var(--text-muted);"><%= r.employeeNumber || '' %><% if (r.siteName) { %> · <%= r.siteName %><% } %></div>
+                    </td>
+                    <td style="font-size:.85rem;"><%= r.makerName || '—' %></td>
+                    <td style="font-size:.8rem;"><%= fmtDateTime(r.createdAt) %></td>
+                    <td>
+                        <span class="badge <%= r.state === 'pending' ? 'badge-warning' : (r.state === 'rejected' || r.state === 'failed' ? 'badge-danger' : 'badge-success') %>"><%= __('admin:mcq_state_' + r.state) %></span>
+                        <% if (r.error) { %><div style="font-size:.74rem;color:#b91c1c;margin-top:.2rem;"><%= __('admin:mcq_error') %><%= colon %> <%= r.error %></div><% } %>
+                    </td>
+                    <td style="text-align:right;white-space:nowrap;">
+                        <% if (r.state === 'pending' && me && me.id !== r.makerId) { %>
+                        <%# One form, two submit buttons — approve confirms, reject requires a reason
+                            (the shared data-confirm handler turns it into a mandatory-reason prompt). %>
+                        <form method="POST" action="/v2/uam/maker-checker/<%= r.id %>/decide" style="display:inline-flex;gap:4px;align-items:center;"
+                              data-confirm="<%= __('admin:mcq_approve_confirm') %>" data-confirm-title="<%= __('admin:mcq_approve_title') %>">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <input type="hidden" name="decision" value="approve">
+                            <button type="submit" class="btn btn-sm btn-primary"><%= __('admin:mcq_approve') %></button>
+                        </form>
+                        <form method="POST" action="/v2/uam/maker-checker/<%= r.id %>/decide" style="display:inline-flex;gap:4px;align-items:center;">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <input type="hidden" name="decision" value="reject">
+                            <label class="sr-only" for="mcq-reason-<%= r.id %>"><%= __('admin:mcq_reason_label') %></label>
+                            <input type="text" id="mcq-reason-<%= r.id %>" name="reason" class="form-control"
+                                   style="width:180px;padding:3px 6px;font-size:.8rem;"
+                                   placeholder="<%= __('admin:mcq_reason_ph') %>" required>
+                            <button type="submit" class="btn btn-sm btn-secondary"><%= __('admin:mcq_reject') %></button>
+                        </form>
+                        <% } else if (r.checkerName) { %>
+                        <div style="font-size:.78rem;color:var(--text-muted);"><%= __('admin:mcq_decided_by') %> <%= r.checkerName %><% if (r.decidedAt) { %> · <%= fmtDate(r.decidedAt) %><% } %></div>
+                        <% if (r.reason) { %><div style="font-size:.74rem;color:var(--text-muted);"><%= r.reason %></div><% } %>
+                        <% } else { %><span class="text-muted">—</span><% } %>
+                    </td>
+                </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<% const pg = pager; %>
+<% if (pg && pg.total) { %>
+<p class="text-muted" style="font-size:.8rem;margin:.6rem 0 0;"><%= __('admin:list_range', { from: pg.from, to: pg.to, total: pg.total }) %></p>
+<% } %>
+<% if (pg && pg.totalPages > 1) { %>
+<nav class="pagination" aria-label="<%= __('admin:page') %>">
+    <% if (pg.hasPrev) { %><a href="<%= pg.prevUrl %>" rel="prev">« <%= __('admin:previous') %></a><% } %>
+    <% pg.items.forEach(function (it) { if (it.gap) { %><span>...</span><% } else { %>
+        <a href="<%= it.url %>" class="<%= it.active ? 'active' : '' %>" <%- it.active ? 'aria-current="page"' : '' %>><%= it.n %></a>
+    <% } }); %>
+    <% if (pg.hasNext) { %><a href="<%= pg.nextUrl %>" rel="next"><%= __('admin:next') %> »</a><% } %>
+</nav>
+<% } %>
+
+<p class="text-muted" style="font-size:.8rem;margin-top:.8rem;">
+    <i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('admin:mcq_trace_note') %>
+</p>
+
+<style>
+.mcq-tag{display:inline-block;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;
+    border-radius:4px;padding:1px 6px;background:var(--bg-subtle,#f1f5f9);border:1px solid var(--border,#cbd5e1)}
+</style>

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="<%= (typeof lang !== 'undefined' && lang) ? lang : 'fr' %>">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <% const _brand = (typeof branding !== 'undefined' && branding) ? branding : { appName: 'IDevelop', logoUrl: null, faviconUrl: null, accentCss: '' }; %>
+    <title>
+        <%= typeof title !=='undefined' ? title + ' | ' : '' %><%= _brand.appName %>
+    </title>
+    <% if (_brand.faviconUrl) { %>
+    <link rel="icon" href="<%= _brand.faviconUrl %>">
+    <% } %>
+    <%- include('../partials/pwa-head') %>
+    <%# 3.23.17 UX-01: icons are self-hosted — an offline remote site used to get
+        blank icon-only buttons when cdnjs was unreachable. Web fonts are opt-in:
+        emitted only when the server explicitly enabled them (app.locals.externalFonts
+        === true); otherwise the system font stack in style.css is used. %>
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css?v=6.4.0">
+    <% if (typeof externalFonts !== 'undefined' && externalFonts === true) { %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"></noscript>
+    <% } %>
+    <!-- App Styles -->
+    <link rel="stylesheet" href="/css/style.css?v=<%= assetVersion %>">
+    <link rel="stylesheet" href="/css/report-builder.css?v=<%= assetVersion %>">
+    <!-- Accessibility & polish layer (loaded last so it refines the theme) -->
+    <link rel="stylesheet" href="/css/a11y-polish.css?v=<%= assetVersion %>">
+    <% if (_brand.accentCss) { %>
+    <!-- White-label accent: overrides the gold token family with the customer's brand color -->
+    <style nonce="<%= cspNonce %>"><%- _brand.accentCss %></style>
+    <% } %>
+    <!-- Prevent theme flash -->
+    <script nonce="<%= cspNonce %>">
+        (function () { var t = localStorage.getItem('theme'); if (t === 'light') document.documentElement.setAttribute('data-theme', 'light'); })();
+    </script>
+</head>
+
+<body class="<%= typeof user !== 'undefined' && user ? 'has-sidebar' : 'no-sidebar' %>">
+    <a href="#main-content" class="skip-link"><%= __('chrome:skip_to_main') %></a>
+    <% if (typeof user !=='undefined' && user) { %>
+        <%- include('../partials/sidebar') %>
+            <%- include('../partials/header') %>
+                <% } %>
+
+                    <main id="main-content" class="main-content" role="main" tabindex="-1">
+                        <div class="content-wrapper">
+                            <%- include('../partials/breadcrumbs') %>
+                                <%- include('../partials/flash') %>
+                                    <%# — appliance-licence warning strip. It wraps EVERY authenticated
+                                        page, so it is written defensively: `entitlement` is null for employees and
+                                        whenever the status lookup failed (server.js), every property is read through
+                                        a guard, and nothing is emitted unless the entitlement layer itself said
+                                        `warn` (over seat or expired — never for an unmanaged appliance). It is
+                                        dismissible for the browser session, per distinct problem, so an admin in the
+                                        middle of a task can clear it without losing the alert for a NEW problem. %>
+                                        <% if (typeof entitlement !== 'undefined' && entitlement && entitlement.warn) {
+                                            const _licSeats = (entitlement.seats === null || entitlement.seats === undefined) ? null : entitlement.seats;
+                                            const _licUsed = (entitlement.seatsUsed === null || entitlement.seatsUsed === undefined) ? null : entitlement.seatsUsed;
+                                            const _licExpired = !!entitlement.expired;
+                                            const _licOver = !!entitlement.overSeat;
+                                            // Dismissing "expired" must not silence a later "over seat", and a
+                                            // changed seat count is a new fact: the signature carries both.
+                                            const _licSig = (_licExpired ? 'x' : '-') + (_licOver ? 'o' : '-')
+                                                + ':' + (_licUsed === null ? '?' : _licUsed) + '/' + (_licSeats === null ? '-' : _licSeats);
+                                            const _licManage = (typeof can === 'function' && can('manage_settings'))
+                                                || (typeof user !== 'undefined' && user && user.role === 'superadmin'); %>
+                                        <div class="alert alert-warning lic-banner" role="status" aria-live="polite" id="licBanner" data-lic-sig="<%= _licSig %>">
+                                            <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                                            <span style="flex:1;">
+                                                <% if (_licExpired) { %><strong><%= __('admin:lic_banner_expired', { brand: (typeof brandName !== 'undefined' && brandName) ? brandName : 'IDevelop' }) %></strong> <% } %>
+                                                <% if (_licOver) { %><strong><%= __('admin:lic_banner_overseat') %></strong><% if (_licUsed !== null && _licSeats !== null) { %> (<%= _licUsed %>/<%= _licSeats %>)<% } %><% } %>
+                                                <% if (_licManage) { %> &middot; <a href="/admin/license"><%= __('admin:lic_banner_manage') %></a><% } %>
+                                            </span>
+                                            <button type="button" id="licBannerClose" class="lic-banner-close" title="<%= __('admin:lic_banner_dismiss') %>" aria-label="<%= __('admin:lic_banner_dismiss') %>" style="background:none;border:0;color:inherit;font-size:1.1rem;line-height:1;cursor:pointer;padding:0 .2rem;">&times;</button>
+                                        </div>
+                                        <script nonce="<%= cspNonce %>">
+                                            (function () {
+                                                var b = document.getElementById('licBanner');
+                                                if (!b) return;
+                                                // `.alert` sets display:flex, which beats the [hidden] UA rule — so the
+                                                // strip is REMOVED rather than hidden. It is server-rendered visible,
+                                                // so it still shows with JavaScript disabled.
+                                                var KEY = 'licBannerDismissed';
+                                                var sig = b.getAttribute('data-lic-sig') || '';
+                                                try { if (sessionStorage.getItem(KEY) === sig) { b.remove(); return; } } catch (e) { /* private mode */ }
+                                                var c = document.getElementById('licBannerClose');
+                                                if (c) c.addEventListener('click', function () {
+                                                    try { sessionStorage.setItem(KEY, sig); } catch (e) { /* private mode */ }
+                                                    b.remove();
+                                                });
+                                            })();
+                                        </script>
+                                        <% } %>
+                                    <%- body %>
+                        </div>
+                    </main>
+
+                    <% if (typeof user !=='undefined' && user) { %>
+                        <%- include('../partials/footer') %>
+                            <%- include('../partials/contextual-help') %>
+                            <%- include('../partials/command-palette') %>
+                            <% } %>
+
+                                <%# Dialog labels in the session language: read by ui-feedback.js
+                                    once it loads, so EN users no longer get French buttons. %>
+                                <script nonce="<%= cspNonce %>">
+                                    window.__UIF_I18N__ = <%- include('../partials/json-script', { v: {
+                                        confirmTitle: __('chrome:uif_confirm_title'), promptTitle: __('chrome:uif_prompt_title'),
+                                        confirm: __('chrome:uif_confirm'), cancel: __('chrome:uif_cancel'), ok: __('chrome:uif_ok'),
+                                        reasonRequired: __('chrome:uif_reason_required'), resetFilters: __('chrome:uif_reset_filters'),
+                                        sortBy: __('chrome:uif_sort_by'), close: __('chrome:flash_close')
+                                    } }) %>;
+                                </script>
+                                <script src="/js/ui-feedback.js?v=<%= assetVersion %>" defer></script>
+                                <script src="/js/enum-labels.js?v=<%= assetVersion %>" defer></script>
+                                <script src="/js/main.js?v=<%= assetVersion %>" defer></script>
+                                <script src="/js/date-format.js?v=<%= assetVersion %>" defer></script>
+                                <script src="/js/table-search.js?v=<%= assetVersion %>" defer></script>
+                                <script src="/js/list-tools.js?v=<%= assetVersion %>" defer></script>
+</body>
+
+</html>

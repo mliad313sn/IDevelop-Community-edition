@@ -1,0 +1,41 @@
+<div class="page-header">
+  <h1><i class="fas fa-certificate" aria-hidden="true"></i> <%= __('admin:lic_title') %></h1>
+  <p class="text-muted"><%= __('admin:lic_subtitle') %></p>
+</div>
+
+<div class="card" style="padding:1.1rem;margin-bottom:1rem;">
+  <h2 style="margin-top:0;font-size:1.05rem;"><%= __('admin:lic_status') %></h2>
+  <% if (status.unmanaged) { %>
+    <p><span class="chip" style="background:rgba(127,127,127,.18)"><%= __('admin:lic_unmanaged') %></span> <span class="text-muted"><%= __('admin:lic_unmanaged_hint') %></span></p>
+  <% } %>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.8rem;">
+    <div><div class="text-muted" style="font-size:.75rem;text-transform:uppercase"><%= __('admin:lic_customer') %></div><div style="font-weight:600"><%= status.customer || '—' %></div></div>
+    <div><div class="text-muted" style="font-size:.75rem;text-transform:uppercase"><%= __('admin:lic_seats') %></div>
+      <div style="font-weight:600<%= status.overSeat ? ';color:#b45309' : '' %>">
+        <%= status.seatsUsed %><% if (status.seats != null) { %> / <%= status.seats %><% } else { %> / <%= __('admin:lic_unlimited') %><% } %>
+        <% if (status.overSeat) { %><span style="color:#b45309">· <%= __('admin:lic_overseat') %></span><% } %>
+      </div>
+    </div>
+    <div><div class="text-muted" style="font-size:.75rem;text-transform:uppercase"><%= __('admin:lic_expires') %></div>
+      <div style="font-weight:600<%= status.expired ? ';color:#c8514b' : '' %>"><%= status.expiresOn ? new Date(status.expiresOn).toLocaleDateString(typeof lang!=='undefined'?lang:'fr') : '—' %><% if (status.expired) { %> · <%= __('admin:lic_expired') %><% } %></div>
+    </div>
+    <div><div class="text-muted" style="font-size:.75rem;text-transform:uppercase"><%= __('admin:lic_features') %></div><div style="font-weight:600"><%= (status.features||[]).includes('*') ? __('admin:lic_all_features') : (status.features||[]).join(', ') %></div></div>
+  </div>
+</div>
+
+<form method="POST" action="/admin/license" class="card" style="padding:1.1rem;">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <h2 style="margin-top:0;font-size:1.05rem;"><%= __('admin:lic_edit_title') %></h2>
+  <label for="licenseJson" style="display:block;font-weight:600;margin-bottom:.3rem;"><%= __('admin:lic_json_label') %></label>
+  <textarea id="licenseJson" name="license" rows="8" class="form-control" style="font-family:monospace;font-size:.85rem;width:100%;" placeholder='<%= __("admin:lic_example") %>'><%= rawLicense %></textarea>
+  <p class="text-muted" style="font-size:.8rem;margin:.4rem 0 1rem;"><%= __('admin:lic_json_hint') %></p>
+
+  <label style="display:flex;align-items:center;gap:.5rem;font-weight:600;margin-bottom:.3rem;">
+    <input type="checkbox" name="enforceSeatLimit" <%= enforceSeatLimit ? 'checked' : '' %>> <%= __('admin:lic_enforce_label') %>
+  </label>
+  <p class="text-muted" style="font-size:.8rem;margin:.2rem 0 1rem;"><%= __('admin:lic_enforce_hint') %></p>
+
+  <button type="submit" class="btn btn-primary"><%= __('admin:lic_save') %></button>
+</form>
+
+<style>.chip{display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(127,127,127,.15);font-size:.75rem}</style>

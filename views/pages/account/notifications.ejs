@@ -1,0 +1,109 @@
+<div class="page-header">
+    <h1><i class="fas fa-sliders" aria-hidden="true"></i> <%= __('chrome:notif_prefs_title') %></h1>
+</div>
+
+<form method="POST" action="/account/notifications" class="np-card">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <div class="np-row">
+        <div class="np-label">
+            <strong><%= __('chrome:notif_prefs_email_label') %></strong>
+            <span class="np-hint"><%= __('chrome:notif_prefs_email_hint') %></span>
+        </div>
+        <label class="np-switch">
+            <input type="checkbox" name="emailEnabled" <%= prefs.emailEnabled ? 'checked' : '' %>>
+            <span class="np-slider"></span>
+        </label>
+    </div>
+
+    <div class="np-row">
+        <div class="np-label">
+            <strong><%= __('chrome:notif_prefs_quiet_label') %></strong>
+            <span class="np-hint"><%= __('chrome:notif_prefs_quiet_hint') %></span>
+        </div>
+        <div class="np-times">
+            <label><%= __('chrome:notif_prefs_quiet_from') %> <input type="time" name="quietStart" value="<%= prefs.quietStart || '' %>"></label>
+            <label><%= __('chrome:notif_prefs_quiet_to') %> <input type="time" name="quietEnd" value="<%= prefs.quietEnd || '' %>"></label>
+        </div>
+    </div>
+
+    <p class="np-note"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('chrome:notif_prefs_quiet_detail') %></p>
+
+    <div class="np-actions">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i> <%= __('chrome:notif_prefs_save') %></button>
+        <a href="/notifications" class="btn btn-secondary"><%= __('chrome:notifications_view_all') %></a>
+        <%# The address these emails go to is set on « Mon profil » — same /account
+            family, so the two pages point at each other. %>
+        <a href="/account" class="btn btn-secondary"><i class="fas fa-id-badge" aria-hidden="true"></i> <%= __('chrome:profile_title') %></a>
+    </div>
+</form>
+
+<%#
+    LOT BILAN B3 — cadence of the department brief, on THIS page on purpose: it
+    is the only preferences surface the three audiences share (a supervisor, a
+    people manager and an administrator all reach /account/notifications, while
+    the schedules card sits behind requireManagerOrAdmin).
+
+    It is a SEPARATE form from the one above: quiet hours and the e-mail opt-out
+    belong to NotificationService.getUserPrefs, the four cadences to the dedicated
+    `dept_brief_prefs` table. One submit button per thing that is saved, so a
+    person who only wants to silence the yearly brief does not resave their quiet
+    hours as a side effect.
+
+    `deptBriefPrefs` is placed on res.locals by DeptBriefController.attachPrefs,
+    mounted immediately before this route.
+%>
+<div class="np-card" id="dept-brief-prefs">
+    <div class="np-row" style="border-bottom:none;padding-bottom:6px;">
+        <div class="np-label">
+            <strong><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('reports:db_prefs_title') %></strong>
+            <span class="np-hint"><%= __('reports:db_prefs_hint') %></span>
+        </div>
+    </div>
+    <% if (typeof deptBriefPrefs === 'undefined' || !deptBriefPrefs) { %>
+    <p class="np-note"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('reports:db_prefs_unavailable') %></p>
+    <% } else { %>
+    <form method="POST" action="/account/dept-brief-prefs">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <% ['weekly', 'monthly', 'quarterly', 'yearly'].forEach(function (c) { %>
+        <div class="np-row">
+            <div class="np-label">
+                <strong><%= __('reports:db_cadence_' + c) %></strong>
+                <%# "Default" is said out loud: a box that is off because nobody
+                    chose anything is not the same statement as a box somebody
+                    switched off. %>
+                <% if (deptBriefPrefs[c].source === 'default') { %>
+                <span class="np-hint"><%= __('reports:db_prefs_default') %></span>
+                <% } %>
+            </div>
+            <label class="np-switch">
+                <input type="checkbox" name="<%= c %>" <%= deptBriefPrefs[c].enabled ? 'checked' : '' %>>
+                <span class="np-slider"></span>
+            </label>
+        </div>
+        <% }); %>
+        <p class="np-note"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('reports:db_prefs_weekly_note') %></p>
+        <div class="np-actions">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i> <%= __('reports:db_prefs_save') %></button>
+            <a href="/reports/dept-brief" class="btn btn-secondary"><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('reports:db_title') %></a>
+        </div>
+    </form>
+    <% } %>
+</div>
+
+<style>
+.np-card{max-width:680px;margin:8px auto;background:var(--bg-elevated,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:14px;padding:8px 20px}
+.np-row{display:flex;align-items:center;gap:20px;justify-content:space-between;padding:18px 0;border-bottom:1px solid var(--border-color,#f1f5f9)}
+.np-label{display:flex;flex-direction:column;gap:3px}
+.np-hint{font-size:.82rem;color:var(--text-muted,#94a3b8)}
+.np-note{margin:14px 0 0;padding:12px 14px;border-radius:10px;background:var(--bg-subtle,#f8fafc);border:1px solid var(--border-color,#e2e8f0);font-size:.85rem;line-height:1.55;color:var(--text-muted,#64748b)}
+.np-times label{margin-left:10px;font-size:.9rem;color:var(--text-muted,#64748b)}
+.np-times input{margin-left:6px}
+.np-actions{display:flex;gap:10px;padding:18px 0}
+.np-switch{position:relative;display:inline-block;width:48px;height:26px;flex:0 0 48px}
+.np-switch input{opacity:0;width:0;height:0}
+.np-slider{position:absolute;inset:0;cursor:pointer;background:#cbd5e1;border-radius:999px;transition:.2s}
+.np-slider::before{content:"";position:absolute;height:20px;width:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.np-switch input:checked + .np-slider{background:var(--brand,#5140d9)}
+.np-switch input:checked + .np-slider::before{transform:translateX(22px)}
+</style>

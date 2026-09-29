@@ -1,0 +1,174 @@
+/* Login Page — Industrial Console Design System v1.0 */
+.login-page {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, var(--bg-base, #0A0C18) 0%, var(--bg-panel, #0F1222) 50%, var(--bg-base, #0A0C18) 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+.login-page::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(124, 108, 255, 0.06) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: moveBackground 25s linear infinite;
+}
+
+@keyframes moveBackground {
+    0% {
+        transform: translate(0, 0);
+    }
+
+    100% {
+        transform: translate(50px, 50px);
+    }
+}
+
+.login-container {
+    background: var(--bg-panel, #0F1222);
+    padding: 2.5rem;
+    border-radius: var(--radius-xl, 16px);
+    box-shadow: var(--shadow-xl, 0 24px 64px rgba(0, 0, 0, 0.45));
+    max-width: 420px;
+    width: 100%;
+    position: relative;
+    z-index: 1;
+    animation: slideUp 0.5s ease-out;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.055));
+}
+
+.login-container h1 {
+    text-align: center;
+    margin-bottom: 6px;
+    font-size: 1.85rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--brand, #7C6CFF), var(--brand-hover, #9084FF));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.login-container h2 {
+    text-align: center;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+    margin-bottom: 1.75rem;
+    font-size: 0.9rem;
+    font-weight: 400;
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+}
+
+.login-form .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.login-form label {
+    font-weight: 600;
+    color: var(--text-primary, #E4E8F0);
+    font-size: 0.85rem;
+}
+
+.login-form .form-control {
+    padding: 10px 14px;
+    border: 1.5px solid var(--border, rgba(255, 255, 255, 0.055));
+    border-radius: var(--radius-md, 8px);
+    font-size: 0.95rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    background: var(--bg-card, #151931);
+    font-family: inherit;
+    color: var(--text-primary, #E4E8F0);
+}
+
+.login-form .form-control:focus {
+    outline: none;
+    border-color: var(--brand, #7C6CFF);
+    background: var(--bg-elevated, #1F2442);
+    box-shadow: 0 0 0 3px var(--brand-glow, rgba(124, 108, 255, 0.4));
+}
+
+.login-form .btn-primary {
+    margin-top: 6px;
+    padding: 12px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    border-radius: var(--radius-md, 8px);
+    background: linear-gradient(135deg, var(--brand, #7C6CFF), var(--brand-pressed, #6656F0));
+    color: var(--text-inverse, #0A0C18);
+    border: none;
+    transition: box-shadow 0.2s, transform 0.1s;
+    letter-spacing: 0.3px;
+}
+
+.login-form .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(124, 108, 255, 0.4);
+}
+
+.login-form .btn-primary:active {
+    transform: scale(0.98);
+}
+
+.login-help-text {
+    text-align: center;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+    font-size: 0.8rem;
+    margin-top: 6px;
+    padding: 10px;
+    background: var(--bg-card, #151931);
+    border-radius: var(--radius-md, 8px);
+}
+
+.login-help-text::before {
+    content: '\f05a';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    margin-right: 6px;
+}
+
+/* Default credentials box */
+.login-container>div:last-child {
+    margin-top: 1.25rem;
+    padding: 12px;
+    background: var(--bg-card, #151931);
+    border-radius: var(--radius-md, 8px);
+    font-size: 0.8rem;
+    border-left: 3px solid var(--brand, #7C6CFF);
+    color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+}
+
+.login-container>div:last-child strong {
+    color: var(--text-primary, #E4E8F0);
+    display: block;
+    margin-bottom: 6px;
+}
+
+.login-container>div:last-child code {
+    background: var(--bg-elevated, #1F2442);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--font-data, 'JetBrains Mono', monospace);
+    color: var(--brand, #7C6CFF);
+    font-weight: 700;
+}
+/* IDevelop CE mark above the product name on every standalone auth page. */
+.login-mark {
+    display: block;
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 12px;
+    border-radius: 14px;
+    box-shadow: 0 10px 28px rgba(124, 108, 255, 0.35);
+}

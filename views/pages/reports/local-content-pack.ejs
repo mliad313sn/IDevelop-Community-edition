@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<%
+    // Every count reaching this page was prepared by LocalContentReportService.viewModel:
+    // masked (1–4 → "< 5", no % on a base under 5), or — only for a PUBLISHED pack
+    // whose publisher chose it explicitly (vm.exactFigures) — exact. Nothing here computes.
+    function show(v) { return v === null || v === undefined ? '—' : v; }
+    function showPct(v) { return v === null || v === undefined ? '—' : v + ' %'; }
+    function dBound(v) { if (!v) return '—'; return (typeof fmtPeriodBound === 'function') ? fmtPeriodBound(v) : String(v).slice(0, 10); }
+    function dTime(v) { if (!v) return '—'; return (typeof fmtDateTime === 'function') ? fmtDateTime(v) : String(v); }
+%>
+<html lang="<%= (typeof lng !== 'undefined' && lng) ? lng : 'fr' %>">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><%= vm.labels.title %> — <%= vm.meta.periodLabel %></title>
+<style>
+    :root { color-scheme: light; }
+    body { font-family: "Segoe UI", Arial, sans-serif; color:#111; background:#fff; margin:0; padding:24px 32px; font-size:12px; }
+    h1 { font-size:18px; margin:0 0 4px; }
+    h2 { font-size:14px; margin:22px 0 6px; border-bottom:1px solid #999; padding-bottom:3px; }
+    h3 { font-size:12px; margin:12px 0 4px; }
+    .law { font-style:italic; margin-bottom:10px; }
+    .meta { display:grid; grid-template-columns:max-content 1fr; gap:2px 14px; margin:8px 0 6px; }
+    .meta dt { font-weight:600; } .meta dd { margin:0; }
+    table { width:100%; border-collapse:collapse; margin:4px 0 10px; }
+    th, td { border:1px solid #bbb; padding:4px 6px; text-align:left; }
+    th { background:#eee; }
+    td.n, th.n { text-align:right; }
+    .note { font-size:10.5px; color:#444; margin:4px 0; }
+    .draft { border:2px solid #b45309; color:#b45309; padding:6px 10px; font-weight:700; margin:8px 0; }
+    .sig { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:28px; page-break-inside:avoid; }
+    .sig div { border-top:1px solid #333; padding-top:4px; min-height:70px; }
+    .toolbar { margin-bottom:14px; }
+    @media print { .toolbar { display:none; } body { padding:0; } h2 { page-break-after:avoid; } tr { page-break-inside:avoid; } }
+</style>
+</head>
+<body>
+<div class="toolbar"><%= __('localcontent:print_hint') %></div>
+
+<h1><%= vm.labels.title %></h1>
+<div class="law"><%= vm.labels.law %></div>
+<% if (vm.state !== 'published') { %>
+    <div class="draft"><%= __('localcontent:pack_state_' + vm.state) %> — <%= __('localcontent:print_not_published') %></div>
+<% } %>
+<dl class="meta">
+    <dt><%= __('localcontent:pack_company') %></dt><dd><%= show(vm.companyName) %></dd>
+    <dt><%= __('localcontent:pack_country') %></dt><dd><%= vm.meta.countryName %></dd>
+    <dt><%= __('localcontent:pack_period') %></dt><dd><%= vm.meta.periodLabel %> (<%= dBound(vm.meta.periodStart) %> → <%= dBound(vm.meta.periodEndInclusive) %>)</dd>
+    <dt><%= __('localcontent:pack_version') %></dt><dd>v<%= vm.version %> — <%= __('localcontent:pack_state_' + vm.state) %></dd>
+    <dt><%= __('localcontent:pack_as_of') %></dt><dd><%= dTime(vm.meta.asOf) %></dd>
+    <dt><%= __('localcontent:pack_unspecified_share') %></dt><dd><%= vm.quality.pct === null || vm.quality.pct === undefined ? '—' : vm.quality.pct + ' %' %><% if (vm.quality.level === 'warn' || vm.quality.level === 'block') { %> — <strong><%= __('localcontent:pack_unspecified_warn', { pct: vm.quality.warnPct }) %></strong><% } %></dd>
+</dl>
+<% if (vm.exactFigures) { %>
+<p class="note"><%= __('localcontent:pack_exact_note') %></p>
+<% } else { %>
+<p class="note"><%= __('localcontent:pack_anonymity_note', { n: vm.meta.anonymityThreshold || 5 }) %></p>
+<% } %>
+<% if (vm.meta.periodOpen) { %><p class="note"><%= __('localcontent:pack_period_open_note') %></p><% } %>
+
+<h2><%= vm.labels.workforce %></h2>
+<p class="note"><strong><%= __('localcontent:pack_headcount_note') %></strong> <%= __('localcontent:pack_workforce_note') %></p>
+<% function wfTable(title, rows) { %>
+    <h3><%= title %></h3>
+    <table>
+        <thead><tr><th><%= __('localcontent:col_group') %></th><th class="n"><%= __('localcontent:col_headcount') %></th><th class="n"><%= __('localcontent:col_nationals') %></th><th class="n"><%= __('localcontent:col_expats') %></th><th class="n"><%= __('localcontent:col_unspecified') %></th><th class="n"><%= __('localcontent:col_national_pct') %></th></tr></thead>
+        <tbody>
+        <% rows.forEach(function(r){ %>
+            <tr><td><%= r.name %></td><td class="n"><%= show(r.headcount) %></td><td class="n"><%= show(r.nationals) %></td><td class="n"><%= show(r.expats) %></td><td class="n"><%= show(r.unspecified) %></td><td class="n"><%= showPct(r.nationalPct) %></td></tr>
+        <% }); %>
+        <% if (!rows.length) { %><tr><td colspan="6">—</td></tr><% } %>
+        </tbody>
+    </table>
+<% } %>
+<% wfTable(__('localcontent:total'), [vm.workforce.total]); %>
+<% wfTable(__('localcontent:by_level'), vm.workforce.byLevel); %>
+<% wfTable(__('localcontent:by_role_family'), vm.workforce.byRoleFamily); %>
+<% wfTable(__('localcontent:by_site'), vm.workforce.bySite); %>
+<% function nmTable(rows) { %>
+    <h3><%= __('localcontent:nm_title') %></h3>
+    <table>
+        <thead><tr><th><%= __('localcontent:col_indicator') %></th><th><%= __('localcontent:col_value') %></th></tr></thead>
+        <tbody><% rows.forEach(function(r){ %><tr><td><%= r.label %></td><td><%= r.value %></td></tr><% }); %></tbody>
+    </table>
+<% } %>
+<% nmTable(vm.notMeasured.filter(function(r){ return r.key === 'wage_bill_share'; })); %>
+
+<h2><%= vm.labels.plans %></h2>
+<table>
+    <thead><tr>
+        <% ['planned','in_progress','at_risk','overdue','achieved','cancelled'].forEach(function(s){ %><th class="n"><%= __('localcontent:status_' + s) %></th><% }); %>
+        <th class="n"><%= __('localcontent:total') %></th>
+    </tr></thead>
+    <tbody><tr>
+        <% ['planned','in_progress','at_risk','overdue','achieved','cancelled'].forEach(function(s){ %><td class="n"><%= vm.plans.summary[s] || 0 %></td><% }); %>
+        <td class="n"><%= vm.plans.summary.total || 0 %></td>
+    </tr></tbody>
+</table>
+<table>
+    <thead><tr>
+        <th><%= __('localcontent:col_role') %></th><th><%= __('localcontent:col_role_family') %></th><th><%= __('localcontent:col_site') %></th>
+        <th><%= __('localcontent:col_target_date') %></th><th><%= __('localcontent:col_status') %></th>
+        <th class="n"><%= __('localcontent:col_successors') %></th><th><%= __('localcontent:col_readiness') %></th><th class="n"><%= __('localcontent:col_idp_linked') %></th>
+    </tr></thead>
+    <tbody>
+    <% vm.plans.rows.forEach(function(r){ %>
+        <tr><td><%= r.roleName %></td><td><%= show(r.roleFamilyName) %></td><td><%= show(r.siteName) %></td><td><%= dBound(r.targetDate) %></td><td><%= r.statusLabel %><% if (r.decisionLabel) { %> — <em><%= r.decisionLabel %></em><% } %></td><td class="n"><%= r.successorCount %></td><td><%= r.readinessLabel %></td><td class="n"><%= r.idpLinkedCount %></td></tr>
+    <% }); %>
+    <% if (!vm.plans.rows.length) { %><tr><td colspan="8"><%= __('localcontent:nat_no_plans') %></td></tr><% } %>
+    </tbody>
+</table>
+
+<h2><%= vm.labels.training %></h2>
+<h3><%= __('localcontent:training_lms') %></h3>
+<table>
+    <thead><tr><th><%= __('localcontent:col_category') %></th><th class="n"><%= __('localcontent:col_completions') %></th><th class="n"><%= __('localcontent:col_people') %></th></tr></thead>
+    <tbody><% vm.training.lms.forEach(function(r){ %><tr><td><%= r.category %></td><td class="n"><%= show(r.completions) %></td><td class="n"><%= show(r.people) %></td></tr><% }); %></tbody>
+</table>
+<h3><%= __('localcontent:training_certs_issued') %></h3>
+<table>
+    <thead><tr><th><%= __('localcontent:col_category') %></th><th class="n"><%= __('localcontent:col_certificates') %></th><th class="n"><%= __('localcontent:col_people') %></th></tr></thead>
+    <tbody><% vm.training.issued.forEach(function(r){ %><tr><td><%= r.category %></td><td class="n"><%= show(r.certificates) %></td><td class="n"><%= show(r.people) %></td></tr><% }); %></tbody>
+</table>
+<h3><%= __('localcontent:training_certs_valid') %></h3>
+<table>
+    <thead><tr><th><%= __('localcontent:col_category') %></th><th class="n"><%= __('localcontent:col_people') %></th></tr></thead>
+    <tbody><% vm.training.valid.forEach(function(r){ %><tr><td><%= r.category %></td><td class="n"><%= show(r.people) %></td></tr><% }); %></tbody>
+</table>
+<% nmTable(vm.notMeasured.filter(function(r){ return r.key === 'training_spend'; })); %>
+
+<h2><%= vm.labels.signature %></h2>
+<div class="sig">
+    <div><%= __('localcontent:sig_name') %><br><%= __('localcontent:sig_title') %></div>
+    <div><%= __('localcontent:sig_date') %><br><%= __('localcontent:sig_signature') %></div>
+</div>
+</body>
+</html>

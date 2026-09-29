@@ -1,0 +1,96 @@
+<div class="page-header">
+    <h1><i class="fas fa-ban" aria-hidden="true"></i> <%= __('chrome:nav_cancellations') %></h1>
+</div>
+
+<p class="help-text" style="margin-bottom:1rem;"><%= __('admin:cx_intro') %></p>
+
+<% if (!canDecide) { %>
+<div class="card" style="padding:.7rem 1.1rem;margin-bottom:1rem;border-left:4px solid #b45309;">
+    <strong style="color:#b45309;">ⓘ</strong> <%= __('admin:cx_manager_note') %>
+</div>
+<% } %>
+
+<form method="GET" action="/cancellations" class="card" style="display:flex;gap:8px;align-items:center;padding:.8rem 1.1rem;margin-bottom:1rem;flex-wrap:wrap;" data-filter-memory>
+    <%# both filters were unlabelled selects. %>
+    <label class="sr-only" for="cx-state"><%= __('admin:cx_f_state') %></label>
+    <select id="cx-state" name="state" class="form-control" style="max-width:200px;" aria-label="<%= __('admin:cx_f_state') %>">
+        <option value=""><%= __('admin:par_all_states') %></option>
+        <% ['pending','approved','rejected','withdrawn'].forEach(function (s) { %>
+        <option value="<%= s %>" <%= filters.state === s ? 'selected' : '' %>><%= __('admin:cx_state_' + s) %></option>
+        <% }); %>
+    </select>
+    <label class="sr-only" for="cx-type"><%= __('admin:cx_f_type') %></label>
+    <select id="cx-type" name="type" class="form-control" style="max-width:200px;" aria-label="<%= __('admin:cx_f_type') %>">
+        <option value=""><%= __('admin:cx_all_types') %></option>
+        <% types.forEach(function (t) { %>
+        <option value="<%= t %>" <%= filters.type === t ? 'selected' : '' %>><%= __('admin:cx_type_' + t) %></option>
+        <% }); %>
+    </select>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:mv_apply') %></button>
+</form>
+
+<div class="card" style="padding:0;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('admin:cx_th_what') %></th>
+                <th><%= __('admin:cx_th_who') %></th>
+                <th><%= __('admin:cx_th_reason') %></th>
+                <th><%= __('admin:cx_th_requested') %></th>
+                <th><%= __('admin:cx_th_state') %></th>
+                <th></th>
+            </tr></thead>
+            <tbody>
+                <% if (!items.length) { %>
+                <tr><td colspan="6" class="text-muted" style="text-align:center;padding:1.5rem;"><%= __('admin:cx_empty') %></td></tr>
+                <% } %>
+                <% items.forEach(function (r) { %>
+                <tr>
+                    <td>
+                        <span class="cx-tag"><%= __('admin:cx_type_' + r.entityType) %></span>
+                        <div style="font-size:.74rem;color:var(--text-muted);">#<%= r.entityId %><% if (r.previousState) { %> · <%= __('admin:cx_was') %> <%= __('admin:cx_prev_' + String(r.previousState).toLowerCase(), { defaultValue: r.previousState }) %><% } %></div>
+                    </td>
+                    <td>
+                        <% if (r.employeeId) { %><a href="/employees/<%= r.employeeId %>"><%= r.employeeName %></a><% } else { %><span class="text-muted">—</span><% } %>
+                        <div style="font-size:.74rem;color:var(--text-muted);"><%= r.employeeNumber || '' %><% if (r.siteName) { %> · <%= r.siteName %><% } %></div>
+                    </td>
+                    <td style="font-size:.83rem;max-width:300px;"><%= r.reason %>
+                        <% if (r.decisionNote) { %><div style="font-size:.76rem;color:var(--text-muted);margin-top:.2rem;"><%= __('admin:par_note') %>: <%= r.decisionNote %></div><% } %></td>
+                    <td style="font-size:.8rem;"><%= r.requestedByName || '—' %>
+                        <div style="color:var(--text-muted);"><%= __('admin:cx_by_' + r.requestedByKind) %> · <%= fmtDate(r.requestedAt) %></div></td>
+                    <td>
+                        <span class="badge <%= r.state === 'pending' ? 'badge-warning' : (r.state === 'approved' ? 'badge-danger' : 'badge-success') %>">
+                            <%= __('admin:cx_state_' + r.state) %></span>
+                        <% if (r.decidedByName) { %><div style="font-size:.74rem;color:var(--text-muted);"><%= r.decidedByName %></div><% } %>
+                    </td>
+                    <td style="text-align:right;white-space:nowrap;">
+                        <% if (r.state === 'pending' && canDecide) { %>
+                        <form method="POST" action="/cancellations/<%= r.id %>/decide" style="display:inline-flex;gap:4px;align-items:center;">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <label class="sr-only" for="cx-note-<%= r.id %>"><%= __('admin:par_note_ph') %></label>
+                            <input type="text" id="cx-note-<%= r.id %>" name="note" class="form-control" style="width:150px;padding:3px 6px;font-size:.8rem;" placeholder="<%= __('admin:par_note_ph') %>" aria-label="<%= __('admin:par_note_ph') %>">
+                            <button name="decision" value="approve" class="btn btn-sm btn-danger"><%= __('admin:cx_approve') %></button>
+                            <button name="decision" value="reject" class="btn btn-sm btn-secondary"><%= __('admin:par_reject') %></button>
+                        </form>
+                        <% } else if (r.state === 'pending') { %>
+                        <form method="POST" action="/cancellations/<%= r.id %>/withdraw" style="display:inline;">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <button class="btn btn-sm btn-secondary"><%= __('admin:par_withdraw') %></button>
+                        </form>
+                        <% } %>
+                    </td>
+                </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<p class="text-muted" style="font-size:.8rem;margin-top:.8rem;">
+    <i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('admin:cx_trace_note') %>
+</p>
+
+<style>
+.cx-tag{display:inline-block;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;
+    border-radius:4px;padding:1px 6px;background:var(--bg-subtle,#f1f5f9);border:1px solid var(--border,#cbd5e1)}
+</style>

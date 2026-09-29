@@ -1,0 +1,417 @@
+{
+  "name": "IDevelop starter capability framework",
+  "version": 1,
+  "license": "CC0-1.0",
+  "note": "A small, generic, cross-industry framework so a fresh installation is usable on day one. Edit, extend or delete it freely from Domains & Skills. Level anchors come from the per-category proficiency descriptors shipped with the schema.",
+  "pillars": [
+    {
+      "name": "Leadership & People",
+      "description": "Leading teams and growing people.",
+      "category": "Behavioral",
+      "subDomains": [
+        {
+          "name": "Leading teams",
+          "definition": "Set direction, share responsibility and keep a team focused on outcomes.",
+          "skills": [
+            {
+              "name": "Setting direction",
+              "fr": "Donne un cap clair à l'équipe et relie le travail quotidien aux objectifs.",
+              "en": "Gives the team a clear direction and links daily work to objectives."
+            },
+            {
+              "name": "Delegation & empowerment",
+              "fr": "Confie des responsabilités adaptées et laisse l'autonomie nécessaire pour les assumer.",
+              "en": "Hands over suitable responsibilities and the autonomy needed to carry them."
+            },
+            {
+              "name": "Giving feedback",
+              "fr": "Donne un retour factuel, régulier et utile, positif comme correctif.",
+              "en": "Gives factual, regular and useful feedback, both positive and corrective."
+            }
+          ]
+        },
+        {
+          "name": "Developing people",
+          "definition": "Help each person progress through coaching, fair evaluation and planned development.",
+          "skills": [
+            {
+              "name": "Coaching",
+              "fr": "Aide une personne à trouver ses propres solutions par le questionnement et l'écoute.",
+              "en": "Helps a person find their own solutions through questions and listening."
+            },
+            {
+              "name": "Performance conversations",
+              "fr": "Conduit des entretiens d'évaluation équitables, fondés sur des faits et orientés vers l'avenir.",
+              "en": "Runs fair, fact-based and forward-looking performance conversations."
+            },
+            {
+              "name": "Development planning",
+              "fr": "Construit avec la personne un plan de développement réaliste et suivi.",
+              "en": "Builds a realistic, followed-up development plan together with the person."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Collaboration & Communication",
+      "description": "Working with others and communicating clearly.",
+      "category": "SoftSkills",
+      "subDomains": [
+        {
+          "name": "Communication",
+          "definition": "Share information clearly, in writing and orally, and listen actively.",
+          "skills": [
+            {
+              "name": "Written communication",
+              "fr": "Rédige des messages et documents clairs, structurés et adaptés au lecteur.",
+              "en": "Writes clear, structured messages and documents suited to the reader."
+            },
+            {
+              "name": "Presenting",
+              "fr": "Présente une idée ou un résultat de manière claire et convaincante.",
+              "en": "Presents an idea or a result clearly and convincingly."
+            },
+            {
+              "name": "Active listening",
+              "fr": "Écoute pour comprendre, reformule et vérifie sa compréhension.",
+              "en": "Listens to understand, rephrases and checks understanding."
+            }
+          ]
+        },
+        {
+          "name": "Teamwork",
+          "definition": "Cooperate across teams, handle disagreement and keep stakeholders aligned.",
+          "skills": [
+            {
+              "name": "Cross-functional collaboration",
+              "fr": "Travaille efficacement avec d'autres équipes vers un objectif commun.",
+              "en": "Works effectively with other teams toward a shared goal."
+            },
+            {
+              "name": "Conflict resolution",
+              "fr": "Traite les désaccords tôt et de façon constructive.",
+              "en": "Addresses disagreements early and constructively."
+            },
+            {
+              "name": "Stakeholder management",
+              "fr": "Identifie les parties prenantes, gère leurs attentes et les tient informées.",
+              "en": "Identifies stakeholders, manages their expectations and keeps them informed."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Digital & Data",
+      "description": "Using digital tools and data safely and effectively.",
+      "category": "Technical",
+      "subDomains": [
+        {
+          "name": "Digital workplace",
+          "definition": "Use everyday digital tools productively and securely.",
+          "skills": [
+            {
+              "name": "Office productivity tools",
+              "fr": "Utilise efficacement traitement de texte, tableur et présentation.",
+              "en": "Uses word processing, spreadsheets and presentation tools effectively."
+            },
+            {
+              "name": "Collaboration platforms",
+              "fr": "Partage, co-édite et organise l'information sur les outils collaboratifs.",
+              "en": "Shares, co-edits and organises information on collaboration platforms."
+            },
+            {
+              "name": "Information security hygiene",
+              "fr": "Protège ses accès, reconnaît l'hameçonnage et signale les incidents.",
+              "en": "Protects credentials, recognises phishing and reports incidents.",
+              "category": "Cybersecurity"
+            }
+          ]
+        },
+        {
+          "name": "Data & analysis",
+          "definition": "Read, analyse and present data to support decisions.",
+          "skills": [
+            {
+              "name": "Data literacy",
+              "fr": "Comprend l'origine, la qualité et les limites d'une donnée.",
+              "en": "Understands where data comes from, its quality and its limits."
+            },
+            {
+              "name": "Spreadsheet analysis",
+              "fr": "Nettoie, analyse et synthétise des données dans un tableur.",
+              "en": "Cleans, analyses and summarises data in a spreadsheet."
+            },
+            {
+              "name": "Reporting & dashboards",
+              "fr": "Construit des indicateurs et tableaux de bord lisibles et fiables.",
+              "en": "Builds readable, reliable indicators and dashboards."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Operations & Delivery",
+      "description": "Planning, running and improving work.",
+      "category": "HardSkills",
+      "subDomains": [
+        {
+          "name": "Process excellence",
+          "definition": "Plan work, meet quality standards and improve how work is done.",
+          "skills": [
+            {
+              "name": "Planning & scheduling",
+              "fr": "Planifie les activités et les ressources pour tenir les délais.",
+              "en": "Plans activities and resources to meet deadlines."
+            },
+            {
+              "name": "Quality management",
+              "fr": "Applique les standards de qualité et traite les non-conformités.",
+              "en": "Applies quality standards and handles non-conformities."
+            },
+            {
+              "name": "Continuous improvement",
+              "fr": "Identifie les pertes et met en œuvre des améliorations mesurables.",
+              "en": "Spots waste and implements measurable improvements."
+            }
+          ]
+        },
+        {
+          "name": "Project delivery",
+          "definition": "Deliver projects on scope, time and budget while managing risk.",
+          "skills": [
+            {
+              "name": "Project management",
+              "fr": "Cadre, pilote et clôture un projet en maîtrisant périmètre, délais et coûts.",
+              "en": "Scopes, runs and closes a project, controlling scope, time and cost."
+            },
+            {
+              "name": "Risk management",
+              "fr": "Identifie, évalue et traite les risques d'une activité ou d'un projet.",
+              "en": "Identifies, assesses and treats the risks of an activity or project."
+            },
+            {
+              "name": "Budget management",
+              "fr": "Prépare et suit un budget, explique les écarts.",
+              "en": "Prepares and tracks a budget and explains variances."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Health, Safety & Environment",
+      "description": "Keeping people safe and limiting environmental impact.",
+      "category": "Safety",
+      "subDomains": [
+        {
+          "name": "Workplace safety",
+          "definition": "Recognise hazards, prevent incidents and respond to emergencies.",
+          "skills": [
+            {
+              "name": "Hazard identification",
+              "fr": "Repère les dangers de son poste et applique les mesures de prévention.",
+              "en": "Spots the hazards of the job and applies preventive measures."
+            },
+            {
+              "name": "Incident reporting",
+              "fr": "Signale sans délai incidents et presque-accidents, avec les faits utiles.",
+              "en": "Reports incidents and near-misses promptly, with the relevant facts."
+            },
+            {
+              "name": "Emergency response",
+              "fr": "Connaît et applique les consignes d'urgence et d'évacuation.",
+              "en": "Knows and follows emergency and evacuation procedures."
+            }
+          ]
+        },
+        {
+          "name": "Environmental stewardship",
+          "definition": "Reduce the environmental footprint of daily activities.",
+          "skills": [
+            {
+              "name": "Environmental awareness",
+              "fr": "Connaît les impacts environnementaux de son activité et les limite.",
+              "en": "Knows the environmental impacts of the work and limits them."
+            },
+            {
+              "name": "Waste & resource management",
+              "fr": "Trie les déchets et utilise l'énergie et les ressources avec sobriété.",
+              "en": "Sorts waste and uses energy and resources sparingly."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Compliance & Ethics",
+      "description": "Acting lawfully, ethically and in line with company policy.",
+      "category": "Compliance",
+      "subDomains": [
+        {
+          "name": "Regulatory compliance",
+          "definition": "Apply the rules that govern data, conduct and procedures.",
+          "skills": [
+            {
+              "name": "Personal data protection",
+              "fr": "Traite les données personnelles conformément à la réglementation (ex. RGPD).",
+              "en": "Handles personal data in line with regulation (e.g. GDPR)."
+            },
+            {
+              "name": "Business ethics & anti-corruption",
+              "fr": "Reconnaît et refuse les situations de conflit d'intérêts ou de corruption.",
+              "en": "Recognises and refuses conflicts of interest and bribery."
+            },
+            {
+              "name": "Policy & procedure compliance",
+              "fr": "Connaît et applique les politiques et procédures qui s'appliquent à son poste.",
+              "en": "Knows and applies the policies and procedures relevant to the role."
+            }
+          ]
+        },
+        {
+          "name": "Certification & audit",
+          "definition": "Keep mandatory training current and be ready for audits.",
+          "skills": [
+            {
+              "name": "Mandatory training currency",
+              "fr": "Maintient à jour ses formations et habilitations obligatoires.",
+              "en": "Keeps mandatory training and authorisations up to date."
+            },
+            {
+              "name": "Audit readiness",
+              "fr": "Tient à jour les preuves et prépare les contrôles internes et externes.",
+              "en": "Keeps evidence current and prepares for internal and external audits."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "roleFamilies": [
+    { "name": "Management", "description": "People leaders and project leaders." },
+    { "name": "Operations", "description": "Roles that plan, run and improve operations." },
+    { "name": "Support Functions", "description": "HR, finance, legal and administrative roles." },
+    { "name": "Technology & Data", "description": "Digital, IT and data roles." },
+    { "name": "Health, Safety & Environment", "description": "HSE specialists." }
+  ],
+  "familySkills": {
+    "Management": [
+      "Setting direction",
+      "Delegation & empowerment",
+      "Giving feedback",
+      "Coaching",
+      "Performance conversations",
+      "Development planning",
+      "Stakeholder management",
+      "Budget management"
+    ],
+    "Operations": [
+      "Planning & scheduling",
+      "Quality management",
+      "Continuous improvement",
+      "Hazard identification",
+      "Incident reporting",
+      "Emergency response"
+    ],
+    "Support Functions": [
+      "Written communication",
+      "Personal data protection",
+      "Policy & procedure compliance",
+      "Spreadsheet analysis",
+      "Stakeholder management"
+    ],
+    "Technology & Data": [
+      "Data literacy",
+      "Spreadsheet analysis",
+      "Reporting & dashboards",
+      "Information security hygiene",
+      "Collaboration platforms",
+      "Project management"
+    ],
+    "Health, Safety & Environment": [
+      "Hazard identification",
+      "Incident reporting",
+      "Emergency response",
+      "Environmental awareness",
+      "Waste & resource management",
+      "Audit readiness"
+    ]
+  },
+  "roles": [
+    {
+      "name": "Team Leader",
+      "family": "Management",
+      "requirements": [
+        ["Setting direction", 3, true],
+        ["Giving feedback", 3, true],
+        ["Delegation & empowerment", 2, false],
+        ["Performance conversations", 3, true],
+        ["Coaching", 2, false],
+        ["Planning & scheduling", 2, false]
+      ]
+    },
+    {
+      "name": "Project Manager",
+      "family": "Management",
+      "requirements": [
+        ["Project management", 3, true],
+        ["Risk management", 3, true],
+        ["Budget management", 2, false],
+        ["Stakeholder management", 3, true],
+        ["Presenting", 2, false],
+        ["Planning & scheduling", 3, false]
+      ]
+    },
+    {
+      "name": "Operations Technician",
+      "family": "Operations",
+      "requirements": [
+        ["Hazard identification", 3, true],
+        ["Incident reporting", 2, true],
+        ["Emergency response", 2, true],
+        ["Quality management", 2, false],
+        ["Continuous improvement", 1, false],
+        ["Mandatory training currency", 3, true]
+      ]
+    },
+    {
+      "name": "HR Business Partner",
+      "family": "Support Functions",
+      "requirements": [
+        ["Performance conversations", 3, true],
+        ["Personal data protection", 3, true],
+        ["Active listening", 3, false],
+        ["Conflict resolution", 3, false],
+        ["Written communication", 2, false],
+        ["Business ethics & anti-corruption", 2, true]
+      ]
+    },
+    {
+      "name": "Data Analyst",
+      "family": "Technology & Data",
+      "requirements": [
+        ["Data literacy", 3, true],
+        ["Spreadsheet analysis", 3, true],
+        ["Reporting & dashboards", 3, true],
+        ["Information security hygiene", 2, true],
+        ["Presenting", 2, false],
+        ["Personal data protection", 2, false]
+      ]
+    },
+    {
+      "name": "HSE Officer",
+      "family": "Health, Safety & Environment",
+      "requirements": [
+        ["Hazard identification", 4, true],
+        ["Incident reporting", 3, true],
+        ["Emergency response", 3, true],
+        ["Environmental awareness", 3, false],
+        ["Audit readiness", 3, true],
+        ["Written communication", 2, false]
+      ]
+    }
+  ]
+}

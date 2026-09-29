@@ -1,0 +1,52 @@
+<%#
+  Installable app + offline shell — the <head> half.
+
+  Kept in a partial because this product has SEVEN standalone pages that render
+  with `layout: false` (login, MFA, forgot/reset password, signup, onboarding
+  pending, error) and therefore never see layouts/main.ejs. The login page is
+  precisely where someone installs the app from, so wiring only the main layout
+  would have left the PWA invisible at the one screen that matters.
+
+  The service worker caches STATIC ASSETS ONLY — never an authenticated page.
+  See public/service-worker.js for why that rule is absolute here.
+
+  `brandName` is passed by some pages and not others, hence the guard.
+-%>
+<%
+  const _pwaBrand = (typeof _brand !== 'undefined' && _brand) ? _brand : ((typeof branding !== 'undefined' && branding) ? branding : null);
+  const _pwaName = (_pwaBrand && _pwaBrand.appName) ? _pwaBrand.appName : 'IDevelop';
+-%>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0A0C18">
+<meta name="description" content="<%= _pwaName %> — open-source skills, talent and continuous-performance platform.">
+<meta name="application-name" content="<%= _pwaName %>">
+<meta property="og:site_name" content="<%= _pwaName %>">
+<meta property="og:title" content="<%= _pwaName %>">
+<meta property="og:description" content="Open-source skills, talent and continuous-performance platform.">
+<meta property="og:image" content="/brand/social-card.png">
+<% if (!(_pwaBrand && _pwaBrand.faviconUrl)) { %>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png">
+<% } %>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="<%= _pwaName %>">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<script nonce="<%= typeof cspNonce !== 'undefined' ? cspNonce : '' %>">
+    // Deferred to `load` so it never competes with first paint. Failures are
+    // swallowed on purpose: a browser without service workers, or an insecure
+    // origin where they are refused, must get the normal online app rather than
+    // a console full of errors.
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+            // updateViaCache:'none' is not optional here. Without it the browser may
+            // keep serving the PREVIOUS worker script from its HTTP cache, so a
+            // deployed change to the caching rules silently never reaches the user.
+            // Observed directly in testing: an edited worker registered "successfully"
+            // while the old code kept running and cached nothing.
+            navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' })
+                .catch(function () { /* offline shell unavailable — app still works online */ });
+        });
+    }
+</script>

@@ -1,0 +1,47 @@
+<%
+/* cette page ne portait AUCUN appel `__`, pas même
+   l'alerte JavaScript de copie. Rendue hors ligne par `ejs.render()` sans
+   contexte de locale, elle produisait le même texte anglais qu'en session
+   française : invariante par langue, ce n'était donc pas un repli sur clé
+   manquante mais de l'anglais codé en dur. */
+%>
+<div class="page-header">
+    <h1><i class="fas fa-key" aria-hidden="true"></i> <%= __('chrome:mfa_backup_title') %></h1>
+</div>
+
+<div class="card" style="max-width: 640px;">
+    <div class="card-body">
+        <div class="alert alert-success" style="margin-bottom: 16px;">
+            <strong><%= __('chrome:mfa_backup_now_active') %></strong>
+        </div>
+
+        <p style="margin-bottom: 12px;">
+            <%= __('chrome:mfa_backup_store_note') %>
+            <strong><%= __('chrome:mfa_backup_shown_once') %></strong>
+        </p>
+
+        <ul id="backupCodes"
+            style="columns: 2; list-style: none; padding: 12px 16px; background: var(--bg-subtle); border: 1px solid var(--border-light); border-radius: var(--radius-md); margin-bottom: 16px;">
+            <% codes.forEach(function(c){ %>
+                <li style="padding: 4px 0;"><code style="font-size: 1.02em;"><%= c %></code></li>
+            <% }); %>
+        </ul>
+
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="btn btn-secondary" onclick="copyBackupCodes()">
+                <i class="fas fa-copy" aria-hidden="true"></i>&nbsp; <%= __('chrome:mfa_backup_copy_btn') %>
+            </button>
+            <a href="/v2/uam/mfa/manage" class="btn btn-primary"><%= __('chrome:mfa_backup_done_btn') %></a>
+        </div>
+    </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+    // Le message de confirmation est traduit côté serveur puis passé au script :
+    // l'alerte était le dernier morceau d'anglais de la page.
+    var MFA_BACKUP_COPIED = <%- JSON.stringify(__('chrome:mfa_backup_copied')) %>;
+    function copyBackupCodes() {
+        const codes = Array.from(document.querySelectorAll('#backupCodes code')).map(c => c.textContent).join('\n');
+        navigator.clipboard.writeText(codes).then(() => alert(MFA_BACKUP_COPIED));
+    }
+</script>

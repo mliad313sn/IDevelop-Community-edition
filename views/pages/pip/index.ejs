@@ -1,0 +1,210 @@
+<%
+    const stateLabel = {
+        proposed: __('pip:st_proposed'), approved: __('pip:st_approved'), active: __('pip:st_active'),
+        closed_success: __('pip:st_closed_success'), closed_failure: __('pip:st_closed_failure'), cancelled: __('pip:st_cancelled')
+    };
+%>
+<div class="page-header">
+  <h1><i class="fas fa-user-clock" aria-hidden="true"></i> <%= __('pip:heading') %></h1>
+  <p class="text-muted"><%= __('pip:intro') %></p>
+</div>
+
+<!-- ── A3: the machine proposes, the manager decides ──────────────────────────
+     An approved low-performance placement no longer opens a plan; it raises a
+     task here. Both exits carry a written reason: opening a plan, and deciding
+     no plan is needed. The task row deliberately does NOT name the 9-box cell —
+     the manager reads it from the grid, where their clearance applies. -->
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><i class="fas fa-clipboard-question" aria-hidden="true"></i> <%= __('pip:tasks_heading') %></h3>
+  <p class="text-muted" style="margin-top:0"><%= __('pip:tasks_intro') %></p>
+  <% if (!tasks || !tasks.length) { %>
+    <p><em><%= __('pip:tasks_empty') %></em></p>
+  <% } else { %>
+    <div class="table-wrapper">
+      <table class="table">
+        <thead><tr><th><%= __('common:employee') %></th><th><%= __('pip:tasks_raised_on') %></th><th><%= __('common:actions') %></th></tr></thead>
+        <tbody>
+          <% tasks.forEach(function(t){ %>
+            <tr>
+              <td><%= (t.firstName||'') + ' ' + (t.lastName||'') %><div style="color:#94a3b8;font-size:.78rem"><%= t.employeeNumber||'' %></div></td>
+              <%# node-pg hands a `date` / `timestamp` column back as a
+                  Date object, so String(...).slice(0,10) printed « Tue Sep 15 »:
+                  English, truncated, WITHOUT THE YEAR, on a French page. This page
+                  is the target of the « gérer → » link of /talent/actions, which
+                  was fixed first; the same three cells here were not.
+                  fmtDate is the product's ONE date rendering (dd/MM/yyyy in both
+                  languages) and answers « — » for an absent value. %>
+              <td><%= fmtDate(t.createdAt) %></td>
+              <td style="white-space:nowrap">
+                <button class="btn btn-sm btn-primary" onclick="PIP.openFromTask(<%= t.id %>)"><%= __('pip:tasks_open_plan') %></button>
+                <button class="btn btn-sm btn-secondary" onclick="PIP.dismissTask(<%= t.id %>)"><%= __('pip:tasks_no_plan') %></button>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><%= __('pip:propose_heading') %></h3>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div><label for="pip-emp"><%= __('common:employee') %> *</label><br>
+      <select id="pip-emp" class="form-control">
+        <option value=""><%= __('pip:select') %></option>
+        <% (employees||[]).forEach(function(e){ %>
+          <option value="<%= e.id %>"><%= e.name %><%= e.number ? ' (' + e.number + ')' : '' %></option>
+        <% }); %>
+      </select>
+    </div>
+    <div><label for="pip-start"><%= __('common:starts_on') %></label><br><input id="pip-start" type="date" class="form-control"></div>
+    <div><label for="pip-end"><%= __('common:ends_on') %></label><br><input id="pip-end" type="date" class="form-control"></div>
+    <div style="flex:1;min-width:220px"><label for="pip-summary"><%= __('pip:summary') %></label><br><input id="pip-summary" class="form-control" placeholder="<%= __('pip:summary_ph') %>"></div>
+    <div style="flex-basis:100%;height:0"></div>
+    <div style="flex:1;min-width:260px"><label for="pip-objectives"><%= __('pip:objectives') %></label><textarea id="pip-objectives" class="form-control" rows="2" placeholder="<%= __('pip:objectives_ph') %>"></textarea></div>
+    <div style="flex:1;min-width:260px"><label for="pip-criteria"><%= __('pip:success_criteria') %></label><textarea id="pip-criteria" class="form-control" rows="2" placeholder="<%= __('pip:success_criteria_ph') %>"></textarea></div>
+    <div style="flex-basis:100%;height:0"></div>
+    <div style="flex:1;min-width:260px"><label for="pip-checkpoints"><%= __('pip:checkpoints') %></label><textarea id="pip-checkpoints" class="form-control" rows="2" placeholder="<%= __('pip:checkpoints_ph') %>"></textarea></div>
+    <div style="flex:1;min-width:260px"><label for="pip-support"><%= __('pip:support') %></label><textarea id="pip-support" class="form-control" rows="2" placeholder="<%= __('pip:support_ph') %>"></textarea></div>
+    <div style="flex-basis:100%;height:0"></div>
+    <button class="btn btn-primary" onclick="PIP.propose()"><%= __('pip:propose_btn') %></button>
+  </div>
+</div>
+
+<div class="card" style="padding:0">
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#pip-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+  <table class="table" id="pip-table">
+    <thead><tr><th><%= __('common:employee') %></th><th><%= __('pip:state') %></th><th><%= __('common:starts_on') %></th><th><%= __('common:ends_on') %></th><th><%= __('pip:summary') %></th><th><%= __('common:actions') %></th></tr></thead>
+    <tbody>
+      <% if (!list || !list.length) { %>
+        <tr><td colspan="6"><em><%= __('pip:empty') %></em></td></tr>
+      <% } else { list.forEach(function(p){ %>
+        <tr>
+          <td><%= (p.firstName||'') + ' ' + (p.lastName||'') %><div style="color:#94a3b8;font-size:.78rem"><%= p.employeeNumber||'' %></div></td>
+          <td><span class="pip-state" data-state="<%= p.state %>"><%= stateLabel[p.state] || p.state %></span><% if (p.state === 'active' && p.endsOn && new Date(p.endsOn) < new Date()) { %> <span class="badge badge-danger" title="<%= __('pip:overdue_title') %>"><%= __('pip:overdue') %></span><% } %></td>
+          <%# see the task table above: the SAME plans whose window
+              /talent/actions now prints « 15/09/2026 » were still rendered here
+              as « Tue Sep 15 ». %>
+          <td><%= fmtDate(p.startsOn) %></td>
+          <td><%= fmtDate(p.endsOn) %></td>
+          <td style="max-width:320px"><%= p.summary || '' %></td>
+          <td style="white-space:nowrap">
+            <% if (p.state === 'proposed' || p.state === 'approved') { %>
+              <button class="btn btn-sm btn-success" onclick="PIP.activate(<%= p.id %>)"><%= __('pip:activate') %></button>
+            <% } %>
+            <% if (p.state === 'active') { %>
+              <button class="btn btn-sm btn-primary" onclick="PIP.close(<%= p.id %>, true)"><%= __('pip:close_ok') %></button>
+              <button class="btn btn-sm btn-danger" onclick="PIP.close(<%= p.id %>, false)"><%= __('pip:close_ko') %></button>
+            <% } %>
+            <%
+              /* Rulebook rule 8: the owner closes their own plan, alone. Withdrawing
+                 is NOT a verdict — it is how a plan that should not run stops without
+                 "clôturé — non atteint" being written on someone's record. */
+            %>
+            <% if (['proposed','approved','active'].includes(p.state)) { %>
+              <button class="btn btn-sm" onclick="PIP.withdraw(<%= p.id %>)"><%= __('pip:withdraw') %></button>
+            <% } %>
+          </td>
+        </tr>
+      <% }); } %>
+    </tbody>
+  </table>
+</div>
+
+<style>
+  .pip-state{padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:#64748b}
+  .pip-state[data-state="proposed"]{background:#d97706}
+  .pip-state[data-state="active"]{background:#1b56b8}
+  .pip-state[data-state="closed_success"]{background:#0f8a3c}
+  .pip-state[data-state="closed_failure"]{background:#b00020}
+  .pip-state[data-state="cancelled"]{background:#64748b}
+</style>
+
+<%# UNE SEULE discipline de reseau pour toute l application :
+    public/js/sa-console-net.js. Une reponse REDIRIGEE, non-JSON, 401/440 est
+    un ECHEC -- jamais un succes -- et le refus est ecrit dans la langue de la
+    page. Charge AVANT le script de la page (non differe) pour que SAConsoleNet
+    existe au premier appel. %>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  // Titre de la carte de refus : neutre, car ces ecrans ne sont pas la console de
+  // revue (sans cela ils affichaient « La file de revue n a pas pu etre chargee »).
+  load_failed: __('dash:unable_to_load'),
+  pending_failed: __('dash:unable_to_load'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+const PIP_T = {
+  selectEmployee: <%- JSON.stringify(__('pip:js_select_employee')) %>,
+  confirmActivate: <%- JSON.stringify(__('pip:confirm_activate')) %>,
+  closeAsSuccess: <%- JSON.stringify(__('pip:close_as_success')) %>,
+  closeAsFailure: <%- JSON.stringify(__('pip:close_as_failure')) %>,
+  outcomeSuffix: <%- JSON.stringify(__('pip:outcome_suffix')) %>,
+  closeNoteRequired: <%- JSON.stringify(__('pip:close_note_required')) %>,
+  taskReason: <%- JSON.stringify(__('pip:tasks_reason_prompt')) %>,
+  taskDismissReason: <%- JSON.stringify(__('pip:tasks_dismiss_prompt')) %>,
+  withdrawReason: <%- JSON.stringify(__('pip:withdraw_prompt')) %>
+};
+const PIP = {
+  // L assistant reseau ne se recopie plus ici : il vit dans
+  // public/js/sa-console-net.js (SAConsoleNet.call). L ancien corps avalait
+  // `r.json` en `{}` ; sur une session expiree le serveur repondait
+  // `302 -> /login`, le fetch de navigateur SUIVAIT la redirection, la page de
+  // connexion arrivait en `200 text/html`, `r.ok` valait donc true et `j`
+  // valait `{}` : le test `if(!r.ok||j.ok===false)` ne voyait rien.
+  // activate enchainait sur location.reload sans le moindre message.
+  async api(p,b){ try { return await SAConsoleNet.call(p,'POST',b||{}); } catch(e){ (window.toast||alert)(e.message,'error'); throw e; } },
+  async propose(){
+    const employeeId=Number(document.getElementById('pip-emp').value);
+    if(!employeeId){(window.toast||alert)(PIP_T.selectEmployee,'error');return;}
+    const val=(id)=>document.getElementById(id).value||null;
+    await this.api('/v2/pip/propose',{employeeId,startsOn:val('pip-start'),endsOn:val('pip-end'),summary:val('pip-summary'),objectives:val('pip-objectives'),successCriteria:val('pip-criteria'),reviewCheckpoints:val('pip-checkpoints'),supportOffered:val('pip-support')});
+    location.reload();
+  },
+  async activate(id){ const ok=await window.confirmDialog(PIP_T.confirmActivate); if(!ok)return; await this.api('/v2/pip/'+id+'/activate',{}); location.reload(); },
+  // Cancel on the dialog is NOT a closure: `||''` turned the dialog's null into
+  // an empty note and the plan was closed as NOT MET with nothing behind it
+  // (measured: PIP.close(id,false) + Annuler -> POST {success:'false',outcome:''}).
+  // A not-met verdict also needs a written note — the server refuses it too.
+  async close(id,success){
+    const outcome=await window.promptDialog((success?PIP_T.closeAsSuccess:PIP_T.closeAsFailure)+PIP_T.outcomeSuffix,'');
+    if(outcome===null)return;
+    if(!success&&!String(outcome).trim()){(window.toast||alert)(PIP_T.closeNoteRequired,'error');return;}
+    await this.api('/v2/pip/'+id+'/close',{success:String(success),outcome:String(outcome).trim()});
+    location.reload();
+  },
+  // a task becomes a plan only here, and only with a written reason. Abort on
+  // cancel/empty — the reason IS the decision, so an empty one is not a decision.
+  async openFromTask(taskId){
+    const reason=await window.promptDialog(PIP_T.taskReason,'');
+    if(reason===null||!String(reason).trim())return;
+    const val=(id)=>{const el=document.getElementById(id);return el&&el.value?el.value:null;};
+    await this.api('/v2/pip/tasks/'+taskId+'/open-plan',{reason:String(reason).trim(),startsOn:val('pip-start'),endsOn:val('pip-end'),summary:val('pip-summary'),objectives:val('pip-objectives'),successCriteria:val('pip-criteria'),reviewCheckpoints:val('pip-checkpoints'),supportOffered:val('pip-support')});
+    location.reload();
+  },
+  async dismissTask(taskId){
+    const reason=await window.promptDialog(PIP_T.taskDismissReason,'');
+    if(reason===null||!String(reason).trim())return;
+    await this.api('/v2/pip/tasks/'+taskId+'/dismiss',{reason:String(reason).trim()});
+    location.reload();
+  },
+  // Rule 8: the owning manager stops the plan themselves — a state plus a reason,
+  // never a "closed — not met" verdict and never an administrator's queue.
+  async withdraw(id){
+    const reason=await window.promptDialog(PIP_T.withdrawReason,'');
+    if(reason===null||!String(reason).trim())return;
+    await this.api('/v2/pip/'+id+'/withdraw',{reason:String(reason).trim()});
+    location.reload();
+  }
+};
+</script>

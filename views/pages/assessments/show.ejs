@@ -1,0 +1,467 @@
+<%
+  // Local twin of src/utils/dateFormat.fmtDateTime — dd/MM/yyyy HH:mm in BOTH
+  // languages. Defined here rather than relied on as a view local: this view's
+  // controller does not pass one. The locale-free call this replaces printed
+  // the browser's own format -- "3/4/2026" reads as two different days to a
+  // French and an English reader.
+  function _vdt(v) {
+    if (!v) return '—';
+    var x = new Date(v);
+    if (isNaN(x.getTime())) return '—';
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return p(x.getDate()) + '/' + p(x.getMonth() + 1) + '/' + x.getFullYear()
+         + ' ' + p(x.getHours()) + ':' + p(x.getMinutes());
+  }
+%>
+<div class="page-header">
+    <h1><%= __('assess:page_title') %><%= colon %> <%= employee.firstName %>
+            <%= employee.lastName %>
+    </h1>
+    <div class="page-actions">
+        <a href="/employees/<%= employee.id %>" class="btn btn-secondary"><%= __('assess:back_to_employee') %></a>
+    </div>
+</div>
+
+<% if (readiness) { %>
+    <div class="readiness-summary">
+        <h2><%= __('assess:readiness_summary') %></h2>
+        <div class="readiness-stats">
+            <div class="stat">
+                <span class="stat-label"><%= __('assess:readiness_label') %></span>
+                <span class="stat-value readiness-<%= readiness.isReady ? 'ready' : 'not-ready' %>">
+                    <%# readinessPercent is readiness_assessed_only: null (never 0) when nothing was ever assessed. %>
+                    <%= readiness.readinessPercent == null ? __('dash:rd_not_measured') : readiness.readinessPercent + '%' %>
+                </span>
+                <span class="readiness-badge <%= readiness.isReady ? 'badge-ready' : 'badge-not-ready' %>">
+                    <%= readiness.isReady ? __('assess:ready') : __('assess:not_ready') %>
+                </span>
+            </div>
+            <div class="stat">
+                <span class="stat-label"><%= __('assess:skills_met_label') %></span>
+                <span class="stat-value">
+                    <%= readiness.skillsMet %> / <%= readiness.totalRequired %>
+                </span>
+            </div>
+            <div class="stat">
+                <span class="stat-label"><%= __('assess:critical_skills_label') %></span>
+                <span class="stat-value">
+                    <%= readiness.criticalSkillsMet %> / <%= readiness.criticalSkillsTotal %>
+                </span>
+            </div>
+        </div>
+    </div>
+    <% } %>
+
+        <div class="assessments-section">
+            <div class="section-header">
+                <h2><%= __('assess:skill_assessments') %></h2>
+                <div class="assessment-actions">
+                    <button id="saveAllBtn" class="btn btn-primary" disabled>
+                        <span id="saveAllText"><%= __('assess:save_all_changes') %></span>
+                        <span id="saveAllSpinner" class="spinner" style="display:none;"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i></span>
+                    </button>
+                    <span id="changeCounter" class="change-counter"><%= __('assess:no_changes') %></span>
+                </div>
+            </div>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th><%= __('assess:th_domain') %></th>
+                        <th><%= __('assess:th_skill') %></th>
+                        <th><%= __('assess:th_required_level') %></th>
+                        <th><%= __('assess:th_current_level') %></th>
+                        <th><%= __('assess:th_status') %></th>
+                        <th><%= __('assess:th_critical') %></th>
+                        <th><%= __('assess:th_actions') %></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% skillsWithAssessments.forEach(function(skill) { %>
+                        <tr class="<%= skill.isMet ? 'skill-met' : 'skill-not-met' %>"
+                            data-skill-row="<%= skill.skillId %>">
+                            <td>
+                                <%= skill.domainName %>
+                            </td>
+                            <td>
+                                <%= skill.skillName %>
+                            </td>
+                            <td>
+                                <%= skill.requiredLevel %>
+                            </td>
+                            <td>
+                                <select class="level-select" data-skill-id="<%= skill.skillId %>"
+                                    data-employee-id="<%= employee.id %>"
+                                    data-original-level="<%= skill.currentLevel %>">
+                                    <option value="0" <%=skill.currentLevel===0 ? 'selected' : '' %>>0</option>
+                                    <option value="1" <%=skill.currentLevel===1 ? 'selected' : '' %>>1</option>
+                                    <option value="2" <%=skill.currentLevel===2 ? 'selected' : '' %>>2</option>
+                                    <option value="3" <%=skill.currentLevel===3 ? 'selected' : '' %>>3</option>
+                                    <option value="4" <%=skill.currentLevel===4 ? 'selected' : '' %>>4</option>
+                                </select>
+                            </td>
+                            <td>
+                                <% if (skill.isMet) { %>
+                                    <span class="badge badge-success"><%= __('assess:met') %></span>
+                                    <% } else { %>
+                                        <span class="badge badge-warning"><%= __('assess:not_met') %></span>
+                                        <% } %>
+                            </td>
+                            <td>
+                                <% if (skill.isCritical) { %>
+                                    <span class="badge badge-danger"><%= __('assess:critical') %></span>
+                                    <% } else { %>
+                                        <span>-</span>
+                                        <% } %>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-save-assessment" data-skill-id="<%= skill.skillId %>"
+                                    data-employee-id="<%= employee.id %>" disabled><%= __('assess:save') %></button>
+                            </td>
+                        </tr>
+                        <% }); %>
+                </tbody>
+            </table>
+        </div>
+
+        <% if (history && history.length> 0) { %>
+            <div class="history-section">
+                <h2><%= __('assess:assessment_history') %></h2>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th><%= __('assess:th_date') %></th>
+                            <th><%= __('assess:th_skill') %></th>
+                            <th><%= __('assess:th_previous_level') %></th>
+                            <th><%= __('assess:th_new_level') %></th>
+                            <th><%= __('assess:th_notes') %></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% history.forEach(function(entry) { %>
+                            <tr>
+                                <td>
+                                    <%= _vdt(entry.assessedAt) %>
+                                </td>
+                                <td>
+                                    <%= entry.skillName %>
+                                </td>
+                                <td>
+                                    <%= entry.previousLevel !==null ? entry.previousLevel : __('assess:not_applicable') %>
+                                </td>
+                                <td>
+                                    <%= entry.newLevel %>
+                                </td>
+                                <td>
+                                    <%= entry.notes || '-' %>
+                                </td>
+                            </tr>
+                            <% }); %>
+                    </tbody>
+                </table>
+            </div>
+            <% } %>
+
+                <style>
+                    .section-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 1rem;
+                    }
+
+                    .assessment-actions {
+                        display: flex;
+                        align-items: center;
+                        gap: 1rem;
+                    }
+
+                    .change-counter {
+                        padding: 0.5rem 1rem;
+                        background: #f0f0f0;
+                        border-radius: 4px;
+                        font-size: 0.9rem;
+                    }
+
+                    .change-counter.has-changes {
+                        background: #fff3cd;
+                        color: #856404;
+                        font-weight: bold;
+                    }
+
+                    tr[data-skill-row].modified {
+                        background-color: #fff3cd !important;
+                    }
+
+                    .spinner {
+                        display: inline-block;
+                        margin-left: 0.5rem;
+                    }
+
+                    #saveAllBtn:disabled {
+                        opacity: 0.6;
+                        cursor: not-allowed;
+                    }
+
+                    /* Domain group header styling */
+                    .domain-group-header {
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white;
+                        font-weight: bold;
+                        font-size: 1.1rem;
+                        text-align: left;
+                        border-top: 3px solid #5a67d8;
+                        border-bottom: 2px solid #5a67d8;
+                    }
+
+                    .domain-group-header td {
+                        padding: 12px 16px !important;
+                    }
+
+                    /* Icon styling in header */
+                    .domain-icon {
+                        font-size: 1.2rem;
+                        margin-right: 8px;
+                    }
+                </style>
+
+                <script nonce="<%= cspNonce %>">
+                    // Localized UI strings injected from server-side i18n
+                    const I18N = {
+                        noChanges: <%- JSON.stringify(__('assess:no_changes')) %>,
+                        changeOne: <%- JSON.stringify(__('assess:change_one')) %>,
+                        changeOther: <%- JSON.stringify(__('assess:change_other')) %>,
+                        save: <%- JSON.stringify(__('assess:save')) %>,
+                        saving: <%- JSON.stringify(__('assess:saving')) %>,
+                        saved: <%- JSON.stringify(__('assess:saved')) %>,
+                        errorPrefix: <%- JSON.stringify(__('assess:error_prefix')) %>,
+                        failedToSave: <%- JSON.stringify(__('assess:failed_to_save')) %>,
+                        failedToSaveAll: <%- JSON.stringify(__('assess:failed_to_save_all')) %>,
+                        errorSaving: <%- JSON.stringify(__('assess:error_saving')) %>,
+                        errorSavingAll: <%- JSON.stringify(__('assess:error_saving_all')) %>
+                    };
+
+                    // Add domain group headers for visual separation
+                    (function addDomainHeaders() {
+                        const tbody = document.querySelector('.assessments-section tbody');
+                        const rows = Array.from(tbody.querySelectorAll('tr[data-skill-row]'));
+
+                        let currentDomain = null;
+                        const rowsToInsert = [];
+
+                        rows.forEach((row, index) => {
+                            const domainCell = row.querySelector('td:first-child');
+                            const domainName = domainCell.textContent.trim();
+
+                            // When domain changes, prepare a header row
+                            if (domainName && domainName !== currentDomain) {
+                                currentDomain = domainName;
+
+                                // Create domain header row
+                                // Built with DOM APIs: textContent returned the DECODED
+                                // domain name (a "<img onerror=…>" stored as a domain
+                                // name comes back as live markup), so it must never be
+                                // spliced back into innerHTML.
+                                const headerRow = document.createElement('tr');
+                                headerRow.className = 'domain-group-header';
+                                const headerCell = document.createElement('td');
+                                headerCell.colSpan = 7;
+                                const iconWrap = document.createElement('span');
+                                iconWrap.className = 'domain-icon';
+                                const icon = document.createElement('i');
+                                icon.className = 'fas fa-folder-open';
+                                icon.setAttribute('aria-hidden', 'true');
+                                iconWrap.appendChild(icon);
+                                headerCell.appendChild(iconWrap);
+                                headerCell.appendChild(document.createTextNode(' ' + domainName));
+                                headerRow.appendChild(headerCell);
+
+                                rowsToInsert.push({ before: row, header: headerRow });
+                            }
+
+                            // Hide domain name in regular rows since we have headers
+                            domainCell.textContent = '';
+                        });
+
+                        // Insert all header rows
+                        rowsToInsert.forEach(({ before, header }) => {
+                            tbody.insertBefore(header, before);
+                        });
+                    })();
+
+                    // Track changes and prevent duplicates
+                    const changedSkills = new Set();
+                    let isSaving = false;
+
+                    // Reference: Track original levels to detect actual changes
+                    // This prevents duplicate history entries by only tracking real modifications
+                    function updateChangeCounter() {
+                        const count = changedSkills.size;
+                        const counter = document.getElementById('changeCounter');
+                        const saveAllBtn = document.getElementById('saveAllBtn');
+
+                        if (count === 0) {
+                            counter.textContent = I18N.noChanges;
+                            counter.classList.remove('has-changes');
+                            saveAllBtn.disabled = true;
+                        } else {
+                            counter.textContent = `${count} ${count > 1 ? I18N.changeOther : I18N.changeOne}`;
+                            counter.classList.add('has-changes');
+                            saveAllBtn.disabled = false;
+                        }
+                    }
+
+                    // Handle level changes
+                    document.querySelectorAll('.level-select').forEach(select => {
+                        select.addEventListener('change', function () {
+                            const skillId = this.dataset.skillId;
+                            const originalLevel = parseInt(this.dataset.originalLevel);
+                            const newLevel = parseInt(this.value);
+                            const row = this.closest('tr');
+                            const saveBtn = row.querySelector('.btn-save-assessment');
+
+                            // Reference: Only mark as changed if level actually differs from original
+                            // This ensures we only create history entries for real modifications
+                            if (originalLevel !== newLevel) {
+                                changedSkills.add(skillId);
+                                row.classList.add('modified');
+                                saveBtn.disabled = false;
+                            } else {
+                                changedSkills.delete(skillId);
+                                row.classList.remove('modified');
+                                saveBtn.disabled = true;
+                            }
+
+                            updateChangeCounter();
+                        });
+                    });
+
+                    // Individual save button
+                    document.querySelectorAll('.btn-save-assessment').forEach(btn => {
+                        btn.addEventListener('click', function () {
+                            // Protection: Prevent double-clicks by disabling button immediately
+                            if (isSaving || this.disabled) return;
+
+                            isSaving = true;
+                            this.disabled = true;
+                            this.textContent = I18N.saving;
+
+                            const skillId = this.dataset.skillId;
+                            const employeeId = this.dataset.employeeId;
+                            const row = this.closest('tr');
+                            const levelSelect = row.querySelector('.level-select');
+                            const currentLevel = levelSelect.value;
+
+                            fetch(`/employees/${employeeId}/assessments`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-Token': '<%= csrfToken %>'
+                                },
+                                body: JSON.stringify({
+                                    skillId: skillId,
+                                    currentLevel: parseInt(currentLevel)
+                                })
+                            })
+                                .then(res => res.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        // Update original level to prevent duplicate saves
+                                        levelSelect.dataset.originalLevel = currentLevel;
+                                        changedSkills.delete(skillId);
+                                        row.classList.remove('modified');
+                                        updateChangeCounter();
+
+                                        this.textContent = I18N.saved;
+                                        setTimeout(() => {
+                                            location.reload();
+                                        }, 500);
+                                    } else {
+                                        alert(I18N.errorPrefix + (data.error || I18N.failedToSave));
+                                        this.disabled = false;
+                                        this.textContent = I18N.save;
+                                        isSaving = false;
+                                    }
+                                })
+                                .catch(err => {
+                                    alert(I18N.errorSaving);
+                                    this.disabled = false;
+                                    this.textContent = I18N.save;
+                                    isSaving = false;
+                                });
+                        });
+                    });
+
+                    // Save All button
+                    document.getElementById('saveAllBtn').addEventListener('click', function () {
+                        // Protection: Prevent double-clicks and concurrent saves
+                        if (isSaving || changedSkills.size === 0) return;
+
+                        isSaving = true;
+                        this.disabled = true;
+                        document.getElementById('saveAllText').style.display = 'none';
+                        document.getElementById('saveAllSpinner').style.display = 'inline';
+
+                        // Disable all individual save buttons
+                        document.querySelectorAll('.btn-save-assessment').forEach(btn => {
+                            btn.disabled = true;
+                        });
+
+                        // Collect all changes
+                        const assessments = [];
+                        changedSkills.forEach(skillId => {
+                            const select = document.querySelector(`.level-select[data-skill-id="${skillId}"]`);
+                            assessments.push({
+                                skillId: parseInt(skillId),
+                                currentLevel: parseInt(select.value)
+                            });
+                        });
+
+                        const employeeId = document.querySelector('.level-select').dataset.employeeId;
+
+                        // Reference: Bulk save endpoint - sends all changes in one request
+                        // Backend logic (SkillAssessmentService.js line 12) ensures only actual
+                        // level changes create history entries, preventing duplicates
+                        fetch(`/employees/${employeeId}/assessments/bulk`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-Token': '<%= csrfToken %>'
+                            },
+                            body: JSON.stringify({ assessments })
+                        })
+                            .then(res => res.json())
+                            .then(data => {
+                                if (data.success) {
+                                    // Success - reload to show updated data
+                                    location.reload();
+                                } else {
+                                    alert(I18N.errorPrefix + (data.error || I18N.failedToSaveAll));
+                                    isSaving = false;
+                                    this.disabled = false;
+                                    document.getElementById('saveAllText').style.display = 'inline';
+                                    document.getElementById('saveAllSpinner').style.display = 'none';
+                                    document.querySelectorAll('.btn-save-assessment').forEach(btn => {
+                                        const row = btn.closest('tr');
+                                        const skillId = btn.dataset.skillId;
+                                        if (changedSkills.has(skillId)) {
+                                            btn.disabled = false;
+                                        }
+                                    });
+                                }
+                            })
+                            .catch(err => {
+                                alert(I18N.errorSavingAll);
+                                isSaving = false;
+                                this.disabled = false;
+                                document.getElementById('saveAllText').style.display = 'inline';
+                                document.getElementById('saveAllSpinner').style.display = 'none';
+                                document.querySelectorAll('.btn-save-assessment').forEach(btn => {
+                                    const row = btn.closest('tr');
+                                    const skillId = btn.dataset.skillId;
+                                    if (changedSkills.has(skillId)) {
+                                        btn.disabled = false;
+                                    }
+                                });
+                            });
+                    });
+                </script>

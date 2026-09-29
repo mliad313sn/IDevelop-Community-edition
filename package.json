@@ -1,0 +1,122 @@
+{
+  "name": "idevelop",
+  "version": "1.0.0",
+  "description": "IDevelop Community Edition — open-source skills, talent and continuous-performance platform (capability frameworks, assessments, readiness, 9-box, development plans, analytics).",
+  "main": "server.js",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "//overrides": "cookie: pins the transitive dep of csurf to the patched line (not reachable: csurf runs cookie:false) for a clean audit. uuid: exceljs pulls uuid@8 (GHSA-w5hq-g745-h8pq); forced to ^11.1.1, which still ships a CommonJS build.",
+  "overrides": {
+    "cookie": "^0.7.0",
+    "uuid": "^11.1.1"
+  },
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "test": "jest",
+    "test:unit": "jest",
+    "test:smoke": "playwright test",
+    "test:smoke:headed": "playwright test --headed",
+    "lint": "eslint \"**/*.js\"",
+    "lint:fix": "eslint \"**/*.js\" --fix",
+    "format": "prettier --write \"**/*.{js,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{js,json,md,yml,yaml}\"",
+    "db:migrate": "node -e \"(async()=>{const db=require('./src/config/database');await db.connect();await db.migrate();await db.close();})().catch(e=>{console.error(e);process.exit(1);})\"",
+    "db:migrate:all": "node scripts/migrate.js",
+    "db:migrate:preflight": "node scripts/migrate-preflight.js",
+    "db:migrate:postflight": "node scripts/migrate-preflight.js --expect-none",
+    "db:reset:golive": "node scripts/reset-for-golive.js",
+    "db:seed": "node -e \"(async()=>{const db=require('./src/config/database');await db.connect();await db.seed();await db.close();})().catch(e=>{console.error(e);process.exit(1);})\"",
+    "prepare": "husky install || true",
+    "lint:icons": "node scripts/check-icons.js",
+    "vendor:sync": "node -e \"require('fs').copyFileSync('node_modules/chart.js/dist/chart.umd.min.js','public/vendor/chart.umd.min.js');require('fs').copyFileSync('node_modules/chart.js/dist/chart.umd.min.js.map','public/vendor/chart.umd.min.js.map')\"",
+    "db:seed:starter": "node scripts/seed-starter-framework.js",
+    "contracts:export": "node scripts/export-contracts.js"
+  },
+  "keywords": [
+    "skills-matrix",
+    "competency-framework",
+    "talent-management",
+    "performance-management",
+    "hr",
+    "open-source",
+    "community-edition"
+  ],
+  "author": "The IDevelop Community Edition contributors",
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "@node-saml/passport-saml": "^5.1.0",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.7.15",
+    "chart.js": "^4.5.1",
+    "clamscan": "^2.1.2",
+    "compression": "^1.8.1",
+    "connect-pg-simple": "^9.0.1",
+    "csrf-sync": "^4.2.1",
+    "dotenv": "^16.3.1",
+    "ejs": "^3.1.9",
+    "exceljs": "^4.4.0",
+    "express": "^4.18.2",
+    "express-ejs-layouts": "^2.5.1",
+    "express-flash": "^0.0.2",
+    "express-rate-limit": "^7.1.5",
+    "express-session": "^1.17.3",
+    "express-validator": "^7.0.1",
+    "fast-xml-parser": "^5.8.0",
+    "helmet": "^7.1.0",
+    "i18next": "^23.16.8",
+    "i18next-fs-backend": "^2.6.6",
+    "i18next-http-middleware": "^3.9.7",
+    "ioredis": "^5.4.1",
+    "jose": "^6.2.12",
+    "multer": "^1.4.5-lts.1",
+    "node-mocks-http": "^1.17.2",
+    "nodemailer": "^9.0.1",
+    "openid-client": "^6.8.8",
+    "otplib": "^12.0.1",
+    "passport": "^0.6.0",
+    "passport-google-oauth20": "^2.0.0",
+    "passport-local": "^1.0.0",
+    "passport-openidconnect": "^0.1.2",
+    "pg": "^8.21.0",
+    "qrcode": "^1.5.4",
+    "winston": "^3.11.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "@playwright/test": "^1.58.2",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-n": "^16.6.2",
+    "eslint-plugin-security": "^3.0.0",
+    "husky": "^9.0.11",
+    "jest": "^29.7.0",
+    "lint-staged": "^15.2.2",
+    "marked": "^12.0.2",
+    "nodemon": "^3.0.2",
+    "prettier": "^3.2.5",
+    "supertest": "^7.2.2"
+  },
+  "lint-staged": {
+    "*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "homepage": "https://github.com/mliad313sn/IDevelop-Community-edition#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mliad313sn/IDevelop-Community-edition.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mliad313sn/IDevelop-Community-edition/issues"
+  },
+  "//engines": "20.19+: openid-client@6 and jose@6 (OIDC SSO) are ES modules loaded with require(esm), unflagged from Node 20.19 / 22.12."
+}

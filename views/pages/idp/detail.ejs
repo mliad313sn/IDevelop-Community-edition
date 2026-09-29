@@ -1,0 +1,118 @@
+<%
+    const statusLabel = { draft: __('idp:st_draft'), active: __('idp:st_active'), completed: __('idp:st_completed'), archived: __('idp:st_archived') };
+    const objLabel = { pending: __('idp:obj_st_pending'), in_progress: __('idp:obj_st_in_progress'), completed: __('idp:obj_st_completed'), cancelled: __('idp:obj_st_cancelled') };
+    const objBadge = { pending: 'badge-secondary', in_progress: 'badge-info', completed: 'badge-success', cancelled: 'badge-secondary' };
+    // Rows come back camelCased from the data layer; the snake_case spellings are
+    // kept only as a fallback (the objective text used to render blank).
+    const pick = (o, camel, snake) => (o[camel] != null ? o[camel] : o[snake]);
+    const planEmployeeId = pick(plan, 'employeeId', 'employee_id');
+    // Who may move the plan is decided by IDPService.planAuthority — the server
+    // refuses anyone else. `canManagePlan`, when the route supplies it, is that
+    // exact answer; otherwise the view only hides the buttons from the two
+    // people who can NEVER act: the subject and a read-only delegate.
+    const u = (typeof user !== 'undefined' && user) ? user : null;
+    const canAct = (typeof canManagePlan !== 'undefined')
+        ? Boolean(canManagePlan)
+        : Boolean(u
+            && !(u.userType === 'admin' && u.role === 'viewer')
+            && !(u.userType !== 'admin' && Number(u.id) === Number(planEmployeeId)));
+    const openObjectives = objectives.filter(function (o) { return o.state === 'pending' || o.state === 'in_progress'; }).length;
+    const closedAt = pick(plan, 'closedAt', 'closed_at');
+    const closeReason = pick(plan, 'closeReason', 'close_reason');
+    // The app's date helper (res.locals.fmtDate, locale-aware) — never a raw ISO date (E-13).
+    const fmtDay = (d) => (d ? locals.fmtDate(d) : '-');
+%>
+<div class="page-header">
+    <h1><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('idp:title') %> #<%= plan.id %></h1>
+    <p><strong><%= __('idp:status') %>:</strong> <%= statusLabel[plan.status] || plan.status %></p>
+    <% if (closedAt) { %>
+        <p class="text-muted"><%= __('idp:closed_on') %> <%= fmtDay(closedAt) %><% if (closeReason) { %> — <%= __('idp:close_reason') %><%= colon %> <%= closeReason %><% } %></p>
+    <% } %>
+</div>
+
+<div class="card" style="padding:1.25rem">
+    <h2><%= __('idp:objectives') %></h2>
+    <% if (!objectives.length) { %>
+        <p class="text-muted"><%= __('idp:no_objectives') %></p>
+    <% } %>
+    <ul style="list-style:none;padding-left:0">
+        <% objectives.forEach(function(o){ var oText = String(pick(o, 'smartText', 'smart_text') || '').slice(0, 80); %>
+            <li style="margin-bottom:.75rem">
+                <span class="badge <%= objBadge[o.state] || 'badge-secondary' %>"><%= objLabel[o.state] || o.state %></span>
+                <%= pick(o, 'smartText', 'smart_text') %> — <%= __('idp:due_on') %><%= colon %> <%= fmtDay(pick(o, 'dueOn', 'due_on')) %>
+                <% if (canAct && plan.status === 'active' && (o.state === 'pending' || o.state === 'in_progress')) { %>
+                    <span style="display:inline-flex;gap:.4rem;margin-left:.5rem">
+                        <% if (o.state === 'pending') { %>
+                        <form method="post" action="/v2/idp/objectives/<%= o.id %>/state" style="display:inline">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <input type="hidden" name="state" value="in_progress">
+                            <button type="submit" class="btn btn-sm btn-secondary" aria-label="<%= __('idp:obj_start_for', { objective: oText }) %>"><%= __('idp:obj_start') %></button>
+                        </form>
+                        <% } %>
+                        <form method="post" action="/v2/idp/objectives/<%= o.id %>/state" style="display:inline">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <input type="hidden" name="state" value="completed">
+                            <button type="submit" class="btn btn-sm btn-primary" aria-label="<%= __('idp:obj_complete_for', { objective: oText }) %>"><%= __('idp:obj_complete') %></button>
+                        </form>
+                    </span>
+                <% } %>
+            </li>
+        <% }); %>
+    </ul>
+</div>
+
+<div class="card" style="padding:1.25rem">
+    <h2><%= __('idp:actions') %></h2>
+    <table class="table">
+        <thead><tr><th><%= __('common:title') %></th><th><%= __('idp:action_type') %></th><th><%= __('common:status') %></th></tr></thead>
+        <tbody>
+            <% actions.forEach(function(a){ %>
+                <tr>
+                    <td><%= a.title %></td>
+                    <td><%= a.type %></td>
+                    <td><%= objLabel[a.status] || statusLabel[a.status] || a.status %></td>
+                </tr>
+            <% }); %>
+        </tbody>
+    </table>
+</div>
+
+<%# Signing is a DRAFT-only act (IDPService.signOff refuses anything else with
+    409 IDP_NOT_DRAFT). A button that can only be refused is worse than none:
+    render the form solely while the plan is still a draft. %>
+<% if (plan.status === 'draft') { %>
+<div class="card" style="padding:1.25rem">
+    <form method="post" action="/v2/idp/<%= plan.id %>/sign">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-primary"><%= __('idp:sign_off') %></button>
+    </form>
+</div>
+<% } %>
+
+<%# Closing the loop (IDPService.completePlan / archivePlan): an active plan is
+    completed by its authority once every objective is closed — or with a
+    reason for the ones still open; active or completed plans can be archived. %>
+<% if (canAct && (plan.status === 'active' || plan.status === 'completed')) { %>
+<div class="card" style="padding:1.25rem">
+    <h2><%= __('idp:close_heading') %></h2>
+    <% if (plan.status === 'active') { %>
+    <form method="post" action="/v2/idp/<%= plan.id %>/complete" style="margin-bottom:1rem">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <% if (openObjectives > 0) { %>
+            <p class="help-text"><%= __('idp:complete_open_hint', { count: openObjectives }) %></p>
+            <label for="idp-complete-reason"><%= __('idp:reason') %></label>
+            <textarea id="idp-complete-reason" name="reason" rows="2" required maxlength="1000" class="form-control"></textarea>
+        <% } else { %>
+            <p class="help-text"><%= __('idp:complete_ready_hint') %></p>
+        <% } %>
+        <button type="submit" class="btn btn-primary" style="margin-top:.5rem"><%= __('idp:complete_plan') %></button>
+    </form>
+    <% } %>
+    <form method="post" action="/v2/idp/<%= plan.id %>/archive">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label for="idp-archive-reason"><%= __('idp:reason') %><% if (plan.status === 'completed') { %> (<%= __('idp:optional') %>)<% } %></label>
+        <textarea id="idp-archive-reason" name="reason" rows="2" maxlength="1000" class="form-control"<%= plan.status === 'active' ? ' required' : '' %>></textarea>
+        <button type="submit" class="btn btn-secondary" style="margin-top:.5rem"><%= __('idp:archive_plan') %></button>
+    </form>
+</div>
+<% } %>

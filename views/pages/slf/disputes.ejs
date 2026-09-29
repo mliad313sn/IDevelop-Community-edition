@@ -1,0 +1,92 @@
+<div class="page-header">
+  <h1><i class="fas fa-gavel" aria-hidden="true"></i> <%= __('talentx:dsp_title') %></h1>
+  <p class="text-muted"><%= __('talentx:dsp_intro') %></p>
+</div>
+
+<div class="card" style="padding:0">
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#dsp-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+  <table class="table" id="dsp-table">
+    <% var showActions = canResolve || canArbitrate; %>
+    <thead><tr><th><%= __('talentx:employee') %></th><th><%= __('talentx:skill') %></th><th><%= __('talentx:dsp_self') %></th><th><%= __('talentx:dsp_supervisor') %></th><th><%= __('talentx:dsp_level') %></th><th><%= __('talentx:state') %></th><th><%= __('talentx:dsp_reason') %></th><th><%= __('talentx:dsp_opened') %></th><% if (showActions) { %><th><%= __('talentx:dsp_resolve') %></th><% } %></tr></thead>
+    <tbody>
+      <% if (!disputes || !disputes.length) { %>
+        <tr><td colspan="<%= showActions ? 9 : 8 %>"><em><%= __('talentx:dsp_no_disputes') %></em></td></tr>
+      <% } else { disputes.forEach(function(d){ %>
+        <tr>
+          <td><%= (d.firstName||'') + ' ' + (d.lastName||'') %><div style="color:#94a3b8;font-size:.78rem"><%= d.employeeNumber||'' %></div></td>
+          <td><%= d.skillName || '' %></td>
+          <td><%= d.selfRatedLevel %></td>
+          <td><%= d.supervisorRatedLevel %></td>
+          <td><span class="dsp-level" data-l="<%= d.level %>"><%= enumLabel(d.level) %><% if (d.level === 'L2') { %> · <%= __('talentx:dsp_hr') %><% } %></span></td>
+          <td><span class="dsp-state" data-s="<%= d.state %>"><%= enumLabel(d.state) %></span></td>
+          <td style="max-width:280px"><%= d.reason || '' %></td>
+          <%# a `timestamp` column stringified by String(...) prints
+              « Tue Sep 15 2026 00:00:00 GMT… » and slice(0,10) leaves the English
+              head. fmtDate is the product's one date rendering. %>
+          <td><%= fmtDate(d.openedAt) %></td>
+          <% if (showActions) { %>
+          <td style="white-space:nowrap">
+            <% if (canResolve && d.level === 'L0' && d.state === 'open') { %><button class="btn btn-sm btn-success" onclick="DSP.resolve(<%= d.id %>,'resolve-l0')"><%= __('talentx:dsp_resolve_l0') %></button><% } %>
+            <% if (canResolve && d.level === 'L1' && d.state === 'escalated') { %><button class="btn btn-sm btn-primary" onclick="DSP.resolve(<%= d.id %>,'resolve-l1')"><%= __('talentx:dsp_resolve_l1') %></button><% } %>
+            <% if (canArbitrate && d.level === 'L2' && (d.state === 'escalated' || d.state === 'open')) { %><button class="btn btn-sm btn-warning" onclick="DSP.resolve(<%= d.id %>,'resolve-l2')"><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('talentx:dsp_resolve_l2') %></button><% } %>
+          </td>
+          <% } %>
+        </tr>
+      <% }); } %>
+    </tbody>
+  </table>
+</div>
+
+<style>
+  .dsp-state{padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:#64748b}
+  .dsp-state[data-s="open"]{background:#d97706}
+  .dsp-state[data-s="escalated"]{background:#b00020}
+  .dsp-state[data-s="resolved"]{background:#16a34a}
+  .dsp-state[data-s="auto_finalized"]{background:#0891b2}
+  .dsp-level{padding:2px 8px;border-radius:10px;font-size:.8em;background:var(--bg-subtle,#334155);color:var(--text-primary,#e2e8f0)}
+  .dsp-level[data-l="L2"]{background:#7c3aed;color:#fff}
+</style>
+<%# Même discipline que la console de revue : une réponse REDIRIGÉE ou non-JSON est
+    un ÉCHEC. Mesuré ici sur une session expirée : l'ancien code recevait
+    `302 → /login` suivi en 200 HTML, ne voyait ni `r.ok` faux ni `j.ok === false`,
+    n'affichait AUCUN refus et appelait location.reload() — la décision d'arbitrage
+    n'était jamais enregistrée et rien ne le disait. %>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+const DSP = {
+  async resolve(id, path){
+    const ask = window.promptDialog;
+    const notify = window.toast || ((m)=>alert(m));
+    const v = await ask(<%- JSON.stringify(__('talentx:dsp_final_rating')) %>);
+    if (v === null) return;
+    const decidedRating = parseInt(v, 10);
+    if (isNaN(decidedRating) || decidedRating < 0 || decidedRating > 4) { notify(<%- JSON.stringify(__('talentx:dsp_rating_range')) %>, 'error'); return; }
+    let reason = await ask(<%- JSON.stringify(__('talentx:dsp_resolution_note')) %>);
+    reason = (reason || '').trim();
+    // Resolution note is mandatory (fairness + audit) — matches the server guard.
+    if (!reason) { notify(<%- JSON.stringify(__('talentx:dsp_note_required')) %>, 'error'); return; }
+    let j;
+    try {
+      j = await SAConsoleNet.api('/v2/slf/disputes/'+id+'/'+path, 'POST', {decidedRating, reason});
+    } catch (err) {
+      notify(err.message, 'error');
+      if (err.code === 'session') SAConsoleNet.navigate('/login?expired=1');
+      return;
+    }
+    if (!j || j.ok === false) { notify((j && j.error) || <%- JSON.stringify(__('talentx:sar_not_confirmed')) %>, 'error'); return; }
+    location.reload();
+  }
+};
+</script>

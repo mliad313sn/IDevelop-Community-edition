@@ -1,0 +1,206 @@
+<%
+/*
+ * « Mes certifications » — where a certification-expiry alert lands.
+ *
+ * The employee is told four times (90 / 60 / 30 days, then expired) that a
+ * certificate is running out. This page answers the three questions that alert
+ * cannot: WHICH one, WHEN, and WHAT to do about it.
+ *
+ * READ-ONLY on purpose: recording a certification is a verified act (VOC
+ * sign-off, evidence file, AV scan) that belongs to the manager or to
+ * compliance. No form here writes anything; the page names the person to ask.
+ *
+ * No client JS — the page is fully server-rendered and works with JavaScript
+ * disabled, like the rest of the employee space.
+ */
+const statusMeta = {
+    valid:     { label: __('employee:cert_st_valid'),     cls: 'badge-success'   },
+    expiring:  { label: __('employee:cert_st_expiring'),  cls: 'badge-warning'   },
+    expired:   { label: __('employee:cert_st_expired'),   cls: 'badge-danger'    },
+    no_expiry: { label: __('employee:cert_st_no_expiry'), cls: 'badge-info'      },
+    missing:   { label: __('employee:cert_st_missing'),   cls: 'badge-secondary' }
+};
+const badge = (key) => statusMeta[key] || { label: enumLabel(key), cls: 'badge-secondary' };
+const dash = '—';
+const remaining = function (c) {
+    if (!c || c.daysToExpiry === null) return dash;
+    if (c.daysOverdue !== null) return c.daysOverdue + ' ' + __('employee:cert_days_overdue');
+    return c.daysToExpiry + ' ' + __('employee:cert_days_left');
+};
+const needsAction = counts.expiring + counts.expired;
+const missingCount = required.filter(function (r) { return r.status === 'missing'; }).length;
+%>
+
+<div class="page-header">
+    <h1><i class="fas fa-id-badge" aria-hidden="true"></i> <%= __('employee:cert_title') %></h1>
+    <p class="text-muted"><%= __('employee:cert_subtitle') %></p>
+</div>
+
+<% if (loadError) { %>
+    <div class="alert alert-warning" role="alert">
+        <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+        <%= __('employee:cert_load_error') %>
+    </div>
+<% } %>
+
+<% if (!hasAnything && !loadError) { %>
+
+    <!-- Reassuring empty state: holding no certificate is a perfectly normal
+         situation, not a failure to fix. -->
+    <div class="card">
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-id-badge" aria-hidden="true"></i></div>
+            <h3><%= __('employee:cert_empty_title') %></h3>
+            <p><%= __('employee:cert_empty_body') %></p>
+            <p><%= __('employee:cert_empty_hint') %></p>
+            <a class="btn btn-secondary" href="/employee/dashboard">
+                <i class="fas fa-house" aria-hidden="true"></i>
+                <%= __('employee:cert_empty_cta') %>
+            </a>
+        </div>
+    </div>
+
+<% } else if (!loadError) { %>
+
+    <!-- ── What needs your attention ─────────────────────────────────────── -->
+    <% if (needsAction || missingCount) { %>
+        <div class="card" style="padding:1.25rem;">
+            <h2 style="margin-top:0;"><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('employee:cert_action_title') %></h2>
+            <ul style="margin:0 0 1rem;padding-left:1.2rem;line-height:1.9;">
+                <% if (counts.expired) { %>
+                    <li><strong><%= __('employee:cert_action_expired') %></strong> — <%= counts.expired %></li>
+                <% } %>
+                <% if (counts.expiring) { %>
+                    <li><%= __('employee:cert_action_expiring') %> — <%= counts.expiring %></li>
+                <% } %>
+                <% if (missingCount) { %>
+                    <li><%= __('employee:cert_action_missing') %> — <%= missingCount %></li>
+                <% } %>
+            </ul>
+            <p style="margin:0 0 .5rem;">
+                <i class="fas fa-user-tie" aria-hidden="true"></i>
+                <% if (contactName) { %>
+                    <%= __('employee:cert_action_contact') %> <strong><%= contactName %></strong>
+                <% } else { %>
+                    <%= __('employee:cert_action_contact_unknown') %>
+                <% } %>
+            </p>
+            <% if (refresherCount) { %>
+                <p style="margin:0 0 .5rem;">
+                    <i class="fas fa-graduation-cap" aria-hidden="true"></i>
+                    <%= __('employee:cert_action_learning') %>
+                    <a href="/employee/my-learning"><%= __('employee:cert_action_learning_link') %></a>
+                </p>
+            <% } %>
+            <p class="text-muted" style="margin:0;font-size:.85rem;">
+                <i class="fas fa-bell" aria-hidden="true"></i> <%= __('employee:cert_alert_note') %>
+            </p>
+        </div>
+    <% } %>
+
+    <!-- ── Certifications required by the role ───────────────────────────── -->
+    <div class="card" style="padding:1.25rem;">
+        <h2 style="margin-top:0;"><i class="fas fa-clipboard-list" aria-hidden="true"></i> <%= __('employee:cert_required_section') %></h2>
+        <p class="text-muted"><%= __('employee:cert_required_intro') %></p>
+
+        <% if (!required.length) { %>
+            <p><em><%= __('employee:cert_required_none') %></em></p>
+        <% } else { %>
+            <div class="table-wrapper">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th scope="col"><%= __('employee:cert_th_skill') %></th>
+                            <th scope="col"><%= __('employee:cert_th_issued') %></th>
+                            <th scope="col"><%= __('employee:cert_th_expires') %></th>
+                            <th scope="col"><%= __('employee:cert_th_remaining') %></th>
+                            <th scope="col"><%= __('employee:cert_th_status') %></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% required.forEach(function (r) { %>
+                            <tr>
+                                <th scope="row" style="font-weight:600;">
+                                    <%= r.skillName %>
+                                    <% if (r.isCritical) { %>
+                                        <span class="badge badge-danger"><%= __('employee:cert_critical') %></span>
+                                    <% } %>
+                                    <div class="text-muted" style="font-size:.82rem;font-weight:400;">
+                                        <%= __('employee:cert_validity_label') %><%= colon %>
+                                        <% if (r.validityMonths) { %>
+                                            <%= r.validityMonths %> <%= __('employee:cert_months') %>
+                                        <% } else { %>
+                                            <%= __('employee:cert_validity_none') %>
+                                        <% } %>
+                                        &middot;
+                                        <%= __('employee:cert_window_label') %><%= colon %>
+                                        <%= r.windowDays %> <%= __('employee:cert_days') %>
+                                    </div>
+                                    <% if (r.cert && r.cert.certNumber) { %>
+                                        <div class="text-muted" style="font-size:.82rem;font-weight:400;">
+                                            <%= __('employee:cert_th_number') %><%= colon %> <%= r.cert.certNumber %>
+                                        </div>
+                                    <% } %>
+                                </th>
+                                <td><%= r.cert ? (r.cert.issuedOn || dash) : dash %></td>
+                                <td><%= r.cert ? (r.cert.expiresOn || dash) : dash %></td>
+                                <td><%= r.cert ? remaining(r.cert) : dash %></td>
+                                <td>
+                                    <span class="badge <%= badge(r.status).cls %>"><%= badge(r.status).label %></span>
+                                    <% if (r.status === 'missing') { %>
+                                        <div class="text-muted" style="font-size:.82rem;"><%= __('employee:cert_not_held_hint') %></div>
+                                    <% } %>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            </div>
+        <% } %>
+    </div>
+
+    <!-- ── Certifications held outside the role's requirements ───────────── -->
+    <% if (others.length) { %>
+        <div class="card" style="padding:1.25rem;">
+            <h2 style="margin-top:0;"><i class="fas fa-certificate" aria-hidden="true"></i> <%= __('employee:cert_other_section') %></h2>
+            <p class="text-muted"><%= __('employee:cert_other_intro') %></p>
+            <div class="table-wrapper">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th scope="col"><%= __('employee:cert_th_skill') %></th>
+                            <th scope="col"><%= __('employee:cert_th_number') %></th>
+                            <th scope="col"><%= __('employee:cert_th_issued') %></th>
+                            <th scope="col"><%= __('employee:cert_th_expires') %></th>
+                            <th scope="col"><%= __('employee:cert_th_remaining') %></th>
+                            <th scope="col"><%= __('employee:cert_th_status') %></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% others.forEach(function (c) { %>
+                            <tr>
+                                <th scope="row" style="font-weight:600;"><%= c.skillName %></th>
+                                <td><%= c.certNumber || dash %></td>
+                                <td><%= c.issuedOn || dash %></td>
+                                <td><%= c.expiresOn || dash %></td>
+                                <td><%= remaining(c) %></td>
+                                <td><span class="badge <%= badge(c.status).cls %>"><%= badge(c.status).label %></span></td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    <% } %>
+
+    <% if (!held.length) { %>
+        <div class="card" style="padding:1.25rem;">
+            <p style="margin:0;"><%= __('employee:cert_none_held_body') %></p>
+        </div>
+    <% } %>
+
+    <p class="text-muted" style="font-size:.85rem;">
+        <i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('employee:cert_readonly') %>
+    </p>
+
+<% } %>

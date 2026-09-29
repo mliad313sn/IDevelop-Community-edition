@@ -1,0 +1,941 @@
+<%
+/*
+ * Campaign console for ONE cycle.
+ *
+ * Three questions, answered in order:
+ *   1. Where is the campaign?          → the funnel tiles (a non-starter is a tile,
+ *                                        not an absence of data)
+ *   2. Where is it stuck?              → by-site / department / service / manager
+ *                                        breakdowns, bottleneck-first, every row a
+ *                                        filter link, so the manager sitting on
+ *                                        submissions is NAMED and one click away
+ *   3. Who exactly?                    → the roster, filterable by site / department /
+ *                                        service / role / manager, sortable, with
+ *                                        bulk excuse and manual chase
+ *
+ * Filters filter the VIEW. They never change what anybody is asked to assess:
+ * `expected_skills` is the full department-designed catalogue for the person's
+ * role, and the only exclusion offered is PERSON-level with a reason.
+ */
+const cycStateLabel = {
+    not_started: __('admin:cyc_kpi_not_started'),
+    in_progress: __('admin:cyc_kpi_in_progress'),
+    in_review:   __('admin:cyc_kpi_in_review'),
+    approved:    __('admin:cyc_kpi_approved'),
+    excluded:    __('admin:cyc_kpi_excluded')
+};
+const catLabel = function (c) { return c ? __('admin:cyc_cat_' + c) : ''; };
+const pctText = function (v) { return (v === null || v === undefined) ? '—' : (v + ' %'); };
+const isRunning = cycle.status === 'open' || cycle.status === 'locked';
+const isOpen = cycle.status === 'open';
+const canBulkExclude = canManage && isRunning;
+const canChase = canNudge && isRunning;
+const groupParam = { site: 'siteId', department: 'departmentId', service: 'serviceId', manager: 'supervisorId' }[by];
+const basePath = '/cycles/' + cycle.id;
+// Query string builder that keeps every current filter (arrays included).
+const qs = function (over) {
+    const p = new URLSearchParams();
+    const add = function (k, v) { if (Array.isArray(v)) v.forEach(function (x) { p.append(k, String(x)); }); else if (v !== '' && v !== null && v !== undefined && v !== false) p.append(k, String(v)); };
+    const cur = { state: filters.state, q: filters.q, siteId: filters.siteId, departmentId: filters.departmentId, serviceId: filters.serviceId,
+                  roleId: filters.roleId, supervisorId: filters.noSupervisor ? filters.supervisorId.concat(['none']) : filters.supervisorId,
+                  by: filters.by !== 'site' ? filters.by : '', limit: filters.limit !== 50 ? filters.limit : '', sort: filters.sort !== 'state' ? filters.sort : '', dir: filters.sort !== 'state' ? filters.dir : '' };
+    Object.keys(over || {}).forEach(function (k) { cur[k] = over[k]; });
+    Object.keys(cur).forEach(function (k) { add(k, cur[k]); });
+    const s = p.toString();
+    return s ? ('?' + s) : '';
+};
+// Ids may be numeric or an 'admin:<id>' responsable token (3.23.18): compare as strings.
+const selected = function (arr, id) { return (arr || []).some(function (x) { return String(x) === String(id); }); };
+%>
+<div class="page-header">
+  <a href="/cycles" class="btn btn-sm btn-secondary" style="float:right">
+    <i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('admin:cyc_back') %>
+  </a>
+  <h1>
+    <i class="fas fa-bullhorn" aria-hidden="true"></i>
+    <%= cycle.code %><% if (cycle.label) { %> — <%= cycle.label %><% } %>
+    <span class="cyc-pill" data-s="<%= cycle.status %>"><%= enumLabel('cycle_status', cycle.status) %></span>
+    <% if (cycle.overdueDays) { %>
+      <span class="cyc-overdue" title="<%= __('admin:cyc_overdue_title') %>"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('admin:cyc_overdue', { days: cycle.overdueDays }) %></span>
+    <% } %>
+  </h1>
+  <p class="text-muted">
+    <%= __('admin:cyc_th_opens') %><%= colon %> <%= fmtDate(cycle.openedAt) %> ·
+    <%= __('admin:cyc_th_closes') %><%= colon %> <%= fmtDate(cycle.closesAt) %>
+    <% if (cycle.reopenCount) { %> · <%= __('admin:cyc_reopened_n', { n: cycle.reopenCount, date: fmtDate(cycle.reopenedAt) }) %><% } %>
+    <% if (cycle.status === 'cancelled') { %> · <%= __('admin:cyc_cancelled_line', { date: fmtDate(cycle.cancelledAt), reason: cycle.cancelReason || '' }) %><% } %>
+  </p>
+</div>
+
+<% if (canLaunch && cycle.status !== 'closed' && cycle.status !== 'cancelled') { %>
+<div class="card cyc-actions" style="padding:.9rem;margin-bottom:1rem">
+  <div>
+    <strong><%= cycle.status === 'draft' ? __('admin:cyc_launch') : __('admin:cyc_lifecycle_title') %></strong>
+    <div class="text-muted" style="font-size:.85rem"><%= cycle.status === 'draft' ? __('admin:cyc_launch_help') : (isOpen ? __('admin:cyc_open_help') : __('admin:cyc_locked_help')) %></div>
+  </div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    <% if (cycle.status === 'draft') { %>
+      <button type="button" class="btn btn-primary" id="cyc-launch"><i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('admin:cyc_launch') %></button>
+      <a class="btn btn-secondary" href="/cycles/<%= cycle.id %>/edit"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:cyc_edit') %></a>
+      <button type="button" class="btn btn-danger" id="cyc-cancel"><i class="fas fa-ban" aria-hidden="true"></i> <%= __('admin:cyc_cancel_draft') %></button>
+    <% } else if (isOpen) { %>
+      <button type="button" class="btn btn-secondary" id="cyc-launch"><i class="fas fa-rotate" aria-hidden="true"></i> <%= __('admin:cyc_relaunch') %></button>
+      <button type="button" class="btn btn-secondary" id="cyc-extend"><i class="fas fa-calendar-plus" aria-hidden="true"></i> <%= __('admin:cyc_extend') %></button>
+      <button type="button" class="btn btn-warning" id="cyc-lock"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:cyc_lock') %></button>
+      <button type="button" class="btn btn-danger" id="cyc-close"><i class="fas fa-flag-checkered" aria-hidden="true"></i> <%= __('admin:cyc_close') %></button>
+    <% } else if (cycle.status === 'locked') { %>
+      <button type="button" class="btn btn-primary" id="cyc-reopen"><i class="fas fa-lock-open" aria-hidden="true"></i> <%= __('admin:cyc_reopen') %></button>
+      <button type="button" class="btn btn-danger" id="cyc-close"><i class="fas fa-flag-checkered" aria-hidden="true"></i> <%= __('admin:cyc_close') %></button>
+    <% } %>
+  </div>
+</div>
+<% } %>
+<%#
+  SECTION campaign-rules — A8 : une campagne en retard est SIGNALÉE et sa clôture PROPOSÉE.
+  Elle n'est jamais clôturée d'office ; ce bandeau est l'endroit où un humain
+  décide. La proposition déclinée reste au dossier plus bas.
+%>
+<% if (proposal) { %>
+<div class="card cyc-actions" id="cyc-proposal" style="padding:.9rem;margin-bottom:1rem;border-left:4px solid var(--warning, #d97706)">
+  <div>
+    <strong><i class="fas fa-flag" aria-hidden="true"></i> <%= __('admin:cyc_proposal_title') %></strong>
+    <div style="font-size:.9rem">
+      <%= __('admin:cyc_proposal_line', { days: proposal.overdueDays, date: fmtDate(cycle.closesAt), threshold: proposal.proposalDays }) %>
+    </div>
+    <% if (proposal.snapshot) { %>
+      <div class="text-muted" style="font-size:.85rem">
+        <%= __('admin:cyc_proposal_snapshot', {
+              notStarted: proposal.snapshot.neverStarted, inProgress: proposal.snapshot.inProgress,
+              inReview: proposal.snapshot.inReview, approved: proposal.snapshot.approved,
+              active: proposal.snapshot.active }) %>
+      </div>
+    <% } %>
+    <div class="text-muted" style="font-size:.85rem"><%= __('admin:cyc_never_auto_closed') %></div>
+  </div>
+  <% if (canLaunch) { %>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    <button type="button" class="btn btn-danger" id="cyc-proposal-accept"><i class="fas fa-flag-checkered" aria-hidden="true"></i> <%= __('admin:cyc_proposal_accept') %></button>
+    <button type="button" class="btn btn-secondary" id="cyc-proposal-decline"><i class="fas fa-xmark" aria-hidden="true"></i> <%= __('admin:cyc_proposal_decline') %></button>
+  </div>
+  <% } %>
+</div>
+<% } %>
+
+<%#
+  SECTION campaign-rules — A5 : la réouverture d'une campagne CLOSE est une dérogation
+  super-administrateur, ouverte 30 jours après la clôture, motif obligatoire.
+  Hors délai — ou quand la date de clôture n'a jamais été enregistrée — le
+  bouton n'existe pas et la phrase dit pourquoi.
+%>
+<% if (cycle.status === 'closed') { %>
+<div class="card cyc-actions" style="padding:.9rem;margin-bottom:1rem">
+  <div>
+    <strong><i class="fas fa-lock" aria-hidden="true"></i>
+      <%= cycle.closedAt ? __('admin:cyc_closed_on', { date: fmtDate(cycle.closedAt) }) : __('admin:cyc_reopen_window_unknown') %>
+    </strong>
+    <%#
+      la phrase ET le bouton sont commandés par `canReopenClosed`,
+      qui EST la décision de CycleService.reopenWindow(), celle que le serveur
+      appliquera. Ne jamais redériver le délai ici (« reopenWindowDays > 0 »
+      annonçait le délai écoulé un jour trop tôt et retirait le seul bouton de
+      l'acte alors que la dérogation passait encore).
+    %>
+    <div class="text-muted" style="font-size:.85rem">
+      <% if (!cycle.closedAt) { %>
+        <%= __('admin:cyc_err_cycle_closed_at_unknown') %>
+      <% } else if (cycle.canReopenClosed && cycle.reopenWindowLastDay) { %>
+        <%= __('admin:cyc_reopen_window_last_day', { window: cycle.reopenWindowTotal }) %>
+      <% } else if (cycle.canReopenClosed) { %>
+        <%= __('admin:cyc_reopen_window_left', { days: cycle.reopenWindowDays, window: cycle.reopenWindowTotal }) %>
+      <% } else { %>
+        <%= __('admin:cyc_reopen_window_none', { window: cycle.reopenWindowTotal }) %>
+      <% } %>
+    </div>
+    <% if (cycle.reopenOverrideAt) { %>
+      <div class="text-muted" style="font-size:.85rem"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+        <%= __('admin:cyc_override_line', { date: fmtDate(cycle.reopenOverrideAt), reason: cycle.reopenOverrideReason || '' }) %>
+      </div>
+    <% } %>
+  </div>
+  <% if (canLaunch && cycle.canReopenClosed) { %>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    <button type="button" class="btn btn-warning" id="cyc-reopen-closed"><i class="fas fa-lock-open" aria-hidden="true"></i> <%= __('admin:cyc_reopen_closed') %></button>
+  </div>
+  <% } %>
+</div>
+<% } else if (cycle.reopenOverrideAt) { %>
+<div class="cyc-note" role="status"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+  <%= __('admin:cyc_override_line', { date: fmtDate(cycle.reopenOverrideAt), reason: cycle.reopenOverrideReason || '' }) %>
+</div>
+<% } %>
+
+<% if (!canManage && isManager) { %>
+<div class="cyc-note" role="status"><i class="fas fa-user-tie" aria-hidden="true"></i> <%= __('admin:cyc_manager_note') %></div>
+<% } else if (!canManage) { %>
+<div class="cyc-note" role="status"><i class="fas fa-eye" aria-hidden="true"></i> <%= __('admin:cyc_read_only') %></div>
+<% } else if (!canLaunch) { %>
+<div class="cyc-note" role="status"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:cyc_launch_reserved') %></div>
+<% } %>
+
+<%# ---- Funnel tiles. Each tile is a filter link, so "12 non démarrés" is one click from "which 12". %>
+<div class="cyc-kpis">
+  <% ['not_started','in_progress','in_review','approved','excluded'].forEach(function (st) { %>
+    <a class="card cyc-kpi cyc-k-<%= st %> <%= filters.state === st ? 'cyc-kpi-on' : '' %>" href="<%= qs({ state: st, page: '' }) %>">
+      <div class="cyc-kpi-n"><%= progress.states[st].count %></div>
+      <div class="cyc-kpi-l"><%= cycStateLabel[st] %></div>
+    </a>
+  <% }); %>
+  <a class="card cyc-kpi <%= filters.state ? '' : 'cyc-kpi-on' %>" href="<%= qs({ state: '', page: '' }) %>">
+    <div class="cyc-kpi-n"><%= progress.totals.active %></div>
+    <div class="cyc-kpi-l"><%= __('admin:cyc_kpi_active') %></div>
+  </a>
+</div>
+
+<div class="cyc-kpis" style="margin-bottom:1rem">
+  <div class="card cyc-kpi cyc-kpi-wide">
+    <div class="cyc-kpi-n"><%= pctText(progress.pct.approved) %></div>
+    <div class="cyc-kpi-l"><%= progress.pct.approved === null ? __('admin:cyc_not_launched_short') : __('admin:cyc_kpi_pct_approved') %></div>
+  </div>
+  <div class="card cyc-kpi cyc-kpi-wide">
+    <div class="cyc-kpi-n"><%= progress.totals.expectedSkills %></div>
+    <div class="cyc-kpi-l"><%= __('admin:cyc_kpi_expected_skills') %></div>
+  </div>
+  <div class="card cyc-kpi cyc-kpi-wide">
+    <div class="cyc-kpi-n"><%= progress.totals.approvedSkills %></div>
+    <div class="cyc-kpi-l"><%= __('admin:cyc_kpi_approved_skills') %></div>
+  </div>
+</div>
+
+<p class="text-muted" style="font-size:.85rem;margin:-.4rem 0 1rem">
+  <i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:cyc_skills_note') %>
+</p>
+
+<%#
+  SECTION campaign-rules — règle 12 : le nombre de compétences conçu par le département ne se
+  réduit JAMAIS silencieusement. Une personne qui a changé de rôle en cours de
+  campagne est comptée sur le rôle d'inscription, et on DIT ce que deviennent les
+  mesures prises contre l'ancien rôle. Rien n'est affiché quand personne n'a bougé.
+%>
+<% if (roleChanges && roleChanges.count) { %>
+<div class="cyc-note" role="status" id="cyc-role-changes">
+  <i class="fas fa-arrows-rotate" aria-hidden="true"></i>
+  <strong><%= __('admin:cyc_role_changed_n', { n: roleChanges.count }) %></strong>
+  <div style="font-size:.85rem"><%= __('admin:cyc_role_changed_help') %></div>
+</div>
+<% } %>
+
+<%#
+  SECTION campaign-rules — A6 : la mesure hors campagne est autorisée, datée, marquée, et
+  volontairement AFFICHÉE À PART des tuiles ci-dessus, parce qu'elle n'entre dans
+  aucun taux de complétion. On ne montre jamais 0 à la place d'une absence.
+%>
+<% if (offCampaign) { %>
+<div class="cyc-note" role="status" id="cyc-off-campaign">
+  <i class="fas fa-calendar-xmark" aria-hidden="true"></i>
+  <strong><%= __('admin:cyc_off_campaign') %></strong> —
+  <% if (offCampaign.measurements) { %>
+    <%= __('admin:cyc_off_campaign_n', { measurements: offCampaign.measurements, people: offCampaign.people }) %><% if (offCampaign.lastAt) { %> · <%= __('admin:cyc_off_campaign_last', { date: fmtDate(offCampaign.lastAt) }) %><% } %>
+  <% } else { %>
+    <%= __('admin:cyc_off_campaign_none') %>
+  <% } %>
+  <div class="text-muted" style="font-size:.85rem"><%= __('admin:cyc_off_campaign_help') %></div>
+</div>
+<% } %>
+
+<%# SECTION campaign-rules — A8 : la trace des propositions, décidées comprises (rien ne se supprime). %>
+<% if (proposalHistory && proposalHistory.length) { %>
+<details class="card" style="padding:.8rem;margin-bottom:1rem" id="cyc-proposal-history">
+  <summary style="cursor:pointer"><strong><%= __('admin:cyc_proposal_history') %></strong> (<%= proposalHistory.length %>)</summary>
+  <ul style="margin:.6rem 0 0;padding-left:1.2rem;font-size:.87rem">
+    <% proposalHistory.forEach(function (pr) { %>
+      <li>
+        <%= fmtDate(pr.proposedAt) %> — <%= __('admin:cyc_proposal_state_' + pr.state) %>
+        <% if (pr.decidedAt) { %> · <%= fmtDate(pr.decidedAt) %> · <%= pr.decidedBy || __('admin:cyc_by_system') %><% } %>
+        <% if (pr.decisionReason) { %><%= colon %> <%= pr.decisionReason %><% } %>
+      </li>
+    <% }); %>
+  </ul>
+</details>
+<% } %>
+
+<%# ---- Bottleneck breakdowns. Every row is a filter link. --- %>
+<div class="cyc-split">
+  <div>
+    <h3 style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+      <i class="fas fa-industry" aria-hidden="true"></i> <%= __('admin:cyc_by_group') %>
+      <span class="cyc-by">
+        <% groupings.filter(function (g) { return g !== 'manager'; }).forEach(function (g) { %>
+          <a href="<%= qs({ by: g, page: '' }) %>" class="<%= by === g ? 'on' : '' %>" aria-current="<%= by === g ? 'true' : 'false' %>"><%= __('admin:cyc_group_' + g) %></a>
+        <% }); %>
+      </span>
+    </h3>
+    <p class="text-muted" style="font-size:.82rem;margin-top:-.4rem"><%= __('admin:cyc_bottleneck_hint') %></p>
+    <div class="table-wrapper">
+      <table class="table" id="cyc-by-group">
+        <thead><tr>
+          <th><%= __('admin:cyc_group_' + by) %></th>
+          <th><%= __('admin:cyc_th_people') %></th>
+          <th><%= __('admin:cyc_kpi_not_started') %></th>
+          <th><%= __('admin:cyc_kpi_in_review') %></th>
+          <th><%= __('admin:cyc_kpi_approved') %></th>
+          <th><%= __('admin:cyc_th_pct') %></th>
+        </tr></thead>
+        <tbody>
+          <% if (!byGroup.length) { %><tr><td colspan="6"><em><%= __('admin:cyc_no_rows') %></em></td></tr><% } %>
+          <% byGroup.forEach(function (r) { %>
+            <% const link = qs({ [groupParam]: r.id === null ? [] : [r.id], state: '', page: '' }); %>
+            <tr>
+              <td><% if (r.id === null) { %><%= __('admin:cyc_no_' + (by === 'site' ? 'site' : 'group')) %><% } else { %><a href="<%= link %>"><%= r.label || ('#' + r.id) %></a><% } %></td>
+              <td><%= r.active %></td>
+              <td<%= r.notStarted ? ' class="cyc-warn"' : '' %>><% if (r.notStarted && r.id !== null) { %><a href="<%= qs({ [groupParam]: [r.id], state: 'not_started', page: '' }) %>"><%= r.notStarted %></a><% } else { %><%= r.notStarted %><% } %></td>
+              <td<%= r.inReview ? ' class="cyc-warn"' : '' %>><% if (r.inReview && r.id !== null) { %><a href="<%= qs({ [groupParam]: [r.id], state: 'in_review', page: '' }) %>"><%= r.inReview %></a><% } else { %><%= r.inReview %><% } %></td>
+              <td><%= r.approved %></td>
+              <td><%= pctText(r.pctApproved) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div>
+    <h3><i class="fas fa-user-tie" aria-hidden="true"></i> <%= __('admin:cyc_by_manager') %></h3>
+    <p class="text-muted" style="font-size:.82rem;margin-top:-.4rem"><%= __('admin:cyc_manager_hint') %></p>
+    <div class="table-wrapper">
+      <table class="table" id="cyc-by-manager">
+        <thead><tr>
+          <th><%= __('admin:cyc_th_manager') %></th>
+          <th><%= __('admin:cyc_th_people') %></th>
+          <th><%= __('admin:cyc_kpi_not_started') %></th>
+          <th><%= __('admin:cyc_kpi_in_review') %></th>
+          <th><%= __('admin:cyc_kpi_approved') %></th>
+          <th><%= __('admin:cyc_th_pct') %></th>
+          <% if (canChase) { %><th></th><% } %>
+        </tr></thead>
+        <tbody>
+          <% if (!byManager.length) { %><tr><td colspan="<%= canChase ? 7 : 6 %>"><em><%= __('admin:cyc_no_rows') %></em></td></tr><% } %>
+          <% byManager.forEach(function (r) { %>
+            <tr>
+              <td><a href="<%= qs({ supervisorId: r.id === null ? ['none'] : [r.id], state: '', page: '' }) %>"><%= r.id === null ? __('admin:cyc_no_manager') : (r.label || ('#' + r.id)) %></a></td>
+              <td><%= r.active %></td>
+              <td<%= r.notStarted ? ' class="cyc-warn"' : '' %>><%= r.notStarted %></td>
+              <td<%= r.inReview ? ' class="cyc-warn"' : '' %>><%= r.inReview %></td>
+              <td><%= r.approved %></td>
+              <td><%= pctText(r.pctApproved) %></td>
+              <% if (canChase) { %>
+              <td style="white-space:nowrap">
+                <% if (r.id !== null && r.inReview && !isManager) { %>
+                  <button type="button" class="btn btn-sm btn-secondary" data-cyc-nudge-sup="<%= r.id %>" data-name="<%= r.label || '' %>" title="<%= __('admin:cyc_nudge_manager_title') %>"><i class="fas fa-bell" aria-hidden="true"></i> <%= __('admin:cyc_nudge_manager') %></button>
+                <% } %>
+              </td>
+              <% } %>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<%# ---- Roster ---------------------------------------------------------------
+     Server-side filters (site / department / service / role / manager / state /
+     search) + sort + paging that compose. Works without JS. %>
+<h3 style="margin-top:1.5rem"><i class="fas fa-users" aria-hidden="true"></i> <%= __('admin:cyc_roster') %></h3>
+
+<form method="get" action="<%= basePath %>" class="cyc-filters" data-filter-memory>
+  <input type="hidden" name="by" value="<%= filters.by !== 'site' ? filters.by : '' %>">
+  <input type="hidden" name="sort" value="<%= filters.sort !== 'state' ? filters.sort : '' %>">
+  <input type="hidden" name="dir" value="<%= filters.sort !== 'state' ? filters.dir : '' %>">
+  <div>
+    <label for="cyc-q"><%= __('admin:cyc_search') %></label>
+    <input id="cyc-q" type="search" name="q" class="form-control" value="<%= filters.q %>" placeholder="<%= __('admin:cyc_search_ph') %>">
+  </div>
+  <div>
+    <label for="cyc-state"><%= __('admin:cyc_filter_state') %></label>
+    <select id="cyc-state" name="state" class="form-control">
+      <option value=""><%= __('admin:cyc_filter_all') %></option>
+      <% ['not_started','in_progress','in_review','approved','excluded'].forEach(function (st) { %>
+        <option value="<%= st %>" <%= filters.state === st ? 'selected' : '' %>><%= cycStateLabel[st] %></option>
+      <% }); %>
+    </select>
+  </div>
+  <div>
+    <label for="cyc-site"><%= __('admin:cyc_th_site') %></label>
+    <select id="cyc-site" name="siteId" class="form-control" multiple size="3">
+      <% options.sites.forEach(function (o) { %><option value="<%= o.id %>" <%= selected(filters.siteId, o.id) ? 'selected' : '' %>><%= o.label %></option><% }); %>
+    </select>
+  </div>
+  <div>
+    <label for="cyc-dept"><%= __('admin:cyc_th_department') %></label>
+    <select id="cyc-dept" name="departmentId" class="form-control" multiple size="3">
+      <% options.departments.forEach(function (o) { %><option value="<%= o.id %>" <%= selected(filters.departmentId, o.id) ? 'selected' : '' %>><%= o.label %></option><% }); %>
+    </select>
+  </div>
+  <div>
+    <label for="cyc-service"><%= __('admin:cyc_th_service') %></label>
+    <select id="cyc-service" name="serviceId" class="form-control" multiple size="3">
+      <% options.services.forEach(function (o) { %><option value="<%= o.id %>" <%= selected(filters.serviceId, o.id) ? 'selected' : '' %>><%= o.label %></option><% }); %>
+    </select>
+  </div>
+  <div>
+    <label for="cyc-role"><%= __('admin:cyc_th_role') %></label>
+    <select id="cyc-role" name="roleId" class="form-control" multiple size="3">
+      <% options.roles.forEach(function (o) { %><option value="<%= o.id %>" <%= selected(filters.roleId, o.id) ? 'selected' : '' %>><%= o.label %></option><% }); %>
+    </select>
+  </div>
+  <div>
+    <label for="cyc-sup"><%= __('admin:cyc_th_manager') %></label>
+    <select id="cyc-sup" name="supervisorId" class="form-control" multiple size="3">
+      <option value="none" <%= filters.noSupervisor ? 'selected' : '' %>><%= __('admin:cyc_no_manager') %> (<%= options.noSupervisor %>)</option>
+      <% options.supervisors.forEach(function (o) { %><option value="<%= o.id %>" <%= selected(filters.supervisorId, o.id) ? 'selected' : '' %>><%= o.label %></option><% }); %>
+      <% (options.adminResponsibles || []).forEach(function (o) { %><option value="<%= o.id %>" <%= selected(filters.supervisorId, o.id) ? 'selected' : '' %>><%= o.label %></option><% }); %>
+    </select>
+  </div>
+  <div>
+    <label for="cyc-limit"><%= __('admin:cyc_per_page') %></label>
+    <select id="cyc-limit" name="limit" class="form-control" data-per-page>
+      <% pageSizes.forEach(function (n) { %>
+        <option value="<%= n %>" <%= Number(filters.limit) === n ? 'selected' : '' %>><%= n %></option>
+      <% }); %>
+    </select>
+  </div>
+  <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+    <button type="submit" class="btn btn-secondary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:cyc_apply') %></button>
+    <a class="btn btn-secondary" href="<%= basePath %>/export.csv<%= qs({ page: '', limit: '' }) %>" title="<%= __('admin:cyc_export_title') %>"><i class="fas fa-file-csv" aria-hidden="true"></i> <%= __('admin:cyc_export') %></a>
+    <% if (filters.filtered) { %><a class="btn btn-link" href="<%= basePath %>?reset=1"><%= __('admin:reset_filters') %></a><% } %>
+  </div>
+</form>
+<% if (typeof filters.badState !== 'undefined' && filters.badState) { %>
+  <p class="text-muted" style="font-size:.85rem"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:cyc_filter_unknown_ignored') %></p>
+<% } %>
+
+<% if (canBulkExclude || canChase) { %>
+<div class="card cyc-bulk" id="cyc-bulk" style="padding:.6rem .9rem;margin:.4rem 0">
+  <span id="cyc-sel-count" class="text-muted"><%= __('admin:cyc_selected_n', { n: 0 }) %></span>
+  <% if (canBulkExclude) { %>
+    <button type="button" class="btn btn-sm btn-warning" id="cyc-bulk-exclude" disabled><i class="fas fa-user-slash" aria-hidden="true"></i> <%= __('admin:cyc_exclude_selection') %> (<span data-sel-n>0</span>)</button>
+    <button type="button" class="btn btn-sm btn-warning" id="cyc-filter-exclude" <%= roster.total ? '' : 'disabled' %>><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:cyc_exclude_filter', { n: roster.total }) %></button>
+  <% } %>
+  <% if (canChase) { %>
+    <% if (isOpen) { %>
+      <button type="button" class="btn btn-sm btn-primary" id="cyc-bulk-nudge" disabled><i class="fas fa-bell" aria-hidden="true"></i> <%= __('admin:cyc_nudge_selection') %> (<span data-sel-n>0</span>)</button>
+      <button type="button" class="btn btn-sm btn-primary" id="cyc-nudge-all"><i class="fas fa-bell" aria-hidden="true"></i> <%= isManager ? __('admin:cyc_nudge_all_mine') : __('admin:cyc_nudge_all') %></button>
+    <% } else { %>
+      <span class="text-muted" style="font-size:.85rem"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:cyc_nudge_locked_hint') %></span>
+    <% } %>
+  <% } %>
+</div>
+<% } %>
+
+<div class="table-wrapper">
+  <table class="table" id="cyc-roster">
+    <thead><tr>
+      <% if (canBulkExclude || canChase) { %><th style="width:1%"><input type="checkbox" id="cyc-check-all" aria-label="<%= __('admin:cyc_select_all') %>"></th><% } %>
+      <th class="sortable" aria-sort="<%= sort.name.ariaSort %>"><a href="<%= sort.name.url %>"><%= __('admin:cyc_th_person') %></a></th>
+      <th><%= __('admin:cyc_th_number') %></th>
+      <th class="sortable" aria-sort="<%= sort.site.ariaSort %>"><a href="<%= sort.site.url %>"><%= __('admin:cyc_th_org') %></a></th>
+      <th class="sortable" aria-sort="<%= sort.manager.ariaSort %>"><a href="<%= sort.manager.url %>"><%= __('admin:cyc_th_manager') %></a></th>
+      <th class="sortable" aria-sort="<%= sort.state.ariaSort %>"><a href="<%= sort.state.url %>"><%= __('admin:cyc_th_state') %></a></th>
+      <th class="sortable" aria-sort="<%= sort.progress.ariaSort %>"><a href="<%= sort.progress.url %>"><%= __('admin:cyc_th_skills') %></a></th>
+      <th class="sortable" aria-sort="<%= sort.nudge.ariaSort %>"><a href="<%= sort.nudge.url %>"><%= __('admin:cyc_th_last_nudge') %></a></th>
+      <% if (canManage || canChase) { %><th><%= __('admin:cyc_th_actions') %></th><% } %>
+    </tr></thead>
+    <tbody>
+      <% const cols = 7 + ((canBulkExclude || canChase) ? 1 : 0) + ((canManage || canChase) ? 1 : 0); %>
+      <% if (!roster.rows.length) { %>
+        <tr data-ts-noresults><td colspan="<%= cols %>"><em><%= filters.filtered ? __('admin:cyc_no_match') : __('admin:cyc_no_participants') %></em>
+          <% if (filters.filtered) { %> — <a href="<%= basePath %>?reset=1"><%= __('admin:reset_filters') %></a><% } %></td></tr>
+      <% } %>
+      <% roster.rows.forEach(function (p) { %>
+        <tr data-emp="<%= p.employeeId %>" data-state="<%= p.state %>">
+          <% if (canBulkExclude || canChase) { %>
+            <td><input type="checkbox" class="cyc-check" value="<%= p.employeeId %>" data-name="<%= p.fullName %>" aria-label="<%= p.fullName %>"></td>
+          <% } %>
+          <td>
+            <% if (can('view_employees') || isManager) { %><a href="/employees/<%= p.employeeId %>"><%= p.fullName %></a><% } else { %><%= p.fullName %><% } %>
+            <% if (p.isActive === false) { %><span class="cyc-tag" title="<%= __('admin:cyc_inactive_title') %>"><%= __('admin:cyc_inactive') %></span><% } %>
+            <% if (p.excludedAt) { %>
+              <div class="text-muted" style="font-size:.78rem">
+                <%= __('admin:cyc_excluded_line', { date: fmtDate(p.excludedAt), who: p.excludedBy || __('admin:cyc_by_system') }) %>
+                — <%= p.exclusionCategory ? catLabel(p.exclusionCategory) : '' %><% if (p.exclusionReason && p.exclusionCategory !== 'deactivated' && p.exclusionCategory !== 'erased') { %><%= colon %> <%= p.exclusionReason %><% } %>
+                <% if (p.excludedUntil) { %> · <%= __('admin:cyc_excluded_until', { date: fmtDate(p.excludedUntil) }) %><% } %>
+              </div>
+            <% } else if (p.lastExcludedAt) { %>
+              <div class="text-muted" style="font-size:.78rem"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i>
+                <%= __('admin:cyc_reincluded_line', { date: fmtDate(p.includedAt), who: p.includedBy || __('admin:cyc_by_system'), prev: fmtDate(p.lastExcludedAt), cat: catLabel(p.lastExclusionCategory) || (p.lastExclusionReason || '') }) %>
+              </div>
+            <% } %>
+          </td>
+          <td><%= p.employeeNumber || '—' %></td>
+          <td>
+            <%= [p.siteName, p.departmentName].filter(Boolean).join(' / ') || '—' %><% if (p.serviceName) { %><div class="text-muted" style="font-size:.78rem"><%= p.serviceName %></div><% } %>
+            <%# SECTION campaign-rules / règle 12: a role change is NEVER silent. The count the
+                campaign uses stays the one frozen at enrolment; both roles are named. %>
+            <% if (p.roleChanged) { %>
+              <div class="text-muted" style="font-size:.78rem">
+                <span class="cyc-tag" title="<%= __('admin:cyc_role_changed_title') %>"><%= __('admin:cyc_role_changed') %></span>
+                <%= __('admin:cyc_role_at_enrolment', { role: p.roleName || '—', n: p.expectedSkills }) %>
+                · <%= __('admin:cyc_role_live', { role: p.liveRoleName || '—', n: p.liveExpectedSkills === null ? '—' : p.liveExpectedSkills }) %>
+              </div>
+            <% } %>
+          </td>
+          <td>
+            <% if (p.supervisorName) { %>
+              <%= p.supervisorName %>
+              <% if (p.transferred) { %><span class="cyc-tag" title="<%= __('admin:cyc_transferred_title') %>"><%= __('admin:cyc_transferred') %></span><% } %>
+            <% } else if (p.reviewerAdmin) { %>
+              <%= __('admin:cyc_reviewer_admin', { name: p.reviewerAdmin }) %>
+            <% } else { %>
+              <span class="cyc-warn"><%= __('admin:cyc_no_manager') %></span>
+              <% if (canManage && isRunning) { %>
+                <button type="button" class="btn btn-sm btn-link" data-cyc-reviewer="<%= p.employeeId %>" data-name="<%= p.fullName %>"><%= __('admin:cyc_assign_reviewer') %></button>
+              <% } %>
+            <% } %>
+          </td>
+          <td><span class="cyc-state" data-s="<%= p.state %>"><%= cycStateLabel[p.state] || p.state %></span></td>
+          <td>
+            <div class="cyc-bar" style="max-width:160px" role="img"
+                 aria-label="<%= __('admin:cyc_progress_of', { done: p.approvedSkills, total: p.expectedSkills }) %>">
+              <span class="cyc-seg cyc-approved" style="width:<%= p.pct === null ? 0 : p.pct %>%"></span>
+            </div>
+            <small class="text-muted"><%= __('admin:cyc_progress_of', { done: p.approvedSkills, total: p.expectedSkills }) %></small>
+          </td>
+          <td data-sort-value="<%= p.lastNudgeAt ? new Date(p.lastNudgeAt).toISOString() : '' %>"><%= p.lastNudgeAt ? fmtDate(p.lastNudgeAt) : '—' %></td>
+          <% if (canManage || canChase) { %>
+          <td style="white-space:nowrap">
+            <% if (canManage && isRunning) { %>
+              <% if (p.excludedAt) { %>
+                <% if (p.exclusionCategory !== 'erased' && p.isActive !== false) { %>
+                <button type="button" class="btn btn-sm btn-secondary" data-cyc-include="<%= p.employeeId %>" data-name="<%= p.fullName %>"><%= __('admin:cyc_include') %></button>
+                <% } %>
+              <% } else { %>
+                <button type="button" class="btn btn-sm btn-warning" data-cyc-exclude="<%= p.employeeId %>" data-name="<%= p.fullName %>"><%= __('admin:cyc_exclude') %></button>
+              <% } %>
+            <% } %>
+            <% if (canChase && !p.excludedAt) { %>
+              <% if (isOpen && (p.state === 'not_started' || p.state === 'in_progress')) { %>
+                <button type="button" class="btn btn-sm btn-primary" data-cyc-nudge="<%= p.employeeId %>" data-name="<%= p.fullName %>"><i class="fas fa-bell" aria-hidden="true"></i> <%= __('admin:cyc_nudge') %></button>
+              <% } else if (p.state === 'in_review' && !isManager && (p.supervisorName || p.reviewerAdmin)) { %>
+                <button type="button" class="btn btn-sm btn-secondary" data-cyc-nudge="<%= p.employeeId %>" data-name="<%= p.fullName %>" title="<%= __('admin:cyc_nudge_manager_title') %>"><i class="fas fa-bell" aria-hidden="true"></i> <%= __('admin:cyc_nudge_manager') %></button>
+              <% } %>
+            <% } %>
+          </td>
+          <% } %>
+        </tr>
+      <% }); %>
+    </tbody>
+  </table>
+</div>
+
+<div class="cyc-pager">
+  <span class="text-muted"><%= __('admin:cyc_pager', { from: pager.from, to: pager.to, total: pager.total }) %></span>
+  <nav aria-label="<%= __('admin:cyc_roster') %>">
+    <% if (pager.hasPrev) { %><a class="btn btn-sm btn-secondary" href="<%= pager.prevUrl %>"><%= __('admin:cyc_prev') %></a><% } %>
+    <% pager.items.forEach(function (it) { %>
+      <% if (it.gap) { %><span class="text-muted">…</span><% } else if (it.active) { %><span class="btn btn-sm btn-primary" aria-current="page"><%= it.n %></span><% } else { %><a class="btn btn-sm btn-secondary" href="<%= it.url %>"><%= it.n %></a><% } %>
+    <% }); %>
+    <% if (pager.hasNext) { %><a class="btn btn-sm btn-secondary" href="<%= pager.nextUrl %>"><%= __('admin:cyc_next') %></a><% } %>
+  </nav>
+</div>
+
+<%# ---- The one dialog every write goes through: a reason is mandatory (maintenance pattern). %>
+<dialog id="cycDlg" class="cyc-dlg">
+  <form method="dialog">
+    <h3 id="cycDlgTitle" style="margin:0 0 .3rem;font-size:1.05rem"></h3>
+    <p id="cycDlgWhat" class="text-muted" style="margin:0 0 .8rem;font-size:.85rem"></p>
+    <div data-dlg-field="category">
+      <label for="cycCategory" style="display:block;font-weight:600;margin-bottom:.3rem"><%= __('admin:cyc_dlg_category') %></label>
+      <select id="cycCategory" class="form-control" style="width:100%">
+        <% categories.forEach(function (c) { %><option value="<%= c %>"><%= catLabel(c) %></option><% }); %>
+      </select>
+    </div>
+    <div data-dlg-field="reason" style="margin-top:.6rem">
+      <label for="cycReason" style="display:block;font-weight:600;margin-bottom:.3rem"><%= __('admin:cyc_dlg_reason') %></label>
+      <textarea id="cycReason" rows="3" class="form-control" style="width:100%" maxlength="500" placeholder="<%= __('admin:cyc_dlg_reason_ph') %>"></textarea>
+      <small class="text-muted"><span id="cycReasonCount">0</span>/500 · <%= __('admin:cyc_dlg_reason_required') %></small>
+    </div>
+    <div data-dlg-field="until" style="margin-top:.6rem">
+      <label for="cycUntil" style="display:block;font-weight:600;margin-bottom:.3rem"><%= __('admin:cyc_dlg_until') %></label>
+      <input id="cycUntil" type="date" class="form-control" min="<%= new Date().toISOString().slice(0, 10) %>">
+      <small class="text-muted"><%= __('admin:cyc_dlg_until_hint') %></small>
+    </div>
+    <div data-dlg-field="date" style="margin-top:.6rem">
+      <label for="cycDate" style="display:block;font-weight:600;margin-bottom:.3rem"><%= __('admin:cyc_dlg_new_deadline') %></label>
+      <input id="cycDate" type="date" class="form-control" min="<%= new Date().toISOString().slice(0, 10) %>" required>
+    </div>
+    <div data-dlg-field="reviewer" style="margin-top:.6rem">
+      <label for="cycReviewer" style="display:block;font-weight:600;margin-bottom:.3rem"><%= __('admin:cyc_dlg_reviewer') %></label>
+      <select id="cycReviewer" class="form-control" style="width:100%">
+        <% if (actorAdminId) { %><option value="admin:<%= actorAdminId %>"><%= __('admin:cyc_dlg_reviewer_me') %></option><% } %>
+        <% options.supervisors.forEach(function (o) { %><option value="employee:<%= o.id %>"><%= o.label %></option><% }); %>
+      </select>
+    </div>
+    <p id="cycDlgErr" class="cyc-err" hidden></p>
+    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.9rem">
+      <button type="button" class="btn" id="cycDlgCancel"><%= __('admin:cyc_dlg_cancel') %></button>
+      <button type="button" id="cycDlgOk" class="btn btn-primary"><%= __('admin:cyc_dlg_confirm') %></button>
+    </div>
+  </form>
+</dialog>
+
+<style>
+  .cyc-note{display:flex;gap:.5rem;align-items:center;padding:.6rem .8rem;margin-bottom:1rem;border-radius:8px;
+            background:rgba(127,127,127,.12);color:var(--text-muted,#9aa1ac)}
+  .cyc-actions{display:flex;gap:1rem;align-items:center;justify-content:space-between;flex-wrap:wrap}
+  .cyc-pill{display:inline-block;padding:2px 8px;border-radius:10px;color:#fff;font-size:.6em;
+            vertical-align:middle;background:#64748b}
+  .cyc-pill[data-s="draft"]{background:#94a3b8}
+  .cyc-pill[data-s="open"]{background:#0f8a3c}
+  .cyc-pill[data-s="locked"]{background:#b45309}
+  .cyc-pill[data-s="closed"]{background:#1b56b8}
+  .cyc-pill[data-s="cancelled"]{background:#7f1d1d}
+  .cyc-overdue{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.6em;vertical-align:middle;
+               background:rgba(200,81,75,.16);color:#c8514b;font-weight:600}
+  .cyc-tag{display:inline-block;margin-left:.3rem;padding:1px 6px;border-radius:8px;font-size:.7rem;
+           background:rgba(180,83,9,.16);color:#b45309}
+  .cyc-kpis{display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:.75rem}
+  .cyc-kpi{flex:1;min-width:130px;padding:.75rem;text-align:center;text-decoration:none;color:inherit;
+           border:1px solid transparent}
+  .cyc-kpi-on{border-color:var(--accent,#6656f0)}
+  .cyc-kpi-n{font-size:1.6rem;font-weight:700;line-height:1.1}
+  .cyc-kpi-l{font-size:.8rem;color:var(--text-muted,#9aa1ac)}
+  .cyc-k-not_started .cyc-kpi-n{color:#c8514b}
+  .cyc-k-in_review .cyc-kpi-n{color:#b45309}
+  .cyc-k-approved .cyc-kpi-n{color:#0f8a3c}
+  .cyc-k-in_progress .cyc-kpi-n{color:#5b8bd0}
+  .cyc-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1.25rem}
+  .cyc-by{display:inline-flex;gap:.25rem;font-size:.8rem;font-weight:400}
+  .cyc-by a{padding:2px 8px;border-radius:10px;background:rgba(127,127,127,.14);text-decoration:none;color:inherit}
+  .cyc-by a.on{background:var(--accent,#6656f0);color:#111}
+  .cyc-filters{display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;margin:.6rem 0}
+  .cyc-filters label{display:block;font-size:.8rem;color:var(--text-muted,#9aa1ac)}
+  .cyc-filters select[multiple]{min-width:150px}
+  .cyc-bulk{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+  .cyc-bar{display:flex;height:8px;border-radius:6px;overflow:hidden;background:rgba(127,127,127,.18);margin-bottom:.2rem}
+  .cyc-seg{display:block;height:100%}
+  .cyc-approved{background:#0f8a3c}
+  .cyc-warn{color:#b45309;font-weight:600}
+  .cyc-state{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.78rem;background:rgba(127,127,127,.18)}
+  .cyc-state[data-s="not_started"]{background:rgba(200,81,75,.16);color:#c8514b;font-weight:600}
+  .cyc-state[data-s="in_progress"]{background:rgba(91,139,208,.18);color:#5b8bd0}
+  .cyc-state[data-s="in_review"]{background:rgba(180,83,9,.16);color:#b45309}
+  .cyc-state[data-s="approved"]{background:rgba(15,138,60,.16);color:#0f8a3c}
+  .cyc-pager{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin:.6rem 0 1rem;flex-wrap:wrap}
+  .cyc-pager nav{display:flex;gap:.25rem;align-items:center;flex-wrap:wrap}
+  .cyc-dlg{border:1px solid var(--border-color,#cbd5e1);border-radius:14px;padding:1.2rem 1.4rem;max-width:480px;width:95%;
+           background:var(--bg-elevated,#fff);color:var(--text-primary,#0f172a)}
+  .cyc-dlg::backdrop{background:rgba(2,32,71,.55)}
+  .cyc-err{color:#c8514b;font-size:.85rem;margin:.5rem 0 0}
+</style>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  var CSRF = <%- include('../../partials/json-script', { v: typeof csrfToken !== 'undefined' ? csrfToken : '' }) %>;
+  var CID  = <%- include('../../partials/json-script', { v: String(cycle.id) }) %>;
+  var STATUS = <%- include('../../partials/json-script', { v: cycle.status }) %>;
+  var FILTER = <%- include('../../partials/json-script', { v: { state: filters.state, q: filters.q, siteId: filters.siteId, departmentId: filters.departmentId, serviceId: filters.serviceId, roleId: filters.roleId, supervisorId: filters.noSupervisor ? filters.supervisorId.concat(['none']) : filters.supervisorId } }) %>;
+  var TOTAL = <%- include('../../partials/json-script', { v: roster.total }) %>;
+  var T = {
+    launchConfirm: <%- JSON.stringify(__('admin:cyc_launch_confirm')) %>,
+    relaunchConfirm: <%- JSON.stringify(__('admin:cyc_relaunch_confirm')) %>,
+    launchTitle:   <%- JSON.stringify(__('admin:cyc_launch_title')) %>,
+    launchBtn:     <%- JSON.stringify(__('admin:cyc_launch_yes')) %>,
+    launchDone:    <%- JSON.stringify(__('admin:cyc_launch_done')) %>,
+    openedDone:    <%- JSON.stringify(__('admin:cyc_opened_done')) %>,
+    closeConfirm:  <%- JSON.stringify(__('admin:cyc_close_confirm')) %>,
+    closeTitle:    <%- JSON.stringify(__('admin:cyc_close_title')) %>,
+    closeBtn:      <%- JSON.stringify(__('admin:cyc_close_yes')) %>,
+    closeDone:     <%- JSON.stringify(__('admin:cyc_close_done')) %>,
+    lockConfirm:   <%- JSON.stringify(__('admin:cyc_lock_confirm')) %>,
+    lockDone:      <%- JSON.stringify(__('admin:cyc_lock_done')) %>,
+    reopenTitle:   <%- JSON.stringify(__('admin:cyc_reopen')) %>,
+    reopenWhat:    <%- JSON.stringify(__('admin:cyc_reopen_what')) %>,
+    reopenDone:    <%- JSON.stringify(__('admin:cyc_reopen_done')) %>,
+    extendTitle:   <%- JSON.stringify(__('admin:cyc_extend')) %>,
+    extendWhat:    <%- JSON.stringify(__('admin:cyc_extend_what')) %>,
+    extendDone:    <%- JSON.stringify(__('admin:cyc_extend_done')) %>,
+    cancelTitle:   <%- JSON.stringify(__('admin:cyc_cancel_draft')) %>,
+    cancelWhat:    <%- JSON.stringify(__('admin:cyc_cancel_what')) %>,
+    cancelDone:    <%- JSON.stringify(__('admin:cyc_cancel_done')) %>,
+    excludeTitle:  <%- JSON.stringify(__('admin:cyc_exclude_title')) %>,
+    excludeOne:    <%- JSON.stringify(__('admin:cyc_exclude_prompt')) %>,
+    excludeMany:   <%- JSON.stringify(__('admin:cyc_exclude_many')) %>,
+    excludeFilter: <%- JSON.stringify(__('admin:cyc_exclude_filter_confirm')) %>,
+    excludeNeed:   <%- JSON.stringify(__('admin:cyc_exclude_reason_required')) %>,
+    excludeDone:   <%- JSON.stringify(__('admin:cyc_exclude_done')) %>,
+    excludeBulkDone: <%- JSON.stringify(__('admin:cyc_exclude_bulk_done')) %>,
+    includeAsk:    <%- JSON.stringify(__('admin:cyc_include_confirm')) %>,
+    includeDone:   <%- JSON.stringify(__('admin:cyc_include_done')) %>,
+    nudgeAsk:      <%- JSON.stringify(__('admin:cyc_nudge_confirm')) %>,
+    nudgeAllAsk:   <%- JSON.stringify(__('admin:cyc_nudge_all_confirm')) %>,
+    nudgeSupAsk:   <%- JSON.stringify(__('admin:cyc_nudge_manager_confirm')) %>,
+    nudgeDone:     <%- JSON.stringify(__('admin:cyc_nudge_done')) %>,
+    reviewerTitle: <%- JSON.stringify(__('admin:cyc_assign_reviewer')) %>,
+    reviewerWhat:  <%- JSON.stringify(__('admin:cyc_assign_reviewer_what')) %>,
+    reviewerDone:  <%- JSON.stringify(__('admin:cyc_assign_reviewer_done')) %>,
+    selectedN:     <%- JSON.stringify(__('admin:cyc_selected_n', { n: '%n%' })) %>,
+    nothingSelected: <%- JSON.stringify(__('admin:cyc_nothing_selected')) %>,
+    err:           <%- JSON.stringify(__('admin:cyc_error')) %>,
+    cycleName:     <%- include('../../partials/json-script', { v: String(cycle.code || '') }) %>,
+    // ---- SECTION campaign-rules (A5 réouverture par dérogation, A8 proposition de clôture) ----
+    reopenClosedTitle: <%- JSON.stringify(__('admin:cyc_reopen_closed_title')) %>,
+    reopenClosedWhat:  <%- JSON.stringify(__('admin:cyc_reopen_closed_what')) %>,
+    reopenClosedDone:  <%- JSON.stringify(__('admin:cyc_reopen_closed_done')) %>,
+    proposalAccept:    <%- JSON.stringify(__('admin:cyc_proposal_accept')) %>,
+    proposalDecline:   <%- JSON.stringify(__('admin:cyc_proposal_decline')) %>,
+    proposalAcceptWhat:  <%- JSON.stringify(__('admin:cyc_proposal_accept_what')) %>,
+    proposalDeclineWhat: <%- JSON.stringify(__('admin:cyc_proposal_decline_what')) %>,
+    proposalAcceptedDone: <%- JSON.stringify(__('admin:cyc_proposal_accepted_done')) %>,
+    proposalDeclinedDone: <%- JSON.stringify(__('admin:cyc_proposal_declined_done')) %>
+  };
+  <%# this string is SHOWN (reopenClosedWhat, below): String on a
+      `timestamp` column printed « Tue Sep 15 », English and year-less, inside a
+      French dialog. fmtDate is the product's one date rendering; the « — »
+      fallback stays the caller's, so an absent close date reads as before. %>
+  var CLOSED_AT = <%- include('../../partials/json-script', { v: cycle.closedAt ? fmtDate(cycle.closedAt) : null }) %>;
+  var CLOSED_DAYS = <%- include('../../partials/json-script', { v: cycle.daysSinceClose === undefined ? null : cycle.daysSinceClose }) %>;
+  var REOPEN_WINDOW = <%- include('../../partials/json-script', { v: cycle.reopenWindowTotal || 30 }) %>;
+  var CLOSE_STATS = <%- include('../../partials/json-script', { v: {
+      pct: progress.pct.approved === null ? '—' : (progress.pct.approved + ' %'),
+      notStarted: progress.states.not_started.count,
+      inReview: progress.states.in_review.count,
+      active: progress.totals.active
+  } }) %>;
+
+  // JS-side placeholders use %token% rather than i18next's {{token}}: these
+  // strings are filled AFTER the server render (with the live headcount, the
+  // person's name, the close disposition), so they must survive i18next's own
+  // interpolation pass untouched.
+  function fmt(tpl, vars) {
+    return String(tpl).replace(/%(\w+)%/g, function (m, k) {
+      return Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m;
+    });
+  }
+  function say(msg, kind) { (window.toast || function (m) { alert(m); })(msg, kind || 'info'); }
+  // one confirmation component; the native fallback was dead code.
+  function confirmBox(msg, opts) { return window.confirmDialog(msg, opts || {}); }
+  function post(path, body) {
+    return fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'x-csrf-token': CSRF, 'CSRF-Token': CSRF },
+      body: JSON.stringify(body || {})
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        // The server answers a stable `code` and a translated `error` (never a raw code on screen).
+        if (!r.ok || j.ok === false) throw new Error((j && j.error) || T.err);
+        return j;
+      });
+    });
+  }
+  function reload(ms) { setTimeout(function () { location.reload(); }, ms || 800); }
+  function $(id) { return document.getElementById(id); }
+
+  // --- The reason dialog (one for everything; mode decides the fields) --------
+  var dlg = $('cycDlg');
+  function openDialog(mode, title, what, danger) {
+    return new Promise(function (resolve) {
+      if (!dlg || !dlg.showModal) { resolve(null); return; }
+      // SECTION campaign-rules: `dateReason` = the A5 override — a new deadline AND a written
+      // reason, because a reopening of a CLOSED campaign is never reasonless.
+      var show = { exclude: ['category', 'reason', 'until'], reason: ['reason'], date: ['date'], dateReason: ['date', 'reason'], reviewer: ['reviewer'] }[mode] || [];
+      dlg.querySelectorAll('[data-dlg-field]').forEach(function (el) { el.hidden = show.indexOf(el.getAttribute('data-dlg-field')) < 0; });
+      $('cycDlgTitle').textContent = title;
+      $('cycDlgWhat').textContent = what || '';
+      $('cycReason').value = ''; $('cycReasonCount').textContent = '0';
+      $('cycUntil').value = ''; $('cycDate').value = '';
+      var errEl = $('cycDlgErr'); errEl.hidden = true; errEl.textContent = '';
+      var ok = $('cycDlgOk');
+      ok.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
+      function done(v) { ok.onclick = null; $('cycDlgCancel').onclick = null; dlg.onclose = null; dlg.close(); resolve(v); }
+      ok.onclick = function () {
+        var out = {};
+        if (show.indexOf('reason') >= 0) {
+          out.reason = $('cycReason').value.trim();
+          if (!out.reason) { errEl.textContent = T.excludeNeed; errEl.hidden = false; $('cycReason').focus(); return; }
+        }
+        if (show.indexOf('category') >= 0) out.category = $('cycCategory').value;
+        if (show.indexOf('until') >= 0) out.until = $('cycUntil').value || null;
+        if (show.indexOf('date') >= 0) { out.date = $('cycDate').value; if (!out.date) { $('cycDate').focus(); return; } }
+        if (show.indexOf('reviewer') >= 0) out.reviewer = $('cycReviewer').value;
+        done(out);
+      };
+      $('cycDlgCancel').onclick = function () { done(null); };
+      dlg.onclose = function () { resolve(null); };
+      dlg.showModal();
+      var first = show[0] === 'reason' ? $('cycReason') : show[0] === 'date' ? $('cycDate') : show[0] === 'category' ? $('cycCategory') : $('cycReviewer');
+      if (first) first.focus();
+    });
+  }
+  if ($('cycReason')) $('cycReason').addEventListener('input', function () { $('cycReasonCount').textContent = String($('cycReason').value.length); });
+
+  // --- Selection ------------------------------------------------------------
+  function selectedIds() { return Array.prototype.map.call(document.querySelectorAll('.cyc-check:checked'), function (c) { return Number(c.value); }); }
+  function refreshSelection() {
+    var n = selectedIds().length;
+    var c = $('cyc-sel-count'); if (c) c.textContent = fmt(T.selectedN, { n: n });
+    document.querySelectorAll('[data-sel-n]').forEach(function (el) { el.textContent = String(n); });
+    ['cyc-bulk-exclude', 'cyc-bulk-nudge'].forEach(function (id) { var b = $(id); if (b) b.disabled = n === 0; });
+  }
+  var all = $('cyc-check-all');
+  if (all) all.addEventListener('change', function () { document.querySelectorAll('.cyc-check').forEach(function (c) { c.checked = all.checked; }); refreshSelection(); });
+  document.addEventListener('change', function (ev) { if (ev.target && ev.target.classList && ev.target.classList.contains('cyc-check')) refreshSelection(); });
+  refreshSelection();
+
+  // --- Lifecycle (SuperAdmin) ---------------------------------------------------
+  var launch = $('cyc-launch');
+  if (launch) launch.addEventListener('click', function () {
+    launch.disabled = true;
+    fetch('/cycles/' + CID + '/relaunch-preview', { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (j) {
+        var n = (j && typeof j.active === 'number') ? j.active : 0;
+        return confirmBox(fmt(STATUS === 'draft' ? T.launchConfirm : T.relaunchConfirm, { cycle: T.cycleName, n: n }), { title: T.launchTitle, confirmText: T.launchBtn });
+      })
+      .then(function (ok) { if (!ok) { launch.disabled = false; return null; } return post('/cycles/' + CID + '/relaunch', {}); })
+      .then(function (j) {
+        if (!j) return;
+        say(fmt(j.opened ? T.openedDone : T.launchDone, { added: j.added, excluded: j.excluded, active: j.active, notified: j.notified }), 'success');
+        reload(900);
+      })
+      .catch(function (e) { launch.disabled = false; say((e && e.message) || T.err, 'error'); });
+  });
+
+  var closeBtn = $('cyc-close');
+  if (closeBtn) closeBtn.addEventListener('click', function () {
+    confirmBox(fmt(T.closeConfirm, { cycle: T.cycleName, pct: CLOSE_STATS.pct, notStarted: CLOSE_STATS.notStarted, review: CLOSE_STATS.inReview, total: CLOSE_STATS.active }),
+      { title: T.closeTitle, confirmText: T.closeBtn, danger: true })
+    .then(function (ok) { if (!ok) return null; closeBtn.disabled = true; return post('/cycles/' + CID + '/close', {}); })
+    .then(function (j) {
+      if (!j) return;
+      var d = j.disposition || {};
+      say(fmt(T.closeDone, { pct: d.pctApproved == null ? '—' : (d.pctApproved + ' %'), notStarted: d.neverStarted, review: d.inReview }), 'success');
+      reload(900);
+    }).catch(function (e) { closeBtn.disabled = false; say((e && e.message) || T.err, 'error'); });
+  });
+
+  var lockBtn = $('cyc-lock');
+  if (lockBtn) lockBtn.addEventListener('click', function () {
+    confirmBox(fmt(T.lockConfirm, { cycle: T.cycleName }), { danger: true })
+      .then(function (ok) { return ok ? post('/cycles/' + CID + '/lock', {}) : null; })
+      .then(function (j) { if (!j) return; say(T.lockDone, 'success'); reload(); })
+      .catch(function (e) { say((e && e.message) || T.err, 'error'); });
+  });
+
+  function deadlineAction(btnId, path, title, what, doneMsg) {
+    var b = $(btnId);
+    if (!b) return;
+    b.addEventListener('click', function () {
+      openDialog('date', title, fmt(what, { cycle: T.cycleName }))
+        .then(function (v) { return v ? post('/cycles/' + CID + '/' + path, { closesAt: v.date }) : null; })
+        .then(function (j) { if (!j) return; say(fmt(doneMsg, { date: j.closesAt, notified: j.notified || 0 }), 'success'); reload(); })
+        .catch(function (e) { say((e && e.message) || T.err, 'error'); });
+    });
+  }
+  deadlineAction('cyc-reopen', 'reopen', T.reopenTitle, T.reopenWhat, T.reopenDone);
+  deadlineAction('cyc-extend', 'extend', T.extendTitle, T.extendWhat, T.extendDone);
+
+  // ---- SECTION campaign-rules / A5 — rouvrir une campagne CLOSE (dérogation) -------------
+  // Le bouton n'existe que dans les 30 jours et quand la date de clôture est
+  // connue ; le serveur re-vérifie les deux et refuse avec la phrase française.
+  var reopenClosedBtn = $('cyc-reopen-closed');
+  if (reopenClosedBtn) reopenClosedBtn.addEventListener('click', function () {
+    openDialog('dateReason', T.reopenClosedTitle,
+      fmt(T.reopenClosedWhat, { cycle: T.cycleName, closedAt: CLOSED_AT || '—', days: CLOSED_DAYS == null ? '—' : CLOSED_DAYS, window: REOPEN_WINDOW }), true)
+      .then(function (v) { return v ? post('/cycles/' + CID + '/reopen-closed', { closesAt: v.date, reason: v.reason }) : null; })
+      .then(function (j) { if (!j) return; say(fmt(T.reopenClosedDone, { date: j.closesAt, notified: j.notified || 0 }), 'success'); reload(); })
+      .catch(function (e) { say((e && e.message) || T.err, 'error'); });
+  });
+
+  // ---- SECTION campaign-rules / A8 — décider la proposition de clôture -------------------
+  // Accepter clôture par le chemin honnête ; décliner classe la proposition avec
+  // son motif et la campagne continue. Rien n'est jamais clôturé d'office.
+  function decideProposal(btnId, decision, title, what, doneMsg, danger) {
+    var b = $(btnId);
+    if (!b) return;
+    b.addEventListener('click', function () {
+      openDialog('reason', title, fmt(what, { cycle: T.cycleName }), danger)
+        .then(function (v) { return v ? post('/cycles/' + CID + '/closure-proposal/decide', { decision: decision, reason: v.reason }) : null; })
+        .then(function (j) { if (!j) return; say(doneMsg, 'success'); reload(900); })
+        .catch(function (e) { say((e && e.message) || T.err, 'error'); });
+    });
+  }
+  decideProposal('cyc-proposal-accept', 'accepted', T.proposalAccept, T.proposalAcceptWhat, T.proposalAcceptedDone, true);
+  decideProposal('cyc-proposal-decline', 'declined', T.proposalDecline, T.proposalDeclineWhat, T.proposalDeclinedDone, false);
+
+  var cancelBtn = $('cyc-cancel');
+  if (cancelBtn) cancelBtn.addEventListener('click', function () {
+    openDialog('reason', T.cancelTitle, fmt(T.cancelWhat, { cycle: T.cycleName }), true)
+      .then(function (v) { return v ? post('/cycles/' + CID + '/cancel', { reason: v.reason }) : null; })
+      .then(function (j) { if (!j) return; say(T.cancelDone, 'success'); setTimeout(function () { location.href = '/cycles'; }, 800); })
+      .catch(function (e) { say((e && e.message) || T.err, 'error'); });
+  });
+
+  // --- PERSON-level excuse / re-include / reviewer / chase ------------------------
+  function excuse(ids, names, filterMode) {
+    var what = filterMode ? fmt(T.excludeFilter, { n: TOTAL })
+      : (ids.length === 1 ? fmt(T.excludeOne, { name: names[0] || '' }) : fmt(T.excludeMany, { n: ids.length }));
+    return openDialog('exclude', T.excludeTitle, what, true).then(function (v) {
+      if (!v) return null;
+      if (filterMode) return post('/cycles/' + CID + '/participants/exclude-bulk', { filter: FILTER, reason: v.reason, category: v.category, until: v.until });
+      if (ids.length === 1) return post('/cycles/' + CID + '/participants/' + ids[0] + '/exclude', { reason: v.reason, category: v.category, until: v.until })
+        .then(function (j) { return { changed: 1, single: true }; });
+      return post('/cycles/' + CID + '/participants/exclude-bulk', { employeeIds: ids, reason: v.reason, category: v.category, until: v.until });
+    }).then(function (j) {
+      if (!j) return;
+      say(j.single ? fmt(T.excludeDone, { name: names[0] || '' }) : fmt(T.excludeBulkDone, { n: j.changed, skipped: (j.alreadyExcluded || 0) + (j.outOfScope || 0) }), 'success');
+      reload();
+    }).catch(function (e) { say((e && e.message) || T.err, 'error'); });
+  }
+  function chase(body, ask) {
+    return confirmBox(ask).then(function (ok) { return ok ? post('/cycles/' + CID + '/nudge', body) : null; })
+      .then(function (j) {
+        if (!j) return;
+        say(fmt(T.nudgeDone, { sent: j.sent, managers: j.reviewersNotified, today: j.alreadyToday, locked: j.lockedSkipped }), j.sent || j.reviewersNotified ? 'success' : 'warning');
+        reload(1200);
+      }).catch(function (e) { say((e && e.message) || T.err, 'error'); });
+  }
+
+  var bulkEx = $('cyc-bulk-exclude');
+  if (bulkEx) bulkEx.addEventListener('click', function () { var ids = selectedIds(); if (!ids.length) { say(T.nothingSelected, 'warning'); return; } excuse(ids, [], false); });
+  var filterEx = $('cyc-filter-exclude');
+  if (filterEx) filterEx.addEventListener('click', function () { excuse([], [], true); });
+  var bulkNudge = $('cyc-bulk-nudge');
+  if (bulkNudge) bulkNudge.addEventListener('click', function () { var ids = selectedIds(); if (!ids.length) { say(T.nothingSelected, 'warning'); return; } chase({ employeeIds: ids }, fmt(T.nudgeAsk, { n: ids.length })); });
+  var nudgeAll = $('cyc-nudge-all');
+  if (nudgeAll) nudgeAll.addEventListener('click', function () { chase({ all: true, states: ['not_started', 'in_progress'] }, T.nudgeAllAsk); });
+
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    var ex = t.closest && t.closest('[data-cyc-exclude]');
+    var inc = t.closest && t.closest('[data-cyc-include]');
+    var nd = t.closest && t.closest('[data-cyc-nudge]');
+    var ns = t.closest && t.closest('[data-cyc-nudge-sup]');
+    var rv = t.closest && t.closest('[data-cyc-reviewer]');
+    if (ex) {
+      excuse([Number(ex.getAttribute('data-cyc-exclude'))], [ex.getAttribute('data-name') || ''], false);
+    } else if (inc) {
+      var iid = inc.getAttribute('data-cyc-include'), iname = inc.getAttribute('data-name') || '';
+      confirmBox(fmt(T.includeAsk, { name: iname }))
+        .then(function (ok) { return ok ? post('/cycles/' + CID + '/participants/' + iid + '/include', {}) : null; })
+        .then(function (j) { if (!j) return; say(fmt(T.includeDone, { name: iname }), 'success'); reload(); })
+        .catch(function (e) { say((e && e.message) || T.err, 'error'); });
+    } else if (nd) {
+      var row = nd.closest('tr');
+      var st = row ? row.getAttribute('data-state') : '';
+      chase({ employeeIds: [Number(nd.getAttribute('data-cyc-nudge'))] }, fmt(st === 'in_review' ? T.nudgeSupAsk : T.nudgeAsk, { n: 1, name: nd.getAttribute('data-name') || '' }));
+    } else if (ns) {
+      chase({ all: true, supervisorId: String(ns.getAttribute('data-cyc-nudge-sup') || '') }, fmt(T.nudgeSupAsk, { name: ns.getAttribute('data-name') || '' }));
+    } else if (rv) {
+      var eid = rv.getAttribute('data-cyc-reviewer'), ename = rv.getAttribute('data-name') || '';
+      openDialog('reviewer', T.reviewerTitle, fmt(T.reviewerWhat, { name: ename }))
+        .then(function (v) {
+          if (!v || !v.reviewer) return null;
+          var parts = v.reviewer.split(':');
+          return post('/cycles/' + CID + '/participants/' + eid + '/reviewer', parts[0] === 'admin' ? { adminId: Number(parts[1]) } : { supervisorId: Number(parts[1]) });
+        })
+        .then(function (j) { if (!j) return; say(T.reviewerDone, 'success'); reload(); })
+        .catch(function (e) { say((e && e.message) || T.err, 'error'); });
+    }
+  });
+})();
+</script>

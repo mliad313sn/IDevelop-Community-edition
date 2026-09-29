@@ -1,0 +1,176 @@
+<%#
+    « Mon accès » — self-service view of the caller's own scope and capabilities.
+    Rendered by MyAccessController (GET /mon-acces). Admins only.
+%>
+<% const _lang = (typeof lang !== 'undefined' && lang) ? lang : 'fr'; %>
+<% const _fmtDate = function (d) { try { return new Date(d).toLocaleDateString(_lang, { year: 'numeric', month: 'long', day: 'numeric' }); } catch (e) { return String(d); } }; %>
+
+<div class="page-header">
+    <h1><i class="fas fa-id-card" aria-hidden="true"></i> <%= __('admin:acc_page_title', { defaultValue: 'Mon accès' }) %></h1>
+    <p class="text-muted"><%= __('admin:acc_page_subtitle', { defaultValue: 'Ce que votre compte couvre et ce qu’il peut faire. Cette page ne montre que votre propre accès.' }) %></p>
+</div>
+
+<div style="display:flex; gap:.75rem; flex-wrap:wrap; margin-bottom:1rem;">
+    <div class="card acc-kpi">
+        <div class="acc-kpi-n"><%= __('admin:' + roleKey + '_label', { defaultValue: roleKey }) %></div>
+        <div class="acc-kpi-l"><%= __('admin:acc_kpi_role', { defaultValue: 'Mon rôle' }) %></div>
+    </div>
+    <div class="card acc-kpi">
+        <div class="acc-kpi-n"><%= employeeCount %></div>
+        <div class="acc-kpi-l"><%= __('admin:acc_kpi_employees', { defaultValue: 'Employés couverts' }) %></div>
+    </div>
+    <div class="card acc-kpi">
+        <div class="acc-kpi-n"><%= isSuper ? catalogueTotal : heldTotal %>/<%= catalogueTotal %></div>
+        <div class="acc-kpi-l"><%= __('admin:acc_kpi_capabilities', { defaultValue: 'Capacités détenues' }) %></div>
+    </div>
+</div>
+
+<%# ---------------------------- Mon périmètre ---------------------------- %>
+<div class="card" style="padding:1rem 1.25rem; margin-bottom:1.25rem;">
+    <h2 style="margin-top:0; font-size:1.1rem;">
+        <i class="fas fa-location-crosshairs" aria-hidden="true"></i>
+        <%= __('admin:acc_scope_title', { defaultValue: 'Mon périmètre' }) %>
+    </h2>
+
+    <% if (isSuper) { %>
+        <p style="margin:.5rem 0 0;">
+            <span class="badge badge-success"><%= __('admin:acc_scope_orgwide_badge', { defaultValue: 'Toute l’organisation' }) %></span>
+        </p>
+        <p class="text-muted" style="font-size:.88rem; margin:.5rem 0 0;">
+            <%= __('admin:acc_scope_orgwide_help', { defaultValue: 'En tant que super-administrateur, votre accès n’est limité à aucun pays, site, département ou service.' }) %>
+        </p>
+    <% } else if (!scopes.length) { %>
+        <p style="margin:.5rem 0 0;">
+            <span class="badge badge-danger"><%= __('admin:acc_scope_none_badge', { defaultValue: 'Aucun périmètre' }) %></span>
+        </p>
+        <p class="text-muted" style="font-size:.88rem; margin:.5rem 0 0;">
+            <%= __('admin:acc_scope_none_help', { defaultValue: 'Aucun périmètre ne vous est assigné : vous ne voyez donc aucun employé. Demandez à un administrateur de vous assigner un pays, un site, un département ou un service.' }) %>
+        </p>
+    <% } else { %>
+        <p class="text-muted" style="font-size:.88rem; margin:.35rem 0 .75rem;">
+            <%= __('admin:acc_scope_help', { defaultValue: 'Vos actions restent limitées à ces unités organisationnelles, même pour les capacités que vous détenez.' }) %>
+        </p>
+        <div class="table-wrapper">
+            <table class="table" id="accScopeTable">
+                <thead>
+                    <tr>
+                        <th><%= __('admin:acc_scope_th_level', { defaultValue: 'Niveau' }) %></th>
+                        <th><%= __('admin:acc_scope_th_name', { defaultValue: 'Unité' }) %></th>
+                        <th><%= __('admin:acc_scope_th_expiry', { defaultValue: 'Échéance' }) %></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% scopes.forEach(function (s) { %>
+                    <tr>
+                        <%# 'country' | 'site' | 'department' | 'service' already exist in the admin dictionary. %>
+                        <td><span class="badge badge-info"><%= __('admin:' + s.scopeType, { defaultValue: s.scopeType }) %></span></td>
+                        <td>
+                            <strong><%= s.name %></strong>
+                            <% if (s.scopeType === 'service' && s.parentSite) { %>
+                                <div class="text-muted" style="font-size:.8rem;"><%= s.parentSite %><% if (s.parentDepartment) { %> › <%= s.parentDepartment %><% } %></div>
+                            <% } else if (s.scopeType === 'department' && s.parentSite) { %>
+                                <div class="text-muted" style="font-size:.8rem;"><%= s.parentSite %></div>
+                            <% } %>
+                        </td>
+                        <td>
+                            <% if (!s.expiresAt) { %>
+                                <span class="text-muted"><%= __('admin:acc_scope_no_expiry', { defaultValue: 'Sans échéance' }) %></span>
+                            <% } else if (s.expired) { %>
+                                <span class="badge badge-danger"><%= __('admin:acc_scope_expired', { defaultValue: 'Expiré' }) %></span>
+                                <span class="text-muted" style="font-size:.82rem;"><%= _fmtDate(s.expiresAt) %></span>
+                            <% } else { %>
+                                <span class="badge badge-warning"><%= _fmtDate(s.expiresAt) %></span>
+                            <% } %>
+                        </td>
+                    </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+    <% } %>
+
+    <p style="margin:.9rem 0 0; font-size:.92rem;">
+        <i class="fas fa-users" aria-hidden="true"></i>
+        <%= __('admin:acc_scope_covers', { defaultValue: 'Employés actifs couverts par ce périmètre :' }) %>
+        <strong><%= employeeCount %></strong>
+    </p>
+    <p style="margin:.35rem 0 0; font-size:.92rem;">
+        <i class="fas fa-hourglass-half" aria-hidden="true"></i>
+        <% if (expiresAt) { %>
+            <%= __('admin:acc_expiry_on', { defaultValue: 'Votre délégation expire le' }) %>
+            <strong><%= _fmtDate(expiresAt) %></strong>
+        <% } else { %>
+            <%= __('admin:acc_expiry_none', { defaultValue: 'Votre accès n’a pas de date d’expiration.' }) %>
+        <% } %>
+    </p>
+</div>
+
+<%# ---------------------------- Mes capacités ---------------------------- %>
+<div class="card" style="padding:1rem 1.25rem;">
+    <h2 style="margin-top:0; font-size:1.1rem;">
+        <i class="fas fa-key" aria-hidden="true"></i>
+        <%= __('admin:acc_caps_title', { defaultValue: 'Mes capacités' }) %>
+    </h2>
+    <p class="text-muted" style="font-size:.88rem; margin:.35rem 0 .5rem;">
+        <% if (isSuper) { %>
+            <%= __('admin:acc_caps_super_help', { defaultValue: 'En tant que super-administrateur, vous détenez implicitement l’ensemble du catalogue.' }) %>
+        <% } else { %>
+            <%= __('admin:acc_caps_help', { defaultValue: 'Le catalogue complet des droits délégables. Ce qui est en gris ne vous est pas accordé — demandez-le à un administrateur si votre travail l’exige.' }) %>
+        <% } %>
+    </p>
+    <div style="margin:.4rem 0 .9rem;">
+        <label class="sr-only" for="accCapSearch"><%= __('admin:acc_caps_search', { defaultValue: 'Rechercher une capacité' }) %></label>
+        <input id="accCapSearch" type="search" data-table-search="#accCapTable"
+               placeholder="<%= __('admin:acc_caps_search', { defaultValue: 'Rechercher une capacité' }) %>"
+               style="padding:6px 10px; min-width:260px;">
+    </div>
+
+    <div class="table-wrapper">
+        <table class="table" id="accCapTable">
+            <thead>
+                <tr>
+                    <th><%= __('admin:acc_caps_th_group', { defaultValue: 'Domaine' }) %></th>
+                    <th><%= __('admin:acc_caps_th_capability', { defaultValue: 'Capacité' }) %></th>
+                    <th><%= __('admin:acc_caps_th_status', { defaultValue: 'Statut' }) %></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% capabilityGroups.forEach(function (g) { %>
+                    <% g.items.forEach(function (p) { %>
+                    <tr<%= p.held ? '' : ' style="opacity:.62"' %>>
+                        <td style="white-space:nowrap; font-size:.85rem;"><%= g.label %></td>
+                        <td>
+                            <strong><%= p.label %></strong>
+                            <% if (p.write) { %><span class="badge badge-warning" style="font-size:.65rem;"><%= __('admin:write_badge') %></span><% } %>
+                            <code style="font-size:.72rem; opacity:.7; margin-left:.3rem;"><%= p.slug %></code>
+                            <div class="text-muted" style="font-size:.82rem; margin-top:.15rem;"><%= p.description %></div>
+                        </td>
+                        <td style="white-space:nowrap;">
+                            <% if (p.held) { %>
+                                <span class="badge badge-success"><%= __('admin:acc_caps_held', { defaultValue: 'Accordée' }) %></span>
+                            <% } else if (p.neutralised) { %>
+                                <span class="badge badge-warning"><%= __('admin:acc_caps_neutralised', { defaultValue: 'Inactive (lecture seule)' }) %></span>
+                            <% } else { %>
+                                <span class="badge badge-secondary"><%= __('admin:acc_caps_not_held', { defaultValue: 'Non accordée' }) %></span>
+                            <% } %>
+                        </td>
+                    </tr>
+                    <% }); %>
+                <% }); %>
+            </tbody>
+        </table>
+    </div>
+
+    <% if (!isSuper) { %>
+    <p class="text-muted" style="font-size:.85rem; margin:.9rem 0 0;">
+        <i class="fas fa-circle-info" aria-hidden="true"></i>
+        <%= __('admin:acc_caps_request_help', { defaultValue: 'Pour obtenir une capacité, contactez un administrateur habilité à gérer les comptes : il l’ajoute depuis votre fiche administrateur.' }) %>
+    </p>
+    <% } %>
+</div>
+
+<style>
+    .acc-kpi { padding:.75rem 1rem; min-width:140px; text-align:center; }
+    .acc-kpi-n { font-size:1.35rem; font-weight:800; line-height:1.15; }
+    .acc-kpi-l { font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted,#9aa1ac); margin-top:.25rem; }
+</style>

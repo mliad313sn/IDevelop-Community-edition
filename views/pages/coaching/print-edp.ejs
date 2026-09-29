@@ -1,0 +1,74 @@
+<!-- Printable Employee Development Plan (3 pages); CSS @page set for A4. -->
+<%#
+  3.23.17 UX-14: every heading and label now comes from the session language
+  (it printed English "GROW / SMART Objectives / Sign-off … HR-BP"), statuses and
+  the session kind are shown as labels instead of raw enum codes, and the
+  sections are numbered in reading order (they printed A, F, E, L).
+  The DB layer returns camelCased rows (session_at → sessionAt), so every field
+  is read in both spellings — the snake_case-only reads printed blank cells.
+%>
+<%
+  const _pick = (o, camel, snake) => (o ? (o[camel] !== undefined && o[camel] !== null ? o[camel] : o[snake]) : null);
+  const _dash = (v) => (v === undefined || v === null || v === '') ? '—' : v;
+  const _date = (v) => (v ? (typeof fmtDate === 'function' ? fmtDate(v) : v) : '—');
+  const _dateTime = (v) => (v ? (typeof fmtDateTime === 'function' ? fmtDateTime(v) : v) : '—');
+  const _kindKey = { coach: 'coaching:kind_coaching', mentor: 'coaching:kind_mentoring', coaching: 'coaching:kind_coaching', mentoring: 'coaching:kind_mentoring' };
+  const _stateKey = { pending: 'idp:obj_st_pending', in_progress: 'idp:obj_st_in_progress', completed: 'idp:obj_st_completed', cancelled: 'idp:obj_st_cancelled' };
+  const _kind = session ? session.kind : null;
+  const _growOf = (camel, snake) => _dash(_pick(grow, camel, snake));
+%>
+<style>
+@page { size: A4; margin: 14mm }
+body { font-family: 'Segoe UI', system-ui; line-height: 1.4 }
+h1 { font-size: 18pt; margin-bottom: 8mm }
+h2 { font-size: 14pt; margin-top: 6mm }
+table { width: 100%; border-collapse: collapse }
+td, th { border: 1px solid #aaa; padding: 4mm; vertical-align: top }
+.page-break { page-break-before: always }
+.field { margin: 2mm 0 }
+.label { font-weight: bold }
+.sign-grid td { height: 22mm; width: 25% }
+</style>
+
+<h1><%= __('coaching:edp.title') %></h1>
+
+<h2>1. <%= __('coaching:edp.identification') %></h2>
+<div class="field"><span class="label"><%= __('coaching:session_at') %><%= __('common:colon') %></span> <%= _dateTime(_pick(session, 'sessionAt', 'session_at')) %></div>
+<div class="field"><span class="label"><%= __('coaching:kind') %><%= __('common:colon') %></span> <%= _kindKey[_kind] ? __(_kindKey[_kind]) : _dash(_kind) %></div>
+<div class="field"><span class="label"><%= __('coaching:agenda') %><%= __('common:colon') %></span> <%= _dash(session && session.agenda) %></div>
+
+<h2>2. <%= __('common:edp_grow_heading') %></h2>
+<table>
+    <tr><td class="label"><%= __('common:edp_grow_goal') %></td><td><%= _growOf('goal', 'goal') %></td></tr>
+    <tr><td class="label"><%= __('common:edp_grow_reality') %></td><td><%= _growOf('reality', 'reality') %></td></tr>
+    <tr><td class="label"><%= __('common:edp_grow_options') %></td><td><%= _growOf('options', 'options') %></td></tr>
+    <tr><td class="label"><%= __('common:edp_grow_way_forward') %></td><td><%= _growOf('wayForward', 'way_forward') %></td></tr>
+</table>
+
+<h2 class="page-break">3. <%= __('common:edp_smart_heading') %></h2>
+<table>
+    <thead><tr><th><%= __('common:title') %></th><th><%= __('idp:due_on') %></th><th><%= __('common:status') %></th></tr></thead>
+    <tbody>
+        <% (objectives || []).forEach(function(o){ const _st = o.state; %>
+            <tr>
+                <td><%= _dash(_pick(o, 'smartText', 'smart_text')) %></td>
+                <td><%= _date(_pick(o, 'dueOn', 'due_on')) %></td>
+                <td><%= _stateKey[_st] ? __(_stateKey[_st]) : _dash(_st) %></td>
+            </tr>
+        <% }); %>
+        <% if (!objectives || !objectives.length) { %>
+            <tr><td colspan="3"><%= __('common:edp_no_objectives') %></td></tr>
+        <% } %>
+    </tbody>
+</table>
+
+<h2 class="page-break">4. <%= __('common:edp_signoff_heading') %></h2>
+<table class="sign-grid">
+    <thead><tr>
+        <th><%= __('common:edp_sign_employee') %></th>
+        <th><%= __('common:edp_sign_manager') %></th>
+        <th><%= __('common:edp_sign_coach') %></th>
+        <th><%= __('common:edp_sign_hr') %></th>
+    </tr></thead>
+    <tbody><tr><td></td><td></td><td></td><td></td></tr></tbody>
+</table>

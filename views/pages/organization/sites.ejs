@@ -1,0 +1,195 @@
+<%
+/* Write access comes from the permission SLUG, never from the role shape. */
+const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user && user.role === 'superadmin');
+/* a refused POST comes back with its safe body in `draft`;
+   `__from` tells whether it was the create form or an edit (…/sites/<id>). */
+const d = (typeof draft !== 'undefined' && draft) || {};
+const isCreateDraft = d.__from === '/organization/sites';
+const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : ''; };
+%>
+<div class="page-header">
+    <h1><%= __('admin:sites') %></h1>
+    <% if (canManage) { %>
+    <button class="btn btn-primary" onclick="document.getElementById('createModal').style.display='block'"><%= __('admin:create_site') %></button>
+    <% } %>
+</div>
+
+<%- include('../../partials/org-subnav') %>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th><%= __('admin:name') %></th>
+            <th><%= __('admin:code') %></th>
+            <th><%= __('admin:description') %></th>
+            <th><%= __('admin:lc_country') %></th>
+            <% if (canManage) { %>
+            <th><%= __('admin:actions') %></th>
+            <% } %>
+        </tr>
+    </thead>
+    <tbody>
+        <% sites.forEach(function(site) { %>
+        <tr>
+            <td><%= site.name %></td>
+            <td><%= site.code || '-' %></td>
+            <td><%= site.description || '-' %></td>
+            <td><%= site.countryName || '—' %></td>
+            <% if (canManage) { %>
+            <td>
+                <button class="btn btn-sm" onclick="editSite(<%= JSON.stringify(site).replace(/"/g, '&quot;') %>)"><%= __('admin:edit') %></button>
+                <%- include('./_unit-actions', { kind: 'site', unit: site, from: 'page' }) %>
+            </td>
+            <% } %>
+        </tr>
+        <% }); %>
+    </tbody>
+</table>
+
+<% if (canManage) { %>
+<%- include('./_deactivated-panel', { kinds: ['site'], from: 'page' }) %>
+
+<!-- Countries & regions management (drives the Local Content report's national/expat classification) -->
+<div class="detail-section" style="margin-top:1.5rem;">
+    <h2><i class="fas fa-earth-africa" aria-hidden="true"></i> <%= __('admin:geo_manage') %></h2>
+    <p style="opacity:.85; margin-top:-.25rem;"><%= __('admin:geo_help') %></p>
+    <form action="/organization/countries" method="POST" style="display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end;">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="form-group" style="margin:0;"><label for="site-f1-name"><%= __('admin:lc_country') %> *</label><input id="site-f1-name" type="text" name="name" required></div>
+        <div class="form-group" style="margin:0;"><label for="site-f1-code"><%= __('admin:code') %></label><input id="site-f1-code" type="text" name="code" style="max-width:100px;"></div>
+        <div class="form-group" style="margin:0;"><label for="site-f1-regionName"><%= __('admin:geo_region') %></label><input id="site-f1-regionName" type="text" name="regionName"></div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:geo_add') %></button>
+    </form>
+    <% if ((countries||[]).length) { %>
+    <table class="table" style="margin-top:1rem;">
+        <thead><tr><th><%= __('admin:lc_country') %></th><th><%= __('admin:code') %></th><th><%= __('admin:geo_region') %></th></tr></thead>
+        <tbody>
+            <% countries.forEach(function(c){ %>
+                <tr><td><%= c.name %></td><td><%= c.code || '—' %></td><td><%= c.region_name || '—' %></td></tr>
+            <% }); %>
+        </tbody>
+    </table>
+    <% } else { %>
+    <p style="opacity:.7; margin-top:.75rem;"><%= __('admin:geo_empty') %></p>
+    <% } %>
+</div>
+
+<!-- Create Modal -->
+<div id="createModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <span class="close" onclick="document.getElementById('createModal').style.display='none'">&times;</span>
+        <h2><%= __('admin:create_site') %></h2>
+        <form action="/organization/sites" method="POST">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="form-group">
+                <label for="site-f2-name"><%= __('admin:name') %> *</label>
+                <input id="site-f2-name" type="text" name="name" required value="<%= dc('name') %>">
+            </div>
+            <div class="form-group">
+                <label for="site-f2-code"><%= __('admin:code') %></label>
+                <input id="site-f2-code" type="text" name="code" value="<%= dc('code') %>">
+            </div>
+            <div class="form-group">
+                <label for="site-f2-description"><%= __('admin:description') %></label>
+                <textarea id="site-f2-description" name="description"><%= dc('description') %></textarea>
+            </div>
+            <div class="form-group">
+                <label for="site-f2-countryId"><%= __('admin:lc_country') %></label>
+                <select id="site-f2-countryId" name="countryId">
+                    <option value=""><%= __('admin:geo_none') %></option>
+                    <% (countries||[]).forEach(function(c){ %>
+                        <option value="<%= c.id %>" <%= dc('countryId') === String(c.id) ? 'selected' : '' %>><%= c.name %><%= c.region_name ? ' — ' + c.region_name : '' %></option>
+                    <% }); %>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary"><%= __('admin:create') %></button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('createModal').style.display='none'"><%= __('admin:cancel') %></button>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="editModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <span class="close" onclick="document.getElementById('editModal').style.display='none'">&times;</span>
+        <h2><%= __('admin:edit_site') %></h2>
+        <form id="editForm" method="POST">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="form-group">
+                <label for="editName"><%= __('admin:name') %> *</label>
+                <input type="text" name="name" id="editName" required>
+            </div>
+            <div class="form-group">
+                <label for="editCode"><%= __('admin:code') %></label>
+                <input type="text" name="code" id="editCode">
+            </div>
+            <div class="form-group">
+                <label for="editDescription"><%= __('admin:description') %></label>
+                <textarea name="description" id="editDescription"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="editCountry"><%= __('admin:lc_country') %></label>
+                <select name="countryId" id="editCountry">
+                    <option value=""><%= __('admin:geo_none') %></option>
+                    <% (countries||[]).forEach(function(c){ %>
+                        <option value="<%= c.id %>"><%= c.name %><%= c.region_name ? ' — ' + c.region_name : '' %></option>
+                    <% }); %>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary"><%= __('admin:update') %></button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('editModal').style.display='none'"><%= __('admin:cancel') %></button>
+        </form>
+    </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+/* Deactivation is reversible but it hides the unit from every list, dropdown,
+   cascade and report filter — so it gets a real explanation (unit name, how many
+   child units go with it, where to restore it) instead of a bare confirm(). The
+   message is rendered server-side onto the form data-msg. A unit that still has
+   active employees is never rendered as submittable, and the server refuses it. */
+document.addEventListener('submit', function (e) {
+    const form = e.target;
+    if (!form || !form.hasAttribute || !form.hasAttribute('data-org-deactivate')) return;
+    e.preventDefault();
+    window.confirmDialog(form.getAttribute('data-msg'), {
+        title: form.getAttribute('data-title'),
+        confirmText: form.getAttribute('data-yes'),
+        cancelText: form.getAttribute('data-no'),
+        danger: true
+    }).then(function (ok) {
+        if (ok) HTMLFormElement.prototype.submit.call(form);
+    });
+}, true);
+
+function editSite(site) {
+    document.getElementById('editName').value = site.name || '';
+    document.getElementById('editCode').value = site.code || '';
+    document.getElementById('editDescription').value = site.description || '';
+    document.getElementById('editCountry').value = (site.countryId != null ? site.countryId : (site.country_id != null ? site.country_id : '')) || '';
+    document.getElementById('editForm').action = '/organization/sites/' + site.id;
+    document.getElementById('editModal').style.display = 'block';
+}
+
+// Reopen the modal a refused submission came from, with what was typed.
+(function restoreDraft() {
+    const D = <%- include('../../partials/json-script', { v: d }) %>;
+    const m = String(D.__from || '').match(/^\/organization\/sites(?:\/(\d+))?$/);
+    if (!m) return;
+    if (m[1]) editSite({ id: m[1], name: D.name, code: D.code, description: D.description, countryId: D.countryId });
+    else document.getElementById('createModal').style.display = 'block';
+})();
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const createModal = document.getElementById('createModal');
+    const editModal = document.getElementById('editModal');
+    if (event.target == createModal) {
+        createModal.style.display = 'none';
+    }
+    if (event.target == editModal) {
+        editModal.style.display = 'none';
+    }
+}
+</script>
+<% } %>

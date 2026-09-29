@@ -1,0 +1,153 @@
+<%#
+  every visible string is a locale key, the status column goes through the
+  shared enum dictionary, dates through fmtDate/fmtDateTime, the revoke button
+  through the shared confirmDialog, and a success toast replaces the silent
+  location.reload().
+%>
+<div class="page-header">
+  <h1><i class="fas fa-key" aria-hidden="true"></i> <%= __('admin:apik_h1') %></h1>
+  <p class="text-muted"><%- __('admin:apik_intro') %></p>
+</div>
+
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><%= __('admin:apik_create_h3') %></h3>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div><label for="ak-label"><%= __('admin:apik_label') %> *</label><br><input id="ak-label" class="form-control" placeholder="<%= __('admin:apik_label_ph') %>"></div>
+    <div><label for="ak-owner"><%= __('admin:apik_profile') %> *</label><br>
+      <select id="ak-owner" class="form-control">
+        <option value=""><%= __('admin:apik_profile_full_org') %></option>
+        <% (admins||[]).forEach(function(a){ %>
+          <option value="<%= a.id %>"><%= a.username %> (<%= enumLabel('admin_role', a.role) %>)</option>
+        <% }); %>
+      </select>
+    </div>
+    <div><label for="ak-scope"><%= __('admin:apik_scope') %></label><br>
+      <select id="ak-scope" class="form-control">
+        <option value="powerbi.read" selected><%= __('admin:apik_scope_powerbi') %></option>
+        <option value="read"><%= __('admin:apik_scope_read') %></option>
+        <option value="safety.read"><%= __('admin:apik_scope_safety') %></option>
+        <option value="scim.write"><%= __('admin:apik_scope_scim') %></option>
+      </select>
+    </div>
+    <div><label for="ak-expires"><%= __('admin:apik_expires') %></label><br><input id="ak-expires" type="date" class="form-control"></div>
+    <button class="btn btn-primary" onclick="AK.create()"><%= __('admin:apik_create_btn') %></button>
+  </div>
+  <div id="ak-new" style="display:none;margin-top:1rem;padding:.75rem 1rem;border:1px solid #fde68a;background:#fffbeb;border-radius:8px">
+    <strong><%= __('admin:apik_copy_now') %></strong>
+    <div style="display:flex;gap:.5rem;align-items:center;margin-top:.4rem">
+      <code id="ak-raw" style="flex:1;word-break:break-all;background:#0f172a;color:#e2e8f0;padding:.5rem .75rem;border-radius:6px;font-size:.85em"></code>
+      <button class="btn btn-sm btn-secondary" onclick="AK.copy()"><%= __('admin:apik_copy') %></button>
+      <%# the raw key stays on screen until the admin says so — the
+          30-second auto-reload could wipe it before it was copied. %>
+      <button class="btn btn-sm btn-primary" id="ak-done" onclick="AK.done()"><i class="fas fa-check" aria-hidden="true"></i> <%= __('admin:ops_apikey_copied_btn') %></button>
+    </div>
+    <div class="text-muted" style="font-size:.82em;margin-top:.4rem"><%- __('admin:apik_use_header') %></div>
+  </div>
+</div>
+
+<div class="card" style="padding:0;margin-bottom:1rem">
+  <div style="padding:.75rem 1rem;border-bottom:1px solid rgba(148,163,184,.2)"><h3 style="margin:0"><%= __('admin:apik_issued_h3') %></h3></div>
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#keys-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+  <table class="table" id="keys-table">
+    <thead><tr><th><%= __('admin:apik_th_label') %></th><th><%= __('admin:apik_th_profile') %></th><th><%= __('admin:apik_th_scope') %></th><th><%= __('admin:apik_th_created') %></th><th><%= __('admin:apik_th_last_used') %></th><th><%= __('admin:apik_th_expires') %></th><th><%= __('admin:apik_th_status') %></th><th><span class="sr-only"><%= __('admin:apik_th_actions') %></span></th></tr></thead>
+    <tbody>
+      <% if (!keys || !keys.length) { %>
+        <tr><td colspan="8"><em><%= __('admin:apik_empty') %></em></td></tr>
+      <% } else { keys.forEach(function(k){ %>
+        <tr>
+          <td><%= k.label %></td>
+          <td><%= k.ownerUsername ? (k.ownerUsername + ' (' + enumLabel('admin_role', k.ownerRole) + ')') : __('admin:apik_profile_full_org_cell') %></td>
+          <td><code style="font-size:.8em"><%= k.scope %></code></td>
+          <td><%= fmtDate(k.createdAt) %></td>
+          <td><%= k.lastUsedAt ? fmtDateTime(k.lastUsedAt) : __('admin:apik_never') %></td>
+          <td><%= fmtDate(k.expiresAt) %></td>
+          <td>
+            <% if (k.revokedAt) { %><span class="badge" style="background:#64748b;color:#fff"><%= enumLabel('api_key_status', 'revoked') %></span>
+            <% } else if (k.expired) { %><span class="badge badge-danger"><%= enumLabel('api_key_status', 'expired') %></span>
+            <% } else { %><span class="badge badge-success"><%= enumLabel('api_key_status', 'active') %></span><% } %>
+          </td>
+          <td><% if (!k.revokedAt) { %><button class="btn btn-sm btn-danger" onclick="AK.revoke(<%= k.id %>)"><%= __('admin:apik_revoke') %></button><% } %></td>
+        </tr>
+      <% }); } %>
+    </tbody>
+  </table>
+</div>
+
+<div class="card" style="padding:1rem">
+  <h3 style="margin-top:0"><%= __('admin:apik_powerbi_h3') %></h3>
+  <p class="text-muted" style="margin:.2rem 0 .6rem"><%- __('admin:apik_powerbi_intro') %></p>
+  <ul style="margin:0;font-size:.9em">
+    <li><code>/api/powerbi/employees</code> — <%= __('admin:apik_feed_employees') %></li>
+    <li><code>/api/powerbi/assessments</code> — <%= __('admin:apik_feed_assessments') %></li>
+    <li><code>/api/powerbi/readiness</code> — <%= __('admin:apik_feed_readiness') %></li>
+    <li><code>/api/powerbi/organization</code> — <%= __('admin:apik_feed_organization') %></li>
+  </ul>
+</div>
+
+<%# UNE SEULE discipline de reseau pour toute l application :
+    public/js/sa-console-net.js. Une reponse REDIRIGEE, non-JSON, 401/440 est
+    un ECHEC -- jamais un succes -- et le refus est ecrit dans la langue de la
+    page. Charge AVANT le script de la page (non differe) pour que SAConsoleNet
+    existe au premier appel. %>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  // Titre de la carte de refus : neutre, car ces ecrans ne sont pas la console de
+  // revue (sans cela ils affichaient « La file de revue n a pas pu etre chargee »).
+  load_failed: __('dash:unable_to_load'),
+  pending_failed: __('dash:unable_to_load'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+const AK_I18N = {
+  labelRequired: <%- JSON.stringify(__('admin:apik_label_required')) %>,
+  created: <%- JSON.stringify(__('admin:apik_created_toast')) %>,
+  revoked: <%- JSON.stringify(__('admin:apik_revoked_toast')) %>,
+  revokeConfirm: <%- JSON.stringify(__('admin:apik_revoke_confirm')) %>,
+  revokeTitle: <%- JSON.stringify(__('admin:apik_revoke_title')) %>
+};
+const AK = {
+  // L assistant reseau ne se recopie plus ici : il vit dans
+  // public/js/sa-console-net.js (SAConsoleNet.call). L ancien corps avalait
+  // `r.json` en `{}` ; sur une session expiree le serveur repondait
+  // `302 -> /login`, le fetch de navigateur SUIVAIT la redirection, la page de
+  // connexion arrivait en `200 text/html`, `r.ok` valait donc true et `j`
+  // valait `{}` : le test `if(!r.ok||j.ok===false)` ne voyait rien.
+  // Cette page est gardee par requireSuperAdmin, qui repondait `302 -> /dashboard` a un appel JSON, y compris a une session VIVANTE du mauvais profil.
+  async api(method, p, b){ try { return await SAConsoleNet.call(p, method, b); } catch(e){ alert(e.message); throw e; } },
+  async create(){
+    const label=document.getElementById('ak-label').value.trim();
+    if(!label){alert(AK_I18N.labelRequired);return;}
+    const j=await this.api('POST','/admin/api-keys',{
+      label,
+      ownerAdminId:document.getElementById('ak-owner').value||null,
+      scope:document.getElementById('ak-scope').value,
+      expiresAt:document.getElementById('ak-expires').value||null
+    });
+    document.getElementById('ak-raw').textContent=j.key;
+    document.getElementById('ak-new').style.display='';
+    document.getElementById('ak-done').focus();
+    // a JSON action must say it worked; the key stays on screen, so the
+    // toast is the only acknowledgement before the explicit "J'ai copié".
+    if (window.toast) window.toast(AK_I18N.created, 'success');
+  },
+  copy(){const t=document.getElementById('ak-raw').textContent;navigator.clipboard?.writeText(t);},
+  // Explicit acknowledgement reloads the list; nothing else does.
+  done(){ location.reload(); },
+  async revoke(id){
+    const ok = await confirmDialog(AK_I18N.revokeConfirm, { title: AK_I18N.revokeTitle, danger: true });
+    if (!ok) return;
+    await this.api('POST','/admin/api-keys/'+id+'/revoke',{});
+    if (window.toast) window.toast(AK_I18N.revoked, 'success');
+    setTimeout(function(){ location.reload(); }, 600);
+  }
+};
+</script>

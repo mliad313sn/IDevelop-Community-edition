@@ -1,0 +1,182 @@
+<%# from_label / to_label are free text written by many services.
+    Known state tokens resolve through `admin:mv_label_<slug>`; anything else
+    (a person's name, an org unit) falls through verbatim — never a raw enum on
+    screen, never an invented translation of real data. %>
+<% const mvLabel = (v) => {
+     const raw = String(v == null ? '' : v).trim();
+     if (!raw) return '—';
+     const key = 'admin:mv_label_' + raw.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+     const t = __(key, { defaultValue: '' });
+     return t || raw;
+   }; %>
+<div class="page-header">
+    <h1><i class="fas fa-right-left" aria-hidden="true"></i> <%= __('chrome:nav_movements') %></h1>
+</div>
+
+<p class="help-text" style="margin-bottom:1rem;"><%= __('admin:mv_intro') %></p>
+
+<!-- KPI strip: what happened in the window, inside your scope -->
+<div class="mv-kpis">
+    <div class="mv-kpi"><span class="mv-kpi-n"><%= summary.movements %></span><span class="mv-kpi-l"><%= __('admin:mv_kpi_movements') %></span></div>
+    <div class="mv-kpi"><span class="mv-kpi-n"><%= summary.peopleMoved %></span><span class="mv-kpi-l"><%= __('admin:mv_kpi_people') %></span></div>
+    <div class="mv-kpi"><span class="mv-kpi-n"><%= summary.assessments %></span><span class="mv-kpi-l"><%= __('admin:mv_kpi_assessments') %></span></div>
+    <div class="mv-kpi"><span class="mv-kpi-n"><%= summary.reviews %></span><span class="mv-kpi-l"><%= __('admin:mv_kpi_reviews') %></span></div>
+    <div class="mv-kpi"><span class="mv-kpi-n"><%= summary.activeActors %></span><span class="mv-kpi-l"><%= __('admin:mv_kpi_actors') %></span></div>
+</div>
+
+<div class="mv-split">
+    <!-- WHERE it is happening -->
+    <div class="card mv-card">
+        <h3><%= __('admin:mv_by_kind') %></h3>
+        <% if (!summary.byKind.length) { %>
+            <p class="text-muted" style="font-size:.85rem;margin:0;"><%= __('admin:mv_none') %></p>
+        <% } else { %>
+            <% summary.byKind.forEach(function (k) { %>
+            <div class="mv-bar-row">
+                <span class="mv-bar-lab"><%= __('admin:mv_kind_' + k.kind) %></span>
+                <span class="mv-bar"><span class="mv-bar-fill" style="width:<%= Math.round((k.n / summary.byKind[0].n) * 100) %>%"></span></span>
+                <span class="mv-bar-n"><%= k.n %></span>
+            </div>
+            <% }); %>
+        <% } %>
+    </div>
+
+    <div class="card mv-card">
+        <h3><%= __('admin:mv_by_site') %></h3>
+        <% if (!summary.bySite.length) { %>
+            <p class="text-muted" style="font-size:.85rem;margin:0;"><%= __('admin:mv_none') %></p>
+        <% } else { %>
+            <% summary.bySite.forEach(function (s) { %>
+            <div class="mv-bar-row">
+                <span class="mv-bar-lab"><%= s.siteName %></span>
+                <span class="mv-bar"><span class="mv-bar-fill" style="width:<%= Math.round((s.n / summary.bySite[0].n) * 100) %>%"></span></span>
+                <span class="mv-bar-n"><%= s.n %></span>
+            </div>
+            <% }); %>
+        <% } %>
+    </div>
+
+    <!-- WHO is doing it -->
+    <div class="card mv-card">
+        <h3><%= __('admin:mv_top_actors') %></h3>
+        <% if (!summary.topActors.length) { %>
+            <p class="text-muted" style="font-size:.85rem;margin:0;"><%= __('admin:mv_none') %></p>
+        <% } else { %>
+            <% summary.topActors.forEach(function (a) { %>
+            <div class="mv-bar-row">
+                <span class="mv-bar-lab"><%= a.actorName %></span>
+                <span class="mv-bar"><span class="mv-bar-fill" style="width:<%= Math.round((a.n / summary.topActors[0].n) * 100) %>%"></span></span>
+                <span class="mv-bar-n"><%= a.n %></span>
+            </div>
+            <% }); %>
+        <% } %>
+    </div>
+</div>
+
+<!-- Filters -->
+<form method="GET" action="/movements" class="card mv-filters" data-filter-memory>
+    <label class="sr-only" for="mv-days"><%= __('admin:mv_f_days') %></label>
+    <select id="mv-days" name="days" class="form-control" aria-label="<%= __('admin:mv_f_days') %>">
+        <% [7, 30, 90, 365].forEach(function (d) { %>
+        <option value="<%= d %>" <%= String(filters.days) === String(d) ? 'selected' : '' %>><%= __('admin:mv_last_days', { days: d }) %></option>
+        <% }); %>
+    </select>
+    <label class="sr-only" for="mv-stream"><%= __('admin:mv_all_streams') %></label>
+    <select id="mv-stream" name="stream" class="form-control" aria-label="<%= __('admin:mv_all_streams') %>">
+        <option value=""><%= __('admin:mv_all_streams') %></option>
+        <% streams.forEach(function (s) { %>
+        <option value="<%= s %>" <%= filters.stream === s ? 'selected' : '' %>><%= __('admin:mv_stream_' + s) %></option>
+        <% }); %>
+    </select>
+    <label class="sr-only" for="mv-kind"><%= __('admin:mv_all_kinds') %></label>
+    <select id="mv-kind" name="kind" class="form-control" aria-label="<%= __('admin:mv_all_kinds') %>">
+        <option value=""><%= __('admin:mv_all_kinds') %></option>
+        <% kinds.forEach(function (k) { %>
+        <option value="<%= k %>" <%= filters.kind === k ? 'selected' : '' %>><%= __('admin:mv_kind_' + k) %></option>
+        <% }); %>
+    </select>
+    <label class="sr-only" for="mv-site"><%= __('admin:mv_all_sites') %></label>
+    <select id="mv-site" name="site" class="form-control" aria-label="<%= __('admin:mv_all_sites') %>">
+        <%# %><% if (options.sites.length !== 1) { %><option value=""><%= __('admin:mv_all_sites') %></option><% } %>
+        <% options.sites.forEach(function (s) { %>
+        <option value="<%= s %>" <%= filters.siteName === s ? 'selected' : '' %>><%= s %></option>
+        <% }); %>
+    </select>
+    <label class="sr-only" for="mv-dept"><%= __('admin:mv_all_depts') %></label>
+    <select id="mv-dept" name="dept" class="form-control" aria-label="<%= __('admin:mv_all_depts') %>">
+        <option value=""><%= __('admin:mv_all_depts') %></option>
+        <% options.departments.forEach(function (d) { %>
+        <option value="<%= d %>" <%= filters.departmentName === d ? 'selected' : '' %>><%= d %></option>
+        <% }); %>
+    </select>
+    <label class="sr-only" for="mv-q"><%= __('admin:mv_search_ph') %></label>
+    <input type="search" id="mv-q" name="q" class="form-control" value="<%= filters.q %>" placeholder="<%= __('admin:mv_search_ph') %>" aria-label="<%= __('admin:mv_search_ph') %>">
+    <button type="submit" class="btn btn-primary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:mv_apply') %></button>
+    <a class="btn btn-secondary" href="/movements/export.csv?<%= new URLSearchParams({ days: filters.days, stream: filters.stream, kind: filters.kind, site: filters.siteName, dept: filters.departmentName, q: filters.q }).toString() %>">
+        <i class="fas fa-file-csv" aria-hidden="true"></i> <%= __('admin:mv_export') %></a>
+</form>
+<%# / rule 1: the feed is a WINDOW, not the whole history — say so, so an
+    empty list never reads as "nothing ever happened". %>
+<p class="text-muted" style="font-size:.8rem;margin:.2rem 0 .9rem;">
+    <i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:mv_window_hint', { days: filters.days }) %>
+</p>
+
+<!-- The feed: who did what, where -->
+<div class="card" style="padding:0;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('admin:mv_th_when') %></th>
+                <th><%= __('admin:mv_th_what') %></th>
+                <th><%= __('admin:mv_th_who') %></th>
+                <th><%= __('admin:mv_th_where') %></th>
+                <th><%= __('admin:mv_th_change') %></th>
+                <th><%= __('admin:mv_th_actor') %></th>
+            </tr></thead>
+            <tbody>
+                <% if (!feed.length) { %>
+                <tr><td colspan="6" class="text-muted" style="text-align:center;padding:1.5rem;"><%= __('admin:mv_empty') %></td></tr>
+                <% } %>
+                <% feed.forEach(function (r) { %>
+                <tr>
+                    <td style="white-space:nowrap;font-size:.82rem;"><%= fmtDateTime(r.occurredAt) %></td>
+                    <td><span class="mv-tag mv-tag-<%= r.stream %>"><%= __('admin:mv_stream_' + r.stream) %></span>
+                        <span style="font-size:.82rem;"><%= r.stream === 'movement' ? __('admin:mv_kind_' + r.eventKind) : (r.skillName || r.eventKind) %></span></td>
+                    <td><a href="/employees/<%= r.employeeId %>"><%= r.employeeName %></a>
+                        <div style="font-size:.74rem;color:var(--text-muted);"><%= r.employeeNumber %></div></td>
+                    <td style="font-size:.82rem;"><%= r.siteName || '—' %><% if (r.departmentName) { %> · <%= r.departmentName %><% } %></td>
+                    <td style="font-size:.82rem;">
+                        <% if (r.fromLabel && r.toLabel) { %>
+                            <span class="text-muted"><%= mvLabel(r.fromLabel) %></span> → <strong><%= mvLabel(r.toLabel) %></strong>
+                        <% } else { %><strong><%= r.toLabel ? mvLabel(r.toLabel) : '—' %></strong><% } %>
+                    </td>
+                    <td style="font-size:.82rem;"><%= r.actorName || __('admin:mv_actor_system') %></td>
+                </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.mv-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:1rem}
+.mv-kpi{background:var(--bg-card,#fff);border:1px solid var(--border,#e2e8f0);border-radius:10px;padding:.85rem 1rem;text-align:center}
+.mv-kpi-n{display:block;font-size:1.6rem;font-weight:700;line-height:1.1}
+.mv-kpi-l{display:block;font-size:.76rem;color:var(--text-secondary,#64748b);margin-top:.15rem}
+.mv-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:1rem}
+.mv-card{padding:.9rem 1.1rem}
+.mv-card h3{margin:0 0 .6rem;font-size:.92rem}
+.mv-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:.8rem}
+.mv-bar-lab{flex:0 0 40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mv-bar{flex:1;height:8px;background:var(--bg-subtle,#f1f5f9);border-radius:4px;overflow:hidden}
+.mv-bar-fill{display:block;height:100%;background:var(--accent,#c8a04a)}
+.mv-bar-n{flex:0 0 34px;text-align:right;font-variant-numeric:tabular-nums}
+.mv-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:.85rem 1.1rem;margin-bottom:1rem}
+.mv-filters .form-control{max-width:190px}
+.mv-tag{display:inline-block;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;
+    border-radius:4px;padding:1px 6px;margin-right:6px;border:1px solid var(--border,#cbd5e1)}
+.mv-tag-movement{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+.mv-tag-assessment{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+.mv-tag-review{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
+@media (max-width:640px){ .mv-filters .form-control{max-width:none;flex:1 1 100%} }
+</style>

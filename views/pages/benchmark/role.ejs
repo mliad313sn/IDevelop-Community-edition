@@ -1,0 +1,178 @@
+<div class="page-header" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">
+    <h1 style="margin:0;"><i class="fas fa-people-arrows" aria-hidden="true"></i> <%= role.name %></h1>
+    <a href="/benchmark?roleName=<%= encodeURIComponent(role.name) %>" class="btn btn-sm btn-secondary"><i class="fas fa-table-cells" aria-hidden="true"></i> <%= __('dash:role_in_matrix') %></a>
+    <a href="/benchmark" class="btn btn-sm btn-secondary"><%= __('dash:back_all_roles') %></a>
+</div>
+
+<!-- Summary -->
+<div class="rb-summary">
+    <div class="rb-stat"><span class="rb-n"><%= occupants.length %></span><span class="rb-l"><%= __('dash:occupants') %></span></div>
+    <div class="rb-stat"><span class="rb-n"><%= summary && summary.benchmarkFit != null ? summary.benchmarkFit + '%' : '—' %></span><span class="rb-l"><%= __('dash:benchmark_fit') %></span></div>
+    <div class="rb-stat"><span class="rb-n"><%= summary && summary.coverage != null ? summary.coverage + '%' : '—' %></span><span class="rb-l"><%= __('dash:assessment_coverage') %></span></div>
+    <div class="rb-stat"><span class="rb-n"><%= summary && summary.criticalFit != null ? summary.criticalFit + '%' : '—' %></span><span class="rb-l"><%= __('dash:critical_fit') %></span></div>
+    <%# A critical-gap count of 0 over occupants nobody assessed is an all-clear the
+        data does not support — show a dash, like the fit figures beside it. %>
+    <% const rbMeasured = summary && summary.measuredOccupants != null ? Number(summary.measuredOccupants) : null; %>
+    <div class="rb-stat"><span class="rb-n <%= rbMeasured !== 0 && summary && summary.occupantsCriticalGap>0 ? 'rb-danger' : '' %>"><%= rbMeasured === 0 ? '—' : (summary ? summary.occupantsCriticalGap : 0) %></span><span class="rb-l"><%= __('dash:occupants_critical_gap') %></span></div>
+</div>
+
+<!-- Occupant × skill breakdown -->
+<div class="section-divider" style="margin-top:20px;">
+    <h2 class="section-title"><span class="section-icon"><i class="fas fa-users-viewfinder" aria-hidden="true"></i></span> <%= __('dash:who_has_which_gaps') %></h2>
+    <p class="section-subtitle"><%= __('dash:who_gaps_sub') %></p>
+</div>
+<% if (!occupants.length) { %>
+    <div class="empty-state" style="padding:28px;"><%= __('dash:no_occupants_role') %></div>
+<% } else { %>
+<div class="benchmark-scroll">
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#role-matrix" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+    <table class="benchmark-matrix" id="role-matrix">
+        <thead>
+            <tr>
+                <th class="sticky-col skill-col"><%= __('dash:skill') %></th>
+                <th class="delta-col" title="<%= __('dash:req_title') %>"><%= __('dash:req') %></th>
+                <% occupants.forEach(function(o){ %>
+                    <th class="role-col" title="<%= o.fullName %> — <%= __('dash:fit_lc') %> <%= o.fit==null?'—':o.fit+'%' %> · <%= __('dash:click_view_profile') %>"><span><a href="/employees/<%= o.employeeId %>" class="rb-occlink"><%= o.fullName %></a></span><br><small class="rb-occfit <%= o.fit==null?'':(o.fit>=80?'fit-good':(o.fit>=50?'fit-mid':'fit-low')) %>"><%= o.fit==null?'—':o.fit+'%' %></small><% if (o.critGap>0) { %><br><a href="/employees/<%= o.employeeId %>/development" class="rb-occdev" title="<%= __('dash:plan_dev_title') %>"><%= __('dash:develop_arrow') %></a><% } %></th>
+                <% }); %>
+            </tr>
+        </thead>
+        <tbody>
+            <% domains.forEach(function(d){ d.subs.forEach(function(sd){ %>
+                <tr class="bm-group-row"><td class="sticky-col" colspan="<%= occupants.length + 2 %>"><%= d.name %> <span class="bm-group-sep">›</span> <strong><%= sd.name %></strong></td></tr>
+                <% sd.skills.forEach(function(sk){ %>
+                    <tr>
+                        <td class="sticky-col skill-col"><%= sk.name %><% if (sk.isCritical) { %> <span class="bm-crit-tag" title="<%= __('dash:critical') %>"><%= __('dash:critical_lc') %></span><% } %></td>
+                        <td class="delta-col bm-heat-<%= sk.required %>"><%= sk.required %></td>
+                        <% occupants.forEach(function(o){ var c = sk.cells[o.employeeId]; %>
+                            <% if (c) { %><td class="bm-cell bm-heat-<%= c.actual %> <%= c.met ? '' : 'bm-gap' %> <%= c.assessed ? '' : 'bm-unassessed' %>" title="<%= o.fullName %>: <%= __('dash:actual_lc') %> <%= c.actual %> / <%= __('dash:required_lc') %> <%= sk.required %><%= c.met ? '' : ' — ' + __('dash:gap_upper') %><%= c.assessed ? '' : ' ' + __('dash:not_assessed_paren') %>"><%= c.assessed ? c.actual : '—' %></td><% } else { %><td class="bm-cell bm-empty">·</td><% } %>
+                        <% }); %>
+                    </tr>
+                <% }); %>
+            <% }); }); %>
+        </tbody>
+    </table>
+</div>
+<% } %>
+
+<!-- Succession candidates -->
+<div class="section-divider" style="margin-top:22px;">
+    <h2 class="section-title"><span class="section-icon"><i class="fas fa-arrow-trend-up" aria-hidden="true"></i></span> <%= __('dash:ready_to_move_up') %></h2>
+    <p class="section-subtitle"><%= __('dash:rtm_sub_1') %> <em><%= __('dash:not_lc') %></em> <%= __('dash:rtm_sub_2') %></p>
+</div>
+<div class="table-wrapper">
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#cand-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+    <table class="table" id="cand-table">
+        <thead><tr><th><%= __('dash:candidate') %></th><th><%= __('dash:current_role') %></th><th style="min-width:150px;"><%= __('dash:fit_vs_role') %></th><th style="text-align:center;"><%= __('dash:skill_gaps') %></th><th style="text-align:center;"><%= __('dash:critical_gaps') %></th><th style="text-align:center;"><%= __('dash:act') %></th></tr></thead>
+        <tbody>
+            <% if (!candidates.length) { %>
+                <tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted);"><%= __('dash:no_candidates_in_scope') %></td></tr>
+            <% } else { candidates.forEach(function(c){ var v = c.fit==null?null:Number(c.fit); var cAssessed = Number(c.assessedSkills||0), cReq = Number(c.reqSkills||0); %>
+                <tr>
+                    <td><strong><a href="/employees/<%= c.employeeId %>"><%= c.fullName %></a></strong><% if (c.employeeNumber) { %> <span class="rb-emp">#<%= c.employeeNumber %></span><% } %></td>
+                    <td><%= c.currentRole || '—' %></td>
+                    <%# Fit is NULL for a candidate nobody assessed: say "not measured", never a red 1 % bar. The coverage (assessed / department-designed requirements) always travels with the score. %>
+                    <td><% if (v==null) { %><span class="bm-nodata" title="<%= __('dash:rd_not_measured_title') %>"><%= __('dash:rd_not_measured') %></span><% } else { %><div class="bm-fitbar"><div class="bm-fitbar-fill <%= v>=80?'fit-good':(v>=50?'fit-mid':'fit-low') %>" style="width:<%= v %>%;"></div><span class="bm-fitbar-label"><%= v %>%</span></div><% } %><small class="text-muted bm-cand-cov" title="<%= __('dash:rd_not_measured_title') %>"><%= cAssessed %> / <%= cReq %> <%= __('dash:bm_cand_coverage_suffix') %></small></td>
+                    <td style="text-align:center;" title="<%= __('dash:bm_cand_gaps_measured_title') %>"><% if (cAssessed===0) { %>—<% } else { %><%= c.gapSkills %><% } %></td>
+                    <td style="text-align:center;<%= c.critGapSkills>0 ? 'color:#F44336;font-weight:700;' : '' %>" title="<%= __('dash:bm_cand_gaps_measured_title') %>"><% if (cAssessed===0) { %>—<% } else { %><%= c.critGapSkills %><% } %></td>
+                    <td style="text-align:center;"><a href="/v2/idp/new?employeeId=<%= c.employeeId %>" class="btn btn-xs btn-secondary" title="<%= __('dash:start_idp_title') %>"><%= __('dash:develop') %></a></td>
+                </tr>
+            <% }); } %>
+        </tbody>
+    </table>
+</div>
+
+<style>
+.rb-summary { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin:6px 0 4px; }
+.rb-stat { background:var(--bg-subtle); border:1px solid var(--border-color,#2a2a2a); border-radius:12px; padding:14px 12px; text-align:center; }
+.rb-n { display:block; font-size:1.5rem; font-weight:800; color:var(--brand,#7C6CFF); font-variant-numeric:tabular-nums; }
+.rb-n.rb-danger { color:#F44336; }
+.rb-l { display:block; font-size:.72rem; text-transform:uppercase; letter-spacing:.03em; color:var(--text-secondary); margin-top:2px; }
+.benchmark-scroll { overflow:auto; max-height:62vh; border:1px solid var(--border-color,#2a2a2a); border-radius:12px; }
+.benchmark-matrix { border-collapse:separate; border-spacing:0; font-size:.8rem; min-width:100%; }
+.benchmark-matrix th, .benchmark-matrix td { padding:5px 8px; border-bottom:1px solid var(--border-color,#242424); white-space:nowrap; text-align:center; }
+.benchmark-matrix thead th { position:sticky; top:0; z-index:3; background:var(--bg-elevated,#1b1b1b); color:var(--text-primary); }
+.benchmark-matrix .role-col span { display:inline-block; max-width:120px; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom; }
+.rb-occfit { font-weight:700; } .rb-occfit.fit-good { color:#4CAF50; } .rb-occfit.fit-mid { color:#FF9800; } .rb-occfit.fit-low { color:#F44336; }
+.bm-nodata { display:inline-block; padding:2px 10px; border-radius:6px; background:var(--bg-subtle); border:1px dashed var(--border-color,#3a3a3a); color:var(--text-muted); font-size:.78rem; }
+.bm-cand-cov { display:block; font-size:.72rem; margin-top:2px; }
+.benchmark-matrix .sticky-col { position:sticky; left:0; z-index:2; background:var(--bg-elevated,#1b1b1b); text-align:left; }
+.benchmark-matrix thead .sticky-col { z-index:4; }
+.benchmark-matrix .skill-col { min-width:230px; max-width:320px; white-space:normal; }
+.delta-col { color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.bm-group-row td { background:var(--bg-subtle); font-size:.82rem; color:var(--text-secondary); text-align:left; }
+.bm-group-sep { color:var(--text-muted); }
+.bm-crit-tag { font-size:.62rem; text-transform:uppercase; letter-spacing:.03em; color:var(--brand,#7C6CFF); border:1px solid var(--brand,#7C6CFF); border-radius:999px; padding:0 6px; }
+.bm-cell { position:relative; font-variant-numeric:tabular-nums; }
+.bm-empty { color:var(--text-muted); opacity:.5; }
+.bm-gap { box-shadow: inset 0 0 0 2px rgba(244,67,54,.75); font-weight:700; }
+.bm-unassessed { opacity:.45; }
+.bm-heat-0 { background:rgba(120,120,120,.10); } .bm-heat-1 { background:rgba(244,67,54,.30); } .bm-heat-2 { background:rgba(255,152,0,.32); } .bm-heat-3 { background:rgba(139,195,74,.36); } .bm-heat-4 { background:rgba(76,175,80,.48); }
+.bm-fitbar { position:relative; height:20px; background:var(--bg-subtle); border-radius:6px; overflow:hidden; min-width:140px; }
+.bm-fitbar-fill { height:100%; background:#4CAF50; } .bm-fitbar-fill.fit-good { background:#4CAF50; } .bm-fitbar-fill.fit-mid { background:#FF9800; } .bm-fitbar-fill.fit-low { background:#F44336; }
+.bm-fitbar-label { position:absolute; top:0; left:8px; line-height:20px; font-size:.75rem; font-weight:600; color:var(--text-primary); }
+.rb-emp { color:var(--text-muted); font-size:.78rem; }
+.rb-occlink { color:var(--text-primary); text-decoration:none; border-bottom:1px dotted var(--text-muted); }
+.rb-occlink:hover { color:var(--brand,#7C6CFF); }
+.rb-occdev { display:inline-block; margin-top:2px; font-size:.66rem; color:var(--brand,#7C6CFF); text-decoration:none; }
+.rb-occdev:hover { text-decoration:underline; }
+.btn-xs { padding:2px 9px; font-size:.72rem; border-radius:6px; }
+.rb-trend-card { background:var(--bg-card); border:1px solid var(--border-color,#2a2a2a); border-radius:12px; padding:14px 16px; margin-top:22px; }
+.rb-trend-note { font-size:.8rem; color:var(--text-muted); margin:6px 2px 0; }
+@media (max-width:900px){ .rb-summary{grid-template-columns:repeat(2,1fr);} }
+</style>
+
+<!-- Fit trend: daily snapshots from benchmark_fit_history -->
+<div class="rb-trend-card">
+    <h2 class="section-title" style="margin:0 0 4px;"><span class="section-icon"><i class="fas fa-chart-line" aria-hidden="true"></i></span> <%= __('dash:fit_trend_title') %></h2>
+    <% if (!fitHistory || fitHistory.length < 2) { %>
+        <p class="rb-trend-note"><%= __('dash:fit_trend_pending') %></p>
+    <% } else { %>
+        <div style="height:220px;"><canvas id="rb-fit-trend"></canvas></div>
+    <% } %>
+</div>
+<% if (fitHistory && fitHistory.length >= 2) { %>
+<script src="/vendor/chart.umd.min.js?v=<%= assetVersion %>"></script>
+<script src="/js/chart-theme.js?v=<%= assetVersion %>"></script>
+<script src="/js/chart-axis-fit.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+(function(){
+    var H = <%- include('../../partials/json-script', { v: fitHistory }) %>;
+    // Fit the % axis to both series: a fixed 0-100 axis flattens a narrow but
+    // real fit movement into a straight line (see chart-axis-fit.js).
+    var YF = window.ChartAxisFit
+        ? ChartAxisFit.fitRange(H.map(function(x){ return x.fit; }).concat(H.map(function(x){ return x.coverage; })), ChartAxisFit.PERCENT)
+        : { min: 0, max: 100 };
+    var CT = window.ChartTheme || {};
+    var TT = CT.tokens || {};
+    // The fit trend is "actual vs the role benchmark": accent for the measured
+    // line, neutral dashed for the target. Both from the theme, so the chart
+    // follows whichever identity is running.
+    var SEMB = CT.SEMANTIC || { accent: TT.gold || '#7C6CFF', neutral: TT.blue || '#5B9DF5' };
+    var ROLEB = CT.ROLE || { accentFill: 'rgba(124, 108, 255,.12)' };
+    new Chart(document.getElementById('rb-fit-trend'), {
+        type: 'line',
+        data: {
+            labels: H.map(function(x){ return x.day; }),
+            datasets: [
+                // spanGaps:false — a null day means the fit/coverage COULD NOT be
+                // measured (no measured occupant that day). Bridging it draws a
+                // straight line over data that does not exist, the exact
+                // fabrication the null is there to prevent; the line must break.
+                { label: <%- JSON.stringify(__('dash:benchmark_fit_label')) %>, data: H.map(function(x){ return x.fit; }),
+                  borderColor: SEMB.accent, backgroundColor: ROLEB.accentFill, fill: true, tension: .3, pointRadius: 2, spanGaps: false },
+                { label: <%- JSON.stringify(__('dash:coverage_label')) %>, data: H.map(function(x){ return x.coverage; }),
+                  borderColor: SEMB.neutral, borderDash: [6,3], fill: false, tension: .3, pointRadius: 2, spanGaps: false },
+            ],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: {
+                y: { min: YF.min, max: YF.max, ticks: { callback: function(v){ return v + '%'; } }, grid: { color: CT.GRID_SOFT || 'rgba(255,255,255,.05)' } },
+                x: { grid: { display: false } },
+            },
+            plugins: { legend: { position: 'bottom' } },
+        },
+    });
+})();
+</script>
+<% } %>

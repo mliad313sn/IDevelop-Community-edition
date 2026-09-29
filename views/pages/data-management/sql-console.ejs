@@ -1,0 +1,344 @@
+<%#
+    the whole SQL console was hard-coded English
+    on the French UI. Every visible string now comes from `datamgmt:sqlc_*`
+    (the script strings through one SQLC dictionary rendered into the page),
+    the "write to a test instance" native confirm() became the shared
+    confirmDialog, and restore-point timestamps use the shared date formatter.
+%>
+<div class="page-header">
+    <h1><i class="fas fa-terminal" aria-hidden="true"></i> <%= __('datamgmt:sqlc_h1') %></h1>
+    <p class="help-text"><%= __('datamgmt:sqlc_intro') %></p>
+</div>
+
+<div class="dashboard-section" style="border-left: 4px solid #c0392b;">
+    <p style="margin:0;"><strong style="color:#ff6b6b;"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+        <%= __('datamgmt:sqlc_caution') %></strong> <%- __('datamgmt:sqlc_caution_body') %></p>
+    <p style="margin:0.75rem 0 0;"><strong><i class="fas fa-lock" aria-hidden="true"></i> <%= __('datamgmt:sqlc_appendonly') %></strong>
+        <%- __('datamgmt:sqlc_appendonly_body') %></p>
+</div>
+
+<!-- Step 1: Excel -> SQL -->
+<div class="dashboard-section section-accent-green">
+    <h2><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i> <%= __('datamgmt:sqlc_excel_h2') %></h2>
+    <p><%- __('datamgmt:sqlc_excel_body') %>
+        <a href="/data-management/templates/full-system"><i class="fas fa-download" aria-hidden="true"></i> <%= __('datamgmt:sqlc_download_template') %></a>.</p>
+    <form id="excelToSqlForm" enctype="multipart/form-data" style="margin-top:1rem; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <input type="file" name="excelFile" accept=".xlsx" required class="file-input" id="excelToSqlFile" aria-label="<%= __('datamgmt:sqlc_file_aria') %>">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-green"><i class="fas fa-code" aria-hidden="true"></i> <%= __('datamgmt:sqlc_generate') %></button>
+    </form>
+    <div class="import-result" id="excelToSqlResult"></div>
+</div>
+
+<!-- Step 2: SQL editor + run -->
+<div class="dashboard-section section-accent-purple">
+    <h2><i class="fas fa-database" aria-hidden="true"></i> <%= __('datamgmt:sqlc_script_h2') %></h2>
+    <p><%- __('datamgmt:sqlc_script_body') %></p>
+    <label class="sr-only" for="sqlText"><%= __('datamgmt:sqlc_textarea_aria') %></label>
+    <textarea id="sqlText" spellcheck="false" rows="16" aria-label="<%= __('datamgmt:sqlc_textarea_aria') %>"
+        style="width:100%; font-family:monospace; font-size:13px; padding:10px; box-sizing:border-box;"
+        placeholder="-- e.g. SELECT count(*) FROM employees;"></textarea>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:0.75rem;">
+        <label style="display:flex; align-items:center; gap:6px;" for="dryRun">
+            <input type="checkbox" id="dryRun" checked> <%= __('datamgmt:sqlc_dry_run') %>
+        </label>
+        <button type="button" class="btn btn-purple" id="runSqlBtn"><i class="fas fa-play" aria-hidden="true"></i>
+            <%= __('datamgmt:sqlc_run') %></button>
+        <button type="button" class="btn btn-secondary" id="copySqlBtn"><i class="fas fa-copy" aria-hidden="true"></i>
+            <%= __('datamgmt:sqlc_copy') %></button>
+    </div>
+    <div class="import-result" id="sqlResult" style="text-align:left; margin-top:1rem;"></div>
+</div>
+
+<!-- Restore points -->
+<div class="dashboard-section section-accent-green">
+    <h2><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> <%= __('datamgmt:sqlc_rp_h2') %></h2>
+    <p><%= __('datamgmt:sqlc_rp_body') %></p>
+    <div style="border-left:4px solid #b45309; padding-left:12px; margin:0.75rem 0;">
+        <p style="margin:0 0 6px;"><strong><%= __('datamgmt:sqlc_rp_undo_title') %></strong> <%- __('datamgmt:sqlc_rp_undo_body') %></p>
+        <p style="margin:0;"><strong><%- __('datamgmt:sqlc_rp_keep_title') %></strong> <%- __('datamgmt:sqlc_rp_keep_body') %></p>
+    </div>
+    <div id="restorePointsList" style="margin-top:0.75rem;"><%= __('datamgmt:sqlc_loading') %></div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+    var csrf = '<%= csrfToken %>';
+    var sqlText = document.getElementById('sqlText');
+    // no user-visible sentence is written in this file any more.
+    var T = <%- include('../../partials/json-script', { v: {
+        chooseFile: __('datamgmt:sqlc_choose_file'),
+        generating: __('datamgmt:sqlc_generating'),
+        generatedOk: __('datamgmt:sqlc_generated_ok'),
+        failed: __('datamgmt:sqlc_failed'),
+        nothingToRun: __('datamgmt:sqlc_nothing_to_run'),
+        writeConfirm: __('datamgmt:sqlc_write_confirm'),
+        writeConfirmTitle: __('datamgmt:sqlc_write_confirm_title'),
+        running: __('datamgmt:sqlc_running'),
+        bannerDry: __('datamgmt:sqlc_banner_dry'),
+        bannerCommitted: __('datamgmt:sqlc_banner_committed'),
+        bannerAutocommit: __('datamgmt:sqlc_banner_autocommit'),
+        error: __('datamgmt:sqlc_error'),
+        autoReverted: __('datamgmt:sqlc_auto_reverted'),
+        restorePoint: __('datamgmt:sqlc_restore_point'),
+        restorePointCreated: __('datamgmt:sqlc_restore_point_created'),
+        restorePointCreatedTail: __('datamgmt:sqlc_restore_point_created_tail'),
+        stripped: __('datamgmt:sqlc_stripped'),
+        rows: __('datamgmt:sqlc_rows'),
+        rowsTruncated: __('datamgmt:sqlc_rows_truncated'),
+        loadFailed: __('datamgmt:sqlc_load_failed'),
+        rpEmpty: __('datamgmt:sqlc_rp_empty'),
+        thName: __('datamgmt:sqlc_th_name'),
+        thCreated: __('datamgmt:sqlc_th_created'),
+        thSize: __('datamgmt:sqlc_th_size'),
+        thActions: __('datamgmt:sqlc_th_actions'),
+        // P2-10 / the restore-point list used to carry {name, size, date} and
+        // nothing else while every instance on the machine wrote into ONE folder; and
+        // "nothing is saved" was printed over scripts that had just written.
+        thDatabase: __('datamgmt:sqlc_th_database'),
+        dbUnknown: __('datamgmt:sqlc_db_unknown'),
+        dbUnknownTitle: __('datamgmt:sqlc_db_unknown_title'),
+        warnVolatile: __('datamgmt:sqlc_warn_volatile'),
+        preRevert: __('datamgmt:sqlc_prerevert'),
+        revert: __('datamgmt:sqlc_revert'),
+        revertTitle: __('datamgmt:sqlc_revert_title'),
+        revertWarning: __('datamgmt:sqlc_revert_warning'),
+        reverting: __('datamgmt:sqlc_reverting'),
+        revertFailed: __('datamgmt:sqlc_revert_failed'),
+        revertFailedDetail: __('datamgmt:sqlc_revert_failed_detail'),
+        unknownError: __('datamgmt:sqlc_unknown_error'),
+        preserveOk: __('datamgmt:sqlc_preserve_ok'),
+        preservePartial: __('datamgmt:sqlc_preserve_partial'),
+        revertedTo: __('datamgmt:sqlc_reverted_to'),
+        locale: (typeof lang !== 'undefined' && lang === 'en') ? 'en-GB' : 'fr-FR'
+    } }) %>;
+    function fill(tpl, vars) {
+        return String(tpl).replace(/\{\{(\w+)\}\}/g, function (_, k) { return vars[k] == null ? '' : String(vars[k]); });
+    }
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    // --- Excel -> SQL ---
+    document.getElementById('excelToSqlForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var out = document.getElementById('excelToSqlResult');
+        var file = document.getElementById('excelToSqlFile').files[0];
+        if (!file) { out.innerHTML = '<span style="color:#ff6b6b;">' + esc(T.chooseFile) + '</span>'; return; }
+        var fd = new FormData();
+        fd.append('excelFile', file);
+        fd.append('_csrf', csrf);
+        out.textContent = T.generating;
+        fetch('/data-management/sql-console/from-excel', { method: 'POST', body: fd, headers: { 'x-csrf-token': csrf } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.success) {
+                    sqlText.value = d.sql;
+                    out.innerHTML = '<span style="color:#27ae60;"><i class="fas fa-check"></i> ' + esc(T.generatedOk) + '</span>';
+                    sqlText.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else {
+                    out.innerHTML = '<span style="color:#ff6b6b;">' + esc(d.error || T.failed) + '</span>';
+                }
+            })
+            .catch(function (err) { out.innerHTML = '<span style="color:#ff6b6b;">' + esc(err.message) + '</span>'; });
+    });
+
+    // --- Run SQL ---
+    document.getElementById('runSqlBtn').addEventListener('click', function () {
+        var out = document.getElementById('sqlResult');
+        var sql = sqlText.value.trim();
+        if (!sql) { out.innerHTML = '<span style="color:#ff6b6b;">' + esc(T.nothingToRun) + '</span>'; return; }
+        var dryRun = document.getElementById('dryRun').checked;
+        // the shared dialog, not the browser's native confirm.
+        var gate = dryRun
+            ? Promise.resolve(true)
+            : window.confirmDialog(T.writeConfirm, { danger: true, title: T.writeConfirmTitle });
+        gate.then(function (ok) {
+            if (!ok) return;
+            out.textContent = T.running;
+            fetch('/data-management/sql-console/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrf },
+                body: JSON.stringify({ sql: sql, dryRun: dryRun ? 'true' : 'false' })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (d) { renderResult(out, d); })
+                .catch(function (err) { out.innerHTML = '<span style="color:#ff6b6b;">' + esc(err.message) + '</span>'; });
+        });
+    });
+
+    document.getElementById('copySqlBtn').addEventListener('click', function () {
+        sqlText.select();
+        try { document.execCommand('copy'); } catch (e) {}
+    });
+
+    // A run can be honest about what a rollback does NOT undo. Rendered on both the
+    // dry-run and the committed path, before anything else.
+    function renderWarnings(d) {
+        if (!d.warnings || !d.warnings.length) return '';
+        var lines = [];
+        d.warnings.forEach(function (w) {
+            if (w && w.code === 'volatile_calls') {
+                lines.push(esc(fill(T.warnVolatile, { fns: (w.functions || []).join(', ') })));
+            }
+        });
+        if (!lines.length) return '';
+        return '<div style="padding:8px 12px; background:#fef3c7; color:#1a1a1a; border:1px solid #b45309; border-radius:4px; margin-bottom:10px;">'
+            + '<i class="fas fa-triangle-exclamation"></i> ' + lines.join('<br>') + '</div>';
+    }
+
+    function renderResult(out, d) {
+        var html = '';
+        var banner = d.dryRun
+            ? '<div style="padding:8px 12px; background:#fef9e7; color:#1a1a1a; border:1px solid #f1c40f; border-radius:4px; margin-bottom:10px;"><i class="fas fa-flask"></i> ' + esc(T.bannerDry) + '</div>'
+            : '<div style="padding:8px 12px; background:#eafaf1; color:#1a1a1a; border:1px solid #27ae60; border-radius:4px; margin-bottom:10px;"><i class="fas fa-check"></i> ' + esc(T.bannerCommitted)
+              + (d.mode === 'autocommit' ? esc(T.bannerAutocommit) : '') + '.</div>';
+        html += renderWarnings(d);
+        if (!d.success) {
+            html += '<div style="padding:8px 12px; background:#fdedec; color:#1a1a1a; border:1px solid #c0392b; border-radius:4px;"><strong>' + esc(T.error) + '</strong> ' + esc(d.error) + '</div>';
+            if (d.autoReverted) {
+                html += '<div style="padding:8px 12px; background:#eafaf1; color:#1a1a1a; border:1px solid #27ae60; border-radius:4px; margin-top:8px;"><i class="fas fa-clock-rotate-left"></i> ' + T.autoReverted + '</div>';
+                html += renderPreservation(d);
+            }
+            if (d.restorePoint) {
+                html += '<p style="color:#7f8c8d; margin-top:6px;"><i class="fas fa-floppy-disk"></i> ' + esc(T.restorePoint) + ' <code>' + esc(d.restorePoint.name) + '</code></p>';
+            }
+            out.innerHTML = html;
+            loadRestorePoints();
+            return;
+        }
+        html += banner;
+        if (d.restorePoint) {
+            html += '<p style="color:#7f8c8d;"><i class="fas fa-floppy-disk"></i> ' + esc(T.restorePointCreated) + ' <code>' + esc(d.restorePoint.name) + '</code>' + esc(T.restorePointCreatedTail) + '</p>';
+        }
+        if (d.stripped && d.stripped.length) {
+            html += '<p style="color:#7f8c8d;"><i class="fas fa-scissors"></i> ' + esc(T.stripped) + ' ' + esc(d.stripped.join(', ')) + '</p>';
+        }
+        (d.statements || []).forEach(function (s, i) {
+            html += '<div style="margin-bottom:10px;"><strong>#' + (i + 1) + '</strong> <code>' + esc(s.command || '') + '</code>'
+                + (s.rowCount != null ? ' &mdash; ' + s.rowCount + ' ' + esc(T.rows) : '');
+            if (s.rows && s.rows.length) {
+                html += '<div style="overflow-x:auto; margin-top:6px;"><table style="border-collapse:collapse; font-size:12px;"><thead><tr>';
+                (s.fields || Object.keys(s.rows[0])).forEach(function (f) {
+                    html += '<th style="border:1px solid #ccc; padding:3px 8px; text-align:left;">' + esc(f) + '</th>';
+                });
+                html += '</tr></thead><tbody>';
+                s.rows.forEach(function (row) {
+                    html += '<tr>';
+                    (s.fields || Object.keys(row)).forEach(function (f) {
+                        html += '<td style="border:1px solid #ccc; padding:3px 8px;">' + esc(row[f]) + '</td>';
+                    });
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                if (s.rowsTruncated) html += '<p style="color:#7f8c8d;">' + esc(T.rowsTruncated) + '</p>';
+                html += '</div>';
+            }
+            html += '</div>';
+        });
+        out.innerHTML = html;
+        loadRestorePoints();
+    }
+
+    // --- Restore points ---
+    function fmtSize(b) {
+        if (b > 1048576) return (b / 1048576).toFixed(1) + ' MB';
+        if (b > 1024) return (b / 1024).toFixed(0) + ' KB';
+        return b + ' B';
+    }
+
+    function loadRestorePoints() {
+        var box = document.getElementById('restorePointsList');
+        fetch('/data-management/sql-console/restore-points', { headers: { 'x-csrf-token': csrf } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d.success) { box.innerHTML = '<span style="color:#ff6b6b;">' + esc(d.error || T.loadFailed) + '</span>'; return; }
+                if (!d.restorePoints.length) { box.innerHTML = '<em>' + esc(T.rpEmpty) + '</em>'; return; }
+                var html = '<div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:13px; width:100%;"><thead><tr>'
+                    + '<th style="border:1px solid #ccc; padding:4px 10px; text-align:left;">' + esc(T.thName) + '</th>'
+                    + '<th style="border:1px solid #ccc; padding:4px 10px; text-align:left;">' + esc(T.thDatabase) + '</th>'
+                    + '<th style="border:1px solid #ccc; padding:4px 10px; text-align:left;">' + esc(T.thCreated) + '</th>'
+                    + '<th style="border:1px solid #ccc; padding:4px 10px; text-align:left;">' + esc(T.thSize) + '</th>'
+                    + '<th style="border:1px solid #ccc; padding:4px 10px;"><span class="sr-only">' + esc(T.thActions) + '</span></th></tr></thead><tbody>';
+                d.restorePoints.forEach(function (rp) {
+                    // one date format per language — no US "2/16/2026, 3:14:43 PM" on a French page.
+                    // An origin that was never recorded is shown as "—", never as this
+                    // database: an absence of measurement is not a value.
+                    var dbCell = rp.database
+                        ? '<code>' + esc(rp.database) + '</code>'
+                        : '<span title="' + esc(T.dbUnknownTitle) + '">' + esc(T.dbUnknown) + '</span>';
+                    html += '<tr><td style="border:1px solid #ccc; padding:4px 10px;"><code>' + esc(rp.name) + '</code></td>'
+                        + '<td style="border:1px solid #ccc; padding:4px 10px;">' + dbCell + '</td>'
+                        + '<td style="border:1px solid #ccc; padding:4px 10px;">' + esc(new Date(rp.createdAt).toLocaleString(T.locale)) + '</td>'
+                        + '<td style="border:1px solid #ccc; padding:4px 10px;">' + fmtSize(rp.sizeBytes) + '</td>'
+                        + '<td style="border:1px solid #ccc; padding:4px 10px; text-align:center;"><button class="btn btn-sm btn-danger rp-revert" data-name="' + esc(rp.name) + '"><i class="fas fa-clock-rotate-left"></i> ' + esc(T.revert) + '</button></td></tr>';
+                });
+                html += '</tbody></table></div>';
+                box.innerHTML = html;
+                box.querySelectorAll('.rp-revert').forEach(function (btn) {
+                    btn.addEventListener('click', function () { revertTo(btn.getAttribute('data-name')); });
+                });
+            })
+            .catch(function (err) { box.innerHTML = '<span style="color:#ff6b6b;">' + esc(err.message) + '</span>'; });
+    }
+
+    function askRevert(name) {
+        var msg = T.revertWarning.replace('%s', name);
+        return window.confirmDialog(msg, { danger: true, title: T.revertTitle, okText: T.revert });
+    }
+
+    function renderPreservation(d) {
+        var ap = d.auditPreservation;
+        if (!ap) return '';
+        if (ap.unreattachable) {
+            var rows = [];
+            Object.keys(ap.tables || {}).forEach(function (t) {
+                var r = ap.tables[t];
+                if (r.unreattachable && r.unreattachable.length) rows.push(esc(t) + ': ' + r.unreattachable.length);
+            });
+            return '<div style="padding:8px 12px; background:#fef3c7; color:#1a1a1a; border:1px solid #b45309; border-radius:4px; margin-top:8px;">'
+                + '<i class="fas fa-triangle-exclamation"></i> <strong>' + ap.reattached + '</strong> '
+                + fill(T.preservePartial, { n: ap.unreattachable, detail: rows.join('; '), schema: esc(ap.quarantineSchema) }) + '</div>';
+        }
+        return '<div style="padding:8px 12px; background:#eafaf1; color:#1a1a1a; border:1px solid #27ae60; border-radius:4px; margin-top:8px;">'
+            + '<i class="fas fa-lock"></i> ' + esc(fill(T.preserveOk, { n: ap.reattached })) + '</div>';
+    }
+
+    function revertTo(name) {
+        askRevert(name).then(function (ok) {
+            if (!ok) return;
+            var box = document.getElementById('restorePointsList');
+            box.innerHTML = esc(T.reverting);
+            fetch('/data-management/sql-console/restore-points/' + encodeURIComponent(name) + '/revert', {
+                method: 'POST', headers: { 'x-csrf-token': csrf }
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    var out = document.getElementById('sqlResult');
+                    var doneMsg = fill(T.revertedTo, { name: name });
+                    if (d.success) {
+                        window.toast ? window.toast(doneMsg, 'success') : alert(doneMsg);
+                        out.innerHTML = '<div style="padding:8px 12px; background:#eafaf1; color:#1a1a1a; border:1px solid #27ae60; border-radius:4px;">'
+                            + '<i class="fas fa-clock-rotate-left"></i> ' + esc(doneMsg)
+                            + (d.preRevertRestorePoint
+                                ? '<br><i class="fas fa-floppy-disk"></i> ' + esc(T.preRevert) + ' <code>' + esc(d.preRevertRestorePoint) + '</code>'
+                                : '')
+                            + '</div>'
+                            + renderPreservation(d);
+                    } else {
+                        window.toast ? window.toast(T.revertFailed, 'error') : alert(T.revertFailed);
+                        out.innerHTML = '<div style="padding:8px 12px; background:#fdedec; color:#1a1a1a; border:1px solid #c0392b; border-radius:4px;">'
+                            + '<strong>' + esc(T.revertFailedDetail) + '</strong> ' + esc(d.error || T.unknownError) + '</div>';
+                    }
+                    loadRestorePoints();
+                })
+                .catch(function (err) { alert(T.revertFailedDetail + ' ' + err.message); loadRestorePoints(); });
+        });
+    }
+
+    loadRestorePoints();
+})();
+</script>

@@ -1,0 +1,108 @@
+<%#
+  Training completions proposing a level increase, awaiting a named decision.
+
+  HR policy §10 — a finished course is EVIDENCE, not an automatic elevation of
+  the official level. Ingestion parks the completion here; this page is where
+  the person who governs the employee turns it into a level, or refuses it.
+  Nothing on this page happens by itself.
+%>
+<div class="page-header">
+  <h1><i class="fas fa-user-graduate" aria-hidden="true"></i> <%= __('lms:upl_title') %></h1>
+  <p class="text-muted"><%= __('lms:upl_intro') %></p>
+</div>
+
+<div class="card" style="padding:1rem">
+  <% if (!uplifts || !uplifts.length) { %>
+    <%# An empty list is a STATE, said in words — never a blank panel that
+        reads as a broken page. %>
+    <p style="margin:0"><em><%= __('lms:upl_none') %></em></p>
+  <% } else { %>
+    <table class="table">
+      <thead>
+        <tr>
+          <th><%= __('lms:upl_th_person') %></th>
+          <th><%= __('lms:upl_th_course') %></th>
+          <th><%= __('lms:upl_th_proposal') %></th>
+          <th><%= __('lms:upl_th_completed') %></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% uplifts.forEach(function (u) { %>
+          <tr data-uplift="<%= u.completionId %>">
+            <td>
+              <strong><%= u.firstName %> <%= u.lastName %></strong>
+              <div class="text-muted" style="font-size:.8em"><%= u.employeeNumber %></div>
+            </td>
+            <td><%= u.courseTitle || __('lms:upl_course_unknown') %></td>
+            <td>
+              <% u.skills.forEach(function (s) { %>
+                <div>
+                  <%= s.skillName %>
+                  <span class="text-muted"><%= s.from %> &rarr; <strong><%= s.to %></strong></span>
+                </div>
+              <% }); %>
+            </td>
+            <td><%= u.completedAt ? new Date(u.completedAt).toLocaleDateString(locale || 'fr') : '—' %></td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-primary btn-sm" data-act="accept" data-id="<%= u.completionId %>">
+                <%= __('lms:upl_accept') %>
+              </button>
+              <button class="btn btn-secondary btn-sm" data-act="decline" data-id="<%= u.completionId %>">
+                <%= __('lms:upl_decline') %>
+              </button>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+    var CSRF = <%- include('../../partials/json-script', { v: typeof csrfToken !== 'undefined' ? csrfToken : '' }) %>;
+    var T = <%- include('../../partials/json-script', { v: {
+        failed: __('lms:upl_failed'),
+        confirmDecline: __('lms:upl_confirm_decline')
+    } }) %>;
+
+    // The house dialog, never a native one: a native confirm is
+    // unstyled, untranslated and unreachable by the keyboard trap the rest of
+    // the app uses.
+    function ask(message) {
+        if (typeof window.confirmDialog === 'function') return window.confirmDialog(message);
+        return Promise.resolve(true);
+    }
+
+    function send(btn, id, act) {
+        btn.disabled = true;
+        return fetch('/v2/lms/uplifts/' + encodeURIComponent(id) + '/' + act, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-csrf-token': CSRF },
+            body: '{}',
+        })
+            .then(function (r) { return r.json().catch(function () { return {}; }); })
+            .then(function (j) {
+                if (!j || !j.ok) throw new Error((j && j.error) || T.failed);
+                var row = document.querySelector('tr[data-uplift="' + id + '"]');
+                if (row && row.parentNode) row.parentNode.removeChild(row);
+            })
+            .catch(function (e) {
+                btn.disabled = false;
+                if (typeof window.showToast === 'function') window.showToast(e.message || T.failed, 'error');
+                else if (typeof window.confirmDialog === 'function') window.confirmDialog(e.message || T.failed);
+            });
+    }
+
+    // Delegated, so the rows the server rendered need no inline handlers.
+    document.addEventListener('click', function (ev) {
+        var btn = ev.target.closest && ev.target.closest('button[data-act]');
+        if (!btn) return;
+        var act = btn.getAttribute('data-act');
+        var id = btn.getAttribute('data-id');
+        if (act !== 'decline') return void send(btn, id, act);
+        ask(T.confirmDecline).then(function (yes) { if (yes) send(btn, id, act); });
+    });
+})();
+</script>

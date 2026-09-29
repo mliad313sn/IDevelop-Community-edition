@@ -1,0 +1,33 @@
+<%
+    const statusLabel = { draft: __('idp:st_draft'), active: __('idp:st_active'), completed: __('idp:st_completed'), archived: __('idp:st_archived') };
+    const priorityLabel = { low: __('idp:pr_low'), medium: __('idp:pr_medium'), high: __('idp:pr_high') };
+%>
+<div class="page-header">
+    <h1><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('idp:my_title') %></h1>
+</div>
+<% if (!plans || !plans.length) { %>
+<div class="card empty-state" style="text-align:center;padding:2.5rem 1rem;max-width:52ch;margin:1.5rem auto" data-empty="idp-mine">
+    <div style="font-size:2.5rem;color:var(--brand,#6656f0);margin-bottom:.5rem"><i class="fas fa-seedling" aria-hidden="true"></i></div>
+    <p class="text-muted"><%= __('idp:my_empty') %></p>
+    <a href="/employee/my-development" class="btn btn-secondary"><%= __('idp:my_empty_link') %></a>
+</div>
+<% } else { %>
+<div class="card" style="padding:0">
+    <div class="table-wrapper">
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#idp-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+        <table class="table" id="idp-table">
+            <thead><tr><th><%= __('common:id') %></th><th><%= __('idp:status') %></th><th><%= __('idp:cycle') %></th><th><%= __('idp:priority') %></th></tr></thead>
+            <tbody>
+                <% plans.forEach(function(p){ %>
+                    <tr>
+                        <td><a href="/v2/idp/<%= p.id %>"><%= p.id %></a></td>
+                        <td><%= statusLabel[p.status] || p.status %></td>
+                        <td><%= (p.cycleId != null ? p.cycleId : p.cycle_id) || '-' %></td>
+                        <td><%= priorityLabel[p.priority] || p.priority %></td>
+                    </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+<% } %>

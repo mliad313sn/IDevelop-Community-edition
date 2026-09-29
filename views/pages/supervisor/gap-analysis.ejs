@@ -1,0 +1,52 @@
+<div class="page-header">
+    <h1><%= __('chrome:ga_title') %></h1>
+    <p><%= __('chrome:ga_intro') %></p>
+    <p class="text-muted" style="font-size:.85em"><%= __('chrome:ga_reviews_hint') %> <a href="/supervisor/self-assessment-reviews"><%= __('chrome:ga_reviews_link') %></a>.</p>
+</div>
+
+<% if (gapAnalysis.length === 0) { %>
+    <div class="empty-state">
+        <p><%= __('chrome:ga_none') %></p>
+    </div>
+<% } else { %>
+    <table class="table">
+        <thead>
+            <tr>
+                <th><%= __('chrome:ga_col_employee') %></th>
+                <th><%= __('chrome:ga_col_total') %></th>
+                <th><%= __('chrome:ga_col_critical') %></th>
+                <th><%= __('dash:rd_not_measured') %></th>
+                <th><%= __('chrome:ga_col_actions') %></th>
+            </tr>
+        </thead>
+        <tbody>
+            <% gapAnalysis.forEach(function(analysis) { %>
+            <tr>
+                <td><%= analysis.employeeName %></td>
+                <td><%= analysis.totalGaps %></td>
+                <td>
+                    <% if (analysis.criticalGaps > 0) { %>
+                        <span class="badge badge-danger"><%= analysis.criticalGaps %></span>
+                    <% } else { %>
+                        <span class="badge badge-success">0</span>
+                    <% } %>
+                </td>
+                <%# Measurement debt, not a shortfall — amber, and never folded
+                    into the gap counts beside it. %>
+                <td>
+                    <% if (analysis.unmeasured > 0) { %>
+                        <span class="badge badge-warning" title="<%= __('dash:rd_not_measured_title') %>"><%= analysis.unmeasured %></span>
+                    <% } else { %>
+                        <span class="text-muted">—</span>
+                    <% } %>
+                </td>
+                <td style="white-space:nowrap">
+                    <a class="btn btn-sm" href="/employees/<%= analysis.employeeId %>" title="<%= __('chrome:ga_develop_title') %>"><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('chrome:ga_develop') %></a>
+                    <a class="btn btn-sm" href="/coaching/plans" title="<%= __('chrome:ga_coach_title') %>"><i class="fas fa-people-arrows" aria-hidden="true"></i> <%= __('chrome:ga_coach') %></a>
+                    <a class="btn btn-sm btn-secondary" href="/v2/idp/new?employeeId=<%= analysis.employeeId %>" title="<%= __('chrome:ga_dev_plan_title') %>"><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('chrome:ga_dev_plan') %></a>
+                </td>
+            </tr>
+            <% }); %>
+        </tbody>
+    </table>
+<% } %>

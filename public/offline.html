@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hors connexion — IDevelop</title>
+<!--
+  Shown by the service worker when a page is requested with no network.
+
+  It deliberately carries NO user data and makes no server call: the whole point
+  of the caching rules is that a per-user page is never stored, so this page can
+  be served to anyone, on a shared site tablet, without leaking anything.
+
+  It is bilingual and static for the same reason — it cannot reach the i18n layer
+  offline, so both languages are inlined.
+-->
+<style>
+  :root{ --ground:#0A0C18; --panel:#111622; --ink:#E8E4D9; --muted:#9A9386; --brand:#7C6CFF; }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font:16px/1.6 "Segoe UI",system-ui,-apple-system,sans-serif;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .card{
+    background:var(--panel); border:1px solid rgba(255,255,255,.08);
+    border-radius:14px; padding:32px 28px; max-width:420px; width:100%; text-align:center;
+  }
+  .mark{width:64px;height:64px;margin:0 auto 20px;display:block}
+  h1{font-size:21px; margin:0 0 10px; font-weight:650; letter-spacing:-.01em}
+  p{margin:0 0 8px; color:var(--muted); font-size:15px}
+  p.en{font-size:13.5px; opacity:.72}
+  .note{
+    margin-top:22px; padding-top:18px; border-top:1px solid rgba(255,255,255,.08);
+    font-size:13.5px; color:var(--muted);
+  }
+  .note b{color:var(--brand); font-weight:600}
+  button{
+    margin-top:22px; width:100%; min-height:48px; padding:12px 20px;
+    background:var(--brand); color:#1A1408; border:0; border-radius:10px;
+    font:600 15px/1 "Segoe UI",system-ui,sans-serif; cursor:pointer;
+  }
+  button:focus-visible{outline:3px solid #fff; outline-offset:2px}
+  @media (prefers-reduced-motion:no-preference){ button{transition:filter .15s ease-out} }
+  button:hover{filter:brightness(1.06)}
+</style>
+</head>
+<body>
+  <main class="card">
+    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#7C6CFF" stroke-width="1.6" stroke-linecap="round">
+      <path d="M2 8.8a15 15 0 0 1 20 0"/><path d="M5 12.4a10 10 0 0 1 14 0"/>
+      <path d="M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1" fill="#7C6CFF" stroke="none"/>
+      <path d="M3 3l18 18" stroke="#9A9386"/>
+    </svg>
+
+    <h1>Vous êtes hors connexion</h1>
+    <p>Cette page a besoin du réseau. Vos saisies en cours restent enregistrées sur cet appareil.</p>
+    <p class="en">You are offline. This page needs the network; your drafts stay saved on this device.</p>
+
+    <div class="note">
+      <b>Votre travail n'est pas perdu.</b> Les auto-évaluations saisies hors connexion
+      sont envoyées automatiquement dès le retour du réseau.
+      <br><span style="opacity:.72">Offline self-assessments are sent automatically once the network returns.</span>
+    </div>
+
+    <button type="button" onclick="location.reload()">Réessayer / Retry</button>
+  </main>
+</body>
+</html>

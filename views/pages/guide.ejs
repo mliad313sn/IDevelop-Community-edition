@@ -1,0 +1,346 @@
+<%
+// --- single-language render helpers (content is pre-translated {en,fr}) ---
+// `tg` used to emit BOTH halves (<span class="g-en">…<span class="g-fr">)
+// and let CSS hide one, so a French reader still downloaded the English manual.
+// It now returns ONLY the active language — the choice is made server-side.
+var L = (typeof glang !== 'undefined' && glang === 'en') ? 'en' : 'fr';
+function tg(o){ return o[L]; }
+function ol(s){ return '<ol>'+s[L].map(function(x){return '<li>'+x+'</li>';}).join('')+'</ol>'; }
+function slug(t){ return t.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
+function card(f){
+  // The card id and the route key stay keyed on the ENGLISH title: they are
+  // stable identifiers (saved progress, ROUTE_MAP), not visible text.
+  var id = slug(f.title.en);
+  var route = routes[f.title.en] || '';
+  var txt = (f.title[L]+' '+f.what[L]+' '+f.where[L]).toLowerCase().replace(/"/g,'');
+  return '<article class="g-card" data-id="'+id+'" data-route="'+route+'" data-text="'+txt+'">'+
+    '<div class="g-card-h"><span class="g-ic">'+f.icon+'</span>'+
+      '<div class="g-card-ht"><h4>'+tg(f.title)+'</h4><div class="g-where">'+(L==='en'?'Where: ':'Où : ')+f.where[L]+'</div></div>'+
+      '<button class="g-got" type="button" title="'+(L==='en'?'Mark as learned':'Marquer comme acquis')+'" aria-pressed="false">✓</button>'+
+    '</div>'+
+    '<p class="g-what">'+tg(f.what)+'</p>'+
+    (f.steps ? ol(f.steps) : '')+
+    (f.tip ? '<div class="g-tip"><i class="fas fa-lightbulb" aria-hidden="true"></i> '+tg(f.tip)+'</div>' : '')+
+    (route ? '<div class="g-foot"><a class="g-open" href="'+route+'">'+tg({en:'Open ↗',fr:'Ouvrir ↗'})+'</a></div>' : '')+
+  '</article>';
+}
+var CLEAR_INTRO = {
+  employee: { en:'You can assess your own skills, follow your status, see your gaps & 9-box, and access your coaching and development.', fr:'Vous pouvez évaluer vos compétences, suivre votre statut, voir vos écarts et votre 9-box, et accéder à votre coaching et développement.' },
+  manager: { en:'Everything an employee can do, plus reviewing & approving your team, 9-box calibration, coaching, PIP/IDP, career paths and reports.', fr:'Tout ce qu’un collaborateur peut faire, plus la revue et l’approbation de votre équipe, la 9-box, le coaching, les PIP/PDI, les parcours et les rapports.' },
+  localadmin: { en:'All manager talent tools for the people in your scope, plus organization, skills and role configuration.', fr:'Tous les outils talent du manager pour votre périmètre, plus la configuration de l’organisation, des compétences et des postes.' },
+  superadmin: { en:'Full control: framework setup, assessment cycles, data import/export, admins & approvals, user credentials, and every talent tool org-wide.', fr:'Contrôle total : configuration du référentiel, campagnes, import/export, administrateurs & approbations, identifiants, et tous les outils talent.' },
+};
+%>
+<%# the guide is rendered SERVER-SIDE in the session language —
+    only that language reaches the browser. The EN/FR control is a pair of plain
+    links (?glang=), so it works with JavaScript switched off. %>
+<% const _gl = L; %>
+<div id="guide" data-glang="<%= _gl %>">
+
+  <div class="g-bar">
+    <span class="g-clear"><span aria-hidden="true">🔓</span> <%- tg({en:'Your guide for: ', fr:'Votre guide pour : '}) %><strong><%- tg(roleLabel) %></strong></span>
+    <span class="g-bar-right">
+      <a class="g-lang <%= _gl === 'en' ? 'on' : '' %>" href="/guide?glang=en" hreflang="en" lang="en"<%- _gl === 'en' ? ' aria-current="true"' : '' %>>English</a>
+      <a class="g-lang <%= _gl === 'fr' ? 'on' : '' %>" href="/guide?glang=fr" hreflang="fr" lang="fr"<%- _gl === 'fr' ? ' aria-current="true"' : '' %>>Français</a>
+      <a class="g-full" href="<%= _gl === 'en' ? '/user-guide.en.html' : '/user-guide.html' %>" target="_blank" title="<%= _gl === 'en' ? 'Full reference (all profiles)' : 'Référence complète (tous les profils)' %>"><i class="fas fa-book" aria-hidden="true"></i> <%- tg({en:'Full guide', fr:'Guide complet'}) %></a>
+      <button class="g-print" type="button" onclick="window.print()" title="<%= _gl === 'en' ? 'Print' : 'Imprimer' %>"><i class="fas fa-print" aria-hidden="true"></i></button>
+    </span>
+  </div>
+
+  <header class="g-hero">
+    <h1><i class="fas fa-book" aria-hidden="true"></i> <%- tg({en:'User Guide', fr:'Guide utilisateur'}) %></h1>
+    <p><%- tg({ en:'A simple, interactive, step-by-step manual — tailored to what you can do.', fr:'Un manuel simple, interactif, étape par étape — adapté à ce que vous pouvez faire.' }) %></p>
+    <p class="g-hero-clear"><%- tg(CLEAR_INTRO[clearance] || CLEAR_INTRO.employee) %></p>
+  </header>
+
+  <!-- Interactive progress + tour -->
+  <div class="g-progress-wrap">
+    <button class="g-tour-btn" id="g-tour-start" type="button">▶ <%- tg({en:'Take the tour', fr:'Visite guidée'}) %></button>
+    <div class="g-progress">
+      <div class="g-progress-top"><span><%- tg({en:'Your progress', fr:'Votre progression'}) %></span><span id="g-progress-label">0 / 0</span></div>
+      <div class="g-progress-bar"><div class="g-progress-fill" id="g-progress-fill"></div></div>
+    </div>
+    <button class="g-reset" id="g-progress-reset" type="button" title="Reset progress"><%- tg({en:'Reset', fr:'Réinitialiser'}) %></button>
+  </div>
+
+  <label class="g-sr" for="g-search"><%- tg({en:'Search the guide', fr:'Rechercher dans le guide'}) %></label>
+  <input id="g-search" class="g-search" type="search" placeholder="<%= _gl === 'en' ? '🔎 Search the guide…' : '🔎 Rechercher dans le guide…' %>">
+
+  <div class="g-layout">
+    <nav class="g-toc" aria-label="<%= _gl === 'en' ? 'Table of contents' : 'Sommaire' %>">
+      <a href="#g-start" class="g-toc-link"><i class="fas fa-compass" aria-hidden="true"></i> <%- tg({en:'Start here', fr:'Commencer'}) %></a>
+      <% sections.forEach(function(p){ %>
+        <a href="#sec-<%= p.id %>" class="g-toc-link" style="--c:<%= p.color %>"><%= p.icon %> <%- tg(p.name) %></a>
+      <% }); %>
+      <a href="#g-flows" class="g-toc-link"><i class="fas fa-diagram-project" aria-hidden="true"></i> <%- tg({en:'Processes', fr:'Processus'}) %></a>
+      <a href="#g-glossary" class="g-toc-link"><i class="fas fa-book" aria-hidden="true"></i> <%- tg({en:'Glossary', fr:'Glossaire'}) %></a>
+      <a href="#g-faq" class="g-toc-link"><i class="fas fa-circle-question" aria-hidden="true"></i> <%- tg({en:'FAQ', fr:'FAQ'}) %></a>
+    </nav>
+
+    <div class="g-content">
+      <section id="g-start" class="g-sec">
+        <h2 class="g-sec-h"><i class="fas fa-compass" aria-hidden="true"></i> <%- tg({en:'Start here', fr:'Commencer ici'}) %></h2>
+        <div class="g-cards"><%- getting.map(card).join('') %></div>
+      </section>
+
+      <% sections.forEach(function(p){ %>
+        <section id="sec-<%= p.id %>" class="g-sec">
+          <h2 class="g-sec-h" style="--c:<%= p.color %>"><span class="g-sec-ic" style="background:<%= p.color %>22;color:<%= p.color %>"><%= p.icon %></span> <%- tg(p.name) %></h2>
+          <p class="g-sec-tag"><%- tg(p.tagline) %></p>
+          <div class="g-cards"><%- p.features.map(card).join('') %></div>
+        </section>
+      <% }); %>
+
+      <section id="g-flows" class="g-sec">
+        <h2 class="g-sec-h"><i class="fas fa-diagram-project" aria-hidden="true"></i> <%- tg({en:'How the processes fit together', fr:'Comment les processus s’articulent'}) %></h2>
+        <p class="g-sec-tag"><%- tg({en:'Each page plays a part in a larger process. These are the end-to-end flows — who does what, in what order, a concrete example, and the good practices that make each one work.', fr:'Chaque page joue un rôle dans un processus plus large. Voici les flux de bout en bout — qui fait quoi, dans quel ordre, un exemple concret, et les bonnes pratiques qui font fonctionner chacun.'}) %></p>
+        <% (flows || []).forEach(function(f){ %>
+          <details class="g-flow" data-text="<%= f.title[L].toLowerCase().replace(/"/g,'') %>">
+            <summary><span class="g-flow-ic"><%= f.icon %></span> <%- tg(f.title) %></summary>
+            <div class="g-flow-body">
+              <p class="g-flow-meta"><b><%- tg({en:'Who:', fr:'Qui :'}) %></b> <%- tg(f.actors) %><br><b><%- tg({en:'When:', fr:'Quand :'}) %></b> <%- tg(f.when) %></p>
+              <%- ol(f.steps) %>
+              <div class="g-flow-ex"><%- tg(f.example) %></div>
+              <div class="g-flow-gp"><b><%- tg({en:'Good practices', fr:'Bonnes pratiques'}) %></b>
+                <ul><% f.practices[L].forEach(function(s){ %><li><%- s %></li><% }); %></ul>
+              </div>
+            </div>
+          </details>
+        <% }); %>
+      </section>
+
+      <section id="g-glossary" class="g-sec">
+        <h2 class="g-sec-h"><i class="fas fa-book" aria-hidden="true"></i> <%- tg({en:'Glossary', fr:'Glossaire'}) %></h2>
+        <table class="g-gloss">
+          <% glossary.forEach(function(g){ %>
+            <% const _gt = (L === 'en') ? [g[0], g[2]] : [g[1], g[3]]; %>
+            <tr data-text="<%= (_gt[0]+' '+_gt[1]).toLowerCase().replace(/"/g,'') %>"><td><b><%- _gt[0] %></b></td><td><%- _gt[1] %></td></tr>
+          <% }); %>
+        </table>
+      </section>
+
+      <section id="g-faq" class="g-sec">
+        <h2 class="g-sec-h"><i class="fas fa-circle-question" aria-hidden="true"></i> <%- tg({en:'Frequently asked questions', fr:'Questions fréquentes'}) %></h2>
+        <% faq.forEach(function(f){ %>
+          <% const _fq = (L === 'en') ? [f[0], f[2]] : [f[1], f[3]]; %>
+          <details class="g-faq" data-text="<%= (_fq[0]+' '+_fq[1]).toLowerCase().replace(/"/g,'') %>"><summary><%- _fq[0] %></summary><div class="g-faq-a"><%- _fq[1] %></div></details>
+        <% }); %>
+      </section>
+
+      <p id="g-noresults" class="g-noresults" style="display:none"><%- tg({en:'No results — try another word.', fr:'Aucun résultat — essayez un autre mot.'}) %></p>
+    </div>
+  </div>
+</div>
+
+<!-- Guided tour overlay -->
+<div id="g-tour" class="g-tour" data-glang="<%= _gl %>" hidden>
+  <div class="g-tour-panel">
+    <div class="g-tour-step" id="g-tour-step"></div>
+    <h4 id="g-tour-title"></h4>
+    <div class="g-tour-body" id="g-tour-body"></div>
+    <div class="g-tour-actions">
+      <button class="g-tb g-tb-sec" id="g-tour-prev" type="button">‹ <%- tg({en:'Back', fr:'Précédent'}) %></button>
+      <a class="g-tb g-tb-open" id="g-tour-open" href="#" target="_blank">↗ <%- tg({en:'Open page', fr:'Ouvrir la page'}) %></a>
+      <button class="g-tb g-tb-pri" id="g-tour-next" type="button"><%- tg({en:'Next ›', fr:'Suivant ›'}) %></button>
+      <button class="g-tb g-tb-x" id="g-tour-close" type="button" title="Close"><span aria-hidden="true">✕</span></button>
+    </div>
+  </div>
+</div>
+
+<style>
+#guide{--gc:var(--brand,#1d4ed8)}
+.g-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.g-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;margin-bottom:8px;background:var(--card,#fff);border-bottom:1px solid var(--line,#e2e8f0)}
+.g-clear{font-size:.9rem;color:var(--ink,#0f172a)}
+.g-bar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.g-lang{display:inline-block;text-decoration:none;border:1px solid var(--brand,#1d4ed8);background:transparent;color:var(--brand,#1d4ed8);border-radius:999px;padding:5px 14px;font-weight:700;cursor:pointer;font-size:.85rem}
+.g-lang.on{background:var(--brand,#1d4ed8);color:var(--text-inverse,#fff)}
+.g-full{font-size:.82rem;color:var(--mut,#64748b);text-decoration:none;border:1px solid var(--line,#e2e8f0);border-radius:999px;padding:5px 12px}
+.g-print{border:1px solid var(--line,#e2e8f0);background:transparent;border-radius:999px;padding:5px 11px;cursor:pointer}
+.g-hero{background:linear-gradient(135deg,var(--brand),var(--brand-hover));color:var(--text-inverse);border-radius:16px;padding:22px 26px;margin-bottom:14px}
+.g-hero h1{margin:0 0 4px;font-size:24px}
+.g-hero p{margin:3px 0;opacity:.96;font-size:14px}
+.g-hero-clear{font-weight:600;opacity:1 !important}
+.g-progress-wrap{display:flex;align-items:center;gap:14px;background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:10px 16px;margin-bottom:14px;flex-wrap:wrap}
+.g-tour-btn{background:var(--brand,#1d4ed8);color:var(--text-inverse,#fff);border:0;border-radius:999px;padding:9px 18px;font-weight:700;cursor:pointer;font-size:.9rem}
+.g-tour-btn:hover{filter:brightness(1.08)}
+.g-progress{flex:1;min-width:200px}
+.g-progress-top{display:flex;justify-content:space-between;font-size:.8rem;color:var(--mut,#64748b);margin-bottom:5px}
+.g-progress-bar{height:9px;background:var(--line,#e2e8f0);border-radius:999px;overflow:hidden}
+.g-progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--brand),var(--brand-hover));border-radius:999px;transition:width .35s ease}
+.g-reset{background:transparent;border:1px solid var(--line,#e2e8f0);border-radius:999px;padding:5px 12px;font-size:.78rem;color:var(--mut,#64748b);cursor:pointer}
+.g-search{width:100%;max-width:480px;padding:10px 14px;border:1px solid var(--line,#e2e8f0);border-radius:10px;font-size:.95rem;margin-bottom:14px;background:var(--card,#fff);color:var(--ink,#0f172a)}
+.g-layout{display:grid;grid-template-columns:230px 1fr;gap:20px;align-items:start}
+.g-toc{position:sticky;top:64px;display:flex;flex-direction:column;gap:4px;max-height:calc(100vh - 90px);overflow:auto}
+.g-toc-link{--c:var(--brand,#1d4ed8);text-decoration:none;color:var(--ink,#0f172a);font-size:.88rem;padding:7px 11px;border-radius:8px;border-left:3px solid transparent}
+.g-toc-link:hover,.g-toc-link.active{background:color-mix(in srgb,var(--c) 14%,transparent);border-left-color:var(--c)}
+.g-sec{margin-bottom:26px;scroll-margin-top:64px}
+.g-sec-h{--c:var(--brand,#1d4ed8);display:flex;align-items:center;gap:10px;font-size:20px;color:var(--c);border-bottom:2px solid color-mix(in srgb,var(--c) 25%,transparent);padding-bottom:8px;margin:0 0 4px}
+.g-sec-ic{width:38px;height:38px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:20px}
+.g-sec-tag{color:var(--mut,#64748b);font-size:14px;margin:6px 0 12px}
+.g-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.g-card{position:relative;border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:14px 16px;background:var(--card,#fff);transition:box-shadow .15s,transform .15s}
+.g-card:hover{box-shadow:0 8px 22px rgba(2,32,71,.10);transform:translateY(-1px)}
+.g-card.learned{border-color:#86efac;box-shadow:inset 3px 0 0 #15803d}
+.g-card.g-tour-active{outline:3px solid var(--brand,#1d4ed8);outline-offset:2px;animation:gpulse 1s ease}
+@keyframes gpulse{0%{outline-color:transparent}50%{outline-color:var(--brand,#1d4ed8)}100%{outline-color:var(--brand,#1d4ed8)}}
+.g-card-h{display:flex;gap:10px;align-items:flex-start;margin-bottom:6px}
+.g-card-ht{flex:1;min-width:0}
+.g-ic{font-size:20px}
+.g-card h4{margin:0;font-size:15px;color:var(--ink,#0f172a)}
+.g-where{color:var(--mut,#64748b);font-size:11.5px;margin-top:2px}
+.g-got{flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line,#cbd5e1);background:transparent;color:var(--text-muted);cursor:pointer;font-weight:800;line-height:1}
+.g-got:hover{border-color:#15803d;color:#15803d}
+.g-card.learned .g-got{background:#15803d;border-color:#15803d;color:#fff}
+.g-what{margin:.25rem 0 .5rem;font-size:13.5px;color:var(--ink,#0f172a)}
+.g-card ol{margin:.3rem 0;padding-left:20px}
+.g-card li{margin:4px 0;font-size:13px;color:var(--ink,#0f172a)}
+.g-card li b{color:var(--brand,#1d4ed8)}
+.g-tip{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:7px 11px;margin-top:8px;font-size:12.5px;color:#92400e}
+.g-foot{margin-top:10px}
+.g-open{display:inline-block;background:color-mix(in srgb,var(--brand,#1d4ed8) 12%,transparent);color:var(--brand,#1d4ed8);text-decoration:none;font-weight:700;font-size:.82rem;border-radius:8px;padding:6px 13px;border:1px solid color-mix(in srgb,var(--brand,#1d4ed8) 35%,transparent)}
+.g-open:hover{background:var(--brand,#1d4ed8);color:var(--text-inverse,#fff)}
+.g-gloss{width:100%;border-collapse:collapse;font-size:13.5px}
+.g-gloss td{padding:9px 10px;border-bottom:1px solid var(--line,#e2e8f0);vertical-align:top;color:var(--ink,#0f172a)}
+.g-gloss td:first-child{width:240px}
+.g-flow{border:1px solid var(--line,#e2e8f0);border-radius:12px;margin:10px 0;padding:2px 16px;background:var(--card,#fff)}
+.g-flow summary{cursor:pointer;font-weight:700;padding:11px 0;color:var(--ink,#0f172a);font-size:15px}
+.g-flow-ic{margin-right:6px}
+.g-flow-body{padding:2px 0 12px}
+.g-flow-meta{color:var(--mut,#64748b);font-size:13px;margin:4px 0 8px}
+.g-flow-body ol{margin:6px 0;padding-left:20px}.g-flow-body ol li{margin:5px 0}
+.g-flow-ex{background:color-mix(in srgb,var(--brand,#1d4ed8) 8%,var(--card,#fff));border:1px solid color-mix(in srgb,var(--brand,#1d4ed8) 25%,transparent);border-radius:8px;padding:8px 12px;margin:10px 0;font-size:13.5px}
+.g-flow-gp{background:color-mix(in srgb,#16a34a 8%,var(--card,#fff));border:1px solid color-mix(in srgb,#16a34a 25%,transparent);border-radius:8px;padding:8px 12px;font-size:13.5px}
+.g-flow-gp ul{margin:6px 0 0;padding-left:18px}
+.g-faq{border:1px solid var(--line,#e2e8f0);border-radius:10px;margin:8px 0;padding:2px 14px;background:var(--card,#fff)}
+.g-faq summary{cursor:pointer;font-weight:600;padding:9px 0;color:var(--ink,#0f172a)}
+.g-faq-a{color:var(--mut,#64748b);padding:0 0 10px;font-size:13.5px}
+.g-noresults{color:var(--mut,#64748b);padding:1rem}
+/* tour */
+.g-tour{position:fixed;inset:0;z-index:1000;background:rgba(15,23,42,.55);display:flex;align-items:flex-end;justify-content:center;padding:24px}
+.g-tour[hidden]{display:none}
+.g-tour-panel{background:var(--card,#fff);color:var(--ink,#0f172a);border-radius:16px;max-width:560px;width:100%;padding:18px 22px;box-shadow:0 20px 50px rgba(2,32,71,.4)}
+.g-tour-step{font-size:.78rem;color:var(--mut,#64748b);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.g-tour-panel h4{margin:4px 0 8px;font-size:18px}
+.g-tour-body{font-size:13.5px;color:var(--ink,#0f172a);max-height:38vh;overflow:auto}
+.g-tour-body ol{padding-left:20px;margin:.4rem 0}.g-tour-body li{margin:5px 0}
+.g-tour-actions{display:flex;gap:8px;align-items:center;margin-top:14px}
+.g-tb{border:0;border-radius:8px;padding:9px 15px;font-weight:700;cursor:pointer;font-size:.86rem;text-decoration:none}
+.g-tb-pri{background:var(--brand,#1d4ed8);color:var(--text-inverse,#fff);margin-left:auto}
+.g-tb-sec{background:var(--line,#e2e8f0);color:var(--ink,#0f172a)}
+.g-tb-open{background:color-mix(in srgb,var(--brand,#1d4ed8) 14%,transparent);color:var(--brand,#1d4ed8)}
+.g-tb-x{background:transparent;color:var(--mut,#64748b);font-size:1rem;padding:8px 10px}
+@media(max-width:860px){.g-layout{grid-template-columns:1fr}.g-toc{position:static;flex-direction:row;flex-wrap:wrap;max-height:none}}
+@media print{.g-bar,.g-toc,.g-search,.g-progress-wrap,.g-tour{display:none}.g-layout{grid-template-columns:1fr}}
+</style>
+<script nonce="<%= cspNonce %>">
+(function(){
+  var guide = document.getElementById('guide');
+  var cards = Array.prototype.slice.call(guide.querySelectorAll('.g-card'));
+
+  // ---------- language ----------
+  // the language is decided SERVER-SIDE and the EN/FR control is a pair of
+  // plain links (/guide?glang=…), so there is nothing to toggle here and the page
+  // never carries the other language. `data-glang` is kept only so the tour can
+  // label its own buttons.
+  var GL = guide.getAttribute('data-glang') === 'en' ? 'en' : 'fr';
+
+  // ---------- progress (learned cards) ----------
+  var KEY='guideProgress';
+  function load(){ try{ return JSON.parse(localStorage.getItem(KEY)||'[]'); }catch(e){ return []; } }
+  function save(a){ try{ localStorage.setItem(KEY, JSON.stringify(a)); }catch(e){} }
+  var learned = load();
+  function isLearned(id){ return learned.indexOf(id) > -1; }
+  function setLearned(id, on){
+    var i = learned.indexOf(id);
+    if(on && i<0) learned.push(id);
+    if(!on && i>-1) learned.splice(i,1);
+    save(learned); refreshProgress();
+  }
+  function refreshProgress(){
+    var total = cards.length, done = 0;
+    cards.forEach(function(c){
+      var on = isLearned(c.dataset.id);
+      c.classList.toggle('learned', on);
+      var btn = c.querySelector('.g-got'); if(btn) btn.setAttribute('aria-pressed', on?'true':'false');
+      if(on) done++;
+    });
+    var pct = total ? Math.round(done/total*100) : 0;
+    document.getElementById('g-progress-fill').style.width = pct+'%';
+    document.getElementById('g-progress-label').textContent = done+' / '+total;
+  }
+  cards.forEach(function(c){
+    var btn = c.querySelector('.g-got');
+    if(btn) btn.addEventListener('click', function(){ setLearned(c.dataset.id, !isLearned(c.dataset.id)); });
+  });
+  document.getElementById('g-progress-reset').addEventListener('click', function(){ learned=[]; save(learned); refreshProgress(); });
+  refreshProgress();
+
+  // ---------- search ----------
+  var box = document.getElementById('g-search');
+  box.addEventListener('input', function(){
+    var q = this.value.toLowerCase().trim(); var any=false;
+    guide.querySelectorAll('[data-text]').forEach(function(el){
+      var hit = !q || (el.getAttribute('data-text')||'').indexOf(q) > -1;
+      el.style.display = hit ? '' : 'none'; if(hit) any=true;
+    });
+    guide.querySelectorAll('.g-sec').forEach(function(sec){
+      if(sec.id==='g-start' && !q){ sec.style.display=''; return; }
+      var vis = sec.querySelectorAll('[data-text]:not([style*="display: none"])').length;
+      sec.style.display = (!q || vis>0) ? '' : 'none';
+    });
+    document.getElementById('g-noresults').style.display = (q && !any) ? '' : 'none';
+  });
+
+  // ---------- active TOC on scroll ----------
+  var links = {};
+  guide.querySelectorAll('.g-toc-link').forEach(function(a){ links[a.getAttribute('href').slice(1)] = a; });
+  if('IntersectionObserver' in window){
+    var io = new IntersectionObserver(function(ents){
+      ents.forEach(function(en){ if(en.isIntersecting){
+        Object.values(links).forEach(function(a){ a.classList.remove('active'); });
+        var a = links[en.target.id]; if(a) a.classList.add('active');
+      }});
+    }, { rootMargin:'-40% 0px -55% 0px' });
+    guide.querySelectorAll('.g-sec').forEach(function(s){ io.observe(s); });
+  }
+
+  // ---------- guided tour ----------
+  var tour = document.getElementById('g-tour'), step = 0, list = [];
+  function openTour(){
+    list = cards.filter(function(c){ return c.offsetParent !== null; }); // visible only
+    if(!list.length) return;
+    step = 0; tour.hidden = false; renderStep();
+  }
+  function closeTour(){
+    tour.hidden = true;
+    cards.forEach(function(c){ c.classList.remove('g-tour-active'); });
+  }
+  function renderStep(){
+    var c = list[step];
+    cards.forEach(function(x){ x.classList.remove('g-tour-active'); });
+    c.classList.add('g-tour-active');
+    c.scrollIntoView({ behavior:'smooth', block:'center' });
+    document.getElementById('g-tour-step').textContent = (step+1)+' / '+list.length;
+    document.getElementById('g-tour-title').innerHTML = c.querySelector('h4').innerHTML;
+    // clone the "what" + steps for the panel (already in the active language)
+    var what = c.querySelector('.g-what'); var ols = c.querySelectorAll('ol');
+    var body = '<p>'+(what?what.innerHTML:'')+'</p>';
+    ols.forEach(function(o){ body += o.outerHTML; });
+    document.getElementById('g-tour-body').innerHTML = body;
+    var open = document.getElementById('g-tour-open');
+    if(c.dataset.route){ open.style.display=''; open.href = c.dataset.route; } else { open.style.display='none'; }
+    document.getElementById('g-tour-prev').disabled = (step===0);
+    var next = document.getElementById('g-tour-next');
+    next.textContent = (step===list.length-1) ? (GL==='fr'?'Terminer ✓':'Finish ✓') : (GL==='fr'?'Suivant ›':'Next ›');
+    // mark current as learned as you progress
+    setLearned(c.dataset.id, true);
+  }
+  document.getElementById('g-tour-start').addEventListener('click', openTour);
+  document.getElementById('g-tour-close').addEventListener('click', closeTour);
+  document.getElementById('g-tour-prev').addEventListener('click', function(){ if(step>0){ step--; renderStep(); } });
+  document.getElementById('g-tour-next').addEventListener('click', function(){ if(step<list.length-1){ step++; renderStep(); } else { closeTour(); } });
+  tour.addEventListener('click', function(e){ if(e.target===tour) closeTour(); });
+  document.addEventListener('keydown', function(e){ if(tour.hidden) return; if(e.key==='Escape') closeTour(); if(e.key==='ArrowRight') document.getElementById('g-tour-next').click(); if(e.key==='ArrowLeft') document.getElementById('g-tour-prev').click(); });
+})();
+</script>

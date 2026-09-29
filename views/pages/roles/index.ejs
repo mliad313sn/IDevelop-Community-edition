@@ -1,0 +1,183 @@
+<div class="page-header">
+    <h1><i class="fas fa-user-tie" aria-hidden="true"></i> <%= __('admin:roles') %></h1>
+    <% if (typeof can !== 'function' || can('manage_roles')) { %>
+    <button class="btn btn-primary" onclick="showModal('createRoleModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:create_role') %></button>
+    <% } %>
+</div>
+<% if (typeof can === 'function' && !can('manage_roles')) { %>
+<div class="alert alert-info" role="status" style="margin:0 0 1rem;padding:.6rem .9rem;border-radius:8px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.35);font-size:.88rem;"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:read_only_notice') %></div>
+<% } %>
+
+<div class="search-bar">
+    <div class="search-input-wrapper">
+        <%# Client-side filter through the shared table-search.js (explicit binding). %>
+        <input type="search" class="search-input" data-table-search="#rolesTable" placeholder="<%= __('admin:search_roles_placeholder') %>" aria-label="<%= __('admin:search_roles_placeholder') %>">
+    </div>
+</div>
+
+<div class="table-wrapper">
+    <table class="table" id="rolesTable">
+        <thead>
+            <tr>
+                <th class="sortable"><%= __('admin:name') %></th>
+                <th class="sortable"><%= __('admin:role_family_label') %></th>
+                <th class="sortable"><%= __('admin:description') %></th>
+                <th class="sortable"><%= __('admin:requirements') %></th>
+                <th class="sortable"><%= __('admin:employees') %></th>
+                <th><%= __('admin:actions') %></th>
+            </tr>
+        </thead>
+        <tbody>
+            <% if (roles.length===0) { %>
+                <tr class="empty-row">
+                    <td colspan="6" style="text-align: center; padding: 3rem;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon"><i class="fas fa-user-tie" aria-hidden="true"></i></div>
+                            <h3><%= __('admin:no_roles_found') %></h3>
+                            <p><%= __('admin:get_started_role') %></p>
+                            <button class="btn btn-primary" onclick="showModal('createRoleModal')"><%= __('admin:create_role') %></button>
+                        </div>
+                    </td>
+                </tr>
+                <% } else { %>
+                    <% roles.forEach(function(role) { %>
+                        <tr>
+                            <td><strong>
+                                    <%= role.name %>
+                                </strong></td>
+                            <td>
+                                <% if (role.familyName) { %>
+                                    <span class="badge badge-secondary"><%= role.familyName %></span>
+                                <% } else { %>
+                                    <span class="text-muted">—</span>
+                                <% } %>
+                            </td>
+                            <td>
+                                <%= role.description || '-' %>
+                            </td>
+                            <td>
+                                <span class="badge badge-info">
+                                    <%= role.requirementCount %> <%= role.requirementCount !==1 ? __('admin:skill_plural') : __('admin:skill_singular') %>
+                                </span>
+                            </td>
+                            <td>
+                                <% if (role.employeeCount> 0) { %>
+                                    <a href="/employees?roleId=<%= role.id %>" class="badge badge-success">
+                                        <%= role.employeeCount %> <%= role.employeeCount !==1 ? __('admin:employee_plural') : __('admin:employee_singular') %>
+                                    </a>
+                                    <% } else { %>
+                                        <span class="badge badge-secondary">0 <%= __('admin:employee_plural') %></span>
+                                        <% } %>
+                            </td>
+                            <td>
+                                <div class="table-actions">
+                                    <a href="/roles/<%= role.id %>" class="btn btn-sm" title="<%= __('admin:view_details') %>"><i class="fas fa-eye" aria-hidden="true"></i> <%= __('admin:view') %></a>
+                                    <button class="btn btn-sm" onclick='editRole(<%= JSON.stringify(role) %>)'
+                                        title="<%= __('admin:edit_role_tooltip') %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                    <%# Styled confirmation (ui-feedback data-confirm) — never the native confirm. %>
+                                    <form action="/roles/<%= role.id %>/duplicate" method="POST" style="display:inline;"
+                                        data-confirm="<%= __('admin:duplicate_role_confirm', { name: role.name }) %>">
+                                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                        <button type="submit" class="btn btn-sm" title="<%= __('admin:duplicate_role_tooltip') %>"><i class="fas fa-copy" aria-hidden="true"></i>
+                                            <%= __('admin:duplicate') %></button>
+                                    </form>
+                                    <form action="/roles/<%= role.id %>/delete" method="POST" style="display:inline;"
+                                        data-confirm="<%= __('admin:delete_role_confirm') %><%= role.employeeCount > 0 ? '\n\n' + __('admin:delete_role_warning', { n: role.employeeCount }) : '' %>" data-confirm-danger>
+                                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                        <button type="submit" class="btn btn-sm btn-danger" title="<%= __('admin:delete_role_tooltip') %>"><i class="fas fa-trash-can" aria-hidden="true"></i>
+                                            <%= __('admin:delete') %></button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        <% }); %>
+                            <% } %>
+        </tbody>
+    </table>
+</div>
+
+<!-- Create Role Modal -->
+<div id="createRoleModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><%= __('admin:create_role') %></h2>
+            <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('createRoleModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form action="/roles" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div class="form-group">
+                    <label class="required" for="createRoleName"><%= __('admin:name') %></label>
+                    <input type="text" name="name" id="createRoleName" required placeholder="<%= __('admin:role_name_placeholder') %>">
+                </div>
+                <div class="form-group">
+                    <label for="createRoleFamily"><%= __('admin:role_family_label') %></label>
+                    <select name="roleFamilyId" id="createRoleFamily" class="form-control">
+                        <option value=""><%= __('admin:role_family_none') %></option>
+                        <% families.forEach(function(f) { %>
+                            <option value="<%= f.id %>"><%= f.name %></option>
+                        <% }); %>
+                    </select>
+                    <small class="text-muted"><%= __('admin:role_family_hint') %></small>
+                </div>
+                <div class="form-group">
+                    <label for="createRoleDescription"><%= __('admin:description') %></label>
+                    <textarea name="description" id="createRoleDescription"
+                        placeholder="<%= __('admin:role_description_placeholder') %>"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary"><%= __('admin:create') %></button>
+                    <button type="button" class="btn btn-secondary"
+                        onclick="hideModal('createRoleModal')"><%= __('admin:cancel') %></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Role Modal -->
+<div id="editRoleModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><%= __('admin:edit_role') %></h2>
+            <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editRoleModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="editRoleForm" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div class="form-group">
+                    <label class="required" for="editRoleName"><%= __('admin:name') %></label>
+                    <input type="text" name="name" id="editRoleName" required>
+                </div>
+                <div class="form-group">
+                    <label for="editRoleFamily"><%= __('admin:role_family_label') %></label>
+                    <select name="roleFamilyId" id="editRoleFamily" class="form-control">
+                        <option value=""><%= __('admin:role_family_none') %></option>
+                        <% families.forEach(function(f) { %>
+                            <option value="<%= f.id %>"><%= f.name %></option>
+                        <% }); %>
+                    </select>
+                    <small class="text-muted"><%= __('admin:role_family_hint') %></small>
+                </div>
+                <div class="form-group">
+                    <label for="editRoleDescription"><%= __('admin:description') %></label>
+                    <textarea name="description" id="editRoleDescription"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary"><%= __('admin:update') %></button>
+                    <button type="button" class="btn btn-secondary" onclick="hideModal('editRoleModal')"><%= __('admin:cancel') %></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+    function editRole(role) {
+        document.getElementById('editRoleName').value = role.name || '';
+        document.getElementById('editRoleDescription').value = role.description || '';
+        document.getElementById('editRoleFamily').value = role.roleFamilyId || '';
+        document.getElementById('editRoleForm').action = '/roles/' + role.id;
+        showModal('editRoleModal');
+    }
+</script>

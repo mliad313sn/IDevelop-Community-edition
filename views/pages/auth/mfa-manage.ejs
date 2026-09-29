@@ -1,0 +1,57 @@
+<%
+/* cette page portait DEUX appels `__`, tous deux des
+   attributs `data-confirm` : zéro texte visible traduit. Rendue en session
+   française (`<html lang="fr">`, `<title>Vérification en deux étapes`), elle
+   servait un corps entièrement anglais — un titre de page en anglais, un badge
+   « NOT ACTIVE », « Your account is protected by password only… ». Le titre de
+   l'onglet étant, lui, traduit par la route (`v2-uam.js:24`), la page était hybride.
+   Aggravant : quand `mfaRequiredForPrivileged` est actif, tout administrateur
+   privilégié est entonné ICI et ne peut plus aller ailleurs — la localisation
+   manquait donc sur un chemin BLOQUANT, pas sur un écran d'agrément. */
+%>
+<div class="page-header">
+    <h1><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('chrome:mfa_manage_title') %></h1>
+</div>
+
+<div class="card" style="max-width: 640px;">
+    <div class="card-body">
+        <% if (status.confirmed) { %>
+            <p style="margin-bottom: 12px;">
+                <span class="badge badge-success"><%= __('chrome:mfa_manage_badge_active') %></span>
+                &nbsp;<%= __('chrome:mfa_manage_active_body') %>
+            </p>
+            <p class="form-text" style="margin-bottom: 18px;">
+                <%= __('chrome:mfa_manage_backup_left') %> <strong><%= status.backupCodesLeft %></strong>.
+                <%= __('chrome:mfa_manage_backup_left_note') %>
+            </p>
+
+            <form method="POST" action="/v2/uam/mfa/disable" class="form-group"
+                data-confirm="<%= __('admin:cfm_mfa_deactivate') %>" data-confirm-title="<%= __('admin:cfm_mfa_deactivate_title') %>" data-confirm-danger>
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <label for="code"><%= __('chrome:mfa_manage_disable_label') %></label>
+                <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap;">
+                    <input type="text" id="code" name="code" required inputmode="numeric"
+                        autocomplete="one-time-code" maxlength="12" placeholder="<%= __('chrome:mfa_manage_code_placeholder') %>"
+                        class="form-control" style="max-width: 220px;">
+                    <button type="submit" class="btn btn-danger"><%= __('chrome:mfa_manage_disable_btn') %></button>
+                </div>
+            </form>
+        <% } else { %>
+            <p style="margin-bottom: 12px;">
+                <span class="badge badge-secondary"><%= __('chrome:mfa_manage_badge_inactive') %></span>
+                &nbsp;<%= __('chrome:mfa_manage_inactive_body') %>
+            </p>
+            <% if (recommended) { %>
+                <div class="alert alert-warning" style="margin-bottom: 16px;">
+                    <%= __('chrome:mfa_manage_privileged_warning') %>
+                </div>
+            <% } %>
+            <p class="form-text" style="margin-bottom: 18px;">
+                <%= __('chrome:mfa_manage_explainer') %>
+            </p>
+            <a href="/v2/uam/mfa/setup" class="btn btn-primary">
+                <i class="fas fa-qrcode" aria-hidden="true"></i>&nbsp; <%= __('chrome:mfa_manage_activate_btn') %>
+            </a>
+        <% } %>
+    </div>
+</div>

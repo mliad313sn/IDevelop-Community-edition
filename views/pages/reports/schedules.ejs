@@ -1,0 +1,188 @@
+<div class="page-header">
+    <h1><i class="fas fa-clock" aria-hidden="true"></i> <%= __('admin:report_schedules') %></h1>
+    <a href="/reports/builder" class="btn btn-sm btn-secondary">← <%= __('admin:report_builder') %></a>
+</div>
+
+<div class="help-text" style="margin-bottom:1.25rem;">
+    <%- __('admin:schedules_help_html') %>
+</div>
+
+<%# this card used to print every label twice, « Fréquence /
+    Frequency ». One language per session now; every string is a key.
+
+    LOT BILAN B3: `admin:dg_help` was reworded (FR and EN) and now points at
+    « Mon compte → Notifications », because the department brief is PUSHED — it
+    needs no subscription — and its cadence lives in `dept_brief_prefs`, on the
+    one preferences page the three audiences share. This card, its routes and
+    `digest_subscriptions` are deliberately left exactly as they are: only the
+    help sentence changed. %>
+<div class="card" style="padding:1.25rem;max-width:860px;margin-bottom:1.5rem;">
+    <h2 style="margin:0 0 .35rem;font-size:1.05rem;"><i class="fas fa-inbox" aria-hidden="true"></i>
+        <%= __('admin:dg_title') %></h2>
+    <p class="text-muted" style="font-size:.85rem;margin:0 0 .9rem;"><%= __('admin:dg_help') %></p>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+        <div class="form-group" style="margin:0;">
+            <label for="dg-freq"><%= __('admin:dg_frequency') %></label>
+            <select id="dg-freq" class="form-control">
+                <option value="biweekly"><%= __('admin:dg_freq_biweekly') %></option>
+                <option value="monthly"><%= __('admin:dg_freq_monthly') %></option>
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label for="dg-hour"><%= __('admin:dg_from_hour') %></label>
+            <select id="dg-hour" class="form-control">
+                <% for (let h=0; h<24; h++) { %><option value="<%= h %>" <%= h===7?'selected':'' %>><%= String(h).padStart(2,'0') %>:00</option><% } %>
+            </select>
+        </div>
+        <button type="button" class="btn btn-primary" id="dg-subscribe"><i class="fas fa-bell" aria-hidden="true"></i> <%= __('admin:dg_subscribe') %></button>
+        <button type="button" class="btn btn-secondary" id="dg-cancel" style="display:none;"><i class="fas fa-bell-slash" aria-hidden="true"></i> <%= __('admin:dg_unsubscribe') %></button>
+        <span id="dg-status" style="font-size:.85rem;color:var(--text-muted);" role="status"></span>
+    </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+    var DG = <%- include('../../partials/json-script', { v: {
+        biweekly: __('admin:dg_freq_biweekly'),
+        monthly: __('admin:dg_freq_monthly'),
+        subscribed: __('admin:dg_subscribed'),
+        lastSent: __('admin:dg_last_sent'),
+        notSubscribed: __('admin:dg_not_subscribed'),
+        networkError: __('admin:dg_network_error')
+    } }) %>;
+    function fill(tpl, vars) {
+        return String(tpl).replace(/\{\{(\w+)\}\}/g, function (_, k) { return vars[k] == null ? '' : String(vars[k]); });
+    }
+    var statusEl = document.getElementById('dg-status');
+    var cancelBtn = document.getElementById('dg-cancel');
+    function refresh() {
+        fetch('/api/digest-subscriptions/mine').then(function (r) { return r.json(); }).then(function (j) {
+            var s = j.subscription;
+            if (s && s.isActive) {
+                document.getElementById('dg-freq').value = s.frequency;
+                document.getElementById('dg-hour').value = String(s.hour);
+                cancelBtn.style.display = '';
+                var last = s.lastSentOn ? fill(DG.lastSent, { date: String(s.lastSentOn).slice(0, 10).split('-').reverse().join('/') }) : '';
+                statusEl.textContent = '✓ ' + fill(DG.subscribed, { frequency: DG[s.frequency] || s.frequency, last: last });
+            } else {
+                cancelBtn.style.display = 'none';
+                statusEl.textContent = DG.notSubscribed;
+            }
+        }).catch(function () { statusEl.textContent = ''; });
+    }
+    document.getElementById('dg-subscribe').addEventListener('click', function () {
+        fetch('/api/digest-subscriptions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                frequency: document.getElementById('dg-freq').value,
+                hour: parseInt(document.getElementById('dg-hour').value, 10)
+            })
+        }).then(function (r) { return r.json(); }).then(refresh)
+          .catch(function () { statusEl.textContent = DG.networkError; });
+    });
+    cancelBtn.addEventListener('click', function () {
+        fetch('/api/digest-subscriptions/cancel', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+        }).then(refresh).catch(function () {});
+    });
+    refresh();
+})();
+</script>
+
+<div class="card" style="padding:1.25rem;max-width:860px;margin-bottom:1.5rem;">
+    <h2 style="margin:0 0 1rem;font-size:1.05rem;"><%= __('admin:new_schedule') %></h2>
+    <% if (!templates || !templates.length) { %>
+        <p class="text-muted"><%= __('admin:no_templates') %></p>
+    <% } else { %>
+    <form method="POST" action="/reports/schedules" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="form-group" style="margin:0;min-width:220px;flex:1;">
+            <label for="rs-tpl"><%= __('admin:template') %></label>
+            <select id="rs-tpl" name="templateId" required class="form-control">
+                <% templates.forEach(function(t){ %><option value="<%= t.id %>"><%= t.name %></option><% }); %>
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;min-width:260px;flex:2;">
+            <label for="rs-rcp"><%= __('admin:recipients') %> <small style="color:var(--text-muted);"><%= __('admin:recipients_hint') %></small></label>
+            <input id="rs-rcp" name="recipients" type="text" required class="form-control" placeholder="hr@site.com, gm@site.com">
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label for="rs-freq"><%= __('admin:frequency') %></label>
+            <select id="rs-freq" name="frequency" class="form-control">
+                <option value="daily"><%= __('admin:daily') %></option>
+                <option value="weekly" selected><%= __('admin:weekly') %></option>
+                <option value="monthly"><%= __('admin:monthly_1st') %></option>
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label for="rs-dow"><%= __('admin:day') %> <small style="color:var(--text-muted);"><%= __('admin:weekly_hint') %></small></label>
+            <select id="rs-dow" name="dayOfWeek" class="form-control">
+                <% [__('admin:day_sunday'),__('admin:day_monday'),__('admin:day_tuesday'),__('admin:day_wednesday'),__('admin:day_thursday'),__('admin:day_friday'),__('admin:day_saturday')].forEach(function(d,i){ %>
+                    <option value="<%= i %>" <%= i===1?'selected':'' %>><%= d %></option>
+                <% }); %>
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label for="rs-hour"><%= __('admin:from_hour') %></label>
+            <select id="rs-hour" name="hour" class="form-control">
+                <% for (let h=0; h<24; h++) { %><option value="<%= h %>" <%= h===6?'selected':'' %>><%= String(h).padStart(2,'0') %>:00</option><% } %>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:schedule_btn') %></button>
+    </form>
+    <% } %>
+</div>
+
+<div class="card" style="padding:0;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#sched-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+        <table class="table" id="sched-table">
+            <thead><tr><th><%= __('admin:template') %></th><th><%= __('admin:ops_sched_owner') %></th><th><%= __('admin:recipients') %></th><th><%= __('admin:frequency') %></th><th><%= __('admin:last_run') %></th><th><%= __('admin:ops_sched_next_run') %></th><th><%= __('admin:last_status') %></th><th></th></tr></thead>
+            <tbody>
+                <% (schedules || []).forEach(function(s){ %>
+                    <tr<%- s.isActive === false ? ' class="sched-paused"' : '' %>>
+                        <td><strong><%= s.templateName %></strong><% if (s.isActive === false) { %> <span class="badge badge-warning"><%= __('admin:ops_sched_paused') %></span><% } %></td>
+                        <td><%= s.ownerName || '—' %></td>
+                        <td style="font-size:.82rem;color:var(--text-secondary);max-width:260px;overflow:hidden;text-overflow:ellipsis;" title="<%= s.recipients %>"><%= s.recipients %></td>
+                        <td><%= enumLabel('schedule_frequency', s.frequency) %><%= s.frequency==='weekly' && s.dayOfWeek!=null ? ' (' + [__('admin:day_sun_short'),__('admin:day_mon_short'),__('admin:day_tue_short'),__('admin:day_wed_short'),__('admin:day_thu_short'),__('admin:day_fri_short'),__('admin:day_sat_short')][s.dayOfWeek] + ')' : '' %> · <%= String(s.hour).padStart(2,'0') %>:00</td>
+                        <td><%= fmtDateTime(s.lastRunAt) %></td>
+                        <td><%= s.nextRunAt ? fmtDateTime(s.nextRunAt) : '—' %></td>
+                        <td>
+                            <% if (!s.lastStatus) { %><span class="text-muted">—</span>
+                            <% } else if (s.lastStatus === 'ok') { %><span class="badge badge-success"><%= __('admin:status_ok') %></span>
+                            <%# the reason was hidden in a title tooltip — it is a readable line now. %>
+                            <% } else { %><span class="badge badge-danger"><%= __('admin:status_failed') %></span>
+                              <div class="sched-err"><%= __('admin:ops_sched_last_error') %><%= colon %> <%= s.lastStatus %></div><% } %>
+                        </td>
+                        <td style="text-align:right;white-space:nowrap;">
+                            <form method="POST" action="/reports/schedules/<%= s.id %>/run" style="display:inline;"
+                                  data-confirm="<%= __('admin:ops_sched_run_confirm') %>" data-confirm-title="<%= __('admin:ops_sched_run_now') %>">
+                                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                <button type="submit" class="btn btn-sm" title="<%= __('admin:ops_sched_run_now') %>"><i class="fas fa-play" aria-hidden="true"></i></button>
+                            </form>
+                            <form method="POST" action="/reports/schedules/<%= s.id %>/toggle" style="display:inline;">
+                                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                <button type="submit" class="btn btn-sm" title="<%= s.isActive === false ? __('admin:ops_sched_resume') : __('admin:ops_sched_pause') %>"><i class="fas <%= s.isActive === false ? 'fa-play-circle' : 'fa-pause' %>" aria-hidden="true"></i></button>
+                            </form>
+                            <form method="POST" action="/reports/schedules/<%= s.id %>/delete" style="display:inline;"
+                                  data-confirm="<%= __('admin:delete_schedule_confirm') %>" data-confirm-danger>
+                                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                <button type="submit" class="btn btn-sm btn-danger" aria-label="<%= __('admin:sched_delete_aria') %>" title="<%= __('admin:sched_delete_aria') %>"><i class="fas fa-trash-can" aria-hidden="true"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                <% }); %>
+                <% if (!schedules || !schedules.length) { %>
+                    <tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--text-muted);"><%= __('admin:no_schedules') %></td></tr>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+  /* a paused schedule and a failure reason must be readable on the row. */
+  .sched-paused td{opacity:.7}
+  .sched-err{font-size:.78rem;color:var(--text-secondary);max-width:26rem;white-space:normal;margin-top:.2rem}
+</style>

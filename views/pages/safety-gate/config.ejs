@@ -1,0 +1,288 @@
+<div class="page-header" style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;justify-content:space-between;">
+    <h1><i class="fas fa-sliders" aria-hidden="true"></i> <%= __('safety:config_title') %></h1>
+    <a class="btn btn-secondary" href="/safety-gate"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('safety:back') %></a>
+</div>
+
+<p class="help-text" style="margin-bottom:1rem;"><%= __('safety:config_intro') %></p>
+<p class="help-text" style="margin-bottom:1rem;"><%= __('safety:mode_intro') %></p>
+<% if (!isSuper) { %>
+<p class="help-text" style="margin-bottom:1rem;"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('safety:scope_note') %></p>
+<% } %>
+
+<% if (preview && draft) { %>
+<section class="card sg-preview" aria-labelledby="sg-preview-title">
+    <h2 class="sg-h2" id="sg-preview-title"><%= __('safety:preview_title') %></h2>
+    <p><strong><%= draft.skillName || draft.skillLabel %></strong> — <%= __('safety:th_min_level') %> <strong><%= draft.minLevel %></strong>
+        <% if (draft.certRequired) { %> · <%= __('safety:f_cert_required') %><% } %>
+        <% if (draft.requireValidated) { %> · <%= __('safety:f_require_validated') %><% } %>
+        <% if (draft.maxAgeMonths) { %> · <%= __('safety:max_age_value', { months: draft.maxAgeMonths }) %><% } %>
+        · <%= __('safety:mode_' + draft.mode) %></p>
+    <p class="sg-preview-count"><%= __('safety:preview_newly_blocked', { count: preview.newlyBlocked, total: preview.evaluated }) %></p>
+    <% if (preview.alreadyBlocked) { %><p class="help-text"><%= __('safety:preview_already_blocked', { count: preview.alreadyBlocked }) %></p><% } %>
+    <% if (preview.sample.length) { %>
+    <ul class="sg-sample">
+        <% preview.sample.forEach(function (p) { %><li><%= p.name %><% if (p.siteName) { %> <span class="sg-sub">(<%= p.siteName %>)</span><% } %></li><% }); %>
+    </ul>
+    <% } %>
+    <p class="help-text"><%= draft.mode === 'observe' ? __('safety:preview_observe_note') : __('safety:preview_enforce_note') %></p>
+    <form method="POST" action="/safety-gate/config/rules" class="sg-inline">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="roleId" value="<%= draft.roleId %>">
+        <input type="hidden" name="siteId" value="<%= draft.siteId == null ? '' : draft.siteId %>">
+        <input type="hidden" name="skillId" value="<%= draft.skillId %>">
+        <input type="hidden" name="minLevel" value="<%= draft.minLevel %>">
+        <input type="hidden" name="certRequired" value="<%= draft.certRequired ? '1' : '' %>">
+        <input type="hidden" name="requireValidated" value="<%= draft.requireValidated ? '1' : '' %>">
+        <input type="hidden" name="maxAgeMonths" value="<%= draft.maxAgeMonths == null ? '' : draft.maxAgeMonths %>">
+        <input type="hidden" name="mode" value="<%= draft.mode %>">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i> <%= __('safety:btn_confirm_add') %></button>
+        <a class="btn btn-secondary" href="/safety-gate/config"><%= __('safety:btn_cancel') %></a>
+    </form>
+</section>
+<% } %>
+
+<h2 class="sg-h2"><%= __('safety:add_rule_title') %></h2>
+<% if (!isSuper && !options.sites.length) { %>
+<p class="help-text"><%= __('safety:no_manageable_site') %></p>
+<% } else { %>
+<form method="POST" action="/safety-gate/config/rules/preview" class="card sg-form">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div class="sg-field">
+        <label for="sg-rule-role"><%= __('safety:f_role') %></label>
+        <select id="sg-rule-role" name="roleId" class="form-control" required>
+            <option value=""></option>
+            <% options.roles.forEach(function (r) { %><option value="<%= r.id %>"><%= r.name %></option><% }); %>
+        </select>
+    </div>
+    <div class="sg-field">
+        <label for="sg-rule-site"><%= isSuper ? __('safety:f_site') : __('safety:f_site_required') %></label>
+        <select id="sg-rule-site" name="siteId" class="form-control" <%= isSuper ? '' : 'required' %>>
+            <% if (isSuper) { %><option value=""><%= __('safety:all_sites_rule') %></option><% } else { %><option value=""></option><% } %>
+            <% options.sites.forEach(function (s) { %><option value="<%= s.id %>"><%= s.name %></option><% }); %>
+        </select>
+    </div>
+    <div class="sg-field sg-skill">
+        <label for="sg-skill-search"><%= __('safety:f_skill') %></label>
+        <input type="search" id="sg-skill-search" name="skillLabel" class="form-control" autocomplete="off"
+               placeholder="<%= __('safety:f_skill_ph') %>" required>
+        <input type="hidden" name="skillId" id="sg-skill-id" value="">
+        <div id="sg-skill-list" class="sg-suggest" hidden></div>
+    </div>
+    <div class="sg-field">
+        <label for="sg-rule-level"><%= __('safety:f_min_level') %></label>
+        <select id="sg-rule-level" name="minLevel" class="form-control" required>
+            <% [1,2,3,4].forEach(function (l) { %><option value="<%= l %>" <%= l === 3 ? 'selected' : '' %>><%= l %></option><% }); %>
+        </select>
+    </div>
+    <div class="sg-field">
+        <label for="sg-rule-age"><%= __('safety:f_max_age') %></label>
+        <input type="number" id="sg-rule-age" name="maxAgeMonths" class="form-control" min="1" max="120" step="1"
+               aria-describedby="sg-rule-age-help" placeholder="<%= __('safety:f_max_age_ph') %>">
+        <span id="sg-rule-age-help" class="sg-sub"><%= __('safety:f_max_age_help') %></span>
+    </div>
+    <div class="sg-field">
+        <label for="sg-rule-mode"><%= __('safety:f_mode') %></label>
+        <select id="sg-rule-mode" name="mode" class="form-control" aria-describedby="sg-rule-mode-help">
+            <option value="observe" selected><%= __('safety:mode_observe') %></option>
+            <option value="enforce"><%= __('safety:mode_enforce') %></option>
+        </select>
+        <span id="sg-rule-mode-help" class="sg-sub"><%= __('safety:f_mode_help') %></span>
+    </div>
+    <label class="sg-check"><input type="checkbox" name="certRequired" value="1"> <%= __('safety:f_cert_required') %></label>
+    <label class="sg-check"><input type="checkbox" name="requireValidated" value="1"> <%= __('safety:f_require_validated') %></label>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-magnifying-glass-chart" aria-hidden="true"></i> <%= __('safety:btn_preview') %></button>
+</form>
+<% } %>
+
+<h2 class="sg-h2"><%= __('safety:rules_title') %></h2>
+<p><a href="/safety-gate/config<%= showAll ? '' : '?all=1' %>"><%= showAll ? __('safety:hide_inactive') : __('safety:show_inactive') %></a></p>
+<div class="card" style="padding:0;margin-bottom:1.2rem;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('safety:th_role') %></th>
+                <th><%= __('safety:th_site') %></th>
+                <th><%= __('safety:th_skill') %></th>
+                <th><%= __('safety:th_min_level') %></th>
+                <th><%= __('safety:th_cert_required') %></th>
+                <th><%= __('safety:th_options') %></th>
+                <th><%= __('safety:th_mode') %></th>
+                <th><%= __('safety:th_state') %></th>
+                <th><%= __('safety:th_actions') %></th>
+            </tr></thead>
+            <tbody>
+            <% if (!rules.length) { %>
+                <tr><td colspan="9" class="text-muted" style="text-align:center;padding:1.2rem;"><%= __('safety:rules_none') %></td></tr>
+            <% } %>
+            <% rules.forEach(function (r) { var mode = r.mode || 'enforce'; %>
+                <tr>
+                    <td><%= r.roleName %></td>
+                    <td class="sg-small"><%= r.siteName || __('safety:all_sites_rule') %></td>
+                    <td><%= r.skillName %></td>
+                    <td><strong><%= r.minLevel %></strong></td>
+                    <td><%= r.certRequired ? __('safety:yes') : __('safety:no') %></td>
+                    <td class="sg-small">
+                        <% if (!r.requireValidated && !r.maxAgeMonths) { %>—<% } %>
+                        <% if (r.requireValidated) { %><div><%= __('safety:opt_validated') %></div><% } %>
+                        <% if (r.maxAgeMonths) { %><div><%= __('safety:max_age_value', { months: r.maxAgeMonths }) %></div><% } %>
+                    </td>
+                    <td class="sg-small"><strong><%= __('safety:mode_' + mode) %></strong></td>
+                    <td class="sg-small"><%= r.isActive ? __('safety:active') : __('safety:inactive') %>
+                        <% if (!r.isActive && r.deactivatedReason) { %><div class="sg-sub"><%= r.deactivatedReason %></div><% } %></td>
+                    <td>
+                        <% if (r.isActive && r.canManage) { %>
+                        <form method="POST" action="/safety-gate/config/rules/<%= r.id %>/mode" class="sg-inline" style="margin-bottom:6px;">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <input type="hidden" name="mode" value="<%= mode === 'observe' ? 'enforce' : 'observe' %>">
+                            <button type="submit" class="btn btn-sm btn-secondary"
+                                    aria-label="<%= (mode === 'observe' ? __('safety:btn_to_enforce') : __('safety:btn_to_observe')) + ' — ' + r.roleName + ' — ' + r.skillName %>"
+                                    <% if (mode === 'observe') { %>data-confirm="<%= __('safety:confirm_to_enforce') %>"<% } %>>
+                                <%= mode === 'observe' ? __('safety:btn_to_enforce') : __('safety:btn_to_observe') %></button>
+                        </form>
+                        <form method="POST" action="/safety-gate/config/rules/<%= r.id %>/deactivate" class="sg-inline">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <label class="sr-only" for="sg-reason-<%= r.id %>"><%= __('safety:deactivate_reason') %></label>
+                            <input type="text" id="sg-reason-<%= r.id %>" name="reason" class="form-control" required maxlength="500"
+                                   placeholder="<%= __('safety:deactivate_reason_ph') %>">
+                            <button type="submit" class="btn btn-sm btn-danger"
+                                    aria-label="<%= __('safety:deactivate') + ' — ' + r.roleName + ' — ' + r.skillName %>"><%= __('safety:deactivate') %></button>
+                        </form>
+                        <% } else if (r.isActive) { %>
+                        <span class="sg-sub"><%= __('safety:not_in_your_scope') %></span>
+                        <% } %>
+                    </td>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<h2 class="sg-h2"><%= __('safety:settings_title') %></h2>
+<% if (!isSuper) { %>
+<div class="card sg-form">
+    <p style="margin:0;"><%= __('safety:expiring_window', { days: settings.expiryWarningDays }) %>
+        <%= settings.webhookEnabled ? __('safety:webhook_state_on') : __('safety:webhook_state_off') %></p>
+    <p class="help-text sg-wide" style="font-size:.8rem;margin:0;"><%= __('safety:settings_superadmin_only') %></p>
+</div>
+<% } else { %>
+<form method="POST" action="/safety-gate/config/settings" class="card sg-form sg-settings">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div class="sg-field">
+        <label for="sg-days"><%= __('safety:f_warning_days') %></label>
+        <input type="number" id="sg-days" name="expiryWarningDays" class="form-control" min="1" max="365" required
+               value="<%= settings.expiryWarningDays %>">
+    </div>
+    <div class="sg-field sg-wide">
+        <label for="sg-url"><%= __('safety:f_webhook_url') %></label>
+        <input type="url" id="sg-url" name="webhookUrl" class="form-control" pattern="https://.*" maxlength="2000"
+               value="<%= settings.webhookUrl %>" placeholder="https://">
+    </div>
+    <div class="sg-field">
+        <label for="sg-secret"><%= __('safety:f_webhook_secret') %></label>
+        <input type="password" id="sg-secret" name="webhookSecret" class="form-control" autocomplete="new-password" maxlength="500"
+               placeholder="<%= settings.hasSecret ? __('safety:f_webhook_secret_keep') : '' %>">
+    </div>
+    <label class="sg-check"><input type="checkbox" name="webhookEnabled" value="1" <%= settings.webhookEnabled ? 'checked' : '' %>> <%= __('safety:f_webhook_enabled') %></label>
+    <p class="help-text sg-wide" style="font-size:.8rem;margin:0;"><%= __('safety:webhook_help') %></p>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('safety:btn_save') %></button>
+</form>
+<% } %>
+
+<h2 class="sg-h2" style="margin-top:1.2rem;"><%= __('safety:deliveries_title') %></h2>
+<div class="card" style="padding:0;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('safety:th_date') %></th>
+                <th><%= __('safety:th_person') %></th>
+                <th><%= __('safety:th_state') %></th>
+                <th><%= __('safety:th_attempts') %></th>
+                <th><%= __('safety:th_error') %></th>
+            </tr></thead>
+            <tbody>
+            <% if (!deliveries.length) { %>
+                <tr><td colspan="5" class="text-muted" style="text-align:center;padding:1.2rem;"><%= __('safety:deliveries_none') %></td></tr>
+            <% } %>
+            <% deliveries.forEach(function (d) { %>
+                <tr>
+                    <td class="sg-small"><%= fmtDateTime(d.createdAt) %></td>
+                    <td class="sg-small"><%= d.employeeNumber || '—' %></td>
+                    <td class="sg-small"><%= __('safety:delivery_' + d.state) %></td>
+                    <td><%= d.attempts %></td>
+                    <td class="sg-small"><%= d.lastError || '—' %></td>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.sg-h2{font-size:1.05rem;margin:.4rem 0 .6rem}
+.sg-form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;padding:.9rem 1.1rem;margin-bottom:1.2rem}
+.sg-field{display:flex;flex-direction:column;gap:3px;min-width:160px}
+.sg-field label{font-size:.8rem;color:var(--text-muted)}
+.sg-wide{flex:1 1 100%}
+.sg-skill{position:relative;flex:1 1 240px}
+.sg-suggest{position:absolute;z-index:30;left:0;right:0;top:100%;background:var(--bg-primary,#fff);
+    border:1px solid var(--border,#e2e8f0);border-radius:8px;max-height:240px;overflow-y:auto;box-shadow:0 10px 24px rgba(2,32,71,.15)}
+.sg-suggest[hidden]{display:none}
+.sg-suggest button{display:block;width:100%;text-align:left;padding:7px 11px;border:none;background:none;cursor:pointer;font-size:.86rem}
+.sg-suggest button:hover{background:var(--bg-subtle,#f1f5f9)}
+.sg-check{display:inline-flex;align-items:center;gap:5px;font-size:.85rem}
+.sg-inline{display:flex;gap:6px;align-items:center}
+.sg-inline .form-control{min-width:160px}
+.sg-sub{font-size:.74rem;color:var(--text-muted)}
+.sg-small{font-size:.83rem}
+.sg-preview{padding:.9rem 1.1rem;margin-bottom:1.2rem;border-left:4px solid var(--warning,#b45309)}
+.sg-preview-count{font-size:1.05rem;font-weight:600}
+.sg-sample{margin:.2rem 0 .6rem;padding-left:1.1rem;font-size:.85rem}
+@media (max-width:640px){ .sg-field,.sg-skill{flex:1 1 100%} .sg-inline{flex-wrap:wrap} }
+</style>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+    'use strict';
+    var input = document.getElementById('sg-skill-search');
+    if (!input) return; // no rule form offered (no site in the actor's clearance)
+    var hidden = document.getElementById('sg-skill-id');
+    var list = document.getElementById('sg-skill-list');
+    var form = input.form;
+    var t = null, seq = 0;
+    function close() { list.hidden = true; list.innerHTML = ''; }
+    input.addEventListener('input', function () {
+        hidden.value = '';
+        var q = input.value.trim();
+        clearTimeout(t);
+        if (q.length < 2) { close(); return; }
+        var mine = ++seq;
+        t = setTimeout(function () {
+            fetch('/api/qualified/skills?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (mine !== seq) return;
+                    var items = (d.skills || []).slice(0, 12);
+                    if (!items.length) { close(); return; }
+                    list.innerHTML = '';
+                    items.forEach(function (s) {
+                        var b = document.createElement('button');
+                        b.type = 'button';
+                        b.textContent = s.name;
+                        b.addEventListener('click', function () { input.value = s.name; hidden.value = s.id; close(); });
+                        list.appendChild(b);
+                    });
+                    list.hidden = false;
+                })
+                .catch(function () { close(); });
+        }, 180);
+    });
+    // A typed name that was never picked from the list has no id: refuse to
+    // submit rather than post a rule for nothing.
+    form.addEventListener('submit', function (e) {
+        if (!hidden.value) { e.preventDefault(); input.focus(); input.setCustomValidity(input.placeholder); input.reportValidity(); }
+    });
+    input.addEventListener('keydown', function () { input.setCustomValidity(''); });
+    document.addEventListener('click', function (e) { if (!list.contains(e.target) && e.target !== input) close(); });
+})();
+</script>

@@ -1,0 +1,890 @@
+<aside class="sidebar" id="appSidebar">
+    <style>
+    /* Long navigation labels must never be sliced mid-word. `.sidebar-link` is a
+       flex row with `overflow:hidden`, but the label span was a rigid flex item
+       with no min-width, so FR labels longer than the rail (e.g. "Plans de
+       développement (PDI)", or a long white-label brand name) were cut off with
+       no visual sign that text was missing. Letting the span shrink and clip with
+       an ellipsis makes the truncation legible; every link already carries a
+       `title=`, so the full label stays available on hover and to assistive tech. */
+    .sidebar-link-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sidebar-logo-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    </style>
+    <div class="sidebar-header">
+        <a href="<%= user.userType === 'employee' ? '/employee/dashboard' : '/dashboard' %>" class="sidebar-logo">
+            <% if (typeof branding !== 'undefined' && branding && branding.logoUrl) { %>
+                <img src="<%= branding.logoUrl %>" alt="" class="sidebar-logo-img" style="height:28px;max-width:40px;object-fit:contain;border-radius:6px;">
+            <% } else { %>
+                <img src="/brand/idevelop-mark.svg" alt="" class="sidebar-logo-img sidebar-logo-mark" width="28" height="28">
+            <% } %>
+            <% const _brandName = (typeof branding !== 'undefined' && branding && branding.appName) ? branding.appName : 'IDevelop'; %>
+            <span class="sidebar-logo-text" title="<%= _brandName %>"><%= _brandName %></span>
+        </a>
+        <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="<%= __('chrome:sidebar_toggle_title') %>"
+            aria-label="<%= __('chrome:sidebar_toggle_aria') %>">
+            <i class="fas fa-bars" aria-hidden="true"></i>
+        </button>
+    </div>
+
+    <%#
+        3.23.18 (UX-03 / UX-17 / UX-05) — the rail is cut BY TASK, one entry per notion.
+
+        An employee used to meet twelve links under "Mon espace" (four of them
+        near-synonyms: statut / progression / évolution / développement), a manager
+        about forty-five in seven groups, a SuperAdmin fifty-six. The rail now shows
+        a handful of TASK entries; each entry either opens its main page and carries
+        its related pages in a sub-list, or is a HUB (a disclosure button) whose
+        sub-list holds the pages of one notion — e.g. the five "review" pages now
+        live under ONE « Revues & contestations » entry.
+
+        Gating is unchanged, link by link: every flag below is the EXACT condition
+        the link carried before this cut (section gate AND link gate), read through
+        `can()` for admins (src/config/permissions.js `implies`), never a
+        hand-written role list. A hub is rendered only when at least one of its
+        pages is. Nothing a person could not open before becomes visible; nothing
+        they could open disappears (tests/unit/c317-u-navigation-sidebar.test.js).
+    %>
+    <% const _ut = user.userType;
+       const _isEmp = _ut === 'employee', _isMgr = _ut === 'manager', _isAdm = _ut === 'admin';
+       const _sa = user.role === 'superadmin';
+       const _can = (s) => (typeof can === 'function') && can(s);
+       const _ws = (k) => typeof wsVisible !== 'function' || wsVisible(k);
+       const _v2 = typeof v2Features !== 'undefined' && !!v2Features;
+       const _lc = typeof featureLocalContent !== 'undefined' && !!featureLocalContent;
+       const _cp = (typeof currentPath !== 'undefined' && currentPath) ? String(currentPath) : '';
+       const _at = (p) => _cp.startsWith(p);
+       const _on = (b) => (b ? 'active' : '');
+
+       // Section gates, exactly as the old sections declared them.
+       const gMain = !_isEmp && _ws('nav:main');
+       const gMainDash = gMain && (['admin', 'manager', 'superadmin'].includes(_ut) || user.role === 'superadmin' || user.role === 'localadmin');
+       const gPeople = gMain && (_isMgr || (_isAdm && _can('view_employees')));
+       const gMine = _isEmp || _isMgr;
+       const gTeam = (_isMgr || _isAdm) && _ws('nav:team');
+       const gTalent = (_isMgr || _isAdm) && _ws('nav:talent');
+       const gTools = (_isAdm || _isMgr) && _ws('nav:tools');
+       const canCont = _isMgr || _can('view_continuity') || _can('manage_succession') || _can('view_retention_risk') || _can('manage_handover');
+       const canLms = _isMgr || _can('configure_lms');
+       // Route → capability, exactly as src/routes/index.js declares it.
+       const navComptes   = _can('view_employees') || _can('manage_invitations') || _can('manage_admins') || _sa;
+       const navCampagnes = _can('manage_cycles') || _sa;
+       const navDonnees   = _can('export_data') || _can('import_data') || _can('view_system_logs') || _sa;
+       const navReglages  = _can('manage_organization') || _can('view_domains_skills') || _can('view_roles') || _can('view_app_settings') || _sa;
+       const gAdmComptes = _isAdm && navComptes && _ws('nav:administration');
+       const gAdmCamp    = _isAdm && navCampagnes && _ws('nav:administration');
+       const gAdmData    = _isAdm && navDonnees && _ws('nav:administration');
+       const gAdmSet     = _isAdm && navReglages && _ws('nav:configuration');
+
+       // One flag per destination.
+       const S = {
+           dashboard: gMainDash, benchmark: gMainDash, siteExposure: gMainDash, boardPack: gMainDash,
+           employees: gPeople, skillMatrix: gPeople,
+           mine: gMine,
+           acrMine: _isEmp,                      // an employee reads it under « Mes évaluations »
+           acrHub: _isMgr || gAdmCamp,           // a manager / admin decides it under « Revues & contestations »
+           account: _isEmp,
+           saReviews: gTeam, supDash: gTeam && _isMgr, gap: gTeam, coaching: gTeam,
+           idpManage: gTeam && _v2, pip: gTeam && _v2, disputes: gTeam && _v2,
+           nineBox: gTalent, talentActions: gTalent, careerPath: gTalent, orgChart: gTalent,
+           lifecycle: gTalent && _v2,
+           continuity: gTalent && _v2 && canCont, keyPerson: gTalent && _v2 && canCont,
+           lms: gTalent && _v2 && canLms && _can('configure_lms'),
+           cap: gTalent && _v2 && canLms,
+           accounts: gAdmComptes && _can('manage_invitations'),
+           onboarding: gAdmComptes && _can('manage_onboarding'),
+           admins: gAdmComptes && _can('manage_admins'), delegation: gAdmComptes && _can('manage_admins'),
+           accessReview: gAdmComptes && _sa, ssoMigration: gAdmComptes && _sa, sessions: gAdmComptes && _sa,
+           makerChecker: gAdmCamp && _v2 && _sa,
+           cycles: gAdmCamp && _can('manage_cycles'),
+           cancellations: gAdmCamp || (gTools && _isMgr),
+           postApproval: gAdmCamp || (gTools && _isMgr),
+           dataMgmt: gAdmData && (_can('export_data') || _can('import_data')),
+           sqlConsole: gAdmData && _sa,
+           sysLogs: gAdmData && _can('view_system_logs'),
+           adminNotif: gAdmData && _sa,
+           organization: gAdmSet && _can('manage_organization'),
+           domainsSkills: gAdmSet && _can('view_domains_skills'),
+           roles: gAdmSet && _can('view_roles'),
+           appSettings: gAdmSet && _can('view_app_settings'),
+           sso: gAdmSet && _sa, apiKeys: gAdmSet && _sa, health: gAdmSet && _sa,
+           license: gAdmSet && _sa, maintenance: gAdmSet && _sa, setup: gAdmSet && _sa,
+           reports: gTools, deptAnalytics: gTools, localContent: gTools && _lc,
+           compliance: gTools && (_isMgr || _can('view_compliance')),
+           qualified: gTools, movements: gTools,
+           // 3.23.18: safety clearances — admins holding a compliance grant, and SuperAdmins.
+           safetyGate: gTools && _isAdm && (_can('view_compliance') || _can('manage_compliance') || _sa),
+           notifStandalone: !gMine,              // employees/managers reach it under « À faire »
+       };
+       // Active-page tests (same expressions as before).
+       const A = {
+           dashboard: _at('/dashboard'), benchmark: _at('/benchmark'),
+           siteExposure: _at('/exec/site-exposure'), boardPack: _at('/exec/board-pack'),
+           employees: _at('/employees'), skillMatrix: _at('/skill-matrix'),
+           home: _at('/employee/dashboard'), sa: _at('/employee/self-assessment'),
+           status: _at('/employee/assessment-status'),
+           myReviews: _at('/employee/supervisor-reviews') || _at('/employee/reviews'),
+           acr: _at('/assessment-changes'), progress: _at('/employee/my-progress'),
+           okr: _at('/employee/okr'), myCoaching: _at('/employee/my-coaching'),
+           certs: _at('/employee/my-certifications'), growth: _at('/employee/opportunities'),
+           learning: _at('/employee/my-learning'),
+           myDev: _at('/employee/my-development') || (_at('/v2/idp') && !_at('/v2/idp/manage') && !_at('/v2/idp/new')),
+           account: _cp === '/account',
+           saReviews: _at('/supervisor/self-assessment-reviews'),
+           supDash: _at('/supervisor/dashboard') || _at('/supervisor/reviews'),
+           gap: _at('/supervisor/gap-analysis'), coaching: _at('/coaching'),
+           idpManage: _at('/v2/idp/manage') || _at('/v2/idp/new'), pip: _at('/v2/pip'),
+           disputes: _at('/v2/slf/disputes'),
+           nineBox: _at('/talent/nine-box'), talentActions: _at('/talent/actions'),
+           careerPath: _at('/talent/career-path'), orgChart: _at('/org-chart'),
+           lifecycle: _at('/v2/lifecycle'), continuity: _at('/v2/continuity'),
+           keyPerson: _at('/exec/key-person'), lms: _at('/v2/lms'), cap: _at('/v2/cap'),
+           accounts: _at('/admin/accounts') || _at('/admin/invitations'),
+           onboarding: _at('/onboarding'), admins: _at('/admins'), delegation: _at('/admin/delegation'),
+           accessReview: _at('/admin/access-review'), ssoMigration: _at('/admin/sso-migration'),
+           sessions: _at('/admin/sessions'), makerChecker: _at('/v2/uam/maker-checker'),
+           cycles: _cp === '/cycles' || /^\/cycles\/\d+/.test(_cp),
+           cancellations: _at('/cancellations'), postApproval: _at('/reviews/post-approval'),
+           dataMgmt: _cp === '/data-management', sqlConsole: _at('/data-management/sql-console'),
+           sysLogs: _at('/system-logs'), adminNotif: _at('/admin/notifications'),
+           organization: _at('/organization'),
+           domainsSkills: _at('/domains') || _at('/skills') || _at('/domains-skills'),
+           roles: _at('/roles'), appSettings: _cp === '/app-settings', sso: _at('/app-settings/sso'),
+           apiKeys: _at('/admin/api-keys'), health: _at('/admin/health'), license: _at('/admin/license'),
+           maintenance: _at('/admin/maintenance'), setup: _at('/setup'),
+           reports: _at('/reports') && !_at('/reports/local-content') && !_at('/reports/dept-analytics'),
+           deptAnalytics: _at('/reports/dept-analytics'), localContent: _at('/reports/local-content'),
+           compliance: _at('/compliance'), qualified: _at('/qualified'), movements: _at('/movements'),
+           safetyGate: _at('/safety-gate'),
+           guide: _at('/guide'), notifications: _at('/notifications'), about: _at('/about'),
+       };
+       const _any = (...ks) => ks.some((k) => S[k]);
+       const _open = (pairs) => pairs.some(([s, a]) => S[s] && A[a]);
+       const _tg = (name) => __('chrome:nav_sub_toggle_aria', { name: name }); %>
+
+    <nav class="sidebar-nav" role="navigation" aria-label="<%= __('chrome:nav_main_aria') %>">
+
+        <%# ── Mon équipe ─────────────────────────────────────────────────────── %>
+        <% if (_any('employees', 'skillMatrix', 'supDash', 'gap', 'orgChart')) { %>
+        <div class="sidebar-section" data-section-key="section_my_team">
+            <button type="button" class="sidebar-section-label" aria-expanded="true"><%= __('chrome:section_my_team') %><i class="fas fa-chevron-down sidebar-section-chevron" aria-hidden="true"></i></button>
+            <% if (S.supDash) { %>
+            <a href="/supervisor/dashboard" class="sidebar-link <%= _on(A.supDash) %>" title="<%= __('chrome:nav_my_team') %>">
+                <i class="fas fa-users" aria-hidden="true"></i>
+                <span class="sidebar-link-text"><%= __('chrome:nav_my_team') %></span>
+            </a>
+            <% } %>
+            <% if (S.employees) { const _o = A.skillMatrix; %>
+            <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="people">
+                <div class="sidebar-entry-row">
+                    <%# an ADMIN only sees these when they hold `view_employees`;
+                        a manager reaches both through their span. %>
+                    <a href="/employees" class="sidebar-link <%= _on(A.employees) %>" title="<%= __('chrome:nav_employees_title') %>">
+                        <i class="fas fa-address-book" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_employees') %></span>
+                    </a>
+                    <button type="button" class="sidebar-entry-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-people" aria-label="<%= _tg(__('chrome:nav_employees')) %>"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+                </div>
+                <div class="sidebar-sub" id="sbsub-people" role="group" aria-label="<%= __('chrome:nav_employees') %>">
+                    <a href="/skill-matrix" class="sidebar-link sidebar-sublink <%= _on(A.skillMatrix) %>" title="<%= __('chrome:nav_skill_matrix') %>">
+                        <i class="fas fa-border-all" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_skill_matrix') %></span>
+                    </a>
+                </div>
+            </div>
+            <% } %>
+            <% if (S.gap) { %>
+            <a href="/supervisor/gap-analysis" class="sidebar-link <%= _on(A.gap) %>" title="<%= __('chrome:nav_gap_analysis_title') %>">
+                <i class="fas fa-chart-bar" aria-hidden="true"></i>
+                <span class="sidebar-link-text"><%= __('chrome:nav_gap_analysis') %></span>
+            </a>
+            <% } %>
+            <% if (S.orgChart) { %>
+            <a href="/org-chart" class="sidebar-link <%= _on(A.orgChart) %>" title="<%= __('chrome:nav_org_chart_title') %>">
+                <i class="fas fa-sitemap" aria-hidden="true"></i>
+                <span class="sidebar-link-text"><%= __('chrome:nav_org_chart') %></span>
+            </a>
+            <% } %>
+        </div>
+        <% } %>
+
+        <%# ── Campagnes & revues ─────────────────────────────────────────────── %>
+        <% if (_any('cycles', 'saReviews', 'acrHub', 'postApproval', 'disputes', 'compliance', 'safetyGate', 'qualified', 'movements')) { %>
+        <div class="sidebar-section" data-section-key="section_campaigns_reviews">
+            <button type="button" class="sidebar-section-label" aria-expanded="true"><%= __('chrome:section_campaigns_reviews') %><i class="fas fa-chevron-down sidebar-section-chevron" aria-hidden="true"></i></button>
+            <% if (S.cycles) { %>
+            <%# Campaign console: the live completion funnel per cycle. %>
+            <a href="/cycles" class="sidebar-link <%= _on(A.cycles) %>" title="<%= __('admin:cyc_nav_console') %>">
+                <i class="fas fa-calendar-check" aria-hidden="true"></i>
+                <span class="sidebar-link-text"><%= __('chrome:section_campaigns') %></span>
+            </a>
+            <% } %>
+            <% if (_any('saReviews', 'acrHub', 'postApproval', 'disputes')) {
+                const _o = _open([['saReviews', 'saReviews'], ['acrHub', 'acr'], ['postApproval', 'postApproval'], ['disputes', 'disputes']]); %>
+            <%# ONE entry for the review notions a decider works with: the review
+                queue, change requests, post-approval revisions and disputes. The
+                person's OWN reviews stay under « Mes évaluations ». %>
+            <div class="sidebar-entry sidebar-hub<%= _o ? ' is-open' : '' %>" data-entry-key="reviews">
+                <button type="button" class="sidebar-link sidebar-hub-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-reviews" title="<%= __('chrome:nav_reviews_hub_title') %>">
+                    <i class="fas fa-scale-balanced" aria-hidden="true"></i>
+                    <span class="sidebar-link-text"><%= __('chrome:nav_reviews_hub') %></span>
+                    <i class="fas fa-chevron-down sidebar-hub-chevron" aria-hidden="true"></i>
+                </button>
+                <div class="sidebar-sub" id="sbsub-reviews" role="group" aria-label="<%= __('chrome:nav_reviews_hub') %>">
+                    <% if (S.saReviews) { %>
+                    <a href="/supervisor/self-assessment-reviews" class="sidebar-link sidebar-sublink <%= _on(A.saReviews) %>" title="<%= __('chrome:nav_sa_reviews_title') %>">
+                        <i class="fas fa-inbox" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_sa_reviews') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.acrHub) { %>
+                    <%# The change request: ONE page serves the requester and the
+                        decider, so ONE entry. %>
+                    <a href="/assessment-changes" class="sidebar-link sidebar-sublink <%= _on(A.acr) %>" title="<%= __('chrome:nav_acr_title') %>">
+                        <i class="fas fa-pen-to-square" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_acr') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.postApproval) { %>
+                    <a href="/reviews/post-approval" class="sidebar-link sidebar-sublink <%= _on(A.postApproval) %>" title="<%= __('chrome:nav_post_reviews_title') %>">
+                        <i class="fas fa-clock-rotate-left" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_post_reviews') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.disputes) { %>
+                    <a href="/v2/slf/disputes" class="sidebar-link sidebar-sublink <%= _on(A.disputes) %>" title="<%= __('chrome:nav_disputes_title') %>">
+                        <i class="fas fa-gavel" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_disputes') %></span>
+                    </a>
+                    <% } %>
+                </div>
+            </div>
+            <% } %>
+            <% if (_any('compliance', 'safetyGate', 'qualified', 'movements')) {
+                const _o = _open([['compliance', 'compliance'], ['safetyGate', 'safetyGate'], ['qualified', 'qualified'], ['movements', 'movements']]); %>
+            <%# Operational assurance: the day-to-day checks and the audit trail. %>
+            <div class="sidebar-entry sidebar-hub<%= _o ? ' is-open' : '' %>" data-entry-key="assurance">
+                <button type="button" class="sidebar-link sidebar-hub-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-assurance" title="<%= __('chrome:section_assurance') %>">
+                    <i class="fas fa-list-ul" aria-hidden="true"></i>
+                    <span class="sidebar-link-text"><%= __('chrome:section_assurance') %></span>
+                    <i class="fas fa-chevron-down sidebar-hub-chevron" aria-hidden="true"></i>
+                </button>
+                <div class="sidebar-sub" id="sbsub-assurance" role="group" aria-label="<%= __('chrome:section_assurance') %>">
+                    <% if (S.compliance) { %>
+                    <a href="/compliance" class="sidebar-link sidebar-sublink <%= _on(A.compliance) %>" title="<%= __('chrome:nav_compliance_title') %>">
+                        <i class="fas fa-file-shield" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_compliance') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.safetyGate) { %>
+                    <a href="/safety-gate" class="sidebar-link sidebar-sublink <%= _on(A.safetyGate) %>" title="<%= __('chrome:nav_safety_gate_title') %>">
+                        <i class="fas fa-helmet-safety" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_safety_gate') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.qualified) { %>
+                    <a href="/qualified" class="sidebar-link sidebar-sublink <%= _on(A.qualified) %>" title="<%= __('chrome:nav_qualified_title') %>">
+                        <i class="fas fa-user-check" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_qualified') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.movements) { %>
+                    <a href="/movements" class="sidebar-link sidebar-sublink <%= _on(A.movements) %>" title="<%= __('chrome:nav_movements_title') %>">
+                        <i class="fas fa-right-left" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_movements') %></span>
+                    </a>
+                    <% } %>
+                </div>
+            </div>
+            <% } %>
+        </div>
+        <% } %>
+
+        <%# ── Talents (folded by default) ────────────────────────────────────── %>
+        <% if (_any('nineBox', 'talentActions', 'careerPath', 'coaching', 'idpManage', 'pip', 'cancellations', 'continuity', 'keyPerson', 'lifecycle', 'cap', 'lms')) { %>
+        <div class="sidebar-section" data-section-key="section_talent">
+            <button type="button" class="sidebar-section-label" aria-expanded="true"><%= __('chrome:section_talent') %><i class="fas fa-chevron-down sidebar-section-chevron" aria-hidden="true"></i></button>
+            <% if (S.nineBox) { const _o = A.talentActions || A.careerPath; %>
+            <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="ninebox">
+                <div class="sidebar-entry-row">
+                    <a href="/talent/nine-box" class="sidebar-link <%= _on(A.nineBox) %>" title="<%= __('chrome:nav_nine_box_title') %>">
+                        <i class="fas fa-table-cells-large" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_nine_box') %></span>
+                    </a>
+                    <button type="button" class="sidebar-entry-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-ninebox" aria-label="<%= _tg(__('chrome:nav_nine_box')) %>"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+                </div>
+                <div class="sidebar-sub" id="sbsub-ninebox" role="group" aria-label="<%= __('chrome:nav_nine_box') %>">
+                    <a href="/talent/actions" class="sidebar-link sidebar-sublink <%= _on(A.talentActions) %>" title="<%= __('chrome:nav_talent_actions_title') %>">
+                        <i class="fas fa-clipboard-list" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_talent_actions') %></span>
+                    </a>
+                    <a href="/talent/career-path" class="sidebar-link sidebar-sublink <%= _on(A.careerPath) %>" title="<%= __('chrome:nav_career_path_title') %>">
+                        <i class="fas fa-route" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_career_path') %></span>
+                    </a>
+                </div>
+            </div>
+            <% } %>
+            <% if (_any('coaching', 'idpManage', 'pip', 'cancellations')) {
+                const _o = _open([['coaching', 'coaching'], ['idpManage', 'idpManage'], ['pip', 'pip'], ['cancellations', 'cancellations']]); %>
+            <div class="sidebar-entry sidebar-hub<%= _o ? ' is-open' : '' %>" data-entry-key="plans">
+                <button type="button" class="sidebar-link sidebar-hub-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-plans" title="<%= __('chrome:nav_plans_hub_title') %>">
+                    <i class="fas fa-hand-holding-heart" aria-hidden="true"></i>
+                    <span class="sidebar-link-text"><%= __('chrome:nav_plans_hub') %></span>
+                    <i class="fas fa-chevron-down sidebar-hub-chevron" aria-hidden="true"></i>
+                </button>
+                <div class="sidebar-sub" id="sbsub-plans" role="group" aria-label="<%= __('chrome:nav_plans_hub') %>">
+                    <% if (S.coaching) { %>
+                    <a href="/coaching/plans" class="sidebar-link sidebar-sublink <%= _on(A.coaching) %>" title="<%= __('chrome:nav_coaching_title') %>">
+                        <i class="fas fa-people-arrows" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_coaching') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.idpManage) { %>
+                    <a href="/v2/idp/manage" class="sidebar-link sidebar-sublink <%= _on(A.idpManage) %>" title="<%= __('chrome:nav_dev_plans_title') %>">
+                        <i class="fas fa-diagram-project" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_dev_plans') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.pip) { %>
+                    <a href="/v2/pip" class="sidebar-link sidebar-sublink <%= _on(A.pip) %>" title="<%= __('chrome:nav_pip_title') %>">
+                        <i class="fas fa-user-clock" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_pip') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.cancellations) { %>
+                    <a href="/cancellations" class="sidebar-link sidebar-sublink <%= _on(A.cancellations) %>" title="<%= __('chrome:nav_cancellations_title') %>">
+                        <i class="fas fa-ban" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_cancellations') %></span>
+                    </a>
+                    <% } %>
+                </div>
+            </div>
+            <% } %>
+            <% if (_any('continuity', 'keyPerson', 'lifecycle')) {
+                const _o = _open([['continuity', 'continuity'], ['keyPerson', 'keyPerson'], ['lifecycle', 'lifecycle']]); %>
+            <div class="sidebar-entry sidebar-hub<%= _o ? ' is-open' : '' %>" data-entry-key="continuity">
+                <button type="button" class="sidebar-link sidebar-hub-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-continuity" title="<%= __('chrome:nav_continuity_title') %>">
+                    <i class="fas fa-life-ring" aria-hidden="true"></i>
+                    <span class="sidebar-link-text"><%= __('chrome:nav_continuity_hub') %></span>
+                    <i class="fas fa-chevron-down sidebar-hub-chevron" aria-hidden="true"></i>
+                </button>
+                <div class="sidebar-sub" id="sbsub-continuity" role="group" aria-label="<%= __('chrome:nav_continuity_hub') %>">
+                    <% if (S.continuity) { %>
+                    <a href="/v2/continuity" class="sidebar-link sidebar-sublink <%= _on(A.continuity) %>" title="<%= __('chrome:nav_continuity_title') %>">
+                        <i class="fas fa-people-roof" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_continuity') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.keyPerson) { %>
+                    <%# Key-person risk carries the same continuity gate as the route. %>
+                    <a href="/exec/key-person" class="sidebar-link sidebar-sublink <%= _on(A.keyPerson) %>" title="<%= __('exec:kp_subtitle') %>">
+                        <i class="fas fa-user-shield" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('exec:kp_title') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.lifecycle) { %>
+                    <a href="/v2/lifecycle" class="sidebar-link sidebar-sublink <%= _on(A.lifecycle) %>" title="<%= __('chrome:nav_lifecycle_title') %>">
+                        <i class="fas fa-user-gear" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_lifecycle') %></span>
+                    </a>
+                    <% } %>
+                </div>
+            </div>
+            <% } %>
+            <% if (S.cap) { const _o = S.lms && A.lms; %>
+            <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="talent_suite">
+                <div class="sidebar-entry-row">
+                    <a href="/v2/cap" class="sidebar-link <%= _on(A.cap) %>" title="<%= __('chrome:nav_talent_suite_title') %>">
+                        <i class="fas fa-layer-group" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_talent_suite') %></span>
+                    </a>
+                    <% if (S.lms) { %>
+                    <button type="button" class="sidebar-entry-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-talent_suite" aria-label="<%= _tg(__('chrome:nav_talent_suite')) %>"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+                    <% } %>
+                </div>
+                <% if (S.lms) { %>
+                <%# The LMS Hub is an admin CONFIG console — configure_lms holders only. %>
+                <div class="sidebar-sub" id="sbsub-talent_suite" role="group" aria-label="<%= __('chrome:nav_talent_suite') %>">
+                    <a href="/v2/lms" class="sidebar-link sidebar-sublink <%= _on(A.lms) %>" title="<%= __('chrome:nav_lms_hub_title') %>">
+                        <i class="fas fa-plug" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_lms_hub') %></span>
+                    </a>
+                </div>
+                <% } %>
+            </div>
+            <% } %>
+        </div>
+        <% } %>
+
+        <%# ── Rapports ───────────────────────────────────────────────────────── %>
+        <% if (_any('dashboard', 'benchmark', 'reports')) { %>
+        <div class="sidebar-section" data-section-key="section_reports">
+            <button type="button" class="sidebar-section-label" aria-expanded="true"><%= __('chrome:section_reports') %><i class="fas fa-chevron-down sidebar-section-chevron" aria-hidden="true"></i></button>
+            <% if (S.dashboard) { const _o = A.siteExposure || A.boardPack; %>
+            <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="dashboard">
+                <div class="sidebar-entry-row">
+                    <a href="/dashboard" class="sidebar-link <%= _on(A.dashboard) %>" title="<%= __('chrome:nav_dashboard') %>">
+                        <i class="fas fa-chart-pie" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_dashboard') %></span>
+                    </a>
+                    <button type="button" class="sidebar-entry-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-dashboard" aria-label="<%= _tg(__('chrome:nav_dashboard')) %>"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+                </div>
+                <%# Executive decision surfaces — same audience and guard chain as the
+                    dashboard itself (manager/admin + RBAC scope). %>
+                <div class="sidebar-sub" id="sbsub-dashboard" role="group" aria-label="<%= __('chrome:nav_dashboard') %>">
+                    <a href="/exec/site-exposure" class="sidebar-link sidebar-sublink <%= _on(A.siteExposure) %>" title="<%= __('exec:se_subtitle') %>">
+                        <i class="fas fa-map-location-dot" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('exec:se_title') %></span>
+                    </a>
+                    <a href="/exec/board-pack" class="sidebar-link sidebar-sublink <%= _on(A.boardPack) %>" title="<%= __('exec:bp_subtitle') %>">
+                        <i class="fas fa-briefcase" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('exec:bp_title') %></span>
+                    </a>
+                </div>
+            </div>
+            <% } %>
+            <% if (S.benchmark) { %>
+            <a href="/benchmark" class="sidebar-link <%= _on(A.benchmark) %>" title="<%= __('chrome:nav_benchmark') %>">
+                <i class="fas fa-table-cells" aria-hidden="true"></i>
+                <span class="sidebar-link-text"><%= __('chrome:nav_benchmark') %></span>
+            </a>
+            <% } %>
+            <% if (S.reports) { const _o = A.deptAnalytics || (S.localContent && A.localContent); %>
+            <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="reports">
+                <div class="sidebar-entry-row">
+                    <a href="/reports/builder" class="sidebar-link <%= _on(A.reports) %>" title="<%= __('chrome:nav_reports') %>">
+                        <i class="fas fa-file-lines" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_reports') %></span>
+                    </a>
+                    <button type="button" class="sidebar-entry-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-reports" aria-label="<%= _tg(__('chrome:nav_reports')) %>"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+                </div>
+                <div class="sidebar-sub" id="sbsub-reports" role="group" aria-label="<%= __('chrome:nav_reports') %>">
+                    <a href="/reports/dept-analytics" class="sidebar-link sidebar-sublink <%= _on(A.deptAnalytics) %>" title="<%= __('chrome:nav_dept_analytics_title') %>">
+                        <i class="fas fa-chart-column" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_dept_analytics') %></span>
+                    </a>
+                    <% if (S.localContent) { %>
+                    <a href="/reports/local-content" class="sidebar-link sidebar-sublink <%= _on(A.localContent) %>" title="<%= __('chrome:nav_local_content') %>">
+                        <i class="fas fa-flag" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_local_content') %></span>
+                    </a>
+                    <% } %>
+                </div>
+            </div>
+            <% } %>
+        </div>
+        <% } %>
+
+        <%# ── Administration: three hubs, each gated page by page ─────────────── %>
+        <% if (_any('accounts', 'onboarding', 'admins', 'delegation', 'accessReview', 'ssoMigration', 'sessions', 'makerChecker',
+                    'dataMgmt', 'sqlConsole', 'sysLogs', 'adminNotif',
+                    'organization', 'domainsSkills', 'roles', 'appSettings', 'sso', 'apiKeys', 'health', 'license', 'maintenance', 'setup')) { %>
+        <div class="sidebar-section" data-section-key="section_admin">
+            <button type="button" class="sidebar-section-label" aria-expanded="true"><%= __('chrome:section_admin') %><i class="fas fa-chevron-down sidebar-section-chevron" aria-hidden="true"></i></button>
+            <% if (_any('accounts', 'onboarding', 'admins', 'delegation', 'accessReview', 'ssoMigration', 'sessions', 'makerChecker')) {
+                const _o = _open([['accounts', 'accounts'], ['onboarding', 'onboarding'], ['admins', 'admins'], ['delegation', 'delegation'], ['accessReview', 'accessReview'], ['ssoMigration', 'ssoMigration'], ['sessions', 'sessions'], ['makerChecker', 'makerChecker']]); %>
+            <%# Comptes — who exists, who can sign in, who can act on whom. %>
+            <div class="sidebar-entry sidebar-hub<%= _o ? ' is-open' : '' %>" data-entry-key="accounts">
+                <button type="button" class="sidebar-link sidebar-hub-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-accounts" title="<%= __('chrome:section_accounts') %>">
+                    <i class="fas fa-users-gear" aria-hidden="true"></i>
+                    <span class="sidebar-link-text"><%= __('chrome:section_accounts') %></span>
+                    <i class="fas fa-chevron-down sidebar-hub-chevron" aria-hidden="true"></i>
+                </button>
+                <div class="sidebar-sub" id="sbsub-accounts" role="group" aria-label="<%= __('chrome:section_accounts') %>">
+                    <% if (S.accounts) { %>
+                    <a href="/admin/accounts" class="sidebar-link sidebar-sublink <%= _on(A.accounts) %>" title="<%= __('chrome:nav_accounts_title') %>">
+                        <i class="fas fa-paper-plane" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_accounts') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.onboarding) { %>
+                    <a href="/onboarding" class="sidebar-link sidebar-sublink <%= _on(A.onboarding) %>" title="<%= __('chrome:nav_onboarding_title') %>">
+                        <i class="fas fa-user-plus" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_onboarding') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.admins) { %>
+                    <a href="/admins" class="sidebar-link sidebar-sublink <%= _on(A.admins) %>" title="<%= __('chrome:nav_admins') %>">
+                        <i class="fas fa-shield-halved" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_admins') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.delegation) { %>
+                    <%# « who can act on my people? » %>
+                    <a href="/admin/delegation" class="sidebar-link sidebar-sublink <%= _on(A.delegation) %>" title="<%= __('chrome:nav_delegation_title') %>">
+                        <i class="fas fa-share-nodes" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_delegation') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.makerChecker) { %>
+                    <a href="/v2/uam/maker-checker/queue" class="sidebar-link sidebar-sublink <%= _on(A.makerChecker) %>" title="<%= __('chrome:nav_approvals_title') %>">
+                        <i class="fas fa-check-double" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_approvals') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.accessReview) { %>
+                    <a href="/admin/access-review" class="sidebar-link sidebar-sublink <%= _on(A.accessReview) %>" title="<%= __('chrome:nav_access_review') %>">
+                        <i class="fas fa-user-lock" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_access_review') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.ssoMigration) { %>
+                    <a href="/admin/sso-migration" class="sidebar-link sidebar-sublink <%= _on(A.ssoMigration) %>" title="<%= __('chrome:nav_sso_migration') %>">
+                        <i class="fas fa-shuffle" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_sso_migration') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.sessions) { %>
+                    <a href="/admin/sessions" class="sidebar-link sidebar-sublink <%= _on(A.sessions) %>" title="<%= __('chrome:nav_session_monitor') %>">
+                        <i class="fas fa-tower-observation" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_session_monitor') %></span>
+                    </a>
+                    <% } %>
+                </div>
+            </div>
+            <% } %>
+            <% if (_any('dataMgmt', 'sqlConsole', 'sysLogs', 'adminNotif')) {
+                const _o = _open([['dataMgmt', 'dataMgmt'], ['sqlConsole', 'sqlConsole'], ['sysLogs', 'sysLogs'], ['adminNotif', 'adminNotif']]); %>
+            <%# Données — moving data in and out, and the record of what happened. %>
+            <div class="sidebar-entry sidebar-hub<%= _o ? ' is-open' : '' %>" data-entry-key="data">
+                <button type="button" class="sidebar-link sidebar-hub-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-data" title="<%= __('chrome:section_data') %>">
+                    <i class="fas fa-server" aria-hidden="true"></i>
+                    <span class="sidebar-link-text"><%= __('chrome:section_data') %></span>
+                    <i class="fas fa-chevron-down sidebar-hub-chevron" aria-hidden="true"></i>
+                </button>
+                <div class="sidebar-sub" id="sbsub-data" role="group" aria-label="<%= __('chrome:section_data') %>">
+                    <% if (S.dataMgmt) { %>
+                    <a href="/data-management" class="sidebar-link sidebar-sublink <%= _on(A.dataMgmt) %>" title="<%= __('chrome:nav_data_management') %>">
+                        <i class="fas fa-database" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_data_management') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.sqlConsole) { %>
+                    <a href="/data-management/sql-console" class="sidebar-link sidebar-sublink <%= _on(A.sqlConsole) %>" title="<%= __('chrome:nav_sql_console_title') %>">
+                        <i class="fas fa-terminal" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_sql_console') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.sysLogs) { %>
+                    <a href="/system-logs" class="sidebar-link sidebar-sublink <%= _on(A.sysLogs) %>" title="<%= __('chrome:nav_system_logs') %>">
+                        <i class="fas fa-scroll" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_system_logs') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.adminNotif) { %>
+                    <a href="/admin/notifications" class="sidebar-link sidebar-sublink <%= _on(A.adminNotif) %>" title="<%= __('admin:notif_nav') %>">
+                        <i class="fas fa-envelope-open-text" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('admin:notif_nav') %></span>
+                    </a>
+                    <% } %>
+                </div>
+            </div>
+            <% } %>
+            <% if (_any('organization', 'domainsSkills', 'roles', 'appSettings', 'sso', 'apiKeys', 'health', 'license', 'maintenance', 'setup')) {
+                const _o = _open([['organization', 'organization'], ['domainsSkills', 'domainsSkills'], ['roles', 'roles'], ['appSettings', 'appSettings'], ['sso', 'sso'], ['apiKeys', 'apiKeys'], ['health', 'health'], ['license', 'license'], ['maintenance', 'maintenance'], ['setup', 'setup']]); %>
+            <%# Réglages — the framework and the instance itself. %>
+            <div class="sidebar-entry sidebar-hub<%= _o ? ' is-open' : '' %>" data-entry-key="settings">
+                <button type="button" class="sidebar-link sidebar-hub-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-settings" title="<%= __('chrome:section_settings') %>">
+                    <i class="fas fa-sliders" aria-hidden="true"></i>
+                    <span class="sidebar-link-text"><%= __('chrome:section_settings') %></span>
+                    <i class="fas fa-chevron-down sidebar-hub-chevron" aria-hidden="true"></i>
+                </button>
+                <div class="sidebar-sub" id="sbsub-settings" role="group" aria-label="<%= __('chrome:section_settings') %>">
+                    <% if (S.organization) { %>
+                    <a href="/organization" class="sidebar-link sidebar-sublink <%= _on(A.organization) %>" title="<%= __('chrome:nav_organization') %>">
+                        <i class="fas fa-building" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_organization') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.domainsSkills) { %>
+                    <a href="/domains-skills" class="sidebar-link sidebar-sublink <%= _on(A.domainsSkills) %>" title="<%= __('chrome:nav_domains_skills') %>">
+                        <i class="fas fa-cubes" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_domains_skills') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.roles) { %>
+                    <a href="/roles" class="sidebar-link sidebar-sublink <%= _on(A.roles) %>" title="<%= __('chrome:nav_roles') %>">
+                        <i class="fas fa-user-tie" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_roles') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.appSettings) { %>
+                    <a href="/app-settings" class="sidebar-link sidebar-sublink <%= _on(A.appSettings) %>" title="<%= __('chrome:nav_settings_title') %>">
+                        <i class="fas fa-gear" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_settings') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.sso) { %>
+                    <a href="/app-settings/sso" class="sidebar-link sidebar-sublink <%= _on(A.sso) %>" title="<%= __('chrome:nav_sso') %>">
+                        <i class="fas fa-right-to-bracket" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_sso') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.apiKeys) { %>
+                    <a href="/admin/api-keys" class="sidebar-link sidebar-sublink <%= _on(A.apiKeys) %>" title="<%= __('chrome:nav_api_keys_title') %>">
+                        <i class="fas fa-key" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_api_keys') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.health) { %>
+                    <a href="/admin/health" class="sidebar-link sidebar-sublink <%= _on(A.health) %>" title="<%= __('chrome:nav_health') %>">
+                        <i class="fas fa-heart-pulse" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_health') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.license) { %>
+                    <a href="/admin/license" class="sidebar-link sidebar-sublink <%= _on(A.license) %>" title="<%= __('chrome:nav_license') %>">
+                        <i class="fas fa-certificate" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_license') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.maintenance) { %>
+                    <a href="/admin/maintenance" class="sidebar-link sidebar-sublink <%= _on(A.maintenance) %>" title="<%= __('chrome:nav_maintenance') %>">
+                        <i class="fas fa-screwdriver-wrench" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_maintenance') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.setup) { %>
+                    <%# the first-run checklist, SuperAdmin-only like the page . %>
+                    <a href="/setup" class="sidebar-link sidebar-sublink <%= _on(A.setup) %>" title="<%= __('chrome:nav_setup_title') %>">
+                        <i class="fas fa-rocket" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_setup') %></span>
+                    </a>
+                    <% } %>
+                </div>
+            </div>
+            <% } %>
+        </div>
+        <% } %>
+
+        <%# ── Mon espace: the signed-in person's OWN work (employee, and a manager
+            as an employee). Five task entries; the near-synonym pages (statut,
+            progression, évolution, développement…) sit in each entry's sub-list. %>
+        <% if (S.mine) { %>
+        <div class="sidebar-section" data-section-key="section_my_space">
+            <button type="button" class="sidebar-section-label" aria-expanded="true"><%= __('chrome:section_my_space') %><i class="fas fa-chevron-down sidebar-section-chevron" aria-hidden="true"></i></button>
+
+            <% { const _o = A.notifications; %>
+            <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="todo">
+                <div class="sidebar-entry-row">
+                    <a href="/employee/dashboard" class="sidebar-link <%= _on(A.home) %>" title="<%= __('chrome:nav_todo_title') %>">
+                        <i class="fas fa-list-check" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_todo') %></span>
+                    </a>
+                    <button type="button" class="sidebar-entry-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-todo" aria-label="<%= _tg(__('chrome:nav_todo')) %>"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+                </div>
+                <div class="sidebar-sub" id="sbsub-todo" role="group" aria-label="<%= __('chrome:nav_todo') %>">
+                    <a href="/notifications" class="sidebar-link sidebar-sublink <%= _on(A.notifications) %>" title="<%= __('chrome:nav_notifications_title') %>">
+                        <i class="fas fa-bell" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_notifications') %></span>
+                    </a>
+                </div>
+            </div>
+            <% } %>
+
+            <% { const _o = A.status || A.myReviews || (S.acrMine && A.acr) || A.progress || A.certs; %>
+            <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="my_assessments">
+                <div class="sidebar-entry-row">
+                    <a href="/employee/self-assessment" class="sidebar-link <%= _on(A.sa) %>" title="<%= __('chrome:nav_my_assessments_title') %>">
+                        <i class="fas fa-clipboard-check" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_my_assessments') %></span>
+                    </a>
+                    <button type="button" class="sidebar-entry-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-my_assessments" aria-label="<%= _tg(__('chrome:nav_my_assessments')) %>"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+                </div>
+                <div class="sidebar-sub" id="sbsub-my_assessments" role="group" aria-label="<%= __('chrome:nav_my_assessments') %>">
+                    <a href="/employee/assessment-status" class="sidebar-link sidebar-sublink <%= _on(A.status) %>" title="<%= __('chrome:nav_my_status_title') %>">
+                        <i class="fas fa-hourglass-half" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_my_status') %></span>
+                    </a>
+                    <%# The decision that changes someone's retained level is read here,
+                        next to the status of their own file. %>
+                    <a href="/employee/supervisor-reviews" class="sidebar-link sidebar-sublink <%= _on(A.myReviews) %>" title="<%= __('employee:loop_nav_my_reviews_title') %>">
+                        <i class="fas fa-comments" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('employee:loop_nav_my_reviews') %></span>
+                    </a>
+                    <% if (S.acrMine) { %>
+                    <a href="/assessment-changes" class="sidebar-link sidebar-sublink <%= _on(A.acr) %>" title="<%= __('chrome:nav_acr_title') %>">
+                        <i class="fas fa-pen-to-square" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_acr') %></span>
+                    </a>
+                    <% } %>
+                    <a href="/employee/my-progress" class="sidebar-link sidebar-sublink <%= _on(A.progress) %>" title="<%= __('chrome:nav_my_progress_title') %>">
+                        <i class="fas fa-arrow-trend-up" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_my_progress') %></span>
+                    </a>
+                    <%# Where the certification-expiry ladder lands. %>
+                    <a href="/employee/my-certifications" class="sidebar-link sidebar-sublink <%= _on(A.certs) %>" title="<%= __('employee:cert_nav_title') %>">
+                        <i class="fas fa-id-badge" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('employee:cert_nav') %></span>
+                    </a>
+                </div>
+            </div>
+            <% } %>
+
+            <% { const _o = A.okr || A.myCoaching || A.growth; %>
+            <%# « Mon plan de développement »: the person's OWN plans (PAP, PDI) and
+                everything that feeds them — objectives, coaching, opportunities. %>
+            <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="my_plan">
+                <div class="sidebar-entry-row">
+                    <a href="/employee/my-development" class="sidebar-link <%= _on(A.myDev) %>" title="<%= __('chrome:nav_my_development_title') %>">
+                        <i class="fas fa-seedling" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_my_plan') %></span>
+                    </a>
+                    <button type="button" class="sidebar-entry-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-my_plan" aria-label="<%= _tg(__('chrome:nav_my_plan')) %>"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+                </div>
+                <div class="sidebar-sub" id="sbsub-my_plan" role="group" aria-label="<%= __('chrome:nav_my_plan') %>">
+                    <a href="/employee/okr" class="sidebar-link sidebar-sublink <%= _on(A.okr) %>" title="<%= __('chrome:nav_my_okr_title') %>">
+                        <i class="fas fa-bullseye" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_my_okr') %></span>
+                    </a>
+                    <a href="/employee/my-coaching" class="sidebar-link sidebar-sublink <%= _on(A.myCoaching) %>" title="<%= __('chrome:nav_my_coaching_title') %>">
+                        <i class="fas fa-hands-helping" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_my_coaching') %></span>
+                    </a>
+                    <a href="/employee/opportunities" class="sidebar-link sidebar-sublink <%= _on(A.growth) %>" title="<%= __('chrome:nav_my_growth_title') %>">
+                        <i class="fas fa-compass" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_my_growth') %></span>
+                    </a>
+                </div>
+            </div>
+            <% } %>
+
+            <%# « Mes formations »: the learner end of the LMS loop. %>
+            <a href="/employee/my-learning" class="sidebar-link <%= _on(A.learning) %>" title="<%= __('lms:ml_nav_title') %>">
+                <i class="fas fa-graduation-cap" aria-hidden="true"></i>
+                <span class="sidebar-link-text"><%= __('chrome:nav_my_learning') %></span>
+            </a>
+
+            <% if (S.account) { %>
+            <a href="/account" class="sidebar-link <%= _on(A.account) %>" title="<%= __('chrome:nav_my_profile_title') %>">
+                <i class="fas fa-user" aria-hidden="true"></i>
+                <span class="sidebar-link-text"><%= __('chrome:menu_my_profile') %></span>
+            </a>
+            <% } %>
+        </div>
+        <% } %>
+
+        <%# « Aide » closes the rail for everyone. %>
+        <div class="sidebar-section" data-section-key="section_help">
+            <button type="button" class="sidebar-section-label" aria-expanded="true"><%= __('chrome:section_help') %><i class="fas fa-chevron-down sidebar-section-chevron" aria-hidden="true"></i></button>
+            <% { const _o = A.about; %>
+            <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="help">
+                <div class="sidebar-entry-row">
+                    <a href="/guide" class="sidebar-link <%= _on(A.guide) %>" title="<%= __('chrome:nav_guide') %>">
+                        <i class="fas fa-circle-question" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_help') %></span>
+                    </a>
+                    <button type="button" class="sidebar-entry-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-help" aria-label="<%= _tg(__('chrome:nav_help')) %>"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+                </div>
+                <div class="sidebar-sub" id="sbsub-help" role="group" aria-label="<%= __('chrome:nav_help') %>">
+                    <a href="/about" class="sidebar-link sidebar-sublink <%= _on(A.about) %>" title="<%= __('chrome:nav_about') %>">
+                        <i class="fas fa-circle-info" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_about') %></span>
+                    </a>
+                </div>
+            </div>
+            <% } %>
+            <% if (S.notifStandalone) { %>
+            <a href="/notifications" class="sidebar-link <%= _on(A.notifications) %>" title="<%= __('chrome:nav_notifications_title') %>">
+                <i class="fas fa-bell" aria-hidden="true"></i>
+                <span class="sidebar-link-text"><%= __('chrome:nav_notifications') %></span>
+            </a>
+            <% } %>
+        </div>
+    </nav>
+
+    <script nonce="<%= cspNonce %>">
+    (function () {
+        'use strict';
+        // Collapsible nav groups and entry sub-lists. Three rules, in order of authority:
+        //   1. the group / entry holding the page you are on is ALWAYS open — never
+        //      hide the user's own location;
+        //   2. otherwise your remembered choice wins;
+        //   3. otherwise a sensible default — groups open (Talents folded), entry
+        //      sub-lists folded.
+        // State is keyed on the STABLE data-section-key / data-entry-key, never on
+        // the translated label: a key built from the label reset every choice the
+        // moment the person switched language (UX-17).
+        var KEY = 'sidebarNav.v2';
+        var CLOSED_BY_DEFAULT = ['section_talent'];
+
+        var nav = document.querySelector('#appSidebar .sidebar-nav');
+        if (!nav) return;
+        nav.classList.add('js-nav');
+
+        var saved = {};
+        try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { saved = {}; }
+        function save() { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) { /* private mode */ } }
+        var has = function (k) { return Object.prototype.hasOwnProperty.call(saved, k); };
+
+        Array.prototype.forEach.call(nav.querySelectorAll('.sidebar-section'), function (sec, i) {
+            var btn = sec.querySelector('.sidebar-section-label');
+            if (!btn) return;
+            var id = 's:' + (sec.getAttribute('data-section-key') || ('idx' + i));
+            var holdsCurrent = !!sec.querySelector('.sidebar-link.active');
+            if (holdsCurrent) sec.classList.add('has-current');
+
+            var open;
+            if (holdsCurrent) open = true;
+            else if (has(id)) open = !!saved[id];
+            else open = CLOSED_BY_DEFAULT.indexOf(sec.getAttribute('data-section-key') || '') === -1;
+
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            btn.addEventListener('click', function () {
+                var nowOpen = btn.getAttribute('aria-expanded') !== 'true';
+                btn.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+                // Once the user takes control of a group, the has-current override
+                // must not undo their choice.
+                if (!nowOpen) sec.classList.remove('has-current');
+                saved[id] = nowOpen;
+                save();
+            });
+        });
+
+        Array.prototype.forEach.call(nav.querySelectorAll('.sidebar-entry'), function (entry) {
+            var toggle = entry.querySelector('.sidebar-entry-toggle, .sidebar-hub-toggle');
+            if (!toggle) return;
+            var id = 'e:' + (entry.getAttribute('data-entry-key') || '');
+            var holdsCurrent = !!entry.querySelector('.sidebar-sub .sidebar-link.active');
+            var open = holdsCurrent || (has(id) ? !!saved[id] : entry.classList.contains('is-open'));
+            function paint(o) {
+                entry.classList.toggle('is-open', o);
+                toggle.setAttribute('aria-expanded', o ? 'true' : 'false');
+            }
+            paint(open);
+            toggle.addEventListener('click', function () {
+                var nowOpen = !entry.classList.contains('is-open');
+                // On the folded icon rail a sub-list has no room: unfold the rail first.
+                if (nowOpen && document.body.classList.contains('sidebar-collapsed') && typeof window.toggleSidebar === 'function') {
+                    window.toggleSidebar();
+                }
+                paint(nowOpen);
+                saved[id] = nowOpen;
+                save();
+            });
+        });
+    })();
+    </script>
+
+    <%# Sidebar footer: WHO is signed in. It opens the person's profile; the ONE
+        account menu (password, sessions, 2FA, language, sign-out) lives in the
+        top bar, with the same entries on every page (UX-17). %>
+    <div class="sidebar-footer">
+        <a href="/account" class="sidebar-user" title="<%= __('chrome:menu_my_profile') %>" aria-label="<%= __('chrome:sidebar_user_profile_aria', { name: user.username || user.employeeNumber || '' }) %>">
+            <span class="sidebar-user-avatar" aria-hidden="true">
+                <%= (user.username || user.employeeNumber || 'U' ).charAt(0).toUpperCase() %>
+            </span>
+            <span class="sidebar-user-info">
+                <span class="sidebar-user-name">
+                    <%= user.username || user.employeeNumber || 'User' %>
+                </span>
+                <span class="sidebar-user-role">
+                    <%= user.userType==='employee' ? __('chrome:role_employee') : (user.userType==='manager' ? __('chrome:role_manager') :
+                        (user.role==='superadmin' ? __('chrome:role_superadmin') : (user.role==='localadmin' ? __('chrome:role_localadmin') : __('chrome:role_user')
+                        ))) %>
+                </span>
+            </span>
+            <i class="fas fa-angle-right sidebar-user-more" aria-hidden="true"></i>
+        </a>
+    </div>
+</aside>

@@ -1,0 +1,34 @@
+IDevelop Community Edition
+Copyright (C) 2026 The IDevelop Community Edition contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. See the LICENSE file for the full licence text.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+Network use (AGPL section 13): if you run a MODIFIED version of this program as
+a network service, you must offer the corresponding source of that version to
+its users. Running it unmodified, or modified for internal use only, carries no
+such obligation.
+
+--------------------------------------------------------------------------------
+Trademarks
+--------------------------------------------------------------------------------
+"IDevelop" and the IDevelop logo (public/brand/) identify this project. The AGPL
+grants rights in the code, not in the name or logo. Forks that are distributed
+publicly should use their own name and logo; App Settings -> Branding lets any
+installation replace both without code changes.
+
+--------------------------------------------------------------------------------
+Third-party components bundled in this repository
+--------------------------------------------------------------------------------
+- Chart.js (public/vendor/chart.umd.min.js)        MIT License, (c) Chart.js Contributors
+- Font Awesome Free 6 (public/vendor/fontawesome/)  Icons: CC BY 4.0; Fonts: SIL OFL 1.1;
+                                                    Code: MIT License, (c) Fonticons, Inc.
+Their licences are unaffected by this one and must be preserved. Do not edit
+vendored files. npm dependencies are installed from the public registry under
+their own licences (see package.json / package-lock.json).

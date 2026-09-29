@@ -1,0 +1,291 @@
+<div class="page-header">
+    <h1><%= __('employee:dash_welcome') %>, <%= user && user.firstName ? user.firstName : (user && user.username) %></h1>
+    <p><%= __('employee:dash_purpose') %><% if (employee && employee.roleName) { %> — <strong><%= employee.roleName %></strong><% } %></p>
+</div>
+
+<%# 3.23.18 (UX-03) — « À faire ». The rail's first entry lands here, so the page
+    opens on what is waiting for the person, read from the SAME source as the
+    bell (/api/my-actions), before the overview. Without JavaScript, or if the
+    request fails, the block still offers the notification centre. %>
+<section class="card emp-todo" id="empTodo" aria-labelledby="empTodoH">
+    <div class="emp-section-h">
+        <span id="empTodoH"><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('chrome:nav_todo') %></span>
+        <a href="/notifications" class="emp-link"><%= __('chrome:home_todo_all') %> →</a>
+    </div>
+    <p class="emp-sub emp-todo-intro"><%= __('chrome:home_todo_intro') %></p>
+    <div class="emp-todo-list" id="empTodoList" aria-live="polite"><p class="emp-sub"><%= __('chrome:ac_loading') %></p></div>
+</section>
+<script nonce="<%= typeof cspNonce !== 'undefined' ? cspNonce : '' %>">
+(function () {
+    var list = document.getElementById('empTodoList');
+    if (!list || !window.fetch) return;
+    var caughtUp = <%- JSON.stringify(__('chrome:ac_caught_up')) %>;
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    // App-relative paths only; anything else is not rendered as a live link.
+    function safeHref(h) { h = String(h == null ? '' : h); return (h.charAt(0) === '/' && h.charAt(1) !== '/' && h.charAt(1) !== '\\') ? h : '#'; }
+    function safeIcon(i) { return /^fa-[a-z0-9-]+$/.test(String(i || '')) ? i : 'fa-circle-dot'; }
+    fetch('/api/my-actions', { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+            if (!j) { list.innerHTML = ''; return; }
+            if (!j.items || !j.items.length) { list.innerHTML = '<p class="emp-sub">' + esc(caughtUp) + '</p>'; return; }
+            list.innerHTML = '<ul class="emp-todo-ul">' + j.items.map(function (i) {
+                return '<li><a href="' + esc(safeHref(i.href)) + '"><i class="fas ' + esc(safeIcon(i.icon)) + '" aria-hidden="true"></i><span>' + esc(i.label) + '</span><span class="emp-todo-n">' + esc(i.count) + '</span></a></li>';
+            }).join('') + '</ul>';
+        })
+        .catch(function () { list.innerHTML = ''; });
+})();
+</script>
+
+<% if (snapshot) {
+   const nb = snapshot.nineBox;
+   const BAND = { low: 0, medium: 1, high: 2 };
+   // The LOCALIZED 9-box cell name. `nb.boxLabel` is the hardcoded English string
+   // NineBoxService wrote at placement time ('Gold Star', 'Shooting Star'…), so
+   // rendering it printed raw English onto a French employee's own dashboard.
+   // Derive it from potential+performance instead — the same key NineBoxService
+   // uses — and leave the stored column alone so history is unchanged.
+   const NB_CELL_KEY = {
+       'high-low': 'nb_cell_diamond', 'high-medium': 'nb_cell_shooting', 'high-high': 'nb_cell_gold',
+       'medium-low': 'nb_cell_dilemma', 'medium-medium': 'nb_cell_critical', 'medium-high': 'nb_cell_emerging',
+       'low-low': 'nb_cell_concern', 'low-medium': 'nb_cell_essential', 'low-high': 'nb_cell_trusted',
+   };
+   const nbLabel = (p) => {
+       const k = p && NB_CELL_KEY[`${p.potential}-${p.performance}`];
+       return k ? __(`talentx:${k}`) : (p && p.boxLabel) || '';
+   };
+   // P2-02. Le NOM DE CASE était traduit, mais les deux bandes
+   // de la MÊME phrase restaient les jetons bruts de la base : « Diamant brut /
+   // Perf: low · Pot: high » et « Positionné le 15/09/2026. Performance low,
+   // potentiel high. » — sous-ligne byte-identique en FR et en EN. C'est l'écran
+   // que la divulgation existe pour servir : la personne y lit son propre
+   // positionnement. Règle interne déjà posée ailleurs (NineBoxController.js :
+   // « Jamais une valeur d'énumération dans une phrase »). Les 8 couples
+   // distincts en base sont tous dans {low, medium, high} ; une valeur inconnue
+   // se rend telle quelle plutôt que de disparaître.
+   const NB_BAND_KEY = { low: 'nb_band_low', medium: 'nb_band_medium', high: 'nb_band_high' };
+   const nbBand = (v) => (NB_BAND_KEY[v] ? __(`talentx:${NB_BAND_KEY[v]}`) : (v == null ? '' : String(v)));
+   const stateColor = { draft:'#64748b', submitted:'#1b56b8', under_review:'#c46a00', changes_requested:'#c62828', reviewed:'#1b7e3a', arbitration:'#7a3cc4', approved:'#0f8a3c', rejected:'#b00020' };
+%>
+<% if (snapshot.total === 0) { %>
+<!-- No role skills configured yet — welcoming empty state (nothing to assess). -->
+<div class="emp-firstrun">
+  <div class="emp-firstrun-icon" aria-hidden="true"><i class="fas fa-clipboard-list"></i></div>
+  <div class="emp-firstrun-body">
+    <strong><%= __('employee:sa_no_skills_title') %></strong>
+    <p><%= __('employee:sa_no_skills_body') %></p>
+  </div>
+  <a href="/guide" class="btn btn-secondary emp-firstrun-cta"><i class="fas fa-circle-question" aria-hidden="true"></i> <%= __('employee:guide_cta') %></a>
+</div>
+<% } else if (snapshot.total > 0 && !snapshot.stateRows.length) { %>
+<!-- First-run call to action. Two variants: the person has never been measured
+     at all, OR their supervisor has already assessed them (readiness is a real
+     number on the tile right below) and only the SELF-assessment is missing —
+     "your readiness score will appear here once validated" above a displayed
+     90 % contradicted the page. -->
+<div class="emp-firstrun" data-firstrun="<%= snapshot.readiness === null ? 'unmeasured' : 'measured' %>">
+  <div class="emp-firstrun-icon" aria-hidden="true"><i class="fas fa-hand-sparkles"></i></div>
+  <div class="emp-firstrun-body">
+    <% if (snapshot.readiness === null) { %>
+    <strong><%= __('employee:firstrun_title') %></strong>
+    <p><%= __('employee:firstrun_body_pre') %> <%= snapshot.total %> <%= snapshot.total===1 ? __('employee:firstrun_skill_one') : __('employee:firstrun_skill_many') %> <%= __('employee:firstrun_body_post') %></p>
+    <% } else { %>
+    <strong><%= __('employee:firstrun_measured_title') %></strong>
+    <p><%= __('employee:firstrun_measured_pre') %> <strong><%= snapshot.readiness %>%</strong> <%= __('employee:firstrun_measured_mid') %> <%= snapshot.total %> <%= snapshot.total===1 ? __('employee:firstrun_skill_one') : __('employee:firstrun_skill_many') %> <%= __('employee:firstrun_measured_post') %></p>
+    <% } %>
+  </div>
+  <a href="/employee/self-assessment" class="btn btn-primary emp-firstrun-cta"><i class="fas fa-play" aria-hidden="true"></i> <%= __('employee:firstrun_cta') %></a>
+</div>
+<% } %>
+<!-- Snapshot stat cards -->
+<div class="emp-cards">
+  <div class="emp-stat">
+    <div class="emp-n" style="color:#2563eb"><%= snapshot.readiness === null ? '—' : snapshot.readiness + '%' %></div>
+    <div class="emp-l"><%= __('employee:stat_role_readiness') %></div>
+    <div class="emp-sub"><%= snapshot.met %>/<%= snapshot.total %> <%= __('employee:stat_skills_met') %><% if (snapshot.coverage && snapshot.coverage.expectedSkills > 0 && snapshot.coverage.assessedSkills < snapshot.coverage.expectedSkills) { %> · <span title="<%= __('employee:stat_coverage_title') %>"><%= snapshot.coverage.assessedSkills %>/<%= snapshot.coverage.expectedSkills %> <%= __('employee:stat_coverage_assessed') %></span><% } %></div>
+  </div>
+  <div class="emp-stat">
+    <div class="emp-n" style="color:<%= snapshot.gaps ? '#b45309' : '#0f8a3c' %>"><%= snapshot.gaps %></div>
+    <div class="emp-l"><%= __('employee:stat_skill_gaps') %></div>
+    <div class="emp-sub"><%= snapshot.criticalGaps %> <%= __('employee:stat_critical') %><% if (snapshot.unmeasured) { %> · <span title="<%= __('dash:rd_not_measured_title') %>"><%= snapshot.unmeasured %> <%= __('dash:rd_not_measured') %></span><% } %></div>
+  </div>
+  <div class="emp-stat">
+    <div class="emp-n" style="color:#0f8a3c;font-size:1.25rem;line-height:2.1rem"><%= nb ? nbLabel(nb) : __('employee:nb_not_placed') %></div>
+    <div class="emp-l"><%= __('employee:stat_ninebox') %></div>
+    <div class="emp-sub"><%= nb ? (__('employee:nb_perf_abbr') + ': ' + nbBand(nb.performance) + ' · ' + __('employee:nb_pot_abbr') + ': ' + nbBand(nb.potential)) : __('employee:nb_no_placement') %></div>
+  </div>
+  <div class="emp-stat">
+    <div class="emp-l" style="margin-bottom:6px"><%= __('employee:stat_assessment_state') %></div>
+    <div class="emp-states">
+      <% if (!snapshot.stateRows.length) { %><span class="emp-sub"><%= __('employee:not_started') %></span><% } %>
+      <% snapshot.stateRows.forEach(function(s){ %>
+        <span class="emp-badge" style="background:<%= stateColor[s.state] || '#555' %>"><%= stateColor[s.state] ? __('employee:state_' + s.state) : s.state.replace('_',' ') %> <%= s.n %></span>
+      <% }); %>
+    </div>
+  </div>
+</div>
+
+<div class="emp-grid2">
+  <!-- Skill gaps -->
+  <div class="card" style="padding:0">
+    <div class="emp-section-h"><i class="fas fa-bullseye" aria-hidden="true"></i> <%= __('employee:gaps_header') %> <a href="/employee/self-assessment" class="emp-link"><%= __('employee:gaps_update_link') %> →</a></div>
+    <% if (!snapshot.total) { %>
+      <p class="text-muted" style="padding:1rem"><%= __('employee:gaps_none_defined') %></p>
+    <% } else { %>
+      <div class="emp-tablewrap">
+      <table class="table"><thead><tr><th><%= __('employee:th_domain') %></th><th><%= __('employee:th_skill') %></th><th><%= __('employee:th_required') %></th><th><%= __('employee:th_current') %></th><th><%= __('employee:th_gap') %></th></tr></thead><tbody>
+        <% snapshot.gapRows.forEach(function(g){ %>
+          <%# Only a MEASURED critical shortfall earns the red row. %>
+          <tr<%= g.assessed && Number(g.gap) > 0 && g.isCritical ? ' style="background:rgba(200,80,75,.12)"' : '' %>>
+            <td class="text-muted" style="font-size:.82rem"><%= g.domainName || '—' %></td>
+            <td><%= g.skillName %><%= g.isCritical ? ' <span class="emp-crit">' + __('employee:critical_badge') + '</span>' : '' %></td>
+            <td><%= g.required %></td>
+            <td>
+              <%# Never print a 0 that was never observed: an unmeasured skill is
+                  not a level 0. Same treatment as /employee/my-certifications,
+                  which shows "NON DÉTENUE" rather than a zero or a tick. %>
+              <% if (!g.assessed) { %><span class="text-muted">—</span>
+              <% } else { %><%= g.current %><% } %>
+            </td>
+            <td>
+              <% if (!g.assessed) { %>
+                <span class="text-muted" title="<%= __('dash:rd_not_measured_title') %>"><%= __('dash:rd_not_measured') %></span>
+              <% } else if (Number(g.gap) > 0) { %><span class="emp-gap<%= g.isCritical ? ' crit' : '' %>">−<%= g.gap %></span>
+              <% } else { %><span class="emp-met"><span aria-hidden="true">✓</span> <%= __('employee:gap_met') %></span><% } %>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody></table>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- 9-box position -->
+  <div class="card">
+    <div class="emp-section-h" style="padding:0 0 .5rem"><i class="fas fa-puzzle-piece" aria-hidden="true"></i> <%= __('employee:nb_header') %></div>
+    <% if (!nb) { %>
+      <p class="text-muted"><%= __('employee:nb_empty') %></p>
+    <% } else {
+        const myCol = BAND[nb.performance]; const myRow = BAND[nb.potential]; %>
+      <div class="ninebox" aria-label="<%= __('employee:nb_grid_aria') %>">
+        <% for (let pot = 2; pot >= 0; pot--) { %>
+          <% for (let perf = 0; perf <= 2; perf++) { const mine = (perf === myCol && pot === myRow); %>
+            <div class="nb-cell<%= mine ? ' nb-mine' : '' %>">
+              <% if (mine) { %><span class="nb-dot" aria-hidden="true"><span aria-hidden="true">★</span></span><span class="sr-only"><%= __('employee:nb_your_position') %> </span><span class="nb-lbl"><%= nbLabel(nb) %></span><% } %>
+            </div>
+          <% } %>
+        <% } %>
+      </div>
+      <div class="nb-axes"><span>← <%= __('employee:nb_axis_perf') %> →</span><span class="nb-yaxis">↑ <%= __('employee:nb_axis_pot') %></span></div>
+      <p class="emp-sub" style="margin-top:.5rem"><%= __('employee:nb_placed') %> <%= nb.approvedAt ? new Date(nb.approvedAt).toLocaleDateString(typeof lang !== "undefined" ? lang : undefined) : '' %>. <%= __('employee:nb_performance') %> <strong><%= nbBand(nb.performance) %></strong>, <%= __('employee:nb_potential_lc') %> <strong><%= nbBand(nb.potential) %></strong>.</p>
+    <% } %>
+  </div>
+</div>
+<% } else { %>
+<!-- Snapshot unavailable (data not readable this request). The page must still
+     answer "what do I do here?" rather than dropping the employee onto a bare
+     list of links, so keep the purpose and the single primary next action. -->
+<div class="emp-firstrun">
+  <div class="emp-firstrun-icon" aria-hidden="true"><i class="fas fa-hand-sparkles"></i></div>
+  <div class="emp-firstrun-body">
+    <strong><%= __('employee:start_here_title') %></strong>
+    <p><%= __('employee:start_here_body') %></p>
+  </div>
+  <a href="/employee/self-assessment" class="btn btn-primary emp-firstrun-cta"><i class="fas fa-play" aria-hidden="true"></i> <%= __('employee:firstrun_cta') %></a>
+</div>
+<% } %>
+
+<%# Exactly ONE primary action in this block. Five equally-weighted primary
+    buttons gave the employee no reading order and no answer to "which one
+    first?"; the self-assessment is what feeds every other surface here, so it
+    keeps the emphasis and the rest step back to secondary. %>
+<h2 style="margin:1.25rem 0 .5rem;font-size:1.05rem"><%= __('employee:quick_actions') %></h2>
+<div class="row">
+    <div class="col card">
+        <h2><i class="fas fa-pen-to-square" aria-hidden="true"></i> <%= __('employee:qa_sa_title') %></h2>
+        <p><%= __('employee:qa_sa_body') %></p>
+        <a href="/employee/self-assessment" class="btn btn-primary"><%= __('employee:qa_sa_btn') %></a>
+    </div>
+    <div class="col card">
+        <h2><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('employee:qa_status_title') %></h2>
+        <p><%= __('employee:qa_status_body') %></p>
+        <a href="/employee/assessment-status" class="btn btn-secondary"><%= __('employee:qa_status_btn') %></a>
+    </div>
+    <div class="col card">
+        <h2><i class="fas fa-eye" aria-hidden="true"></i> <%= __('employee:qa_reviews_title') %></h2>
+        <p><%= __('employee:qa_reviews_body') %></p>
+        <a href="/employee/supervisor-reviews" class="btn btn-secondary"><%= __('employee:qa_reviews_btn') %></a>
+    </div>
+    <div class="col card">
+        <h2><i class="fas fa-bullseye" aria-hidden="true"></i> <%= __('employee:qa_idp_title') %></h2>
+        <p><%= __('employee:qa_idp_body') %></p>
+        <%# « Mon développement » carries the person's IDPs WITH objectives, actions,
+            signatures and a real empty state; /v2/idp was a bare table header. %>
+        <a href="/employee/my-development" class="btn btn-secondary"><%= __('employee:qa_idp_btn') %></a>
+    </div>
+    <div class="col card">
+        <h2><i class="fas fa-compass" aria-hidden="true"></i> <%= __('employee:qa_coaching_title') %></h2>
+        <p><%= __('employee:qa_coaching_body') %></p>
+        <a href="/employee/my-coaching" class="btn btn-secondary"><%= __('employee:qa_coaching_btn') %></a>
+    </div>
+    <%# « Mon profil » — the entry point to /account. The employee menu lives in the
+        shared chrome, which this lot may not edit, so the way in is here, on the
+        employee's own landing page. When the record carries NO email the card is
+        promoted: that person cannot receive a password-reset link, and this is the
+        only place in the product where they can fix it themselves. %>
+    <% const empHasEmail = !!(employee && employee.email && String(employee.email).trim()); %>
+    <div class="col card">
+        <h2><i class="fas fa-id-badge" aria-hidden="true"></i> <%= __('employee:qa_profile_title') %></h2>
+        <p><%= empHasEmail ? __('employee:qa_profile_body') : __('employee:qa_profile_body_no_email') %></p>
+        <a href="/account" class="btn <%= empHasEmail ? 'btn-secondary' : 'btn-primary' %>"><%= __('employee:qa_profile_btn') %></a>
+    </div>
+</div>
+
+<style>
+.emp-todo{padding:0;margin-bottom:16px}
+.emp-todo-intro{padding:.5rem 1rem 0;margin:0}
+.emp-todo-list{padding:.25rem 1rem .85rem}
+.emp-todo-ul{list-style:none;margin:0;padding:0}
+.emp-todo-ul a{display:flex;align-items:center;gap:10px;padding:.55rem 0;text-decoration:none;color:inherit;border-bottom:1px solid var(--line,#eef2f7)}
+.emp-todo-ul li:last-child a{border-bottom:0}
+.emp-todo-ul a:hover span:first-of-type{text-decoration:underline}
+.emp-todo-ul i{color:var(--brand,#2563eb);width:18px;text-align:center}
+.emp-todo-n{margin-left:auto;background:var(--bg-subtle,#eef2ff);border-radius:999px;font-size:.75rem;font-weight:800;padding:1px 9px}
+.emp-firstrun{display:flex;align-items:center;gap:16px;margin-bottom:16px;padding:16px 20px;
+    background:linear-gradient(90deg,rgba(37,99,235,.10),rgba(14,165,233,.06));
+    border:1px solid rgba(37,99,235,.30);border-radius:14px}
+.emp-firstrun-icon{font-size:1.8rem;color:#2563eb}
+.emp-firstrun-body{flex:1;min-width:0}
+.emp-firstrun-body strong{font-size:1.05rem}
+.emp-firstrun-body p{margin:.25rem 0 0;color:var(--text-secondary,#64748b);font-size:.9rem}
+.emp-firstrun-cta{white-space:nowrap;flex-shrink:0}
+@media(max-width:640px){.emp-firstrun{flex-direction:column;align-items:flex-start}.emp-firstrun-cta{width:100%;text-align:center}}
+.emp-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
+.emp-stat{background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:14px 16px}
+.emp-n{font-size:1.9rem;font-weight:800;line-height:2.1rem}
+.emp-l{color:var(--text-secondary,#64748b);font-size:.74rem;text-transform:uppercase;letter-spacing:.03em;margin-top:4px}
+.emp-sub{color:var(--text-tertiary,#94a3b8);font-size:.8rem;margin-top:4px}
+.emp-states{display:flex;flex-wrap:wrap;gap:5px}
+.emp-badge{padding:2px 8px;border-radius:999px;color:#fff;font-size:.72rem;text-transform:capitalize}
+.emp-grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
+.emp-section-h{display:flex;justify-content:space-between;align-items:center;font-weight:700;padding:.85rem 1rem;border-bottom:1px solid var(--line,#eef2f7)}
+.emp-link{font-size:.8rem;color:#2563eb;text-decoration:none;font-weight:600}
+.emp-crit{background:#fee2e2;color:#b91c1c;border-radius:6px;padding:1px 6px;font-size:.7rem;font-weight:700;margin-left:4px}
+.emp-gap{background:#b45309;color:#fff;border-radius:999px;padding:1px 9px;font-size:.78rem;font-weight:700}
+.emp-gap.crit{background:#b91c1c}
+.emp-met{color:#0f8a3c;font-weight:700;font-size:.82rem}
+.ninebox{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,52px);gap:4px}
+.nb-cell{border:1px solid var(--border,#e2e8f0);border-radius:8px;background:var(--bg-subtle,#f8fafc);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.nb-mine{background:#dcfce7;border:2px solid #0f8a3c}
+.nb-dot{color:#0f8a3c;font-size:1.1rem;line-height:1}
+.nb-lbl{font-size:.66rem;color:#166534;font-weight:700;padding:0 2px}
+.nb-axes{display:flex;justify-content:space-between;color:var(--text-tertiary,#94a3b8);font-size:.72rem;margin-top:6px}
+/* The gap table has five columns and cannot compress to a phone rail; scroll it
+   inside its own card instead of letting the whole page scroll sideways. */
+.emp-tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.emp-grid2>.card{min-width:0}
+@media(max-width:900px){.emp-cards{grid-template-columns:repeat(2,1fr)}.emp-grid2{grid-template-columns:1fr}}
+/* Two stat tiles side by side still overflow a 375px viewport once the numbers
+   and their uppercase labels are in; below that, stack them. */
+@media(max-width:560px){.emp-cards{grid-template-columns:1fr}}
+</style>

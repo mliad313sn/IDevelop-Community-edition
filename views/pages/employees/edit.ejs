@@ -1,0 +1,408 @@
+<%
+    // a refused update comes back with its safe body in `draft`;
+    // every field shows the DRAFT value when there is one, the stored value otherwise.
+    const d = (typeof draft !== 'undefined' && draft) || {};
+    const v = function (k, cur) { return d[k] != null ? String(d[k]) : (cur == null ? '' : String(cur)); };
+    const curManager = employee.managerType && employee.managerId != null ? employee.managerType + ':' + employee.managerId : '';
+    // a MANAGER edits contact data + reporting line only. Site /
+    // department / service / role / matricule are org master data: shown read-only
+    // and re-posted unchanged (the validator requires them; the server refuses any
+    // change from a manager).
+    const mgrOnly = user && user.userType !== 'admin';
+%>
+<div class="page-header">
+    <h1><%= __('admin:emp_edit_title') %></h1>
+</div>
+<% if (d.__from) { %>
+<p class="text-muted" style="margin:-.5rem 0 1rem;"><i class="fas fa-rotate-left" aria-hidden="true"></i> <%= __('validation:draft_kept') %></p>
+<% } %>
+
+<form action="/employees/<%= employee.id %>" method="POST" class="form">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <% if (mgrOnly) { %>
+    <div class="card" style="padding:.8rem 1rem;margin-bottom:1rem;">
+        <p class="text-muted" style="margin:0 0 .4rem;font-size:.85rem;"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:emp_edit_manager_locked_hint') %></p>
+        <dl style="display:grid;grid-template-columns:max-content 1fr;gap:.25rem .9rem;margin:0;font-size:.9rem;">
+            <dt><%= __('admin:emp_edit_number') %></dt><dd><%= employee.employeeNumber %></dd>
+            <dt><%= __('admin:emp_edit_site') %></dt><dd><%= employee.siteName %></dd>
+            <dt><%= __('admin:emp_edit_dept') %></dt><dd><%= employee.departmentName %></dd>
+            <dt><%= __('admin:emp_edit_service') %></dt><dd><%= employee.serviceName %></dd>
+            <dt><%= __('admin:emp_edit_role') %></dt><dd><%= employee.roleName %></dd>
+        </dl>
+        <input type="hidden" name="employeeNumber" value="<%= employee.employeeNumber %>">
+        <input type="hidden" name="siteId" value="<%= employee.siteId %>">
+        <input type="hidden" name="departmentId" value="<%= employee.departmentId %>">
+        <input type="hidden" name="serviceId" value="<%= employee.serviceId %>">
+        <input type="hidden" name="roleId" value="<%= employee.roleId %>">
+    </div>
+    <% } else { %>
+    <div class="form-group">
+        <label for="employeeNumber"><%= __('admin:emp_edit_number') %></label>
+        <input type="text" id="employeeNumber" name="employeeNumber" value="<%= v('employeeNumber', employee.employeeNumber) %>" required>
+    </div>
+    <% } %>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label for="firstName"><%= __('admin:emp_edit_first') %></label>
+            <input type="text" id="firstName" name="firstName" value="<%= v('firstName', employee.firstName) %>" required>
+        </div>
+        <div class="form-group">
+            <label for="lastName"><%= __('admin:emp_edit_last') %></label>
+            <input type="text" id="lastName" name="lastName" value="<%= v('lastName', employee.lastName) %>" required>
+        </div>
+    </div>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label for="email"><%= __('admin:emp_edit_email') %></label>
+            <input type="email" id="email" name="email" value="<%= v('email', employee.email) %>" data-email-check data-exclude-employee="<%= employee.id %>" aria-describedby="emailSharedNote">
+            <%# A shared address is allowed (a person may hold several accounts): this note only advises. %>
+            <small id="emailSharedNote" class="email-shared-note text-muted" hidden></small>
+            <script src="/js/email-shared-check.js" nonce="<%= cspNonce %>" defer></script>
+        </div>
+        <div class="form-group">
+            <label for="phone"><%= __('admin:emp_edit_phone') %></label>
+            <input type="tel" id="phone" name="phone" value="<%= v('phone', employee.phone) %>">
+        </div>
+        <% if (typeof featureLocalContent !== 'undefined' && featureLocalContent) { %>
+        <div class="form-group">
+            <label for="nationality"><%= __('admin:lc_nationality') %></label>
+            <input type="text" id="nationality" name="nationality" maxlength="80" value="<%= v('nationality', employee.nationality) %>">
+        </div>
+        <% } %>
+    </div>
+
+    <% if (!mgrOnly) { %>
+    <div class="form-group">
+        <label for="siteId"><%= __('admin:emp_edit_site') %></label>
+        <select id="siteId" name="siteId" required onchange="loadDepartments(this.value)">
+            <option value=""><%= __('admin:emp_edit_select_site') %></option>
+            <% sites.forEach(function(site) { %>
+            <option value="<%= site.id %>" <%= v('siteId', employee.siteId) === String(site.id) ? 'selected' : '' %>><%= site.name %></option>
+            <% }); %>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label for="departmentId"><%= __('admin:emp_edit_dept') %></label>
+        <select id="departmentId" name="departmentId" required onchange="loadServices(this.value)">
+            <option value=""><%= __('admin:emp_edit_select_dept') %></option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="serviceId"><%= __('admin:emp_edit_service') %></label>
+        <select id="serviceId" name="serviceId" required>
+            <option value=""><%= __('admin:emp_edit_select_service') %></option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="roleId"><%= __('admin:emp_edit_role') %></label>
+        <select id="roleId" name="roleId" required>
+            <option value=""><%= __('admin:emp_edit_select_role') %></option>
+            <% roles.forEach(function(role) { %>
+            <option value="<%= role.id %>" <%= v('roleId', employee.roleId) === String(role.id) ? 'selected' : '' %>><%= role.name %></option>
+            <% }); %>
+        </select>
+    </div>
+    <%# A placement change becomes a MOBILITY event on the JML ledger; the reason travels with it. %>
+    <div class="form-group">
+        <label for="moveReason"><%= __('admin:emp_edit_move_reason') %></label>
+        <input type="text" id="moveReason" name="moveReason" maxlength="500" value="<%= v('moveReason', '') %>" placeholder="<%= __('admin:emp_edit_move_reason_ph') %>">
+        <small class="form-text"><%= __('admin:emp_edit_move_reason_hint') %></small>
+    </div>
+    <% } %>
+
+    <div class="form-group">
+        <label for="supervisorId"><%= __('admin:emp_edit_supervisor') %></label>
+        <select id="supervisorId" name="supervisorId">
+            <option value=""><%= __('admin:emp_edit_no_supervisor') %></option>
+            <% if (typeof supervisors !== 'undefined' && supervisors) { %>
+                <% supervisors.forEach(function(supervisor) { %>
+                <option value="<%= supervisor.id %>" <%= v('supervisorId', employee.supervisorId) === String(supervisor.id) ? 'selected' : '' %>>
+                    <%= supervisor.firstName %> <%= supervisor.lastName %> (<%= supervisor.employeeNumber %>)
+                </option>
+                <% }); %>
+            <% } %>
+        </select>
+        <small class="form-text"><%= __('admin:emp_edit_supervisor_hint') %></small>
+    </div>
+
+    <div class="form-group">
+        <label for="manager"><%= __('admin:emp_edit_manager') %></label>
+        <select id="manager" name="manager">
+            <option value=""><%= __('admin:emp_edit_no_manager') %></option>
+            <optgroup label="<%= __('admin:emp_edit_grp_employees') %>">
+                <% if (typeof managers !== 'undefined' && managers) { %>
+                    <% managers.forEach(function(m) { %>
+                    <option value="employee:<%= m.id %>" <%= v('manager', curManager) === 'employee:' + m.id ? 'selected' : '' %>>
+                        <%= m.firstName %> <%= m.lastName %> (<%= m.employeeNumber %>)
+                    </option>
+                    <% }); %>
+                <% } %>
+            </optgroup>
+            <optgroup label="<%= __('admin:emp_edit_grp_admins') %>">
+                <% if (typeof adminManagers !== 'undefined' && adminManagers) { %>
+                    <% adminManagers.forEach(function(a) { %>
+                    <option value="admin:<%= a.id %>" <%= v('manager', curManager) === 'admin:' + a.id ? 'selected' : '' %>>
+                        <%= a.username %><%= a.role ? ' — ' + a.role : '' %> (admin)
+                    </option>
+                    <% }); %>
+                <% } %>
+            </optgroup>
+        </select>
+        <small class="form-text"><%= __('admin:emp_edit_manager_hint') %></small>
+    </div>
+
+    <% if (user && user.userType === 'admin') { %>
+    <!-- Account/identity status is admin business — hidden from manager-users. -->
+    <div class="form-group">
+        <label><%= __('admin:emp_edit_account_status') %></label>
+        <div class="account-status">
+            <% if (employee.username) { %>
+                <p class="status-active"><i class="fas fa-circle-check" aria-hidden="true"></i> <%= __('admin:emp_edit_account_active') %></p>
+                <p><strong><%= __('admin:emp_edit_username') %>:</strong> <%= employee.username %></p>
+                <p><strong><%= __('admin:emp_edit_last_login') %>:</strong> <%= employee.lastLoginAt ? new Date(employee.lastLoginAt).toLocaleString(typeof lang !== 'undefined' ? lang : undefined) : __('admin:emp_edit_never') %></p>
+            <% } else { %>
+                <p class="status-inactive"><i class="fas fa-circle-xmark" aria-hidden="true"></i> <%= __('admin:emp_edit_account_inactive') %></p>
+            <% } %>
+        </div>
+    </div>
+    <% } %>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary"><%= __('admin:emp_edit_update') %></button>
+        <a href="/employees/<%= employee.id %>" class="btn btn-secondary"><%= __('admin:cancel') %></a>
+    </div>
+</form>
+
+<% if (user && user.role === 'superadmin') { %>
+<!-- SuperAdmin: set/choose login credentials, even for an existing account -->
+<div class="card" id="cred-panel" style="margin-top:1.25rem;padding:1.1rem 1.25rem;max-width:560px">
+    <h2 style="margin:0 0 .25rem;font-size:1.05rem"><i class="fas fa-key" aria-hidden="true"></i> <%= __('admin:emp_cred_title') %></h2>
+    <p class="text-muted" style="font-size:.85rem;margin:0 0 .9rem"><%= __('admin:emp_cred_intro') %></p>
+    <div class="form-group">
+        <label for="cred-username"><%= __('admin:emp_cred_username') %></label>
+        <input type="text" id="cred-username" class="form-control" autocomplete="off" value="<%= employee.username || '' %>" placeholder="<%= __('admin:emp_cred_username_ph') %>">
+    </div>
+    <div class="form-group">
+        <label for="cred-password"><%= __('admin:emp_cred_password') %> <small class="text-muted"><%= __('admin:emp_cred_password_hint') %></small></label>
+        <div style="display:flex;gap:6px">
+            <input type="password" id="cred-password" class="form-control" autocomplete="new-password" style="flex:1" placeholder="<%= employee.username ? __('admin:emp_cred_ph_keep') : __('admin:emp_cred_ph_new') %>">
+            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('cred-password', this)" aria-pressed="false" title="<%= __('admin:emp_cred_show_hide') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
+        </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:.88rem;margin-bottom:.9rem">
+        <input type="checkbox" id="cred-force"> <%= __('admin:emp_cred_force') %>
+    </label>
+    <button type="button" class="btn btn-primary" id="cred-save"><%= __('admin:emp_cred_save') %></button>
+    <span id="cred-msg" style="margin-left:10px;font-size:.88rem"></span>
+</div>
+<% } %>
+
+<% if (user && (user.role === 'superadmin' || (typeof can === 'function' && can('reset_employee_password')))) { %>
+<!-- Access & authentication (3.22.30/31 features): global deactivation, per-user
+     auth policy (SuperAdmin), and one-click onboarding-credentials email. -->
+<div class="card" id="access-panel" style="margin-top:1.25rem;padding:1.1rem 1.25rem;max-width:560px">
+    <h2 style="margin:0 0 .25rem;font-size:1.05rem"><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('admin:ap_title') %></h2>
+    <p class="text-muted" style="font-size:.85rem;margin:0 0 .5rem"><a href="/admin/accounts?q=<%= encodeURIComponent(employee.username || employee.employeeNumber || '') %>"><i class="fas fa-users-gear" aria-hidden="true"></i> <%= __('admin:ap_open_console') %></a></p>
+
+    <% if (user.role === 'superadmin') { %>
+    <div class="form-group" style="margin-top:.75rem;">
+        <label for="ap-policy"><%= __('admin:ap_policy_label') %></label>
+        <div style="display:flex;gap:6px;">
+            <select id="ap-policy" class="form-control" style="flex:1;">
+                <option value="any" <%= (employee.authPolicy || 'any') === 'any' ? 'selected' : '' %>><%= __('admin:ap_policy_any') %></option>
+                <option value="sso_only" <%= employee.authPolicy === 'sso_only' ? 'selected' : '' %>><%= __('admin:ap_policy_sso') %></option>
+                <option value="local_only" <%= employee.authPolicy === 'local_only' ? 'selected' : '' %>><%= __('admin:ap_policy_local') %></option>
+                <option value="mfa_required" <%= employee.authPolicy === 'mfa_required' ? 'selected' : '' %>><%= __('admin:ap_policy_mfa') %></option>
+            </select>
+            <button type="button" class="btn btn-secondary" id="ap-policy-save">OK</button>
+        </div>
+    </div>
+    <% } %>
+
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:.5rem;">
+        <button type="button" class="btn btn-secondary" id="ap-send-creds"
+            title="<%= __('admin:ap_send_creds_title') %>">
+            <i class="fas fa-envelope" aria-hidden="true"></i> <%= __('admin:ap_send_creds') %>
+        </button>
+        <button type="button" class="btn btn-secondary" id="ap-unlock"
+            title="<%= __('admin:ap_unlock_title') %>">
+            <i class="fas fa-lock-open" aria-hidden="true"></i> <%= __('admin:ap_unlock') %>
+        </button>
+        <%# Deactivate stays SuperAdmin (the leaver path is /v2/lifecycle); REACTIVATE is
+            open to any admin holding edit_employees inside scope. %>
+        <% if (user.role === 'superadmin' && employee.isActive) { %>
+            <button type="button" class="btn btn-danger" id="ap-deactivate" title="<%= __('admin:ap_deactivate_title') %>">
+                <i class="fas fa-user-slash" aria-hidden="true"></i> <%= __('admin:ap_deactivate') %>
+            </button>
+        <% } else if (!employee.isActive && !employee.cancelledAt && !employee.erasedAt && (user.role === 'superadmin' || (typeof can === 'function' && can('edit_employees')))) { %>
+            <button type="button" class="btn btn-primary" id="ap-reactivate">
+                <i class="fas fa-user-check" aria-hidden="true"></i> <%= __('admin:ap_reactivate') %>
+            </button>
+        <% } %>
+    </div>
+    <span id="ap-msg" style="display:block;margin-top:.6rem;font-size:.88rem"></span>
+</div>
+<% } %>
+
+<script nonce="<%= cspNonce %>">
+const EMP_T = <%- include('../../partials/json-script', { v: {
+  selectDept: __('admin:emp_edit_select_dept'), selectService: __('admin:emp_edit_select_service'),
+  enterCreds: __('admin:emp_js_enter_creds'), saving: __('admin:emp_js_saving'), saved: __('admin:emp_js_saved'),
+  updated: __('admin:emp_js_updated'), network: __('admin:emp_js_network'), http: 'HTTP',
+  deactivateTitle: __('admin:emp_deactivate_title'), deactivateConfirm: __('admin:emp_deactivate_confirm'),
+  policySaved: __('admin:ap_js_policy_saved'), credsEmailed: __('admin:ap_js_creds_emailed'), credsSheet: __('admin:ap_js_creds_sheet'),
+  unlocked: __('admin:ap_js_unlocked'), deactivated: __('admin:ap_js_deactivated'), reactivated: __('admin:ap_js_reactivated')
+} }) %>;
+// Pre-populate the cascading Site → Department → Service selects with the
+// employee's RECORDED values. The old version selected the value on a 100ms
+// timer that raced the fetch — when the API was slower, the selection silently
+// failed and the user had to re-pick department & service on every edit.
+// Loading now returns promises and the preselect happens AFTER the options exist.
+function loadDepartments(siteId, selectValue) {
+    const deptSel = document.getElementById('departmentId');
+    const svcSel = document.getElementById('serviceId');
+    if (!siteId) {
+        deptSel.innerHTML = '<option value="">'+EMP_T.selectDept+'</option>';
+        svcSel.innerHTML = '<option value="">'+EMP_T.selectService+'</option>';
+        return Promise.resolve();
+    }
+    return fetch(`/api/departments?siteId=${siteId}`)
+        .then(res => res.json())
+        .then(departments => {
+            deptSel.innerHTML = '<option value="">'+EMP_T.selectDept+'</option>';
+            departments.forEach(dept => {
+                // new Option sets the label as TEXT: department names are free
+                // text (import, SCIM) and must never be parsed as markup.
+                deptSel.add(new Option(dept.name, dept.id));
+            });
+            svcSel.innerHTML = '<option value="">'+EMP_T.selectService+'</option>';
+            if (selectValue != null) deptSel.value = String(selectValue);
+        });
+}
+
+function loadServices(departmentId, selectValue) {
+    const svcSel = document.getElementById('serviceId');
+    if (!departmentId) {
+        svcSel.innerHTML = '<option value="">'+EMP_T.selectService+'</option>';
+        return Promise.resolve();
+    }
+    return fetch(`/api/services?departmentId=${departmentId}`)
+        .then(res => res.json())
+        .then(services => {
+            svcSel.innerHTML = '<option value="">'+EMP_T.selectService+'</option>';
+            services.forEach(service => {
+                svcSel.add(new Option(service.name, service.id));
+            });
+            if (selectValue != null) svcSel.value = String(selectValue);
+        });
+}
+
+window.addEventListener('DOMContentLoaded', async function() {
+    if (!document.getElementById('siteId')) return; // manager form: placement is read-only
+    const siteId = document.getElementById('siteId').value;
+    // A kept draft wins over the stored placement (same rule as the inputs above).
+    const deptId = <%- include('../../partials/json-script', { v: v('departmentId', employee.departmentId) || null }) %>;
+    const svcId = <%- include('../../partials/json-script', { v: v('serviceId', employee.serviceId) || null }) %>;
+    if (!siteId) return;
+    await loadDepartments(siteId, deptId);
+    if (deptId) await loadServices(deptId, svcId);
+});
+
+(function () {
+    var btn = document.getElementById('cred-save');
+    if (!btn) return; // panel only rendered for super admins
+    btn.addEventListener('click', async function () {
+        var msg = document.getElementById('cred-msg');
+        var username = document.getElementById('cred-username').value.trim();
+        var password = document.getElementById('cred-password').value;
+        var force = document.getElementById('cred-force').checked;
+        if (!username && !password) { msg.style.color = '#b45309'; msg.textContent = EMP_T.enterCreds; return; }
+        btn.disabled = true; msg.style.color = '#64748b'; msg.textContent = EMP_T.saving;
+        try {
+            var r = await fetch('/employees/<%= employee.id %>/credentials', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username, password: password, forcePasswordChange: force, _csrf: '<%= csrfToken %>' })
+            });
+            var j = await r.json().catch(function () { return {}; });
+            if (r.ok && j.success) {
+                msg.style.color = '#15803d'; msg.textContent = '✓ ' + (j.message || EMP_T.saved);
+                document.getElementById('cred-password').value = '';
+                if (window.toast) window.toast(EMP_T.updated, 'success');
+                setTimeout(function () { location.reload(); }, 900);
+            } else {
+                msg.style.color = '#b91c1c'; msg.textContent = (j.error || (EMP_T.http + ' ' + r.status));
+            }
+        } catch (e) {
+            msg.style.color = '#b91c1c'; msg.textContent = EMP_T.network;
+        } finally { btn.disabled = false; }
+    });
+})();
+
+// Access & authentication panel (deactivate / reactivate / auth policy / email credentials).
+(function () {
+    var panel = document.getElementById('access-panel');
+    if (!panel) return;
+    var msg = document.getElementById('ap-msg');
+    function post(url, body) {
+        return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body || {})
+        }).then(async function (r) {
+            var j = await r.json().catch(function () { return {}; });
+            if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status));
+            return j;
+        });
+    }
+    function status(text, ok) {
+        msg.style.color = ok ? '#15803d' : '#b91c1c';
+        msg.textContent = text;
+    }
+    function wire(id, fn) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('click', function () {
+            el.disabled = true; msg.style.color = '#64748b'; msg.textContent = '…';
+            fn(el).catch(function (e) { status(e.message, false); }).finally(function () { el.disabled = false; });
+        });
+    }
+    var empId = <%- include('../../partials/json-script', { v: String(employee.id) }) %>;
+    // Every sentence below comes from the locale — no bilingual concatenation.
+    wire('ap-policy-save', async function () {
+        var policy = document.getElementById('ap-policy').value;
+        await post('/employees/' + empId + '/auth-policy', { policy: policy });
+        status('✓ ' + EMP_T.policySaved, true);
+    });
+    wire('ap-send-creds', async function () {
+        var j = await post('/employees/' + empId + '/send-credentials');
+        status('✓ ' + (j.message || (j.emailed ? EMP_T.credsEmailed : EMP_T.credsSheet).replace('{{username}}', j.username || '')), true);
+        if (j.credentials && j.credentials.length && window.promptDialog) {
+            // The one-time credential: shown ONCE, never stored.
+            await window.promptDialog(EMP_T.credsSheet.replace('{{username}}', j.username || ''), j.credentials[0].username + ' / ' + j.credentials[0].tempPassword, {});
+        }
+    });
+    wire('ap-unlock', async function () {
+        var j = await post('/employees/' + empId + '/unlock');
+        status('✓ ' + (j.message || EMP_T.unlocked), true);
+    });
+    wire('ap-deactivate', async function () {
+        // Styled dialog (ui-feedback confirmDialog), localized — never the native confirm.
+        if (!(await window.confirmDialog(EMP_T.deactivateConfirm, { title: EMP_T.deactivateTitle, danger: true }))) return;
+        await post('/employees/' + empId + '/deactivate');
+        status('✓ ' + EMP_T.deactivated, true);
+        setTimeout(function () { location.reload(); }, 900);
+    });
+    wire('ap-reactivate', async function () {
+        var j = await post('/employees/' + empId + '/reactivate');
+        status('✓ ' + (j.message || EMP_T.reactivated), true);
+        setTimeout(function () { location.reload(); }, 900);
+    });
+})();
+</script>
+

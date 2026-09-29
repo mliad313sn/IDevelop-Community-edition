@@ -1,0 +1,129 @@
+<%
+  // Exposure by site — readiness, continuity and certification on ONE row per
+  // site. Rendered entirely server-side (no inline script, so no CSP nonce is
+  // needed and the page works with JavaScript disabled).
+  //
+  // readiness is NULL when nobody at the site has an assessed requirement. It
+  // renders as a dash with an explanation, never as "0 %".
+  var R      = rows || [];
+  var T      = totals || {};
+  var SCOPE  = scope || {};
+  var KP     = typeof showKeyPerson !== 'undefined' ? showKeyPerson : false;
+  function pctCell(v) { return (v === null || v === undefined) ? null : v; }
+%>
+
+<div class="page-header">
+  <h1><i class="fas fa-map-location-dot" aria-hidden="true"></i> <%= __('exec:se_title') %></h1>
+  <p class="text-muted"><%= __('exec:se_subtitle') %></p>
+</div>
+
+<p class="scope-line">
+  <i class="fas fa-user-lock" aria-hidden="true"></i>
+  <% if (SCOPE.unrestricted) { %><%= __('exec:scope_org') %>
+  <% } else { %><%= __('exec:scope_limited').replace('{n}', SCOPE.employeeCount == null ? '—' : SCOPE.employeeCount) %><% } %>
+  <span class="text-muted"> — <%= __('exec:se_intro') %></span>
+</p>
+
+<p class="page-actions">
+  <a class="btn btn-primary" href="/exec/board-pack"><i class="fas fa-file-lines" aria-hidden="true"></i> <%= __('exec:bp_open') %></a>
+  <% if (KP) { %><a class="btn btn-secondary" href="/exec/key-person"><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('exec:kp_title') %></a><% } %>
+</p>
+
+<% if (!R.length) { %>
+  <div class="card empty-card">
+    <i class="fas fa-map empty-icon" aria-hidden="true"></i>
+    <h3><%= __('exec:se_empty_title') %></h3>
+    <p class="text-muted"><%= __('exec:se_empty_body') %></p>
+  </div>
+<% } else { %>
+  <div class="card table-card">
+    <div class="table-scroll">
+      <table class="table" id="se-table">
+        <thead>
+          <tr>
+            <th><%= __('exec:se_site') %></th>
+            <th class="num"><%= __('exec:se_headcount') %></th>
+            <th class="num"><%= __('exec:se_measured') %></th>
+            <th class="num"><%= __('exec:se_readiness') %></th>
+            <th class="num"><%= __('exec:se_coverage') %></th>
+            <% if (KP) { %>
+              <th class="num sep"><%= __('exec:se_sole_holders') %></th>
+              <th class="num"><%= __('exec:se_no_qualified') %></th>
+              <th class="num"><%= __('exec:se_never_measured') %></th>
+            <% } %>
+            <th class="num sep"><%= __('exec:se_certs_expiring') %></th>
+            <th class="num"><%= __('exec:se_certs_expired') %></th>
+            <th class="num"><%= __('exec:se_lapse_impact') %></th>
+            <th><%= __('exec:se_drill') %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% R.forEach(function (r) { %>
+            <tr>
+              <td><strong><%= r.siteName %></strong></td>
+              <td class="num"><%= r.headcount %></td>
+              <td class="num"><%= r.measured %></td>
+              <td class="num">
+                <% if (r.readiness === null) { %>
+                  <span class="text-muted" title="<%= __('exec:se_readiness_null_help') %>">—</span>
+                <% } else { %>
+                  <span class="<%= r.readiness >= 80 ? 'good' : (r.readiness >= 50 ? 'warn' : 'bad') %>"><%= r.readiness %> %</span>
+                <% } %>
+              </td>
+              <td class="num"><% if (r.coverage === null) { %><span class="text-muted">—</span><% } else { %><%= r.coverage %> %<% } %></td>
+              <% if (KP) { %>
+                <td class="num sep"><span class="<%= r.soleHolder > 0 ? 'bad' : '' %>"><%= r.soleHolder %></span></td>
+                <td class="num"><span class="<%= r.noQualified > 0 ? 'warn' : '' %>"><%= r.noQualified %></span></td>
+                <%# An unknown, deliberately styled muted so it never reads as a gap. %>
+                <td class="num"><span class="text-muted"><%= r.neverMeasured %></span></td>
+              <% } %>
+              <td class="num sep"><span class="<%= r.certsExpiring90d > 0 ? 'warn' : '' %>"><%= r.certsExpiring90d %></span></td>
+              <td class="num"><span class="<%= r.certsExpired > 0 ? 'bad' : '' %>"><%= r.certsExpired %></span></td>
+              <td class="num"><span class="<%= r.lapseImpact > 0 ? 'bad' : '' %>"><%= r.lapseImpact %></span></td>
+              <td><a class="btn btn-sm btn-secondary" href="/dashboard?siteName=<%= encodeURIComponent(r.siteName) %>"><%= __('exec:se_drill') %></a></td>
+            </tr>
+          <% }); %>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td><strong><%= __('exec:se_total') %></strong></td>
+            <td class="num"><strong><%= T.headcount || 0 %></strong></td>
+            <td class="num"><strong><%= T.measured || 0 %></strong></td>
+            <%# No org readiness in the footer: averaging site averages would be a
+                different number from the dashboard's. Coverage IS re-derived from
+                the summed numerator/denominator, so it matches exactly. %>
+            <td class="num"><span class="text-muted">—</span></td>
+            <td class="num"><strong><% if (T.coverage === null) { %>—<% } else { %><%= T.coverage %> %<% } %></strong></td>
+            <% if (KP) { %>
+              <td class="num sep"><strong><%= T.soleHolder || 0 %></strong></td>
+              <td class="num"><strong><%= T.noQualified || 0 %></strong></td>
+              <td class="num"><span class="text-muted"><%= T.neverMeasured || 0 %></span></td>
+            <% } %>
+            <td class="num sep"><strong><%= T.certsExpiring90d || 0 %></strong></td>
+            <td class="num"><strong><%= T.certsExpired || 0 %></strong></td>
+            <td class="num"><strong><%= T.lapseImpact || 0 %></strong></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+  <p class="text-muted footnote"><%= __('exec:bp_footnote') %></p>
+<% } %>
+
+<style>
+.scope-line { font-size:.85rem; margin:.2rem 0 .8rem; }
+.page-actions { display:flex; gap:.5rem; flex-wrap:wrap; margin:0 0 1rem; }
+.table-card { padding:0; }
+.table-scroll { overflow-x:auto; }
+.table .num { text-align:right; }
+.table .sep { border-left:1px solid var(--border-light,rgba(255,255,255,.12)); }
+.table .good { color:var(--success,#2DD4A0); font-weight:700; }
+.table .warn { color:var(--warn,#b45309); font-weight:700; }
+.table .bad  { color:var(--danger,#F06060); font-weight:700; }
+.table tfoot td { border-top:2px solid var(--border-light,rgba(255,255,255,.18)); }
+.footnote { font-size:.75rem; margin-top:.6rem; }
+.empty-card { padding:2.5rem 1.5rem; text-align:center; }
+.empty-icon { font-size:2.2rem; color:var(--text-muted,#8a93a6); margin-bottom:.6rem; display:block; }
+.empty-card p { max-width:52ch; margin:0 auto; }
+</style>

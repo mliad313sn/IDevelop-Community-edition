@@ -1,0 +1,152 @@
+<%# « Mon profil » — self-service account profile.
+    Joins the /account family (sessions, notifications, change-password): same
+    layout, same chrome, same card vocabulary as account/notifications.ejs.
+    EDITABLE: email + phone, on one's OWN record, and nothing else. Every
+    organisational fact below is rendered as text, never as an input — the
+    server-side write path reads only `email` and `phone` from the body. %>
+<div class="page-header">
+    <h1><i class="fas fa-id-badge" aria-hidden="true"></i> <%= __('chrome:profile_title') %></h1>
+</div>
+
+<div class="help-text" style="margin-bottom:1.25rem;">
+    <%= __('chrome:profile_help') %>
+</div>
+
+<% if (isAdmin) { %>
+<%# an administrator edits their OWN e-mail here — the address
+    the self-service password reset relies on. Only `email` is posted; role,
+    scope, capabilities and state remain with the admin module (/admins). %>
+<form method="POST" action="/account" class="ap-card" novalidate>
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <h2 class="ap-h2"><%= __('chrome:profile_contact_section') %></h2>
+    <div class="ap-row">
+        <div class="ap-label"><%= __('chrome:profile_username_label') %></div>
+        <div class="ap-value"><%= (typeof adminUsername !== 'undefined' && adminUsername) || '—' %></div>
+    </div>
+    <div class="ap-field">
+        <label for="profileEmail"><%= __('chrome:profile_email_label') %></label>
+        <input type="email" id="profileEmail" name="email" class="form-control"
+               value="<%= adminEmail || '' %>"
+               autocomplete="email" maxlength="190"
+               placeholder="<%= __('chrome:profile_email_ph') %>"
+               data-email-check data-exclude-admin="<%= user.id %>"
+               aria-describedby="profileEmailHint emailSharedNote">
+        <small id="profileEmailHint" class="ap-hint"><%= __('chrome:profile_email_hint') %></small>
+        <%# A shared address is allowed (a person may hold several accounts): this note only advises. %>
+        <small id="emailSharedNote" class="email-shared-note ap-hint" hidden></small>
+        <script src="/js/email-shared-check.js" nonce="<%= cspNonce %>" defer></script>
+    </div>
+    <div class="ap-field">
+        <%# 3.23.17: the address is the password-reset channel, so changing it needs the current password (only checked when the e-mail changes). %>
+        <label for="profileCurrentPasswordAdmin"><%= __('auth:profile_current_password') %></label>
+        <input type="password" id="profileCurrentPasswordAdmin" name="currentPassword" class="form-control" autocomplete="current-password" maxlength="200">
+    </div>
+    <p class="ap-note"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('chrome:adm_profile_scope_note') %></p>
+    <div class="ap-actions">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i> <%= __('chrome:profile_save') %></button>
+        <a href="/change-password" class="btn btn-secondary"><%= __('chrome:menu_change_password') %></a>
+        <a href="/mon-acces" class="btn btn-secondary"><i class="fas fa-id-card" aria-hidden="true"></i> <%= __('chrome:adm_profile_my_access') %></a>
+    </div>
+</form>
+<% } else { %>
+
+<form method="POST" action="/account" class="ap-card" novalidate>
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <h2 class="ap-h2"><%= __('chrome:profile_contact_section') %></h2>
+
+    <div class="ap-field">
+        <label for="profileEmail"><%= __('chrome:profile_email_label') %></label>
+        <input type="email" id="profileEmail" name="email" class="form-control"
+               value="<%= (employee && employee.email) || '' %>"
+               autocomplete="email" maxlength="190"
+               placeholder="<%= __('chrome:profile_email_ph') %>"
+               data-email-check
+               aria-describedby="profileEmailHint emailSharedNote">
+        <small id="profileEmailHint" class="ap-hint"><%= __('chrome:profile_email_hint') %></small>
+        <%# A shared address is allowed (a person may hold several accounts): this note only advises. %>
+        <small id="emailSharedNote" class="email-shared-note ap-hint" hidden></small>
+        <script src="/js/email-shared-check.js" nonce="<%= cspNonce %>" defer></script>
+    </div>
+    <div class="ap-field">
+        <%# 3.23.17: the address is the password-reset channel, so changing it needs the current password (only checked when the e-mail changes). %>
+        <label for="profileCurrentPassword"><%= __('auth:profile_current_password') %></label>
+        <input type="password" id="profileCurrentPassword" name="currentPassword" class="form-control" autocomplete="current-password" maxlength="200">
+    </div>
+
+    <div class="ap-field">
+        <label for="profilePhone"><%= __('chrome:profile_phone_label') %></label>
+        <input type="tel" id="profilePhone" name="phone" class="form-control"
+               value="<%= (employee && employee.phone) || '' %>"
+               autocomplete="tel" maxlength="40"
+               placeholder="<%= __('chrome:profile_phone_ph') %>">
+    </div>
+
+    <div class="ap-actions">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i> <%= __('chrome:profile_save') %></button>
+        <a href="/change-password" class="btn btn-secondary"><%= __('chrome:menu_change_password') %></a>
+    </div>
+</form>
+
+<div class="ap-card">
+    <h2 class="ap-h2"><%= __('chrome:profile_org_section') %></h2>
+    <p class="ap-note"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('chrome:profile_org_readonly') %></p>
+
+    <dl class="ap-grid">
+        <div class="ap-row">
+            <dt><%= __('chrome:profile_name_label') %></dt>
+            <dd><%= employee ? ((employee.firstName || '') + ' ' + (employee.lastName || '')).trim() || '—' : '—' %></dd>
+        </div>
+        <div class="ap-row">
+            <dt><%= __('chrome:profile_number_label') %></dt>
+            <dd><%= (employee && employee.employeeNumber) || '—' %></dd>
+        </div>
+        <div class="ap-row">
+            <dt><%= __('chrome:profile_username_label') %></dt>
+            <dd><%= (employee && employee.username) || '—' %></dd>
+        </div>
+        <div class="ap-row">
+            <dt><%= __('chrome:profile_role_label') %></dt>
+            <dd><%= (employee && employee.roleName) || '—' %></dd>
+        </div>
+        <div class="ap-row">
+            <dt><%= __('chrome:profile_site_label') %></dt>
+            <dd><%= (employee && employee.siteName) || '—' %></dd>
+        </div>
+        <div class="ap-row">
+            <dt><%= __('chrome:profile_department_label') %></dt>
+            <dd><%= (employee && employee.departmentName) || '—' %></dd>
+        </div>
+        <div class="ap-row">
+            <dt><%= __('chrome:profile_service_label') %></dt>
+            <dd><%= (employee && employee.serviceName) || '—' %></dd>
+        </div>
+    </dl>
+</div>
+<% } %>
+
+<div class="ap-links">
+    <a href="/account/notifications" class="btn btn-secondary btn-sm"><i class="fas fa-bell" aria-hidden="true"></i> <%= __('chrome:menu_notif_prefs') %></a>
+    <a href="/account/sessions" class="btn btn-secondary btn-sm"><i class="fas fa-desktop" aria-hidden="true"></i> <%= __('chrome:menu_active_sessions') %></a>
+</div>
+
+<style>
+.ap-card{max-width:680px;margin:8px auto 16px;background:var(--bg-elevated,#fff);border:1px solid var(--border-color,#e2e8f0);
+    border-radius:14px;padding:18px 20px}
+.ap-h2{margin:0 0 12px;font-size:1rem;letter-spacing:.01em}
+.ap-field{display:flex;flex-direction:column;gap:5px;padding:10px 0}
+.ap-field label{font-weight:600;font-size:.9rem}
+/* WCAG 2.2 SC 2.5.8 — a text field is also a pointer target. */
+.ap-field .form-control{min-height:40px}
+.ap-hint{font-size:.82rem;color:var(--text-muted,#64748b)}
+.ap-note{margin:12px 0 0;padding:12px 14px;border-radius:10px;background:var(--bg-subtle,#f8fafc);
+    border:1px solid var(--border-color,#e2e8f0);font-size:.85rem;line-height:1.55;color:var(--text-muted,#64748b)}
+.ap-actions{display:flex;flex-wrap:wrap;gap:10px;padding:16px 0 4px}
+.ap-grid{margin:14px 0 0}
+.ap-row{display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between;align-items:baseline;
+    padding:10px 0;border-bottom:1px solid var(--border-color,#f1f5f9)}
+.ap-row:last-child{border-bottom:none}
+.ap-row dt,.ap-label{color:var(--text-muted,#64748b);font-size:.88rem}
+.ap-row dd,.ap-value{margin:0;font-weight:600}
+.ap-links{max-width:680px;margin:0 auto;display:flex;flex-wrap:wrap;gap:10px}
+</style>

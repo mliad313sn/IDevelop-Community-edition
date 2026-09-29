@@ -1,0 +1,374 @@
+<%
+/*
+ * SSO migration — map EXISTING employees onto their SSO identity before the
+ * cut-over, so each first SSO sign-in lands on the right account: no duplicate,
+ * no onboarding request. See services/SsoRemapService.js for the rules.
+ *
+ * The page never writes an identity itself: Apply records MAPPINGS, each claimed
+ * by the person's first signed sign-in. Every figure below is measured.
+ */
+var R = readiness;
+var fmtD = function (d) { return d ? (typeof fmtDateTime === 'function' ? fmtDateTime(d) : new Date(d).toISOString().slice(0, 16).replace('T', ' ')) : '—'; };
+%>
+<div class="page-header">
+  <div>
+    <h1><i class="fas fa-right-left" aria-hidden="true"></i> <%= __('admin:ssom_title') %></h1>
+    <p class="text-muted"><%= __('admin:ssom_subtitle') %></p>
+  </div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    <a href="/app-settings/sso" class="btn btn-secondary btn-sm"><i class="fas fa-key" aria-hidden="true"></i> <%= __('admin:ssom_sso_settings') %></a>
+    <a href="/onboarding" class="btn btn-secondary btn-sm"><i class="fas fa-user-plus" aria-hidden="true"></i> <%= __('admin:ssom_onboarding') %></a>
+  </div>
+</div>
+
+<%# Readiness: each tile is a measurement over ACTIVE sign-in accounts. %>
+<div class="ssom-kpis" role="list">
+  <div class="card ssom-kpi" role="listitem"><div class="ssom-kpi-n"><%= R.active %></div><div class="ssom-kpi-l"><%= __('admin:ssom_kpi_active') %></div></div>
+  <div class="card ssom-kpi <%= R.signedIn ? 'ssom-good' : '' %>" role="listitem"><div class="ssom-kpi-n"><%= R.signedIn %></div><div class="ssom-kpi-l"><%= __('admin:ssom_kpi_signed_in') %></div>
+    <% if (R.measuredSince) { %><div class="ssom-kpi-s"><%= __('admin:ssom_kpi_since', { date: fmtD(R.measuredSince) }) %></div><% } %></div>
+  <div class="card ssom-kpi" role="listitem"><div class="ssom-kpi-n"><%= R.linkedNotUsed %></div><div class="ssom-kpi-l"><%= __('admin:ssom_kpi_linked_not_used') %></div></div>
+  <div class="card ssom-kpi <%= R.pending ? 'ssom-info' : '' %>" role="listitem">
+    <div class="ssom-kpi-n"><%= R.pending %></div><div class="ssom-kpi-l"><%= __('admin:ssom_kpi_pending') %></div>
+    <% if (R.pending) { %><a class="ssom-kpi-a" href="/admin/sso-migration/pending.csv"><i class="fas fa-download" aria-hidden="true"></i> CSV</a><% } %>
+  </div>
+  <div class="card ssom-kpi <%= R.unmapped ? 'ssom-warn' : '' %>" role="listitem">
+    <div class="ssom-kpi-n"><%= R.unmapped %></div><div class="ssom-kpi-l"><%= __('admin:ssom_kpi_unmapped') %></div>
+    <% if (R.unmapped) { %><a class="ssom-kpi-a" href="/admin/sso-migration/unmapped.csv"><i class="fas fa-download" aria-hidden="true"></i> CSV</a><% } %>
+  </div>
+  <div class="card ssom-kpi" role="listitem"><div class="ssom-kpi-n"><%= R.localOnly %></div><div class="ssom-kpi-l"><%= __('admin:ssom_kpi_local_only') %></div></div>
+  <div class="card ssom-kpi <%= R.onboardingSso ? 'ssom-warn' : '' %>" role="listitem"><div class="ssom-kpi-n"><%= R.onboardingSso %></div><div class="ssom-kpi-l"><%= __('admin:ssom_kpi_onboarding') %></div></div>
+</div>
+
+<details class="card ssom-guide" <%= (R.linked + R.pending) === 0 ? 'open' : '' %>>
+  <summary><strong><%= __('admin:ssom_guide_title') %></strong></summary>
+  <ol class="ssom-steps">
+    <li><%- __('admin:ssom_step_1') %></li>
+    <li><%- __('admin:ssom_step_2') %></li>
+    <li><%- __('admin:ssom_step_3') %></li>
+    <li><%- __('admin:ssom_step_4') %></li>
+    <li><%- __('admin:ssom_step_5') %></li>
+  </ol>
+  <p class="help-text"><i class="fas fa-building-shield" aria-hidden="true"></i>
+    <% if (expectedTenant) { %><%= __('admin:ssom_tenant_set', { tenant: expectedTenant }) %><% } else { %><%= __('admin:ssom_tenant_unset') %><% } %></p>
+</details>
+
+<section class="card ssom-import" aria-labelledby="ssom-import-h">
+  <h2 id="ssom-import-h"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('admin:ssom_import_title') %></h2>
+  <p class="help-text"><%= __('admin:ssom_import_help', { max: Number(maxRows).toLocaleString(typeof lang !== 'undefined' && lang === 'en' ? 'en-US' : 'fr-FR') }) %>
+    <a href="/admin/sso-migration/template.csv"><%= __('admin:ssom_template') %></a></p>
+  <div class="ssom-form">
+    <label><%= __('admin:ssom_provider') %>
+      <select id="ssom-provider" class="form-control">
+        <% providers.forEach(function (p) { %>
+        <option value="<%= p.key %>" <%= p.enabled ? '' : 'data-off="1"' %>><%= p.key %><%= p.enabled ? '' : ' — ' + __('admin:ssom_provider_off') %></option>
+        <% }); %>
+      </select>
+    </label>
+    <label><%= __('admin:ssom_file') %>
+      <input type="file" id="ssom-file" accept=".csv,text/csv" class="form-control">
+    </label>
+    <button type="button" id="ssom-run" class="btn btn-primary" disabled><i class="fas fa-magnifying-glass" aria-hidden="true"></i> <%= __('admin:ssom_run_preview') %></button>
+  </div>
+  <p id="ssom-provider-warn" class="help-text ssom-warn-text" hidden><%= __('admin:ssom_provider_off_help') %></p>
+</section>
+
+<section id="ssom-result" class="card" hidden>
+  <h2><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('admin:ssom_preview_title') %> <span id="ssom-batch" class="text-muted" role="status"></span></h2>
+  <div id="ssom-summary" class="ssom-summary" aria-live="polite"></div>
+  <div class="search-bar">
+    <select id="ssom-filter" class="search-input" aria-label="<%= __('admin:ssom_filter') %>">
+      <option value=""><%= __('admin:ssom_filter_all') %></option>
+      <option value="__todo"><%= __('admin:ssom_filter_todo') %></option>
+      <% outcomes.forEach(function (o) { %><option value="<%= o %>"><%= __('admin:ssom_o_' + o) %></option><% }); %>
+    </select>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="table" id="ssom-table">
+      <thead><tr>
+        <th scope="col"><%= __('admin:ssom_th_line') %></th>
+        <th scope="col"><%= __('admin:ssom_th_directory') %></th>
+        <th scope="col"><%= __('admin:ssom_th_outcome') %></th>
+        <th scope="col"><%= __('admin:ssom_th_employee') %></th>
+        <th scope="col"><%= __('admin:ssom_th_resolve') %></th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="ssom-actions">
+    <button type="button" id="ssom-rerun" class="btn btn-secondary" hidden><i class="fas fa-rotate" aria-hidden="true"></i> <%= __('admin:ssom_rerun') %></button>
+  </div>
+  <div class="ssom-apply card" id="ssom-apply">
+    <h3><%= __('admin:ssom_apply_title') %></h3>
+    <p class="help-text" id="ssom-apply-help"></p>
+    <label for="ssom-confirm"><%= __('admin:ssom_apply_confirm_label') %></label>
+    <div class="ssom-form">
+      <input type="text" id="ssom-confirm" class="form-control" inputmode="numeric" autocomplete="off" style="max-width:10rem">
+      <button type="button" id="ssom-apply-btn" class="btn btn-primary" disabled><i class="fas fa-link" aria-hidden="true"></i> <%= __('admin:ssom_apply_btn') %></button>
+    </div>
+  </div>
+</section>
+
+<section class="card" aria-labelledby="ssom-hist-h">
+  <h2 id="ssom-hist-h"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> <%= __('admin:ssom_history') %></h2>
+  <% if (!batches.length) { %>
+    <p class="text-muted"><%= __('admin:ssom_history_none') %></p>
+  <% } else { %>
+  <div style="overflow-x:auto">
+  <table class="table">
+    <thead><tr>
+      <th scope="col"><%= __('admin:ssom_csv_batch') %></th><th scope="col"><%= __('admin:ssom_th_when') %></th><th scope="col"><%= __('admin:ssom_th_by') %></th><th scope="col"><%= __('admin:ssom_provider') %></th>
+      <th scope="col"><%= __('admin:ssom_th_file') %></th><th scope="col"><%= __('admin:ssom_th_rows') %></th><th scope="col"><%= __('admin:ssom_th_mapped') %></th>
+      <th scope="col"><%= __('admin:ssom_th_open') %></th><th scope="col"><%= __('admin:ssom_th_claimed') %></th><th scope="col"><%= __('admin:ssom_th_status') %></th><th scope="col"><span class="sr-only"><%= __('admin:ssom_th_actions') %></span></th>
+    </tr></thead>
+    <tbody>
+    <% batches.forEach(function (b) { var s = b.summary || {}; %>
+      <tr>
+        <td><%= b.id %></td>
+        <td><%= fmtD(b.appliedAt || b.createdAt) %></td>
+        <td><%= b.createdByName || '—' %></td>
+        <td><%= b.provider %></td>
+        <td><%= b.sourceName || '—' %></td>
+        <td><%= b.rowCount %></td>
+        <td><%= s.toMap != null ? s.toMap : '—' %></td>
+        <td><%= b.openCount %></td>
+        <td><%= b.boundCount %></td>
+        <td>
+          <% if (b.status === 'reverted') { %>
+            <span class="badge badge-warning"><%= __('admin:ssom_status_reverted') %></span>
+            <div class="text-muted" style="font-size:.75rem"><%= fmtD(b.revertedAt) %><% if (b.revertReason) { %> — <%= b.revertReason %><% } %></div>
+          <% } else { %><span class="badge badge-success"><%= __('admin:ssom_status_applied') %></span><% } %>
+        </td>
+        <td><% if (b.status !== 'reverted' && b.openCount > 0) { %>
+          <button type="button" class="btn btn-secondary btn-sm ssom-undo" data-id="<%= b.id %>" data-open="<%= b.openCount %>"><i class="fas fa-rotate-left" aria-hidden="true"></i> <%= __('admin:ssom_undo') %></button>
+        <% } %></td>
+      </tr>
+    <% }); %>
+    </tbody>
+  </table>
+  </div>
+  <% } %>
+</section>
+
+<style nonce="<%= cspNonce %>">
+  .ssom-kpis{display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem}
+  .ssom-kpi{min-width:9.5rem;flex:1 1 9.5rem;padding:.8rem 1rem;position:relative}
+  .ssom-kpi-n{font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums}
+  .ssom-kpi-l{font-size:.8rem;color:var(--text-muted)}
+  .ssom-kpi-a{position:absolute;top:.5rem;right:.6rem;font-size:.75rem}
+  .ssom-good{border-left:3px solid var(--success,#2e9d62)}
+  .ssom-info{border-left:3px solid var(--info,#3b82c4)}
+  .ssom-warn{border-left:3px solid var(--warning,#b45309)}
+  .ssom-warn-text{color:var(--warn,#b45309)}
+  .ssom-kpi-s{font-size:.72rem;color:var(--text-muted);margin-top:.15rem}
+  .ssom-guide,.ssom-import,#ssom-result{margin-bottom:1rem;padding:1rem 1.2rem}
+  .ssom-steps{margin:.6rem 0 .6rem 1.2rem;line-height:1.6}
+  .ssom-form{display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end}
+  .ssom-form label{display:flex;flex-direction:column;gap:.25rem;font-size:.85rem}
+  .ssom-summary{display:flex;gap:.4rem;flex-wrap:wrap;margin:.5rem 0 1rem}
+  .ssom-reason{font-size:.78rem;color:var(--text-muted);margin-top:.2rem;max-width:26rem}
+  .ssom-dir{font-size:.8rem;line-height:1.35}
+  .ssom-dir code{font-size:.75rem}
+  .ssom-apply{margin-top:1rem;padding:1rem}
+  .ssom-actions{margin-top:.75rem}
+  .ssom-pick{min-width:14rem}
+</style>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  'use strict';
+  var CSRF = <%- include('../../partials/json-script', { v: typeof csrfToken !== 'undefined' ? csrfToken : '' }) %>;
+  var OUT = <%- include('../../partials/json-script', { v: outcomes.reduce(function (m, o) { m[o] = { label: __('admin:ssom_o_' + o), why: __('admin:ssom_r_' + o) }; return m; }, {}) }) %>;
+  var KEY = <%- include('../../partials/json-script', { v: { employee_number: __('admin:ssom_key_employee_number'), email: __('admin:ssom_key_email'), upn: __('admin:ssom_key_upn'), manual: __('admin:ssom_key_manual') } }) %>;
+  var T = <%- include('../../partials/json-script', { v: {
+    pick: __('admin:ssom_pick'), search: __('admin:ssom_search_ph'), none: __('admin:ssom_search_none'),
+    applyHelp: __('admin:ssom_apply_help', { n: '{{n}}', total: '{{total}}' }), applyNothing: __('admin:ssom_apply_nothing'),
+    applied: __('admin:ssom_applied', { n: '{{n}}', id: '{{id}}' }), confirmApply: __('admin:ssom_confirm_apply', { n: '{{n}}' }),
+    undoPrompt: __('admin:ssom_undo_prompt', { id: '{{id}}', n: '{{n}}' }), undone: __('admin:ssom_undone', { n: '{{n}}', kept: '{{kept}}' }),
+    err: __('admin:ssom_err_generic'), stale: __('admin:ssom_apply_stale'), keep: __('admin:ssom_keep'), undo: __('admin:ssom_undo'),
+    reasonHint: __('admin:ssom_err_reason'), found: __('admin:ssom_search_n', { n: '{{n}}' }), countFmt: __('admin:ssom_count_fmt', { label: '{{label}}', n: '{{n}}' }), batch: __('admin:ssom_batch', { id: '{{id}}' }), rows: __('admin:ssom_th_rows')
+  } }) %>;
+  var BAD = { will_map: 'badge-success', already_linked: 'badge-info', already_mapped: 'badge-info' };
+  var TODO = { no_match: 1, ambiguous: 1, conflicting_keys: 1, duplicate_target: 1 };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var say = function (m, type) { (window.toast || function (x) { window.alert(x); })(m, type); };
+  var fill = function (tpl, p) { return String(tpl).replace(/\{\{(\w+)\}\}/g, function (_, k) { return p[k] != null ? p[k] : ''; }); };
+  var state = { text: '', name: '', provider: '', preview: null, resolutions: {}, cands: {} };
+
+  function post(url, body) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-csrf-token': CSRF }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return { ok: false }; }); });
+  }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  // Any change of file or provider makes the shown dry run obsolete: forget it,
+  // and the per-line choices too (line 12 of one file is not line 12 of another).
+  function resetPreview(keepText) {
+    state.preview = null; state.resolutions = {}; state.cands = {};
+    if (!keepText) { state.text = ''; state.name = ''; }
+    $('ssom-result').hidden = true;
+  }
+  $('ssom-provider').addEventListener('change', function () {
+    $('ssom-provider-warn').hidden = !this.selectedOptions[0].hasAttribute('data-off');
+    if (state.preview) resetPreview(true);
+  });
+  $('ssom-provider').dispatchEvent(new Event('change'));
+  $('ssom-file').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    resetPreview(false);
+    $('ssom-run').disabled = true; // enabled once the file is actually read
+    if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function () { state.text = String(rd.result || ''); state.name = f.name; $('ssom-run').disabled = false; };
+    rd.onerror = function () { say(T.err, 'error'); };
+    rd.readAsText(f, 'utf-8');
+  });
+
+  function runPreview() {
+    if (!state.text) return;
+    state.provider = $('ssom-provider').value;
+    $('ssom-run').disabled = true; $('ssom-rerun').disabled = true;
+    post('/admin/sso-migration/preview', { text: state.text, sourceName: state.name, provider: state.provider, resolutions: state.resolutions })
+      .then(function (j) {
+        $('ssom-run').disabled = false; $('ssom-rerun').disabled = false;
+        if (!j || !j.ok) { say((j && j.error) || T.err, 'error'); return; }
+        state.preview = j; render();
+      }).catch(function () { $('ssom-run').disabled = false; $('ssom-rerun').disabled = false; say(T.err, 'error'); });
+  }
+  // The choices survive a re-run; only a new file or provider clears them.
+  $('ssom-run').addEventListener('click', runPreview);
+  $('ssom-rerun').addEventListener('click', runPreview);
+
+  function dirCell(inp) {
+    var d = el('div', 'ssom-dir');
+    [['objectId', inp.objectId], ['UPN', inp.upn], ['mail', inp.mail], ['employeeId', inp.employeeId]].forEach(function (kv) {
+      if (!kv[1]) return; var line = el('div'); line.appendChild(el('span', 'text-muted', kv[0] + ' ')); line.appendChild(el('code', null, kv[1])); d.appendChild(line);
+    });
+    if (inp.displayName) d.insertBefore(el('strong', null, inp.displayName), d.firstChild);
+    return d;
+  }
+  function empLabel(e) { return e.name + (e.number ? ' (' + e.number + ')' : '') + (e.site ? ' · ' + e.site : ''); }
+
+  // A choice not yet run through the dry run must never be applied silently.
+  function markStale() {
+    $('ssom-rerun').hidden = false;
+    $('ssom-confirm').value = ''; $('ssom-confirm').disabled = true; $('ssom-apply-btn').disabled = true;
+    $('ssom-apply-help').textContent = T.stale;
+  }
+
+  function resolver(r) {
+    var box = el('div');
+    // Candidates are remembered per line: after a manual pick the server returns
+    // none, and the operator must still see the alternatives.
+    if (r.candidates && r.candidates.length) state.cands[r.rowNo] = r.candidates;
+    var cands = state.cands[r.rowNo] || [];
+    if (!TODO[r.outcome] && r.matchKey !== 'manual') return box;
+    // Search first, then the list it fills (keyboard order).
+    var q = el('input', 'form-control ssom-pick'); q.type = 'search'; q.placeholder = T.search; q.setAttribute('aria-label', T.search);
+    var sel = el('select', 'form-control ssom-pick');
+    sel.setAttribute('aria-label', T.pick);
+    var live = el('span', 'sr-only'); live.setAttribute('role', 'status');
+    var keep = function (o) { o.setAttribute('data-keep', '1'); return o; };
+    sel.appendChild(keep(new Option(T.pick, '')));
+    cands.forEach(function (c) { sel.appendChild(keep(new Option(empLabel(c), c.id))); });
+    var cur = state.resolutions[r.rowNo] ? String(state.resolutions[r.rowNo]) : '';
+    if (cur && ![].some.call(sel.options, function (o) { return o.value === cur; }) && r.employee) sel.appendChild(keep(new Option(empLabel(r.employee), cur)));
+    sel.value = cur;
+    sel.addEventListener('change', function () {
+      if (this.value) state.resolutions[r.rowNo] = Number(this.value); else delete state.resolutions[r.rowNo];
+      markStale();
+    });
+    var t = null;
+    q.addEventListener('input', function () {
+      clearTimeout(t); var v = q.value.trim(); if (v.length < 2) return;
+      t = setTimeout(function () {
+        fetch('/admin/sso-migration/employees?q=' + encodeURIComponent(v), { headers: { Accept: 'application/json' } })
+          .then(function (x) { return x.json(); }).then(function (j) {
+            var chosen = sel.value;
+            [].slice.call(sel.options).forEach(function (o) { if (!o.hasAttribute('data-keep') && o.value !== chosen) o.remove(); });
+            (j.rows || []).forEach(function (e) {
+              if ([].some.call(sel.options, function (o) { return o.value === String(e.id); })) return;
+              sel.appendChild(new Option(empLabel(e) + (e.email ? ' — ' + e.email : ''), e.id));
+            });
+            sel.value = chosen;
+            live.textContent = (j.rows || []).length ? fill(T.found, { n: j.rows.length }) : T.none;
+          }).catch(function () { say(T.err, 'error'); });
+      }, 250);
+    });
+    box.appendChild(q); box.appendChild(sel); box.appendChild(live);
+    return box;
+  }
+
+  function render() {
+    var p = state.preview; var s = p.summary;
+    $('ssom-result').hidden = false;
+    $('ssom-batch').textContent = fill(T.batch, { id: p.batchId });
+    var sum = $('ssom-summary'); sum.innerHTML = '';
+    sum.appendChild(el('span', 'badge', fill(T.countFmt, { label: T.rows, n: s.total })));
+    Object.keys(s.counts).forEach(function (o) {
+      if (!s.counts[o]) return;
+      sum.appendChild(el('span', 'badge ' + (BAD[o] || (TODO[o] ? 'badge-warning' : 'badge-secondary')), fill(T.countFmt, { label: OUT[o].label, n: s.counts[o] })));
+    });
+    var tb = $('ssom-table').querySelector('tbody'); tb.innerHTML = '';
+    p.rows.forEach(function (r) {
+      var tr = el('tr'); tr.setAttribute('data-outcome', r.outcome);
+      tr.appendChild(el('td', null, String(r.rowNo)));
+      var d = el('td'); d.appendChild(dirCell(r.input)); tr.appendChild(d);
+      var o = el('td'); o.appendChild(el('span', 'badge ' + (BAD[r.outcome] || (TODO[r.outcome] ? 'badge-warning' : 'badge-secondary')), OUT[r.outcome].label));
+      o.appendChild(el('div', 'ssom-reason', OUT[r.outcome].why)); tr.appendChild(o);
+      var e = el('td');
+      if (r.employee) { e.appendChild(el('div', null, empLabel(r.employee))); if (r.matchKey) e.appendChild(el('div', 'ssom-reason', KEY[r.matchKey] || r.matchKey)); }
+      else e.textContent = '—';
+      tr.appendChild(e);
+      var rs = el('td'); rs.appendChild(resolver(r)); tr.appendChild(rs);
+      tb.appendChild(tr);
+    });
+    applyFilter();
+    $('ssom-apply-help').textContent = s.toMap ? fill(T.applyHelp, { n: s.toMap, total: s.total }) : T.applyNothing;
+    $('ssom-confirm').value = ''; $('ssom-apply-btn').disabled = true;
+    $('ssom-confirm').disabled = !s.toMap;
+    $('ssom-rerun').hidden = !Object.keys(state.resolutions).length;
+  }
+
+  function applyFilter() {
+    var v = $('ssom-filter').value;
+    [].forEach.call($('ssom-table').querySelectorAll('tbody tr'), function (tr) {
+      var o = tr.getAttribute('data-outcome');
+      tr.hidden = !!v && (v === '__todo' ? !TODO[o] : o !== v);
+    });
+  }
+  $('ssom-filter').addEventListener('change', applyFilter);
+
+  $('ssom-confirm').addEventListener('input', function () {
+    var p = state.preview; $('ssom-apply-btn').disabled = !(p && p.summary.toMap && this.value.trim() === String(p.summary.toMap));
+  });
+  $('ssom-apply-btn').addEventListener('click', function () {
+    var p = state.preview; if (!p) return;
+    var n = Number($('ssom-confirm').value.trim());
+    window.confirmDialog(fill(T.confirmApply, { n: n }), { danger: true }).then(function (ok) {
+      if (!ok) return;
+      $('ssom-apply-btn').disabled = true;
+      post('/admin/sso-migration/apply', { previewId: p.batchId, expectedCount: n }).then(function (j) {
+        if (!j || !j.ok) { $('ssom-apply-btn').disabled = false; say((j && j.error) || T.err, 'error'); return; }
+        say(fill(T.applied, { n: j.summary.toMap, id: j.batchId }), 'success');
+        setTimeout(function () { window.location.reload(); }, 900);
+      }).catch(function () { $('ssom-apply-btn').disabled = false; say(T.err, 'error'); });
+    });
+  });
+
+  document.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest ? e.target.closest('.ssom-undo') : null;
+    if (!b) return;
+    var id = b.getAttribute('data-id');
+    window.promptDialog(fill(T.undoPrompt, { id: id, n: b.getAttribute('data-open') }), '', { required: true, okText: T.undo, cancelText: T.keep, placeholder: T.reasonHint }).then(function (reason) {
+      if (!reason) return;
+      b.disabled = true;
+      post('/admin/sso-migration/batches/' + id + '/undo', { reason: reason }).then(function (j) {
+        if (!j || !j.ok) { b.disabled = false; say((j && j.error) || T.err, 'error'); return; }
+        say(fill(T.undone, { n: j.cancelled, kept: j.alreadyClaimed }), 'success');
+        setTimeout(function () { window.location.reload(); }, 900);
+      }).catch(function () { b.disabled = false; say(T.err, 'error'); });
+    });
+  });
+})();
+</script>

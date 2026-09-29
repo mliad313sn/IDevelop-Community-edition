@@ -1,0 +1,426 @@
+<%#
+    LOT BILAN B3 — ONE archived department brief.
+
+    THE RULE OF THIS PAGE: it renders the FROZEN payload, exactly as it was
+    computed and sent. Nothing here re-reads a view, re-derives a ratio or
+    re-colours a cell. Each figure was already turned into one of four display
+    states by DeptBriefService.cell() — « — » (never measured), a measured 0,
+    « non publiable » (below the anonymity floor of 4) or the value — and this
+    template prints `cell.text[lang]` verbatim. It must never turn a « — » into a
+    0, and it must never apply a threshold of its own to a null.
+
+    ONE LANGUAGE PER SESSION: the chrome is locale keys (reports:db_*), and the
+    payload's own bilingual pairs are resolved by `lang`. That is not the same
+    regime as the e-mail, which is FR-primary + EN grey because the schema has no
+    per-user language column — the two coexist and never transpose.
+
+    NO NAME IS STORED in the payload. `names.byId` was re-resolved LIVE by the
+    controller from TODAY's governance (direct reports only); anybody who is no
+    longer a direct report is counted in `names.withheld` and said out loud.
+%>
+<%
+    // Bilingual pair → the session's language. Falls back rather than printing
+    // an empty cell, because a blank is indistinguishable from "nothing to say".
+    const L = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? (o[lang] || o.fr || o.en || '') : (o == null ? '' : String(o)));
+    // A "cell" is the frozen four-state object. Anything else on a line is a raw
+    // attribute (an age, a denominator) and is rendered by name below.
+    const isCell = (v) => !!(v && typeof v === 'object' && typeof v.state === 'string' && v.text && typeof v.text === 'object');
+    // A-11 — the colon separator is TYPOGRAPHY, and French is the only language
+    // that puts a space before it. It was hard-coded outside i18n, so the
+    // English page read « Source : », « Rule : », « Oldest : ». The separator is
+    // now the SHARED `colon` helper (res.locals.colon, src/utils/colon.js): a
+    // constant local to this one template is how the eleven OTHER templates went
+    // on printing « Opens : » and « Last activity : » in English.
+    const mLabel = (k) => __('reports:db_m_' + k, { defaultValue: k });
+    // A-09 — the certification buckets are named with the bounds the SECTION
+    // really used; « Sous 30 jours » on a weekly brief (horizon 14 d) named a
+    // window that was never measured. Frozen payloads with no `buckets` keep
+    // their original label.
+    const cellLabel = (k, s) => {
+        const b = s && s.buckets;
+        if (b && k === 'expiringSoon') return __('reports:db_c1_within', { n: b.soonMax });
+        if (b && k === 'expiringLater' && b.laterMax) return __('reports:db_c1_beyond', { n: b.soonMax });
+        return mLabel(k);
+    };
+    // A-01 / M-09 — a suppressed Δ must say WHY it was suppressed. The payload
+    // carries `reason` ('partial_period' or 'import_batch'); the page printed
+    // « lot d'import détecté » for both, inventing an import on 45 briefs out of
+    // 45 that had never had one.
+    const dLabel = (d) => {
+        if (!d || !d.state) return '';
+        if (d.state === 'stable') return __('reports:db_delta_stable');
+        if (d.state === 'first_measure') return __('reports:db_delta_first');
+        if (d.state === 'measure_lost') return __('reports:db_delta_lost');
+        if (d.state === 'scope_changed') return __('reports:db_delta_scope_changed');
+        if (d.state === 'suppressed') {
+            if (d.reason === 'partial_period') return __('reports:db_delta_suppressed_partial');
+            // `db_delta_suppressed` IS the import sentence — it was simply being
+            // printed for every reason, import or not.
+            if (d.reason === 'import_batch') return __('reports:db_delta_suppressed');
+            return __('reports:db_delta_suppressed_plain');
+        }
+        if (d.state === 'unavailable') return __('reports:db_delta_unavailable');
+        const sign = Number(d.value) > 0 ? '+' : '';
+        const unit = d.unit === 'pts' ? ' pts' : '';
+        return sign + d.value + unit + (d.pct === null || d.pct === undefined ? '' : ' (' + (Number(d.pct) > 0 ? '+' : '') + d.pct + ' %)');
+    };
+    const D_KEYS = ['d1Coverage', 'd2Readiness', 'd3Completion', 'd3Met', 'd4Critical', 'd5MeasuredPeople'];
+    const inclusiveEnd = (d) => new Date(new Date(d).getTime() - 86400000);
+    // M-11 — a frozen payload is never recomputed when it is opened, so the deep
+    // links it froze before the route names were corrected are repaired HERE.
+    // The alias table is the service's (DeptBriefService.LEGACY_LINK_ALIAS),
+    // handed over by the controller; nothing in the archive is rewritten.
+    const href = (l) => (typeof linkOf === 'function' ? linkOf(l) : l);
+    // A-07 — same discipline for the FLOW titles: a frozen payload carries the
+    // label the producer wrote at archive time, and twelve of them froze the raw
+    // `action_type`. The service owns the mapping (DeptBriefService
+    // .resolveFlowTitle); the page never keeps its own copy of it.
+    const flowTitle = (f) => (typeof flowTitleOf === 'function' ? flowTitleOf(f) : f.title);
+%>
+
+<div class="page-header">
+    <h1><i class="fas fa-list-check" aria-hidden="true"></i>
+        <%= __('reports:db_show_title') %> — <%= __('reports:db_cadence_' + brief.cadence) %> <%= brief.period %></h1>
+    <div class="page-actions">
+        <a href="/reports/dept-brief" class="btn btn-sm btn-secondary">← <%= __('reports:db_back') %></a>
+        <a href="/account/notifications#dept-brief-prefs" class="btn btn-sm btn-secondary">
+            <i class="fas fa-sliders" aria-hidden="true"></i> <%= __('reports:db_manage_frequency') %>
+        </a>
+    </div>
+</div>
+
+<p class="text-muted" style="margin:.1rem 0 1rem;">
+    <%= __('reports:db_window', { start: fmtPeriodBound(brief.periodStart), end: fmtPeriodBound(inclusiveEnd(brief.periodEnd)) }) %>
+</p>
+
+<%# §2.1 / A-01 — the partial-period mention is MANDATORY whenever the period
+    starts before the data floor. Only the e-mail honoured it; the page said
+    nothing, which is how « évolution supprimée » ended up needing a cause and
+    getting an invented one. %>
+<% if (payload.partialPeriod && payload.partialPeriod.since) { %>
+<div class="alert alert-warning" style="margin-bottom:1rem;" role="status">
+    <i class="fas fa-hourglass-half" aria-hidden="true"></i>
+    <%= __('reports:db_partial_period', { date: fmtPeriodBound(payload.partialPeriod.since) }) %>
+</div>
+<% } %>
+
+<%# §2.1 — the fixed, mandatory sentence about WHAT these numbers are. It is part
+    of the payload so that the page and the e-mail can never drift apart. %>
+<div class="card" style="padding:1rem 1.25rem;margin-bottom:1rem;">
+    <h2 style="margin:0 0 .35rem;font-size:1rem;"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('reports:db_nature_title') %></h2>
+    <p class="text-muted" style="margin:0;font-size:.88rem;line-height:1.55;"><%= L(payload.natureOfFigures) %></p>
+</div>
+
+<%# §2.1 — computation identity. A figure without its identity cannot be argued with. %>
+<div class="card" style="padding:1rem 1.25rem;margin-bottom:1rem;">
+    <h2 style="margin:0 0 .45rem;font-size:1rem;"><i class="fas fa-fingerprint" aria-hidden="true"></i> <%= __('reports:db_identity_title') %></h2>
+    <p style="margin:0;font-size:.85rem;" class="text-muted">
+        <%# A-03 — the discriminant is the FROZEN signature of this brief, never
+            the reader's live scope: reading the live one would print « non
+            restreint » on a brief computed over 41 people. An unrestricted
+            brief carries no id list, so a headcount of 0 on one is an ABSENCE of
+            measurement and is never shown as a zero. %>
+        <% const unrestrictedBrief = String(brief.scopeSignature) === 'unrestricted'; %>
+        <%= __('reports:db_brief_id') %> <%= brief.id %> ·
+        <%= __('reports:db_computed_at') %> <%= fmtDateTime(brief.computedAt) %> ·
+        <%= __('reports:db_scope_size') %>
+        <% if (unrestrictedBrief && Number(brief.scopeSize) > 0) { %><%= __('reports:db_scope_size_unrestricted', { n: brief.scopeSize }) %>
+        <% } else if (unrestrictedBrief) { %><%= __('reports:db_scope_size_unrestricted_unknown') %>
+        <% } else { %><%= brief.scopeSize %><% } %> ·
+        <%= __('reports:db_scope_signature') %> <code style="font-size:.75rem;"><%= String(brief.scopeSignature).slice(0, 12) %></code>
+    </p>
+    <% if (payload.units && payload.units.length) { %>
+    <ul style="list-style:none;padding:0;margin:.6rem 0 0;font-size:.86rem;">
+        <% payload.units.forEach(function (u) { %>
+        <li style="padding:.15rem 0;">
+            <%# the unit label ALWAYS carries its population denominator. %>
+            <strong><%= L(u.label) %></strong>
+            <% if (u.withoutRequirements) { %><span class="text-muted"> — <%= __('reports:db_without_requirements', { n: u.withoutRequirements }) %></span><% } %>
+        </li>
+        <% }); %>
+    </ul>
+    <% } %>
+</div>
+
+<% if (payload.isEmpty) { %>
+<div class="alert alert-info" style="margin-bottom:1rem;">
+    <i class="fas fa-circle-check" aria-hidden="true"></i> <%= __('reports:db_nothing') %>
+</div>
+<% } %>
+
+<%# ------------------------------------------------------------------ blocks %>
+<%
+    const BLOCKS = [
+        { key: 'A', title: __('reports:db_block_a') },
+        { key: 'B', title: __('reports:db_block_b') },
+        { key: 'C', title: __('reports:db_block_c') },
+    ];
+%>
+<% BLOCKS.forEach(function (blk) { %>
+<% const sections = (payload.blocks && payload.blocks[blk.key]) || []; %>
+<% if (sections.length) { %>
+<div class="report-section" style="margin-bottom:1.5rem;">
+    <h2><%= blk.title %></h2>
+    <% sections.forEach(function (s) { %>
+    <div class="card" style="padding:1rem 1.25rem;margin-bottom:.9rem;">
+        <h3 style="margin:0 0 .5rem;font-size:.98rem;"><%= L(s.title) %></h3>
+
+        <% if (s.id === 'C1b') { %>
+        <%# The ONE named block. The controller re-resolved these names from
+            today's direct-report set; a person who left that set has no name
+            here and their line is not printed at all. %>
+        <table class="table" style="margin:0;">
+            <thead><tr>
+                <th><%= __('reports:db_person') %></th>
+                <th><%= __('reports:db_skill') %></th>
+                <th><%= __('reports:db_days_to_expiry') %></th>
+            </tr></thead>
+            <tbody>
+            <% s.lines.forEach(function (l) { %>
+                <% const nm = names && names.byId ? names.byId[l.employeeId] : null; %>
+                <% if (nm) { %>
+                <tr><td><%= nm %></td><td><%= l.skillName %></td><td><%= l.daysToExpiry %></td></tr>
+                <% } %>
+            <% }); %>
+            </tbody>
+        </table>
+        <% if (names && names.withheld) { %>
+        <p class="text-muted" style="margin:.5rem 0 0;font-size:.82rem;">
+            <i class="fas fa-user-shield" aria-hidden="true"></i>
+            <%= names.allowed ? __('reports:db_names_withheld', { n: names.withheld }) : __('reports:db_names_admin') %>
+        </p>
+        <% } %>
+
+        <% } else { %>
+        <ul style="list-style:none;padding:0;margin:0;">
+            <% s.lines.forEach(function (l) { %>
+            <li style="padding:.45rem 0;border-top:1px solid var(--border-color,#f1f5f9);">
+                <% if (l.label) { %><strong><%= L(l.label) %></strong><% } %>
+                <% if (l.level) { %><span class="badge badge-secondary" style="margin-left:.3rem;"><%= __('reports:db_level', { level: l.level }) %></span><% } %>
+                <% if (l.frozenUnit) { %><span class="text-muted" style="font-size:.8rem;"> · <%= __('reports:db_frozen_unit') %></span><% } %>
+                <% if (l.partialScope) { %><span class="text-muted" style="font-size:.8rem;"> · <%= __('reports:db_partial_scope') %></span><% } %>
+                <div style="margin-top:.25rem;display:flex;flex-wrap:wrap;gap:.35rem 1.1rem;font-size:.88rem;">
+                    <% Object.keys(l).forEach(function (k) { %>
+                        <% const v = l[k]; %>
+                        <% if (isCell(v)) { %>
+                        <span>
+                            <span class="text-muted"><%= cellLabel(k, s) %><%= colon %></span>
+                            <%# The colour comes from the frozen cell. Grey means
+                                "we do not know" — an unmeasured value is never
+                                amber and never red. %>
+                            <span style="color:<%= v.color || 'inherit' %>;" <% if (v.hint) { %>title="<%= L(v.hint) %>"<% } %>><%= L(v.text) %></span>
+                        </span>
+                        <% } %>
+                    <% }); %>
+                    <% if (l.overdue) { %><span class="badge badge-warning"><%= __('reports:db_overdue') %></span><% } %>
+                    <% if (l.plans) { %><span class="text-muted"><%= __('reports:db_plans', { n: l.plans }) %></span><% } %>
+                    <% if (l.dueInDays !== undefined && l.dueInDays !== null) { %><span class="text-muted"><%= __('reports:db_due_in', { n: l.dueInDays }) %></span><% } %>
+                    <% if (l.rules) { %><span class="text-muted"><%= __('reports:db_rules', { n: l.rules }) %></span><% } %>
+                    <% if (l.oldestBreachDays !== undefined && l.oldestBreachDays !== null) { %><span class="text-muted"><%= __('reports:db_oldest_breach', { n: l.oldestBreachDays }) %></span><% } %>
+                    <% if (l.neverMeasured) { %><span class="text-muted"><%= __('reports:db_never_measured', { n: l.neverMeasured }) %></span><% } %>
+                    <% if (l.roster) { %><span class="text-muted"><%= __('reports:db_roster', { n: l.roster }) %></span><% } %>
+                    <% if (l.occupiedRoles !== undefined) { %><span class="text-muted"><%= __('reports:db_occupied_roles', { n: l.occupiedRoles }) %> · <%= __('reports:db_rated_roles', { n: l.ratedRoles || 0 }) %></span><% } %>
+                </div>
+                <% if (l.note) { %><div class="text-muted" style="font-size:.83rem;margin-top:.2rem;"><%= L(l.note) %></div><% } %>
+                <% if (l.cta) { %><div style="margin-top:.3rem;"><a class="btn btn-sm btn-secondary" href="<%= href(s.link) || '/dashboard' %>"><%= L(l.cta) %></a></div><% } %>
+            </li>
+            <% }); %>
+        </ul>
+        <% } %>
+
+        <% if (s.leftSinceLaunch) { %>
+        <p class="text-muted" style="margin:.45rem 0 0;font-size:.82rem;"><%= __('reports:db_left_since', { n: s.leftSinceLaunch }) %></p>
+        <% } %>
+        <% if (s.capHit && s.capHit.length) { %>
+        <p class="text-muted" style="margin:.45rem 0 0;font-size:.82rem;"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('reports:db_cap_hit') %></p>
+        <% } %>
+        <% if (s.cta === null && s.id === 'B1') { %>
+        <p class="text-muted" style="margin:.45rem 0 0;font-size:.82rem;"><%= __('reports:db_no_cta') %></p>
+        <% } %>
+
+        <%# §2.8 — the defensible footer: source, rule in plain words, deep link. %>
+        <p class="text-muted" style="margin:.6rem 0 0;font-size:.78rem;">
+            <% if (s.source) { %><%= __('reports:db_source') %><%= colon %> <code style="font-size:.74rem;"><%= s.source %></code><% } %>
+            <% if (s.rule) { %> · <%= __('reports:db_rule') %><%= colon %> <%= L(s.rule) %><% } %>
+            <%# the section CTA goes through the SAME resolution as the link
+                (it used to short-circuit it, so a frozen `cta` escaped the alias
+                table), and no anchor is printed when the reader has no page to
+                open: a link that 403s is not better than no link. %>
+            <% const openHref = href(s.cta || s.link); %>
+            <% if (s.link && openHref) { %> · <a href="<%= openHref %>"><%= __('reports:db_open_list') %></a><% } %>
+        </p>
+    </div>
+    <% }); %>
+</div>
+<% } %>
+<% }); %>
+
+<%# ------------------------------------------------------------ measured state %>
+<% if (payload.footer && payload.footer.units && payload.footer.units.length) { %>
+<div class="report-section" style="margin-bottom:1.5rem;">
+    <%# The measured state is NEVER at the top: it is context, the action queue
+        is the message. %>
+    <h2><%= __('reports:db_footer_title') %> — <%= __('reports:db_state_at', { date: fmtPeriodBound(brief.computedAt) }) %></h2>
+    <div class="table-responsive">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('reports:db_unit') %></th>
+                <th><%= __('reports:db_headcount') %></th>
+                <% D_KEYS.forEach(function (k) { %><th><%= mLabel(k) %></th><% }); %>
+            </tr></thead>
+            <tbody>
+            <% payload.footer.units.forEach(function (u) { %>
+                <tr>
+                    <td><%= L(u.label) %></td>
+                    <td><%= u.headcount %></td>
+                    <% D_KEYS.forEach(function (k) { %>
+                    <td style="color:<%= (u[k] && u[k].color) || 'inherit' %>;" <% if (u[k] && u[k].hint) { %>title="<%= L(u[k].hint) %>"<% } %>><%= u[k] ? L(u[k].text) : '—' %></td>
+                    <% }); %>
+                </tr>
+            <% }); %>
+            <% if (payload.footer.totals) { %>
+                <%# M-10, arbitrage §7-10 — NO fifth cell state. These three em
+                    dashes do not mean « never measured » like the ones above
+                    them: D2 is a mean of means and §2.5 forbids re-aggregating
+                    it, D3Met and D4Critical have no overall chip. They keep the
+                    glyph and get their OWN tooltip, so the reader can tell the
+                    two silences apart. %>
+                <% const notAggregated = __('reports:db_totals_not_aggregated'); %>
+                <tr style="font-weight:600;">
+                    <td><%= __('reports:db_totals') %></td>
+                    <td><%= payload.footer.totals.headcount %></td>
+                    <td><%= L(payload.footer.totals.coverage.text) %></td>
+                    <%# moyenne de moyennes, que §2.5 interdit de ré-agréger.
+                        C'est le PREMIER des trois tirets décrits ci-dessus ; il
+                        portait le glyphe sans l'info-bulle, donc il se lisait
+                        comme « jamais mesuré » — exactement la confusion que
+                        M-10 demande de lever. %>
+                    <td class="text-muted" title="<%= notAggregated %>">—</td>
+                    <td><%= L(payload.footer.totals.completion.text) %></td>
+                    <td class="text-muted" title="<%= notAggregated %>">—</td>
+                    <td class="text-muted" title="<%= notAggregated %>">—</td>
+                    <td><%= L(payload.footer.totals.measuredPeople.text) %></td>
+                </tr>
+            <% } %>
+            </tbody>
+        </table>
+    </div>
+    <% if (payload.footer.totals) { %>
+    <p class="text-muted" style="margin:.4rem 0 0;font-size:.8rem;">
+        <%= __('reports:db_departments', { n: payload.footer.totals.departments }) %> ·
+        <%= __('reports:db_contributing', { n: payload.footer.totals.contributingDepartments }) %>
+    </p>
+    <% } %>
+</div>
+<% } %>
+
+<%# ---------------------------------------------------------------- flow block %>
+<% if (payload.flow && payload.flow.lines && payload.flow.lines.length) { %>
+<div class="report-section" style="margin-bottom:1.5rem;">
+    <h2><%= __('reports:db_flow_title') %></h2>
+    <p class="text-muted" style="margin:0 0 .6rem;font-size:.84rem;">
+        <%# Both windows publish their real day count: 50 actions over 92 days is
+            not 94 over 91, and a "same length" comparison would manufacture a
+            −10 % every February. %>
+        <%= __('reports:db_flow_window') %> <%= fmtPeriodBound(payload.flow.window.start) %> → <%= fmtPeriodBound(inclusiveEnd(payload.flow.window.end)) %> (<%= __('reports:db_days', { n: payload.flow.window.days }) %>)
+        · <%= __('reports:db_flow_prev') %> <%= fmtPeriodBound(payload.flow.window.prevStart) %> → <%= fmtPeriodBound(inclusiveEnd(payload.flow.window.prevEnd)) %> (<%= __('reports:db_days', { n: payload.flow.window.prevDays }) %>)
+    </p>
+    <div class="table-responsive">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('reports:db_m_value') %></th>
+                <th><%= __('reports:db_flow_window') %></th>
+                <th><%= __('reports:db_flow_prev') %></th>
+                <th>Δ</th>
+            </tr></thead>
+            <tbody>
+            <% payload.flow.lines.forEach(function (f) { %>
+                <tr>
+                    <%# A-07 — the title of an `opened.<action_type>` line is
+                        recomputed here, exactly as M-11's deep links are: the
+                        twelve ARCHIVED briefs froze « self_assessment ouverts »
+                        before the producer was fixed, and a frozen payload is
+                        never recomputed on the way in. %>
+                    <td><%= L(flowTitle(f)) %></td>
+                    <td style="color:<%= (f.value && f.value.color) || 'inherit' %>;"><%= f.value ? L(f.value.text) : '—' %></td>
+                    <td><%= f.before === null || f.before === undefined ? '—' : f.before %></td>
+                    <td style="color:<%= (f.delta && f.delta.color) || 'inherit' %>;"><%= dLabel(f.delta) %></td>
+                </tr>
+                <% if (f.importBatch) { %>
+                <tr><td colspan="4" class="text-muted" style="font-size:.8rem;"><%= __('reports:db_import_batch', { share: f.importBatch.share }) %></td></tr>
+                <% } %>
+            <% }); %>
+            <% if (payload.flow.assessmentsRecorded) { %>
+                <tr>
+                    <td><%= __('reports:db_assessments_recorded') %></td>
+                    <td class="text-muted" title="<%= L(payload.flow.assessmentsRecorded.hint) %>"><%= L(payload.flow.assessmentsRecorded.text) %></td>
+                    <td class="text-muted">—</td>
+                    <td class="text-muted">—</td>
+                </tr>
+            <% } %>
+            </tbody>
+        </table>
+    </div>
+    <% if (payload.deltas) { %>
+    <p class="text-muted" style="margin:.45rem 0 0;font-size:.82rem;">
+        <% if (payload.deltas.basis === 'scope_changed') { %><%= __('reports:db_delta_scope_changed') %>
+        <% } else if (payload.deltas.basis === 'first_measure') { %><%= __('reports:db_delta_first') %><% } %>
+        <% if (payload.deltas.seriesStart) { %>
+        · <%= __('reports:db_series_start', { cadence: __('reports:db_cadence_' + brief.cadence), date: fmtPeriodBound(payload.deltas.seriesStart) }) %>
+        <% } %>
+    </p>
+    <% } %>
+</div>
+<% } %>
+
+<%# ------------------------------------------------- recompute: a SECOND column %>
+<div class="card" style="padding:1rem 1.25rem;margin-bottom:1rem;">
+    <h2 style="margin:0 0 .4rem;font-size:1rem;"><i class="fas fa-rotate" aria-hidden="true"></i> <%= __('reports:db_recompute') %></h2>
+    <p class="text-muted" style="margin:0 0 .6rem;font-size:.85rem;"><%= __('reports:db_recompute_hint') %></p>
+    <% if (canRecompute) { %>
+    <form method="POST" action="/reports/dept-brief/<%= brief.id %>/recompute">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-secondary"><i class="fas fa-rotate" aria-hidden="true"></i> <%= __('reports:db_recompute') %></button>
+    </form>
+    <% } else { %>
+    <p class="text-muted" style="margin:0;font-size:.85rem;"><%= __('reports:db_recompute_unavailable') %></p>
+    <% } %>
+</div>
+
+<% if (today && today.footer && today.footer.units && today.footer.units.length) { %>
+<div class="report-section" style="margin-bottom:1.5rem;">
+    <%# A SEPARATE column, titled with TODAY's date, beside the sent one. The
+        frozen figures above are untouched — that is the whole point of the
+        archive. %>
+    <h2><%= __('reports:db_footer_title') %> — <%= __('reports:db_state_at', { date: fmtPeriodBound(today.computedAt) }) %></h2>
+    <div class="table-responsive">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('reports:db_unit') %></th>
+                <th><%= __('reports:db_headcount') %></th>
+                <% D_KEYS.forEach(function (k) { %><th><%= mLabel(k) %></th><% }); %>
+            </tr></thead>
+            <tbody>
+            <% today.footer.units.forEach(function (u) { %>
+                <tr>
+                    <td><%= L(u.label) %></td>
+                    <td><%= u.headcount %></td>
+                    <% D_KEYS.forEach(function (k) { %>
+                    <td style="color:<%= (u[k] && u[k].color) || 'inherit' %>;"><%= u[k] ? L(u[k].text) : '—' %></td>
+                    <% }); %>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+<% } %>
+
+<%# --------------------------------------------------------- the fixed footers %>
+<p class="text-muted" style="font-size:.83rem;line-height:1.6;margin:0 0 .5rem;">
+    <i class="fas fa-lock" aria-hidden="true"></i>
+    <%= __('reports:db_frozen_note', { date: fmtPeriodBound(brief.computedAt) }) %>
+</p>
+<p class="text-muted" style="font-size:.83rem;line-height:1.6;margin:0 0 1.5rem;">
+    <%= L(payload.disclaimer) %>
+</p>

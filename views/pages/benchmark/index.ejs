@@ -1,0 +1,246 @@
+<div class="page-header">
+    <h1><i class="fas fa-table-cells" aria-hidden="true"></i> <%= __('dash:benchmark') %></h1>
+    <p class="section-subtitle" style="margin:4px 0 0;"><%= __('dash:benchmark_sub') %></p>
+</div>
+
+<!-- Filter toolbar (GET form; changing a filter re-runs the matrix) -->
+<form method="GET" action="/benchmark" class="benchmark-filter-bar">
+    <div class="filter-group">
+        <label for="bm-domain"><%= __('dash:pillar_domain') %></label>
+        <select id="bm-domain" name="domainName" class="form-control form-control-sm" onchange="this.form.submit()">
+            <option value=""><%= __('dash:all_pillars') %></option>
+            <% pillars.forEach(function(p){ %><option value="<%= p.name %>" <%= filters.domainName === p.name ? 'selected' : '' %>><%= p.name %></option><% }); %>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label for="bm-sub"><%= __('dash:sub_domain') %></label>
+        <select id="bm-sub" name="subDomainId" class="form-control form-control-sm" onchange="this.form.submit()">
+            <option value=""><%= __('dash:all_subdomains') %></option>
+            <% var _bp = {}; subDomains.forEach(function(sd){ (_bp[sd.domainName]=_bp[sd.domainName]||[]).push(sd); }); Object.keys(_bp).forEach(function(pil){ %>
+                <optgroup label="<%= pil %>"><% _bp[pil].forEach(function(sd){ %><option value="<%= sd.id %>" <%= String(filters.subDomainId) === String(sd.id) ? 'selected' : '' %>><%= sd.name %></option><% }); %></optgroup>
+            <% }); %>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label for="bm-rf"><%= __('dash:role_family') %></label>
+        <select id="bm-rf" name="roleFamilyId" class="form-control form-control-sm" onchange="this.form.submit()">
+            <option value=""><%= __('dash:all_families') %></option>
+            <% roleFamilies.forEach(function(rf){ %><option value="<%= rf.id %>" <%= String(filters.roleFamilyId) === String(rf.id) ? 'selected' : '' %>><%= rf.name %></option><% }); %>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label for="bm-role"><%= __('dash:role') %></label>
+        <select id="bm-role" name="roleName" class="form-control form-control-sm" onchange="this.form.submit()">
+            <option value=""><%= __('dash:all_roles_lc') %></option>
+            <% roles.forEach(function(r){ %><option value="<%= r.name %>" <%= filters.roleName === r.name ? 'selected' : '' %>><%= r.name %></option><% }); %>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label for="bm-cat"><%= __('dash:category') %></label>
+        <select id="bm-cat" name="category" class="form-control form-control-sm" onchange="this.form.submit()">
+            <option value=""><%= __('dash:all_types') %></option>
+            <% ['Technical','Behavioral','Safety','Compliance'].forEach(function(c){ %><option value="<%= c %>" <%= filters.category === c ? 'selected' : '' %>><%= c %></option><% }); %>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label for="bm-min"><%= __('dash:min_required') %></label>
+        <select id="bm-min" name="minLevel" class="form-control form-control-sm" onchange="this.form.submit()">
+            <option value=""><%= __('dash:any_level') %></option>
+            <% [1,2,3,4].forEach(function(n){ %><option value="<%= n %>" <%= String(filters.minLevel) === String(n) ? 'selected' : '' %>>&ge; <%= n %></option><% }); %>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label for="bm-q"><%= __('dash:search_skill') %></label>
+        <input id="bm-q" type="search" name="skillQuery" class="form-control form-control-sm" placeholder="<%= __('dash:skill_name_placeholder') %>" value="<%= filters.skillQuery || '' %>" style="min-width:150px;">
+    </div>
+    <div class="filter-group" style="align-self:flex-end;">
+        <label class="bm-check"><input type="checkbox" name="criticalOnly" value="true" <%= filters.criticalOnly ? 'checked' : '' %> onchange="this.form.submit()"> <%= __('dash:critical_only') %></label>
+    </div>
+    <div class="filter-group" style="align-self:flex-end;">
+        <button type="submit" class="btn btn-sm btn-secondary"><%= __('dash:apply') %></button>
+        <a href="/benchmark" class="btn btn-sm btn-secondary"><%= __('dash:reset') %></a>
+    </div>
+    <!-- Fit-table scope (org unit): narrows the "Benchmark Fit by Role" table + drill-through, not the matrix. -->
+    <div class="filter-group bm-orgunit">
+        <label for="bm-site"><%= __('dash:site') %> <span class="bm-scopehint"><%= __('dash:fit_hint') %></span></label>
+        <select id="bm-site" name="siteName" class="form-control form-control-sm" onchange="this.form.submit()">
+            <%# %><% if ((sites||[]).length !== 1) { %><option value=""><%= __('dash:all_sites_lc') %></option><% } %>
+            <% (sites||[]).forEach(function(s){ %><option value="<%= s.name %>" <%= filters.siteName === s.name ? 'selected' : '' %>><%= s.name %></option><% }); %>
+        </select>
+    </div>
+    <div class="filter-group bm-orgunit">
+        <label for="bm-dept"><%= __('dash:department') %> <span class="bm-scopehint"><%= __('dash:fit_hint') %></span></label>
+        <select id="bm-dept" name="departmentName" class="form-control form-control-sm" onchange="this.form.submit()">
+            <option value=""><%= __('dash:all_departments_lc') %></option>
+            <% (departments||[]).forEach(function(dp){ %><option value="<%= dp.name %>" <%= filters.departmentName === dp.name ? 'selected' : '' %>><%= dp.name %></option><% }); %>
+        </select>
+    </div>
+    <div class="filter-group bm-orgunit">
+        <label for="bm-svc"><%= __('dash:service') %> <span class="bm-scopehint"><%= __('dash:fit_hint') %></span></label>
+        <select id="bm-svc" name="serviceName" class="form-control form-control-sm" onchange="this.form.submit()">
+            <option value=""><%= __('dash:all_services_lc') %></option>
+            <% (services||[]).forEach(function(sv){ %><option value="<%= sv.name %>" <%= filters.serviceName === sv.name ? 'selected' : '' %>><%= sv.name %></option><% }); %>
+        </select>
+    </div>
+</form>
+
+<% if (typeof matrixDefaultPillar !== 'undefined' && matrixDefaultPillar) { %>
+<div class="bm-default-note" role="status">
+    <i class="fas fa-circle-info" aria-hidden="true"></i>
+    <%= __('dash:bm_default_note_1') %> <strong><%= matrixDefaultPillar %></strong> <%= __('dash:bm_default_note_2') %> <strong><%= __('dash:pillar') %></strong> <%= __('dash:bm_default_note_3') %>
+</div>
+<% } %>
+<div class="bm-meta" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span><strong><%= matrix.roles.length %></strong> <%= __('dash:bm_meta_roles') %> <strong><%= matrix.skillCount %></strong> <%= __('dash:bm_meta_skills') %> <span class="bm-crit-legend">◤</span> <%= __('dash:bm_meta_crit') %> <strong>Δ</strong> <%= __('dash:bm_meta_delta') %></span>
+    <%
+    // Keep empty domainName in the CSV link: its PRESENCE means the user explicitly
+    // chose "All pillars" (otherwise the export re-applies the bounding default pillar).
+    var _qs = Object.entries(query||{}).filter(function(e){return e[0]!=='format' && (e[1] || e[0]==='domainName');}).map(function(e){return encodeURIComponent(e[0])+'='+encodeURIComponent(e[1]);}).join('&'); %>
+    <a class="btn btn-sm btn-secondary" style="margin-left:auto;" href="/benchmark?format=csv<%= _qs ? '&'+_qs : '' %>"><i class="fas fa-file-csv" aria-hidden="true"></i> <%= __('dash:export_matrix_csv') %></a>
+</div>
+<div class="bm-legend" aria-hidden="true">
+    <span><%= __('dash:required_level_colon') %></span>
+    <% [__('dash:none_lc'), __('dash:basic_awareness_lc'), __('dash:guided_lc'), __('dash:autonomous_lc'), __('dash:expert_lc')].forEach(function(l,i){ %><span class="bm-legend-item"><span class="bm-legend-swatch bm-heat-<%= i %>"><%= i %></span> <%= l %></span><% }); %>
+    <span class="bm-legend-item"><span class="bm-legend-swatch bm-empty">·</span> <%= __('dash:no_requirement') %></span>
+</div>
+
+<% if (!matrix.roles.length) { %>
+    <div class="empty-state" style="padding:32px;"><%= __('dash:bm_empty_matrix') %></div>
+<% } else { %>
+<div class="benchmark-scroll">
+    <table class="benchmark-matrix">
+        <thead>
+            <tr>
+                <th class="sticky-col skill-col"><%= __('dash:skill') %></th>
+                <th class="delta-col"><abbr title="<%= __('dash:delta_title') %>">Δ</abbr></th>
+                <% matrix.roles.forEach(function(r){ %><th class="role-col" title="<%= r.name %>"><span><%= r.name %></span></th><% }); %>
+            </tr>
+        </thead>
+        <tbody>
+            <% matrix.domains.forEach(function(d){ %>
+                <% d.subs.forEach(function(sd){ %>
+                    <tr class="bm-group-row"><td class="sticky-col" colspan="<%= matrix.roles.length + 2 %>"><%= d.name %> <span class="bm-group-sep">›</span> <strong><%= sd.name %></strong> <span class="bm-group-count"><%= sd.skills.length %></span></td></tr>
+                    <% sd.skills.forEach(function(sk){ %>
+                        <tr>
+                            <td class="sticky-col skill-col" title="<%= sk.category %>"><span class="bm-cat-dot bm-cat-<%= sk.category %>"></span><%= sk.name %></td>
+                            <td class="delta-col <%= sk.variation >= 2 ? 'delta-hi' : (sk.variation === 1 ? 'delta-mid' : '') %>"><%= sk.variation %></td>
+                            <% matrix.roles.forEach(function(r){ var c = sk.cells[r.id]; %>
+                                <% if (c) { %><td class="bm-cell bm-heat-<%= c.level %> <%= c.critical ? 'bm-critical' : '' %>" title="<%= r.name %> — <%= __('dash:required_level_lc') %> <%= c.level %><%= c.critical ? ' ' + __('dash:critical_paren') : '' %>"><%= c.level %><% if (c.critical) { %><span class="bm-crit-corner" aria-hidden="true">◤</span><% } %></td><% } else { %><td class="bm-cell bm-empty" title="<%= r.name %> — <%= __('dash:no_requirement') %>">·</td><% } %>
+                            <% }); %>
+                        </tr>
+                    <% }); %>
+                <% }); %>
+            <% }); %>
+        </tbody>
+    </table>
+</div>
+<% } %>
+
+<!-- Per-role benchmark fit (for the current filter scope) -->
+<div class="section-divider" style="margin-top:22px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <div>
+        <h2 class="section-title"><span class="section-icon"><i class="fas fa-people-arrows" aria-hidden="true"></i></span> <%= __('dash:benchmark_fit_by_role') %></h2>
+        <p class="section-subtitle"><%= __('dash:bm_fit_sub') %></p>
+    </div>
+    <label class="bm-band-ctl"><%= __('dash:show') %>
+        <select id="bm-fit-band" class="form-control form-control-sm" onchange="bmFilterFitBand(this.value)">
+            <option value="all"><%= __('dash:all_roles_lc') %></option>
+            <option value="low"><%= __('dash:fit_lt_50') %></option>
+            <option value="mid"><%= __('dash:fit_50_79') %></option>
+            <option value="good"><%= __('dash:fit_ge_80') %></option>
+            <option value="nodata"><%= __('dash:no_data') %></option>
+        </select>
+    </label>
+</div>
+<div class="table-wrapper">
+    <table class="table bm-fit-table">
+        <thead><tr><th><%= __('dash:role') %></th><th style="text-align:center;"><%= __('dash:occupants') %></th><th><%= __('dash:benchmark_fit') %></th><th style="text-align:center;" title="<%= __('dash:coverage_title') %>"><%= __('dash:coverage') %></th><th style="text-align:center;"><%= __('dash:critical_fit') %></th><th style="text-align:center;" title="<%= __('dash:crit_gaps_title') %>"><%= __('dash:crit_gaps') %></th><th style="text-align:center;"><%= __('dash:ready_ge80_paren') %></th></tr></thead>
+        <tbody>
+            <% var fitRows = (fit||[]).filter(function(f){ return f.occupants > 0; }); %>
+            <% if (!fitRows.length) { %>
+                <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted);"><%= __('dash:no_occupants_in_scope') %></td></tr>
+            <% } else { fitRows.forEach(function(f){ var fitv = f.benchmarkFit == null ? null : Number(f.benchmarkFit); var cov = f.coverage == null ? null : Number(f.coverage);
+                var band = (cov === 0) ? 'nodata' : (fitv == null ? 'nodata' : (fitv >= 80 ? 'good' : (fitv >= 50 ? 'mid' : 'low'))); %>
+                <tr class="bm-fit-row" data-band="<%= band %>">
+                    <td><a href="/benchmark/role/<%= f.roleId %>" title="<%= __('dash:drill_title') %>"><strong><%= f.roleName %></strong></a></td>
+                    <td style="text-align:center;"><%= f.occupants %></td>
+                    <td>
+                        <% if (cov === 0) { %><span class="bm-nodata" title="<%= __('dash:no_occupants_assessed') %>"><%= __('dash:no_data') %></span><% } else { %>
+                        <div class="bm-fitbar"><div class="bm-fitbar-fill <%= fitv==null?'':(fitv>=80?'fit-good':(fitv>=50?'fit-mid':'fit-low')) %>" style="width:<%= fitv==null?0:fitv %>%;"></div><span class="bm-fitbar-label"><%= fitv==null?'—':fitv+'%' %></span></div>
+                        <% } %>
+                    </td>
+                    <td style="text-align:center;" class="<%= cov!=null && cov<60 ? 'bm-cov-low' : '' %>"><%= cov==null?'—':cov+'%' %></td>
+                    <td style="text-align:center;"><%= f.criticalFit == null ? '—' : f.criticalFit + '%' %></td>
+                    <%# When nobody in the role has been assessed, "0 critical gaps" and "0/2 ready"
+                        are literally true but read as an all-clear. A dash says what is actually
+                        known. Same rule as the fit columns beside them. %>
+                    <% var measured = f.measuredOccupants == null ? null : Number(f.measuredOccupants); %>
+                    <td style="text-align:center;<%= measured !== 0 && f.occupantsCriticalGap>0 ? 'color:#F44336;font-weight:700;' : '' %>"><% if (measured === 0) { %><span class="bm-nodata" title="<%= __('dash:no_occupants_assessed') %>">—</span><% } else { %><%= f.occupantsCriticalGap %><% } %></td>
+                    <td style="text-align:center;"><% if (measured === 0) { %><span class="bm-nodata" title="<%= __('dash:no_occupants_assessed') %>">—</span><% } else { %><%= f.occupantsReady %>/<%= f.occupants %><% } %></td>
+                </tr>
+            <% }); } %>
+        </tbody>
+    </table>
+</div>
+
+<style>
+.benchmark-filter-bar { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; background:var(--bg-subtle); border:1px solid var(--border-color,#2a2a2a); border-radius:12px; padding:12px 14px; margin-bottom:12px; }
+.benchmark-filter-bar .filter-group { display:flex; flex-direction:column; gap:4px; }
+.benchmark-filter-bar label { font-size:.72rem; text-transform:uppercase; letter-spacing:.03em; color:var(--text-secondary); }
+.benchmark-filter-bar select { min-width:150px; }
+.bm-check { flex-direction:row !important; align-items:center; gap:6px; text-transform:none !important; font-size:.85rem !important; color:var(--text-primary) !important; }
+.bm-meta { font-size:.82rem; color:var(--text-secondary); margin:8px 2px 12px; }
+.bm-default-note { display:flex; align-items:center; gap:8px; margin:10px 0 4px; padding:8px 12px; font-size:.83rem;
+    background:rgba(124, 108, 255,.10); border:1px solid rgba(124, 108, 255,.4); border-radius:8px; color:var(--text-secondary); }
+.bm-default-note i { color:var(--brand,#7C6CFF); }
+.bm-crit-legend { color:var(--brand,#7C6CFF); }
+.benchmark-scroll { overflow:auto; max-height:66vh; border:1px solid var(--border-color,#2a2a2a); border-radius:12px; }
+.benchmark-matrix { border-collapse:separate; border-spacing:0; font-size:.8rem; min-width:100%; }
+.benchmark-matrix th, .benchmark-matrix td { padding:5px 8px; border-bottom:1px solid var(--border-color,#242424); white-space:nowrap; }
+.benchmark-matrix thead th { position:sticky; top:0; z-index:3; background:var(--bg-elevated,#1b1b1b); color:var(--text-primary); }
+.benchmark-matrix .role-col span { display:inline-block; max-width:120px; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom; }
+.benchmark-matrix .sticky-col { position:sticky; left:0; z-index:2; background:var(--bg-elevated,#1b1b1b); }
+.benchmark-matrix thead .sticky-col { z-index:4; }
+.benchmark-matrix .skill-col { min-width:240px; max-width:320px; white-space:normal; }
+.benchmark-matrix .delta-col { text-align:center; color:var(--text-secondary); }
+.delta-hi { color:#fff; background:rgba(220,53,69,.35); font-weight:700; }
+.delta-mid { color:var(--text-primary); background:rgba(255,192,0,.18); }
+.bm-group-row td { background:var(--bg-subtle); font-size:.82rem; color:var(--text-secondary); }
+.bm-group-sep { color:var(--text-muted); }
+.bm-group-count { font-size:.7rem; background:var(--brand,#7C6CFF); color:#1a1a1a; border-radius:999px; padding:0 7px; margin-left:6px; }
+.bm-cell { text-align:center; font-variant-numeric:tabular-nums; position:relative; }
+.bm-empty { color:var(--text-muted); opacity:.5; }
+.bm-critical { box-shadow: inset 3px 0 0 var(--brand,#7C6CFF); }
+.bm-crit-corner { position:absolute; top:-1px; right:1px; font-size:.6em; line-height:1; color:var(--brand,#7C6CFF); }
+/* Required-level heat ramp (0→4). Scoped bm-heat-* so it never collides with the
+   dashboard's proficiency .heat-* scale; clearer luminance steps for dark mode. */
+.bm-heat-0 { background:rgba(120,120,120,.10); }
+.bm-heat-1 { background:rgba(244,67,54,.30); }
+.bm-heat-2 { background:rgba(255,152,0,.32); }
+.bm-heat-3 { background:rgba(139,195,74,.36); }
+.bm-heat-4 { background:rgba(76,175,80,.48); }
+.bm-cat-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+.bm-cat-Technical { background:#198754; } .bm-cat-Behavioral { background:#0d6efd; } .bm-cat-Safety { background:#dc3545; } .bm-cat-Compliance { background:#6f42c1; }
+.bm-fit-table td { vertical-align:middle; }
+.bm-cov-low { color:#FF9800; font-weight:600; }
+.bm-nodata { display:inline-block; padding:2px 10px; border-radius:6px; background:var(--bg-subtle); border:1px dashed var(--border-color,#3a3a3a); color:var(--text-muted); font-size:.78rem; }
+.bm-legend { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; font-size:.76rem; color:var(--text-secondary); margin:0 2px 12px; }
+.bm-legend-item { display:inline-flex; align-items:center; gap:5px; }
+.bm-legend-swatch { display:inline-flex; align-items:center; justify-content:center; width:20px; height:18px; border-radius:4px; font-variant-numeric:tabular-nums; color:var(--text-primary); }
+.bm-fitbar { position:relative; height:20px; background:var(--bg-subtle); border-radius:6px; overflow:hidden; min-width:140px; }
+.bm-fitbar-fill { height:100%; background:#4CAF50; }
+.bm-fitbar-fill.fit-good { background:#4CAF50; } .bm-fitbar-fill.fit-mid { background:#FF9800; } .bm-fitbar-fill.fit-low { background:#F44336; }
+.bm-fitbar-label { position:absolute; top:0; left:8px; line-height:20px; font-size:.75rem; font-weight:600; color:var(--text-primary); mix-blend-mode:difference; }
+.bm-band-ctl { font-size:.72rem; text-transform:uppercase; letter-spacing:.03em; color:var(--text-secondary); display:flex; align-items:center; gap:6px; }
+.bm-band-ctl select { min-width:130px; }
+.bm-scopehint { text-transform:none; letter-spacing:0; color:var(--brand,#7C6CFF); font-weight:600; }
+.bm-orgunit label { white-space:nowrap; }
+</style>
+<script nonce="<%= cspNonce %>">
+// Client-side fit-band filter — hides fit rows outside the chosen band (no round-trip).
+function bmFilterFitBand(band) {
+    document.querySelectorAll('.bm-fit-row').forEach(function(tr){
+        tr.style.display = (band === 'all' || tr.getAttribute('data-band') === band) ? '' : 'none';
+    });
+}
+</script>

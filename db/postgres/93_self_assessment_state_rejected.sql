@@ -1,0 +1,26 @@
+-- 93_self_assessment_state_rejected.sql
+--
+-- The V2 rejection path was DEAD CODE.
+--
+-- `self_assessments` carries TWO state machines that must advance together:
+--   * workflow_state — TEXT + CHECK, which has always allowed 'rejected'
+--     (chk_sa_workflow_state, see 10_self_assessment_workflow.sql), and
+--   * status         — the legacy enum `self_assessment_state`, which only ever
+--     had draft / submitted / reviewed / approved.
+--
+-- SelfAssessmentWorkflowService.reject and arbitrate({outcome:'reject'}) both
+-- write BOTH columns, so every rejection died on the enum. Reproduced by probe
+-- against the running database:
+--
+--   ENUM self_assessment_state = draft,submitted,reviewed,approved
+--   reject THREW: 22P02 invalid input value for enum
+--                   self_assessment_state: "rejected"
+--
+-- A supervisor could therefore never refuse a submission at all: the only
+-- outcomes reachable were "approve" and "request changes".
+--
+-- Idempotent (ADD VALUE IF NOT EXISTS), and safe inside the migration runner's
+-- per-file transaction on PostgreSQL 12+ — the value is only ADDED here, never
+-- used in this same transaction.
+
+ALTER TYPE public.self_assessment_state ADD VALUE IF NOT EXISTS 'rejected';

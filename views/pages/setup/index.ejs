@@ -1,0 +1,48 @@
+<div class="page-header">
+    <h1><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('admin:setup_title') %></h1>
+</div>
+
+<div class="help-text" style="margin-bottom:1.25rem;"><%= __('admin:setup_help', { brand: (typeof brandName!=='undefined' && brandName) ? brandName : 'IDevelop' }) %></div>
+
+<% if (complete) { %>
+    <div class="card" style="padding:16px 20px;border-left:3px solid var(--emerald,#2DD4A0);margin-bottom:1.25rem;">
+        <i class="fas fa-circle-check" aria-hidden="true" style="color:var(--emerald,#2DD4A0);"></i>
+        <strong><%= __('admin:setup_complete') %></strong>
+    </div>
+<% } %>
+
+<div class="card" style="padding:0;max-width:820px;">
+    <% const LBL = {
+        org: [__('admin:setup_org'), __('admin:setup_org_sub')],
+        skills: [__('admin:setup_skills'), __('admin:setup_skills_sub')],
+        roles: [__('admin:setup_roles'), __('admin:setup_roles_sub')],
+        employees: [__('admin:setup_employees'), __('admin:setup_employees_sub')],
+    reviewers: [__('admin:setup_reviewers'), __('admin:setup_reviewers_sub')],
+    contactable: [__('admin:setup_contactable'), __('admin:setup_contactable_sub')],
+    cycle: [__('admin:setup_cycle'), __('admin:setup_cycle_sub')],
+        assessments: [__('admin:setup_assessments'), __('admin:setup_assessments_sub')],
+        email: [__('admin:setup_email'), __('admin:setup_email_sub')],
+    }; %>
+    <% checks.forEach(function(c, i){ const l = LBL[c.key] || [c.key, '']; %>
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;<%= i < checks.length-1 ? 'border-bottom:1px solid var(--border);' : '' %>">
+            <span style="font-size:1.2rem;color:<%= c.done ? 'var(--emerald,#2DD4A0)' : 'var(--text-muted)' %>;">
+                <i class="fas fa-<%= c.done ? 'circle-check' : 'circle' %>" aria-hidden="true"></i>
+            </span>
+            <div style="flex:1;min-width:0;">
+                <strong><%= l[0] %></strong>
+                <% if (c.optional) { %><span class="badge badge-secondary" style="margin-left:6px;font-size:.65rem;"><%= __('admin:setup_optional') %></span><% } %>
+                <div style="font-size:.82rem;color:var(--text-secondary);"><%= l[1] %></div>
+            </div>
+            <span style="font-family:var(--font-data);font-size:.8rem;color:var(--text-muted);"><%= c.count %></span>
+            <a href="<%= c.href %>" class="btn btn-sm <%= c.done ? 'btn-secondary' : 'btn-primary' %>"><%= c.done ? __('admin:setup_review') : __('admin:setup_start') %></a>
+        </div>
+    <% }); %>
+</div>
+
+<% if (typeof user !== 'undefined' && user && user.role === 'superadmin') { %>
+<!-- Dismiss hides the banner org-wide, so it's superadmin-only (matches the route). -->
+<form method="POST" action="/setup/dismiss" style="margin-top:1.25rem;">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <button type="submit" class="btn btn-secondary btn-sm"><%= __('admin:setup_dismiss') %></button>
+</form>
+<% } %>

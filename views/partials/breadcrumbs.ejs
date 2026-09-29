@@ -1,0 +1,14 @@
+<% if (typeof breadcrumbs !== 'undefined' && breadcrumbs && breadcrumbs.length > 0) { %>
+<nav class="breadcrumbs" aria-label="<%= __('chrome:breadcrumb_aria') %>">
+    <a href="<%= (typeof user !== 'undefined' && user && user.userType === 'employee') ? '/employee/dashboard' : '/dashboard' %>"><i class="fas fa-home" aria-hidden="true"></i> <%= __('chrome:breadcrumb_home') %></a>
+    <% breadcrumbs.forEach(function(crumb, index) { %>
+        <span class="breadcrumbs-separator">›</span>
+        <% if (index === breadcrumbs.length - 1) { %>
+            <span class="breadcrumb-current"><%= crumb.label %></span>
+        <% } else { %>
+            <a href="<%= crumb.url %>"><%= crumb.label %></a>
+        <% } %>
+    <% }); %>
+</nav>
+<% } %>
+

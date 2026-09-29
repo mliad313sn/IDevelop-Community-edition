@@ -1,0 +1,623 @@
+<div class="page-header">
+  <h1><i class="fas fa-clipboard-check" aria-hidden="true"></i> <%= __('talentx:sar_title') %></h1>
+  <p class="text-muted"><%= __('talentx:sar_intro_grouped') %> <strong><%= __('talentx:sar_intro_per_employee') %></strong>. <%= __('talentx:sar_intro_supervisor') %> <em><%= __('talentx:sar_intro_or') %></em> <%= __('talentx:sar_intro_rest') %></p>
+  <p class="text-muted" style="font-size:.85em"><%= __('talentx:sar_gap_hint_pre') %> <a href="/supervisor/gap-analysis"><%= __('talentx:sar_gap_analysis') %></a>.</p>
+</div>
+
+<div id="sa-analytics" class="card" style="margin-bottom:1rem;padding:.85rem 1rem;">
+  <strong><%= __('talentx:sar_pipeline') %></strong> <span id="sa-analytics-body"><%= __('talentx:sar_loading') %></span>
+</div>
+
+<!-- Campaign filter + the two halves of the funnel (
+     "submitted work to review" (the queue) and "waiting for the employee"
+     (roster non-starters / in progress, chaseable from here). -->
+<div class="card" style="margin-bottom:1rem;padding:.7rem 1rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
+  <label for="sa-cycle" style="font-weight:600;font-size:.9rem;margin:0;"><%= __('admin:cyc_rv_cycle_label') %></label>
+  <select id="sa-cycle" class="form-control" style="width:auto;min-width:230px;">
+    <option value=""><%= __('admin:cyc_rv_all_cycles') %></option>
+  </select>
+  <a id="sa-cycle-console" class="btn btn-sm btn-secondary" href="/cycles" hidden><i class="fas fa-gauge-high" aria-hidden="true"></i> <%= __('admin:cyc_rv_open_console') %></a>
+  <span class="sa-tabs" role="tablist" style="margin-left:auto;display:inline-flex;gap:.25rem">
+    <button type="button" class="sa-tab on" role="tab" aria-selected="true" data-sa-tab="queue"><%= __('admin:cyc_rv_tab_queue') %></button>
+    <button type="button" class="sa-tab" role="tab" aria-selected="false" data-sa-tab="pending"><%= __('admin:cyc_rv_tab_pending') %> <span id="sa-pending-n" class="sa-badge" style="background:#c8514b" hidden>0</span></button>
+  </span>
+</div>
+
+<div id="sa-pending" class="card" style="display:none;margin-bottom:1rem;padding:.85rem 1rem" role="tabpanel">
+  <p class="text-muted" style="font-size:.85rem;margin:0 0 .6rem"><%= __('admin:cyc_rv_pending_intro') %></p>
+  <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.6rem">
+    <button type="button" class="btn btn-sm btn-primary" id="sa-nudge-all" hidden><i class="fas fa-bell" aria-hidden="true"></i> <%= __('admin:cyc_nudge_all_mine') %></button>
+    <span id="sa-pending-hint" class="text-muted" style="font-size:.85rem"></span>
+  </div>
+  <div class="table-wrapper"><table class="table" id="sa-pending-table"><thead><tr>
+    <th><%= __('admin:cyc_th_person') %></th><th><%= __('admin:cyc_th_state') %></th><th><%= __('admin:cyc_th_skills') %></th><th><%= __('admin:cyc_th_last_nudge') %></th><th></th>
+  </tr></thead><tbody><tr><td colspan="5"><em><%= __('admin:cyc_rv_pending_pick') %></em></td></tr></tbody></table></div>
+</div>
+
+<!-- Sort / bring-forward controls. These reorder the VIEW only: every submitted
+     skill always stays in the queue (no subsetting, no hiding). -->
+<div class="card" style="margin-bottom:1rem;padding:.7rem 1rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
+  <label for="sa-sort" style="font-weight:600;font-size:.9rem;margin:0;"><%= __('talentx:rvx_sort_label') %></label>
+  <select id="sa-sort" class="form-control" style="width:auto;min-width:230px;">
+    <option value="all"><%= __('talentx:rvx_sort_all') %></option>
+    <option value="gap"><%= __('talentx:rvx_sort_gap') %></option>
+    <option value="critical"><%= __('talentx:rvx_sort_critical') %></option>
+    <option value="nojust"><%= __('talentx:rvx_sort_nojust') %></option>
+  </select>
+  <span class="text-muted" style="font-size:.82rem"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('talentx:rvx_sort_hint') %></span>
+</div>
+
+<%
+// RENDU SERVEUR DE LA FILE (constat « la console du superviseur ne rend rien côté
+// serveur »). La zone ne contenait que « Chargement… » : sans JS — navigateur
+// ancien d'un poste de site, extension bloquante, script qui n'arrive pas — le
+// réviseur n'avait AUCUN contenu, et c'est aussi ce qui rendait tous les refus
+// invisibles. On suit le précédent déjà appliqué à l'écran de l'employé
+// (SelfAssessmentWorkflowController.myStatusPage) : le serveur rend les lignes,
+// le JS les re-rend à l'identique. `employees` absent = ancien chemin JS seul.
+var saRows = (typeof employees !== 'undefined' && Array.isArray(employees)) ? employees : null;
+function saCell(v) { return (v === null || v === undefined || v === '') ? '—' : String(v); }
+%>
+<div id="sa-people">
+<% if (saRows && saRows.length) { %>
+  <p class="text-muted" style="font-size:.82rem;margin:.2rem 0 .6rem"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('talentx:sar_server_rendered') %></p>
+  <% saRows.forEach(function (e) { %>
+  <div class="sa-emp">
+    <div class="sa-emp-head">
+      <div>
+        <div class="sa-emp-name"><%= (e.firstName || '') + ' ' + (e.lastName || '') %></div>
+        <div class="sa-emp-sub"><%= __('talentx:sar_skills_pending').replace('{total}', e.total).replace('{pending}', e.pending) %></div>
+      </div>
+      <div class="sa-emp-counts">
+        <% Object.keys(e.counts || {}).forEach(function (s) { %>
+          <span class="sa-badge" style="background:#5f6570"><%= __('talentx:sar_st_' + s) %> <%= e.counts[s] %></span>
+        <% }); %>
+      </div>
+    </div>
+    <div class="sa-detail open"><div class="table-wrapper"><table><thead><tr>
+      <th><%= __('talentx:skill') %></th>
+      <th class="sa-num"><%= __('talentx:rvx_required') %></th>
+      <th class="sa-num"><%= __('talentx:rvx_self') %></th>
+      <th class="sa-num"><%= __('talentx:rvx_last_validated') %></th>
+      <th><%= __('talentx:rvx_justification') %></th>
+      <th><%= __('talentx:state') %></th>
+    </tr></thead><tbody>
+      <% (e.items || []).forEach(function (it) { %>
+      <tr class="sa-row">
+        <td><%= it.skillName || ('#' + it.skillId) %><% if (it.skillId != null) { %><%- include('../../partials/skill-help', { sh: { id: 'r' + it.id + '-' + it.skillId, raw: it.skillHelp || null, mode: 'review', selected: it.selfRatedLevel, required: it.requiredLevel } }) %><% } %></td>
+        <td class="sa-num"><%= saCell(it.requiredLevel) %></td>
+        <td class="sa-num"><%= saCell(it.selfRatedLevel) %></td>
+        <td class="sa-num"><%= saCell(it.validatedLevel) %></td>
+        <td class="sa-just"><%= (it.employeeNotes == null || String(it.employeeNotes).trim() === '') ? __('talentx:rvx_no_justification') : String(it.employeeNotes) %></td>
+        <td><%= __('talentx:sar_st_' + it.workflowState) %></td>
+      </tr>
+      <% }); %>
+    </tbody></table></div></div>
+  </div>
+  <% }); %>
+<% } else if (saRows) { %>
+  <div class="card" style="padding:1rem"><em><%= __('talentx:sar_nothing_awaiting') %></em></div>
+<% } else { %>
+  <div class="card" style="padding:1rem"><%= __('talentx:loading') %></div>
+<% } %>
+</div>
+
+<!-- Thread drawer -->
+<div id="sa-thread" class="card" style="display:none;margin-top:1rem;padding:1rem;">
+  <h3><%= __('talentx:sar_discussion') %> <button class="btn btn-sm" onclick="document.getElementById('sa-thread').style.display='none'"><%= __('talentx:sar_close') %></button></h3>
+  <div id="sa-thread-body"></div>
+  <div style="margin-top:.5rem;display:flex;gap:.5rem;">
+    <input id="sa-thread-input" class="form-control" placeholder="<%= __('talentx:sar_add_comment_ph') %>" style="flex:1;">
+    <button class="btn btn-secondary" onclick="SA.comment()"><%= __('talentx:sar_comment') %></button>
+  </div>
+</div>
+
+<style>
+.sa-emp{border:1px solid var(--border);border-radius:12px;margin:12px 0;background:var(--bg-card);overflow:hidden}
+.sa-emp-head{display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--bg-elevated);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.sa-emp-name{font-weight:800;font-size:15px}
+.sa-emp-sub{color:var(--text-secondary);font-size:12px}
+.sa-emp-counts{display:flex;gap:6px;flex-wrap:wrap}
+.sa-emp-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.sa-badge{padding:2px 9px;border-radius:999px;color:#fff;font-size:.76rem;white-space:nowrap}
+.sa-detail{display:none;padding:0}
+.sa-detail.open{display:block}
+.sa-detail table{width:100%;border-collapse:collapse;font-size:13.5px}
+.sa-detail th,.sa-detail td{padding:7px 12px;border-bottom:1px solid var(--border-subtle);text-align:left;vertical-align:middle}
+.sa-detail th{background:var(--bg-elevated);color:var(--text-secondary);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em}
+.sa-toggle{background:none;border:1px solid var(--border);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.83rem}
+.sa-num{text-align:center;font-variant-numeric:tabular-nums;font-weight:700}
+.sa-lvl-none{color:var(--text-secondary);font-weight:400}
+.sa-chip-crit{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:#b00020;color:#fff;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;vertical-align:middle}
+.sa-gap{display:inline-block;margin-left:5px;padding:0 6px;border-radius:999px;background:#a15400;color:#fff;font-size:.7rem;font-weight:700}
+.sa-gap-ok{background:#0f8a3c}
+.sa-just{max-width:280px}
+.sa-just>summary{cursor:pointer;color:var(--text-secondary);font-size:.85em;list-style:revert}
+.sa-just>div{margin-top:4px;padding:6px 8px;border-left:3px solid var(--border);background:var(--bg-elevated);border-radius:6px;white-space:pre-wrap;font-size:.86em;max-width:280px}
+.sa-nojust{color:var(--text-secondary);font-size:.85em;font-style:italic}
+/* Bring-forward highlight: marks the rows the chosen sort put first. It NEVER
+   hides a row — every skill stays visible and actionable. */
+.sa-hit>td:first-child{box-shadow:inset 3px 0 0 var(--accent, #6656f0)}
+.sa-tab{background:none;border:1px solid var(--border);border-radius:999px;padding:4px 12px;cursor:pointer;font-size:.85rem;color:inherit}
+.sa-tab.on{background:var(--accent,#6656f0);color:#111;border-color:transparent}
+.sa-cycle-chip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.72rem;background:rgba(127,127,127,.18)}
+</style>
+
+<%# public/js/sa-console-net.js porte la discipline de réseau : une redirection ou
+    une réponse non-JSON est un ÉCHEC, jamais un succès, et tout refus est écrit
+    DANS la zone concernée. Chargé avant le script de la page (non différé) pour
+    que SAConsoleNet existe au premier appel. %>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<link rel="stylesheet" href="/css/sa-skill-help.css?v=<%= assetVersion %>">
+<script src="/js/sa-skill-help.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+const SA_T = {
+  approve: <%- JSON.stringify(__('talentx:approve')) %>,
+  rateLbl: <%- JSON.stringify(__('talentx:sar_rate_lbl')) %>,
+  rateTitle: <%- JSON.stringify(__('talentx:sar_rate_title')) %>,
+  requestChanges: <%- JSON.stringify(__('talentx:sar_request_changes')) %>,
+  reject: <%- JSON.stringify(__('talentx:reject')) %>,
+  discuss: <%- JSON.stringify(__('talentx:sar_discuss')) %>,
+  askComment: <%- JSON.stringify(__('talentx:sar_ask_comment')) %>,
+  askRejectReason: <%- JSON.stringify(__('talentx:sar_ask_reject_reason')) %>,
+  done: <%- JSON.stringify(__('talentx:sar_done')) %>,
+  approveAllConfirm: <%- JSON.stringify(__('talentx:sar_approve_all_confirm')) %>,
+  approveAllConfirmShort: <%- JSON.stringify(__('talentx:sar_approve_all_confirm_short')) %>,
+  approveAll: <%- JSON.stringify(__('talentx:approve_all')) %>,
+  approvedN: <%- JSON.stringify(__('talentx:sar_approved_n')) %>,
+  noComments: <%- JSON.stringify(__('talentx:sar_no_comments')) %>,
+  nothingAwaiting: <%- JSON.stringify(__('talentx:sar_nothing_awaiting')) %>,
+  allDone: <%- JSON.stringify(__('talentx:sar_all_done')) %>,
+  details: <%- JSON.stringify(__('talentx:details')) %>,
+  skill: <%- JSON.stringify(__('talentx:skill')) %>,
+  selfLevel: <%- JSON.stringify(__('talentx:sar_self_level')) %>,
+  state: <%- JSON.stringify(__('talentx:state')) %>,
+  actions: <%- JSON.stringify(__('talentx:actions')) %>,
+  skillsPending: <%- JSON.stringify(__('talentx:sar_skills_pending')) %>,
+  none: <%- JSON.stringify(__('talentx:sar_none')) %>,
+  rvxRequired: <%- JSON.stringify(__('talentx:rvx_required')) %>,
+  rvxSelf: <%- JSON.stringify(__('talentx:rvx_self')) %>,
+  rvxValidated: <%- JSON.stringify(__('talentx:rvx_last_validated')) %>,
+  rvxJustification: <%- JSON.stringify(__('talentx:rvx_justification')) %>,
+  rvxCritical: <%- JSON.stringify(__('talentx:rvx_critical')) %>,
+  rvxCriticalTitle: <%- JSON.stringify(__('talentx:rvx_critical_title')) %>,
+  rvxNoRequirement: <%- JSON.stringify(__('talentx:rvx_no_requirement')) %>,
+  rvxNeverValidated: <%- JSON.stringify(__('talentx:rvx_never_validated')) %>,
+  rvxValidatedOn: <%- JSON.stringify(__('talentx:rvx_validated_on')) %>,
+  rvxNoJustification: <%- JSON.stringify(__('talentx:rvx_no_justification')) %>,
+  rvxSeeJustification: <%- JSON.stringify(__('talentx:rvx_see_justification')) %>,
+  rvxGapTitle: <%- JSON.stringify(__('talentx:rvx_gap_title')) %>,
+  rvxMetTitle: <%- JSON.stringify(__('talentx:rvx_met_title')) %>,
+  rvxAskOverride: <%- JSON.stringify(__('talentx:rvx_ask_override_reason')) %>,
+  lang: <%- include('../../partials/json-script', { v: typeof lang !== 'undefined' ? lang : 'fr' }) %>,
+  cycleChip: <%- JSON.stringify(__('admin:cyc_rv_cycle_chip', { code: '%code%' })) %>,
+  noCycleChip: <%- JSON.stringify(__('admin:cyc_rv_no_cycle_chip')) %>,
+  pendingNone: <%- JSON.stringify(__('admin:cyc_rv_pending_none')) %>,
+  pendingPick: <%- JSON.stringify(__('admin:cyc_rv_pending_pick')) %>,
+  loading: <%- JSON.stringify(__('admin:cyc_rv_loading')) %>,
+  nudge: <%- JSON.stringify(__('admin:cyc_nudge')) %>,
+  nudgeAsk: <%- JSON.stringify(__('admin:cyc_nudge_confirm')) %>,
+  nudgeAllAsk: <%- JSON.stringify(__('admin:cyc_nudge_all_confirm')) %>,
+  nudgeDone: <%- JSON.stringify(__('admin:cyc_nudge_done')) %>,
+  nudgeLocked: <%- JSON.stringify(__('admin:cyc_nudge_locked_hint')) %>,
+  overdue: <%- JSON.stringify(__('admin:cyc_overdue', { days: '%days%' })) %>,
+  progressOf: <%- JSON.stringify(__('admin:cyc_progress_of', { done: '%done%', total: '%total%' })) %>,
+  cycStates: <%- include('../../partials/json-script', { v: { not_started: __('admin:cyc_kpi_not_started'), in_progress: __('admin:cyc_kpi_in_progress'), in_review: __('admin:cyc_kpi_in_review'), approved: __('admin:cyc_kpi_approved'), excluded: __('admin:cyc_kpi_excluded') } }) %>,
+  cycStatus: <%- include('../../partials/json-script', { v: { open: enumLabel('cycle_status', 'open'), locked: enumLabel('cycle_status', 'locked') } }) %>,
+  SL: <%- include('../../partials/json-script', { v: { draft: __('talentx:sar_st_draft'), submitted: __('talentx:sar_st_submitted'), under_review: __('talentx:sar_st_under_review'), changes_requested: __('talentx:sar_st_changes_requested'), reviewed: __('talentx:sar_st_reviewed'), arbitration: __('talentx:sar_st_arbitration'), approved: __('talentx:sar_st_approved'), rejected: __('talentx:sar_st_rejected') } }) %>,
+  AUTH: <%- include('../../partials/json-script', { v: { employee: __('talentx:sar_author_employee'), manager: __('talentx:sar_author_manager'), supervisor: __('talentx:sar_author_supervisor'), admin: __('talentx:sar_author_admin') } }) %>,
+  notConfirmed: <%- JSON.stringify(__('talentx:sar_not_confirmed')) %>,
+  statsUnavailable: <%- JSON.stringify(__('talentx:sar_stats_unavailable')) %>,
+  statsAllCycles: <%- JSON.stringify(__('talentx:sar_stats_all_cycles')) %>,
+  nothingAwaitingCycle: <%- JSON.stringify(__('talentx:sar_nothing_awaiting_cycle')) %>,
+  seeAllCycles: <%- JSON.stringify(__('talentx:sar_see_all_cycles')) %>,
+  HELP: <%- include('../../partials/json-script', { v: {
+    labels: {
+      words: [0, 1, 2, 3, 4].map(function (n) { return __('employee:scale_' + n + '_word'); }),
+      titles: [0, 1, 2, 3, 4].map(function (n) { return __('employee:scale_' + n + '_title'); })
+    },
+    t: {
+      summary: __('employee:sa_help_summary'),
+      noDesc: __('talentx:sar_help_no_desc'),
+      subDomain: __('employee:sa_help_subdomain'),
+      levelsTitle: __('employee:sa_help_levels_title'),
+      selectedTag: __('talentx:sar_help_self_tag'),
+      requiredTag: __('talentx:sar_help_required_tag')
+    }
+  } }) %>
+};
+// Le catalogue des refus, dans la langue de la page : un 403 ne doit plus
+// s'afficher en anglais sur un écran français.
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  load_failed: __('talentx:sar_load_failed'),
+  pending_failed: __('talentx:sar_pending_failed'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+const SA = {
+  current: null,
+  sortMode: 'all',
+  ACT_STATES: ['submitted','under_review','reviewed','arbitration'],
+  STATES: { draft:'#5f6570', submitted:'#1b56b8', under_review:'#a15400', changes_requested:'#c62828', reviewed:'#1b7e3a', arbitration:'#7a3cc4', approved:'#0f8a3c', rejected:'#b00020' },
+  // UNE REDIRECTION EST UN ÉCHEC. L'ancien helper envoyait Content-Type seul, donc
+  // une session expirée recevait `302 → /login?expired=1`, fetch la SUIVAIT, la page
+  // HTML arrivait en 200, `r.ok` valait true et `r.json` était avalé en `{}` :
+  // l'écran annonçait « Terminé » sur une décision jamais enregistrée. Toute la
+  // discipline est dans public/js/sa-console-net.js (testée unitairement).
+  async api(path, method, body) {
+    try {
+      return await SAConsoleNet.api(path, method, body);
+    } catch (err) {
+      (window.toast||alert)(err.message, 'error');
+      if (err.code === 'session') SAConsoleNet.navigate('/login?expired=1');
+      err.__saReported = true; // déjà dit à l'utilisateur : pas deux fois (voir plus bas)
+      throw err;
+    }
+  },
+  badge(s, n){ return '<span class="sa-badge" style="background:'+(this.STATES[s]||'#555')+'">'+escapeHtml((SA_T.SL&&SA_T.SL[s])||s)+(n!=null?(' '+n):'')+'</span>'; },
+  rateSelect(it){
+    // The reviewer's OWN rating (0–4), pre-filled with the self-rating. On approve
+    // this is what becomes the official skill level — no more silent rubber-stamp.
+    const cur = (it.selfRatedLevel!=null ? String(it.selfRatedLevel) : '');
+    let opts = '';
+    for (let i=0;i<=4;i++){ opts += '<option value="'+i+'"'+(String(i)===cur?' selected':'')+'>'+i+'</option>'; }
+    // data-self carries the employee's own rating so act can tell an OVERRIDE
+    // from an agreement and demand a short reason for the former.
+    return '<span class="sa-rate" title="'+escapeHtml(SA_T.rateTitle)+'">'+escapeHtml(SA_T.rateLbl)+' <select id="sa-rate-'+it.id+'" class="sa-rate-sel" data-self="'+escapeHtml(cur)+'" aria-label="'+escapeHtml(SA_T.rateTitle)+'">'+opts+'</select></span>';
+  },
+  // ---- decision context (per skill) -----------------------------------
+  lvl(v){ return (v===null||v===undefined||v==='') ? null : Number(v); },
+  /** Required level cell + the « Critique » marker is rendered next to the skill. */
+  requiredCell(it){
+    const req = this.lvl(it.requiredLevel);
+    if (req===null) return '<span class="sa-lvl-none" title="'+escapeHtml(SA_T.rvxNoRequirement)+'">—</span>';
+    return String(req);
+  },
+  /** Self level + the gap against the requirement (context, not a filter). */
+  selfCell(it){
+    const req = this.lvl(it.requiredLevel), self = this.lvl(it.selfRatedLevel);
+    let out = (self===null? '—' : String(self));
+    if (req!==null && self!==null) {
+      const d = self - req;
+      out += d < 0
+        ? ' <span class="sa-gap" title="'+escapeHtml(SA_T.rvxGapTitle)+'">'+d+'</span>'
+        : ' <span class="sa-gap sa-gap-ok" title="'+escapeHtml(SA_T.rvxMetTitle)+'">✓</span>';
+    }
+    return out;
+  },
+  /** The level the organisation last officially validated for this skill. */
+  validatedCell(it){
+    const v = this.lvl(it.validatedLevel);
+    if (v===null) return '<span class="sa-lvl-none">'+escapeHtml(SA_T.rvxNeverValidated)+'</span>';
+    let title = '';
+    if (it.validatedAt) { try { title = SA_T.rvxValidatedOn.replace('{date}', new Date(it.validatedAt).toLocaleDateString(SA_T.lang)); } catch(_) { title=''; } }
+    return '<span'+(title?' title="'+escapeHtml(title)+'"':'')+'>'+v+'</span>';
+  },
+  /** The employee's own justification, expandable in place. */
+  justificationCell(it){
+    const txt = (it.employeeNotes==null? '' : String(it.employeeNotes)).trim();
+    if (!txt) return '<span class="sa-nojust">'+escapeHtml(SA_T.rvxNoJustification)+'</span>';
+    const short = txt.length > 46 ? txt.slice(0,46)+'…' : txt;
+    return '<details class="sa-just"><summary title="'+escapeHtml(SA_T.rvxSeeJustification)+'">'+escapeHtml(short)+'</summary><div>'+escapeHtml(txt)+'</div></details>';
+  },
+  /** 3.23.21: the same « Qu'est-ce que c'est ? » the employee saw, built by
+   *  the shared helper (public/js/sa-skill-help.js) — every text escaped there. */
+  helpPanel(it){
+    if (it.skillId==null || !window.SkillHelp) return '';
+    const H = window.SkillHelp;
+    return H.panelHtml({
+      id: 'r'+it.id+'-'+it.skillId,
+      help: H.resolve(it.skillHelp||null, SA_T.lang==='en'?'en':'fr', SA_T.HELP.labels),
+      selected: it.selfRatedLevel, required: it.requiredLevel, mode: 'review', t: SA_T.HELP.t
+    });
+  },
+  /** One queue row. `idx` preserves the server order for the « Tout » sort. */
+  row(it, idx){
+    const crit = it.isCritical===true || it.isCritical===1 || it.isCritical==='t';
+    const req = this.lvl(it.requiredLevel), self = this.lvl(it.selfRatedLevel);
+    // Gap magnitude used only for ORDERING; -999 keeps rows without a requirement
+    // at the end of the gap sort — still present, never removed.
+    const gap = (req!==null && self!==null) ? (req - self) : -999;
+    const hasJust = !!((it.employeeNotes==null? '' : String(it.employeeNotes)).trim());
+    return '<tr class="sa-row" data-idx="'+idx+'" data-gap="'+gap+'" data-crit="'+(crit?1:0)+'" data-just="'+(hasJust?1:0)+'">'+
+      '<td>'+escapeHtml(it.skillName||('#'+it.skillId))+(crit?'<span class="sa-chip-crit" title="'+escapeHtml(SA_T.rvxCriticalTitle)+'">'+escapeHtml(SA_T.rvxCritical)+'</span>':'')+this.helpPanel(it)+'</td>'+
+      '<td class="sa-num">'+this.requiredCell(it)+'</td>'+
+      '<td class="sa-num">'+this.selfCell(it)+'</td>'+
+      '<td class="sa-num">'+this.validatedCell(it)+'</td>'+
+      '<td>'+this.justificationCell(it)+'</td>'+
+      '<td>'+this.badge(it.workflowState)+'</td>'+
+      '<td>'+this.rowActions(it)+'</td></tr>';
+  },
+  /**
+   * Reorder the already-loaded rows. This ONLY moves rows (and marks the ones the
+   * chosen criterion brings forward): no row is ever hidden or dropped — the
+   * number of skills a reviewer must decide on is unchanged by design.
+   */
+  applySort(){
+    const mode = this.sortMode || 'all';
+    document.querySelectorAll('.sa-detail tbody').forEach(function(tb){
+      const rows = Array.prototype.slice.call(tb.querySelectorAll('tr.sa-row'));
+      const n = function(el, a){ return Number(el.getAttribute(a)); };
+      rows.sort(function(a,b){
+        if (mode==='gap')      return (n(b,'data-gap') - n(a,'data-gap')) || (n(a,'data-idx') - n(b,'data-idx'));
+        if (mode==='critical') return (n(b,'data-crit') - n(a,'data-crit')) || (n(b,'data-gap') - n(a,'data-gap')) || (n(a,'data-idx') - n(b,'data-idx'));
+        if (mode==='nojust')   return (n(a,'data-just') - n(b,'data-just')) || (n(a,'data-idx') - n(b,'data-idx'));
+        return n(a,'data-idx') - n(b,'data-idx');
+      });
+      rows.forEach(function(r){
+        r.classList.remove('sa-hit');
+        if (mode==='gap' && n(r,'data-gap') > 0) r.classList.add('sa-hit');
+        if (mode==='critical' && n(r,'data-crit') === 1) r.classList.add('sa-hit');
+        if (mode==='nojust' && n(r,'data-just') === 0) r.classList.add('sa-hit');
+        tb.appendChild(r); // move, never remove
+      });
+    });
+  },
+  rowActions(it){
+    const id = it.id, st = it.workflowState, A = [];
+    if (this.ACT_STATES.includes(st)) { A.push(this.rateSelect(it)); A.push(b(id,SA_T.approve,'approve','btn-success')); A.push(b(id,SA_T.requestChanges,'request-changes','btn-warning')); A.push(b(id,SA_T.reject,'reject','btn-danger')); }
+    A.push('<button class="btn btn-sm" onclick="SA.openThread('+id+')">'+SA_T.discuss+' ('+(it.commentCount||0)+')</button>');
+    return A.join(' ');
+    function b(id,label,action,cls){ return '<button class="btn btn-sm '+cls+'" data-action="'+action+'" onclick="SA.act('+id+',this.dataset.action)">'+label+'</button>'; }
+  },
+  async act(id, action){
+    let body = {};
+    // Treat an empty box the same as cancel — the server now requires a reason, so
+    // sending '' would just bounce back an error. Loop until we have text or a cancel.
+    if (action==='request-changes') { const c = await ask(SA_T.askComment); if (c===null || !String(c).trim()) return; body.comment = c.trim(); }
+    if (action==='reject') { const c = await ask(SA_T.askRejectReason); if (c===null || !String(c).trim()) return; body.reason = c.trim(); }
+    // On approve, promote the reviewer's rating (defaults to the pre-filled self-rating).
+    // When that rating DIFFERS from the employee's own, the supervisor must say why:
+    // the reason is stored on supervisor_reviews.gap_reason. Cancel/empty aborts the
+    // whole decision — nothing is sent, the assessment stays where it is.
+    if (action==='approve') {
+      const sel = document.getElementById('sa-rate-'+id);
+      if (sel && sel.value !== '') {
+        body.supervisorLevel = sel.value;
+        const self0 = sel.getAttribute('data-self') || '';
+        if (self0 !== '' && String(sel.value) !== String(self0)) {
+          const why = await ask(SA_T.rvxAskOverride.replace('{self}', self0).replace('{mine}', sel.value));
+          if (why===null || !String(why).trim()) return;
+          body.recommendation = { gapReason: String(why).trim() };
+        }
+      }
+    }
+    // On n'annonce JAMAIS un acte avant d'en avoir la preuve : le serveur renvoie
+    // l'évaluation mise à jour. Une réponse sans `assessment` n'est pas un succès.
+    const j = await this.api('/api/self-assessment/'+id+'/'+action, 'POST', body);
+    if (!SAConsoleNet.confirmed(j, 'assessment')) {
+      (window.toast||function(){})(SA_T.notConfirmed, 'error');
+      await this.load();
+      return;
+    }
+    (window.toast||function(){})(SA_T.done, 'success');
+    await this.load();
+  },
+  async approveAll(empId, n){
+    const ok = await window.confirmDialog(SA_T.approveAllConfirm.replace('{n}', n), { okText: SA_T.approveAll });
+    if (!ok) return;
+    const j = await this.api('/api/self-assessment/employee/'+empId+'/approve-all', 'POST', {});
+    const r = j.result || {};
+    const skipped = (r.failed && r.failed.length) ? r.failed.length : 0;
+    if (skipped) {
+      (window.toast||function(){})(SA_T.approvedN.replace('{n}', r.approved) + ' — ' + skipped + ' skipped (' + r.failed.map(function(f){return '#'+f.id;}).join(', ') + ')', 'warning');
+    } else {
+      (window.toast||function(){})(SA_T.approvedN.replace('{n}', (r.approved!=null?r.approved:n)), 'success');
+    }
+    await this.load();
+  },
+  async openThread(id){
+    this.current = id;
+    const j = await this.api('/api/self-assessment/'+id+'/thread');
+    document.getElementById('sa-thread').style.display='block';
+    document.getElementById('sa-thread-body').innerHTML = j.comments.length
+      ? j.comments.map(c=>'<div style="padding:.4rem 0;border-bottom:1px solid #eee;"><strong>'+escapeHtml((SA_T.AUTH&&SA_T.AUTH[c.authorType])||c.authorType)+'</strong>: '+escapeHtml(c.body)+' <span class="text-muted" style="font-size:.8em">'+escapeHtml(new Date(c.createdAt).toLocaleString(SA_T.lang))+'</span></div>').join('')
+      : '<em>'+SA_T.noComments+'</em>';
+    document.getElementById('sa-thread').scrollIntoView({behavior:'smooth'});
+  },
+  async comment(){
+    const v = document.getElementById('sa-thread-input').value.trim();
+    if (!v || !this.current) return;
+    await this.api('/api/self-assessment/'+this.current+'/comment','POST',{ comment: v }).catch(()=>{});
+    document.getElementById('sa-thread-input').value='';
+    await this.openThread(this.current); await this.load();
+  },
+  toggle(empId){ const d=document.getElementById('sa-detail-'+empId); if(!d) return; const open=d.classList.toggle('open'); const b=document.getElementById('sa-toggle-'+empId); if(b) b.setAttribute('aria-expanded', open?'true':'false'); },
+  // ---- campaign filter + "waiting for the employee" tab ------------
+  cycleId: '',
+  cycles: [],
+  fmt(tpl, vars){ return String(tpl).replace(/%(\w+)%/g, function (m, k) { return Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m; }); },
+  cycleChip(c){ return '<span class="sa-cycle-chip">'+escapeHtml(c && c.code ? this.fmt(SA_T.cycleChip, { code: c.code }) : SA_T.noCycleChip)+'</span>'; },
+  async loadCycles(){
+    try {
+      const j = await this.api('/cycles/running.json');
+      this.cycles = j.cycles || [];
+      const sel = document.getElementById('sa-cycle');
+      this.cycles.forEach(c => { const o = document.createElement('option'); o.value = String(c.id); o.textContent = c.code + (c.label && c.label !== c.code ? ' — ' + c.label : '') + ' (' + (SA_T.cycStatus[c.status] || c.status) + ')'; sel.appendChild(o); });
+      // AUCUNE pré-sélection subie : la première campagne « en cours » — y compris
+      // VERROUILLÉE et échue — était imposée comme filtre et masquait toutes les
+      // lignes hors campagne, pendant que le bandeau du haut, lui, les comptait.
+      // Le filtre reste offert ; il n'est plus appliqué sans qu'on l'ait demandé.
+      const want = SAConsoleNet.preselectedCycle(location.search, this.cycles);
+      if (want && Array.prototype.some.call(sel.options, o => o.value === want)) { sel.value = want; this.cycleId = want; }
+      const link = document.getElementById('sa-cycle-console');
+      if (link) { link.hidden = !this.cycleId; link.href = '/cycles/' + this.cycleId; }
+    } catch (_) { /* the queue works without the picker */ }
+  },
+  showTab(name){
+    document.querySelectorAll('[data-sa-tab]').forEach(b => { const on = b.getAttribute('data-sa-tab') === name; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+    document.getElementById('sa-pending').style.display = name === 'pending' ? '' : 'none';
+    document.getElementById('sa-people').style.display = name === 'pending' ? 'none' : '';
+    if (name === 'pending') this.loadPending();
+  },
+  async loadPending(){
+    const tb = document.querySelector('#sa-pending-table tbody');
+    const hint = document.getElementById('sa-pending-hint');
+    const all = document.getElementById('sa-nudge-all');
+    const badge = document.getElementById('sa-pending-n');
+    if (!this.cycleId) { tb.innerHTML = '<tr><td colspan="5"><em>'+SA_T.pendingPick+'</em></td></tr>'; all.hidden = true; badge.hidden = true; return; }
+    tb.innerHTML = '<tr><td colspan="5"><em>'+SA_T.loading+'</em></td></tr>';
+    // Un refus laissait « Chargement… » dans ce tableau pour toujours.
+    let j;
+    try {
+      j = await this.api('/cycles/'+this.cycleId+'/roster.json?states=not_started,in_progress');
+    } catch (err) {
+      tb.innerHTML = SAConsoleNet.failureRow(err, 'pending', 5, 'pending_failed');
+      all.hidden = true; badge.hidden = true;
+      return;
+    }
+    const cyc = j.cycle || {};
+    const open = cyc.status === 'open';
+    hint.textContent = (cyc.overdueDays ? this.fmt(SA_T.overdue, { days: cyc.overdueDays }) + ' · ' : '') + (open ? '' : SA_T.nudgeLocked);
+    all.hidden = !(open && j.rows.length);
+    badge.hidden = !j.rows.length; badge.textContent = String(j.rows.length);
+    if (!j.rows.length) { tb.innerHTML = '<tr><td colspan="5"><em>'+SA_T.pendingNone+'</em></td></tr>'; return; }
+    tb.innerHTML = j.rows.map(p => '<tr>'+
+      '<td><a href="/employees/'+p.employeeId+'">'+escapeHtml(p.fullName)+'</a>'+(p.serviceName?' <span class="sa-emp-sub">'+escapeHtml(p.serviceName)+'</span>':'')+'</td>'+
+      '<td>'+this.badge(p.state)+'</td>'+
+      '<td>'+escapeHtml(this.fmt(SA_T.progressOf, { done: p.approvedSkills, total: p.expectedSkills }))+'</td>'+
+      '<td>'+(p.lastNudgeAt ? escapeHtml(new Date(p.lastNudgeAt).toLocaleDateString(SA_T.lang)) : '—')+'</td>'+
+      '<td>'+(open ? '<button type="button" class="btn btn-sm btn-primary" data-sa-nudge="'+p.employeeId+'"><i class="fas fa-bell" aria-hidden="true"></i> '+SA_T.nudge+'</button>' : '')+'</td></tr>').join('');
+  },
+  async nudge(body, ask){
+    const ok = await window.confirmDialog(ask);
+    if (!ok) return;
+    const j = await this.api('/cycles/'+this.cycleId+'/nudge', 'POST', body);
+    (window.toast||function(){})(this.fmt(SA_T.nudgeDone, { sent: j.sent, managers: j.reviewersNotified, today: j.alreadyToday, locked: j.lockedSkipped }), j.sent ? 'success' : 'warning');
+    await this.loadPending();
+  },
+  async load(){
+    const cq = this.cycleId ? '?cycleId=' + encodeURIComponent(this.cycleId) : '';
+    // L'ORNEMENT N'EMPORTE PLUS L'ESSENTIEL. Les deux appels étaient dans le même
+    // Promise.all : un refus sur le petit compteur du haut rejetait l'ensemble et
+    // la file — qui avait pourtant répondu — restait sur « Chargement… ».
+    // Le compteur passe par SAConsoleNet directement : son échec se lit DANS le
+    // bandeau (renderStats), il n'a pas besoin d'un toast de plus.
+    const [qr, ar] = SAConsoleNet.settled(await Promise.allSettled([
+      this.api('/api/self-assessment/queue-by-employee' + cq),
+      SAConsoleNet.api('/api/self-assessment/analytics')
+    ]));
+    this.renderQueue(qr);
+    this.renderStats(ar);
+  },
+  /** La file. Un refus s'écrit DANS la zone, avec de quoi réessayer. */
+  renderQueue(res){
+    const wrap = document.getElementById('sa-people');
+    if (res.error) { wrap.innerHTML = SAConsoleNet.failureCard(res.error, 'queue', 'load_failed'); return; }
+    const q = res.value || {};
+    const list = q.employees || [];
+    if (!list.length) { wrap.innerHTML = this.emptyQueueCard(); }
+    else {
+      wrap.innerHTML = list.map(e=>{
+        const counts = (e.cycles || []).map(c => this.cycleChip(c)).join(' ') + ' ' + Object.keys(e.counts).map(s=>this.badge(s, e.counts[s])).join(' ');
+        const rows = e.items.map((it, i)=>this.row(it, i)).join('');
+        const approveBtn = e.pending>0 ? '<button class="btn btn-success btn-sm" onclick="SA.approveAll('+e.employeeId+','+e.pending+')"><i class="fas fa-check-double" aria-hidden="true"></i> '+SA_T.approveAll+' ('+e.pending+')</button>' : '<span class="sa-badge" style="background:#0f8a3c">'+SA_T.allDone+'</span>';
+        return '<div class="sa-emp"><div class="sa-emp-head">'+
+          '<div><div class="sa-emp-name">'+escapeHtml(e.firstName+' '+e.lastName)+'</div><div class="sa-emp-sub">'+SA_T.skillsPending.replace('{total}', e.total).replace('{pending}', e.pending)+'</div></div>'+
+          '<div class="sa-emp-counts">'+counts+'</div>'+
+          '<div class="sa-emp-actions"><button class="sa-toggle" id="sa-toggle-'+e.employeeId+'" aria-expanded="false" aria-controls="sa-detail-'+e.employeeId+'" onclick="SA.toggle('+e.employeeId+')">'+SA_T.details+'</button>'+approveBtn+'</div></div>'+
+          '<div class="sa-detail" id="sa-detail-'+e.employeeId+'"><div class="table-wrapper"><table><thead><tr>'+
+            '<th>'+SA_T.skill+'</th>'+
+            '<th class="sa-num">'+SA_T.rvxRequired+'</th>'+
+            '<th class="sa-num">'+SA_T.rvxSelf+'</th>'+
+            '<th class="sa-num">'+SA_T.rvxValidated+'</th>'+
+            '<th>'+SA_T.rvxJustification+'</th>'+
+            '<th>'+SA_T.state+'</th>'+
+            '<th style="min-width:300px">'+SA_T.actions+'</th>'+
+          '</tr></thead><tbody>'+rows+'</tbody></table></div></div></div>';
+      }).join('');
+      this.applySort();
+    }
+  },
+  /**
+   * File vide : dire LAQUELLE. « Rien en attente de votre revue » était faux dès
+   * qu'un filtre de campagne était actif — il y avait du travail, ailleurs.
+   */
+  emptyQueueCard(){
+    if (!this.cycleId) return '<div class="card" style="padding:1rem"><em>'+escapeHtml(SA_T.nothingAwaiting)+'</em></div>';
+    const c = (this.cycles || []).find(x => String(x.id) === String(this.cycleId));
+    const code = c ? (c.code || c.id) : this.cycleId;
+    return '<div class="card" style="padding:1rem"><em>'+escapeHtml(String(SA_T.nothingAwaitingCycle).replace('{code}', code))+'</em> '+
+      '<button type="button" class="btn btn-sm" data-sa-clear-cycle="1">'+escapeHtml(SA_T.seeAllCycles)+'</button></div>';
+  },
+  /**
+   * Le bandeau. Il compte TOUTES les campagnes (completionStats n'accepte pas de
+   * filtre) : quand la file est filtrée on l'écrit, au lieu de laisser deux
+   * chiffres se contredire sur une seule hauteur d'écran. Son échec ne coûte que
+   * lui-même.
+   */
+  renderStats(res){
+    const el = document.getElementById('sa-analytics-body');
+    if (!el) return;
+    if (res.error) {
+      el.innerHTML = '<span class="text-muted" title="'+escapeHtml(res.error.message)+'">'+escapeHtml(SA_T.statsUnavailable)+'</span>';
+      return;
+    }
+    const stats = (res.value && res.value.stats) || {};
+    const body = (stats.byState||[]).map(s=>this.badge(s.state, s.n)).join(' ') || '<em>'+escapeHtml(SA_T.none)+'</em>';
+    el.innerHTML = body + (this.cycleId ? ' <span class="text-muted" style="font-size:.8rem">('+escapeHtml(SA_T.statsAllCycles)+')</span>' : '');
+  }
+};
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function ask(msg){ return window.promptDialog(msg); }
+// Les boutons appellent SA.act/SA.approveAll par onclick : l'erreur déjà
+// montrée à l'utilisateur ressortait ensuite en « Uncaught (in promise) ». Un
+// refus se dit UNE fois, dans l'interface, pas deux fois dont une dans la console.
+window.addEventListener('unhandledrejection', function(ev){
+  if (ev.reason && ev.reason.__saReported) ev.preventDefault();
+});
+(function(){
+  const sel = document.getElementById('sa-sort');
+  if (sel) sel.addEventListener('change', function(){ SA.sortMode = sel.value; SA.applySort(); });
+  const cyc = document.getElementById('sa-cycle');
+  if (cyc) cyc.addEventListener('change', function(){
+    SA.cycleId = cyc.value;
+    const link = document.getElementById('sa-cycle-console');
+    if (link) { link.hidden = !SA.cycleId; link.href = '/cycles/' + SA.cycleId; }
+    SA.load(); if (document.getElementById('sa-pending').style.display !== 'none') SA.loadPending();
+  });
+  document.querySelectorAll('[data-sa-tab]').forEach(function(b){ b.addEventListener('click', function(){ SA.showTab(b.getAttribute('data-sa-tab')); }); });
+  const all = document.getElementById('sa-nudge-all');
+  if (all) all.addEventListener('click', function(){ SA.nudge({ all: true, states: ['not_started', 'in_progress'] }, SA_T.nudgeAllAsk); });
+  document.addEventListener('click', function(ev){
+    const b = ev.target.closest && ev.target.closest('[data-sa-nudge]');
+    if (b) SA.nudge({ employeeIds: [Number(b.getAttribute('data-sa-nudge'))] }, SA.fmt(SA_T.nudgeAsk, { n: 1 }));
+    // « Réessayer » posé par la carte d'échec, et « voir toutes les campagnes »
+    // posé par la file vide filtrée : deux sorties de secours, pas un toast.
+    const r = ev.target.closest && ev.target.closest('[data-sa-retry]');
+    if (r) { const z = r.getAttribute('data-sa-retry'); if (z === 'pending') SA.loadPending(); else SA.load(); }
+    const c = ev.target.closest && ev.target.closest('[data-sa-clear-cycle]');
+    if (c) {
+      const sel = document.getElementById('sa-cycle');
+      if (sel) sel.value = '';
+      SA.cycleId = '';
+      const link = document.getElementById('sa-cycle-console');
+      if (link) link.hidden = true;
+      SA.load();
+    }
+  });
+})();
+// Aucune de ces trois promesses n'avait de .catch : un rejet ne pouvait RIEN
+// écrire à l'écran et la zone gardait « Chargement… » pour toujours. Chacune
+// écrit désormais son échec dans SA ZONE, et aucune n'emporte les autres.
+SA.loadCycles()
+  .catch(function(){ /* le sélecteur de campagne est un confort, pas la file */ })
+  .then(function(){
+    SA.load().catch(function(err){
+      const wrap = document.getElementById('sa-people');
+      if (wrap) wrap.innerHTML = SAConsoleNet.failureCard(err, 'queue', 'load_failed');
+    });
+    SA.loadPending().catch(function(err){
+      const tb = document.querySelector('#sa-pending-table tbody');
+      if (tb) tb.innerHTML = SAConsoleNet.failureRow(err, 'pending', 5, 'pending_failed');
+    });
+  });
+</script>

@@ -1,0 +1,1386 @@
+<div class="page-header">
+    <h1><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('datamgmt:page_title') %></h1>
+    <p class="help-text"><%= __('datamgmt:page_subtitle') %></p>
+</div>
+
+<!-- Export Section -->
+<div class="dashboard-section">
+    <h2><i class="fas fa-file-export" aria-hidden="true"></i> <%= __('datamgmt:export_title') %></h2>
+    <p><%= __('datamgmt:export_desc') %></p>
+
+    <div class="export-grid">
+        <div class="export-card">
+            <div class="export-card-icon"><i class="fas fa-building" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_organization') %></h3>
+            <p><%= __('datamgmt:card_organization_export_desc') %></p>
+            <a href="/data-management/export/organization" class="btn btn-primary"><%= __('datamgmt:btn_export_csv') %></a>
+        </div>
+
+        <div class="export-card">
+            <div class="export-card-icon"><i class="fas fa-book" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_domains_skills') %></h3>
+            <p><%= __('datamgmt:card_domains_skills_export_desc') %></p>
+            <a href="/data-management/export/domains-skills" class="btn btn-primary"><%= __('datamgmt:btn_export_csv') %></a>
+        </div>
+
+        <div class="export-card">
+            <div class="export-card-icon"><i class="fas fa-users" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_employees') %></h3>
+            <p><%= __('datamgmt:card_employees_export_desc') %></p>
+            <a href="/data-management/export/employees" class="btn btn-primary"><%= __('datamgmt:btn_export_csv') %></a>
+        </div>
+
+        <div class="export-card">
+            <div class="export-card-icon"><i class="fas fa-lock" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_local_admins') %></h3>
+            <p><%= __('datamgmt:card_local_admins_export_desc') %></p>
+            <a href="/data-management/export/local-admins" class="btn btn-primary"><%= __('datamgmt:btn_export_json') %></a>
+        </div>
+
+        <div class="export-card">
+            <div class="export-card-icon"><i class="fas fa-chart-column" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_assessments') %></h3>
+            <p><%= __('datamgmt:card_assessments_export_desc') %></p>
+            <div class="btn-group d-flex" style="gap: 0.5rem; justify-content: center;">
+                <a href="/data-management/export/assessments" class="btn btn-primary" style="flex: 1;"><%= __('datamgmt:btn_export_csv') %></a>
+                <a href="/data-management/export/assessments/excel" class="btn btn-green" style="flex: 1;"><%= __('datamgmt:btn_export_excel') %></a>
+            </div>
+        </div>
+
+        <div class="export-card">
+            <div class="export-card-icon"><i class="fas fa-scroll" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_assessment_history') %></h3>
+            <p><%= __('datamgmt:card_assessment_history_desc') %></p>
+            <a href="/data-management/export/history" class="btn btn-primary"><%= __('datamgmt:btn_export_csv') %></a>
+        </div>
+    </div>
+</div>
+
+<!-- Download Templates Section -->
+<div class="dashboard-section">
+    <h2><i class="fas fa-clipboard" aria-hidden="true"></i> <%= __('datamgmt:templates_title') %></h2>
+    <p><%= __('datamgmt:templates_desc') %></p>
+
+    <div class="export-grid">
+        <div class="export-card">
+            <div class="export-card-icon"><i class="fas fa-building" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_organization') %></h3>
+            <p><%= __('datamgmt:tpl_organization_desc') %></p>
+            <a href="/data-management/templates/organization" class="btn btn-primary"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('datamgmt:btn_download_template') %></a>
+            <span class="file-format-badge"><%= __('datamgmt:badge_excel') %></span>
+        </div>
+
+        <div class="export-card">
+            <div class="export-card-icon"><i class="fas fa-book" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_domains_skills') %></h3>
+            <p><%= __('datamgmt:tpl_domains_skills_desc') %></p>
+            <a href="/data-management/templates/domains-skills" class="btn btn-primary"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('datamgmt:btn_download_template') %></a>
+            <span class="file-format-badge"><%= __('datamgmt:badge_excel') %></span>
+        </div>
+
+        <div class="export-card">
+            <div class="export-card-icon"><i class="fas fa-users" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_employees') %></h3>
+            <p><%= __('datamgmt:tpl_employees_desc') %></p>
+            <a href="/data-management/templates/employees" class="btn btn-primary"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('datamgmt:btn_download_template') %></a>
+            <span class="file-format-badge"><%= __('datamgmt:badge_excel') %></span>
+        </div>
+
+        <div class="export-card">
+            <div class="export-card-icon"><i class="fas fa-lock" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_local_admins') %></h3>
+            <p><%= __('datamgmt:tpl_local_admins_desc') %></p>
+            <a href="/data-management/templates/local-admins" class="btn btn-primary"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('datamgmt:btn_download_template') %></a>
+            <span class="file-format-badge"><%= __('datamgmt:badge_json') %></span>
+        </div>
+
+        <div class="export-card">
+            <div class="export-card-icon"><i class="fas fa-bullseye" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_roles') %></h3>
+            <p><%= __('datamgmt:tpl_roles_desc') %></p>
+            <a href="/data-management/templates/roles" class="btn btn-primary"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('datamgmt:btn_download_template') %></a>
+            <span class="file-format-badge"><%= __('datamgmt:badge_excel') %></span>
+        </div>
+
+        <div class="export-card">
+            <div class="export-card-icon"><i class="fas fa-chart-column" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_assessments') %></h3>
+            <p><%= __('datamgmt:tpl_assessments_desc') %></p>
+            <a href="/data-management/templates/assessments" class="btn btn-primary"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('datamgmt:btn_download_template') %></a>
+            <span class="file-format-badge"><%= __('datamgmt:badge_excel') %></span>
+        </div>
+
+        <div class="export-card card-featured">
+            <div class="export-card-icon"><i class="fas fa-bullseye" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_complete_framework') %></h3>
+            <p><strong><%= __('datamgmt:all_in_one') %></strong> <%= __('datamgmt:all_in_one_items') %></p>
+            <a href="/data-management/templates/skill-framework" class="btn btn-info"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('datamgmt:btn_download_template') %></a>
+            <span class="file-format-badge"><%= __('datamgmt:badge_excel') %></span>
+            <small class="card-footnote recommended"><%= __('datamgmt:recommended_setup') %></small>
+        </div>
+    </div>
+</div>
+
+<!-- Import Section -->
+<div class="dashboard-section">
+    <h2><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('datamgmt:import_title') %></h2>
+    <p><%= __('datamgmt:import_desc') %> <strong><i class="fas fa-lightbulb" aria-hidden="true"></i> <%= __('datamgmt:tip_label') %></strong> <%= __('datamgmt:import_tip') %></p>
+    <div class="alert alert-warning alert-prose" id="multerWarning" style="display: none; margin-bottom: 1rem;">
+        <strong><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('datamgmt:multer_warning_title') %></strong>
+        <%= __('datamgmt:multer_warning_body') %> <code>npm install multer@^1.4.5-lts.1</code>
+    </div>
+
+    <div class="import-grid">
+        <div class="import-card">
+            <div class="import-card-icon"><i class="fas fa-building" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_organization') %></h3>
+            <p><%= __('datamgmt:imp_organization_desc') %></p>
+            <form id="importOrganizationForm" enctype="multipart/form-data" style="margin-top: 1rem;">
+                <label class="sr-only" for="orgFile"><%= __('datamgmt:label_file_for', { name: __('datamgmt:card_organization') }) %></label>
+                <input type="file" name="file" accept=".csv" required class="file-input" id="orgFile">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button type="submit" class="btn btn-primary"><%= __('datamgmt:btn_import_csv') %></button>
+            </form>
+            <div class="import-result" id="orgResult"></div>
+        </div>
+
+        <div class="import-card">
+            <div class="import-card-icon"><i class="fas fa-book" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_domains_skills') %></h3>
+            <p><%= __('datamgmt:imp_domains_skills_desc') %></p>
+            <form id="importDomainsSkillsForm" enctype="multipart/form-data" style="margin-top: 1rem;">
+                <label class="sr-only" for="dsFile"><%= __('datamgmt:label_file_for', { name: __('datamgmt:card_domains_skills') }) %></label>
+                <input type="file" name="file" accept=".csv" required class="file-input" id="dsFile">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button type="submit" class="btn btn-primary"><%= __('datamgmt:btn_import_csv') %></button>
+            </form>
+            <div class="import-result" id="dsResult"></div>
+        </div>
+
+        <div class="import-card">
+            <div class="import-card-icon"><i class="fas fa-users" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_employees') %></h3>
+            <p><%= __('datamgmt:imp_employees_desc') %></p>
+            <form id="importEmployeesForm" enctype="multipart/form-data" style="margin-top: 1rem;">
+                <label class="sr-only" for="empFile"><%= __('datamgmt:label_file_for', { name: __('datamgmt:card_employees') }) %></label>
+                <input type="file" name="file" accept=".csv" required class="file-input" id="empFile">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button type="submit" class="btn btn-primary"><%= __('datamgmt:btn_import_csv') %></button>
+            </form>
+            <div class="import-result" id="empResult"></div>
+        </div>
+
+        <div class="import-card">
+            <div class="import-card-icon"><i class="fas fa-lock" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_local_admins') %></h3>
+            <p><%= __('datamgmt:imp_local_admins_desc') %></p>
+            <form id="importLocalAdminsForm" enctype="multipart/form-data" style="margin-top: 1rem;">
+                <label class="sr-only" for="adminFile"><%= __('datamgmt:label_file_for', { name: __('datamgmt:card_local_admins') }) %></label>
+                <input type="file" name="file" accept=".json" required class="file-input" id="adminFile">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button type="submit" class="btn btn-primary"><%= __('datamgmt:btn_import_json') %></button>
+            </form>
+            <div class="import-result" id="adminResult"></div>
+        </div>
+
+        <div class="import-card">
+            <div class="import-card-icon"><i class="fas fa-bullseye" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_roles') %></h3>
+            <p><%= __('datamgmt:imp_roles_desc') %></p>
+            <form id="importRolesForm" enctype="multipart/form-data" style="margin-top: 1rem;">
+                <label class="sr-only" for="roleFile"><%= __('datamgmt:label_file_for', { name: __('datamgmt:card_roles') }) %></label>
+                <input type="file" name="file" accept=".csv, .xlsx" required class="file-input" id="roleFile">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button type="submit" class="btn btn-primary"><%= __('datamgmt:btn_import_roles') %></button>
+            </form>
+            <div class="import-result" id="roleResult"></div>
+        </div>
+
+        <div class="import-card card-accent-top-orange">
+            <div class="import-card-icon"><i class="fas fa-chart-column" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_skill_assessments') %></h3>
+            <p><%= __('datamgmt:imp_skill_assessments_desc') %></p>
+            <form id="importAssessmentsForm" enctype="multipart/form-data" style="margin-top: 1rem;">
+                <label class="sr-only" for="assessFile"><%= __('datamgmt:label_file_for', { name: __('datamgmt:card_skill_assessments') }) %></label>
+                <input type="file" name="file" accept=".xlsx" required class="file-input" id="assessFile">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button type="submit" class="btn btn-orange"><%= __('datamgmt:btn_import_assessments') %></button>
+            </form>
+            <div class="import-result" id="assessResult"></div>
+        </div>
+
+        <div class="import-card card-featured">
+            <div class="import-card-icon"><i class="fas fa-bullseye" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:card_complete_framework') %></h3>
+            <p><strong><%= __('datamgmt:all_in_one') %></strong> <%= __('datamgmt:all_in_one_items') %></p>
+            <form id="importSkillFrameworkForm" enctype="multipart/form-data" style="margin-top: 1rem;">
+                <label class="sr-only" for="skillFrameworkFile"><%= __('datamgmt:label_file_for', { name: __('datamgmt:card_complete_framework') }) %></label>
+                <input type="file" name="file" accept=".xlsx" required class="file-input" id="skillFrameworkFile">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button type="submit" class="btn btn-info"><%= __('datamgmt:btn_import_excel') %></button>
+            </form>
+            <div class="import-result" id="skillFrameworkResult"></div>
+            <small class="card-footnote recommended"><%= __('datamgmt:recommended_setup') %></small>
+        </div>
+    </div>
+</div>
+
+<!-- NEW: One-Shot System Backup & Restore -->
+<div class="dashboard-section section-accent-green">
+    <h2><i class="fas fa-rocket" aria-hidden="true"></i> <%= __('datamgmt:oneshot_title') %></h2>
+    <p><%= __('datamgmt:oneshot_desc_1') %> <strong><%= __('datamgmt:oneshot_entire') %></strong> <%= __('datamgmt:oneshot_desc_2') %></p>
+
+    <div class="export-grid" style="margin-top: 1.5rem;">
+        <div class="export-card card-accent-top-green">
+            <div class="export-card-icon"><i class="fas fa-floppy-disk" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:full_export_title') %></h3>
+            <p><%= __('datamgmt:full_export_desc') %></p>
+            <a href="/admin/data/export-full" class="btn btn-green"><i class="fas fa-file-export" aria-hidden="true"></i> <%= __('datamgmt:btn_export_full') %></a>
+        </div>
+
+        <div class="import-card card-accent-top-green">
+            <div class="import-card-icon"><i class="fas fa-file-import" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:full_restore_title') %></h3>
+            <p><%= __('datamgmt:full_restore_desc') %></p>
+            <form id="fullSystemImportForm" enctype="multipart/form-data" style="margin-top: 1rem;">
+                <label class="sr-only" for="fullSystemFile"><%= __('datamgmt:label_file_for', { name: __('datamgmt:full_restore_title') }) %></label>
+                <input type="file" name="excelFile" accept=".xlsx" required class="file-input" id="fullSystemFile">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button type="submit" class="btn btn-green"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('datamgmt:btn_restore_full') %></button>
+            </form>
+            <div class="import-result" id="fullSystemResult"></div>
+            <p style="margin-top: 0.75rem;">
+                <a href="/data-management/templates/full-system"><i class="fas fa-download" aria-hidden="true"></i>
+                    <%= __('datamgmt:download_template_prefilled') %></a>
+            </p>
+            <small class="card-footnote"><%= __('datamgmt:full_restore_tip') %></small>
+            <small class="card-footnote warning"><%= __('datamgmt:full_restore_warning') %></small>
+        </div>
+    </div>
+</div>
+
+<% if (user && user.role === 'superadmin') { %>
+<!-- SQL Console (super-admin only) -->
+<div class="dashboard-section" style="border-left: 4px solid #8e44ad;">
+    <h2><i class="fas fa-terminal" aria-hidden="true"></i> <%= __('datamgmt:sql_console_title') %> <span class="badge" style="background:#8e44ad; color:#fff; font-size:11px; padding:2px 8px; border-radius:10px;"><%= __('datamgmt:badge_superadmin') %></span></h2>
+    <p><%= __('datamgmt:sql_console_desc') %></p>
+    <a href="/data-management/sql-console" class="btn btn-purple"><i class="fas fa-terminal" aria-hidden="true"></i>
+        <%= __('datamgmt:btn_open_sql_console') %></a>
+</div>
+<% } %>
+
+<!-- JSON System Migration (Portable) -->
+<div class="dashboard-section section-accent-purple">
+    <h2><i class="fas fa-box" aria-hidden="true"></i> <%= __('datamgmt:json_migration_title') %></h2>
+    <p><%= __('datamgmt:json_migration_desc_1') %> <strong><%= __('datamgmt:json_migration_bold') %></strong> <%= __('datamgmt:json_migration_desc_2') %>
+    </p>
+
+    <div class="export-grid" style="margin-top: 1.5rem;">
+        <div class="export-card card-accent-top-purple">
+            <div class="export-card-icon"><i class="fas fa-file-lines" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:json_export_title') %></h3>
+            <p><%= __('datamgmt:json_export_desc') %></p>
+            <a href="/admin/data/export-json" class="btn btn-purple"><i class="fas fa-file-export" aria-hidden="true"></i> <%= __('datamgmt:btn_download_json') %></a>
+        </div>
+
+        <div class="import-card card-accent-top-purple">
+            <div class="import-card-icon"><i class="fas fa-dna" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:json_import_title') %></h3>
+            <p><%= __('datamgmt:json_import_desc') %></p>
+            <form id="importJsonForm" enctype="multipart/form-data" style="margin-top: 1rem;">
+                <label class="sr-only" for="jsonFile"><%= __('datamgmt:label_file_for', { name: __('datamgmt:json_import_title') }) %></label>
+                <input type="file" name="jsonFile" accept=".json" required class="file-input" id="jsonFile">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+                    <button type="button" class="btn btn-secondary" onclick="previewJsonImport()"><i class="fas fa-magnifying-glass" aria-hidden="true"></i> <%= __('datamgmt:btn_preview_changes') %></button>
+                    <button type="submit" class="btn btn-purple"><i class="fas fa-dna" aria-hidden="true"></i> <%= __('datamgmt:btn_load_from_json') %></button>
+                </div>
+            </form>
+            <div class="import-result" id="jsonPreviewResult" style="text-align:left;"></div>
+            <div class="import-result" id="jsonImportResult"></div>
+        </div>
+
+        <div class="export-card card-accent-top-purple">
+            <div class="export-card-icon"><i class="fas fa-folder-open" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:json_templates_title') %></h3>
+            <p><%= __('datamgmt:json_templates_desc') %></p>
+            <div class="template-links">
+                <a href="/data-management/templates/json/full" class="featured"><i class="fas fa-gem" aria-hidden="true"></i> <%= __('datamgmt:link_full_migration') %></a>
+                <a href="/data-management/templates/json/domains-skills"><i class="fas fa-folder" aria-hidden="true"></i> <%= __('datamgmt:link_domains_skills_json') %></a>
+                <a href="/data-management/templates/json/organization"><i class="fas fa-building" aria-hidden="true"></i> <%= __('datamgmt:link_organization_json') %></a>
+                <a href="/data-management/templates/json/employees"><i class="fas fa-users" aria-hidden="true"></i> <%= __('datamgmt:link_employees_json') %></a>
+                <a href="/data-management/templates/json/roles"><i class="fas fa-screwdriver-wrench" aria-hidden="true"></i> <%= __('datamgmt:link_roles_json') %></a>
+                <a href="/data-management/templates/json/assessments"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('datamgmt:link_assessments_json') %></a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Skill Matrix (single-file provisioning — Excel / JSON / XML / CSV) -->
+<div class="dashboard-section section-accent-green">
+    <h2><i class="fas fa-book" aria-hidden="true"></i> <%= __('datamgmt:matrix_title') %></h2>
+    <p><%= __('datamgmt:matrix_desc_1') %> <strong><%= __('datamgmt:matrix_whole_framework') %></strong> <%= __('datamgmt:matrix_desc_2') %>
+        <strong><%= __('datamgmt:matrix_ia_layout') %></strong> <%= __('datamgmt:matrix_desc_3') %>
+        <code>DOM-xx</code>, <code>SKL-xxx</code>, <code>ROL-xx</code>, <code>Employee ID</code> <%= __('datamgmt:matrix_desc_4') %>
+        <strong><%= __('datamgmt:matrix_formats') %></strong> <%= __('datamgmt:matrix_desc_5') %></p>
+
+    <div class="export-grid" style="margin-top: 1.5rem;">
+        <div class="export-card card-accent-top-green">
+            <div class="export-card-icon"><i class="fas fa-file-export" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:matrix_export_title') %></h3>
+            <p><%= __('datamgmt:matrix_export_desc') %></p>
+            <div class="template-links">
+                <a href="/data-management/skill-matrix-workbook/export/excel"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('datamgmt:fmt_excel') %></a>
+                <a href="/data-management/skill-matrix-workbook/export/json"><i class="fas fa-dna" aria-hidden="true"></i> <%= __('datamgmt:fmt_json') %></a>
+                <a href="/data-management/skill-matrix-workbook/export/xml"><i class="fas fa-folder-tree" aria-hidden="true"></i> <%= __('datamgmt:fmt_xml') %></a>
+                <a href="/data-management/skill-matrix-workbook/export/csv"><i class="fas fa-file-lines" aria-hidden="true"></i> <%= __('datamgmt:fmt_csv') %></a>
+                <a href="/data-management/skill-matrix-workbook/export/yaml"><i class="fas fa-receipt" aria-hidden="true"></i> <%= __('datamgmt:fmt_yaml') %></a>
+            </div>
+        </div>
+
+        <div class="export-card card-accent-top-green">
+            <div class="export-card-icon"><i class="fas fa-clipboard" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:btn_download_template') %></h3>
+            <p><%= __('datamgmt:matrix_template_desc') %></p>
+            <div class="template-links">
+                <a href="/data-management/skill-matrix-workbook/template/excel"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('datamgmt:tpl_excel') %></a>
+                <a href="/data-management/skill-matrix-workbook/template/json"><i class="fas fa-dna" aria-hidden="true"></i> <%= __('datamgmt:tpl_json') %></a>
+                <a href="/data-management/skill-matrix-workbook/template/xml"><i class="fas fa-folder-tree" aria-hidden="true"></i> <%= __('datamgmt:tpl_xml') %></a>
+                <a href="/data-management/skill-matrix-workbook/template/csv"><i class="fas fa-file-lines" aria-hidden="true"></i> <%= __('datamgmt:tpl_csv') %></a>
+                <a href="/data-management/skill-matrix-workbook/template/yaml"><i class="fas fa-receipt" aria-hidden="true"></i> <%= __('datamgmt:tpl_yaml') %></a>
+            </div>
+        </div>
+
+        <div class="import-card card-accent-top-green">
+            <div class="import-card-icon"><i class="fas fa-file-import" aria-hidden="true"></i></div>
+            <h3><%= __('datamgmt:matrix_import_title') %></h3>
+            <p><%= __('datamgmt:matrix_import_desc_1') %> <strong><%= __('datamgmt:matrix_import_formats') %></strong> <%= __('datamgmt:matrix_import_desc_2') %></p>
+            <form id="importSkillMatrixWorkbookForm" enctype="multipart/form-data" style="margin-top: 1rem;">
+                <label class="sr-only" for="skillMatrixWorkbookFile"><%= __('datamgmt:label_file_for', { name: __('datamgmt:matrix_import_title') }) %></label>
+                <input type="file" name="file" accept=".xlsx,.json,.xml,.csv,.yaml,.yml" required class="file-input"
+                    id="skillMatrixWorkbookFile">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+                    <button type="button" class="btn btn-secondary" onclick="previewSkillMatrixWorkbook()"><i class="fas fa-magnifying-glass" aria-hidden="true"></i> <%= __('datamgmt:btn_preview_changes') %></button>
+                    <button type="submit" class="btn btn-green"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('datamgmt:btn_import') %></button>
+                </div>
+            </form>
+            <div class="import-result" id="skillMatrixWorkbookPreview" style="text-align:left;"></div>
+            <div class="import-result" id="skillMatrixWorkbookResult"></div>
+            <small class="card-footnote warning"><%= __('datamgmt:matrix_import_warning') %></small>
+        </div>
+    </div>
+</div>
+
+<% if (user && user.role === 'superadmin') { %>
+<!-- Snapshots Section (super-admin only) -->
+<div class="dashboard-section">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <div>
+            <h2><i class="fas fa-camera" aria-hidden="true"></i> <%= __('datamgmt:snapshots_title') %></h2>
+            <p><%= __('datamgmt:snapshots_desc') %></p>
+        </div>
+        <button class="btn btn-primary" onclick="showModal('createSnapshotModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('datamgmt:btn_create_snapshot') %></button>
+    </div>
+
+    <% if (snapshots && snapshots.length> 0) { %>
+        <div class="table-wrapper">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th><%= __('datamgmt:th_name') %></th>
+                        <th><%= __('datamgmt:th_description') %></th>
+                        <th><%= __('datamgmt:th_created_by') %></th>
+                        <th><%= __('datamgmt:th_created_at') %></th>
+                        <%# d: size + captured counts, so an empty capture is visible. %>
+                        <th><%= __('datamgmt:th_size') %></th>
+                        <th><%= __('datamgmt:th_actions') %></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% snapshots.forEach(function(snapshot) { %>
+                        <tr>
+                            <td><strong>
+                                    <%= snapshot.name %>
+                                </strong></td>
+                            <td>
+                                <%= snapshot.description || '-' %>
+                            </td>
+                            <td>
+                                <%= snapshot.createdByUsername || __('datamgmt:unknown_user') %>
+                            </td>
+                            <td>
+                                <%= fmtDateTime(snapshot.createdAt) %>
+                            </td>
+                            <td>
+                                <% if (snapshot.sizeBytes == null) { %>—<% } else { %>
+                                  <%= (snapshot.sizeBytes / 1024).toFixed(0) %> Ko
+                                  <% const c = snapshot.entityCounts || {}; const keys = Object.keys(c).filter(function(k){ return c[k]; }).sort(); %>
+                                  <% if (keys.length) { %>
+                                    <div class="snap-counts"><%= keys.map(function(k){ return c[k] + ' ' + k; }).join(' · ') %></div>
+                                  <% } %>
+                                <% } %>
+                            </td>
+                            <td>
+                                <div class="table-actions">
+                                    <button class="btn btn-sm" onclick="viewSnapshotStats(<%= snapshot.id %>)"
+                                        title="<%= __('datamgmt:title_view_details') %>"><i class="fas fa-eye" aria-hidden="true"></i> <%= __('datamgmt:btn_view') %></button>
+                                    <button class="btn btn-sm btn-warning"
+                                        data-snapshot-id="<%= snapshot.id %>" data-snapshot-name="<%= snapshot.name %>"
+                                        onclick="restoreSnapshotBtn(this)"
+                                        title="<%= __('datamgmt:title_restore_snapshot') %>"><i class="fas fa-arrows-rotate" aria-hidden="true"></i> <%= __('datamgmt:btn_restore') %></button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteSnapshot(<%= snapshot.id %>)"
+                                        title="<%= __('datamgmt:title_delete_snapshot') %>"><i class="fas fa-trash-can" aria-hidden="true"></i> <%= __('datamgmt:btn_delete') %></button>
+                                </div>
+                            </td>
+                        </tr>
+                        <% }); %>
+                </tbody>
+            </table>
+        </div>
+        <% } else { %>
+            <div class="empty-state">
+                <div class="empty-state-icon"><i class="fas fa-camera" aria-hidden="true"></i></div>
+                <h3><%= __('datamgmt:snapshots_empty_title') %></h3>
+                <p><%= __('datamgmt:snapshots_empty_desc') %></p>
+                <button class="btn btn-primary" onclick="showModal('createSnapshotModal')"><%= __('datamgmt:btn_create_first_snapshot') %></button>
+            </div>
+            <% } %>
+</div>
+<% } %>
+
+<!-- Statistics Section -->
+<div class="dashboard-section">
+    <h2><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('datamgmt:stats_title') %></h2>
+    <div class="dashboard-stats" id="statisticsGrid">
+        <%# rendered server-side. « — » only when the count could not be
+            measured at all — never as a placeholder for "not fetched yet". %>
+        <div class="stat-card">
+            <h3><%= __('datamgmt:stat_total_employees') %></h3>
+            <p class="stat-value" id="totalEmployees"><%= stats ? stats.totalEmployees : '—' %></p>
+        </div>
+        <div class="stat-card">
+            <h3><%= __('datamgmt:stat_total_assessments') %></h3>
+            <p class="stat-value" id="totalAssessments"><%= stats ? stats.totalAssessments : '—' %></p>
+        </div>
+        <div class="stat-card">
+            <h3><%= __('datamgmt:stat_history_entries') %></h3>
+            <p class="stat-value" id="totalHistory"><%= stats ? stats.totalHistoryEntries : '—' %></p>
+        </div>
+    </div>
+</div>
+
+<% if (user && user.role === 'superadmin') { %>
+<!-- Database Reset Section (super-admin only) -->
+<div class="dashboard-section section-accent-danger">
+    <h2><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('datamgmt:reset_title') %></h2>
+    <div class="alert alert-error alert-prose" style="margin-bottom: 1.5rem;">
+        <strong><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('datamgmt:danger_zone') %></strong><br>
+        <%= __('datamgmt:reset_warning_1') %>
+        <strong>admin</strong><%= __('datamgmt:reset_paren_close') %>.<br>
+        <strong><%= __('datamgmt:reset_cannot_undo') %></strong> <%= __('datamgmt:reset_consider_snapshot') %>
+    </div>
+
+    <div class="reset-info">
+        <h3><%= __('datamgmt:reset_will_delete') %></h3>
+        <ul>
+            <li><%= __('datamgmt:reset_del_employees') %></li>
+            <li><%= __('datamgmt:reset_del_org') %></li>
+            <li><%= __('datamgmt:reset_del_domains') %></li>
+            <li><%= __('datamgmt:reset_del_roles') %></li>
+            <li><%= __('datamgmt:reset_del_admins') %></li>
+            <li><%= __('datamgmt:reset_del_snapshots') %></li>
+            <li><%= __('datamgmt:reset_del_settings') %></li>
+        </ul>
+
+        <h3><%= __('datamgmt:reset_will_preserve') %></h3>
+        <ul>
+            <li><%= __('datamgmt:reset_keep_admin') %> <strong>admin</strong><%= __('datamgmt:reset_paren_close') %></li>
+            <li><%= __('datamgmt:reset_keep_password') %></li>
+            <li><%= __('datamgmt:reset_keep_schema') %></li>
+            <%# b: the list said the system logs are deleted; PRESERVED_TABLES
+                keeps them (append-only audit trail). The text now matches the code. %>
+            <li><%= __('datamgmt:reset_keep_logs') %></li>
+        </ul>
+        <p class="text-muted" style="font-size:.85rem"><%= __('datamgmt:reset_backup_required') %></p>
+    </div>
+
+    <button class="btn btn-danger" onclick="showModal('resetDatabaseModal')" style="margin-top: 1.5rem;">
+        <i class="fas fa-trash-can" aria-hidden="true"></i> <%= __('datamgmt:btn_reset_database') %>
+    </button>
+</div>
+<% } %>
+
+<!-- Create Snapshot Modal -->
+<div id="createSnapshotModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><%= __('datamgmt:btn_create_snapshot') %></h2>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('createSnapshotModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="createSnapshotForm">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div class="form-group">
+                    <label class="required" for="snapshotName"><%= __('datamgmt:label_name') %></label>
+                    <input type="text" id="snapshotName" name="name" required placeholder="<%= __('datamgmt:placeholder_snapshot_name') %>">
+                </div>
+                <div class="form-group">
+                    <label for="snapshotDescription"><%= __('datamgmt:label_description') %></label>
+                    <textarea id="snapshotDescription" name="description" placeholder="<%= __('datamgmt:placeholder_snapshot_desc') %>"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-camera" aria-hidden="true"></i> <%= __('datamgmt:btn_create_snapshot') %></button>
+                    <button type="button" class="btn btn-secondary"
+                        onclick="hideModal('createSnapshotModal')"><%= __('datamgmt:btn_cancel') %></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Snapshot Stats Modal -->
+<div id="snapshotStatsModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><%= __('datamgmt:modal_snapshot_details_title') %></h2>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('snapshotStatsModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="snapshotStatsContent"><%= __('datamgmt:loading') %></div>
+        </div>
+    </div>
+</div>
+
+<% if (user && user.role === 'superadmin') { %>
+<!-- Reset Database Modal (super-admin only) -->
+<div id="resetDatabaseModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header" style="background: var(--danger); color: white;">
+            <h2><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('datamgmt:btn_reset_database') %></h2>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('resetDatabaseModal')" style="color: white;">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="alert alert-error alert-prose" style="margin-bottom: 1.5rem;">
+                <strong><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('datamgmt:reset_modal_warning_title') %></strong><br><br>
+                <%= __('datamgmt:reset_modal_body_1') %><br><br>
+                <strong><%= __('datamgmt:reset_modal_all_following') %></strong>
+                <ul style="margin-top: 0.5rem; padding-left: 1.5rem;">
+                    <li><%= __('datamgmt:reset_modal_del_employees') %></li>
+                    <li><%= __('datamgmt:reset_del_org') %></li>
+                    <li><%= __('datamgmt:reset_modal_del_domains') %></li>
+                    <li><%= __('datamgmt:reset_modal_del_admins') %></li>
+                    <li><%= __('datamgmt:reset_modal_del_snapshots') %></li>
+                </ul>
+                <br>
+                <strong><%= __('datamgmt:reset_modal_only_preserved') %></strong>
+            </div>
+
+            <form id="resetDatabaseForm">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+                <div class="form-group">
+                    <label class="required" for="resetConfirmation"><%= __('datamgmt:reset_type_to_confirm_1') %> <strong>RESET_ALL_DATA</strong> <%= __('datamgmt:reset_type_to_confirm_2') %></label>
+                    <input type="text" id="resetConfirmation" name="confirmation" required placeholder="RESET_ALL_DATA"
+                        autocomplete="off"
+                        style="width: 100%; padding: 0.75rem; border: 2px solid var(--danger); border-radius: 6px; font-size: 1rem; font-weight: bold; text-align: center;">
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="resetAcknowledge" required>
+                        <%= __('datamgmt:reset_acknowledge_label') %>
+                    </label>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-danger" id="resetSubmitBtn" disabled>
+                        <i class="fas fa-trash-can" aria-hidden="true"></i> <%= __('datamgmt:btn_reset_database') %>
+                    </button>
+                    <button type="button" class="btn btn-secondary"
+                        onclick="hideModal('resetDatabaseModal')"><%= __('datamgmt:btn_cancel') %></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<% } %>
+
+<style>
+    /* Phone-first fix: the shared .alert is display:flex, so a multi-line prose
+       alert lays every text run / <strong> / <br> out as one non-wrapping row —
+       that pushed this page 163px sideways at 375px. Prose alerts flow as blocks. */
+    .alert-prose {
+        display: block;
+    }
+
+    /* File pickers must never widen their card on a phone. */
+    .file-input {
+        max-width: 100%;
+    }
+
+    .export-grid,
+    .import-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+
+    .export-card,
+    .import-card {
+        background: var(--bg-surface);
+        padding: 1.5rem;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        transition: all 0.3s;
+        border-top: 4px solid var(--accent);
+    }
+
+    .export-card:hover,
+    .import-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    }
+
+    .export-card-icon,
+    .import-card-icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .export-card h3,
+    .import-card h3 {
+        margin: 0.5rem 0;
+        color: var(--text-primary);
+    }
+
+    .export-card p,
+    .import-card p {
+        color: var(--text-tertiary);
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+    }
+
+    .file-input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid var(--border-light);
+        border-radius: var(--radius-md);
+        margin-bottom: 0.75rem;
+        font-size: 0.9rem;
+    }
+
+    .import-result {
+        margin-top: 0.75rem;
+        padding: 0.75rem;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        display: none;
+    }
+
+    .import-result.success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+        display: block;
+    }
+
+    .import-result.error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+        display: block;
+    }
+
+    .btn-warning {
+        background-color: #f39c12;
+        color: white;
+    }
+
+    .btn-warning:hover {
+        background-color: #e67e22;
+    }
+
+    .btn-danger {
+        background-color: #e74c3c;
+        color: white;
+        border: none;
+    }
+
+    .btn-danger:hover {
+        background-color: #c0392b;
+    }
+
+    .btn-danger:disabled {
+        background-color: #95a5a6;
+        cursor: not-allowed;
+    }
+
+    .reset-info {
+        background: var(--bg-subtle);
+        padding: 1.5rem;
+        border-radius: var(--radius-lg);
+        margin: 1rem 0;
+    }
+
+    .reset-info h3 {
+        margin-top: 0;
+        color: var(--text-primary);
+        font-size: 1rem;
+    }
+
+    .reset-info ul {
+        color: #555;
+        line-height: 1.8;
+    }
+
+    .reset-info ul li {
+        margin: 0.5rem 0;
+    }
+
+    .file-format-badge {
+        display: inline-block;
+        margin-top: 0.5rem;
+        padding: 0.25rem 0.75rem;
+        background-color: var(--bg-inset);
+        color: var(--text-secondary);
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+
+    /* d — the captured-entity counts under a snapshot's size. */
+    .snap-counts { font-size: .72rem; color: var(--text-muted); white-space: normal; max-width: 20rem; }
+</style>
+
+<script nonce="<%= cspNonce %>">
+    // Localized strings injected from the datamgmt namespace (server-side).
+    const I18N = {
+        confirmRestoreFull: <%- JSON.stringify(__('datamgmt:js_confirm_restore_full')) %>,
+        confirmLoadJson: <%- JSON.stringify(__('datamgmt:js_confirm_load_json')) %>,
+        confirmImportMatrix: <%- JSON.stringify(__('datamgmt:js_confirm_import_matrix')) %>,
+        chooseXlsxFirst: <%- JSON.stringify(__('datamgmt:js_choose_xlsx_first')) %>,
+        chooseJsonFirst: <%- JSON.stringify(__('datamgmt:js_choose_json_first')) %>,
+        analyzingWorkbook: <%- JSON.stringify(__('datamgmt:js_analyzing_workbook')) %>,
+        analyzingFile: <%- JSON.stringify(__('datamgmt:js_analyzing_file')) %>,
+        previewError: <%- JSON.stringify(__('datamgmt:js_preview_error')) %>,
+        invalidFile: <%- JSON.stringify(__('datamgmt:js_invalid_file')) %>,
+        importingData: <%- JSON.stringify(__('datamgmt:js_importing_data')) %>,
+        importCompleted: <%- JSON.stringify(__('datamgmt:js_import_completed')) %>,
+        errorPrefix: <%- JSON.stringify(__('datamgmt:js_error_prefix')) %>,
+        importFailed: <%- JSON.stringify(__('datamgmt:js_import_failed')) %>,
+        previewNoChanges: <%- JSON.stringify(__('datamgmt:js_preview_no_changes')) %>,
+        nothingRecognized: <%- JSON.stringify(__('datamgmt:js_nothing_recognized')) %>,
+        inFile: <%- JSON.stringify(__('datamgmt:js_in_file')) %>,
+        newWord: <%- JSON.stringify(__('datamgmt:js_new')) %>,
+        alreadyExist: <%- JSON.stringify(__('datamgmt:js_already_exist')) %>,
+        loginsToGenerate: <%- JSON.stringify(__('datamgmt:js_logins_to_generate')) %>,
+        newEmployeesSuffix: <%- JSON.stringify(__('datamgmt:js_new_employees_suffix')) %>,
+        loginsGenerateBoth: <%- JSON.stringify(__('datamgmt:js_logins_generate_both')) %>,
+        warnings: <%- JSON.stringify(__('datamgmt:js_warnings')) %>,
+        eg: <%- JSON.stringify(__('datamgmt:js_eg')) %>,
+        applied: <%- JSON.stringify(__('datamgmt:js_applied')) %>,
+        created: <%- JSON.stringify(__('datamgmt:js_created')) %>,
+        updated: <%- JSON.stringify(__('datamgmt:js_updated')) %>,
+        skipped: <%- JSON.stringify(__('datamgmt:js_skipped')) %>,
+        unchanged: <%- JSON.stringify(__('datamgmt:js_unchanged')) %>,
+        notRated: <%- JSON.stringify(__('datamgmt:js_not_rated')) %>,
+        errors: <%- JSON.stringify(__('datamgmt:js_errors')) %>,
+        itemsCreated: <%- JSON.stringify(__('datamgmt:js_items_created')) %>,
+        downloadCredentialsSheet: <%- JSON.stringify(__('datamgmt:js_download_credentials_sheet')) %>,
+        credsNote: <%- JSON.stringify(__('datamgmt:js_creds_note')) %>,
+        csvType: <%- JSON.stringify(__('datamgmt:csv_type')) %>,
+        csvEmployeeNumber: <%- JSON.stringify(__('datamgmt:csv_employee_number')) %>,
+        csvName: <%- JSON.stringify(__('datamgmt:csv_name')) %>,
+        csvUsername: <%- JSON.stringify(__('datamgmt:csv_username')) %>,
+        csvTempPassword: <%- JSON.stringify(__('datamgmt:csv_temp_password')) %>,
+        failedCreateSnapshot: <%- JSON.stringify(__('datamgmt:js_failed_create_snapshot')) %>,
+        errorCreatingSnapshot: <%- JSON.stringify(__('datamgmt:js_error_creating_snapshot')) %>,
+        creatingSnapshot: <%- JSON.stringify(__('datamgmt:js_creating_snapshot')) %>,
+        loadingSnapshotDetails: <%- JSON.stringify(__('datamgmt:js_loading_snapshot_details')) %>,
+        errorLoadingSnapshotDetails: <%- JSON.stringify(__('datamgmt:js_error_loading_snapshot_details')) %>,
+        restoreWarn1: <%- JSON.stringify(__('datamgmt:js_restore_warn_1')) %>,
+        restoreWarn2: <%- JSON.stringify(__('datamgmt:js_restore_warn_2')) %>,
+        confirmRestoreAbsolutely: <%- JSON.stringify(__('datamgmt:js_confirm_restore_absolutely')) %>,
+        restoringSnapshot: <%- JSON.stringify(__('datamgmt:js_restoring_snapshot')) %>,
+        snapshotRestored: <%- JSON.stringify(__('datamgmt:js_snapshot_restored')) %>,
+        failedRestoreSnapshot: <%- JSON.stringify(__('datamgmt:js_failed_restore_snapshot')) %>,
+        errorRestoringSnapshot: <%- JSON.stringify(__('datamgmt:js_error_restoring_snapshot')) %>,
+        confirmDeleteSnapshot: <%- JSON.stringify(__('datamgmt:js_confirm_delete_snapshot')) %>,
+        deletingSnapshot: <%- JSON.stringify(__('datamgmt:js_deleting_snapshot')) %>,
+        failedDeleteSnapshot: <%- JSON.stringify(__('datamgmt:js_failed_delete_snapshot')) %>,
+        errorDeletingSnapshot: <%- JSON.stringify(__('datamgmt:js_error_deleting_snapshot')) %>,
+        typeResetExactly: <%- JSON.stringify(__('datamgmt:js_type_reset_exactly')) %>,
+        pleaseAcknowledge: <%- JSON.stringify(__('datamgmt:js_please_acknowledge')) %>,
+        finalWarning: <%- JSON.stringify(__('datamgmt:js_final_warning')) %>,
+        lastChance: <%- JSON.stringify(__('datamgmt:js_last_chance')) %>,
+        resettingDatabase: <%- JSON.stringify(__('datamgmt:js_resetting_database')) %>,
+        resetSuccess: <%- JSON.stringify(__('datamgmt:js_reset_success')) %>,
+        failedReset: <%- JSON.stringify(__('datamgmt:js_failed_reset')) %>,
+        errorResetting: <%- JSON.stringify(__('datamgmt:js_error_resetting')) %>,
+        labels: {
+            sites: <%- JSON.stringify(__('datamgmt:label_sites')) %>,
+            departments: <%- JSON.stringify(__('datamgmt:label_departments')) %>,
+            services: <%- JSON.stringify(__('datamgmt:label_services')) %>,
+            regions: <%- JSON.stringify(__('datamgmt:label_regions')) %>,
+            countries: <%- JSON.stringify(__('datamgmt:label_countries')) %>,
+            domains: <%- JSON.stringify(__('datamgmt:label_domains')) %>,
+            skills: <%- JSON.stringify(__('datamgmt:label_skills')) %>,
+            roles: <%- JSON.stringify(__('datamgmt:label_roles')) %>,
+            requirements: <%- JSON.stringify(__('datamgmt:label_requirements')) %>,
+            roleRequirements: <%- JSON.stringify(__('datamgmt:label_role_requirements')) %>,
+            employees: <%- JSON.stringify(__('datamgmt:label_employees')) %>,
+            assessments: <%- JSON.stringify(__('datamgmt:label_assessments')) %>,
+            admins: <%- JSON.stringify(__('datamgmt:label_admins')) %>,
+            adminScopes: <%- JSON.stringify(__('datamgmt:label_admin_scopes')) %>,
+            settings: <%- JSON.stringify(__('datamgmt:label_settings')) %>
+        }
+    };
+
+    // Load statistics on page load
+    document.addEventListener('DOMContentLoaded', function () {
+        loadStatistics();
+
+        // Setup import form handlers
+        setupImportForms();
+
+        // Check if multer is available (will show warning if import fails)
+        checkMulterAvailability();
+    });
+
+    function checkMulterAvailability() {
+        // Try a test import to see if multer is available
+        // This will be caught by the error handler in importData
+    }
+
+    function loadStatistics() {
+        fetch('/api/data-management/statistics')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('totalEmployees').textContent = data.totalEmployees || 0;
+                document.getElementById('totalAssessments').textContent = data.totalAssessments || 0;
+                document.getElementById('totalHistory').textContent = data.totalHistoryEntries || 0;
+            })
+            .catch(error => {
+                console.error('Error loading statistics:', error);
+            });
+    }
+
+    function setupImportForms() {
+        // Organization import
+        document.getElementById('importOrganizationForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            importData(this, '/data-management/import/organization', 'orgResult');
+        });
+
+        // Domains & Skills import
+        document.getElementById('importDomainsSkillsForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            importData(this, '/data-management/import/domains-skills', 'dsResult');
+        });
+
+        // Employees import
+        document.getElementById('importEmployeesForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            importData(this, '/data-management/import/employees', 'empResult');
+        });
+
+        // Local Admins import
+        document.getElementById('importLocalAdminsForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            importData(this, '/data-management/import/local-admins', 'adminResult');
+        });
+
+        // Roles import
+        document.getElementById('importRolesForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            importData(this, '/data-management/import/roles', 'roleResult');
+        });
+
+        // Skill Framework import
+        document.getElementById('importSkillFrameworkForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            importData(this, '/data-management/import/skill-framework', 'skillFrameworkResult');
+        });
+
+        // Assessments batch import
+        document.getElementById('importAssessmentsForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            importData(this, '/data-management/import/assessments', 'assessResult');
+        });
+
+        // Full System Import
+        // one confirmation component everywhere (ui-feedback.js is
+        // loaded on every page), so a destructive import never opens a native box.
+        document.getElementById('fullSystemImportForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const form = this;
+            window.confirmDialog(I18N.confirmRestoreFull, { danger: true }).then(function (ok) {
+                if (ok) importData(form, '/admin/data/import', 'fullSystemResult');
+            });
+        });
+
+        // JSON System Import
+        document.getElementById('importJsonForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const form = this;
+            window.confirmDialog(I18N.confirmLoadJson, { danger: true }).then(function (ok) {
+                if (ok) importData(form, '/admin/data/import-json', 'jsonImportResult');
+            });
+        });
+
+        // Skill Matrix Workbook import
+        document.getElementById('importSkillMatrixWorkbookForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const form = this;
+            window.confirmDialog(I18N.confirmImportMatrix, { danger: true }).then(function (ok) {
+                if (ok) importData(form, '/data-management/skill-matrix-workbook/import', 'skillMatrixWorkbookResult');
+            });
+        });
+
+        // Create snapshot form
+        const createSnapshotForm = document.getElementById('createSnapshotForm');
+        if (createSnapshotForm) {
+            createSnapshotForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                createSnapshot(this);
+            });
+        }
+    }
+
+    // Dry-run preview for the Skill Matrix Workbook (no changes are written).
+    function previewSkillMatrixWorkbook() {
+        const fileInput = document.getElementById('skillMatrixWorkbookFile');
+        const panel = document.getElementById('skillMatrixWorkbookPreview');
+        if (!fileInput.files.length) { alert(I18N.chooseXlsxFirst); return; }
+        const fd = new FormData();
+        fd.append('file', fileInput.files[0]);
+        panel.style.display = 'none';
+        showLoading(I18N.analyzingWorkbook);
+        fetch('/data-management/skill-matrix-workbook/preview', { method: 'POST', body: fd })
+            .then(res => res.json())
+            .then(data => {
+                hideLoading();
+                if (!data.success) {
+                    panel.textContent = I18N.previewError + ' ' + (data.message || I18N.invalidFile);
+                    panel.className = 'import-result error';
+                    panel.style.display = 'block';
+                    return;
+                }
+                const c = (data.preview && data.preview.counts) || {};
+                const label = {
+                    domains: I18N.labels.domains, skills: I18N.labels.skills, roles: I18N.labels.roles,
+                    requirements: I18N.labels.roleRequirements, employees: I18N.labels.employees, assessments: I18N.labels.assessments
+                };
+                const lines = [];
+                for (const [key, lab] of Object.entries(label)) {
+                    const v = c[key];
+                    if (!v || !v.inFile) continue;
+                    if (v.new !== undefined) lines.push(`${lab}: ${v.inFile} ${I18N.inFile} — ${v.new} ${I18N.newWord}, ${v.existing} ${I18N.alreadyExist}`);
+                    // Carry `note` through, as the JSON preview already does. It is
+                    // where a section explains itself (e.g. rows the file cannot
+                    // represent); dropping it here made the workbook preview quieter
+                    // than the data warranted.
+                    else lines.push(`${lab}: ${v.inFile} ${I18N.inFile}${v.note ? ' (' + v.note + ')' : ''}`);
+                }
+                const g = data.preview && data.preview.credentialsToGenerate;
+                if (g && g.employees) {
+                    lines.push(`${I18N.loginsToGenerate} ${g.employees} ${I18N.newEmployeesSuffix}`);
+                }
+                const errs = (data.preview && data.preview.errors) || [];
+                if (errs.length) lines.push(`${I18N.warnings} ${errs.length} (${I18N.eg} ${errs[0]})`);
+                panel.textContent = I18N.previewNoChanges + '\n' + (lines.length ? lines.join('\n') : I18N.nothingRecognized);
+                panel.className = 'import-result success';
+                panel.style.display = 'block';
+            })
+            .catch(err => {
+                hideLoading();
+                panel.textContent = I18N.previewError + ' ' + err.message;
+                panel.className = 'import-result error';
+                panel.style.display = 'block';
+            });
+    }
+
+    function importData(form, url, resultId) {
+        const formData = new FormData(form);
+        const resultDiv = document.getElementById(resultId);
+        resultDiv.style.display = 'none';
+        resultDiv.className = 'import-result';
+
+        showLoading(I18N.importingData);
+
+        fetch(url, {
+            method: 'POST',
+            body: formData
+        })
+            .then(res => res.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    let message = I18N.importCompleted;
+                    if (data.results) {
+                        // Per-entity lines. Counters come in two shapes: an
+                        // object {created, skipped, errors} (section imports)
+                        // or a plain number of applied rows (full JSON import).
+                        const LABELS = {
+                            sites: I18N.labels.sites, departments: I18N.labels.departments, services: I18N.labels.services,
+                            regions: I18N.labels.regions, countries: I18N.labels.countries,
+                            domains: I18N.labels.domains, skills: I18N.labels.skills, roles: I18N.labels.roles,
+                            requirements: I18N.labels.requirements, employees: I18N.labels.employees,
+                            assessments: I18N.labels.assessments, admins: I18N.labels.admins,
+                            adminScopes: I18N.labels.adminScopes, appSettings: I18N.labels.settings
+                        };
+                        for (const [key, label] of Object.entries(LABELS)) {
+                            const v = data.results[key];
+                            if (v === undefined || v === null) continue;
+                            if (typeof v === 'number') {
+                                if (v > 0) message += `\n${label}: ${v} ${I18N.applied}`;
+                            } else if (typeof v === 'object') {
+                                message += `\n${label}: ${v.created ?? 0} ${I18N.created}`;
+                                // Rewritten-existing rows (role requirements,
+                                // assessments) are real work — reporting only
+                                // `created` made a full re-import read "0".
+                                if (v.updated) message += `, ${v.updated} ${I18N.updated}`;
+                                // `unchanged` is the whole point of the importer fix:
+                                // matched and NOT rewritten. Without it on screen, a
+                                // re-import still reads as "0 created" and the operator
+                                // cannot tell "did nothing" from "rewrote everything".
+                                if (v.unchanged) message += `, ${v.unchanged} ${I18N.unchanged}`;
+                                if (v.skipped) message += `, ${v.skipped} ${I18N.skipped}`;
+                                // Blank scaffold rows — never a level 0.
+                                if (v.notRated) message += `, ${v.notRated} ${I18N.notRated}`;
+                                if (v.errors && v.errors.length > 0) message += `, ${v.errors.length} ${I18N.errors}`;
+                            }
+                        }
+                        // Generic results
+                        if (data.results.created !== undefined) {
+                            message += `\n${data.results.created} ${I18N.itemsCreated}`;
+                            if (data.results.skipped) message += `, ${data.results.skipped} ${I18N.skipped}`;
+                            if (data.results.errors && data.results.errors.length > 0) {
+                                message += `, ${data.results.errors.length} ${I18N.errors}`;
+                            }
+                        }
+                    }
+                    resultDiv.textContent = message;
+                    resultDiv.className = 'import-result success';
+                    resultDiv.style.display = 'block';
+                    form.reset();
+
+                    // Generated logins are shown ONCE — offer them as a CSV and
+                    // do NOT auto-reload (reloading would lose the passwords).
+                    const creds = data.results && data.results.credentials;
+                    if (Array.isArray(creds) && creds.length > 0) {
+                        window._lastImportCredentials = creds;
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'btn btn-primary';
+                        btn.style.marginTop = '10px';
+                        btn.innerHTML = `<i class="fas fa-key" aria-hidden="true"></i> ${I18N.downloadCredentialsSheet} (${creds.length}) — CSV`;
+                        btn.onclick = downloadCredentialsCsv;
+                        const note = document.createElement('div');
+                        note.style.cssText = 'margin-top:8px;font-size:0.8rem;';
+                        note.textContent = I18N.credsNote;
+                        resultDiv.appendChild(document.createElement('br'));
+                        resultDiv.appendChild(btn);
+                        resultDiv.appendChild(note);
+                    } else {
+                        // Reload page after 2 seconds to show updated data
+                        setTimeout(() => location.reload(), 2000);
+                    }
+                } else {
+                    resultDiv.textContent = I18N.errorPrefix + ' ' + (data.error || data.message || I18N.importFailed);
+                    resultDiv.className = 'import-result error';
+                    resultDiv.style.display = 'block';
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Import error:', error);
+                resultDiv.textContent = I18N.errorPrefix + ' ' + error.message;
+                resultDiv.className = 'import-result error';
+                resultDiv.style.display = 'block';
+            });
+    }
+
+    // Build and download the generated-credentials sheet from the last import.
+    function downloadCredentialsCsv() {
+        const creds = window._lastImportCredentials || [];
+        if (!creds.length) return;
+        const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+        const rows = [[I18N.csvType, I18N.csvEmployeeNumber, I18N.csvName, I18N.csvUsername, I18N.csvTempPassword]];
+        creds.forEach(c => rows.push([c.type || '', c.employeeNumber || '', c.name || '', c.username || '', c.password || '']));
+        const csv = '﻿' + rows.map(r => r.map(esc).join(',')).join('\r\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'generated-credentials-' + new Date().toISOString().slice(0, 10) + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+    }
+
+    // Onboarding wizard step 2: dry-run the selected JSON file and show what
+    // the import would do before committing.
+    function previewJsonImport() {
+        const form = document.getElementById('importJsonForm');
+        const fileInput = document.getElementById('jsonFile');
+        const panel = document.getElementById('jsonPreviewResult');
+        if (!fileInput.files.length) { alert(I18N.chooseJsonFirst); return; }
+        const fd = new FormData();
+        fd.append('jsonFile', fileInput.files[0]);
+        panel.style.display = 'none';
+        showLoading(I18N.analyzingFile);
+        fetch('/admin/data/preview-json', { method: 'POST', body: fd })
+            .then(res => res.json())
+            .then(data => {
+                hideLoading();
+                if (!data.success) {
+                    panel.textContent = I18N.previewError + ' ' + (data.message || I18N.invalidFile);
+                    panel.className = 'import-result error';
+                    panel.style.display = 'block';
+                    return;
+                }
+                const c = data.preview.counts || {};
+                const lines = [];
+                const label = {
+                    regions: I18N.labels.regions, countries: I18N.labels.countries, domains: I18N.labels.domains, skills: I18N.labels.skills,
+                    sites: I18N.labels.sites, departments: I18N.labels.departments, services: I18N.labels.services, roles: I18N.labels.roles,
+                    requirements: I18N.labels.roleRequirements, employees: I18N.labels.employees, assessments: I18N.labels.assessments,
+                    admins: I18N.labels.admins, appSettings: I18N.labels.settings
+                };
+                for (const [key, lab] of Object.entries(label)) {
+                    const v = c[key];
+                    if (!v || !v.inFile) continue;
+                    if (v.new !== undefined) lines.push(`${lab}: ${v.inFile} ${I18N.inFile} — ${v.new} ${I18N.newWord}, ${v.existing} ${I18N.alreadyExist}`);
+                    else lines.push(`${lab}: ${v.inFile} ${I18N.inFile}${v.note ? ' (' + v.note + ')' : ''}`);
+                }
+                const g = data.preview.credentialsToGenerate || {};
+                if (g.employees || g.admins) {
+                    lines.push(I18N.loginsGenerateBoth.replace('{emp}', g.employees || 0).replace('{admins}', g.admins || 0));
+                }
+                panel.textContent = I18N.previewNoChanges + '\n' + (lines.length ? lines.join('\n') : I18N.nothingRecognized);
+                panel.className = 'import-result success';
+                panel.style.display = 'block';
+            })
+            .catch(err => {
+                hideLoading();
+                panel.textContent = I18N.previewError + ' ' + err.message;
+                panel.className = 'import-result error';
+                panel.style.display = 'block';
+            });
+    }
+
+    function createSnapshot(form) {
+        const formData = new FormData(form);
+        const data = {
+            name: formData.get('name'),
+            description: formData.get('description'),
+            _csrf: formData.get('_csrf')
+        };
+
+        showLoading(I18N.creatingSnapshot);
+
+        fetch('/data-management/snapshots', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+            .then(res => res.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    hideModal('createSnapshotModal');
+                    location.reload();
+                } else {
+                    alert(I18N.errorPrefix + ' ' + (data.error || I18N.failedCreateSnapshot));
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Create snapshot error:', error);
+                alert(I18N.errorCreatingSnapshot);
+            });
+    }
+
+    function viewSnapshotStats(snapshotId) {
+        showLoading(I18N.loadingSnapshotDetails);
+
+        fetch(`/data-management/snapshots/${snapshotId}/stats`)
+            .then(res => res.json())
+            .then(stats => {
+                hideLoading();
+                const content = document.getElementById('snapshotStatsContent');
+                content.innerHTML = `
+                <div class="dashboard-stats">
+                    <div class="stat-card"><h3>${I18N.labels.sites}</h3><p class="stat-value">${stats.sites || 0}</p></div>
+                    <div class="stat-card"><h3>${I18N.labels.departments}</h3><p class="stat-value">${stats.departments || 0}</p></div>
+                    <div class="stat-card"><h3>${I18N.labels.services}</h3><p class="stat-value">${stats.services || 0}</p></div>
+                    <div class="stat-card"><h3>${I18N.labels.domains}</h3><p class="stat-value">${stats.domains || 0}</p></div>
+                    <div class="stat-card"><h3>${I18N.labels.skills}</h3><p class="stat-value">${stats.skills || 0}</p></div>
+                    <div class="stat-card"><h3>${I18N.labels.roles}</h3><p class="stat-value">${stats.roles || 0}</p></div>
+                    <div class="stat-card"><h3>${I18N.labels.employees}</h3><p class="stat-value">${stats.employees || 0}</p></div>
+                    <div class="stat-card"><h3>${I18N.labels.assessments}</h3><p class="stat-value">${stats.assessments || 0}</p></div>
+                </div>
+            `;
+                showModal('snapshotStatsModal');
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error loading snapshot stats:', error);
+                alert(I18N.errorLoadingSnapshotDetails);
+            });
+    }
+
+    // The snapshot name travels on a data- attribute and is read back through
+    // dataset. It used to be spliced into onclick="restoreSnapshot(id,'NAME')" via an
+    // escaped EJS output tag: EJS turns ' into &#39;, the HTML parser decodes it back BEFORE the handler is
+    // compiled, so a name like  x');alert(1);//  ran as script (and O'Brien broke).
+    function restoreSnapshotBtn(btn) {
+        return restoreSnapshot(Number(btn.dataset.snapshotId), btn.dataset.snapshotName || '');
+    }
+
+    async function restoreSnapshot(snapshotId, snapshotName) {
+        if (!(await window.confirmDialog(`${I18N.restoreWarn1}${snapshotName}${I18N.restoreWarn2}`, { danger: true }))) {
+            return;
+        }
+
+        if (!(await window.confirmDialog(I18N.confirmRestoreAbsolutely, { danger: true }))) {
+            return;
+        }
+
+        showLoading(I18N.restoringSnapshot);
+
+        fetch(`/data-management/snapshots/${snapshotId}/restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ snapshotId, _csrf: '<%= csrfToken %>' })
+        })
+            .then(res => res.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    alert(I18N.snapshotRestored);
+                    location.reload();
+                } else {
+                    alert(I18N.errorPrefix + ' ' + (data.error || I18N.failedRestoreSnapshot));
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Restore snapshot error:', error);
+                alert(I18N.errorRestoringSnapshot);
+            });
+    }
+
+    async function deleteSnapshot(snapshotId) {
+        if (!(await window.confirmDialog(I18N.confirmDeleteSnapshot, { danger: true }))) {
+            return;
+        }
+
+        showLoading(I18N.deletingSnapshot);
+
+        fetch(`/data-management/snapshots/${snapshotId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        })
+            .then(res => res.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(I18N.errorPrefix + ' ' + (data.error || I18N.failedDeleteSnapshot));
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Delete snapshot error:', error);
+                alert(I18N.errorDeletingSnapshot);
+            });
+    }
+
+    // Reset database functionality
+    document.addEventListener('DOMContentLoaded', function () {
+        const resetForm = document.getElementById('resetDatabaseForm');
+        const resetConfirmation = document.getElementById('resetConfirmation');
+        const resetAcknowledge = document.getElementById('resetAcknowledge');
+        const resetSubmitBtn = document.getElementById('resetSubmitBtn');
+
+        if (resetForm) {
+            // Enable/disable submit button based on confirmation and checkbox
+            function checkResetConditions() {
+                const confirmationValid = resetConfirmation.value === 'RESET_ALL_DATA';
+                const acknowledged = resetAcknowledge.checked;
+                resetSubmitBtn.disabled = !(confirmationValid && acknowledged);
+            }
+
+            resetConfirmation.addEventListener('input', checkResetConditions);
+            resetAcknowledge.addEventListener('change', checkResetConditions);
+
+            resetForm.addEventListener('submit', async function (e) {
+                e.preventDefault();
+
+                const confirmation = resetConfirmation.value;
+                if (confirmation !== 'RESET_ALL_DATA') {
+                    alert(I18N.typeResetExactly);
+                    return;
+                }
+
+                if (!resetAcknowledge.checked) {
+                    alert(I18N.pleaseAcknowledge);
+                    return;
+                }
+
+                // Final confirmation (two styled dialogs, never a native box)
+                if (!(await window.confirmDialog(I18N.finalWarning, { danger: true }))) {
+                    return;
+                }
+
+                if (!(await window.confirmDialog(I18N.lastChance, { danger: true }))) {
+                    return;
+                }
+
+                const formData = new FormData(this);
+                const data = {
+                    confirmation: formData.get('confirmation'),
+                    _csrf: formData.get('_csrf')
+                };
+
+                showLoading(I18N.resettingDatabase);
+
+                fetch('/data-management/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                })
+                    .then(res => {
+                        // A redirect (session expired, or a password change still
+                        // required on this account) comes back as an HTML page, and
+                        // parsing it as JSON produced an opaque "Unexpected token <"
+                        // alert. Say what actually happened instead.
+                        if (res.redirected || !(res.headers.get('content-type') || '').includes('application/json')) {
+                            throw new Error('the server redirected to ' + (res.url || '?') + ' — sign in again (or complete the required password change) and retry');
+                        }
+                        return res.json();
+                    })
+                    .then(result => {
+                        hideLoading();
+                        if (result.success) {
+                            alert(I18N.resetSuccess);
+                            // Redirect to login after reset
+                            window.location.href = '/login';
+                        } else {
+                            alert(I18N.errorPrefix + ' ' + (result.error || I18N.failedReset));
+                        }
+                    })
+                    .catch(error => {
+                        hideLoading();
+                        console.error('Reset database error:', error);
+                        alert(I18N.errorResetting + ' ' + error.message);
+                    });
+            });
+        }
+    });
+</script>

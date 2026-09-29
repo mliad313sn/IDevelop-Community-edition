@@ -1,0 +1,119 @@
+<%#
+    Explanatory 403 — rendered by denyPermission() (middleware/auth.js) and
+    denyScope() (middleware/rbac.js) instead of the old flash + redirect that
+    erased the reason for the refusal.
+
+    Locals:
+      attemptedPath   {string}  path the caller tried (query string stripped)
+      attemptedMethod {string}  'GET' | 'POST' | ...
+      missing         {Array}   [{ slug, label, description, write }] — capability denial
+      scopeDenied     {Object|null} { kind, backUrl } — org-scope denial
+      granters        {Array}   [{ displayName, role }] — a DISPLAY NAME and a role,
+                                never a login-only fixture, never an e-mail
+      isAdmin         {boolean}
+      backUrl         {string}
+    Uses the app layout (layouts/main) and the existing card / badge classes.
+%>
+<div class="page-header">
+    <h1><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:acc_403_heading', { defaultValue: 'Accès refusé' }) %></h1>
+    <p class="text-muted"><%= __('admin:acc_403_subtitle', { defaultValue: 'Votre compte est bien connecté, mais il ne porte pas le droit nécessaire pour cette action.' }) %></p>
+</div>
+
+<div class="card" style="padding:1rem 1.25rem; margin-bottom:1rem;">
+    <h2 style="margin-top:0; font-size:1.05rem;">
+        <i class="fas fa-crosshairs" aria-hidden="true"></i>
+        <%= __('admin:acc_403_attempted_title', { defaultValue: 'Action tentée' }) %>
+    </h2>
+    <p style="margin:.35rem 0 0;">
+        <span class="badge badge-secondary"><%= attemptedMethod %></span>
+        <code style="font-size:.9rem;"><%= attemptedPath %></code>
+    </p>
+</div>
+
+<% if (missing && missing.length) { %>
+<div class="card" style="padding:1rem 1.25rem; margin-bottom:1rem;">
+    <h2 style="margin-top:0; font-size:1.05rem;">
+        <i class="fas fa-key" aria-hidden="true"></i>
+        <%= missing.length > 1
+            ? __('admin:acc_403_missing_any_title', { defaultValue: 'Capacité manquante (l’une des suivantes suffit)' })
+            : __('admin:acc_403_missing_title', { defaultValue: 'Capacité manquante' }) %>
+    </h2>
+    <ul style="list-style:none; padding:0; margin:.6rem 0 0;">
+        <% missing.forEach(function (p) { %>
+        <li style="padding:.5rem 0; border-top:1px solid var(--border-color,#e2e8f0);">
+            <strong><%= p.label %></strong>
+            <% if (p.write) { %><span class="badge badge-warning" style="font-size:.65rem;"><%= __('admin:write_badge') %></span><% } %>
+            <code style="font-size:.75rem; opacity:.75; margin-left:.35rem;"><%= p.slug %></code>
+            <div class="text-muted" style="font-size:.86rem; margin-top:.2rem;"><%= p.description %></div>
+        </li>
+        <% }); %>
+    </ul>
+</div>
+<% } %>
+
+<%# a SuperAdmin-only page says so, instead of bouncing to the dashboard. %>
+<% if (typeof superAdminOnly !== 'undefined' && superAdminOnly) { %>
+<div class="card" style="padding:1rem 1.25rem; margin-bottom:1rem;">
+    <h2 style="margin-top:0; font-size:1.05rem;">
+        <i class="fas fa-user-shield" aria-hidden="true"></i>
+        <%= __('admin:acc_403_sa_only_title', { defaultValue: 'SuperAdmin only' }) %>
+    </h2>
+    <p style="margin:.4rem 0 0;"><%= __('admin:acc_403_sa_only', { defaultValue: 'This page is reserved for SuperAdmins.' }) %></p>
+</div>
+<% } %>
+
+<% if (scopeDenied) { %>
+<div class="card" style="padding:1rem 1.25rem; margin-bottom:1rem;">
+    <h2 style="margin-top:0; font-size:1.05rem;">
+        <i class="fas fa-location-crosshairs" aria-hidden="true"></i>
+        <%= __('admin:acc_403_scope_title', { defaultValue: 'Hors de votre périmètre' }) %>
+    </h2>
+    <p style="margin:.4rem 0 0;">
+        <% if (scopeDenied.kind === 'employee') { %>
+            <%= __('admin:acc_403_scope_employee', { defaultValue: 'Cet employé n’appartient pas au site, au département ou au service qui vous est assigné. Ce n’est pas une capacité qui manque : c’est le périmètre.' }) %>
+        <% } else if (scopeDenied.kind === 'site') { %>
+            <%= __('admin:acc_403_scope_site', { defaultValue: 'Ce site ne fait pas partie du périmètre qui vous est assigné.' }) %>
+        <% } else if (scopeDenied.kind === 'department') { %>
+            <%= __('admin:acc_403_scope_department', { defaultValue: 'Ce département ne fait pas partie du périmètre qui vous est assigné.' }) %>
+        <% } else { %>
+            <%= __('admin:acc_403_scope_service', { defaultValue: 'Ce service ne fait pas partie du périmètre qui vous est assigné.' }) %>
+        <% } %>
+    </p>
+</div>
+<% } %>
+
+<%# shown to every refused user, admin or employee — the point of the
+    page is to name a real person who can unblock them. %>
+<% if (granters && granters.length) { %>
+<div class="card" style="padding:1rem 1.25rem; margin-bottom:1rem;">
+    <h2 style="margin-top:0; font-size:1.05rem;">
+        <i class="fas fa-user-shield" aria-hidden="true"></i>
+        <%= __('admin:acc_403_granters_title', { defaultValue: 'Qui peut vous l’accorder' }) %>
+    </h2>
+    <p class="text-muted" style="font-size:.86rem; margin:.3rem 0 .5rem;">
+        <%= __('admin:acc_403_granters_help', { defaultValue: 'Contactez l’une de ces personnes : elles administrent les comptes et peuvent vous accorder ce droit.' }) %>
+    </p>
+    <div style="display:flex; flex-wrap:wrap; gap:.45rem;">
+        <% granters.forEach(function (g) { %>
+        <span class="badge badge-info"><i class="fas fa-user" aria-hidden="true"></i> <%= g.displayName %> · <%= __('admin:' + g.role + '_label', { defaultValue: g.role }) %></span>
+        <% }); %>
+    </div>
+</div>
+<% } else { %>
+<div class="card" style="padding:1rem 1.25rem; margin-bottom:1rem;">
+    <h2 style="margin-top:0; font-size:1.05rem;">
+        <i class="fas fa-circle-question" aria-hidden="true"></i>
+        <%= __('admin:acc_403_granters_title', { defaultValue: 'Qui peut vous l’accorder' }) %>
+    </h2>
+    <p class="text-muted" style="font-size:.86rem; margin:.3rem 0 0;">
+        <%= __('admin:acc_403_granters_generic', { defaultValue: 'Contactez l’administrateur de la plateforme pour demander ce droit.' }) %>
+    </p>
+</div>
+<% } %>
+
+<div class="form-actions" style="display:flex; flex-wrap:wrap; gap:.6rem;">
+    <a href="<%= backUrl %>" class="btn btn-primary"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('admin:acc_403_back', { defaultValue: 'Retour' }) %></a>
+    <% if (isAdmin) { %>
+    <a href="/mon-acces" class="btn btn-secondary"><i class="fas fa-id-card" aria-hidden="true"></i> <%= __('admin:acc_403_see_my_access', { defaultValue: 'Voir mon accès' }) %></a>
+    <% } %>
+</div>

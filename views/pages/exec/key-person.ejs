@@ -1,0 +1,238 @@
+<%
+  // Key-person risk — single points of failure BY NAME.
+  //
+  // The four bands are NOT interchangeable and the page must not let a reader
+  // conflate them. "never_measured" is an UNKNOWN, printed in its own muted
+  // style with its own explanation, and is never rolled into a risk count. On a
+  // fresh install most critical requirements sit there, and reporting them as
+  // "0 qualified" would invent a crisis out of an absence of measurement.
+  var R      = rows || [];
+  var SUM    = summary || {};
+  var SCOPE  = scope || {};
+  var UNITS  = units || [];
+  var F      = filters || {};
+  var lvl    = function (n) { return (n === null || n === undefined) ? '—' : String(n); };
+  var pct    = function (n) { return (n === null || n === undefined) ? '—' : n + ' %'; };
+  var bandKey = { sole_holder: 'kp_band_sole_holder', no_qualified: 'kp_band_no_qualified',
+                  never_measured: 'kp_band_never_measured', covered: 'kp_band_covered' };
+  var bandCls = { sole_holder: 'band-sole', no_qualified: 'band-gap',
+                  never_measured: 'band-unknown', covered: 'band-ok' };
+%>
+
+<div class="page-header">
+  <h1><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('exec:kp_title') %></h1>
+  <p class="text-muted"><%= __('exec:kp_subtitle') %></p>
+</div>
+
+<!-- Scope statement. A scoped caller's coverage counts are computed over their
+     own population, so the page says so instead of implying org truth. -->
+<p class="scope-line">
+  <i class="fas fa-user-lock" aria-hidden="true"></i>
+  <% if (SCOPE.unrestricted) { %>
+    <%= __('exec:scope_org') %>
+  <% } else { %>
+    <%= __('exec:scope_limited').replace('{n}', SCOPE.employeeCount == null ? '—' : SCOPE.employeeCount) %>
+  <% } %>
+  <span class="text-muted"> — <%= __('exec:scope_note') %></span>
+</p>
+
+<% if (!SCOPE.unrestricted && SCOPE.employeeCount === 0) { %>
+  <!-- Designed empty state: an empty scope is a permissions fact, not a bug. -->
+  <div class="card empty-card">
+    <i class="fas fa-user-slash empty-icon" aria-hidden="true"></i>
+    <h3><%= __('exec:scope_none_title') %></h3>
+    <p class="text-muted"><%= __('exec:scope_none_body') %></p>
+  </div>
+<% } else { %>
+
+<!-- ===================== FILTERS ===================== -->
+<form class="card filter-card" method="get" action="/exec/key-person">
+  <div class="filter-row">
+    <div>
+      <label for="kp-unit"><%= __('exec:kp_unit') %></label>
+      <select id="kp-unit" name="unit" class="form-control">
+        <option value="site"       <%= F.unit === 'site' ? 'selected' : '' %>><%= __('exec:unit_site') %></option>
+        <option value="department" <%= F.unit === 'department' ? 'selected' : '' %>><%= __('exec:unit_department') %></option>
+        <option value="service"    <%= F.unit === 'service' ? 'selected' : '' %>><%= __('exec:unit_service') %></option>
+      </select>
+    </div>
+    <div>
+      <label for="kp-band"><%= __('exec:kp_band') %></label>
+      <select id="kp-band" name="band" class="form-control">
+        <option value="sole_holder"    <%= F.band === 'sole_holder' ? 'selected' : '' %>><%= __('exec:kp_band_sole_holder') %></option>
+        <option value="no_qualified"   <%= F.band === 'no_qualified' ? 'selected' : '' %>><%= __('exec:kp_band_no_qualified') %></option>
+        <option value="never_measured" <%= F.band === 'never_measured' ? 'selected' : '' %>><%= __('exec:kp_band_never_measured') %></option>
+        <option value="covered"        <%= F.band === 'covered' ? 'selected' : '' %>><%= __('exec:kp_band_covered') %></option>
+        <option value="all"            <%= F.band === 'all' ? 'selected' : '' %>><%= __('exec:kp_band_all') %></option>
+      </select>
+    </div>
+    <div>
+      <label for="kp-unitid"><%= __('exec:kp_all_units') %></label>
+      <select id="kp-unitid" name="unitId" class="form-control">
+        <option value=""><%= __('exec:kp_all_units') %></option>
+        <% UNITS.forEach(function (u) { %>
+          <option value="<%= u.id %>" <%= Number(F.unitId) === Number(u.id) ? 'selected' : '' %>><%= u.name %></option>
+        <% }); %>
+      </select>
+    </div>
+    <div class="filter-check">
+      <label>
+        <input type="checkbox" name="criticalOnly" value="1" <%= F.criticalOnly ? 'checked' : '' %>>
+        <%= __('exec:kp_critical_only') %>
+      </label>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary"><%= __('exec:refresh') %></button>
+    </div>
+  </div>
+</form>
+
+<!-- ===================== SUMMARY ===================== -->
+<div class="card summary-card">
+  <h3><%= __('exec:kp_summary_heading') %></h3>
+  <div class="band-strip">
+    <div class="band-tile band-sole">
+      <div class="band-n"><%= SUM.soleHolder || 0 %></div>
+      <div class="band-l"><%= __('exec:kp_band_sole_holder') %></div>
+      <div class="band-h"><%= __('exec:kp_band_sole_holder_help') %></div>
+    </div>
+    <div class="band-tile band-gap">
+      <div class="band-n"><%= SUM.noQualified || 0 %></div>
+      <div class="band-l"><%= __('exec:kp_band_no_qualified') %></div>
+      <div class="band-h"><%= __('exec:kp_band_no_qualified_help') %></div>
+    </div>
+    <div class="band-tile band-unknown">
+      <div class="band-n"><%= SUM.neverMeasured || 0 %></div>
+      <div class="band-l"><%= __('exec:kp_band_never_measured') %></div>
+      <div class="band-h"><%= __('exec:kp_band_never_measured_help') %></div>
+    </div>
+    <div class="band-tile band-ok">
+      <div class="band-n"><%= SUM.covered || 0 %></div>
+      <div class="band-l"><%= __('exec:kp_band_covered') %></div>
+      <div class="band-h"><%= __('exec:kp_band_covered_help') %></div>
+    </div>
+  </div>
+  <p class="text-muted summary-total"><%= __('exec:kp_summary_total').replace('{n}', SUM.total || 0) %></p>
+
+  <% if ((SUM.criticalNeverMeasured || 0) > 0) { %>
+    <!-- The single most important caveat on this page, stated where it cannot
+         be missed: unmeasured critical requirements are unknowns. -->
+    <p class="unknown-banner">
+      <i class="fas fa-circle-question" aria-hidden="true"></i>
+      <%= __('exec:kp_unknown_banner').replace('{n}', SUM.criticalNeverMeasured) %>
+    </p>
+  <% } %>
+</div>
+
+<!-- ===================== RESULTS ===================== -->
+<% if (!R.length) { %>
+  <div class="card empty-card">
+    <i class="fas fa-shield-heart empty-icon" aria-hidden="true"></i>
+    <h3><%= __('exec:kp_empty_title') %></h3>
+    <p class="text-muted"><%= __('exec:kp_empty_body') %></p>
+    <% if ((SUM.neverMeasured || 0) > 0) { %>
+      <p class="text-muted"><em><%= __('exec:kp_empty_never_hint').replace('{n}', SUM.neverMeasured) %></em></p>
+    <% } %>
+  </div>
+<% } else { %>
+  <div class="card table-card">
+    <div class="table-scroll">
+      <table class="table" id="kp-table">
+        <thead>
+          <tr>
+            <th><%= __('exec:kp_skill') %></th>
+            <th><%= __('exec:kp_unit') %></th>
+            <th class="num"><%= __('exec:kp_required_level') %></th>
+            <th class="num"><%= __('exec:kp_required_of') %></th>
+            <th class="num"><%= __('exec:kp_measured') %></th>
+            <th class="num"><%= __('exec:kp_qualified') %></th>
+            <th><%= __('exec:kp_band') %></th>
+            <th><%= __('exec:kp_holders') %></th>
+            <th><%= __('exec:kp_actions') %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% R.forEach(function (r) { %>
+            <tr class="<%= bandCls[r.band] || '' %>">
+              <td>
+                <strong><%= r.skillName %></strong>
+                <% if (r.isCritical) { %><span class="badge badge-danger badge-sm"><%= __('exec:kp_critical') %></span><% } %>
+                <% if (r.domainName) { %><br><span class="text-muted small"><%= r.domainName %></span><% } %>
+              </td>
+              <td><%= r.unitName %></td>
+              <td class="num"><%= lvl(r.requiredLevel) %></td>
+              <td class="num"><%= r.requiredOf %></td>
+              <td class="num"><%= r.measured %></td>
+              <td class="num"><%= r.measured === 0 ? '—' : r.qualified %></td>
+              <td><span class="band-chip <%= bandCls[r.band] %>"><%= __('exec:' + (bandKey[r.band] || 'kp_band_covered')) %></span></td>
+              <td>
+                <% if (r.band === 'never_measured') { %>
+                  <span class="text-muted"><em><%= __('exec:kp_never_measured_note') %></em></span>
+                <% } else if (!r.holders.length) { %>
+                  <span class="text-muted"><%= __('exec:kp_no_holder') %></span>
+                <% } else { %>
+                  <% r.holders.forEach(function (h, i) { %>
+                    <% if (i) { %>, <% } %><a href="/employees/<%= h.id %>"><%= h.name %></a><% if (h.roleName) { %> <span class="text-muted small">(<%= h.roleName %>)</span><% } %>
+                  <% }); %>
+                <% } %>
+                <% if (r.blockedByCert > 0) { %>
+                  <br><span class="cert-note"><i class="fas fa-id-card" aria-hidden="true"></i> <%= __('exec:kp_cert_blocked').replace('{n}', r.blockedByCert) %></span>
+                <% } %>
+              </td>
+              <td class="actions">
+                <a class="btn btn-sm btn-secondary" href="/qualified?skillId=<%= r.skillId %>&minLevel=<%= r.requiredLevel %>"><%= __('exec:kp_find_others') %></a>
+                <a class="btn btn-sm btn-primary" href="/v2/continuity"><%= __('exec:kp_open_plan') %></a>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+<% } %>
+<% } %>
+
+<style>
+.scope-line { font-size:.85rem; margin:.2rem 0 1rem; }
+.filter-card { padding:1rem; margin-bottom:1rem; }
+.filter-row { display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end; }
+.filter-row label { display:block; font-size:.8rem; margin-bottom:.2rem; color:var(--text-secondary); }
+.filter-check { align-self:center; padding-top:1.1rem; }
+.filter-check label { display:flex; align-items:center; gap:.4rem; font-size:.85rem; }
+.summary-card { padding:1rem; margin-bottom:1rem; }
+.summary-card h3 { margin:0 0 .75rem; }
+.band-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.75rem; }
+.band-tile { padding:.7rem .85rem; border-radius:8px; border:1px solid var(--border-light,rgba(255,255,255,.12));
+    background:var(--bg-subtle,rgba(255,255,255,.04)); }
+.band-n { font-size:1.7rem; font-weight:800; line-height:1.1; }
+.band-l { font-weight:700; font-size:.85rem; margin-top:.1rem; }
+.band-h { font-size:.72rem; color:var(--text-muted,#8a93a6); margin-top:.3rem; line-height:1.35; }
+.band-tile.band-sole   { border-left:4px solid var(--danger,#F06060); }
+.band-tile.band-gap    { border-left:4px solid var(--warn,#b45309); }
+.band-tile.band-unknown{ border-left:4px solid var(--text-muted,#8a93a6); }
+.band-tile.band-ok     { border-left:4px solid var(--success,#2DD4A0); }
+.band-tile.band-sole .band-n   { color:var(--danger,#F06060); }
+.band-tile.band-gap .band-n    { color:var(--warn,#b45309); }
+.band-tile.band-unknown .band-n{ color:var(--text-muted,#8a93a6); }
+.band-tile.band-ok .band-n     { color:var(--success,#2DD4A0); }
+.summary-total { font-size:.8rem; margin:.7rem 0 0; }
+.unknown-banner { margin:.75rem 0 0; padding:.6rem .8rem; border-radius:6px; font-size:.82rem;
+    background:rgba(138,147,166,.12); border:1px solid rgba(138,147,166,.3); }
+.band-chip { display:inline-block; padding:.12rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; }
+.band-chip.band-sole   { background:rgba(240,96,96,.18); color:var(--danger,#F06060); }
+.band-chip.band-gap    { background:rgba(180,83,9,.18);  color:var(--warn,#b45309); }
+.band-chip.band-unknown{ background:rgba(138,147,166,.18); color:var(--text-muted,#8a93a6); }
+.band-chip.band-ok     { background:rgba(45,212,160,.15); color:var(--success,#2DD4A0); }
+.table-card { padding:0; }
+.table-scroll { overflow-x:auto; }
+.table .num { text-align:right; }
+.table td.actions { white-space:nowrap; }
+.badge-sm { font-size:.62rem; padding:.05rem .35rem; margin-left:.3rem; }
+.small { font-size:.75rem; }
+.cert-note { font-size:.72rem; color:var(--warn,#b45309); }
+.empty-card { padding:2.5rem 1.5rem; text-align:center; }
+.empty-icon { font-size:2.2rem; color:var(--text-muted,#8a93a6); margin-bottom:.6rem; display:block; }
+.empty-card h3 { margin:.2rem 0 .5rem; }
+.empty-card p { max-width:52ch; margin:0 auto .4rem; }
+tr.band-unknown td { opacity:.78; }
+</style>

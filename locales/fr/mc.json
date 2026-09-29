@@ -1,0 +1,8 @@
+{
+  "queue": { "title": "File de validation (double contrôle)" },
+  "kind": "Type",
+  "maker": "Initiateur",
+  "created_at": "Créé le",
+  "payload": "Charge utile",
+  "reason": "Motif"
+}

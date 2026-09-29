@@ -1,0 +1,16 @@
+-- Retention risk must be able to say "we have no flight signal for this person".
+--
+-- flight_risk was NOT NULL DEFAULT 'low' (24_continuity.sql). flightScore is
+-- additive-only, so 0 means "no signal found", and bandFromFlight(0) = 'low' —
+-- so somebody with no 9-box placement, no active PIP and no recent survey
+-- answer was stored as "low flight risk", a reassuring verdict manufactured
+-- from the absence of any signal. On the dev dataset that was 72 of 76 rows.
+-- This is the same defect migration 135 fixed for impact_of_loss.
+--
+-- Dropping NOT NULL is additive and reversible and needs no ALTER TYPE.
+--
+-- ONE STATEMENT ON PURPOSE. The runner executes each file in a single
+-- transaction and swallows six "already exists" SQLSTATEs, stamping the file as
+-- applied even when a later statement never ran; a one-statement file cannot be
+-- half-applied.
+ALTER TABLE retention_risk ALTER COLUMN flight_risk DROP NOT NULL;

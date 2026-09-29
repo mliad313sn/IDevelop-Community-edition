@@ -1,0 +1,179 @@
+<div class="page-header">
+  <h1><i class="fas fa-graduation-cap" aria-hidden="true"></i> <%= __('lms:hub_title') %></h1>
+  <p class="text-muted"><%= __('lms:hub_intro') %></p>
+</div>
+
+<!-- ===================== INTEGRATIONS ===================== -->
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><%= __('lms:configure_provider') %></h3>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div><label for="lms-provider"><%= __('lms:provider_required') %></label><br>
+      <select id="lms-provider" class="form-control">
+        <% (providers||[]).forEach(function(p){ %><option value="<%= p %>"><%= p %></option><% }); %>
+      </select></div>
+    <div><label for="lms-name"><%= __('lms:name') %></label><br><input id="lms-name" class="form-control" placeholder="<%= __('lms:name_placeholder') %>"></div>
+    <div style="flex:1;min-width:200px"><label for="lms-url"><%= __('lms:base_url') %></label><br><input id="lms-url" class="form-control" placeholder="https://lms.example.com/api"></div>
+    <div><label for="lms-secret"><%= __('lms:webhook_secret') %></label><br><input id="lms-secret" class="form-control" placeholder="<%= __('lms:webhook_secret_placeholder') %>"></div>
+    <div><label for="lms-enabled"><%= __('lms:enabled') %></label><br><select id="lms-enabled" class="form-control"><option value="true"><%= __('lms:yes') %></option><option value="false" selected><%= __('lms:no') %></option></select></div>
+    <button class="btn btn-primary" onclick="LMS.saveIntegration()"><%= __('lms:save') %></button>
+  </div>
+  <div style="margin-top:.75rem">
+    <label for="lms-auth"><%= __('lms:auth_config') %> <span class="text-muted" style="font-size:.78em"><%- __('lms:auth_config_hint') %></span></label>
+    <textarea id="lms-auth" class="form-control" rows="3" placeholder='{"client_id":"...","client_secret":"..."}' style="font-family:monospace;font-size:.82em"></textarea>
+  </div>
+  <table class="table" id="lms-int-table" style="margin-top:1rem"><thead><tr><th><%= __('lms:th_provider') %></th><th><%= __('lms:th_name') %></th><th><%= __('lms:th_base_url') %></th><th><%= __('lms:th_enabled') %></th><th><%= __('lms:th_secret') %></th><th><%= __('lms:th_webhook_url') %></th><th></th></tr></thead>
+    <tbody>
+      <% if (!integrations || !integrations.length) { %><tr><td colspan="7"><em><%= __('lms:no_providers') %></em></td></tr>
+      <% } else { integrations.forEach(function(i){ %>
+        <tr><td><strong><%= i.provider %></strong></td><td><%= i.name||'' %></td><td><%= i.baseUrl||'' %></td>
+          <td><%= i.enabled ? __('lms:yes') : __('lms:no') %></td><td><%= i.hasWebhookSecret ? '✓' : '—' %></td>
+          <td><code style="font-size:.78em">/integrations/lms/<%= i.provider %>/webhook</code></td>
+          <%# The provider travels on data-provider, never inside a JS string in the
+              onclick: an escaped quote is decoded back before the handler runs. %>
+          <td style="white-space:nowrap"><button class="btn btn-sm btn-secondary" data-provider="<%= i.provider %>" onclick="LMS.test(this.dataset.provider)"><%= __('lms:test') %></button>
+            <button class="btn btn-sm btn-success" data-provider="<%= i.provider %>" onclick="LMS.sync(this.dataset.provider)"><%= __('lms:sync_catalog') %></button></td></tr>
+      <% }); } %>
+    </tbody>
+  </table>
+</div>
+
+<!-- ===================== CATALOG + MAPPING ===================== -->
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><%= __('lms:add_course_title') %></h3>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div><label for="c-provider"><%= __('lms:provider') %></label><br><select id="c-provider" class="form-control"><% (providers||[]).forEach(function(p){ %><option value="<%= p %>"><%= p %></option><% }); %></select></div>
+    <div><label for="c-extid"><%= __('lms:external_id_required') %></label><br><input id="c-extid" class="form-control" placeholder="<%= __('lms:external_id_placeholder') %>"></div>
+    <div style="flex:1;min-width:180px"><label for="c-title"><%= __('lms:title_required') %></label><br><input id="c-title" class="form-control"></div>
+    <button class="btn btn-primary" onclick="LMS.addCourse()"><%= __('lms:add_course') %></button>
+  </div>
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#lms-int-table, #courses-table, #cur-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+  <table class="table" id="courses-table" style="margin-top:1rem"><thead><tr><th><%= __('lms:th_provider') %></th><th><%= __('lms:th_title') %></th><th><%= __('lms:th_ext_id') %></th><th><%= __('lms:th_skill_mappings') %></th><th><%= __('lms:th_map_skill') %></th></tr></thead>
+    <tbody>
+      <% if (!courses || !courses.length) { %><tr><td colspan="5"><em><%= __('lms:no_courses') %></em></td></tr>
+      <% } else { courses.forEach(function(c){ %>
+        <tr><td><%= c.provider %></td><td><%= c.title %></td><td><code style="font-size:.78em"><%= c.externalId %></code></td>
+          <td id="maps-<%= c.id %>"><button class="btn btn-sm btn-secondary" onclick="LMS.loadMaps(<%= c.id %>)"><%= __('lms:view') %></button></td>
+          <td style="white-space:nowrap">
+            <%# One mapping row per course — the column header names the pair, so each
+                control carries its own name for a screen reader. %>
+            <select id="skill-<%= c.id %>" class="form-control" style="display:inline-block;width:auto" data-searchable
+              aria-label="<%= __('lms:a11y_map_skill_for', { title: c.title }) %>">
+              <option value=""><%= __('lms:skill_placeholder') %></option>
+              <% (skills||[]).forEach(function(s){ %><option value="<%= s.id %>"><%= s.name %></option><% }); %>
+            </select>
+            <select id="lvl-<%= c.id %>" class="form-control" style="display:inline-block;width:auto"
+              aria-label="<%= __('lms:a11y_map_level_for', { title: c.title }) %>"><% for(var i=1;i<=4;i++){ %><option value="<%= i %>"><%= i %></option><% } %></select>
+            <button class="btn btn-sm btn-primary" onclick="LMS.map(<%= c.id %>)"><%= __('lms:map') %></button>
+          </td></tr>
+      <% }); } %>
+    </tbody>
+  </table>
+</div>
+
+<!-- ===================== CURATION QUEUE ===================== -->
+<div class="card" style="padding:0;margin-bottom:1rem">
+  <div style="padding:.75rem 1rem;border-bottom:1px solid rgba(148,163,184,.2);display:flex;justify-content:space-between;align-items:center">
+    <h3 style="margin:0"><%= __('lms:curation_queue') %> <span class="text-muted" style="font-size:.7em"><%= __('lms:curation_hint') %></span></h3>
+    <button class="btn btn-sm btn-secondary" onclick="LMS.loadCuration()"><%= __('lms:refresh') %></button>
+  </div>
+  <table class="table" id="cur-table"><thead><tr><th><%= __('lms:th_skill') %></th><th><%= __('lms:th_demand') %></th></tr></thead>
+    <tbody><tr><td colspan="2"><em><%= __('lms:curation_empty') %></em></td></tr></tbody>
+  </table>
+</div>
+
+<!-- ===================== COMPLETION TEST (superadmin-only test tool) ===================== -->
+<% if (user && user.role==='superadmin') { %>
+<div class="card" style="padding:1rem">
+  <h3 style="margin-top:0"><%= __('lms:simulate_completion') %> <span class="text-muted" style="font-size:.7em"><%= __('lms:simulate_completion_hint') %></span></h3>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div><label for="x-provider"><%= __('lms:provider') %></label><br><select id="x-provider" class="form-control"><% (providers||[]).forEach(function(p){ %><option value="<%= p %>"><%= p %></option><% }); %></select></div>
+    <div><label for="x-email"><%= __('lms:employee_email') %></label><br><input id="x-email" class="form-control" placeholder="<%= __('lms:employee_email_placeholder') %>"></div>
+    <div><label for="x-course"><%= __('lms:course_external_id') %></label><br><input id="x-course" class="form-control"></div>
+    <div><label for="x-score"><%= __('lms:score') %></label><br><input id="x-score" type="number" class="form-control" style="width:100px"></div>
+    <button class="btn btn-primary" onclick="LMS.completion()"><%= __('lms:ingest_completion') %></button>
+  </div>
+  <div id="x-out" class="text-muted" style="margin-top:.5rem;font-size:.85em"></div>
+</div>
+<% } %>
+
+<%# UNE SEULE discipline de reseau pour toute l application :
+    public/js/sa-console-net.js. Une reponse REDIRIGEE, non-JSON, 401/440 est
+    un ECHEC -- jamais un succes -- et le refus est ecrit dans la langue de la
+    page. Charge AVANT le script de la page (non differe) pour que SAConsoleNet
+    existe au premier appel. %>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  // Titre de la carte de refus : neutre, car ces ecrans ne sont pas la console de
+  // revue (sans cela ils affichaient « La file de revue n a pas pu etre chargee »).
+  load_failed: __('dash:unable_to_load'),
+  pending_failed: __('dash:unable_to_load'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+// Skill names are free text (import, framework editor): every value that reaches
+// innerHTML goes through this 5-character escaper first.
+function lmsEsc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+const LMS_L = {
+  authInvalid: <%- JSON.stringify(__('lms:js_auth_invalid')) %>,
+  testPrefix: <%- JSON.stringify(__('lms:js_test_prefix')) %>,
+  syncedPrefix: <%- JSON.stringify(__('lms:js_synced_prefix')) %>,
+  syncedSuffix: <%- JSON.stringify(__('lms:js_synced_suffix')) %>,
+  pickSkill: <%- JSON.stringify(__('lms:js_pick_skill')) %>,
+  mapped: <%- JSON.stringify(__('lms:js_mapped')) %>,
+  allMapped: <%- JSON.stringify(__('lms:js_all_mapped')) %>,
+  resultPrefix: <%- JSON.stringify(__('lms:js_result_prefix')) %>,
+  skippedPrefix: <%- JSON.stringify(__('lms:js_skipped_prefix')) %>,
+  none: <%- JSON.stringify(__('lms:js_none')) %>
+};
+const LMS = {
+  // L assistant reseau ne se recopie plus ici : il vit dans
+  // public/js/sa-console-net.js (SAConsoleNet.call). L ancien corps avalait
+  // `r.json` en `{}` ; sur une session expiree le serveur repondait
+  // `302 -> /login`, le fetch de navigateur SUIVAIT la redirection, la page de
+  // connexion arrivait en `200 text/html`, `r.ok` valait donc true et `j`
+  // valait `{}` : le test `if(!r.ok||j.ok===false)` ne voyait rien.
+  // map enchainait sur alert(« associe ») sans qu aucune association existe.
+  async api(p,b){ try { return await SAConsoleNet.call(p,'POST',b||{}); } catch(e){ alert(e.message); throw e; } },
+  async saveIntegration(){
+    const authRaw=document.getElementById('lms-auth').value.trim();
+    let authConfig=null;
+    if(authRaw){ try{ authConfig=JSON.parse(authRaw); }catch(e){ alert(LMS_L.authInvalid);return; } }
+    await this.api('/v2/lms/integration',{provider:document.getElementById('lms-provider').value,name:document.getElementById('lms-name').value,baseUrl:document.getElementById('lms-url').value,webhookSecret:document.getElementById('lms-secret').value||null,enabled:document.getElementById('lms-enabled').value,authConfig});
+    location.reload();
+  },
+  async test(p){ const j=await this.api('/v2/lms/integration/'+p+'/test',{}); alert(LMS_L.testPrefix+JSON.stringify(j.result)); },
+  // A record the sync could not use is REPORTED, not silently dropped: "12 synced"
+  // with three courses quietly missing is worse than no number at all.
+  async sync(p){ const j=await this.api('/v2/lms/integration/'+p+'/sync',{}); alert(LMS_L.syncedPrefix+j.upserted+LMS_L.syncedSuffix+(j.skipped?' '+LMS_L.skippedPrefix+j.skipped:'')); location.reload(); },
+  async addCourse(){ await this.api('/v2/lms/course',{provider:document.getElementById('c-provider').value,externalId:document.getElementById('c-extid').value,title:document.getElementById('c-title').value}); location.reload(); },
+  async loadMaps(id){ const j=await this.api('/v2/lms/course/'+id+'/mappings',{}); /*GET via api fallback*/ },
+  async map(id){ const skillId=Number(document.getElementById('skill-'+id).value); if(!skillId){alert(LMS_L.pickSkill);return;} await this.api('/v2/lms/course/'+id+'/map',{skillId,levelDelta:document.getElementById('lvl-'+id).value}); alert(LMS_L.mapped); },
+  async loadCuration(){
+    // Ce fetch nu n envoyait AUCUN en-tete : le serveur ne pouvait pas le
+    // distinguer d une navigation de page et repondait `302 -> /login`. Mesure
+    // du 16/09/2026 : `await r.json` levait `SyntaxError: Unexpected token '<'`
+    // que personne ne rattrapait, et le chemin d avant rendait `j.list`
+    // indefini -- donc « tout est associe », un REFUS affiche comme un
+    // resultat POSITIF. Un refus s ecrit DANS la zone concernee.
+    const tb=document.querySelector('#cur-table tbody');
+    let j;
+    try { j=await SAConsoleNet.call('/v2/lms/curation','GET'); }
+    catch(e){ tb.innerHTML=SAConsoleNet.failureRow(e,'curation',2); return; }
+    tb.innerHTML=(j.list&&j.list.length)?j.list.map(function(s){return '<tr><td>'+lmsEsc(s.skillName)+'</td><td>'+lmsEsc(s.demand)+'</td></tr>';}).join(''):'<tr><td colspan="2"><em><i class="fas fa-circle-check" aria-hidden="true"></i> '+LMS_L.allMapped+'</em></td></tr>';
+  },
+  async completion(){ const j=await this.api('/v2/lms/completion',{provider:document.getElementById('x-provider').value,employeeEmail:document.getElementById('x-email').value,externalCourseId:document.getElementById('x-course').value,score:document.getElementById('x-score').value||null}); document.getElementById('x-out').textContent=LMS_L.resultPrefix+JSON.stringify(j); }
+};
+// mappings view uses GET
+// Meme mesure que loadCuration : fetch nu -> 302 suivi -> `r.json` levait une
+// SyntaxError, et le chemin d avant affichait « aucune association » sur un refus.
+LMS.loadMaps=async function(id){const cell=document.getElementById('maps-'+id);let j;try{j=await SAConsoleNet.call('/v2/lms/course/'+id+'/mappings','GET');}catch(e){cell.innerHTML=SAConsoleNet.failureCard(e,'maps-'+id);return;}cell.innerHTML=(j.list&&j.list.length)?j.list.map(function(m){return lmsEsc(m.skillName)+' →L'+lmsEsc(m.levelDelta);}).join('<br>'):'<em>'+LMS_L.none+'</em>';};
+</script>

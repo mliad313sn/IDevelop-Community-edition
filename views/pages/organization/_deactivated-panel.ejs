@@ -1,0 +1,101 @@
+<%
+/*  "Unités désactivées" — the visible way back from a deactivation.
+
+    A deactivated site/department/service disappears from every list, dropdown,
+    cascade and report filter. Before this panel existed there was no UI at all to
+    bring one back, which made a single click on Deactivate an irreversible
+    amputation of the org tree. Each row shows what is still attached and, when the
+    unit's own parent is deactivated, refuses to offer the restore until the parent
+    is restored first (the server enforces the same rule).
+
+    Locals: kinds (array of 'site'|'department'|'service'), from ('hub'|'page'). */
+const _d = (typeof deactivated !== 'undefined' && deactivated)
+    ? deactivated
+    : { sites: [], departments: [], services: [] };
+const _kinds = kinds;
+const _rows = { site: _d.sites || [], department: _d.departments || [], service: _d.services || [] };
+const _total = _kinds.reduce((n, k) => n + (_rows[k] || []).length, 0);
+const _labels = {
+    site: __('admin:org_deactivated_sites'),
+    department: __('admin:org_deactivated_departments'),
+    service: __('admin:org_deactivated_services'),
+};
+const _paths = { site: 'sites', department: 'departments', service: 'services' };
+%>
+<div class="dashboard-section" id="org-deactivated-panel" style="margin-top:1.5rem;">
+    <h2><i class="fas fa-box-archive" aria-hidden="true"></i> <%= __('admin:org_deactivated_units') %>
+        <span class="badge badge-secondary"><%= _total %></span>
+    </h2>
+    <p style="opacity:.85; margin-top:-.25rem;"><%= __('admin:org_deactivated_help') %></p>
+
+    <% if (_total === 0) { %>
+        <p style="opacity:.7;"><%= __('admin:org_deactivated_none') %></p>
+    <% } %>
+
+    <% _kinds.forEach(function (k) { const list = _rows[k] || []; if (!list.length) return; %>
+        <h3 style="margin-top:1rem;"><%= _labels[k] %> (<%= list.length %>)</h3>
+        <div class="table-wrapper">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th><%= __('admin:name') %></th>
+                        <th><%= __('admin:code') %></th>
+                        <% if (k !== 'site') { %><th><%= __('admin:org_parent') %></th><% } %>
+                        <th><%= __('admin:employees') %></th>
+                        <th><%= __('admin:actions') %></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% list.forEach(function (u) {
+                        const parentActive = k === 'site'
+                            ? true
+                            : (k === 'department'
+                                ? !!u.siteActive
+                                : (!!u.departmentActive && !!u.siteActive));
+                        const stranded = Number(u.empCount || 0);
+                    %>
+                        <tr>
+                            <td><strong><%= u.name %></strong></td>
+                            <td><%= u.code || '-' %></td>
+                            <% if (k === 'department') { %>
+                                <td><%= u.siteName %></td>
+                            <% } else if (k === 'service') { %>
+                                <td><%= u.siteName %> — <%= u.departmentName %></td>
+                            <% } %>
+                            <td>
+                                <% if (stranded > 0) { %>
+                                    <span class="badge badge-warning"><i class="fas fa-users" aria-hidden="true"></i>
+                                        <%= __('admin:org_stranded_people', { count: stranded }) %></span>
+                                <% } else { %>—<% } %>
+                            </td>
+                            <td>
+                                <% if (!parentActive) { %>
+                                    <span class="badge badge-secondary"><i class="fas fa-link-slash" aria-hidden="true"></i>
+                                        <%= __('admin:org_parent_inactive_badge') %></span>
+                                <% } else { %>
+                                    <form action="/organization/<%= _paths[k] %>/<%= u.id %>" method="POST" style="display:inline;">
+                                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                        <input type="hidden" name="reactivate" value="1">
+                                        <input type="hidden" name="from" value="<%= from %>">
+                                        <%# the unit's own name / parent id re-sent so the shared
+                                            create-update validators still pass on this POST %>
+                                        <input type="hidden" name="name" value="<%= u.name %>">
+                                        <% if (k === 'department') { %>
+                                            <input type="hidden" name="siteId" value="<%= u.siteId %>">
+                                        <% } else if (k === 'service') { %>
+                                            <input type="hidden" name="departmentId" value="<%= u.departmentId %>">
+                                        <% } %>
+                                        <button type="submit" class="btn btn-sm btn-primary"
+                                            title="<%= __('admin:org_reactivate_tooltip') %>">
+                                            <i class="fas fa-rotate-left" aria-hidden="true"></i> <%= __('admin:org_reactivate') %>
+                                        </button>
+                                    </form>
+                                <% } %>
+                            </td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+    <% }); %>
+</div>

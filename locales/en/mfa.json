@@ -1,0 +1,11 @@
+{
+  "setup": {
+    "title": "Set up two-factor authentication",
+    "scan_with_authenticator": "Scan this QR with Google Authenticator, Authy, or equivalent.",
+    "enter_code": "6-digit code"
+  },
+  "backup": {
+    "title": "Backup codes",
+    "warning_single_use": "Store these codes safely. Each one is single-use."
+  }
+}

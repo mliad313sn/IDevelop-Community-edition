@@ -1,0 +1,36 @@
+<div class="page-header">
+    <h1><%= __('reports:gap_analysis_title') %></h1>
+    <div class="page-actions">
+        <a href="/reports/gaps?format=csv" class="btn btn-secondary"><%= __('reports:export_csv') %></a>
+        <a href="/reports/gaps?format=json" class="btn btn-secondary"><%= __('reports:export_json') %></a>
+    </div>
+</div>
+
+<% if (gapAnalysis && gapAnalysis.length > 0) { %>
+<table class="table">
+    <thead>
+        <tr>
+            <th><%= __('reports:skill') %></th>
+            <th><%= __('reports:domain') %></th>
+            <th><%= __('reports:required_level') %></th>
+            <th><%= __('reports:critical') %></th>
+            <th><%= __('reports:employees_affected') %></th>
+            <th><%= __('reports:average_gap') %></th>
+        </tr>
+    </thead>
+    <tbody>
+        <% gapAnalysis.forEach(function(gap) { %>
+        <tr>
+            <td><%= gap.skillName %></td>
+            <td><%= gap.domainName %></td>
+            <td><%= gap.requiredLevel %></td>
+            <td><%= gap.isCritical ? __('reports:yes') : __('reports:no') %></td>
+            <td><%= gap.employeesAffected %></td>
+            <td><%= gap.employeesAffected > 0 ? (gap.totalGap / gap.employeesAffected).toFixed(2) : '0.00' %></td>
+        </tr>
+        <% }); %>
+    </tbody>
+</table>
+<% } else { %>
+<p><%= __('reports:no_gaps_found') %></p>
+<% } %>

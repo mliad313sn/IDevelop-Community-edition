@@ -1,0 +1,118 @@
+<div class="page-header">
+  <h1><i class="fas fa-route" aria-hidden="true"></i> <%= __('talentx:cp_title') %></h1>
+  <p class="text-muted"><%= __('talentx:cp_intro_1') %> <strong><%= __('talentx:cp_target_role') %></strong> <%= __('talentx:cp_intro_2') %></p>
+</div>
+
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end">
+    <div><label><%= __('talentx:employee') %> *</label><br>
+      <select id="cp-emp" class="form-control" style="min-width:240px">
+        <option value=""><%= __('talentx:cp_select') %></option>
+        <% (employees||[]).forEach(function(e){ %>
+          <option value="<%= e.id %>" data-role="<%= e.roleId || '' %>"><%= e.name %><%= e.number ? ' (' + e.number + ')' : '' %></option>
+        <% }); %>
+      </select>
+    </div>
+    <div><label><%= __('talentx:cp_target_role_label') %> *</label><br>
+      <select id="cp-role" class="form-control" style="min-width:240px">
+        <option value=""><%= __('talentx:cp_select') %></option>
+        <% (roles||[]).forEach(function(r){ %>
+          <option value="<%= r.id %>"><%= r.name %></option>
+        <% }); %>
+      </select>
+    </div>
+    <button class="btn btn-primary" id="cp-go"><i class="fas fa-magnifying-glass-chart" aria-hidden="true"></i> <%= __('talentx:cp_analyze') %></button>
+  </div>
+</div>
+
+<div id="cp-result" style="display:none">
+  <div class="cp-summary">
+    <div class="cp-readiness">
+      <div class="cp-ring" id="cp-ring"><span id="cp-pct">0%</span></div>
+      <div><div class="cp-rlabel"><%= __('talentx:cp_readiness') %></div><div class="cp-rsub" id="cp-rsub"></div></div>
+    </div>
+    <div class="cp-stats">
+      <div class="cp-stat"><div class="cp-n" id="cp-met">0</div><div class="cp-l"><%= __('talentx:cp_met') %></div></div>
+      <div class="cp-stat"><div class="cp-n" id="cp-gaps">0</div><div class="cp-l"><%= __('talentx:cp_gaps') %></div></div>
+      <div class="cp-stat"><div class="cp-n cp-crit" id="cp-crit">0</div><div class="cp-l"><%= __('talentx:cp_critical_gaps') %></div></div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:0">
+    <table class="table">
+      <thead><tr><th><%= __('talentx:domain') %></th><th><%= __('talentx:skill') %></th><th><%= __('talentx:cp_required') %></th><th><%= __('talentx:cp_current') %></th><th><%= __('talentx:gap') %></th><th><%= __('talentx:status') %></th></tr></thead>
+      <tbody id="cp-rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="cp-empty" class="text-muted" style="padding:1rem"><%= __('talentx:cp_empty_pre') %> <strong><%= __('talentx:cp_analyze') %></strong>.</div>
+
+<style>
+.cp-summary{display:flex;gap:24px;flex-wrap:wrap;align-items:center;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px 22px;margin-bottom:14px}
+.cp-readiness{display:flex;align-items:center;gap:16px}
+.cp-ring{--p:0;width:96px;height:96px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.2rem;color:var(--text-primary);background:conic-gradient(var(--brand) calc(var(--p)*1%),var(--bg-elevated) 0)}
+.cp-ring span{background:var(--bg-card);width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.cp-rlabel{font-weight:700}.cp-rsub{color:var(--text-secondary);font-size:.85rem}
+.cp-stats{display:flex;gap:14px;margin-left:auto}
+.cp-stat{text-align:center;min-width:80px}
+.cp-n{font-size:1.7rem;font-weight:800;color:var(--brand-text)}.cp-n.cp-crit{color:var(--red-text)}
+.cp-l{color:var(--text-secondary);font-size:.75rem;text-transform:uppercase;letter-spacing:.03em}
+.cp-met-badge{padding:2px 9px;border-radius:999px;font-size:.76rem;color:#fff;background:#15803d}
+.cp-gap-badge{padding:2px 9px;border-radius:999px;font-size:.76rem;color:#fff;background:#b45309}
+.cp-gap-badge.crit{background:#b91c1c}
+</style>
+<script nonce="<%= cspNonce %>">
+(function(){
+  var CP_T = {
+    selectBoth: <%- JSON.stringify(__('talentx:cp_select_both')) %>,
+    currentWord: <%- JSON.stringify(__('talentx:cp_current_word')) %>,
+    targetWord: <%- JSON.stringify(__('talentx:cp_target_word')) %>,
+    reqsMet: <%- JSON.stringify(__('talentx:cp_reqs_met')) %>,
+    metBadge: <%- JSON.stringify(__('talentx:cp_met_badge')) %>,
+    gapBadge: <%- JSON.stringify(__('talentx:cp_gap_badge')) %>,
+    criticalWord: <%- JSON.stringify(__('talentx:cp_critical_word')) %>,
+    coverageWord: <%- JSON.stringify(__('talentx:cp_coverage_word')) %>,
+    notMeasured: <%- JSON.stringify(__('talentx:cp_not_measured')) %>,
+    notMeasuredTitle: <%- JSON.stringify(__('talentx:cp_not_measured_title')) %>
+  };
+  var empSel=document.getElementById('cp-emp'), roleSel=document.getElementById('cp-role');
+  document.getElementById('cp-go').addEventListener('click', async function(){
+    var employeeId=empSel.value, targetRoleId=roleSel.value;
+    if(!employeeId||!targetRoleId){ if(window.toast)window.toast(CP_T.selectBoth,'warn'); return; }
+    this.disabled=true;
+    try{
+      var r=await fetch('/api/talent/career-path?employeeId='+employeeId+'&targetRoleId='+targetRoleId);
+      var j=await r.json();
+      if(!r.ok){ if(window.toast)window.toast(j.error||('HTTP '+r.status),'error'); return; }
+      render(j);
+    } finally { this.disabled=false; }
+  });
+  function render(j){
+    document.getElementById('cp-empty').style.display='none';
+    document.getElementById('cp-result').style.display='';
+    var ring=document.getElementById('cp-ring');
+    // readiness is null when none of the target role's skills have been measured
+    // for this person: show a dash and an empty ring, never 0 %.
+    var hasR = j.readiness != null;
+    ring.style.setProperty('--p', hasR ? j.readiness : 0);
+    document.getElementById('cp-pct').textContent = hasR ? j.readiness+'%' : '—';
+    var covWord = (j.coverage != null) ? ' · '+(CP_T.coverageWord||'couverture')+' '+j.coverage+'%' : '';
+    document.getElementById('cp-rsub').textContent=j.employee.name+' · '+CP_T.currentWord+' '+j.employee.currentRole+' → '+CP_T.targetWord+' '+j.target.name+' ('+j.met+'/'+j.measured+' '+CP_T.reqsMet+covWord+')';
+    document.getElementById('cp-met').textContent=j.met;
+    document.getElementById('cp-gaps').textContent=j.gaps;
+    document.getElementById('cp-crit').textContent=j.criticalGaps;
+    var tb=document.getElementById('cp-rows');
+    tb.innerHTML=j.rows.map(function(x){
+      // A never-assessed requirement is not a gap of `required`; it is unknown.
+      var status = !x.assessed ? '<span class="cp-nm-badge" title="'+esc(CP_T.notMeasuredTitle||'')+'">'+(CP_T.notMeasured||'Non mesuré')+'</span>'
+        : x.met ? '<span class="cp-met-badge">'+CP_T.metBadge+'</span>'
+        : '<span class="cp-gap-badge'+(x.critical?' crit':'')+'">'+CP_T.gapBadge+' '+x.gap+(x.critical?' · '+CP_T.criticalWord:'')+'</span>';
+      var cur = x.current==null ? '—' : x.current;
+      var gp  = x.gap==null ? '—' : x.gap;
+      return '<tr'+(x.assessed?'':' class="cp-unmeasured"')+'><td>'+esc(x.domainName||'—')+'</td><td>'+esc(x.skillName)+'</td><td>'+x.required+'</td><td>'+cur+'</td><td>'+gp+'</td><td>'+status+'</td></tr>';
+    }).join('');
+  }
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+})();
+</script>

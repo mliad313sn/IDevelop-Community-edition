@@ -1,0 +1,347 @@
+<%
+/*
+ * « Mon développement » — the employee's OWN plans.
+ *
+ * CONFIDENTIALITY: a plan is visible to its subject;
+ * the 9-box placement behind it is NOT — until a manager or an administrator has
+ * DELIBERATELY disclosed it. Two consequences, both live below:
+ *
+ *   1. Every free-text field arriving here has already passed through
+ *      TalentConfidentialityService.redactForSubject in the controller, so no
+ *      plan prose can name the cell while it is confidential. Nothing in this
+ *      template may print grid vocabulary of its own.
+ *   2. `disclosedPlacement` is non-null ONLY after that deliberate act, and it
+ *      then carries the date and the author — a judgement shown to someone must
+ *      say who decided to show it and when.
+ *
+ * All writes are server-rendered forms (no client JS), so the page works with
+ * JavaScript disabled. The single write offered is the employee's own IDP
+ * signature (POST /v2/idp/:id/sign) — the only employee-safe write path the
+ * services expose today. Everything else is deliberately read-only.
+ */
+// The LOCALIZED cell name, derived from potential+performance exactly as
+// /employee/dashboard does — `boxLabel` is the English string stored at
+// placement time and must never be printed on a French page.
+const NB_CELL_KEY = {
+    'high-low': 'nb_cell_diamond', 'high-medium': 'nb_cell_shooting', 'high-high': 'nb_cell_gold',
+    'medium-low': 'nb_cell_dilemma', 'medium-medium': 'nb_cell_critical', 'medium-high': 'nb_cell_emerging',
+    'low-low': 'nb_cell_concern', 'low-medium': 'nb_cell_essential', 'low-high': 'nb_cell_trusted'
+};
+const nbCellLabel = (p) => {
+    const k = p && NB_CELL_KEY[`${p.potential}-${p.performance}`];
+    return k ? __(`talentx:${k}`) : (p && p.label) || '';
+};
+const pipState = {
+    proposed:       { label: __('employee:dev_pip_st_proposed'),       cls: 'badge-warning'   },
+    approved:       { label: __('employee:dev_pip_st_approved'),       cls: 'badge-info'      },
+    active:         { label: __('employee:dev_pip_st_active'),         cls: 'badge-info'      },
+    closed_success: { label: __('employee:dev_pip_st_closed_success'), cls: 'badge-success'   },
+    closed_failure: { label: __('employee:dev_pip_st_closed_failure'), cls: 'badge-danger'    },
+    cancelled:      { label: __('employee:dev_pip_st_cancelled'),      cls: 'badge-secondary' }
+};
+const idpState = {
+    draft:     { label: __('employee:dev_idp_st_draft'),     cls: 'badge-warning'   },
+    active:    { label: __('employee:dev_idp_st_active'),    cls: 'badge-info'      },
+    completed: { label: __('employee:dev_idp_st_completed'), cls: 'badge-success'   },
+    archived:  { label: __('employee:dev_idp_st_archived'),  cls: 'badge-secondary' }
+};
+const itemState = {
+    pending:     { label: __('employee:dev_item_st_pending'),     cls: 'badge-secondary' },
+    in_progress: { label: __('employee:dev_item_st_in_progress'), cls: 'badge-info'      },
+    completed:   { label: __('employee:dev_item_st_completed'),   cls: 'badge-success'   },
+    cancelled:   { label: __('employee:dev_item_st_cancelled'),   cls: 'badge-secondary' }
+};
+const prioLabel = {
+    low:      __('employee:dev_prio_low'),
+    medium:   __('employee:dev_prio_medium'),
+    high:     __('employee:dev_prio_high'),
+    critical: __('employee:dev_prio_critical')
+};
+const actionType = {
+    training:      __('employee:dev_act_training'),
+    coaching:      __('employee:dev_act_coaching'),
+    mentoring:     __('employee:dev_act_mentoring'),
+    on_the_job:    __('employee:dev_act_on_the_job'),
+    self_study:    __('employee:dev_act_self_study'),
+    certification: __('employee:dev_act_certification'),
+    stretch:       __('employee:dev_act_stretch')
+};
+const badge = (map, key) => map[key] || { label: enumLabel(key), cls: 'badge-secondary' };
+const period = (from, to) => from && to ? (from + ' → ' + to) : (from || to || __('employee:dev_period_tbd'));
+
+const openPips = pips.filter(function (p) { return p.isOpen; });
+const closedPips = pips.filter(function (p) { return !p.isOpen; });
+const openObjectives = idps.reduce(function (n, p) { return n + (p.isOpen ? p.openObjectives : 0); }, 0);
+const openActions = idps.reduce(function (n, p) { return n + (p.isOpen ? p.openActions : 0); }, 0);
+const toSign = idps.filter(function (p) { return p.canSign; });
+%>
+
+<div class="page-header">
+    <h1><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('employee:dev_title') %></h1>
+    <p class="text-muted"><%= __('employee:dev_subtitle') %></p>
+</div>
+
+<% if (loadError) { %>
+    <div class="alert alert-warning" role="alert">
+        <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+        <%= __('employee:dev_load_error') %>
+    </div>
+<% } %>
+
+<% if (!hasAnything && !loadError) { %>
+    <div class="card">
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-seedling" aria-hidden="true"></i></div>
+            <h3><%= __('employee:dev_empty_title') %></h3>
+            <p><%= __('employee:dev_empty_body') %></p>
+            <p><%= __('employee:dev_empty_hint') %></p>
+            <a class="btn btn-secondary" href="/employee/dashboard">
+                <i class="fas fa-house" aria-hidden="true"></i>
+                <%= __('employee:dev_empty_cta') %>
+            </a>
+        </div>
+    </div>
+<% } else if (!loadError) { %>
+
+    <!-- ── Disclosed talent placement (A4) ───────────────────────────────────
+         Rendered ONLY when a manager or an administrator deliberately disclosed
+         the placement. It shows the cell WITH the date it was disclosed and the
+         person who disclosed it: a judgement you are shown must say who chose to
+         show it to you. Undisclosed, `disclosedPlacement` is null and this whole
+         block — vocabulary included — does not exist on the page. -->
+    <% if (typeof disclosedPlacement !== 'undefined' && disclosedPlacement) { %>
+        <div class="card" style="padding:1.25rem;">
+            <h2 style="margin-top:0;"><i class="fas fa-puzzle-piece" aria-hidden="true"></i> <%= __('employee:dev_placement_title') %></h2>
+            <p style="margin:.35rem 0 0;font-size:1.15rem;"><strong><%= nbCellLabel(disclosedPlacement) %></strong></p>
+            <p class="text-muted" style="margin:.35rem 0 0;">
+                <i class="fas fa-user-shield" aria-hidden="true"></i>
+                <%= __('employee:dev_placement_disclosed_by') %><%= colon %>
+                <strong><%= disclosedPlacement.disclosedBy || __('employee:dev_placement_author_unknown') %></strong>
+                — <%= __('employee:dev_placement_disclosed_on') %> <strong><%= disclosedPlacement.disclosedOn %></strong>
+            </p>
+            <% if (disclosedPlacement.reason) { %>
+                <p style="margin:.6rem 0 0;white-space:pre-wrap;"><%= __('employee:dev_placement_reason') %><%= colon %> <%= disclosedPlacement.reason %></p>
+            <% } %>
+            <p class="text-muted" style="margin:.6rem 0 0;font-size:.85rem;">
+                <i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('employee:dev_placement_note') %>
+            </p>
+        </div>
+    <% } %>
+
+    <% if (openPips.length || openObjectives || openActions || toSign.length) { %>
+        <div class="card" style="padding:1.25rem;">
+            <h2 style="margin-top:0;"><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('employee:dev_expected_title') %></h2>
+            <p class="text-muted"><%= __('employee:dev_expected_intro') %></p>
+            <ul style="margin:0;padding-left:1.2rem;line-height:1.9;">
+                <% if (toSign.length) { %>
+                    <li><strong><%= __('employee:dev_expected_sign') %></strong> — <%= toSign.length %></li>
+                <% } %>
+                <% if (openObjectives) { %>
+                    <li><%= __('employee:dev_expected_objectives') %> — <%= openObjectives %></li>
+                <% } %>
+                <% if (openActions) { %>
+                    <li><%= __('employee:dev_expected_actions') %> — <%= openActions %></li>
+                <% } %>
+                <% if (openPips.length) { %>
+                    <li><%= __('employee:dev_expected_pip') %> — <%= openPips.length %></li>
+                <% } %>
+            </ul>
+        </div>
+    <% } %>
+
+    <!-- ── Performance-improvement plans ─────────────────────────────────── -->
+    <div class="card" style="padding:1.25rem;">
+        <h2 style="margin-top:0;"><i class="fas fa-compass-drafting" aria-hidden="true"></i> <%= __('employee:dev_pip_section') %></h2>
+        <p class="text-muted"><%= __('employee:dev_pip_intro') %></p>
+
+        <% if (!pips.length) { %>
+            <p><em><%= __('employee:dev_pip_none') %></em></p>
+        <% } %>
+
+        <% pips.forEach(function (p) { %>
+            <section class="card" style="padding:1rem;margin-top:1rem;<%= p.isOpen ? '' : 'opacity:.85;' %>">
+                <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;justify-content:space-between;">
+                    <h3 style="margin:0;font-size:1.05rem;"><%= __('employee:dev_pip_item_title') %></h3>
+                    <span class="badge <%= badge(pipState, p.state).cls %>"><%= badge(pipState, p.state).label %></span>
+                </div>
+                <p class="text-muted" style="margin:.35rem 0 0;">
+                    <i class="fas fa-calendar-days" aria-hidden="true"></i>
+                    <%= __('employee:dev_period') %><%= colon %> <%= period(p.startsOn, p.endsOn) %>
+                </p>
+
+                <dl style="margin:1rem 0 0;">
+                    <dt style="font-weight:600;"><%= __('employee:dev_pip_summary') %></dt>
+                    <dd style="margin:.2rem 0 .9rem;white-space:pre-wrap;"><%= p.summary || __('employee:dev_not_filled') %></dd>
+
+                    <dt style="font-weight:600;"><%= __('employee:dev_pip_objectives') %></dt>
+                    <dd style="margin:.2rem 0 .9rem;white-space:pre-wrap;"><%= p.objectives || __('employee:dev_not_filled') %></dd>
+
+                    <dt style="font-weight:600;"><%= __('employee:dev_pip_criteria') %></dt>
+                    <dd style="margin:.2rem 0 .9rem;white-space:pre-wrap;"><%= p.successCriteria || __('employee:dev_not_filled') %></dd>
+
+                    <dt style="font-weight:600;"><%= __('employee:dev_pip_checkpoints') %></dt>
+                    <dd style="margin:.2rem 0 .9rem;white-space:pre-wrap;"><%= p.reviewCheckpoints || __('employee:dev_not_filled') %></dd>
+
+                    <dt style="font-weight:600;"><%= __('employee:dev_pip_support') %></dt>
+                    <dd style="margin:.2rem 0 .9rem;white-space:pre-wrap;"><%= p.supportOffered || __('employee:dev_not_filled') %></dd>
+
+                    <% if (!p.isOpen && p.outcome) { %>
+                        <dt style="font-weight:600;"><%= __('employee:dev_pip_outcome') %></dt>
+                        <dd style="margin:.2rem 0 .9rem;white-space:pre-wrap;"><%= p.outcome %></dd>
+                    <% } %>
+                </dl>
+
+                <p class="text-muted" style="margin:0;font-size:.85rem;">
+                    <i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('employee:dev_pip_readonly') %>
+                </p>
+            </section>
+        <% }); %>
+
+        <% if (closedPips.length) { %>
+            <p class="text-muted" style="margin:1rem 0 0;font-size:.85rem;"><%= __('employee:dev_pip_closed_note') %></p>
+        <% } %>
+    </div>
+
+    <!-- ── Individual development plans ──────────────────────────────────── -->
+    <div class="card" style="padding:1.25rem;">
+        <h2 style="margin-top:0;"><i class="fas fa-arrow-trend-up" aria-hidden="true"></i> <%= __('employee:dev_idp_section') %></h2>
+        <p class="text-muted"><%= __('employee:dev_idp_intro') %></p>
+
+        <% if (!idps.length) { %>
+            <p><em><%= __('employee:dev_idp_none') %></em></p>
+        <% } %>
+
+        <% idps.forEach(function (plan) { %>
+            <section class="card" style="padding:1rem;margin-top:1rem;<%= plan.isOpen ? '' : 'opacity:.85;' %>">
+                <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;justify-content:space-between;">
+                    <h3 style="margin:0;font-size:1.05rem;"><%= __('employee:dev_idp_item_title') %></h3>
+                    <span>
+                        <span class="badge <%= badge(idpState, plan.status).cls %>"><%= badge(idpState, plan.status).label %></span>
+                        <span class="badge badge-secondary"><%= __('employee:dev_priority') %><%= colon %> <%= prioLabel[plan.priority] || enumLabel(plan.priority) %></span>
+                    </span>
+                </div>
+                <p class="text-muted" style="margin:.35rem 0 0;">
+                    <i class="fas fa-calendar-days" aria-hidden="true"></i>
+                    <%= __('employee:dev_period') %><%= colon %> <%= period(plan.startsOn, plan.endsOn) %>
+                </p>
+
+                <h4 style="margin:1.1rem 0 .4rem;"><%= __('employee:dev_idp_objectives') %></h4>
+                <% if (!plan.objectives.length) { %>
+                    <p><em><%= __('employee:dev_idp_no_objectives') %></em></p>
+                <% } else { %>
+                    <div class="table-wrapper">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th scope="col"><%= __('employee:dev_th_objective') %></th>
+                                    <th scope="col"><%= __('employee:dev_th_skill') %></th>
+                                    <th scope="col"><%= __('employee:dev_th_due') %></th>
+                                    <th scope="col"><%= __('employee:dev_th_state') %></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <% plan.objectives.forEach(function (o) { %>
+                                    <tr>
+                                        <td style="white-space:pre-wrap;"><%= o.smartText %></td>
+                                        <td><%= o.skillName || '—' %></td>
+                                        <td><%= o.dueOn || __('employee:dev_idp_due_tbd') %></td>
+                                        <td><span class="badge <%= badge(itemState, o.state).cls %>"><%= badge(itemState, o.state).label %></span></td>
+                                    </tr>
+                                <% }); %>
+                            </tbody>
+                        </table>
+                    </div>
+                <% } %>
+
+                <h4 style="margin:1.1rem 0 .4rem;"><%= __('employee:dev_idp_actions') %></h4>
+                <% if (!plan.actions.length) { %>
+                    <p><em><%= __('employee:dev_idp_no_actions') %></em></p>
+                <% } else { %>
+                    <div class="table-wrapper">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th scope="col"><%= __('employee:dev_th_action') %></th>
+                                    <th scope="col"><%= __('employee:dev_th_type') %></th>
+                                    <th scope="col"><%= __('employee:dev_th_state') %></th>
+                                    <th scope="col"><%= __('employee:dev_th_completed') %></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <% plan.actions.forEach(function (a) { %>
+                                    <tr>
+                                        <td>
+                                            <%= a.title %>
+                                            <% if (a.description) { %>
+                                                <div class="text-muted" style="font-size:.85rem;white-space:pre-wrap;"><%= a.description %></div>
+                                            <% } %>
+                                        </td>
+                                        <td><%= actionType[a.type] || enumLabel(a.type) %></td>
+                                        <td><span class="badge <%= badge(itemState, a.status).cls %>"><%= badge(itemState, a.status).label %></span></td>
+                                        <td><%= a.completedAt || '—' %></td>
+                                    </tr>
+                                <% }); %>
+                            </tbody>
+                        </table>
+                    </div>
+                <% } %>
+
+                <h4 style="margin:1.1rem 0 .4rem;"><%= __('employee:dev_idp_signoff') %></h4>
+                <ul style="margin:0 0 .75rem;padding-left:1.2rem;line-height:1.8;">
+                    <li>
+                        <%= __('employee:dev_idp_sign_employee') %><%= colon %>
+                        <% if (plan.signedByMeOn) { %>
+                            <%= __('employee:dev_idp_signed_on') %> <%= plan.signedByMeOn %>
+                        <% } else { %>
+                            <em><%= __('employee:dev_idp_not_signed') %></em>
+                        <% } %>
+                    </li>
+                    <li>
+                        <%= __('employee:dev_idp_sign_supervisor') %><%= colon %>
+                        <% if (plan.signedBySupervisorOn) { %>
+                            <%= __('employee:dev_idp_signed_on') %> <%= plan.signedBySupervisorOn %>
+                        <% } else { %>
+                            <em><%= __('employee:dev_idp_not_signed') %></em>
+                        <% } %>
+                    </li>
+                </ul>
+
+                <% if (plan.canSign) { %>
+                    <p class="text-muted" style="font-size:.85rem;margin:.25rem 0 .6rem;"><%= __('employee:dev_idp_sign_help') %></p>
+                    <form method="post" action="/v2/idp/<%= plan.id %>/sign">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-pen-nib" aria-hidden="true"></i>
+                            <%= __('employee:dev_idp_sign_btn') %>
+                        </button>
+                    </form>
+                <% } else { %>
+                    <p class="text-muted" style="margin:0;font-size:.85rem;">
+                        <i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('employee:dev_idp_readonly') %>
+                    </p>
+                <% } %>
+
+                <% if (plan.detailUrl) { %>
+                    <p style="margin:.75rem 0 0;">
+                        <a href="<%= plan.detailUrl %>"><%= __('employee:dev_idp_open_detail') %></a>
+                    </p>
+                <% } %>
+            </section>
+        <% }); %>
+    </div>
+
+    <!-- ── Coaching pointer ──────────────────────────────────────────────── -->
+    <div class="card" style="padding:1.25rem;">
+        <h2 style="margin-top:0;"><i class="fas fa-hands-helping" aria-hidden="true"></i> <%= __('employee:dev_coaching_section') %></h2>
+        <% if (coaching.total) { %>
+            <p><%= __('employee:dev_coaching_body') %> <strong><%= coaching.open %></strong> / <%= coaching.total %></p>
+        <% } else { %>
+            <p class="text-muted"><%= __('employee:dev_coaching_none') %></p>
+        <% } %>
+        <a class="btn btn-secondary" href="/employee/my-coaching">
+            <i class="fas fa-arrow-right" aria-hidden="true"></i>
+            <%= __('employee:dev_coaching_link') %>
+        </a>
+    </div>
+
+<% } %>

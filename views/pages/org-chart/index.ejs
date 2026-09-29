@@ -1,0 +1,506 @@
+<div class="page-header">
+    <h1><i class="fas fa-sitemap" aria-hidden="true"></i> <%= __('talentx:oc_title') %></h1>
+    <div class="page-actions">
+        <button class="btn btn-secondary" onclick="OC.zoom(-0.1)" title="<%= __('talentx:oc_zoom_out') %>" aria-label="<%= __('talentx:oc_zoom_out') %>"><i class="fas fa-magnifying-glass-minus" aria-hidden="true"></i></button>
+        <span class="oc-zoom-pct" id="oc-zoom-pct" aria-hidden="true">100%</span>
+        <button class="btn btn-secondary" onclick="OC.zoom(0.1)" title="<%= __('talentx:oc_zoom_in') %>" aria-label="<%= __('talentx:oc_zoom_in') %>"><i class="fas fa-magnifying-glass-plus" aria-hidden="true"></i></button>
+        <button class="btn btn-secondary" onclick="OC.fit()" title="<%= __('talentx:oc_fit') %>" aria-label="<%= __('talentx:oc_fit') %>"><i class="fas fa-arrows-left-right-to-line" aria-hidden="true"></i></button>
+        <button class="btn btn-secondary" onclick="OC.expandAll(true)"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('talentx:oc_expand') %></button>
+        <button class="btn btn-secondary" onclick="OC.expandAll(false)"><i class="fas fa-minus" aria-hidden="true"></i> <%= __('talentx:oc_collapse') %></button>
+    </div>
+</div>
+
+<div class="oc-toolbar card">
+    <div class="oc-modes">
+        <span class="oc-label"><%= __('talentx:oc_view') %></span>
+        <button class="btn btn-primary" id="oc-m-line" onclick="OC.setMode('line')" title="<%= __('talentx:oc_line_mode_title') %>"><i class="fas fa-sitemap" aria-hidden="true"></i> <%= __('talentx:oc_line_mode') %></button>
+        <button class="btn btn-secondary" id="oc-m-manager" onclick="OC.setMode('manager')"><i class="fas fa-user-tie" aria-hidden="true"></i> <%= __('talentx:g9_manager') %></button>
+        <button class="btn btn-secondary" id="oc-m-supervisor" onclick="OC.setMode('supervisor')"><i class="fas fa-user-gear" aria-hidden="true"></i> <%= __('talentx:oc_supervisor') %></button>
+        <button class="btn btn-secondary" id="oc-m-structure" onclick="OC.setMode('structure')"><i class="fas fa-building" aria-hidden="true"></i> <%= __('talentx:oc_structure') %></button>
+    </div>
+    <div class="oc-search">
+        <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+        <input id="oc-q" type="search" placeholder="<%= __('talentx:oc_search_ph') %>" oninput="OC.search(this.value)">
+        <span class="oc-match-count" id="oc-matches" aria-live="polite"></span>
+    </div>
+    <div class="oc-stats" id="oc-stats"></div>
+</div>
+
+<div class="oc-canvas card" id="oc-canvas" title="<%= __('talentx:oc_pan_hint') %>">
+    <div class="tree" id="oc-tree"><p class="text-muted" style="padding:1rem"><%= __('talentx:oc_loading') %></p></div>
+</div>
+
+<style>
+.oc-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:16px; padding:12px 16px; margin-bottom:14px; }
+.oc-modes { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.oc-label { font-size:.78rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-secondary); }
+.oc-search { display:flex; align-items:center; gap:8px; flex:1; min-width:200px; color:var(--text-secondary); }
+.oc-search input { flex:1; padding:7px 10px; background:var(--bg-subtle); color:var(--text-primary); border:1px solid var(--border-light); border-radius:var(--radius-sm); }
+.oc-match-count { font-size:.78rem; color:var(--brand,#7C6CFF); white-space:nowrap; }
+.oc-stats { font-size:.82rem; color:var(--text-secondary); }
+.oc-zoom-pct { font-size:.78rem; color:var(--text-secondary); min-width:40px; text-align:center; font-variant-numeric:tabular-nums; }
+/* The wide tree scrolls INSIDE this card (overflow:auto) — never the page.
+   Drag the background to pan; Ctrl+wheel zooms. */
+.oc-canvas { padding:18px; overflow:auto; max-width:100%; min-width:0; max-height:74vh; cursor:grab; }
+.oc-canvas.oc-panning { cursor:grabbing; user-select:none; }
+.oc-tree-scale { display:inline-block; min-width:100%; }
+
+/* Classic top-down CSS org tree with connector lines */
+.tree, .tree ul { position:relative; padding:0; margin:0; }
+.tree ul { display:flex; justify-content:center; padding-top:22px; }
+.tree li { list-style:none; position:relative; padding:22px 10px 0; text-align:center; }
+.tree li::before, .tree li::after { content:''; position:absolute; top:0; right:50%; border-top:2px solid var(--border-light,#2a3148); width:50%; height:22px; }
+.tree li::after { right:auto; left:50%; border-left:2px solid var(--border-light,#2a3148); }
+.tree li:only-child::before, .tree li:only-child::after { display:none; }
+.tree li:only-child { padding-top:0; }
+.tree li:first-child::before, .tree li:last-child::after { border:0 none; }
+.tree li:last-child::before { border-right:2px solid var(--border-light,#2a3148); border-radius:0 6px 0 0; }
+.tree li:first-child::after { border-radius:6px 0 0 0; }
+.tree > li { padding-top:0; }
+.tree > li::before, .tree > li::after { display:none; }
+.tree ul ul::before { content:''; position:absolute; top:0; left:50%; border-left:2px solid var(--border-light,#2a3148); width:0; height:22px; }
+.tree li.oc-collapsed > ul { display:none; }
+
+/* Node card */
+.oc-node { display:inline-flex; align-items:center; gap:9px; text-align:left; padding:8px 12px; min-width:180px; max-width:250px;
+    border:1px solid var(--border-light,#2a3148); border-radius:12px; background:var(--bg-subtle); position:relative;
+    box-shadow:0 1px 3px rgba(0,0,0,.18); transition:box-shadow .15s ease, transform .15s ease; }
+.oc-node:hover { box-shadow:0 4px 12px rgba(0,0,0,.28); }
+.oc-node.oc-hit { border-color:var(--brand,#7C6CFF); box-shadow:0 0 0 2px rgba(124, 108, 255,.35); }
+.oc-node.oc-group { background:var(--bg-inset,rgba(255,255,255,.04)); }
+.oc-av { width:34px; height:34px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.82rem;
+    background:hsl(var(--av-h,42) 40% 30%); color:hsl(var(--av-h,42) 75% 82%); }
+.oc-group .oc-av { border-radius:9px; background:rgba(99,102,241,.16); color:#a5b4fc; }
+.oc-info { min-width:0; flex:1; }
+.oc-name { display:block; font-weight:600; color:var(--text-primary); font-size:.9rem; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+a.oc-name-link { color:inherit; text-decoration:none; }
+a.oc-name-link:hover { color:var(--brand,#7C6CFF); text-decoration:underline; }
+.oc-role { display:block; font-size:.76rem; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:170px; }
+.oc-badge { flex:none; display:inline-flex; align-items:center; gap:4px; font-size:.7rem; color:var(--text-secondary);
+    border:1px solid var(--border-light,#2a3148); border-radius:999px; padding:1px 8px; font-variant-numeric:tabular-nums; }
+.oc-badge i { font-size:.62rem; }
+.oc-toggle { position:absolute; bottom:-12px; left:50%; transform:translateX(-50%); min-width:22px; height:22px; border-radius:999px; padding:0 6px; appearance:none; font-family:inherit;
+    border:1px solid var(--border-light,#2a3148); background:var(--bg-card,#151931); color:var(--text-secondary); font-size:.72rem; line-height:20px; text-align:center; cursor:pointer; z-index:2; font-variant-numeric:tabular-nums; }
+.oc-toggle:hover { color:var(--brand,#7C6CFF); border-color:var(--brand,#7C6CFF); }
+.oc-root-badge { position:absolute; top:-9px; right:8px; font-size:.62rem; background:var(--brand-dim,rgba(124, 108, 255,.18)); color:var(--brand,#7C6CFF); border-radius:999px; padding:0 7px; }
+.oc-focus { flex:none; width:24px; height:24px; padding:0; appearance:none; border:1px solid var(--border-light,#2a3148); border-radius:7px; background:transparent; color:var(--text-secondary); cursor:pointer; font-size:.72rem; }
+.oc-focus:hover { color:var(--brand,#7C6CFF); border-color:var(--brand,#7C6CFF); }
+.oc-focus-banner { display:flex; align-items:center; gap:12px; margin-bottom:14px; padding:8px 12px; background:var(--brand-dim,rgba(124, 108, 255,.12)); border:1px solid var(--brand,#7C6CFF); border-radius:var(--radius-md,8px); color:var(--text-secondary); font-size:.86rem; text-align:left; }
+
+/* No reporting line recorded at all: an absence of data, said in words. */
+.oc-empty { max-width:560px; margin:0 auto; padding:28px 20px; text-align:center; color:var(--text-secondary); font-size:.92rem; }
+.oc-empty > i { display:block; font-size:1.8rem; color:var(--brand,#7C6CFF); margin-bottom:10px; }
+.oc-empty p { margin:0 0 12px; }
+.oc-empty .oc-empty-msg { color:var(--text-primary); font-weight:600; }
+
+/* Individual contributors stack VERTICALLY under their manager (like Visio/Workday)
+   instead of sprawling side-by-side — one connector feeds the whole stack. */
+.oc-stack { display:flex; flex-direction:column; gap:8px; align-items:stretch; }
+.oc-stack .oc-node { min-width:210px; max-width:250px; padding:6px 10px; }
+.oc-stack .oc-av { width:26px; height:26px; font-size:.7rem; }
+.oc-stack .oc-name { font-size:.84rem; }
+.oc-stack .oc-role { font-size:.72rem; }
+</style>
+
+<script nonce="<%= cspNonce %>">
+const OC_T = {
+  loadError: <%- JSON.stringify(__('talentx:oc_load_error')) %>,
+  noEmployees: <%- JSON.stringify(__('talentx:nb_no_employees')) %>,
+  org: <%- JSON.stringify(__('talentx:oc_org')) %>,
+  site: <%- JSON.stringify(__('talentx:oc_site')) %>,
+  dept: <%- JSON.stringify(__('talentx:oc_dept')) %>,
+  svc: <%- JSON.stringify(__('talentx:oc_svc')) %>,
+  people: <%- JSON.stringify(__('talentx:oc_people')) %>,
+  person: <%- JSON.stringify(__('talentx:oc_person')) %>,
+  siteWord: <%- JSON.stringify(__('talentx:oc_site_word')) %>,
+  orgStructure: <%- JSON.stringify(__('talentx:oc_org_structure')) %>,
+  fullChart: <%- JSON.stringify(__('talentx:oc_full_chart')) %>,
+  focusedOn: <%- JSON.stringify(__('talentx:oc_focused_on')) %>,
+  andTeam: <%- JSON.stringify(__('talentx:oc_and_team')) %>,
+  inFocused: <%- JSON.stringify(__('talentx:oc_in_focused')) %>,
+  line: <%- JSON.stringify(__('talentx:oc_line')) %>,
+  lineMode: <%- JSON.stringify(__('talentx:oc_line_mode')) %>,
+  root: <%- JSON.stringify(__('talentx:oc_root')) %>,
+  focusTitle: <%- JSON.stringify(__('talentx:oc_focus_title')) %>,
+  focusAriaPre: <%- JSON.stringify(__('talentx:oc_focus_aria_pre')) %>,
+  focusAriaPost: <%- JSON.stringify(__('talentx:oc_focus_aria_post')) %>,
+  toggleAria: <%- JSON.stringify(__('talentx:oc_toggle_aria')) %>,
+  unassigned: <%- JSON.stringify(__('talentx:oc_unassigned')) %>,
+  unassignedTitle: <%- JSON.stringify(__('talentx:oc_unassigned_title')) %>,
+  teamWord: <%- JSON.stringify(__('talentx:oc_team_word')) %>,
+  direct: <%- JSON.stringify(__('talentx:oc_direct')) %>,
+  total: <%- JSON.stringify(__('talentx:oc_total')) %>,
+  matches: <%- JSON.stringify(__('talentx:oc_matches')) %>,
+  openProfile: <%- JSON.stringify(__('talentx:oc_open_profile')) %>,
+  headBadge: <%- JSON.stringify(__('talentx:oc_head_badge')) %>,
+  viaSupervisor: <%- JSON.stringify(__('talentx:oc_via_supervisor')) %>,
+  viaSupervisorTitle: <%- JSON.stringify(__('talentx:oc_via_supervisor_title')) %>,
+  viaManager: <%- JSON.stringify(__('talentx:oc_via_manager')) %>,
+  viaManagerTitle: <%- JSON.stringify(__('talentx:oc_via_manager_title')) %>,
+  outside: <%- JSON.stringify(__('talentx:oc_outside')) %>,
+  outsideTitle: <%- JSON.stringify(__('talentx:oc_outside_title')) %>,
+  noLines: <%- JSON.stringify(__('talentx:oc_no_lines')) %>,
+  noLinesHint: <%- JSON.stringify(__('talentx:oc_no_lines_hint')) %>,
+  noLinesStat: <%- JSON.stringify(__('talentx:oc_no_lines_stat')) %>,
+  seeStructure: <%- JSON.stringify(__('talentx:oc_see_structure')) %>
+};
+// Employees only see their own subtree and cannot open colleagues' pages —
+// drill-through links are for admins & managers.
+const OC_CAN_DRILL = <%- include('../../partials/json-script', { v: !!(user && user.userType !== 'employee') }) %>;
+const OC = {
+  nodes: [], byId: {}, mode: 'line', scale: 1, focusId: null,
+  // The reader's own employee id when the reader IS a node (governed perimeter:
+  // a manager looking at their sub-tree); null for admins, who are not nodes.
+  viewerId: null,
+  esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); },
+  hue(name){ let h=0; const s=String(name||''); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return h%360; },
+  init(s,viewerId){
+    this.nodes=s||[]; this.byId={}; this.nodes.forEach(n=>this.byId[n.id]=n);
+    // The API says who is reading (viewerId) and also flags that node
+    // (isViewer), so a caller holding only the node list draws the same chart.
+    if(viewerId==null){ const v=this.nodes.find(n=>n.isViewer); viewerId=v?v.id:null; }
+    this.viewerId = viewerId==null ? null : Number(viewerId);
+  },
+  async load(){
+    try{
+      const r=await fetch('/api/org-chart',{headers:{'Accept':'application/json'}});
+      const j=await r.json(); if(!r.ok) throw new Error(j.error||'load failed');
+      this.init(j.nodes, j.viewerId); this.render();
+      // Auto-fit once on first load: a wide chart otherwise renders at 100% and
+      // shows only its left edge. setTimeout (not rAF, which is suspended while the
+      // tab is backgrounded) lets fonts/icons lay out before we measure.
+      setTimeout(()=>this.fit(), 80);
+    }catch(e){ document.getElementById('oc-tree').innerHTML='<p class="text-muted" style="padding:1rem">'+OC_T.loadError+' '+this.esc(e.message)+'</p>'; }
+  },
+  setMode(m){
+    this.mode=m;
+    ['line','manager','supervisor','structure'].forEach(k=>{const b=document.getElementById('oc-m-'+k);if(b)b.className='btn '+(k===m?'btn-primary':'btn-secondary');});
+    document.getElementById('oc-q').value=''; document.getElementById('oc-matches').textContent=''; this.focusId=null; this.render();
+  },
+  focus(id){ this.focusId=id; this.render(); document.getElementById('oc-tree').scrollIntoView({block:'start',behavior:'smooth'}); },
+  clearFocus(){ this.focusId=null; this.render(); },
+  // Memoized per render (reset at the top of render) — the sort comparators and
+  // per-node calls made this O(n^2) on large orgs; caching by id makes it O(n).
+  countSubtree(n,kids){
+    const c=this._subCache; if(c){ const hit=c[n.id]; if(hit!=null) return hit; }
+    const ch=kids[n.id]||[]; const v=1+ch.reduce((s,x)=>s+this.countSubtree(x,kids),0);
+    if(c) c[n.id]=v; return v;
+  },
+  applyZoom(){
+    const t=document.querySelector('.oc-tree-scale'); if(t) t.style.zoom=this.scale;
+    const z=document.getElementById('oc-zoom-pct'); if(z) z.textContent=Math.round(this.scale*100)+'%';
+  },
+  zoom(d){ this.scale=Math.min(1.6,Math.max(0.3,Math.round((this.scale+d)*10)/10)); this.applyZoom(); },
+  fit(){
+    // Measure at 100% (setting zoom + reading scrollWidth forces a synchronous
+    // reflow), then scale so the whole chart fits the canvas width.
+    this.scale=1; this.applyZoom();
+    const cv=document.getElementById('oc-canvas'), t=document.querySelector('.oc-tree-scale');
+    if(!cv||!t) return;
+    const w=Math.max(t.scrollWidth, t.offsetWidth);
+    if(w>0) this.scale=Math.min(1, Math.max(0.3, Math.floor(((cv.clientWidth-40)/w)*100)/100));
+    this.applyZoom();
+  },
+
+  // ---- build hierarchical model ----
+  // 'line' = the effective reporting hierarchy: the direct SUPERVISOR is the parent
+  // when set, otherwise the (employee-typed) MANAGER — so both fields together
+  // produce one connected chart instead of two partial forests.
+  // The parent RECORDED for this node in the current mode (pid, null when none
+  // is recorded), and whether that parent is one of OUR nodes (inSet). A parent
+  // can exist and still be absent from the list: just above a manager's
+  // perimeter, outside a scoped admin's, or inactive. That is not "no parent",
+  // and the two cases are drawn differently.
+  linkOf(n){
+    let pid;
+    if(this.mode==='manager') pid=n.managerId;
+    else if(this.mode==='supervisor') pid=n.supervisorId;
+    else pid=(n.supervisorId!=null?n.supervisorId:n.managerId);
+    if(pid==null||Number(pid)===Number(n.id)) return {pid:null,inSet:false};  // none / self-link guard
+    return {pid, inSet:!!this.byId[pid]};
+  },
+  parentOf(n){ const l=this.linkOf(n); return l.inSet?l.pid:null; },
+  reportingRoots(){
+    const kids={}, parent={}; let roots=[], linked=0;
+    this.nodes.forEach(n=>{const l=this.linkOf(n); if(l.pid!=null)linked++; const p=l.inSet?l.pid:null; parent[n.id]=p; if(p==null)roots.push(n); else (kids[p]=kids[p]||[]).push(n);});
+    // Cycle rescue: a reference loop (A→B→A) is reachable from no root and would
+    // silently drop its members. Walk up from every node; on a loop, promote the
+    // first repeated node to root (its parent link is ignored for display).
+    const reach=new Set(); const mark=n=>{ if(reach.has(n.id))return; reach.add(n.id); (kids[n.id]||[]).forEach(mark); };
+    roots.forEach(mark);
+    this.nodes.forEach(n=>{
+      if(reach.has(n.id)) return;
+      let cur=n; const seen=new Set();
+      while(cur && !seen.has(cur.id) && !reach.has(cur.id)){ seen.add(cur.id); const p=parent[cur.id]; cur=(p==null)?null:this.byId[p]; }
+      if(cur && seen.has(cur.id)){  // loop found → break it at `cur`
+        const p=parent[cur.id];
+        if(p!=null && kids[p]) kids[p]=kids[p].filter(c=>c.id!==cur.id);
+        parent[cur.id]=null; roots.push(cur); mark(cur);
+      }
+    });
+    // Governed perimeter: the reader is the ONE apex. Every other node is in the
+    // list precisely because it hangs from the reader by the supervisor or the
+    // manager line (that is how the perimeter is computed), so a node whose
+    // parent in THIS mode is unrecorded or sits above the perimeter is still the
+    // reader's - by the other line. Such nodes are kept as `via` (with their own
+    // in-mode sub-trees) and drawn under the reader in a labelled group, not as
+    // a false direct link and never as "unassigned".
+    const apex = this.viewerId!=null ? (this.byId[this.viewerId]||null) : null;
+    let via=[];
+    if(apex){
+      const p=parent[apex.id];  // only a reporting loop can put the reader under a report
+      if(p!=null){ kids[p]=(kids[p]||[]).filter(c=>c.id!==apex.id); parent[apex.id]=null; }
+      via=roots.filter(r=>r.id!==apex.id); roots=[apex];
+    }
+    return { type:'reporting', kids, roots, apex, via, linked };
+  },
+  viaTotal(via,kids){ return via.reduce((s,x)=>s+this.countSubtree(x,kids),0); },
+  structureModel(){
+    // Organization → Site → Department → Service → employees
+    const root={gid:'org', kind:'root', label:OC_T.org, children:[]};
+    const sites={};
+    const get=(map,parent,key,label,kind)=>{ if(!map[key]){const node={gid:kind+':'+key, kind, label, children:[]}; map[key]=node; parent.children.push(node);} return map[key]; };
+    const deptMaps={}, svcMaps={};
+    this.nodes.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(n=>{
+      const s=get(sites,root,n.site||'—',n.site||'—','site');
+      deptMaps[s.gid]=deptMaps[s.gid]||{};
+      const d=get(deptMaps[s.gid],s,n.department||'—',n.department||'—','dept');
+      svcMaps[d.gid]=svcMaps[d.gid]||{};
+      const sv=get(svcMaps[d.gid],d,n.service||'—',n.service||'—','svc');
+      sv.children.push({kind:'person', person:n});
+    });
+    const key=c=>c.kind==='person'?(c.person&&c.person.name)||'':(c.label||'');
+    const sortRec=node=>{ if(node.children){ node.children.sort((a,b)=>key(a).localeCompare(key(b))); node.children.forEach(sortRec);} };
+    sortRec(root);
+    return { type:'structure', root };
+  },
+
+  render(){
+    this._subCache={};  // reset the countSubtree memo for this render pass
+    const box=document.getElementById('oc-tree');
+    if(!this.nodes.length){ box.innerHTML='<p class="text-muted" style="padding:1rem">'+OC_T.noEmployees+'</p>'; document.getElementById('oc-stats').textContent=''; return; }
+    let html, stat;
+    if(this.mode==='structure'){
+      const {root}=this.structureModel();
+      html='<ul><li>'+this.groupNode(root,0)+'</li></ul>';
+      const sites=root.children.length;
+      stat=this.nodes.length+' '+OC_T.people+' · '+sites+' '+OC_T.siteWord+(sites>1?'s':'')+' · '+OC_T.orgStructure;
+    } else {
+      const {kids,roots,apex,via,linked}=this.reportingRoots();
+      const focused = this.focusId!=null && this.byId[this.focusId];
+      const modeLabel = this.mode==='line' ? OC_T.lineMode : (this.mode+' '+OC_T.line);
+      // The line a `via` node is attached by: the OTHER one. In 'line' mode the
+      // parent is the supervisor when set, so an unresolved line-mode parent
+      // means the supervisor is above the perimeter and the manager is in it.
+      const other = this.mode==='supervisor' ? {label:OC_T.viaManager, title:OC_T.viaManagerTitle}
+                                             : {label:OC_T.viaSupervisor, title:OC_T.viaSupervisorTitle};
+      const byName=(a,b)=>a.name.localeCompare(b.name);
+      let banner='';
+      if(focused){
+        const f=this.byId[this.focusId];
+        const fVia=(apex && f.id===apex.id) ? via : [];
+        banner='<div class="oc-focus-banner"><button type="button" class="btn btn-sm btn-secondary" onclick="OC.clearFocus()"><i class="fas fa-arrow-left" aria-hidden="true"></i> '+OC_T.fullChart+'</button><span>'+OC_T.focusedOn+' <strong>'+this.esc(f.name)+'</strong> '+OC_T.andTeam+'</span></div>';
+        stat=(this.countSubtree(f,kids)+this.viaTotal(fVia,kids))+' '+OC_T.inFocused+' · '+modeLabel;
+        html=banner+'<ul><li>'+this.personNode(f,kids,0,{head:false,via:fVia,viaLabel:other.label,viaTitle:other.title})+'</li></ul>';
+      } else if(!apex && !linked){
+        // Nobody has a parent recorded in this mode. That is not a chart with
+        // zero teams, it is an absence of data: name it, say what to fill in,
+        // and offer the structure view, which has something to show.
+        stat=this.nodes.length+' '+(this.nodes.length>1?OC_T.people:OC_T.person)+' · '+OC_T.noLinesStat+' · '+modeLabel;
+        html='<div class="oc-empty" role="status"><i class="fas fa-diagram-project" aria-hidden="true"></i>'
+            +'<p class="oc-empty-msg">'+OC_T.noLines+'</p><p>'+OC_T.noLinesHint+'</p>'
+            +'<button type="button" class="btn btn-primary" onclick="OC.setMode(\'structure\')"><i class="fas fa-building" aria-hidden="true"></i> '+OC_T.seeStructure+'</button></div>';
+      } else if(apex){
+        // Governed perimeter: the reader is the single apex; their in-mode
+        // reports hang directly, the others in the "via the other line" group.
+        const parts=[this.nodes.length+' '+(this.nodes.length>1?OC_T.people:OC_T.person)];
+        if((kids[apex.id]||[]).length || via.length) parts.push('1 '+OC_T.teamWord);
+        if(via.length) parts.push(via.length+' '+other.label.toLowerCase());
+        parts.push(modeLabel);
+        stat=parts.join(' · ');
+        html='<ul><li>'+this.personNode(apex,kids,0,{head:true,via,viaLabel:other.label,viaTitle:other.title})+'</li></ul>';
+      } else {
+        // A professional org chart has ONE apex. Real line heads (people with
+        // reports) hang under a virtual Organization node, biggest team first.
+        // Childless roots are grouped instead of masquerading as roots, in two
+        // honest buckets: "Unassigned" = no line recorded at all in this mode;
+        // "outside the displayed scope" = a line IS recorded, but its target is
+        // not in this chart (out of the reader's scope, or inactive).
+        const heads=roots.filter(r=>(kids[r.id]||[]).length)
+          .sort((a,b)=>this.countSubtree(b,kids)-this.countSubtree(a,kids) || byName(a,b));
+        const loners=roots.filter(r=>!(kids[r.id]||[]).length);
+        const unassigned=loners.filter(r=>this.linkOf(r).pid==null).sort(byName);
+        const outside=loners.filter(r=>this.linkOf(r).pid!=null).sort(byName);
+        const parts=[this.nodes.length+' '+(this.nodes.length>1?OC_T.people:OC_T.person)];
+        if(heads.length) parts.push(heads.length+' '+OC_T.teamWord+(heads.length>1?'s':''));
+        if(outside.length) parts.push(outside.length+' '+OC_T.outside.toLowerCase());
+        if(unassigned.length) parts.push(unassigned.length+' '+OC_T.unassigned.toLowerCase());
+        parts.push(modeLabel);
+        stat=parts.join(' · ');
+        if(heads.length===1 && !loners.length){
+          html='<ul><li>'+this.personNode(heads[0],kids,0,{head:true})+'</li></ul>';
+        } else {
+          let inner=heads.map(h=>'<li>'+this.personNode(h,kids,0,{head:true})+'</li>').join('');
+          if(outside.length){
+            inner+='<li>'+this.groupCard(OC_T.outside, outside.length+' '+(outside.length>1?OC_T.people:OC_T.person), 'fa-arrow-up-right-from-square', true, OC_T.outsideTitle, outside.length)
+                 +'<ul data-collapsed="1">'+this.stackLi(outside)+'</ul></li>';
+          }
+          if(unassigned.length){
+            inner+='<li>'+this.groupCard(OC_T.unassigned, unassigned.length+' '+(unassigned.length>1?OC_T.people:OC_T.person), 'fa-user-slash', true, OC_T.unassignedTitle, unassigned.length)
+                 +'<ul data-collapsed="1">'+this.stackLi(unassigned)+'</ul></li>';
+          }
+          html='<ul><li>'+this.groupCard(OC_T.org, this.nodes.length+' '+OC_T.people, 'fa-building', false, null, null)
+              +'<ul>'+inner+'</ul></li></ul>';
+        }
+      }
+    }
+    box.innerHTML='<div class="oc-tree-scale">'+html+'</div>';
+    this.applyZoom();
+    document.getElementById('oc-stats').textContent=stat;
+  },
+
+  nameHtml(n){
+    const nm=this.esc(n.name);
+    return (OC_CAN_DRILL && n.id)
+      ? '<a class="oc-name-link" href="/employees/'+n.id+'" title="'+OC_T.openProfile+'">'+nm+'</a>'
+      : nm;
+  },
+  personCard(n,{head=false,direct=0,total=0,hasKids=false,compact=false}={}){
+    const initials=(n.name.split(/\s+/).map(w=>w[0]).slice(0,2).join('')||'?').toUpperCase();
+    const tip=[n.role, n.org].filter(Boolean).join(' — ');
+    return '<div class="oc-node'+(compact?' oc-compact':'')+'" style="--av-h:'+this.hue(n.name)+'" title="'+this.esc(tip)+'">'+
+      (head?'<span class="oc-root-badge">'+OC_T.headBadge+'</span>':'')+
+      '<span class="oc-av">'+this.esc(initials)+'</span>'+
+      '<span class="oc-info"><span class="oc-name">'+this.nameHtml(n)+'</span>'+
+        '<span class="oc-role">'+this.esc(n.role||n.org||'—')+'</span></span>'+
+      (hasKids?'<span class="oc-badge" title="'+direct+' '+OC_T.direct+' · '+total+' '+OC_T.total+'"><i class="fas fa-users" aria-hidden="true"></i>'+total+'</span>':'')+
+      (hasKids?'<button type="button" class="oc-focus" title="'+OC_T.focusTitle+'" aria-label="'+OC_T.focusAriaPre+' '+this.esc(n.name)+OC_T.focusAriaPost+'" onclick="OC.focus('+n.id+')"><i class="fas fa-crosshairs" aria-hidden="true"></i></button>':'');
+  },
+  // One level of a person's reports as <li>s. Managers (people with their own
+  // reports) keep classic tree columns; individual contributors stack
+  // vertically (from 3) to stop horizontal sprawl.
+  childrenLi(list,kids,depth){
+    const branches=list.filter(c=>(kids[c.id]||[]).length).sort((a,b)=>this.countSubtree(b,kids)-this.countSubtree(a,kids)||a.name.localeCompare(b.name));
+    const leaves=list.filter(c=>!(kids[c.id]||[]).length).sort((a,b)=>a.name.localeCompare(b.name));
+    let inner=branches.map(c=>'<li>'+this.personNode(c,kids,depth)+'</li>').join('');
+    if(leaves.length>=3) inner+=this.stackLi(leaves);
+    else inner+=leaves.map(c=>'<li>'+this.personNode(c,kids,depth)+'</li>').join('');
+    return inner;
+  },
+  // opts.via: nodes attached to this person by the OTHER line (governed apex
+  // only). They are drawn in a labelled group under the in-mode reports - the
+  // card's "direct" count stays the in-mode truth, the total includes them.
+  personNode(n,kids,depth,opts={}){
+    const ch=kids[n.id]||[];
+    const via=opts.via||[];
+    const viaTotal=this.viaTotal(via,kids);
+    const total=this.countSubtree(n,kids)-1+viaTotal;
+    const hasKids=ch.length>0||via.length>0;
+    const collapsed = depth>=2 && hasKids;
+    let out=this.personCard(n,{head:!!opts.head,direct:ch.length,total,hasKids})+
+      (hasKids?'<button type="button" class="oc-toggle" data-n="'+total+'" aria-label="'+OC_T.toggleAria+'" aria-expanded="'+(collapsed?'false':'true')+'" onclick="OC.toggle(this)">'+(collapsed?'+'+total:'−')+'</button>':'')+
+    '</div>';
+    if(hasKids){
+      let inner=this.childrenLi(ch,kids,depth+1);
+      if(via.length){
+        inner+='<li>'+this.groupCard(opts.viaLabel, via.length+' '+(via.length>1?OC_T.people:OC_T.person), 'fa-link', false, opts.viaTitle, viaTotal)
+             +'<ul>'+this.childrenLi(via,kids,depth+1)+'</ul></li>';
+      }
+      out+='<ul'+(collapsed?' data-collapsed="1"':'')+'>'+inner+'</ul>';
+    }
+    return out;
+  },
+  stackLi(persons){
+    return '<li><div class="oc-stack">'+persons.map(p=>this.personCard(p,{})+'</div>').join('')+'</div></li>';
+  },
+  groupCard(label, sub, icon, collapsed, tip, count){
+    return '<div class="oc-node oc-group"'+(tip?' title="'+this.esc(tip)+'"':'')+'>'+
+      '<span class="oc-av"><i class="fas '+icon+'" aria-hidden="true"></i></span>'+
+      '<span class="oc-info"><span class="oc-name">'+this.esc(label)+'</span>'+
+        '<span class="oc-role">'+this.esc(sub)+'</span></span>'+
+      '<button type="button" class="oc-toggle"'+(count!=null?' data-n="'+count+'"':'')+' aria-label="'+OC_T.toggleAria+'" aria-expanded="'+(collapsed?'false':'true')+'" onclick="OC.toggle(this)">'+(collapsed?'+'+(count!=null?count:''):'−')+'</button>'+
+    '</div>';
+  },
+  groupNode(node,depth){
+    if(node.kind==='person') return this.personCard(node.person,{})+'</div>';
+    const kindLabel={root:OC_T.org,site:OC_T.site,dept:OC_T.dept,svc:OC_T.svc}[node.kind]||'';
+    const icon={root:'fa-building',site:'fa-location-dot',dept:'fa-diagram-project',svc:'fa-people-group'}[node.kind]||'fa-folder';
+    const count=this.countLeaves(node);
+    const collapsed = depth>=2 && node.children.length>0;
+    let out='<div class="oc-node oc-group">'+
+      '<span class="oc-av"><i class="fas '+icon+'" aria-hidden="true"></i></span>'+
+      '<span class="oc-info"><span class="oc-name">'+this.esc(node.label)+'</span>'+
+        '<span class="oc-role">'+kindLabel+' · '+count+' '+(count>1?OC_T.people:OC_T.person)+'</span></span>'+
+      (node.children.length?'<button type="button" class="oc-toggle" data-n="'+count+'" aria-label="'+OC_T.toggleAria+'" aria-expanded="'+(collapsed?'false':'true')+'" onclick="OC.toggle(this)">'+(collapsed?'+'+count:'−')+'</button>':'')+
+    '</div>';
+    if(node.children.length){
+      const groups=node.children.filter(c=>c.kind!=='person');
+      const persons=node.children.filter(c=>c.kind==='person').map(c=>c.person);
+      let inner=groups.map(c=>'<li>'+this.groupNode(c,depth+1)+'</li>').join('');
+      if(persons.length>=3) inner+=this.stackLi(persons);
+      else inner+=persons.map(p=>'<li>'+this.personCard(p,{})+'</div></li>').join('');
+      out+='<ul'+(collapsed?' data-collapsed="1"':'')+'>'+inner+'</ul>';
+    }
+    return out;
+  },
+  countLeaves(node){ if(node.kind==='person')return 1; return (node.children||[]).reduce((s,c)=>s+this.countLeaves(c),0); },
+
+  toggle(btn){
+    const li=btn.closest('li'); if(!li) return;
+    li.classList.toggle('oc-collapsed');
+    const collapsed=li.classList.contains('oc-collapsed');
+    const n=btn.getAttribute('data-n');
+    btn.textContent = collapsed ? ('+'+(n||'')) : '−';
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  },
+  expandAll(open){
+    document.querySelectorAll('#oc-tree li').forEach(li=>{
+      const hasUl=li.querySelector(':scope > ul'); if(!hasUl)return;
+      li.classList.toggle('oc-collapsed', !open);
+      const t=li.querySelector(':scope > .oc-toggle, :scope > .oc-node .oc-toggle');
+      if(t){ t.textContent=open?'−':('+'+(t.getAttribute('data-n')||'')); t.setAttribute('aria-expanded', open?'true':'false'); }
+    });
+  },
+  search(q){
+    q=(q||'').trim().toLowerCase();
+    const nodes=document.querySelectorAll('#oc-tree .oc-node');
+    const counter=document.getElementById('oc-matches');
+    if(!q){ nodes.forEach(n=>n.classList.remove('oc-hit')); counter.textContent=''; return; }
+    let first=null, hits=0;
+    nodes.forEach(n=>{
+      const hit=n.textContent.toLowerCase().includes(q);
+      n.classList.toggle('oc-hit', hit);
+      if(hit){ hits++; if(!first) first=n; }
+      if(hit){ let li=n.closest('li'); while(li){ li.classList.remove('oc-collapsed'); const t=li.querySelector(':scope > .oc-toggle, :scope > .oc-node .oc-toggle'); if(t){t.textContent='−';t.setAttribute('aria-expanded','true');} li=li.parentElement.closest('li'); } }
+    });
+    counter.textContent=hits?hits+' '+OC_T.matches:'0 '+OC_T.matches;
+    if(first) first.scrollIntoView({block:'center',inline:'center',behavior:'smooth'});
+  }
+};
+// apply data-collapsed markers after render → convert to class on the owning <li>
+const _origRender=OC.render.bind(OC);
+OC.render=function(){
+  _origRender();
+  document.querySelectorAll('#oc-tree ul[data-collapsed="1"]').forEach(ul=>{ const li=ul.parentElement; if(li&&li.tagName==='LI'){ li.classList.add('oc-collapsed'); } ul.removeAttribute('data-collapsed'); });
+};
+
+// ---- canvas interactions: drag-to-pan + Ctrl/Cmd+wheel zoom ----
+(function(){
+  const cv=document.getElementById('oc-canvas');
+  let pan=null, moved=false;
+  cv.addEventListener('pointerdown',(e)=>{
+    if(e.button!==0 || e.target.closest('button, a, input, select')) return;
+    pan={x:e.clientX,y:e.clientY,l:cv.scrollLeft,t:cv.scrollTop}; moved=false;
+    cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener('pointermove',(e)=>{
+    if(!pan) return;
+    const dx=e.clientX-pan.x, dy=e.clientY-pan.y;
+    if(Math.abs(dx)>4||Math.abs(dy)>4){ moved=true; cv.classList.add('oc-panning'); }
+    cv.scrollLeft=pan.l-dx; cv.scrollTop=pan.t-dy;
+  });
+  ['pointerup','pointercancel'].forEach(ev=>cv.addEventListener(ev,()=>{ pan=null; cv.classList.remove('oc-panning'); }));
+  cv.addEventListener('wheel',(e)=>{ if(!(e.ctrlKey||e.metaKey)) return; e.preventDefault(); OC.zoom(e.deltaY<0?0.1:-0.1); },{passive:false});
+})();
+OC.load();
+</script>

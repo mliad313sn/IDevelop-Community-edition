@@ -1,0 +1,469 @@
+/* Skill Matrix — Dark Theme Compatible */
+.matrix-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.matrix-filters {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.matrix-filters .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.matrix-filters .filter-group label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.matrix-filters .filter-group select {
+    padding: 0.5rem;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    min-width: 150px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-family: inherit;
+}
+
+.matrix-stats {
+    display: flex;
+    gap: 2rem;
+    padding: 1rem;
+    background: var(--bg-surface);
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    border: 1px solid var(--border-light);
+}
+
+.stat-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.stat-label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.stat-value {
+    font-weight: bold;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+}
+
+.matrix-legend {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: var(--bg-subtle);
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    border: 1px solid var(--border-light);
+}
+
+.matrix-legend .legend-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.requirement-indicator {
+    font-size: 1.05rem;
+    color: var(--red, #F06060); /* required marker (was the red-dot emoji) */
+}
+
+.requirement-indicator.critical {
+    color: var(--amber, #F5A623); /* critical marker (was the bolt emoji) */
+    filter: drop-shadow(0 0 2px rgba(245, 166, 35, .55));
+}
+
+.matrix-container {
+    overflow-x: auto;
+    margin-top: 1rem;
+    background: var(--bg-surface);
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-light);
+}
+
+.matrix-table-wrapper {
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+.matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+    min-width: 800px;
+}
+
+.matrix-table th,
+.matrix-table td {
+    padding: 8px;
+    text-align: center;
+    border: 1px solid var(--border);
+}
+
+.matrix-table th {
+    background: var(--bg-subtle);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    color: var(--text-secondary);
+}
+
+.sticky-col {
+    position: sticky;
+    left: 0;
+    background: var(--bg-surface);
+    z-index: 5;
+    text-align: left;
+    min-width: 180px;
+    padding: 0.75rem;
+}
+
+.sticky-col:nth-child(1) {
+    left: 0;
+    z-index: 6;
+}
+
+.sticky-col:nth-child(2) {
+    left: 180px;
+    min-width: 140px;
+    z-index: 6;
+}
+
+.sticky-header {
+    background: var(--bg-subtle) !important;
+    font-weight: 600;
+}
+
+.domain-header {
+    background: var(--bg-inset) !important;
+    font-weight: 600;
+    text-align: center;
+    padding: 0.5rem;
+    color: var(--text-primary);
+}
+
+/* Rotated column headers. The vertical run is CAPPED: with writing-mode the
+   text length becomes the cell HEIGHT, and a table row is as tall as its tallest
+   cell — so one long skill name set the height of the whole header row. Measured
+   against the real framework (max name 171 chars) that produced a 1035px header,
+   taller than the viewport, before any data was visible. The cap truncates with
+   an ellipsis; the full name stays in `title` and `data-skill-name`, so nothing
+   is lost and the department's skill COUNT is untouched — this is rendering only. */
+.skill-header {
+    min-width: 100px;
+    max-width: 120px;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    vertical-align: bottom;
+    padding: 0.5rem 0.25rem;
+    max-height: 220px;
+}
+
+.skill-header-content {
+    transform: rotate(180deg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    max-height: 210px;
+    overflow: hidden;
+}
+
+.skill-name {
+    font-weight: 600;
+    font-size: 0.85em;
+    max-height: 200px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.header-subtitle {
+    font-size: 0.75em;
+    color: var(--text-tertiary);
+    font-weight: normal;
+}
+
+.skill-cell {
+    padding: 0.5rem;
+    min-width: 80px;
+    position: relative;
+}
+
+.skill-cell.clickable {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.skill-cell.clickable:hover {
+    background-color: var(--bg-subtle);
+}
+
+.skill-cell-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    position: relative;
+}
+
+.skill-level {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 0.95em;
+    margin: 0 auto;
+    transition: transform 0.2s;
+}
+
+.skill-cell.clickable:hover .skill-level {
+    transform: scale(1.1);
+}
+
+.skill-level.not-met {
+    border: 2px solid var(--danger);
+    box-shadow: 0 0 0 2px rgba(240, 96, 96, 0.2);
+}
+
+/* Skill level colors — intentional semantic colors, same in both themes */
+.level-0 {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-tertiary);
+}
+
+.level-1 {
+    background: rgba(240, 96, 96, 0.2);
+    color: #F06060;
+}
+
+.level-2 {
+    background: rgba(245, 166, 35, 0.2);
+    color: #F5A623;
+}
+
+.level-3 {
+    background: rgba(91, 157, 245, 0.2);
+    color: #5B9DF5;
+}
+
+.level-4 {
+    background: rgba(45, 212, 160, 0.25);
+    color: #2DD4A0;
+}
+
+/* Light overrides for skill levels */
+[data-theme="light"] .level-0 {
+    background: #e0e0e0;
+    color: #666;
+}
+
+[data-theme="light"] .level-1 {
+    background: #ffcccc;
+    color: #000;
+}
+
+[data-theme="light"] .level-2 {
+    background: #ffeb99;
+    color: #000;
+}
+
+[data-theme="light"] .level-3 {
+    background: #99ccff;
+    color: #000;
+}
+
+[data-theme="light"] .level-4 {
+    background: #99ff99;
+    color: #000;
+}
+
+.requirement-badge {
+    font-size: 0.7rem;
+    line-height: 1;
+    color: var(--red, #F06060);
+}
+
+.requirement-badge.critical {
+    color: var(--amber, #F5A623);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+}
+
+.employee-name {
+    padding: 0.75rem !important;
+}
+
+.employee-link {
+    font-weight: 600;
+    color: var(--text-primary);
+    text-decoration: none;
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.employee-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+.employee-meta {
+    font-size: 0.8em;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.25rem;
+}
+
+.role-badge {
+    background: var(--bg-inset);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75em;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.employee-org {
+    font-size: 0.75em;
+    color: var(--text-tertiary);
+    margin-top: 0.25rem;
+}
+
+.readiness-cell {
+    text-align: center;
+    padding: 0.75rem !important;
+}
+
+.readiness-indicator {
+    padding: 0.5rem;
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+}
+
+.readiness-indicator.ready {
+    background: var(--success-bg);
+    border: 2px solid var(--success);
+}
+
+.readiness-indicator.not-ready {
+    background: var(--danger-bg);
+    border: 2px solid var(--danger);
+}
+
+.readiness-percent {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+.readiness-status {
+    font-size: 0.85em;
+    margin-top: 0.25rem;
+}
+
+.level-selector {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    margin: 1rem 0;
+    flex-wrap: wrap;
+}
+
+.level-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-surface);
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 80px;
+    color: var(--text-primary);
+}
+
+.level-btn:hover {
+    border-color: var(--accent);
+    background: var(--bg-subtle);
+    transform: translateY(-2px);
+}
+
+.level-btn.selected {
+    border-color: var(--accent);
+    background: var(--accent-light);
+    box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+.requirement-info {
+    margin-top: 1rem;
+}
+
+.assessment-info {
+    background: var(--bg-subtle);
+    padding: 1rem;
+    border-radius: 6px;
+    margin-bottom: 1.5rem;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-light);
+}
+
+.assessment-info p {
+    margin: 0.5rem 0;
+}
+
+@media (max-width: 768px) {
+    .matrix-controls {
+        flex-direction: column;
+    }
+
+    .matrix-filters {
+        width: 100%;
+    }
+
+    .filter-group {
+        flex: 1;
+        min-width: 120px;
+    }
+}

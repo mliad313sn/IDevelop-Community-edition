@@ -1,0 +1,157 @@
+<div class="page-header">
+    <h1><i class="fas fa-user-check" aria-hidden="true"></i> <%= __('chrome:nav_qualified') %></h1>
+</div>
+
+<p class="help-text" style="margin-bottom:1rem;"><%= __('admin:qp_intro') %></p>
+<% if (typeof user !== 'undefined' && user && (user.userType === 'manager' || can('view_compliance') || can('manage_compliance'))) { %>
+<p style="margin:-.4rem 0 1rem;font-size:.85rem;"><a href="/safety-gate"><i class="fas fa-helmet-safety" aria-hidden="true"></i> <%= __('safety:qualified_link') %></a></p>
+<% } %>
+
+<%# the five filter controls had no accessible name at all. %>
+<form method="GET" action="/qualified" class="card qp-filters" data-filter-memory>
+    <div class="qp-skill">
+        <label class="sr-only" for="qp-skill-search"><%= __('admin:qp_skill_ph') %></label>
+        <input type="search" id="qp-skill-search" class="form-control" autocomplete="off"
+               aria-label="<%= __('admin:qp_skill_ph') %>"
+               placeholder="<%= __('admin:qp_skill_ph') %>"
+               value="<%= result.skill ? result.skill.name : '' %>">
+        <input type="hidden" name="skillId" id="qp-skill-id" value="<%= filters.skillId || '' %>">
+        <div id="qp-skill-list" class="qp-suggest" hidden></div>
+    </div>
+    <label class="sr-only" for="qp-minlevel"><%= __('admin:qf_f_minlevel') %></label>
+    <select id="qp-minlevel" name="minLevel" class="form-control" style="max-width:150px;" aria-label="<%= __('admin:qf_f_minlevel') %>">
+        <% [1,2,3,4].forEach(function (l) { %>
+        <option value="<%= l %>" <%= String(filters.minLevel) === String(l) ? 'selected' : '' %>><%= __('admin:qp_min_level', { level: l }) %></option>
+        <% }); %>
+    </select>
+    <label class="sr-only" for="qp-site"><%= __('admin:qf_f_site') %></label>
+    <select id="qp-site" name="site" class="form-control" style="max-width:170px;" aria-label="<%= __('admin:qf_f_site') %>">
+        <%# %><% if (options.sites.length !== 1) { %><option value=""><%= __('admin:mv_all_sites') %></option><% } %>
+        <% options.sites.forEach(function (s) { %>
+        <option value="<%= s %>" <%= filters.siteName === s ? 'selected' : '' %>><%= s %></option>
+        <% }); %>
+    </select>
+    <label class="sr-only" for="qp-dept"><%= __('admin:qf_f_dept') %></label>
+    <select id="qp-dept" name="dept" class="form-control" style="max-width:170px;" aria-label="<%= __('admin:qf_f_dept') %>">
+        <option value=""><%= __('admin:mv_all_depts') %></option>
+        <% options.departments.forEach(function (d) { %>
+        <option value="<%= d %>" <%= filters.departmentName === d ? 'selected' : '' %>><%= d %></option>
+        <% }); %>
+    </select>
+    <label class="sr-only" for="qp-on"><%= __('admin:qf_f_date') %></label>
+    <input type="date" id="qp-on" name="on" class="form-control" style="max-width:160px;" value="<%= filters.availableOn || '' %>"
+           aria-label="<%= __('admin:qp_on_date') %>" title="<%= __('admin:qp_on_date') %>">
+    <label class="qp-check"><input type="checkbox" name="certified" value="1" <%= filters.certifiedOnly ? 'checked' : '' %>> <%= __('admin:qp_certified_only') %></label>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-magnifying-glass" aria-hidden="true"></i> <%= __('admin:qp_search') %></button>
+</form>
+
+<% if (!filters.skillId) { %>
+<div class="card" style="padding:1.4rem;text-align:center;color:var(--text-muted);">
+    <%= __('admin:qp_pick_skill') %>
+</div>
+<% } else { %>
+<div class="card" style="padding:.7rem 1.1rem;margin-bottom:1rem;">
+    <strong><%= result.rows.length %></strong>
+    <%= __('admin:qp_found', { skill: result.skill ? result.skill.name : '', level: result.minLevel }) %>
+</div>
+
+<div class="card" style="padding:0;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('admin:qp_th_person') %></th>
+                <th><%= __('admin:qp_th_where') %></th>
+                <th><%= __('admin:qp_th_role') %></th>
+                <th><%= __('admin:qp_th_level') %></th>
+                <th><%= __('admin:qp_th_cert') %></th>
+                <th><%= __('admin:qp_th_status') %></th>
+            </tr></thead>
+            <tbody>
+                <% if (!result.rows.length) { %>
+                <tr><td colspan="6" class="text-muted" style="text-align:center;padding:1.5rem;"><%= __('admin:qp_none') %></td></tr>
+                <% } %>
+                <% result.rows.forEach(function (r) { %>
+                <tr>
+                    <td><a href="/employees/<%= r.employeeId %>"><%= r.name %></a>
+                        <div style="font-size:.74rem;color:var(--text-muted);"><%= r.employeeNumber %></div></td>
+                    <td style="font-size:.83rem;"><%= r.siteName || '—' %><% if (r.departmentName) { %> · <%= r.departmentName %><% } %></td>
+                    <td style="font-size:.83rem;"><%= r.roleName || '—' %></td>
+                    <td><strong><%= r.level %></strong></td>
+                    <td style="font-size:.8rem;">
+                        <% if (!r.certStatus) { %><span class="text-muted">—</span>
+                        <% } else { %><%= r.certStatus %><% if (r.certExpiresOn) { %>
+                            <div style="color:var(--text-muted);"><%= fmtPeriodBound(r.certExpiresOn) %></div><% } %>
+                        <% } %>
+                    </td>
+                    <td>
+                        <span class="badge <%= r.readiness === 'available' ? 'badge-success' : (r.readiness === 'cert_expiring' ? 'badge-warning' : 'badge-danger') %>">
+                            <%= __('admin:qp_ready_' + r.readiness) %></span>
+                        <% if (r.readiness === 'available' && r.nextAbsenceFrom) { %>
+                        <div style="font-size:.72rem;color:var(--text-muted);"><%= __('admin:qp_away_from') %> <%= fmtPeriodBound(r.nextAbsenceFrom) %></div>
+                        <% } %>
+                    </td>
+                </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+<% } %>
+
+<style>
+.qp-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:.85rem 1.1rem;margin-bottom:1rem}
+.qp-skill{position:relative;flex:1 1 260px;min-width:220px}
+.qp-suggest{position:absolute;z-index:30;left:0;right:0;top:100%;background:var(--bg-primary,#fff);
+    border:1px solid var(--border,#e2e8f0);border-radius:8px;max-height:240px;overflow-y:auto;box-shadow:0 10px 24px rgba(2,32,71,.15)}
+.qp-suggest[hidden]{display:none}
+.qp-suggest button{display:block;width:100%;text-align:left;padding:7px 11px;border:none;background:none;cursor:pointer;font-size:.86rem}
+.qp-suggest button:hover,.qp-suggest button.is-active{background:var(--bg-subtle,#f1f5f9)}
+.qp-check{display:inline-flex;align-items:center;gap:5px;font-size:.85rem;white-space:nowrap}
+@media (max-width:640px){ .qp-filters .form-control{flex:1 1 100%;max-width:none} }
+</style>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+    'use strict';
+    var input = document.getElementById('qp-skill-search');
+    var hidden = document.getElementById('qp-skill-id');
+    var list = document.getElementById('qp-skill-list');
+    var t = null, seq = 0;
+
+    function close() { list.hidden = true; list.innerHTML = ''; }
+
+    input.addEventListener('input', function () {
+        hidden.value = '';                    // typing invalidates the previous pick
+        var q = input.value.trim();
+        clearTimeout(t);
+        if (q.length < 2) { close(); return; }
+        var mine = ++seq;
+        t = setTimeout(function () {
+            fetch('/api/qualified/skills?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (mine !== seq) return;          // drop stale responses
+                    var items = (d.skills || []).slice(0, 12);
+                    if (!items.length) { close(); return; }
+                    list.innerHTML = '';
+                    items.forEach(function (s) {
+                        var b = document.createElement('button');
+                        b.type = 'button';
+                        b.textContent = s.name;         // textContent: never inject markup
+                        b.addEventListener('click', function () {
+                            input.value = s.name;
+                            hidden.value = s.id;
+                            close();
+                        });
+                        list.appendChild(b);
+                    });
+                    list.hidden = false;
+                })
+                .catch(function () { close(); });
+        }, 180);
+    });
+    document.addEventListener('click', function (e) {
+        if (!list.contains(e.target) && e.target !== input) close();
+    });
+})();
+</script>

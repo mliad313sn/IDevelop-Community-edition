@@ -1,0 +1,586 @@
+<div class="page-header">
+    <h1><i class="fas fa-layer-group" aria-hidden="true"></i> <%= __('framework:page_title') %></h1>
+    <p><a class="btn btn-secondary btn-sm" href="/framework/quality"><i class="fas fa-spell-check" aria-hidden="true"></i> <%= __('framework:sq_link') %></a></p>
+</div>
+<% if (typeof can === 'function' && !can('manage_domains_skills')) { %>
+<div class="alert alert-info" role="status" style="margin:0 0 1rem;padding:.6rem .9rem;border-radius:8px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.35);font-size:.88rem;"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:read_only_notice') %></div>
+<% } %>
+
+<div class="tabs fw-tabs">
+    <button class="tab <%= activeTab === 'framework' ? 'active' : '' %>" onclick="showTab(event, 'framework')"><i class="fas fa-diagram-project" aria-hidden="true"></i>
+        <%= __('framework:tab_framework') %></button>
+    <button class="tab <%= activeTab === 'domains' ? 'active' : '' %>" onclick="showTab(event, 'domains')"><i class="fas fa-book" aria-hidden="true"></i>
+        <%= __('framework:tab_domains') %></button>
+    <button class="tab <%= activeTab === 'subdomains' ? 'active' : '' %>" onclick="showTab(event, 'subdomains')"><i class="fas fa-sitemap" aria-hidden="true"></i>
+        <%= __('framework:tab_subdomains') %></button>
+    <button class="tab <%= activeTab === 'skills' ? 'active' : '' %>" onclick="showTab(event, 'skills')"><i class="fas fa-bullseye" aria-hidden="true"></i>
+        <%= __('framework:tab_skills') %></button>
+</div>
+
+<!-- Framework Tab: Pillar -> Sub-Domain -> Skill (capability hierarchy) -->
+<div id="framework-tab" class="tab-content <%= activeTab === 'framework' ? 'active' : '' %>">
+    <div class="section-header" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">
+        <h2 style="margin:0;"><%= __('framework:framework_heading') %></h2>
+        <span style="color:var(--text-secondary);font-size:.88rem;"><%= __('framework:framework_intro') %></span>
+    </div>
+    <% if (!framework || !framework.length) { %>
+        <div class="empty-state" style="padding:24px;"><%= __('framework:framework_empty') %></div>
+    <% } else { %>
+        <% framework.forEach(function(pillar){ %>
+            <div class="fw-pillar">
+                <div class="fw-pillar-head">
+                    <span class="fw-pillar-name"><%= pillar.name %></span>
+                    <span class="fw-pillar-meta"><%= pillar.subs.length %> <%= __('framework:label_subdomains') %> · <%= pillar.skillCount %> <%= __('framework:label_skills') %></span>
+                </div>
+                <% pillar.subs.forEach(function(sd){ %>
+                    <details class="fw-sub">
+                        <summary>
+                            <span class="fw-sub-name"><%= sd.name %></span>
+                            <%# the bare number meant nothing. It is now LABELLED:
+                                how many skills, and what weight that is inside the pillar.
+                                No weight is shown for a pillar that has no skill yet
+                                (never a 0 % for something unmeasured). %>
+                            <span class="fw-sub-count" title="<%= __('framework:col_skills') %>"><%= sd.skills.length %> <%= __('framework:label_skills') %></span>
+                            <% if (sd.weightPct !== null) { %><span class="fw-sub-weight"><%= __('framework:label_weight') %> <%= sd.weightPct %>&nbsp;%</span><% } %>
+                            <% if (sd.definition) { %><span class="fw-sub-def"><%= sd.definition %></span><% } %>
+                        </summary>
+                        <div class="fw-skills">
+                            <% if (!sd.skills.length) { %><em style="color:var(--text-muted);"><%= __('framework:no_skills_yet') %></em><% } %>
+                            <% sd.skills.forEach(function(sk){ %>
+                                <span class="fw-skill fw-cat-<%= sk.category %>" title="<%= sk.category %> · <%= sk.source === 'standard' ? 'standard item' : 'legacy' %>"><%= sk.name %></span>
+                            <% }) %>
+                        </div>
+                    </details>
+                <% }) %>
+            </div>
+        <% }) %>
+    <% } %>
+</div>
+
+<style>
+/* Phone-first: the four tab pills must never push the page sideways
+   (they overflowed 191px at 375px). Let them wrap onto a second line. */
+.fw-tabs { flex-wrap: wrap; }
+.fw-tabs .tab { flex: 0 1 auto; }
+@media (max-width: 600px) {
+  .fw-tabs .tab { padding-left: 12px; padding-right: 12px; font-size: .85rem; }
+  .fw-sub-def { padding-left: 0; }
+}
+.fw-pillar { margin: 14px 0; border: 1px solid var(--border-color, #2a2a2a); border-radius: 12px; overflow: hidden; }
+.fw-pillar-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:12px 16px; background: var(--bg-subtle); }
+.fw-pillar-name { font-weight:800; color: var(--text-primary); }
+.fw-pillar-meta { font-size:.78rem; color: var(--text-secondary); white-space:nowrap; }
+.fw-sub { border-top: 1px solid var(--border-color, #2a2a2a); }
+.fw-sub > summary { list-style:none; cursor:pointer; padding:10px 16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.fw-sub > summary::-webkit-details-marker { display:none; }
+.fw-sub > summary::before { content:'\25B8'; color: var(--brand,#7C6CFF); transition: transform .15s; }
+.fw-sub[open] > summary::before { transform: rotate(90deg); }
+.fw-sub-name { font-weight:600; color: var(--text-primary); }
+.fw-sub-count { font-size:.72rem; background: var(--brand,#7C6CFF); color:#1a1a1a; border-radius:999px; padding:1px 8px; font-weight:700; white-space:nowrap; }
+.fw-sub-weight { font-size:.72rem; color: var(--text-muted,#6b7280); white-space:nowrap; }
+.fw-sub-def { color: var(--text-secondary); font-size:.82rem; flex-basis:100%; padding-left:18px; }
+.fw-skills { padding:6px 16px 14px 34px; display:flex; flex-wrap:wrap; gap:6px; }
+.fw-skill { font-size:.8rem; padding:3px 9px; border-radius:6px; border:1px solid var(--border-color,#333); color: var(--text-primary); background: var(--bg-subtle); }
+.fw-cat-Safety { border-left:3px solid #dc3545; }
+.fw-cat-Technical { border-left:3px solid #198754; }
+.fw-cat-Behavioral { border-left:3px solid #0d6efd; }
+.fw-cat-Compliance { border-left:3px solid #6f42c1; }
+</style>
+
+<!-- Domains Tab -->
+<div id="domains-tab" class="tab-content <%= activeTab === 'domains' ? 'active' : '' %>">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2><%= __('framework:domains_heading') %></h2>
+        <button class="btn btn-primary" onclick="showModal('createDomainModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('framework:create_domain') %></button>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th class="sortable"><%= __('framework:col_name') %></th>
+                    <th class="sortable"><%= __('framework:col_description') %></th>
+                    <th><%= __('framework:col_actions') %></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (domains.length===0) { %>
+                    <tr class="empty-row">
+                        <td colspan="3" style="text-align: center; padding: 3rem;">
+                            <div class="empty-state">
+                                <div class="empty-state-icon"><i class="fas fa-book" aria-hidden="true"></i></div>
+                                <h3><%= __('framework:empty_domains_title') %></h3>
+                                <p><%= __('framework:empty_domains_hint') %></p>
+                                <button class="btn btn-primary" onclick="showModal('createDomainModal')"><%= __('framework:create_domain') %></button>
+                            </div>
+                        </td>
+                    </tr>
+                    <% } else { %>
+                        <% domains.forEach(function(domain) { %>
+                            <tr>
+                                <td><strong>
+                                        <%= domain.name %>
+                                    </strong></td>
+                                <td>
+                                    <%= domain.description || '-' %>
+                                </td>
+                                <td>
+                                    <div class="table-actions">
+                                        <button class="btn btn-sm"
+                                            onclick='editDomain(<%= JSON.stringify(domain) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('framework:edit') %></button>
+                                        <form action="/domains/<%= domain.id %>/delete" method="POST"
+                                            style="display:inline;"
+                                            data-confirm="<%= __('framework:confirm_delete_domain') %>" data-confirm-title="<%= __('admin:cfm_delete_title') %>" data-confirm-danger>
+                                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                            <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash-can" aria-hidden="true"></i> <%= __('framework:delete') %></button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            <% }); %>
+                                <% } %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Sub-Domains Tab: Competency Elements (Domain -> Sub-Domain -> Skill) -->
+<div id="subdomains-tab" class="tab-content <%= activeTab === 'subdomains' ? 'active' : '' %>">
+    <div class="section-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <h2 style="margin:0;"><%= __('framework:subdomains_heading') %></h2>
+        <span style="color:var(--text-secondary);font-size:.85rem;"><%= __('framework:subdomains_intro') %></span>
+        <button class="btn btn-primary" style="margin-left:auto;" onclick="showModal('createSubDomainModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('framework:create_subdomain') %></button>
+    </div>
+    <div class="table-wrapper">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th class="sortable"><%= __('framework:col_pillar') %></th>
+                    <th class="sortable"><%= __('framework:col_subdomain') %></th>
+                    <th><%= __('framework:col_definition') %></th>
+                    <th style="text-align:center;"><%= __('framework:col_skills') %></th>
+                    <th style="text-align:center;"><%= __('framework:col_weight') %></th>
+                    <th><%= __('framework:col_actions') %></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (!subDomains || subDomains.length === 0) { %>
+                    <tr class="empty-row">
+                        <td colspan="6" style="text-align:center; padding:3rem;">
+                            <div class="empty-state">
+                                <div class="empty-state-icon"><i class="fas fa-sitemap" aria-hidden="true"></i></div>
+                                <h3><%= __('framework:empty_subdomains_title') %></h3>
+                                <button class="btn btn-primary" onclick="showModal('createSubDomainModal')"><%= __('framework:create_subdomain') %></button>
+                            </div>
+                        </td>
+                    </tr>
+                <% } else { %>
+                    <% subDomains.forEach(function(sd) { %>
+                        <tr>
+                            <td><%= sd.domainName %></td>
+                            <td><strong><%= sd.name %></strong></td>
+                            <td style="max-width:420px;"><%= sd.definition || '—' %></td>
+                            <td style="text-align:center;">
+                                <a href="/domains-skills?tab=skills&subDomainId=<%= sd.id %>"><%= Number(sd.skillCount) %></a>
+                            </td>
+                            <%# weight = this sub-domain's share of its pillar's skills. %>
+                            <td style="text-align:center;"><%= sd.weightPct === null ? '—' : sd.weightPct + ' %' %></td>
+                            <td>
+                                <div class="table-actions">
+                                    <button class="btn btn-sm" onclick='editSubDomain(<%= JSON.stringify({ id: sd.id, name: sd.name, definition: sd.definition, domainId: sd.domainId }) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('framework:edit') %></button>
+                                    <form action="/subdomains/<%= sd.id %>/delete" method="POST" style="display:inline;" data-confirm="<%= __('framework:confirm_delete_subdomain', { name: sd.name }) %>" data-confirm-title="<%= __('admin:cfm_delete_title') %>" data-confirm-danger>
+                                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                        <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash" aria-hidden="true"></i> <%= __('framework:delete') %></button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <% }); %>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Skills Tab -->
+<div id="skills-tab" class="tab-content <%= activeTab === 'skills' ? 'active' : '' %>">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2><%= __('framework:skills_heading') %></h2>
+        <button class="btn btn-primary" onclick="showModal('createSkillModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('framework:create_skill') %></button>
+    </div>
+
+    <%# the catalogue is browsed ONE SUB-DOMAIN AT A TIME. Rendering
+        all 1 181 skills produced a 3.5 MB page (10-30 s on a mine-site link) with
+        1 181 forms to parse. The picker IS the server filter. %>
+    <form method="GET" action="/domains-skills" class="card" style="display:flex;gap:8px;align-items:center;padding:.7rem 1rem;margin:0 0 .8rem;flex-wrap:wrap;">
+        <input type="hidden" name="tab" value="skills">
+        <label for="sk-subdomain"><%= __('framework:pick_subdomain') %></label>
+        <select id="sk-subdomain" name="subDomainId" class="form-control" data-auto-submit style="max-width:420px;" aria-label="<%= __('framework:pick_subdomain') %>">
+            <option value=""><%= __('framework:pick_subdomain_none') %></option>
+            <% (subDomains || []).forEach(function (sd) { %>
+            <option value="<%= sd.id %>" <%= String(subDomainFilter || '') === String(sd.id) ? 'selected' : '' %>><%= sd.domainName %> &rsaquo; <%= sd.name %> (<%= Number(sd.skillCount) %>)</option>
+            <% }); %>
+        </select>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:mv_apply') %></button>
+    </form>
+    <% if (subDomainFilter) { %>
+    <p class="text-muted" style="font-size:.85rem;margin:0 0 .6rem;"><%= __('framework:showing_subdomain', { n: skills.length }) %></p>
+    <% } %>
+    <div class="search-bar" style="margin:0 0 .6rem"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#skills-table" placeholder="<%= __('framework:search_skills_label') %>" aria-label="<%= __('framework:search_skills_label') %>"></div></div>
+    <div class="table-wrapper">
+        <table class="table" id="skills-table">
+            <thead>
+                <tr>
+                    <th class="sortable"><%= __('framework:col_domain_pillar') %></th>
+                    <th class="sortable"><%= __('framework:col_subdomain') %></th>
+                    <th class="sortable"><%= __('framework:col_name') %></th>
+                    <th class="sortable"><%= __('framework:col_category') %></th>
+                    <th class="sortable"><%= __('framework:col_description') %></th>
+                    <th><%= __('framework:col_actions') %></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (skills.length===0) { %>
+                    <tr class="empty-row">
+                        <td colspan="6" style="text-align: center; padding: 3rem;">
+                            <div class="empty-state">
+                                <div class="empty-state-icon"><i class="fas fa-bullseye" aria-hidden="true"></i></div>
+                                <%# Rule 1: "nothing selected" is not "nothing exists". %>
+                                <h3><%= subDomainFilter ? __('framework:empty_skills_title') : __('framework:pick_subdomain_prompt') %></h3>
+                                <p><%= subDomainFilter ? __('framework:empty_skills_hint') : __('framework:pick_subdomain_hint') %></p>
+                                <% if (subDomainFilter) { %><button class="btn btn-primary" onclick="showModal('createSkillModal')"><%= __('framework:create_skill') %></button><% } %>
+                            </div>
+                        </td>
+                    </tr>
+                    <% } else { %>
+                        <% skills.forEach(function(skill) { %>
+                            <tr>
+                                <td>
+                                    <%= skill.domainName %>
+                                </td>
+                                <td>
+                                    <%= skill.subDomainName || '—' %>
+                                </td>
+                                <td><strong>
+                                        <%= skill.name %>
+                                    </strong></td>
+                                <td>
+                                    <% const catColors = { Safety: '#dc3545', Compliance: '#6f42c1', Behavioral: '#0d6efd', Technical: '#198754' }; %>
+                                    <span style="display:inline-block; padding:2px 10px; border-radius:12px; font-size:0.85em; font-weight:500; color:#fff; background:<%= catColors[skill.category] || '#6c757d' %>;">
+                                        <%= skill.category || 'Technical' %>
+                                    </span>
+                                </td>
+                                <td>
+                                    <%= skill.description || '-' %>
+                                </td>
+                                <td>
+                                    <div class="table-actions">
+                                        <button class="btn btn-sm" onclick='editSkill(<%= JSON.stringify(skill) %>)'><i class="fas fa-pen" aria-hidden="true"></i>
+                                            <%= __('framework:edit') %></button>
+                                        <form action="/skills/<%= skill.id %>/delete" method="POST"
+                                            style="display:inline;" data-confirm="<%= __('framework:confirm_delete_skill') %>" data-confirm-title="<%= __('admin:cfm_delete_title') %>" data-confirm-danger>
+                                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                            <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash-can" aria-hidden="true"></i> <%= __('framework:delete') %></button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            <% }); %>
+                                <% } %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Domain Modals -->
+<div id="createDomainModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><%= __('framework:modal_create_domain') %></h2>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('createDomainModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form action="/domains" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div class="form-group">
+                    <label class="required" for="createDomainName"><%= __('framework:field_name') %></label>
+                    <input type="text" id="createDomainName" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="createDomainDescription"><%= __('framework:field_description') %></label>
+                    <textarea id="createDomainDescription" name="description"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary"><%= __('framework:btn_create') %></button>
+                    <button type="button" class="btn btn-secondary"
+                        onclick="hideModal('createDomainModal')"><%= __('framework:btn_cancel') %></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="editDomainModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><%= __('framework:modal_edit_domain') %></h2>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('editDomainModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="editDomainForm" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div class="form-group">
+                    <label class="required" for="editDomainName"><%= __('framework:field_name') %></label>
+                    <input type="text" name="name" id="editDomainName" required>
+                </div>
+                <div class="form-group">
+                    <label for="editDomainDescription"><%= __('framework:field_description') %></label>
+                    <textarea name="description" id="editDomainDescription"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary"><%= __('framework:btn_update') %></button>
+                    <button type="button" class="btn btn-secondary"
+                        onclick="hideModal('editDomainModal')"><%= __('framework:btn_cancel') %></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Sub-Domain Modals -->
+<% var _pillars = (typeof allDomains !== 'undefined' ? allDomains : []); %>
+<div id="createSubDomainModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><%= __('framework:modal_create_subdomain') %></h2>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('createSubDomainModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form action="/subdomains" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div class="form-group">
+                    <label class="required" for="createSubDomainDomainId"><%= __('framework:field_pillar') %></label>
+                    <select name="domainId" id="createSubDomainDomainId" required>
+                        <option value=""><%= __('framework:select_pillar') %></option>
+                        <% _pillars.forEach(function(d){ %><option value="<%= d.id %>"><%= d.name %></option><% }); %>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="required" for="createSubDomainName"><%= __('framework:field_name') %></label>
+                    <input type="text" id="createSubDomainName" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="createSubDomainDefinition"><%= __('framework:field_definition') %></label>
+                    <textarea id="createSubDomainDefinition" name="definition" placeholder="<%= __('framework:definition_placeholder') %>"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary"><%= __('framework:btn_create') %></button>
+                    <button type="button" class="btn btn-secondary" onclick="hideModal('createSubDomainModal')"><%= __('framework:btn_cancel') %></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="editSubDomainModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><%= __('framework:modal_edit_subdomain') %></h2>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('editSubDomainModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="editSubDomainForm" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div class="form-group">
+                    <label class="required" for="editSubDomainDomainId"><%= __('framework:field_pillar') %></label>
+                    <select name="domainId" id="editSubDomainDomainId" required>
+                        <option value=""><%= __('framework:select_pillar') %></option>
+                        <% _pillars.forEach(function(d){ %><option value="<%= d.id %>"><%= d.name %></option><% }); %>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="required" for="editSubDomainName"><%= __('framework:field_name') %></label>
+                    <input type="text" name="name" id="editSubDomainName" required>
+                </div>
+                <div class="form-group">
+                    <label for="editSubDomainDefinition"><%= __('framework:field_definition') %></label>
+                    <textarea name="definition" id="editSubDomainDefinition"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary"><%= __('framework:btn_update') %></button>
+                    <button type="button" class="btn btn-secondary" onclick="hideModal('editSubDomainModal')"><%= __('framework:btn_cancel') %></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Skill Modals -->
+<div id="createSkillModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><%= __('framework:modal_create_skill') %></h2>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('createSkillModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form action="/skills" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div class="form-group">
+                    <label class="required" for="createSkillSubDomainId"><%= __('framework:field_subdomain') %></label>
+                    <select name="subDomainId" id="createSkillSubDomainId" required>
+                        <option value=""><%= __('framework:select_subdomain') %></option>
+                        <% var _byPillar = {}; (subDomains || []).forEach(function(sd){ (_byPillar[sd.domainName] = _byPillar[sd.domainName] || []).push(sd); }); %>
+                        <% Object.keys(_byPillar).forEach(function(pillar){ %>
+                            <optgroup label="<%= pillar %>">
+                                <% _byPillar[pillar].forEach(function(sd){ %>
+                                    <option value="<%= sd.id %>"><%= sd.name %></option>
+                                <% }); %>
+                            </optgroup>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="required" for="createSkillName"><%= __('framework:field_name') %></label>
+                    <input type="text" id="createSkillName" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label class="required" for="createSkillCategory"><%= __('framework:field_category') %></label>
+                    <select name="category" id="createSkillCategory" required>
+                        <option value="Technical">Technical</option>
+                        <option value="Behavioral">Behavioral</option>
+                        <option value="Safety">Safety</option>
+                        <option value="Compliance">Compliance</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="createSkillDescription"><%= __('framework:field_description') %></label>
+                    <textarea id="createSkillDescription" name="description"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary"><%= __('framework:btn_create') %></button>
+                    <button type="button" class="btn btn-secondary"
+                        onclick="hideModal('createSkillModal')"><%= __('framework:btn_cancel') %></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="editSkillModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><%= __('framework:modal_edit_skill') %></h2>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('editSkillModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="editSkillForm" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div class="form-group">
+                    <label class="required" for="editSkillSubDomainId"><%= __('framework:field_subdomain') %></label>
+                    <select name="subDomainId" id="editSkillSubDomainId" required>
+                        <option value=""><%= __('framework:select_subdomain') %></option>
+                        <% var _byPillarE = {}; (subDomains || []).forEach(function(sd){ (_byPillarE[sd.domainName] = _byPillarE[sd.domainName] || []).push(sd); }); %>
+                        <% Object.keys(_byPillarE).forEach(function(pillar){ %>
+                            <optgroup label="<%= pillar %>">
+                                <% _byPillarE[pillar].forEach(function(sd){ %>
+                                    <option value="<%= sd.id %>"><%= sd.name %></option>
+                                <% }); %>
+                            </optgroup>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="required" for="editSkillName"><%= __('framework:field_name') %></label>
+                    <input type="text" name="name" id="editSkillName" required>
+                </div>
+                <div class="form-group">
+                    <label class="required" for="editSkillCategory"><%= __('framework:field_category') %></label>
+                    <select name="category" id="editSkillCategory" required>
+                        <option value="Technical">Technical</option>
+                        <option value="Behavioral">Behavioral</option>
+                        <option value="Safety">Safety</option>
+                        <option value="Compliance">Compliance</option>
+                    </select>
+                </div>
+                <%# 3.23.21: FR + EN description and the five level anchors, FR + EN.
+                    `description` stays the FRENCH text; the self-assessment shows them. %>
+                <div class="form-group">
+                    <label for="editSkillDescription"><%= __('framework:field_description_fr') %></label>
+                    <textarea name="description" id="editSkillDescription" maxlength="2000"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="editSkillDescriptionEn"><%= __('framework:field_description_en') %></label>
+                    <textarea name="descriptionEn" id="editSkillDescriptionEn" maxlength="2000"></textarea>
+                </div>
+                <fieldset class="form-group">
+                    <legend><%= __('framework:field_levels_title') %></legend>
+                    <p class="text-muted" style="font-size:.82rem"><%= __('framework:field_levels_hint') %></p>
+                    <% [0, 1, 2, 3, 4].forEach(function (n) { %>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
+                        <div><label for="editSkillFr<%= n %>"><%= __('framework:field_level_fr', { n: n }) %></label>
+                            <textarea name="fr<%= n %>" id="editSkillFr<%= n %>" rows="2" maxlength="600"></textarea></div>
+                        <div><label for="editSkillEn<%= n %>"><%= __('framework:field_level_en', { n: n }) %></label>
+                            <textarea name="en<%= n %>" id="editSkillEn<%= n %>" rows="2" maxlength="600"></textarea></div>
+                    </div>
+                    <% }); %>
+                </fieldset>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary"><%= __('framework:btn_update') %></button>
+                    <button type="button" class="btn btn-secondary"
+                        onclick="hideModal('editSkillModal')"><%= __('framework:btn_cancel') %></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+    // Tab switching
+    function showTab(event, tabName) {
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        document.querySelectorAll('.tab').forEach(btn => {
+            btn.classList.remove('active');
+        });
+
+        // Show selected tab
+        document.getElementById(tabName + '-tab').classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    // Domain edit function
+    function editDomain(domain) {
+        document.getElementById('editDomainName').value = domain.name || '';
+        document.getElementById('editDomainDescription').value = domain.description || '';
+        document.getElementById('editDomainForm').action = '/domains/' + domain.id;
+        showModal('editDomainModal');
+    }
+
+    // Skill edit function
+    function editSkill(skill) {
+        document.getElementById('editSkillSubDomainId').value = skill.subDomainId || '';
+        document.getElementById('editSkillName').value = skill.name || '';
+        document.getElementById('editSkillCategory').value = skill.category || 'Technical';
+        document.getElementById('editSkillDescription').value = skill.description || '';
+        document.getElementById('editSkillDescriptionEn').value = skill.descriptionEn || '';
+        var anchors = skill.anchors || {};
+        [0, 1, 2, 3, 4].forEach(function (n) {
+            var a = anchors[n] || {};
+            document.getElementById('editSkillFr' + n).value = a.fr || '';
+            document.getElementById('editSkillEn' + n).value = a.en || '';
+        });
+        document.getElementById('editSkillForm').action = '/skills/' + skill.id;
+        showModal('editSkillModal');
+    }
+
+    // Sub-domain edit function
+    function editSubDomain(sd) {
+        document.getElementById('editSubDomainDomainId').value = sd.domainId || '';
+        document.getElementById('editSubDomainName').value = sd.name || '';
+        document.getElementById('editSubDomainDefinition').value = sd.definition || '';
+        document.getElementById('editSubDomainForm').action = '/subdomains/' + sd.id;
+        showModal('editSubDomainModal');
+    }
+</script>

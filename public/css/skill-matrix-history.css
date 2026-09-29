@@ -1,0 +1,136 @@
+/* Skill Matrix History — Dark Theme Compatible */
+
+/* Modal Tabs */
+.modal-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 15px;
+}
+
+.modal-tabs .tab-btn {
+    background: none;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+}
+
+.modal-tabs .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* History List */
+.history-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.history-item {
+    padding: 10px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.history-level {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    border-radius: 50%;
+    color: white;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+/* History level colors — semantic, same approach as skill matrix */
+.history-level.level-0 {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-tertiary);
+}
+
+.history-level.level-1 {
+    background-color: rgba(245, 166, 35, 0.3);
+    color: #F5A623;
+}
+
+.history-level.level-2 {
+    background-color: rgba(45, 212, 160, 0.2);
+    color: #2DD4A0;
+}
+
+.history-level.level-3 {
+    background-color: rgba(91, 157, 245, 0.25);
+    color: #5B9DF5;
+}
+
+.history-level.level-4 {
+    background-color: rgba(34, 211, 238, 0.25);
+    color: #22D3EE;
+}
+
+/* Light overrides */
+[data-theme="light"] .history-level.level-0 {
+    background-color: #e9ecef;
+    color: #495057;
+}
+
+[data-theme="light"] .history-level.level-1 {
+    background-color: #ffeeba;
+    color: #856404;
+}
+
+[data-theme="light"] .history-level.level-2 {
+    background-color: #b1dfbb;
+    color: #155724;
+}
+
+[data-theme="light"] .history-level.level-3 {
+    background-color: #bee5eb;
+    color: #0c5460;
+}
+
+[data-theme="light"] .history-level.level-4 {
+    background-color: #cff4fc;
+    color: #055160;
+}
+
+.history-date {
+    font-size: 0.85rem;
+    color: var(--text-tertiary);
+}
+
+.history-notes {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    margin-bottom: 3px;
+}
+
+.history-meta {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+.no-history {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 20px;
+}

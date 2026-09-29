@@ -1,0 +1,129 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      e2e:
+        description: 'Also run the Playwright smoke suite (needs E2E_* credentials as repository secrets)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint + format + icons
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run lint:icons
+
+  unit:
+    name: jest (PostgreSQL ${{ matrix.pg }})
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: [16, 17]
+    services:
+      postgres:
+        image: postgres:${{ matrix.pg }}
+        env:
+          POSTGRES_USER: idevelop
+          POSTGRES_PASSWORD: idevelop
+          POSTGRES_DB: idevelop_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U idevelop"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://idevelop:idevelop@localhost:5432/idevelop_test
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      # The product's own migrator: base schema + every pending migration,
+      # tracked in schema_meta, refusing to report success over a half-applied file.
+      - name: migrate
+        run: npm run db:migrate:all
+      - name: deterministic test seed
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          PGPASSWORD=idevelop psql -h localhost -U idevelop -d idevelop_test -v ON_ERROR_STOP=1 -f db/postgres/seed-test.sql
+      - run: npm test -- --ci --coverage
+      - name: upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-pg${{ matrix.pg }}
+          path: coverage/
+
+  e2e-smoke:
+    name: playwright smoke
+    if: github.event_name == 'workflow_dispatch' && inputs.e2e
+    runs-on: ubuntu-latest
+    needs: unit
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: idevelop
+          POSTGRES_PASSWORD: idevelop
+          POSTGRES_DB: idevelop_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U idevelop"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://idevelop:idevelop@localhost:5432/idevelop_e2e
+      E2E_SA_USER: ${{ secrets.E2E_SA_USER }}
+      E2E_SA_PASS: ${{ secrets.E2E_SA_PASS }}
+      E2E_EMP_USER: ${{ secrets.E2E_EMP_USER }}
+      E2E_EMP_PASS: ${{ secrets.E2E_EMP_PASS }}
+      E2E_MGR_USER: ${{ secrets.E2E_MGR_USER }}
+      E2E_MGR_PASS: ${{ secrets.E2E_MGR_PASS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run db:migrate:all
+      - run: npm run db:seed:starter -- --commit
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:smoke
+        env:
+          CI: '1'
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+
+  commitlint:
+    name: commitlint
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx commitlint --from=${{ github.event.pull_request.base.sha }} --to=${{ github.event.pull_request.head.sha }} --verbose

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="<%= (typeof lang !== 'undefined' && lang) ? lang : 'fr' %>">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <% const _brand = (typeof branding !== 'undefined' && branding) ? branding : { appName: 'IDevelop', faviconUrl: null, accentCss: '' }; %>
+    <title><%= __('auth:sso_choose_title') %> · <%= (typeof brandName!=='undefined' && brandName) ? brandName : _brand.appName %></title>
+    <% if (_brand.faviconUrl) { %>
+    <link rel="icon" href="<%= _brand.faviconUrl %>">
+    <% } %>
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css?v=6.4.0">
+    <link rel="stylesheet" href="/css/style.css?v=<%= assetVersion %>">
+    <link rel="stylesheet" href="/css/login.css?v=<%= assetVersion %>">
+    <% if (_brand.accentCss) { %>
+    <style nonce="<%= cspNonce %>"><%- _brand.accentCss %></style>
+    <% } %>
+    <style nonce="<%= cspNonce %>">
+        .sso-choice { display: flex; flex-direction: column; gap: .6rem; margin: 1rem 0; }
+        .sso-choice button { display: flex; align-items: center; gap: .6rem; text-align: left; justify-content: flex-start; white-space: normal; }
+        .sso-choice button small { display: block; font-weight: 400; opacity: .85; }
+    </style>
+    <!-- Prevent theme flash: apply saved theme before paint -->
+    <script nonce="<%= cspNonce %>">
+        (function () { var t = localStorage.getItem('theme'); if (t === 'light') document.documentElement.setAttribute('data-theme', 'light'); })();
+    </script>
+    <%- include('../../partials/pwa-head') %>
+</head>
+
+<body class="login-page">
+    <%#
+        3.23.19 (D3b / D6): the person signed in through SSO is also the linked
+        person of an administrator account. They CHOOSE which account to open. The
+        choice is single-use, expires after 5 minutes, and is re-validated on POST;
+        each option is its own submit button of ONE form (works with no JavaScript).
+    %>
+    <main class="login-container">
+        <h1><%= _brand.appName %></h1>
+        <h2><i class="fas fa-user-check" aria-hidden="true"></i> <%= __('auth:sso_choose_title') %></h2>
+
+        <%- include('../../partials/flash') %>
+
+        <p class="login-help-text"><%= __('auth:sso_choose_intro') %></p>
+
+        <form action="/auth/sso/choose" method="POST" class="sso-choice" aria-label="<%= __('auth:sso_choose_title') %>">
+            <% if (typeof csrfToken !== 'undefined' && csrfToken) { %>
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <% } %>
+            <input type="hidden" name="nonce" value="<%= nonce %>">
+            <button type="submit" name="choice" value="employee" class="btn btn-secondary btn-block">
+                <i class="fas fa-user" aria-hidden="true"></i>
+                <span><%= __('auth:sso_choose_as_employee', { name: personName }) %>
+                    <small><%= __('auth:sso_choose_employee_hint') %></small></span>
+            </button>
+            <% var roleLabel = { superadmin: __('admin:enum_admin_role_superadmin'), localadmin: __('admin:enum_admin_role_localadmin'), viewer: __('admin:enum_admin_role_viewer') }; %>
+            <% admins.forEach(function (a) { %>
+                <button type="submit" name="choice" value="admin:<%= a.id %>" class="btn btn-primary btn-block">
+                    <i class="fas fa-user-shield" aria-hidden="true"></i>
+                    <span><%= __('auth:sso_choose_as_admin', { username: a.username, role: roleLabel[a.role] || a.role }) %>
+                        <small><%= __('auth:sso_choose_admin_hint') %></small></span>
+                </button>
+            <% }); %>
+        </form>
+
+        <p style="text-align:center; margin-top: 16px;">
+            <a href="/login" style="font-size: 0.85rem;">← <%= __('chrome:mfa_back_to_sign_in') %></a>
+        </p>
+    </main>
+</body>
+
+</html>

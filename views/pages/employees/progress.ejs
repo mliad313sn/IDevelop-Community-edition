@@ -1,0 +1,212 @@
+<div class="page-header">
+    <h1><i class="fas fa-chart-line" aria-hidden="true"></i>
+        <%= selfView ? __('compliance:prog_my_title') : __('compliance:prog_title') %></h1>
+    <% if (!selfView) { %>
+    <div class="page-actions">
+        <a href="/employees/<%= employee.id %>" class="btn btn-secondary">← <%= employee.fullName %></a>
+    </div>
+    <% } %>
+</div>
+
+<% if (!selfView) { %>
+<p class="help-text" style="margin-bottom:1rem;">
+    <strong><%= employee.fullName %></strong>
+    <%= employee.roleName ? ' — ' + employee.roleName : '' %><%= employee.departmentName ? ' (' + employee.departmentName + ')' : '' %>
+</p>
+<% } %>
+
+<div class="report-section">
+    <h2><%= __('compliance:prog_over_time') %></h2>
+    <% if (!cycles.length && !timeline.length) { %>
+        <p class="text-muted" style="padding:1.5rem 0;"><%= __('compliance:prog_no_activity') %></p>
+    <% } else { %>
+    <div style="position:relative;min-height:300px;">
+        <canvas id="progressChart" height="100"></canvas>
+    </div>
+    <% } %>
+</div>
+
+<div class="report-section">
+    <h2><%= __('compliance:prog_history') %> (<%= cycles.length %> <%= cycles.length === 1 ? __('compliance:prog_cycle') : __('compliance:prog_cycles') %>)</h2>
+    <div class="table-wrapper">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('compliance:prog_th_cycle') %></th><th><%= __('compliance:prog_th_window') %></th><th><%= __('compliance:prog_th_skills') %></th><th><%= __('compliance:prog_th_approved') %></th><th><%= __('compliance:prog_th_in_review') %></th><th><%= __('compliance:prog_th_unsubmitted') %></th>
+                <th><%= __('compliance:prog_th_avg_self') %></th><th><%= __('compliance:prog_th_avg_confirmed') %></th><th><%= __('compliance:prog_th_movement') %></th><th><%= __('compliance:prog_th_readiness') %></th><th><%= __('compliance:prog_th_vs_prev') %></th>
+            </tr></thead>
+            <tbody>
+                <% cycles.forEach(function (c) { %>
+                <tr>
+                    <td><strong><%= c.cycleLabel %></strong>
+                        <%# Campaign status is the raw enum (open/locked/closed/draft): translate it here, and say when the person never started it. %>
+                        <div style="font-size:.75rem;color:var(--text-muted);"><%= c.cycleCode %> · <%= __('admin:cyc_status_' + c.cycleStatus, { defaultValue: c.cycleStatus }) %><%= c.participation === 'not_started' ? ' · ' + __('employee:prog_not_started') : '' %></div></td>
+                    <td style="font-size:.82rem;"><%= fmtPeriodBound(c.openedAt) %> → <%= fmtPeriodBound(c.closesAt) %></td>
+                    <td><%= c.skillsInCycle %></td>
+                    <td><span class="badge badge-success"><%= c.approved %></span></td>
+                    <td><%= c.inReview %></td>
+                    <td><% if (c.unsubmitted) { %><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= c.unsubmitted %><% } else { %>0<% } %></td>
+                    <td><%= c.avgSelfRated != null ? c.avgSelfRated.toFixed(2) : '—' %></td>
+                    <td><%= c.avgConfirmed != null ? c.avgConfirmed.toFixed(2) : '—' %></td>
+                    <td style="color:<%= c.netMovement > 0 ? '#27ae60' : c.netMovement < 0 ? '#c0392b' : 'inherit' %>;">
+                        <%= c.netMovement > 0 ? '+' + c.netMovement : (c.netMovement != null ? c.netMovement : '—') %>
+                        <span style="font-size:.75rem;color:var(--text-muted);">(<%= c.moves || 0 %> chg)</span></td>
+                    <td><%= c.readinessPct != null ? c.readinessPct + '%' + (c.isReady ? ' ✓' : '') : '—' %></td>
+                    <td style="font-size:.82rem;">
+                        <% if (c.deltaAvgConfirmed != null) { %>
+                            <span style="color:<%= c.deltaAvgConfirmed >= 0 ? '#27ae60' : '#c0392b' %>;">
+                                <%= c.deltaAvgConfirmed >= 0 ? '▲' : '▼' %> <%= Math.abs(c.deltaAvgConfirmed).toFixed(2) %> lvl</span>
+                        <% } %>
+                        <% if (c.deltaReadiness != null) { %>
+                            <span style="color:<%= c.deltaReadiness >= 0 ? '#27ae60' : '#c0392b' %>;margin-left:6px;">
+                                <%= c.deltaReadiness >= 0 ? '▲' : '▼' %> <%= Math.abs(c.deltaReadiness) %>% rdy</span>
+                        <% } %>
+                        <% if (c.deltaAvgConfirmed == null && c.deltaReadiness == null) { %>—<% } %>
+                    </td>
+                </tr>
+                <% }); %>
+                <% if (!cycles.length) { %>
+                <tr><td colspan="11" style="text-align:center;padding:2rem;color:var(--text-muted);"><%= __('compliance:prog_no_campaigns') %></td></tr>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<%# QA lot 1 — the successive MEASUREMENTS of each
+    competency, with their dates. Until migration 113 one row per
+    (employee, skill) was rewritten at every new campaign, so there was never a
+    second measurement to lay beside the first. Same page, same data source as
+    the assessment module: no second history. %>
+<% var meas = (typeof measures !== 'undefined' && measures) ? measures : { skills: [], roundsTotal: 0 }; %>
+<div class="report-section">
+    <h2><%= __('compliance:prog_meas_title') %></h2>
+    <p class="help-text" style="margin-bottom:1rem;"><%= __('compliance:prog_meas_intro') %></p>
+    <% if (!meas.skills.length) { %>
+        <%# Never "0 progression": say that a second measurement has not happened yet. %>
+        <p class="text-muted" style="padding:1.5rem 0;"><%= __('compliance:prog_meas_none') %></p>
+    <% } else { %>
+    <p class="help-text" style="margin-bottom:.75rem;">
+        <%= __('compliance:prog_meas_count', { n: meas.skills.length, rounds: meas.roundsTotal }) %></p>
+    <div class="table-wrapper">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('compliance:prog_meas_th_skill') %></th>
+                <th><%= __('compliance:prog_meas_th_round') %></th>
+                <th><%= __('compliance:prog_meas_th_date') %></th>
+                <th><%= __('compliance:prog_meas_th_campaign') %></th>
+                <th><%= __('compliance:prog_meas_th_self') %></th>
+                <th><%= __('compliance:prog_meas_th_supervisor') %></th>
+                <th><%= __('compliance:prog_meas_th_state') %></th>
+                <th><%= __('compliance:prog_meas_evolution') %></th>
+            </tr></thead>
+            <tbody>
+                <% meas.skills.forEach(function (s) { %>
+                    <% s.rounds.forEach(function (r, i) { %>
+                    <tr>
+                        <% if (i === 0) { %>
+                        <td rowspan="<%= s.rounds.length %>"><strong><%= s.skillName %></strong>
+                            <% if (s.domainName) { %><div style="font-size:.75rem;color:var(--text-muted);"><%= s.domainName %></div><% } %></td>
+                        <% } %>
+                        <td><%= r.roundNo %><% if (r.current) { %> <span class="badge badge-info"><%= __('compliance:prog_meas_current') %></span><% } %></td>
+                        <td style="font-size:.82rem;"><%= r.measuredAt ? fmtDate(r.measuredAt) : '—' %></td>
+                        <%# cycle_id NULL is not "unknown": it is a measurement taken OUTSIDE any campaign, and it is labelled as such. %>
+                        <td style="font-size:.82rem;"><%= r.cycleLabel || __('compliance:prog_meas_off_cycle') %></td>
+                        <td><%= r.selfRatedLevel != null ? r.selfRatedLevel : '—' %></td>
+                        <td><%= r.supervisorRatedLevel != null ? r.supervisorRatedLevel : '—' %></td>
+                        <td><span class="badge"><%= __('talentx:sar_st_' + r.state, { defaultValue: r.state }) %></span></td>
+                        <% if (i === 0) { %>
+                        <td rowspan="<%= s.rounds.length %>">
+                            <% if (s.delta == null) { %>
+                                <span class="text-muted"><%= __('compliance:prog_meas_not_measured') %></span>
+                            <% } else { %>
+                                <span style="color:<%= s.delta > 0 ? '#27ae60' : s.delta < 0 ? '#c0392b' : 'inherit' %>;">
+                                    <%= s.delta > 0 ? '▲ +' + s.delta : (s.delta < 0 ? '▼ ' + s.delta : '= 0') %></span>
+                            <% } %>
+                        </td>
+                        <% } %>
+                    </tr>
+                    <% }); %>
+                <% }); %>
+            </tbody>
+        </table>
+    </div>
+    <% } %>
+</div>
+
+<% if (cycles.length || timeline.length) { %>
+<script src="/vendor/chart.umd.min.js?v=<%= assetVersion %>"></script>
+<!-- This page instantiated a chart WITHOUT the shared theme, so it missed the
+     app font, the themed tooltip and the theme-aware gridlines that every other
+     chart gets — and its colours could not follow the brand. -->
+<script src="/js/chart-theme.js?v=<%= assetVersion %>"></script>
+<script src="/js/chart-axis-fit.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+(function () {
+    'use strict';
+    // Colours resolve from the shared theme, so this chart follows whichever
+    // identity is running instead of carrying literals only one edition can use.
+    var CT = window.ChartTheme || {};
+    if (!CT.ROLE) CT.ROLE = {};
+    var cycles = <%- include('../../partials/json-script', { v: cycles }) %>;
+    var timeline = <%- include('../../partials/json-script', { v: timeline }) %>;
+
+    // X axis = monthly trend; cycle markers plotted on their close month.
+    var labels = timeline.map(function (t) { return t.month; });
+    cycles.forEach(function (c) {
+        var m = String(c.closesAt).slice(0, 7);
+        if (labels.indexOf(m) < 0) labels.push(m);
+    });
+    labels.sort();
+
+    function at(month, arr, key, mKey) {
+        var hit = arr.filter(function (r) { return String(r[mKey]).slice(0, 7) === month; }).pop();
+        return hit && hit[key] != null ? hit[key] : null;
+    }
+    var levelData = labels.map(function (m) { return at(m, timeline, 'avgLevel', 'month'); });
+    var cycleLevelData = labels.map(function (m) { return at(m, cycles, 'avgConfirmed', 'closesAt'); });
+    var readinessData = labels.map(function (m) { return at(m, cycles, 'readinessPct', 'closesAt'); });
+    // Both axes fit their data (chart-axis-fit.js): pinned to 0-4 and 0-100 %, a
+    // real progression of a few tenths of a level or a few points of readiness
+    // drew as a flat line.
+    var AF = window.ChartAxisFit;
+    var yFit = AF ? ChartAxisFit.fitRange(levelData.concat(cycleLevelData), AF.LEVEL) : { min: 0, max: 4 };
+    var y2Fit = AF ? ChartAxisFit.fitRange(readinessData, AF.PERCENT) : { min: 0, max: 100 };
+    new Chart(document.getElementById('progressChart'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Avg confirmed level (monthly)',
+                    data: levelData,
+                    // spanGaps:false — a null month means no measurement that month,
+                    // so the dense monthly line must break rather than draw a
+                    // fabricated level across it. (The "at cycle" series below is a
+                    // sparse event series and keeps spanGaps to connect cycles.)
+                    borderColor: CT.ROLE.progress, backgroundColor: CT.ROLE.progress, tension: 0.25, spanGaps: false, yAxisID: 'y',
+                },
+                {
+                    label: 'Avg level at cycle',
+                    data: cycleLevelData,
+                    borderColor: CT.ROLE.progressAlt, backgroundColor: CT.ROLE.progressAlt, pointRadius: 6, pointStyle: 'rectRot',
+                    showLine: false, yAxisID: 'y',
+                },
+                {
+                    label: 'Readiness % at cycle',
+                    data: readinessData,
+                    borderColor: CT.ROLE.achieved, backgroundColor: CT.ROLE.achieved, tension: 0.25, spanGaps: true, yAxisID: 'y2',
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y:  { min: yFit.min, max: yFit.max, title: { display: true, text: 'Level (0–4)' } },
+                y2: { min: y2Fit.min, max: y2Fit.max, position: 'right', grid: { drawOnChartArea: false },
+                      title: { display: true, text: 'Readiness %' }, ticks: { callback: function (v) { return v + '%'; } } },
+            },
+        },
+    });
+})();
+</script>
+<% } %>

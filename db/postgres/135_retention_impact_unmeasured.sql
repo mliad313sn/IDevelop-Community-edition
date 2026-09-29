@@ -1,0 +1,18 @@
+-- Retention risk must be able to say "nobody has judged this person yet".
+--
+-- impact_of_loss is derived ENTIRELY from a 9-box placement. With no placement
+-- the service left impactScore at its initialiser, 0, and 0 bands as 'low' —
+-- so an employee nobody has ever assessed was published with the same verdict
+-- as a measured Concern: "low impact of loss", i.e. losing them costs little.
+-- On the dev dataset that was 73 of 78 stored rows.
+--
+-- NOT NULL over a three-value enum (low|medium|high) left no way to express
+-- "unknown". Relaxing the constraint is additive and reversible, and needs no
+-- ALTER TYPE — which carries the type-ownership failure mode this project has
+-- already been bitten by on the appliance.
+--
+-- ONE STATEMENT ON PURPOSE. The runner executes each file in a single
+-- transaction and swallows six "already exists" SQLSTATEs, stamping the file
+-- as applied even when a later statement never ran; a one-statement file
+-- cannot be half-applied.
+ALTER TABLE retention_risk ALTER COLUMN impact_of_loss DROP NOT NULL;

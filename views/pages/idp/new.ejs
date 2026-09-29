@@ -1,0 +1,69 @@
+<div class="page-header">
+    <h1><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('idp:new_heading') %></h1>
+    <a href="/v2/idp/manage" class="btn btn-sm btn-secondary">← <%= __('idp:team_idps') %></a>
+</div>
+
+<div class="help-text" style="margin-bottom:1.25rem;">
+    <%- __('idp:new_intro') %>
+</div>
+
+<form method="POST" action="/v2/idp/new" class="card" style="padding:1.25rem;max-width:760px;">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <div class="form-group" style="margin-bottom:1rem;">
+        <label class="required" for="employeeId"><strong><%= __('common:employee') %></strong></label>
+        <% if (target) { %>
+            <input type="hidden" name="employeeId" value="<%= target.id %>">
+            <input type="text" readonly value="<%= target.firstName %> <%= target.lastName %><%= target.employeeNumber ? ' (#' + target.employeeNumber + ')' : '' %>"
+                   style="width:100%;background:var(--bg-subtle);cursor:not-allowed;">
+        <% } else { %>
+            <select name="employeeId" id="employeeId" required style="width:100%;">
+                <option value=""><%= __('idp:choose_person') %></option>
+                <% (employees || []).forEach(function(e){ %>
+                    <option value="<%= e.id %>"><%= personName(e) %><%= e.employeeNumber ? ' (#' + e.employeeNumber + ')' : '' %><%= e.roleName ? ' — ' + e.roleName : '' %></option>
+                <% }); %>
+            </select>
+            <div class="form-help"><%= __('idp:seed_hint') %></div>
+        <% } %>
+    </div>
+
+    <div class="form-group" style="margin-bottom:1rem;">
+        <label for="priority"><strong><%= __('idp:priority') %></strong></label>
+        <select name="priority" id="priority" style="width:180px;">
+            <option value="low"><%= __('idp:pr_low') %></option>
+            <option value="medium" selected><%= __('idp:pr_medium') %></option>
+            <option value="high"><%= __('idp:pr_high') %></option>
+        </select>
+    </div>
+
+    <% if (target) { %>
+        <div class="form-group" style="margin-bottom:1rem;">
+            <label><strong><%= __('idp:seed_from_gaps') %></strong></label>
+            <% if (!gaps || !gaps.length) { %>
+                <div class="form-help"><%= __('idp:no_gaps') %></div>
+            <% } else { %>
+                <div class="form-help"><%= __('idp:seed_gaps_hint') %></div>
+                <div style="border:1px solid var(--border-color,#2a2a2a);border-radius:10px;max-height:340px;overflow:auto;margin-top:8px;">
+                    <table class="table" style="margin:0;">
+                        <thead><tr><th style="width:40px;"></th><th><%= __('idp:skill') %></th><th style="text-align:center;"><%= __('idp:current') %></th><th style="text-align:center;"><%= __('idp:required') %></th></tr></thead>
+                        <tbody>
+                            <% gaps.forEach(function(g){ %>
+                                <tr>
+                                    <td style="text-align:center;"><input type="checkbox" name="skillIds" value="<%= g.skillId %>" <%= (preSkillId && Number(preSkillId) === Number(g.skillId)) ? 'checked' : '' %> aria-label="<%= __('idp:include') %> <%= g.skillName %>"></td>
+                                    <td><%= g.skillName %></td>
+                                    <td style="text-align:center;"><%= g.current %></td>
+                                    <td style="text-align:center;"><%= g.required %></td>
+                                </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                </div>
+            <% } %>
+        </div>
+    <% } %>
+
+    <div class="modal-footer" style="display:flex;gap:.5rem;margin-top:1rem;">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('idp:create_draft') %></button>
+        <a href="/v2/idp/manage" class="btn btn-secondary"><%= __('common:cancel') %></a>
+    </div>
+</form>

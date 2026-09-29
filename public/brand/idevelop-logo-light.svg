@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 64" role="img" aria-label="IDevelop Community Edition">
+  <defs>
+    <linearGradient id="idv-lgl" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9A8CFF"/>
+      <stop offset="1" stop-color="#5B4BE0"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#idv-lgl)"/>
+  <path d="M9 50 C 22 47, 36 38, 55 20" fill="none" stroke="#FFFFFF" stroke-opacity=".32" stroke-width="3.5" stroke-linecap="round"/>
+  <rect x="24.5" y="27" width="11" height="26" rx="5.5" fill="#FFFFFF"/>
+  <circle cx="30" cy="16" r="6.5" fill="#FF7A59"/>
+  <text x="80" y="37" font-family="'Plus Jakarta Sans','Segoe UI',system-ui,-apple-system,sans-serif" font-size="30" font-weight="700" fill="#161A2E" letter-spacing="-0.5">I<tspan fill="#5B4BE0">Develop</tspan></text>
+  <text x="81" y="56" font-family="'Plus Jakarta Sans','Segoe UI',system-ui,-apple-system,sans-serif" font-size="11.5" font-weight="600" fill="#C2410C" letter-spacing="2.6">COMMUNITY EDITION</text>
+</svg>

@@ -1,0 +1,20 @@
+<%#
+  JSON safe to inline inside a <script> block.
+
+  A bare JSON.stringify(x) in an unescaped tag is NOT safe there: it leaves "<" alone,
+  so a value carrying "</script>" (a URL filter such as ?q=, a refused POST body
+  echoed back as a draft, a name from the base) closes the script element and
+  the rest of the payload is parsed as HTML — a reflected XSS that the CSP nonce
+  cannot stop, because the injected markup is not a <script> but an <img onerror>.
+  U+2028 / U+2029 are also escaped: they are line terminators for the JS parser
+  but not for JSON, and would break the string literal.
+
+  Usage, from any view (unescaped-output tag around an include):
+      include('../../partials/json-script', { v: value })
+  `undefined` renders as null, so a missing local never yields `var X = ;`.
+-%><%
+  var __js = JSON.stringify(v === undefined ? null : v);
+  __js = String(__js).replace(/</g, '\\u003c')
+      .split(String.fromCharCode(0x2028)).join('\\u2028')
+      .split(String.fromCharCode(0x2029)).join('\\u2029');
+-%><%- __js -%>

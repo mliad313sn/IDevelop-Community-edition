@@ -1,0 +1,55 @@
+<div class="page-header">
+    <h1><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('chrome:sessions_title') %></h1>
+</div>
+
+<div class="help-text" style="margin-bottom:1.25rem;">
+    <%= __('chrome:sessions_help') %>
+</div>
+
+<div class="card" style="padding:0;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th><%= __('chrome:sessions_th_device') %></th>
+                    <th><%= __('chrome:sessions_th_ip') %></th>
+                    <th><%= __('chrome:sessions_th_signed_in') %></th>
+                    <th><%= __('chrome:sessions_th_last_active') %></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% (sessions || []).forEach(function(s){ %>
+                    <tr>
+                        <td>
+                            <i class="fas fa-<%= /iOS|Android/.test(s.device) ? 'mobile-screen' : 'display' %>" aria-hidden="true" style="color:var(--text-muted);margin-right:6px;"></i>
+                            <strong><%= s.device %></strong>
+                            <% if (s.current) { %> <span class="badge badge-success" style="margin-left:6px;"><%= __('chrome:sessions_this_device') %></span><% } %>
+                        </td>
+                        <td style="font-family:var(--font-data);font-size:.82rem;"><%= s.ip || '—' %></td>
+                        <td><%= fmtDateTime(s.loginAt) %></td>
+                        <td><%= fmtDateTime(s.lastActivity) %></td>
+                        <td style="text-align:right;color:var(--text-muted);font-size:.8rem;">
+                            <% if (s.current) { %><%= __('chrome:sessions_current') %><% } %>
+                        </td>
+                    </tr>
+                <% }); %>
+                <% if (!sessions || !sessions.length) { %>
+                    <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted);"><%= __('chrome:sessions_empty') %></td></tr>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<% var others = (sessions || []).filter(function(s){ return !s.current; }).length; %>
+<div style="display:flex;gap:.75rem;align-items:center;margin-top:1.25rem;flex-wrap:wrap;">
+    <form method="POST" action="/account/sessions/revoke-others" style="margin:0;">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-danger" <%= others ? '' : 'disabled' %>>
+            <i class="fas fa-right-from-bracket" aria-hidden="true"></i>
+            <%= __('chrome:sessions_sign_out_others') %><%= others ? ' (' + others + ')' : '' %>
+        </button>
+    </form>
+    <a href="/change-password" class="btn btn-secondary"><i class="fas fa-key" aria-hidden="true"></i> <%= __('chrome:sessions_change_password') %></a>
+</div>

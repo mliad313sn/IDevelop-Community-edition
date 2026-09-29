@@ -1,0 +1,240 @@
+<%
+/*
+ * Access review — one row per privileged account, with the exceptions NAMED.
+ *
+ * The report used to carry a single opaque boolean (`flag`) that merely tinted a
+ * row: the reviewer could see "something is off" but not what, and could not
+ * count, filter or export it. It is now seven named exceptions — perimeter
+ * without capability, no MFA, access expiring, access expired, locked out,
+ * scope on a deactivated unit, dormant account — each with its own KPI tile,
+ * row chip and CSV column. Since every row also shows its LAST
+ * ATTESTATION (date, reviewer, decision), the page says "N of M reviewed this
+ * quarter", the reviewer chooses "appropriate" or "to revoke", and the table
+ * is searchable / filterable by exception.
+ */
+const arExcLabel = {
+    scopedButPowerless: __('admin:tri_exc_powerless'),
+    noMfa: __('admin:tri_exc_nomfa'),
+    expiringSoon: __('admin:tri_exc_expiring'),
+    expired: __('admin:ar_exc_expired'),
+    locked: __('admin:ar_exc_locked'),
+    siteInactive: __('admin:ar_exc_site_inactive'),
+    stale: __('admin:tri_exc_stale')
+};
+const arExcClass = {
+    scopedButPowerless: 'ar-exc-danger',
+    noMfa: 'ar-exc-warn',
+    expiringSoon: 'ar-exc-warn',
+    expired: 'ar-exc-warn',
+    locked: 'ar-exc-danger',
+    siteInactive: 'ar-exc-warn',
+    stale: 'ar-exc-muted'
+};
+%>
+<div class="page-header">
+  <div>
+    <h1><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('admin:ar_title') %></h1>
+    <p class="text-muted"><%= __('admin:ar_subtitle') %></p>
+  </div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    <a href="/admins" class="btn btn-secondary btn-sm"><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('admin:admin_management') %></a>
+    <a href="/admin/delegation" class="btn btn-secondary btn-sm"><i class="fas fa-sitemap" aria-hidden="true"></i> <%= __('admin:deleg_title') %></a>
+    <a href="/admin/access-review/export.csv" class="btn btn-secondary btn-sm"><i class="fas fa-download" aria-hidden="true"></i> <%= __('admin:ar_export') %></a>
+  </div>
+</div>
+
+<% if (summary.scopedButPowerless > 0) { %>
+<div class="ar-banner" role="status">
+  <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+  <span><%= __('admin:tri_banner_powerless', { n: summary.scopedButPowerless }) %></span>
+</div>
+<% } %>
+
+<%# Completeness of the campaign: the number an auditor asks for first. %>
+<div class="ar-progress card" role="status">
+  <strong><%= __('admin:ar_progress', { n: summary.reviewedThisQuarter, m: summary.reviewTotal }) %></strong>
+  <span class="text-muted"><%= __('admin:ar_progress_hint') %></span>
+</div>
+
+<div class="ar-summary" style="display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem;">
+  <div class="card ar-kpi"><div class="ar-kpi-n"><%= summary.total %></div><div class="ar-kpi-l"><%= __('admin:ar_kpi_total') %></div></div>
+  <div class="card ar-kpi"><div class="ar-kpi-n"><%= summary.superadmins %></div><div class="ar-kpi-l"><%= __('admin:ar_kpi_super') %></div></div>
+  <div class="card ar-kpi <%= summary.scopedButPowerless ? 'ar-danger' : '' %>"><div class="ar-kpi-n"><%= summary.scopedButPowerless %></div><div class="ar-kpi-l"><%= __('admin:tri_exc_powerless') %></div></div>
+  <div class="card ar-kpi <%= summary.withoutMfa ? 'ar-warn' : '' %>"><div class="ar-kpi-n"><%= summary.withoutMfa %></div><div class="ar-kpi-l"><%= __('admin:ar_kpi_nomfa') %></div></div>
+  <div class="card ar-kpi <%= summary.expiringSoon ? 'ar-warn' : '' %>"><div class="ar-kpi-n"><%= summary.expiringSoon %></div><div class="ar-kpi-l"><%= __('admin:tri_kpi_expiring', { n: summary.expiringDays }) %></div></div>
+  <div class="card ar-kpi <%= summary.expired ? 'ar-warn' : '' %>"><div class="ar-kpi-n"><%= summary.expired %></div><div class="ar-kpi-l"><%= __('admin:ar_exc_expired') %></div></div>
+  <div class="card ar-kpi <%= summary.locked ? 'ar-danger' : '' %>"><div class="ar-kpi-n"><%= summary.locked %></div><div class="ar-kpi-l"><%= __('admin:ar_exc_locked') %></div></div>
+  <div class="card ar-kpi <%= summary.stale ? 'ar-warn' : '' %>"><div class="ar-kpi-n"><%= summary.stale %></div><div class="ar-kpi-l"><%= __('admin:ar_kpi_stale') %> (<%= summary.staleDays %>j)</div></div>
+  <div class="card ar-kpi"><div class="ar-kpi-n"><%= summary.inactive %></div><div class="ar-kpi-l"><%= __('admin:ar_kpi_inactive') %></div></div>
+</div>
+
+<div class="search-bar ar-filters">
+  <div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#ar-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div>
+  <select class="search-input" data-table-filter="#ar-table" aria-label="<%= __('admin:ar_filter_exception') %>">
+    <option value=""><%= __('admin:ar_filter_all') %></option>
+    <% Object.keys(arExcLabel).forEach(function (k) { %><option value="~<%= k.toLowerCase() %>"><%= arExcLabel[k] %></option><% }); %>
+    <option value="~unreviewed"><%= __('admin:ar_filter_unreviewed') %></option>
+  </select>
+</div>
+
+<div class="card" style="padding:0;overflow-x:auto;">
+  <table class="table" id="ar-table">
+    <thead><tr>
+      <th><%= __('admin:ar_th_admin') %></th>
+      <th><%= __('admin:ar_th_role') %></th>
+      <th><%= __('admin:tri_th_profile') %></th>
+      <th><%= __('admin:ar_th_scope') %></th>
+      <th><%= __('admin:ar_th_perms') %></th>
+      <th><%= __('admin:tri_th_expires') %></th>
+      <th><%= __('admin:ar_th_mfa') %></th>
+      <th><%= __('admin:ar_th_last_login') %></th>
+      <th><%= __('admin:tri_th_exceptions') %></th>
+      <th><%= __('admin:ar_th_attested') %></th>
+      <th><%= __('admin:ar_th_review') %></th>
+    </tr></thead>
+    <tbody>
+      <% rows.forEach(function(r){ %>
+      <%
+         const labels = (typeof permLabels === 'function' ? (permLabels(r) || []) : (r.permissionSlugs || []));
+         const profile = (typeof profileName === 'function' ? profileName(r.accessProfile) : null);
+         const tags = r.exceptions.map(function (x) { return '~' + x.toLowerCase(); });
+         if (!r.reviewedThisQuarter && r.isActive) tags.push('~unreviewed');
+         const searchText = [r.username, r.email || '', enumLabel('admin_role', r.role), profile || '', r.scopeSummary || '', r.exceptions.map(function (x) { return arExcLabel[x]; }).join(' '), tags.join(' ')].join(' ');
+      %>
+      <tr<%= r.exceptions.length ? ' style="background:rgba(224,138,60,.07)"' : '' %> data-id="<%= r.id %>" data-search="<%= searchText %>">
+        <td>
+          <strong><%= r.username %></strong>
+          <% if (r.email) { %><div class="text-muted" style="font-size:.8rem"><%= r.email %></div><% } %>
+          <% if (r.authProvider) { %><span class="chip" style="font-size:.7rem"><%= r.authProvider %></span><% } %>
+          <% if (!r.isActive) { %><span class="chip ar-exc-muted" title="<%= r.deactivationReason ? __('admin:adm_deactivation_reason', { reason: r.deactivationReason }) : '' %>"><%= __('admin:ar_inactive') %></span><% } %>
+        </td>
+        <td><span class="chip chip-<%= r.role %>"><%= enumLabel('admin_role', r.role) %></span></td>
+        <td style="font-size:.85rem">
+          <% if (r.superadmin) { %>
+            <span class="text-muted">—</span>
+          <% } else { %>
+            <%= profile || __('admin:tri_profile_custom') %>
+            <% if (r.accessProfileDrift) { %><span class="chip ar-exc-warn" title="<%= __('admin:tri_drift_title') %>"><%= __('admin:tri_drift') %></span><% } %>
+          <% } %>
+        </td>
+        <td style="max-width:220px;font-size:.85rem">
+          <% if (r.orgWide) { %>
+            <span class="text-muted"><%= __('admin:tri_scope_org') %></span>
+          <% } else if (r.scopeCount === 0) { %>
+            <span class="chip ar-exc-warn"><%= r.expired ? __('admin:adm_scope_expired_short') : __('admin:tri_no_scope') %></span>
+          <% } else { %>
+            <%= r.scopeSummary %>
+          <% } %>
+        </td>
+        <td style="max-width:280px;font-size:.8rem" title="<%= r.superadmin ? '' : labels.join(', ') %>">
+          <% if (r.superadmin) { %>
+            <em><%= __('admin:ar_all_perms') %></em>
+          <% } else if (r.permCount === 0) { %>
+            <span class="chip <%= r.expired ? 'ar-exc-warn' : 'ar-exc-danger' %>"><%= r.expired ? __('admin:adm_expired_on', { date: fmtDate(r.lastExpiredAt) }) : __('admin:tri_no_capability') %></span>
+          <% } else { %>
+            <%= r.permCount %> <%= __('admin:ar_grants') %>
+          <% } %>
+        </td>
+        <td style="font-size:.82rem;white-space:nowrap">
+          <% if (r.expiresAt) { %>
+            <span class="<%= r.expiringSoon ? 'ar-expiring' : '' %>"><%= fmtDate(r.expiresAt) %></span>
+          <% } else if (r.expired) { %>
+            <span class="ar-expiring"><%= __('admin:adm_expired_on', { date: fmtDate(r.lastExpiredAt) }) %></span>
+          <% } else { %>
+            <span class="text-muted"><%= __('admin:tri_never_expires') %></span>
+          <% } %>
+        </td>
+        <td><% if (r.mfaEnrolled) { %><span aria-hidden="true" style="color:var(--good,#2e9e57)">✓</span><span class="sr-only"><%= __('admin:ar_mfa_yes') %></span><% } else { %><span aria-hidden="true" style="color:var(--danger,#c8514b);font-weight:600">✗</span><span class="sr-only"><%= __('admin:ar_mfa_no') %></span><% } %></td>
+        <td style="font-size:.82rem;white-space:nowrap" title="<%= __('admin:ar_th_last') %><%= colon %> <%= r.lastActivity ? fmtDateTime(r.lastActivity) : __('admin:ar_never') %>"><%= r.lastLoginAt ? fmtDateTime(r.lastLoginAt) : __('admin:ar_never') %></td>
+        <td style="max-width:230px">
+          <% if (!r.exceptions.length) { %>
+            <span class="text-muted" style="font-size:.8rem"><%= __('admin:tri_none') %></span>
+          <% } else { %>
+            <% r.exceptions.forEach(function(x){ %><span class="chip <%= arExcClass[x] %>"><%= arExcLabel[x] %></span> <% }); %>
+          <% } %>
+        </td>
+        <td style="font-size:.8rem;white-space:nowrap" class="ar-attest-cell">
+          <% if (r.attestedAt) { %>
+            <span class="<%= r.attestDecision === 'revoke' ? 'ar-expiring' : '' %>"><%= __('admin:ar_decision_' + (r.attestDecision || 'appropriate')) %></span>
+            <div class="text-muted"><%= fmtDate(r.attestedAt) %><%= r.attestedBy ? ' · ' + __('admin:ar_by', { who: r.attestedBy }) : '' %></div>
+          <% } else { %>
+            <span class="text-muted"><%= __('admin:ar_never_attested') %></span>
+          <% } %>
+        </td>
+        <td style="white-space:nowrap">
+          <select class="ar-decision" aria-label="<%= __('admin:ar_decision_label') %>" data-id="<%= r.id %>">
+            <option value="appropriate"><%= __('admin:ar_decision_appropriate') %></option>
+            <option value="revoke"><%= __('admin:ar_decision_revoke') %></option>
+          </select>
+          <button class="btn btn-sm ar-attest-btn" data-id="<%= r.id %>"><%= __('admin:ar_attest') %></button>
+          <a class="btn btn-sm btn-secondary" href="/admins/<%= r.id %>"><%= __('admin:ar_manage') %></a>
+        </td>
+      </tr>
+      <% }); %>
+    </tbody>
+  </table>
+</div>
+
+<style>
+  .ar-banner{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:0 0 1rem;padding:.7rem .9rem;border-radius:8px;
+      background:rgba(180,83,9,.12);border:1px solid rgba(180,83,9,.45);color:#b45309;font-size:.9rem}
+  .ar-progress{display:flex;gap:.75rem;align-items:baseline;flex-wrap:wrap;padding:.6rem .9rem;margin-bottom:.75rem}
+  .ar-filters{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0}
+  .ar-filters .search-input-wrapper{flex:1;min-width:220px}
+  .ar-filters select{max-width:260px}
+  .ar-kpi{padding:.75rem 1rem;min-width:110px;text-align:center}
+  .ar-kpi-n{font-size:1.6rem;font-weight:800;line-height:1}
+  .ar-kpi-l{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#9aa1ac);margin-top:.25rem}
+  .ar-kpi.ar-warn .ar-kpi-n{color:#b45309}
+  .ar-kpi.ar-danger .ar-kpi-n{color:var(--danger,#c8514b)}
+  .ar-expiring{color:#b45309;font-weight:600}
+  .ar-decision{font-size:.8rem;padding:2px 4px;max-width:120px}
+  .chip{display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(127,127,127,.15);font-size:.75rem}
+  .chip-superadmin{background:rgba(160,123,208,.2)}
+  .chip-localadmin{background:rgba(91,139,208,.2)}
+  .chip-viewer{background:rgba(127,127,127,.18)}
+  .ar-exc-danger{background:rgba(200,81,75,.16);color:var(--danger,#c8514b);font-weight:700}
+  .ar-exc-warn{background:rgba(180,83,9,.16);color:#b45309}
+  .ar-exc-muted{background:rgba(127,127,127,.18);color:var(--text-muted,#9aa1ac)}
+</style>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  var CSRF = <%- include('../../partials/json-script', { v: typeof csrfToken !== 'undefined' ? csrfToken : '' }) %>;
+  var T = {
+    ok: <%- JSON.stringify(__('admin:ar_attested')) %>,
+    err: <%- JSON.stringify(__('admin:ar_attest_err')) %>,
+    done: <%- JSON.stringify(__('admin:ar_reviewed')) %>,
+    revoke: <%- JSON.stringify(__('admin:ar_revoke_next')) %>,
+    by: <%- JSON.stringify(__('admin:ar_by', { who: (user && user.username) || '' })) %>,
+    labels: { appropriate: <%- JSON.stringify(__('admin:ar_decision_appropriate')) %>, revoke: <%- JSON.stringify(__('admin:ar_decision_revoke')) %> }
+  };
+  var say = function (m, type) { (window.toast || function (x) { window.alert(x); })(m, type); };
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('.ar-attest-btn') : null;
+    if (!btn) return;
+    var id = btn.getAttribute('data-id');
+    var row = btn.closest('tr');
+    var sel = row ? row.querySelector('.ar-decision') : null;
+    var decision = sel ? sel.value : 'appropriate';
+    btn.disabled = true;
+    fetch('/admin/access-review/' + id + '/attest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': CSRF },
+      body: JSON.stringify({ decision: decision })
+    }).then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (j) {
+        if (j && j.ok) {
+          say(T.ok, 'success');
+          btn.textContent = T.done;
+          // Reflect the attestation in the row without a reload (evidence, not a click).
+          var cell = row ? row.querySelector('.ar-attest-cell') : null;
+          if (cell) cell.innerHTML = '<span class="' + (decision === 'revoke' ? 'ar-expiring' : '') + '"></span><div class="text-muted"></div>';
+          if (cell) { cell.firstChild.textContent = T.labels[decision] || decision; cell.lastChild.textContent = new Date().toLocaleDateString(<%- include('../../partials/json-script', { v: typeof lang !== 'undefined' ? lang : 'fr' }) %>) + ' · ' + T.by; }
+          // "À révoquer" is a decision to act on: open the account.
+          if (decision === 'revoke') { say(T.revoke, 'warn'); window.setTimeout(function () { window.location.href = '/admins/' + id; }, 900); }
+        } else { say((j && j.error) || T.err, 'error'); btn.disabled = false; }
+      }).catch(function () { say(T.err, 'error'); btn.disabled = false; });
+  });
+})();
+</script>

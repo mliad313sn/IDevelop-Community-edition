@@ -1,0 +1,45 @@
+# IDevelop Community Edition — local / evaluation stack:
+#   app + PostgreSQL + Redis (Redis enables the BullMQ workers and a shared
+#   rate-limit / metrics store for multi-instance scaling).
+#
+#   cp .env.example .env        # then set SESSION_SECRET, APP_KEY, DB_PASSWORD
+#   docker compose up -d --build
+#   docker compose exec app npm run db:seed:starter -- --commit   # optional starter framework
+#
+# The first boot creates the schema and prints the initial `admin` password in
+# the app logs (docker compose logs app); you must change it at first sign-in.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: idevelop
+      POSTGRES_USER: idevelop
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U idevelop -d idevelop']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '']
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://idevelop:${DB_PASSWORD}@db:5432/idevelop
+      REDIS_URL: redis://redis:6379
+      V2_FEATURES: '1'
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env (openssl rand -base64 32)}
+      APP_KEY: ${APP_KEY:?set APP_KEY in .env (openssl rand -base64 32)}
+    ports:
+      - '3000:3000'
+    restart: unless-stopped
+volumes:
+  pgdata:

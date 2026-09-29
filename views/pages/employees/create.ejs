@@ -1,0 +1,214 @@
+<%
+    // a refused submission comes back with its safe body in
+    // `draft` (res.locals, from utils/validators keepDraft) — every field is
+    // repopulated from it. Passwords are never part of a draft.
+    const d = (typeof draft !== 'undefined' && draft) || {};
+    const dv = function (k) { return d[k] != null ? String(d[k]) : ''; };
+%>
+<div class="page-header">
+    <h1><%= __('admin:create_employee') %></h1>
+</div>
+<% if (d.__from) { %>
+<p class="text-muted" style="margin:-.5rem 0 1rem;"><i class="fas fa-rotate-left" aria-hidden="true"></i> <%= __('validation:draft_kept') %></p>
+<% } %>
+
+<form action="/employees" method="POST" class="form">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+
+    <div class="form-group">
+        <label for="employeeNumber"><%= __('admin:employee_number') %></label>
+        <input type="text" id="employeeNumber" name="employeeNumber" value="<%= dv('employeeNumber') %>">
+    </div>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label for="firstName"><%= __('admin:first_name') %> *</label>
+            <input type="text" id="firstName" name="firstName" required value="<%= dv('firstName') %>">
+        </div>
+        <div class="form-group">
+            <label for="lastName"><%= __('admin:last_name') %> *</label>
+            <input type="text" id="lastName" name="lastName" required value="<%= dv('lastName') %>">
+        </div>
+    </div>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label for="email"><%= __('admin:email') %></label>
+            <input type="email" id="email" name="email" data-email-check aria-describedby="emailSharedNote" value="<%= dv('email') %>">
+            <%# A shared address is allowed (a person may hold several accounts): this note only advises. %>
+            <small id="emailSharedNote" class="email-shared-note text-muted" hidden></small>
+            <script src="/js/email-shared-check.js" nonce="<%= cspNonce %>" defer></script>
+        </div>
+        <div class="form-group">
+            <label for="phone"><%= __('admin:phone') %></label>
+            <input type="tel" id="phone" name="phone" value="<%= dv('phone') %>">
+        </div>
+        <% if (typeof featureLocalContent !== 'undefined' && featureLocalContent) { %>
+        <div class="form-group">
+            <label for="nationality"><%= __('admin:lc_nationality') %></label>
+            <input type="text" id="nationality" name="nationality" maxlength="80" value="<%= dv('nationality') %>">
+        </div>
+        <% } %>
+    </div>
+
+    <div class="form-group">
+        <label for="siteId"><%= __('admin:site') %> *</label>
+        <select id="siteId" name="siteId" required onchange="loadDepartments(this.value)">
+            <option value=""><%= __('admin:select_site') %></option>
+            <% sites.forEach(function(site) { %>
+            <option value="<%= site.id %>" <%= dv('siteId') === String(site.id) ? 'selected' : '' %>><%= site.name %></option>
+            <% }); %>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="departmentId"><%= __('admin:department') %> *</label>
+        <select id="departmentId" name="departmentId" required onchange="loadServices(this.value)">
+            <option value=""><%= __('admin:select_department') %></option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="serviceId"><%= __('admin:service') %> *</label>
+        <select id="serviceId" name="serviceId" required>
+            <option value=""><%= __('admin:select_service') %></option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="roleId"><%= __('admin:role') %> *</label>
+        <select id="roleId" name="roleId" required>
+            <option value=""><%= __('admin:select_role') %></option>
+            <% roles.forEach(function(role) { %>
+            <option value="<%= role.id %>" <%= dv('roleId') === String(role.id) ? 'selected' : '' %>><%= role.name %></option>
+            <% }); %>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="supervisorId"><%= __('admin:supervisor') %></label>
+        <select id="supervisorId" name="supervisorId">
+            <option value=""><%= __('admin:no_supervisor') %></option>
+            <% if (typeof supervisors !== 'undefined' && supervisors) { %>
+                <% supervisors.forEach(function(s) { %>
+                <option value="<%= s.id %>" <%= dv('supervisorId') === String(s.id) ? 'selected' : '' %>><%= s.firstName %> <%= s.lastName %> (<%= s.employeeNumber %>)</option>
+                <% }); %>
+            <% } %>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="manager"><%= __('admin:manager') %></label>
+        <select id="manager" name="manager">
+            <option value=""><%= __('admin:no_manager_admin_inherits') %></option>
+            <optgroup label="<%= __('admin:employees') %>">
+                <% if (typeof managers !== 'undefined' && managers) { %>
+                    <% managers.forEach(function(m) { %>
+                    <option value="employee:<%= m.id %>" <%= dv('manager') === 'employee:' + m.id ? 'selected' : '' %>><%= m.firstName %> <%= m.lastName %> (<%= m.employeeNumber %>)</option>
+                    <% }); %>
+                <% } %>
+            </optgroup>
+            <optgroup label="<%= __('admin:admins') %>">
+                <% if (typeof adminManagers !== 'undefined' && adminManagers) { %>
+                    <% adminManagers.forEach(function(a) { %>
+                    <option value="admin:<%= a.id %>" <%= dv('manager') === 'admin:' + a.id ? 'selected' : '' %>><%= a.username %><%= a.role ? ' — ' + a.role : '' %> (admin)</option>
+                    <% }); %>
+                <% } %>
+            </optgroup>
+        </select>
+        <small class="form-text"><%= __('admin:manager_hint') %></small>
+    </div>
+
+    <fieldset style="border:1px solid #e2e8f0;padding:12px 14px;border-radius:8px;margin:8px 0">
+        <legend style="font-weight:600;padding:0 6px"><%= __('admin:login_credentials') %> *</legend>
+        <small class="form-text"><%= __('admin:login_credentials_hint') %></small>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="username"><%= __('admin:username') %> *</label>
+                <input type="text" id="username" name="username" required autocomplete="off" minlength="3" value="<%= dv('username') %>">
+            </div>
+            <div class="form-group">
+                <label for="password"><%= __('admin:password') %> *</label>
+                <div style="display:flex;gap:6px">
+                    <input type="password" id="password" name="password" required minlength="12" autocomplete="new-password" style="flex:1">
+                    <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('password', this)" aria-pressed="false" title="<%= __('admin:toggle_visibility') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
+                    <button type="button" class="btn btn-secondary" onclick="genPwd()"><%= __('admin:generate') %></button>
+                </div>
+            </div>
+        </div>
+        <small class="form-text"><%= __('admin:password_rules_hint') %></small>
+    </fieldset>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary"><%= __('admin:create_employee') %></button>
+        <a href="/employees" class="btn btn-secondary"><%= __('admin:cancel') %></a>
+    </div>
+</form>
+
+<script nonce="<%= cspNonce %>">
+const SELECT_DEPT = <%- JSON.stringify(__('admin:select_department')) %>;
+const SELECT_SVC = <%- JSON.stringify(__('admin:select_service')) %>;
+
+// Cascading Site → Department → Service. Both loaders return a promise and take
+// an optional value to preselect AFTER the options exist (a draft being restored).
+function loadDepartments(siteId, selectValue) {
+    const deptSel = document.getElementById('departmentId');
+    const svcSel = document.getElementById('serviceId');
+    if (!siteId) {
+        deptSel.innerHTML = '<option value="">' + SELECT_DEPT + '</option>';
+        svcSel.innerHTML = '<option value="">' + SELECT_SVC + '</option>';
+        return Promise.resolve();
+    }
+    return fetch(`/api/departments?siteId=${siteId}`)
+        .then(res => res.json())
+        .then(departments => {
+            deptSel.innerHTML = '<option value="">' + SELECT_DEPT + '</option>';
+            departments.forEach(dept => {
+                // new Option sets the label as TEXT: department names are free
+                // text (import, SCIM) and must never be parsed as markup.
+                deptSel.add(new Option(dept.name, dept.id));
+            });
+            svcSel.innerHTML = '<option value="">' + SELECT_SVC + '</option>';
+            if (selectValue != null && selectValue !== '') deptSel.value = String(selectValue);
+        });
+}
+
+function loadServices(departmentId, selectValue) {
+    const svcSel = document.getElementById('serviceId');
+    if (!departmentId) {
+        svcSel.innerHTML = '<option value="">' + SELECT_SVC + '</option>';
+        return Promise.resolve();
+    }
+    return fetch(`/api/services?departmentId=${departmentId}`)
+        .then(res => res.json())
+        .then(services => {
+            svcSel.innerHTML = '<option value="">' + SELECT_SVC + '</option>';
+            services.forEach(service => {
+                svcSel.add(new Option(service.name, service.id));
+            });
+            if (selectValue != null && selectValue !== '') svcSel.value = String(selectValue);
+        });
+}
+
+function genPwd() {
+    const U='ABCDEFGHJKLMNPQRSTUVWXYZ', L='abcdefghijkmnpqrstuvwxyz', N='23456789', S='!@#$%&*?';
+    const pick = s => s[Math.floor(Math.random()*s.length)];
+    let p = pick(U)+pick(L)+pick(N)+pick(S);
+    const all = U+L+N+S;
+    for (let i=0;i<8;i++) p += pick(all);
+    p = p.split('').sort(()=>Math.random()-0.5).join('');
+    const el = document.getElementById('password');
+    el.value = p;
+    el.type = 'text'; // reveal the just-generated credential so the admin can read/copy it
+}
+
+// Restore a kept draft's placement (the selects above are server-prefilled; the
+// two cascaded ones need their options first).
+window.addEventListener('DOMContentLoaded', async function () {
+    const D = <%- include('../../partials/json-script', { v: { siteId: dv('siteId'), departmentId: dv('departmentId'), serviceId: dv('serviceId') } }) %>;
+    if (!D.siteId) return;
+    await loadDepartments(D.siteId, D.departmentId);
+    if (D.departmentId) await loadServices(D.departmentId, D.serviceId);
+});
+</script>

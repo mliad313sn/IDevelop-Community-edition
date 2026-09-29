@@ -1,0 +1,170 @@
+<%
+/*
+ * Campaign list — a cycle is no longer just a status chip.
+ *
+ * Every row carries the live funnel of its ROSTER (cycle_participants), so the
+ * difference between "open" and "actually happening" is visible from the list:
+ * a campaign that is open but never enrolled anybody shows « non lancée », not
+ * a reassuring green pill. Running campaigns come first; a status / site filter
+ * keeps the QA drafts out of the way; a running
+ * campaign past its deadline is flagged.
+ */
+// The percent sign belongs to THIS helper (so an unmeasured rate renders « — »
+// and never « — % »): cyc_bar_caption must therefore not carry one of its own —
+// it did, and the list read « 0 % % approuvé » / « 0 %% approved ».
+const pctText = function (v) { return (v === null || v === undefined) ? '—' : (v + ' %'); };
+const statuses = ['', 'running', 'draft', 'closed', 'cancelled', 'all'];
+%>
+<div class="page-header">
+  <% if (canLaunch) { %>
+    <a href="/cycles/new" class="btn btn-primary" style="float:right"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:cyc_new') %></a>
+  <% } %>
+  <h1><i class="fas fa-bullhorn" aria-hidden="true"></i> <%= __('admin:cyc_title') %></h1>
+  <p class="text-muted"><%= __('admin:cyc_subtitle') %></p>
+</div>
+
+<% if (!canManage && user && user.userType === 'manager') { %>
+<div class="cyc-note" role="status"><i class="fas fa-user-tie" aria-hidden="true"></i> <%= __('admin:cyc_manager_note') %></div>
+<% } else if (!canManage) { %>
+<div class="cyc-note" role="status"><i class="fas fa-eye" aria-hidden="true"></i> <%= __('admin:cyc_read_only') %></div>
+<% } else if (!canLaunch) { %>
+<div class="cyc-note" role="status"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:cyc_launch_reserved') %></div>
+<% } %>
+
+<form method="get" action="/cycles" class="cyc-filters" data-filter-memory>
+  <div>
+    <label for="cyc-status"><%= __('admin:cyc_th_status') %></label>
+    <select id="cyc-status" name="status" class="form-control" data-auto-submit>
+      <% statuses.forEach(function (s) { %>
+        <option value="<%= s %>" <%= filters.status === s ? 'selected' : '' %>><%= __('admin:cyc_list_' + (s || 'default')) %></option>
+      <% }); %>
+    </select>
+  </div>
+  <% if (sites && sites.length > 1) { %>
+  <div>
+    <label for="cyc-site"><%= __('admin:cyc_th_site') %></label>
+    <select id="cyc-site" name="siteId" class="form-control" data-auto-submit>
+      <%# %><% if (sites.length !== 1) { %><option value=""><%= __('admin:cyc_all_sites') %></option><% } %>
+      <% sites.forEach(function (s) { %><option value="<%= s.id %>" <%= Number(filters.siteId) === Number(s.id) ? 'selected' : '' %>><%= s.name %></option><% }); %>
+    </select>
+  </div>
+  <% } %>
+  <div><button type="submit" class="btn btn-secondary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:cyc_apply') %></button></div>
+  <% if (scopedCaption || filters.siteId) { %>
+    <div class="text-muted" style="font-size:.85rem;align-self:center">
+      <i class="fas fa-location-dot" aria-hidden="true"></i>
+      <%= filters.siteId ? __('admin:cyc_scope_site_filter', { site: (sites.find(function (s) { return Number(s.id) === Number(filters.siteId); }) || {}).name || '' }) : scopedCaption %>
+    </div>
+  <% } %>
+</form>
+
+<div class="table-wrapper">
+  <table class="table" id="cyc-list">
+    <thead>
+      <tr>
+        <th><%= __('admin:cyc_th_code') %></th>
+        <th><%= __('admin:cyc_th_label') %></th>
+        <th><%= __('admin:cyc_th_status') %></th>
+        <th><%= __('admin:cyc_th_opens') %></th>
+        <th><%= __('admin:cyc_th_closes') %></th>
+        <th style="min-width:220px"><%= __('admin:cyc_th_progress') %></th>
+        <th><%= __('admin:cyc_th_actions') %></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (!cycles || !cycles.length) { %>
+        <tr><td colspan="7"><em><%= filters.status ? __('admin:cyc_none_for_filter') : __('admin:cyc_none') %></em></td></tr>
+      <% } else { cycles.forEach(function (c) { %>
+        <% const s = summaries && summaries[c.id]; %>
+        <tr>
+          <td><strong><%= c.code %></strong></td>
+          <td><%= c.label || '' %></td>
+          <td>
+            <span class="cyc-pill" data-s="<%= c.status %>"><%= enumLabel('cycle_status', c.status) %></span>
+            <% if (c.overdueDays) { %><span class="cyc-overdue"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('admin:cyc_overdue', { days: c.overdueDays }) %></span><% } %>
+            <%# SECTION campaign-rules / A8: a campaign past its deadline is FLAGGED and its
+                closure PROPOSED — never closed on its own. %>
+            <% if (c.closureProposal) { %><span class="cyc-overdue" title="<%= __('admin:cyc_never_auto_closed') %>"><i class="fas fa-flag" aria-hidden="true"></i> <%= __('admin:cyc_proposal_badge') %></span><% } %>
+            <%# SECTION campaign-rules / A5: how long a closed campaign may still be reopened.
+                read from CycleService.reopenWindow(), the ONE place
+                that decides; the last day of the window is still a day. %>
+            <% if (c.canReopenClosed && c.reopenWindowLastDay) { %><span class="text-muted" style="font-size:.75em"><%= __('admin:cyc_reopen_window_last_day', { window: c.reopenWindowTotal }) %></span>
+            <% } else if (c.canReopenClosed) { %><span class="text-muted" style="font-size:.75em"><%= __('admin:cyc_reopen_window_left', { days: c.reopenWindowDays, window: c.reopenWindowTotal }) %></span><% } %>
+          </td>
+          <td><%= fmtDate(c.openedAt) %></td>
+          <td><%= fmtDate(c.closesAt) %></td>
+          <td>
+            <% if (!s || !s.active) { %>
+              <span class="text-muted"><i class="fas fa-circle-exclamation" aria-hidden="true"></i> <%= c.status === 'cancelled' ? (c.cancelReason || '—') : __('admin:cyc_not_launched') %></span>
+            <% } else { %>
+              <div class="cyc-bar" role="img"
+                   aria-label="<%= __('admin:cyc_bar_aria', { approved: s.approved, review: s.inReview, progress: s.inProgress, notStarted: s.notStarted, total: s.active }) %>">
+                <span class="cyc-seg cyc-approved"   style="width:<%= s.pctApproved || 0 %>%"></span>
+                <span class="cyc-seg cyc-inreview"   style="width:<%= s.pctInReview || 0 %>%"></span>
+                <span class="cyc-seg cyc-inprogress" style="width:<%= s.pctInProgress || 0 %>%"></span>
+                <span class="cyc-seg cyc-notstarted" style="width:<%= s.pctNotStarted || 0 %>%"></span>
+              </div>
+              <small class="text-muted">
+                <%= __('admin:cyc_bar_caption', { pct: pctText(s.pctApproved), notStarted: s.notStarted, review: s.inReview, total: s.active }) %>
+              </small>
+            <% } %>
+          </td>
+          <td style="white-space:nowrap">
+            <a class="btn btn-sm btn-primary" href="/cycles/<%= c.id %>">
+              <i class="fas fa-gauge-high" aria-hidden="true"></i> <%= __('admin:cyc_open_console') %>
+            </a>
+          </td>
+        </tr>
+      <% }); } %>
+    </tbody>
+  </table>
+</div>
+
+<p class="text-muted" style="margin-top:.75rem;font-size:.85rem">
+  <i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:cyc_skills_note') %>
+</p>
+
+<%#
+  SECTION campaign-rules — A6 : la mesure hors campagne est autorisée et datée. Elle est
+  affichée ICI, hors du tableau des campagnes, parce qu'elle n'appartient à
+  aucune campagne et n'entre dans aucun taux de complétion.
+%>
+<% if (typeof offCampaign !== 'undefined' && offCampaign) { %>
+<div class="cyc-note" role="status" id="cyc-off-campaign">
+  <i class="fas fa-calendar-xmark" aria-hidden="true"></i>
+  <div>
+    <strong><%= __('admin:cyc_off_campaign') %></strong> —
+    <% if (offCampaign.measurements) { %>
+      <%= __('admin:cyc_off_campaign_n', { measurements: offCampaign.measurements, people: offCampaign.people }) %><% if (offCampaign.lastAt) { %> · <%= __('admin:cyc_off_campaign_last', { date: fmtDate(offCampaign.lastAt) }) %><% } %>
+    <% } else { %>
+      <%= __('admin:cyc_off_campaign_none') %>
+    <% } %>
+    <div style="font-size:.85rem"><%= __('admin:cyc_off_campaign_help') %></div>
+  </div>
+</div>
+<% } %>
+
+<p class="text-muted" style="font-size:.85rem">
+  <i class="fas fa-flag" aria-hidden="true"></i> <%= __('admin:cyc_never_auto_closed') %>
+</p>
+
+<style>
+  .cyc-note{display:flex;gap:.5rem;align-items:center;padding:.6rem .8rem;margin-bottom:1rem;border-radius:8px;
+            background:rgba(127,127,127,.12);color:var(--text-muted,#9aa1ac)}
+  .cyc-filters{display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;margin:.6rem 0 1rem}
+  .cyc-filters label{display:block;font-size:.8rem;color:var(--text-muted,#9aa1ac)}
+  .cyc-pill{display:inline-block;padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:#64748b}
+  .cyc-pill[data-s="draft"]{background:#94a3b8}
+  .cyc-pill[data-s="open"]{background:#0f8a3c}
+  .cyc-pill[data-s="locked"]{background:#b45309}
+  .cyc-pill[data-s="closed"]{background:#1b56b8}
+  .cyc-pill[data-s="cancelled"]{background:#7f1d1d}
+  .cyc-overdue{display:inline-block;margin-left:.3rem;padding:2px 8px;border-radius:10px;font-size:.75em;
+               background:rgba(200,81,75,.16);color:#c8514b;font-weight:600}
+  .cyc-bar{display:flex;height:10px;border-radius:6px;overflow:hidden;background:rgba(127,127,127,.18);margin-bottom:.25rem}
+  .cyc-seg{display:block;height:100%}
+  .cyc-approved{background:#0f8a3c}
+  .cyc-inreview{background:#b45309}
+  .cyc-inprogress{background:#5b8bd0}
+  .cyc-notstarted{background:rgba(127,127,127,.35)}
+</style>

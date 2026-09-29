@@ -1,0 +1,757 @@
+<a href="/employees" class="btn-back"><%= __('admin:back_to_employees') %></a>
+
+<div class="page-header">
+    <h1><%= employee.firstName %> <%= employee.lastName %></h1>
+    <div class="page-actions">
+        <a href="/employees/<%= employee.id %>/assessments" class="btn btn-primary"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('admin:view_assessments') %></a>
+        <a href="/employees/<%= employee.id %>/progress" class="btn btn-secondary" title="Historique des campagnes et progression / Campaign history & progression"><i class="fas fa-arrow-trend-up" aria-hidden="true"></i> Progression</a>
+        <a href="#skill-timeline" class="btn btn-secondary"><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('admin:skill_timeline') %></a>
+        <a href="/employees/<%= employee.id %>/edit" class="btn btn-secondary"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></a>
+    </div>
+</div>
+
+<%# Record state, made explicit. Three states a reader must never confuse:
+    a LEAVER (is_active=false, cancelled_at NULL) wears "Sorti"; a record
+    VOIDED as created-in-error (MaintenanceService, cancelled_at + reason,
+    reversible) says so with its reason; a GDPR-ERASED subject (erased_at,
+    irreversible) carries its own marker. Until now the profile showed none
+    of them, and the list showed a voided duplicate as a departure. %>
+<%
+    const recErased = Boolean(employee.erasedAt);
+    const recVoided = !recErased && Boolean(employee.cancelledAt);
+    const recInactive = !recErased && !recVoided && (employee.isActive === false || employee.isActive === 0);
+    const recState = recErased ? 'erased' : (recVoided ? 'voided' : (recInactive ? 'inactive' : 'active'));
+    const recDate = (d) => { try { return new Date(d).toLocaleDateString(typeof lang !== 'undefined' && lang === 'en' ? 'en-GB' : 'fr-FR', { year: 'numeric', month: 'long', day: 'numeric' }); } catch (e) { return String(d).slice(0, 10); } };
+%>
+<style nonce="<%= cspNonce %>">
+    .rec-badge { display:inline-block; padding:2px 9px; border:1px solid; border-radius:999px; font: 600 11px/1.6 var(--font-data, system-ui); text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+    .rec-badge[data-s="inactive"] { border-color: var(--danger, #b91c1c); color: var(--danger, #b91c1c); }
+    .rec-badge[data-s="voided"]   { border-color: var(--warning, #b45309); color: var(--warning, #b45309); }
+    .rec-badge[data-s="erased"]   { border-color: var(--text-muted, #64748b); color: var(--text-muted, #64748b); }
+    .rec-badge[data-s="active"]   { border-color: var(--success, #15803d); color: var(--success, #15803d); }
+    .rec-note { display:block; margin-top:.35rem; color: var(--text-muted, #64748b); font-size:.9rem; }
+</style>
+<div class="employee-details">
+    <div class="detail-section">
+        <h2><%= __('admin:employee_information') %></h2>
+        <table class="table">
+            <tr data-record-state="<%= recState %>">
+                <th><%= __('admin:emp_record_status') %></th>
+                <td>
+                    <% if (recErased) { %>
+                        <span class="rec-badge" data-s="erased" title="<%= __('admin:emp_erased_title') %>"><%= __('admin:emp_erased_badge') %></span>
+                        <span class="rec-note"><%= __('admin:emp_erased_title') %></span>
+                    <% } else if (recVoided) { %>
+                        <span class="rec-badge" data-s="voided" title="<%= __('admin:emp_voided_title') %>"><%= __('admin:emp_voided_badge') %></span>
+                        <span class="rec-note"><%= __('admin:emp_voided_on', { date: recDate(employee.cancelledAt) }) %><% if (employee.cancelReason) { %> — <%= __('admin:emp_voided_reason', { reason: employee.cancelReason }) %><% } %></span>
+                    <% } else if (recInactive) { %>
+                        <span class="rec-badge" data-s="inactive" title="<%= __('admin:emp_inactive_title') %>"><%= __('admin:emp_inactive_badge') %></span>
+                    <% } else { %>
+                        <span class="rec-badge" data-s="active"><%= __('admin:emp_record_active') %></span>
+                    <% } %>
+                </td>
+            </tr>
+            <tr>
+                <th><%= __('admin:employee_number') %></th>
+                <td><%= employee.employeeNumber %></td>
+            </tr>
+            <tr>
+                <th><%= __('admin:name') %></th>
+                <td><%= employee.firstName %> <%= employee.lastName %></td>
+            </tr>
+            <tr>
+                <th><%= __('admin:email') %></th>
+                <td><%= employee.email || __('admin:not_available') %></td>
+            </tr>
+            <tr>
+                <th><%= __('admin:phone') %></th>
+                <td><%= employee.phone || __('admin:not_available') %></td>
+            </tr>
+            <tr>
+                <th><%= __('admin:role') %></th>
+                <td><%= employee.roleName %></td>
+            </tr>
+            <tr>
+                <th><%= __('admin:site') %></th>
+                <td><%= employee.siteName %></td>
+            </tr>
+            <tr>
+                <th><%= __('admin:department') %></th>
+                <td><%= employee.departmentName %></td>
+            </tr>
+            <tr>
+                <th><%= __('admin:service') %></th>
+                <td><%= employee.serviceName %></td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+<%# Account status: read-only for everyone who may open the
+    record; a manager gets one-click REQUESTS (unlock / resend) that land in the
+    admins' action centre instead of a 403 on the admin buttons. %>
+<% if (typeof account !== 'undefined' && account) {
+    const accCls = (s) => ({ active: 'badge-success', locked: 'badge-danger', expired: 'badge-danger', disabled: 'badge-danger', none: 'badge-danger', stale: 'badge-warning', pending: 'badge-warning', never_invited: 'badge-warning', sso: 'badge-info' })[s] || 'badge-secondary';
+    const openKinds = new Set((typeof openRequests !== 'undefined' ? openRequests : []).map((r) => r.kind)); %>
+<div class="detail-section" style="margin-top:1.25rem" id="account-status">
+    <h2><i class="fas fa-user-lock" aria-hidden="true"></i> <%= __('admin:acc_block_title') %></h2>
+    <div class="card" style="padding:14px 16px;">
+        <table class="table" style="margin:0;">
+            <tr><th><%= __('admin:acc_th_state') %></th><td>
+                <span class="badge <%= accCls(account.state) %>" data-acc-state="<%= account.state %>" title="<%= __('admin:acc_state_' + account.state + '_title') %>"><%= __('admin:acc_state_' + account.state) %></span>
+                <% if (account.state === 'locked' && account.lockedUntil) { %> <span class="help-text"><%= __('admin:acc_locked_until', { time: fmtDateTime(account.lockedUntil), n: account.failedAttempts }) %></span><% } %>
+            </td></tr>
+            <tr><th><%= __('admin:acc_th_username') %></th><td><code><%= account.username || '—' %></code> · <%= __('admin:acc_kind_' + account.kind) %></td></tr>
+            <tr><th><%= __('admin:acc_th_last_login') %></th><td><%= account.lastLoginAt ? fmtDateTime(account.lastLoginAt) : __('admin:acc_never') %></td></tr>
+            <tr><th><%= __('admin:inv_th_invitation') %></th><td><%= account.invitedAt ? fmtDate(account.invitedAt) : '—' %></td></tr>
+        </table>
+        <% if (typeof isManagerUser !== 'undefined' && isManagerUser) { %>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.8rem;align-items:center;">
+            <button type="button" class="btn btn-secondary btn-sm acc-request" data-acc-request="unlock" data-emp="<%= employee.id %>" <%= openKinds.has('unlock') ? 'disabled' : '' %>><i class="fas fa-lock-open" aria-hidden="true"></i> <%= __('admin:acc_request_btn_unlock') %></button>
+            <button type="button" class="btn btn-secondary btn-sm acc-request" data-acc-request="resend" data-emp="<%= employee.id %>" <%= openKinds.has('resend') ? 'disabled' : '' %>><i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('admin:acc_request_btn_resend') %></button>
+            <span class="help-text" id="acc-request-msg"><%= openKinds.size ? __('admin:acc_request_pending_note') : __('admin:acc_request_hint') %></span>
+        </div>
+        <% } else if (typeof canActOnAccount !== 'undefined' && canActOnAccount) { %>
+        <p class="help-text" style="margin:.6rem 0 0;"><a href="/admin/accounts?q=<%= encodeURIComponent(account.username || employee.employeeNumber || '') %>"><i class="fas fa-users-gear" aria-hidden="true"></i> <%= __('admin:ap_open_console') %></a>
+            <% (typeof openRequests !== 'undefined' ? openRequests : []).forEach(function (r) { %> · <span style="color:#b45309;"><%= __('admin:acc_request_open_' + r.kind, { date: fmtDate(r.createdAt) }) %></span><% }); %></p>
+        <% } %>
+    </div>
+</div>
+<% if (typeof isManagerUser !== 'undefined' && isManagerUser) { %>
+<script nonce="<%= cspNonce %>">
+(function () {
+    var msg = document.getElementById('acc-request-msg');
+    Array.prototype.forEach.call(document.querySelectorAll('.acc-request'), function (btn) {
+        btn.addEventListener('click', async function () {
+            var note = await window.promptDialog(<%- JSON.stringify(__('admin:acc_request_note_prompt')) %>, '', { multiline: true });
+            if (note === null) return;
+            btn.disabled = true;
+            try {
+                var r = await fetch('/employees/' + btn.getAttribute('data-emp') + '/account-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: btn.getAttribute('data-acc-request'), note: note }) });
+                var j = await r.json().catch(function () { return {}; });
+                msg.textContent = j.message || j.error || '';
+                msg.style.color = r.ok ? '#15803d' : '#b91c1c';
+                if (!r.ok) btn.disabled = false;
+                if (window.toast) window.toast(j.message || j.error || '', r.ok ? 'success' : 'error');
+            } catch (e) { btn.disabled = false; }
+        });
+    });
+})();
+</script>
+<% } %>
+<% } %>
+
+<% if (typeof canManageAccess !== 'undefined' && canManageAccess) { %>
+<%# Every sentence of this block is keyed; the confirms go through data-confirm. %>
+<div class="detail-section" style="margin-top:1.25rem">
+    <h2><i class="fas fa-id-badge" aria-hidden="true"></i> <%= __('admin:acc_id_title') %></h2>
+
+    <!-- Authentication methods: local password + any number of SSO identities -->
+    <div class="card" style="padding:14px 16px; margin-bottom:1rem;">
+        <h3 style="margin-top:0;"><i class="fas fa-fingerprint" aria-hidden="true"></i> <%= __('admin:acc_id_methods') %></h3>
+
+        <!-- Local password -->
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.5rem 0; border-bottom:1px solid var(--line,#e2e8f0);">
+            <div>
+                <i class="fas fa-key" aria-hidden="true"></i> <strong><%= __('admin:acc_id_local_password') %></strong>
+                <% if (typeof passwordDisabled !== 'undefined' && passwordDisabled) { %>
+                    <span class="pill" style="background:#f6e4e8;color:#9e3a52;font-size:11px;padding:2px 8px;border-radius:999px;"><%= __('admin:acc_id_pw_disabled') %></span>
+                <% } else { %>
+                    <span class="pill" style="background:#e3f0e9;color:#2f7d5b;font-size:11px;padding:2px 8px;border-radius:999px;"><%= __('admin:acc_id_pw_enabled') %></span>
+                <% } %>
+            </div>
+            <form action="/employees/<%= employee.id %>/password-auth" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="disabled" value="<%= (typeof passwordDisabled !== 'undefined' && passwordDisabled) ? '0' : '1' %>">
+                <button type="submit" class="btn btn-secondary btn-sm">
+                    <%= (typeof passwordDisabled !== 'undefined' && passwordDisabled) ? __('admin:acc_id_pw_reenable') : __('admin:acc_id_pw_disable') %>
+                </button>
+            </form>
+        </div>
+
+        <!-- Linked SSO identities -->
+        <% if (typeof identities !== 'undefined' && identities.length) { %>
+            <% identities.forEach(function(idn){ %>
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.5rem 0; border-bottom:1px solid var(--line,#e2e8f0);">
+                    <div>
+                        <i class="fas fa-id-badge" aria-hidden="true"></i> <strong><%= idn.provider %></strong>
+                        <code style="font-size:.85em;"><%= idn.uid %></code>
+                        <% if (idn.email) { %><span class="help-text" style="font-size:.85em;">· <%= idn.email %></span><% } %>
+                        <% if (idn.isPrimary) { %><span style="font-size:11px;color:var(--brand,#b8860b);">· <%= __('admin:acc_id_primary') %></span><% } %>
+                    </div>
+                    <form action="/employees/<%= employee.id %>/identity/remove" method="POST" data-confirm="<%= __('admin:acc_id_remove_confirm') %>" data-confirm-danger>
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <input type="hidden" name="identityId" value="<%= idn.id %>">
+                        <button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-unlink" aria-hidden="true"></i> <%= __('admin:acc_id_remove') %></button>
+                    </form>
+                </div>
+            <% }); %>
+        <% } else { %>
+            <p class="help-text" style="margin:.5rem 0 0;"><%= __('admin:acc_id_none') %></p>
+        <% } %>
+
+        <!-- Add another identity -->
+        <form action="/employees/<%= employee.id %>/sso-link" method="POST" style="display:flex; flex-wrap:wrap; gap:.5rem; align-items:flex-end; margin-top:.75rem;">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="form-group" style="margin:0;">
+                <label for="sso-provider"><%= __('admin:acc_id_provider') %></label>
+                <select id="sso-provider" name="provider" class="form-control" style="max-width:140px;">
+                    <option value="entra">entra</option>
+                    <option value="oidc">oidc</option>
+                    <option value="saml">saml</option>
+                    <option value="google">google</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin:0; flex:1; min-width:240px;">
+                <label for="sso-external-id"><%= __('admin:acc_id_external_id') %></label>
+                <input type="text" id="sso-external-id" name="externalId" class="form-control" placeholder="<%= __('admin:acc_id_external_id_ph') %>" required>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:acc_id_add_method') %></button>
+        </form>
+    </div>
+
+    <!-- Promote to admin (SuperAdmin only) -->
+    <% if (typeof isSuperAdmin !== 'undefined' && isSuperAdmin) { %>
+    <div class="card" style="padding:14px 16px;">
+        <h3 style="margin-top:0;"><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('admin:acc_id_admin_title') %></h3>
+        <% if (linkedAdmin) { %>
+            <p class="help-text"><%- __('admin:acc_id_admin_has', { role: enumLabel('admin_role', linkedAdmin.role), username: linkedAdmin.username, id: linkedAdmin.id }) %><%= linkedAdmin.isActive ? '' : ' (' + __('admin:acc_id_admin_deactivated') + ')' %></p>
+            <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+                <a href="/admins/<%= linkedAdmin.id %>" class="btn btn-secondary btn-sm"><i class="fas fa-sliders-h" aria-hidden="true"></i> <%= __('admin:acc_id_admin_manage') %></a>
+                <%# the twin of the button on /admins/:id — same mandatory reason. %>
+                <form action="/admins/<%= linkedAdmin.id %>/revoke-access" method="POST" data-confirm="<%= __('admin:acc_id_admin_revoke_confirm') %>" data-confirm-danger data-confirm-reason="reason">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <button type="submit" class="btn btn-danger btn-sm"><i class="fas fa-user-slash" aria-hidden="true"></i> <%= __('admin:acc_id_admin_revoke') %></button>
+                </form>
+            </div>
+        <% } else { %>
+            <p class="help-text"><%- __('admin:acc_id_admin_grant_intro') %></p>
+            <form action="/employees/<%= employee.id %>/grant-admin" method="POST" style="display:flex; gap:.5rem; align-items:flex-end;" data-confirm="<%= __('admin:acc_id_admin_grant_confirm') %>">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <div class="form-group" style="margin:0;">
+                    <label for="grant-role"><%= __('admin:role') %></label>
+                    <select id="grant-role" name="role" class="form-control" style="max-width:180px;">
+                        <option value="localadmin"><%= enumLabel('admin_role', 'localadmin') %></option>
+                        <option value="viewer"><%= enumLabel('admin_role', 'viewer') %></option>
+                        <option value="superadmin"><%= enumLabel('admin_role', 'superadmin') %></option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('admin:acc_id_admin_grant') %></button>
+            </form>
+        <% } %>
+    </div>
+    <%# EXC (3.23.21, PO decision): the employee's SSO exception — SuperAdmin only,
+        audited; password sign-in kept while SSO is enforced. Never an admin account. %>
+    <div class="card" style="padding:14px 16px;" id="sso-exception">
+        <h3 style="margin-top:0;"><i class="fas fa-key" aria-hidden="true"></i> <%= __('admin:sso_exc_title') %></h3>
+        <p class="help-text" id="sso-exc-help"><%= __('admin:sso_exc_help') %></p>
+        <% if (employee.ssoExceptionAt) { %>
+            <p data-sso-exception-active><%= __('admin:sso_exc_active', { date: (typeof fmtDate === 'function') ? fmtDate(employee.ssoExceptionAt) : employee.ssoExceptionAt, by: employee.ssoExceptionBy ? ('#' + employee.ssoExceptionBy) : '—', reason: employee.ssoExceptionReason || '—' }) %></p>
+            <form action="/employees/<%= employee.id %>/sso-exception" method="POST" data-confirm="<%= __('admin:sso_exc_remove_confirm') %>" data-confirm-danger>
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="action" value="remove">
+                <button type="submit" class="btn btn-secondary btn-sm"><%= __('admin:sso_exc_remove') %></button>
+            </form>
+        <% } else { %>
+            <p><%= __('admin:sso_exc_none') %></p>
+            <form action="/employees/<%= employee.id %>/sso-exception" method="POST" style="display:flex; gap:.5rem; align-items:flex-end; flex-wrap:wrap;">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="action" value="grant">
+                <div class="form-group" style="margin:0; flex:1; min-width:240px;">
+                    <label for="sso-exc-reason"><%= __('admin:sso_exc_reason_label') %></label>
+                    <input type="text" id="sso-exc-reason" name="reason" class="form-control" maxlength="300" required aria-describedby="sso-exc-help">
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm"><%= __('admin:sso_exc_grant') %></button>
+            </form>
+        <% } %>
+    </div>
+    <% } %>
+</div>
+<% } %>
+
+<!-- Skill evolution over time + assessment movement (employee ↔ reviewer) -->
+<div id="skill-timeline" class="detail-section" style="margin-top:1.25rem">
+  <h2><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('admin:skill_evolution_movement') %></h2>
+  <div class="st-grid">
+    <div class="st-card">
+      <div class="st-head">
+        <strong><%= __('admin:skill_level_over_time') %></strong>
+        <select id="st-skill" class="form-control" style="max-width:280px"><option value=""><%= __('admin:loading') %></option></select>
+      </div>
+      <div id="st-empty" class="text-muted" style="display:none;padding:.75rem"><%= __('admin:no_skill_history') %></div>
+      <div style="position:relative;height:300px"><canvas id="st-chart"></canvas></div>
+      <div id="st-summary" class="text-muted" style="font-size:.85rem;margin-top:.4rem"></div>
+    </div>
+    <div class="st-card">
+      <div class="st-head"><strong><%= __('admin:assessment_movement') %></strong> <span class="text-muted" style="font-size:.8rem"><%= __('admin:movement_subtitle') %></span></div>
+      <div id="st-movement" class="st-timeline"><div class="text-muted" style="padding:.75rem"><%= __('admin:loading') %></div></div>
+    </div>
+  </div>
+</div>
+
+<style>
+.st-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
+.st-card{border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:14px 16px;background:var(--card,#fff)}
+.st-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.st-timeline{max-height:340px;overflow:auto}
+.st-ev{display:flex;gap:10px;padding:8px 4px;border-bottom:1px solid #f1f5f9;font-size:.86rem}
+.st-dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex:0 0 10px}
+.st-ev .st-when{color:#94a3b8;font-size:.76rem}
+.st-act{font-weight:700;text-transform:capitalize}
+@media(max-width:820px){.st-grid{grid-template-columns:1fr}}
+</style>
+<script src="/vendor/chart.umd.min.js?v=<%= assetVersion %>"></script>
+<script src="/js/chart-theme.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+// Shared by the several chart blocks on this page. Colours resolve from the
+// theme, so they follow the running identity instead of being frozen to one
+// edition's palette; the fallbacks keep the page rendering if the theme is
+// ever absent.
+var SEMC = (window.ChartTheme && window.ChartTheme.SEMANTIC) || { neutral: '#5B9DF5', mid: '#F5A623' };
+var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 'rgba(91,157,245,0.14)' };
+</script>
+<script nonce="<%= cspNonce %>">
+(function(){
+  var EMP = <%= employee.id %>;
+  var ACT_COLOR = { submit:'#1b56b8', open_review:'#c46a00', request_changes:'#c62828', approve:'#0f8a3c', reject:'#b00020', validate:'#0f8a3c', arbitrate:'#7a3cc4', comment:'#64748b' };
+  var bySkill = {}, chart = null;
+  function fmt(d){ try{ return FMT.date(d); }catch(e){ return String(d).slice(0,10); } }
+
+  fetch('/employees/'+EMP+'/assessments/history',{headers:{Accept:'application/json'}})
+    .then(function(r){ return r.ok?r.json():{history:[]}; })
+    .then(function(j){
+      var rows = (j.history||[]).slice().sort(function(a,b){ return new Date(a.assessedAt)-new Date(b.assessedAt); });
+      rows.forEach(function(h){ (bySkill[h.skillId] = bySkill[h.skillId] || {name:h.skillName||('#'+h.skillId), pts:[]}).pts.push(h); });
+      var sel = document.getElementById('st-skill');
+      var ids = Object.keys(bySkill).sort(function(a,b){ return bySkill[b].pts.length - bySkill[a].pts.length || bySkill[a].name.localeCompare(bySkill[b].name); });
+      if(!ids.length){ sel.style.display='none'; document.getElementById('st-empty').style.display='block'; document.getElementById('st-chart').style.display='none'; return; }
+      sel.innerHTML = ids.map(function(id){ return '<option value="'+id+'">'+esc(bySkill[id].name)+' ('+bySkill[id].pts.length+')</option>'; }).join('');
+      sel.onchange = function(){ draw(sel.value); };
+      draw(ids[0]);
+    });
+
+  function draw(skillId){
+    var s = bySkill[skillId]; if(!s) return;
+    var labels = s.pts.map(function(p){ return fmt(p.assessedAt); });
+    var data = s.pts.map(function(p){ return p.newLevel; });
+    var ctx = document.getElementById('st-chart').getContext('2d');
+    if(chart) chart.destroy();
+    chart = new Chart(ctx, { type:'line', data:{ labels:labels, datasets:[{ label:s.name+' — level', data:data, stepped:true, borderColor:SEMC.neutral, backgroundColor:ROLEC.neutralFillSoft, fill:true, pointRadius:4, tension:0 }]},
+      options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ min:0, max:4, ticks:{ stepSize:1 }, title:{display:true,text:<%- JSON.stringify(__('admin:level_axis')) %>} } }, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ afterLabel:function(c){ var p=s.pts[c.dataIndex]; return (p.source?('source: '+p.source):'')+(p.actorType?(' · '+p.actorType):''); } } } } } });
+    var first=s.pts[0], last=s.pts[s.pts.length-1];
+    document.getElementById('st-summary').textContent = s.pts.length+' change(s) · '+first.newLevel+' → '+last.newLevel+' (from '+fmt(first.assessedAt)+' to '+fmt(last.assessedAt)+')';
+  }
+
+  fetch('/api/self-assessment/employee/'+EMP+'/movement',{headers:{Accept:'application/json'}})
+    .then(function(r){ return r.ok?r.json():{events:[]}; })
+    .then(function(j){
+      var box = document.getElementById('st-movement'); var ev = j.events||[];
+      if(!ev.length){ box.innerHTML='<div class="text-muted" style="padding:.75rem">'+<%- JSON.stringify(__('admin:no_movement')) %>+'</div>'; return; }
+      box.innerHTML = ev.map(function(e){
+        var c = ACT_COLOR[e.action]||'#64748b';
+        var arrow = (e.fromState&&e.toState)?(' <span class="text-muted">'+esc(e.fromState)+'→'+esc(e.toState)+'</span>'):'';
+        return '<div class="st-ev"><span class="st-dot" style="background:'+c+'"></span><div><span class="st-act" style="color:'+c+'">'+esc(e.action)+'</span> <span class="text-muted">by '+esc(e.actorType||'?')+'</span>'+arrow+(e.skillName?(' · '+esc(e.skillName)):'')+'<div class="st-when">'+FMT.dateTime(e.createdAt)+'</div></div></div>';
+      }).join('');
+    });
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+})();
+</script>
+
+<!-- 9-Box placement trend over time -->
+<div class="detail-section" style="margin-top:1.25rem">
+  <h2><i class="fas fa-puzzle-piece" aria-hidden="true"></i> <%= __('admin:ninebox_history') %></h2>
+  <div class="card" style="padding:14px 16px">
+    <div id="nbt-empty" class="text-muted" style="display:none;padding:.5rem"><%= __('admin:no_ninebox') %></div>
+    <div id="nbt-wrap">
+      <div id="nbt-summary" class="text-muted" style="font-size:.88rem;margin-bottom:8px"></div>
+      <div style="position:relative;height:260px"><canvas id="nbt-chart"></canvas></div>
+    </div>
+  </div>
+</div>
+<script nonce="<%= cspNonce %>">
+(function(){
+  var EMP = <%= employee.id %>;
+  function fmt(d){ try{ return FMT.date(d); }catch(e){ return String(d).slice(0,10); } }
+  fetch('/api/ninebox/employee/'+EMP+'/trend',{headers:{Accept:'application/json'}})
+    .then(function(r){ return r.ok?r.json():{trend:[]}; })
+    .then(function(j){
+      var t = j.trend||[];
+      if(!t.length){ document.getElementById('nbt-empty').style.display='block'; document.getElementById('nbt-wrap').style.display='none'; return; }
+      // Localized 9-box cell name. `boxLabel` is the hardcoded English string the
+      // service stored at placement time, so rendering it put 'Gold Star' into a
+      // French chart. Derive from potential-performance, the same key the service
+      // uses; fall back to the stored value only if the pair is unrecognised.
+      var NB_CELL = {
+        'high-low':<%- JSON.stringify(__('talentx:nb_cell_diamond')) %>, 'high-medium':<%- JSON.stringify(__('talentx:nb_cell_shooting')) %>, 'high-high':<%- JSON.stringify(__('talentx:nb_cell_gold')) %>,
+        'medium-low':<%- JSON.stringify(__('talentx:nb_cell_dilemma')) %>, 'medium-medium':<%- JSON.stringify(__('talentx:nb_cell_critical')) %>, 'medium-high':<%- JSON.stringify(__('talentx:nb_cell_emerging')) %>,
+        'low-low':<%- JSON.stringify(__('talentx:nb_cell_concern')) %>, 'low-medium':<%- JSON.stringify(__('talentx:nb_cell_essential')) %>, 'low-high':<%- JSON.stringify(__('talentx:nb_cell_trusted')) %>
+      };
+      var NB_BOX_WORD = <%- JSON.stringify(__('talentx:nb_box_word')) %>;
+      function nbCell(p){ return (p && NB_CELL[p.potential+'-'+p.performance]) || (p && p.boxLabel) || (NB_BOX_WORD+' '+(p&&p.box)); }
+      var labels = t.map(function(p){ return fmt(p.at); });
+      var ctx = document.getElementById('nbt-chart').getContext('2d');
+      new Chart(ctx, { type:'line', data:{ labels:labels, datasets:[
+          { label:<%- JSON.stringify(__('admin:performance')) %>, data:t.map(function(p){return p.perfScore;}), stepped:true, borderColor:SEMC.mid, backgroundColor:'transparent', pointRadius:4, tension:0 },
+          { label:<%- JSON.stringify(__('admin:potential')) %>, data:t.map(function(p){return p.potScore;}), stepped:true, borderColor:SEMC.neutral, backgroundColor:'transparent', pointRadius:4, tension:0 }
+        ]},
+        options:{ responsive:true, maintainAspectRatio:false,
+          scales:{ y:{ min:1, max:3, ticks:{ stepSize:1, callback:function(v){return {1:<%- JSON.stringify(__('admin:low')) %>,2:<%- JSON.stringify(__('admin:medium')) %>,3:<%- JSON.stringify(__('admin:high')) %>}[v]||v;} } } },
+          plugins:{ legend:{position:'bottom'}, tooltip:{ callbacks:{ title:function(c){ return labels[c[0].dataIndex]; }, afterBody:function(c){ var p=t[c[0].dataIndex]; return NB_BOX_WORD+': '+nbCell(p); } } } } } });
+      var first=t[0], last=t[t.length-1];
+      document.getElementById('nbt-summary').innerHTML = t.length+' placement(s) · latest: <strong>'+esc9(nbCell(last))+'</strong> (perf '+last.performance+' / pot '+last.potential+') · from '+fmt(first.at)+' to '+fmt(last.at);
+    }).catch(function(){});
+  function esc9(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+})();
+</script>
+
+<!-- Unified development timeline (skills · 9-box · coaching · IDP · PIP) -->
+<div class="detail-section" style="margin-top:1.25rem">
+  <h2><i class="fas fa-compass" aria-hidden="true"></i> <%= __('admin:development_timeline') %></h2>
+  <div class="tl-filters" id="tl-filters">
+    <button class="tl-chip on" data-k="all"><%= __('admin:all') %></button>
+    <button class="tl-chip" data-k="skill"><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('admin:skills') %></button>
+    <button class="tl-chip" data-k="ninebox"><i class="fas fa-puzzle-piece" aria-hidden="true"></i> 9-Box</button>
+    <button class="tl-chip" data-k="coaching"><i class="fas fa-handshake" aria-hidden="true"></i> Coaching</button>
+    <button class="tl-chip" data-k="idp"><i class="fas fa-seedling" aria-hidden="true"></i> IDP</button>
+    <button class="tl-chip" data-k="pip"><i class="fas fa-stopwatch" aria-hidden="true"></i> PIP</button>
+  </div>
+  <div class="card" style="padding:14px 18px">
+    <div id="tl-feed"><div class="text-muted" style="padding:.5rem"><%= __('admin:loading') %></div></div>
+  </div>
+</div>
+<style>
+.tl-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tl-chip{border:1px solid var(--line,#e2e8f0);background:var(--card,#fff);color:var(--ink,#0f172a);border-radius:999px;padding:5px 13px;font-size:.82rem;cursor:pointer}
+.tl-chip.on{background:var(--brand,#1d4ed8);color:#fff;border-color:var(--brand,#1d4ed8)}
+.tl-feed-item{display:flex;gap:12px;padding:10px 2px;border-bottom:1px solid #f4f6fb}
+.tl-feed-item:last-child{border-bottom:0}
+.tl-dot{flex:0 0 12px;width:12px;height:12px;border-radius:50%;margin-top:5px}
+.tl-when{color:#94a3b8;font-size:.76rem;white-space:nowrap}
+.tl-txt{font-size:.86rem;color:var(--ink,#0f172a)}
+.tl-k{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-right:6px}
+</style>
+<script nonce="<%= cspNonce %>">
+(function(){
+  var EMP=<%= employee.id %>;
+  var COLOR={skill:'#2563eb',ninebox:'#7c3aed',coaching:'#0ea5a4',idp:'#15803d',pip:'#e6921e'};
+  var KLBL={skill:<%- JSON.stringify(__('admin:skill')) %>,ninebox:'9-Box',coaching:'Coaching',idp:'IDP',pip:'PIP'};
+  var all=[]; var filter='all';
+  function e(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function render(){
+    var feed=document.getElementById('tl-feed');
+    var rows=all.filter(function(x){return filter==='all'||x.kind===filter;});
+    if(!rows.length){ feed.innerHTML='<div class="text-muted" style="padding:.5rem">'+<%- JSON.stringify(__('admin:no_events_filter')) %>+'</div>'; return; }
+    feed.innerHTML=rows.map(function(x){
+      var c=COLOR[x.kind]||'#64748b';
+      return '<div class="tl-feed-item"><span class="tl-dot" style="background:'+c+'"></span>'+
+        '<div style="flex:1"><div class="tl-txt"><span class="tl-k" style="color:'+c+'">'+(KLBL[x.kind]||x.kind)+'</span>'+e(x.text)+'</div>'+
+        '<div class="tl-when">'+FMT.dateTime(x.at)+'</div></div></div>';
+    }).join('');
+  }
+  document.querySelectorAll('#tl-filters .tl-chip').forEach(function(b){
+    b.addEventListener('click',function(){ filter=b.dataset.k; document.querySelectorAll('#tl-filters .tl-chip').forEach(function(x){x.classList.toggle('on',x===b);}); render(); });
+  });
+  fetch('/employees/'+EMP+'/timeline',{headers:{Accept:'application/json'}})
+    .then(function(r){ return r.ok?r.json():{timeline:[]}; })
+    .then(function(j){ all=j.timeline||[]; render(); }).catch(function(){});
+})();
+</script>
+
+<!-- Development actions: coaching · IDP · PIP progression -->
+<div class="detail-section" style="margin-top:1.25rem">
+  <h2><i class="fas fa-rocket" aria-hidden="true"></i> <%= __('admin:development_actions') %> <span class="text-muted" style="font-size:.8rem;font-weight:400">coaching · IDP · PIP</span></h2>
+  <div class="dev-grid">
+    <div class="dev-card"><div class="dev-h"><i class="fas fa-handshake" aria-hidden="true"></i> <%= __('admin:coaching_mentoring') %></div><div id="dev-coaching" class="dev-body"><div class="text-muted" style="padding:.5rem"><%= __('admin:loading') %></div></div></div>
+    <div class="dev-card"><div class="dev-h"><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('admin:development_plans_idp') %></div><div id="dev-idp" class="dev-body"><div class="text-muted" style="padding:.5rem"><%= __('admin:loading') %></div></div></div>
+    <div class="dev-card"><div class="dev-h"><i class="fas fa-stopwatch" aria-hidden="true"></i> <%= __('admin:improvement_plans_pip') %></div><div id="dev-pip" class="dev-body"><div class="text-muted" style="padding:.5rem"><%= __('admin:loading') %></div></div></div>
+  </div>
+</div>
+<style>
+.dev-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.dev-card{border:1px solid var(--line,#e2e8f0);border-radius:12px;background:var(--card,#fff);overflow:hidden}
+.dev-h{font-weight:700;padding:10px 14px;border-bottom:1px solid var(--line,#eef2f7);font-size:.92rem}
+.dev-body{padding:6px 12px 10px;max-height:300px;overflow:auto}
+.dev-item{padding:9px 2px;border-bottom:1px solid #f4f6fb;font-size:.84rem}
+.dev-item:last-child{border-bottom:0}
+.dev-item .dev-t{font-weight:600;color:var(--ink,#0f172a)}
+.dev-sub{color:#94a3b8;font-size:.76rem;margin-top:2px}
+.dev-badge{padding:1px 8px;border-radius:999px;color:#fff;font-size:.72rem;text-transform:capitalize}
+.dev-badge[data-s="active"]{background:#15803d}.dev-badge[data-s="proposed"],.dev-badge[data-s="draft"]{background:#b45309}
+.dev-badge[data-s="closed"],.dev-badge[data-s="completed"]{background:#475569}.dev-badge[data-s="cancelled"],.dev-badge[data-s="rejected"]{background:#b91c1c}
+.dev-bar{height:7px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin-top:5px}
+.dev-fill{height:100%;background:linear-gradient(90deg,#2563eb,#0ea5e9)}
+@media(max-width:900px){.dev-grid{grid-template-columns:1fr}}
+</style>
+<script nonce="<%= cspNonce %>">
+(function(){
+  var EMP = <%= employee.id %>;
+  function e(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function d(x){ return x?String(x).slice(0,10):'—'; }
+  function badge(s){ return '<span class="dev-badge" data-s="'+e(s)+'">'+e(s)+'</span>'; }
+  function empty(m){ return '<div class="text-muted" style="padding:.5rem">'+m+'</div>'; }
+  fetch('/employees/'+EMP+'/development',{headers:{Accept:'application/json'}})
+    .then(function(r){ return r.ok?r.json():{coaching:[],idps:[],pips:[]}; })
+    .then(function(j){
+      document.getElementById('dev-coaching').innerHTML = (j.coaching&&j.coaching.length)? j.coaching.map(function(c){
+        return '<div class="dev-item"><div class="dev-t">'+e(c.title||c.kind)+' '+badge(c.state)+'</div>'+
+          '<div class="dev-sub">'+e(c.kind)+(c.contextType?(' · ctx: '+e(c.contextType)):'')+(c.targetDate?(' · due '+d(c.targetDate)):'')+'</div>'+
+          '<div class="dev-bar"><div class="dev-fill" style="width:'+(Number(c.progress)||0)+'%"></div></div></div>';
+      }).join('') : empty(<%- JSON.stringify(__('admin:no_coaching_plans')) %>);
+
+      document.getElementById('dev-idp').innerHTML = (j.idps&&j.idps.length)? j.idps.map(function(i){
+        var pct = i.actTotal? Math.round(i.actDone/i.actTotal*100):0;
+        return '<div class="dev-item"><div class="dev-t">IDP #'+i.id+' '+badge(i.status)+'</div>'+
+          '<div class="dev-sub">priority '+e(i.priority||'—')+' · '+i.objTotal+' objective(s) · '+i.actDone+'/'+i.actTotal+' actions done'+(i.startsOn?(' · '+d(i.startsOn)+'→'+d(i.endsOn)):'')+'</div>'+
+          '<div class="dev-bar"><div class="dev-fill" style="width:'+pct+'%"></div></div></div>';
+      }).join('') : empty(<%- JSON.stringify(__('admin:no_development_plans')) %>);
+
+      document.getElementById('dev-pip').innerHTML = (j.pips&&j.pips.length)? j.pips.map(function(p){
+        return '<div class="dev-item"><div class="dev-t">PIP #'+p.id+' '+badge(p.state)+'</div>'+
+          '<div class="dev-sub">'+(p.startsOn?(d(p.startsOn)+'→'+d(p.endsOn)):'')+(p.outcome?(' · outcome: '+e(p.outcome)):'')+'</div>'+
+          (p.summary?'<div class="dev-sub">'+e(String(p.summary).slice(0,120))+'</div>':'')+'</div>';
+      }).join('') : empty(<%- JSON.stringify(__('admin:no_improvement_plans')) %>);
+    }).catch(function(){});
+})();
+</script>
+
+<!-- Goals & OKRs (Wave 3 — consumes /api/v1) -->
+<section class="card" style="margin-top:1.25rem;padding:1rem;">
+  <h2><i class="fas fa-bullseye" aria-hidden="true"></i> <%= __('admin:goals_okrs') %> <span class="text-muted" style="font-size:.8rem;font-weight:400"><%= __('admin:okr_subtitle') %></span></h2>
+  <div style="display:flex;gap:.5rem;margin:.5rem 0 1rem;flex-wrap:wrap;">
+    <input id="okr-new-title" type="text" placeholder="<%= __('admin:new_objective_placeholder') %>" style="flex:1;min-width:240px;padding:6px 8px;">
+    <input id="okr-new-period" type="text" placeholder="<%= __('admin:period_placeholder') %>" style="width:170px;padding:6px 8px;">
+    <button class="btn btn-primary" onclick="okrAddObjective()">＋ <%= __('admin:add_objective') %></button>
+  </div>
+  <div id="okr-list"><div class="text-muted"><%= __('admin:loading') %></div></div>
+</section>
+<script nonce="<%= cspNonce %>">
+(function(){
+  var EMP = <%= employee.id %>;
+  var base = '/api/v1';
+  function e(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  // Goal statuses were printed as raw English enums (at_risk, done…).
+  var GST = <%- include('../../partials/json-script', { v: { active: __('talentx:okr_st_active'), at_risk: __('talentx:okr_st_at_risk'), done: __('talentx:okr_st_done'), cancelled: __('talentx:okr_st_cancelled') } }) %>;
+  var OKR_T = <%- include('../../partials/json-script', { v: { status: __('talentx:okr_status'), align: __('talentx:okr_align'), alignPh: __('talentx:okr_align_ph'), alignDone: __('talentx:okr_align_done') } }) %>;
+  var OBJECTIVES = null; // org objectives for the align control (null = not offered to this viewer)
+  // UX-12 (3.23.21): white text on these fills is >= 4.5:1 (the former fills were 2.4-4.0:1).
+  function badge(s){ var m={active:'#1f5f99',at_risk:'#8a4b00',done:'#1e6b3a',cancelled:'#5f6368'}; return '<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;color:#fff;background:'+(m[s]||'#4a5563')+'">'+e(GST[s]||s)+'</span>'; }
+  function statusSelect(g){ return '<select id="gst-'+g.id+'" aria-label="'+e(OKR_T.status+' — '+(g.title||''))+'" style="padding:2px 4px;font-size:.8rem" onchange="okrSetStatus('+g.id+',this.value)">'
+    + ['active','at_risk','done','cancelled'].map(function(s){ return '<option value="'+s+'"'+(s===g.status?' selected':'')+'>'+e(GST[s]||s)+'</option>'; }).join('') + '</select>'; }
+  function alignSelect(o){ if(!OBJECTIVES||!OBJECTIVES.length) return '';
+    return ' <select aria-label="'+e(OKR_T.align)+'" style="padding:2px 4px;font-size:.8rem" onchange="okrAlign('+o.id+',this)"><option value="">'+e(OKR_T.alignPh)+'</option>'
+      + OBJECTIVES.map(function(x){ return '<option value="'+Number(x.id)+'">'+e(x.title)+(x.period?(' ('+e(x.period)+')'):'')+'</option>'; }).join('') + '</select>'; }
+  function bar(pct){ pct=Math.max(0,Math.min(100,Math.round(pct||0))); return '<div style="height:10px;border-radius:5px;background:#e6edf3;overflow:hidden;margin-top:4px"><div style="height:100%;width:'+pct+'%;background:#2f80c4"></div></div>'; }
+  function api(path, opts){ return fetch(base+path, Object.assign({headers:{'Content-Type':'application/json'}}, opts||{})).then(function(r){ return r.json().then(function(j){ return {ok:r.ok,status:r.status,body:j}; }); }); }
+
+  window.okrLoad = function(){
+    api('/employees/'+EMP+'/goals').then(function(res){
+      var box = document.getElementById('okr-list');
+      if(!res.ok){ box.innerHTML='<div class="text-muted">'+<%- JSON.stringify(__('admin:unable_load_goals')) %>+' ('+res.status+').</div>'; return; }
+      var goals = res.body.data||[];
+      var objectives = goals.filter(function(g){return g.kind==='objective';});
+      var krsByParent = {}; goals.filter(function(g){return g.kind==='key_result';}).forEach(function(k){ (krsByParent[k.parentId]=krsByParent[k.parentId]||[]).push(k); });
+      if(!objectives.length){ box.innerHTML='<div class="text-muted">'+<%- JSON.stringify(__('admin:no_goals_yet')) %>+'</div>'; return; }
+      box.innerHTML = objectives.map(function(o){
+        var krs = krsByParent[o.id]||[];
+        var avg = krs.length ? krs.reduce(function(a,k){ return a + (k.targetValue? Math.min(100,(k.currentValue/k.targetValue)*100):0); },0)/krs.length : 0;
+        var krHtml = krs.map(function(k){
+          var pct = k.targetValue? Math.min(100,Math.round(k.currentValue/k.targetValue*100)):0;
+          return '<div style="margin:.4rem 0 .4rem 1rem;">'
+            + '<div style="font-size:.85rem">'+e(k.title)+' '+badge(k.status)+' '+statusSelect(k)+' <span class="text-muted">'+e(k.currentValue)+'/'+e(k.targetValue==null?'—':k.targetValue)+(k.metricUnit?(' '+e(k.metricUnit)):'')+'</span></div>'
+            + bar(pct)
+            + '<div style="margin-top:3px"><input type="number" id="kr-val-'+k.id+'" value="'+e(k.currentValue)+'" aria-label="'+e(k.title)+'" style="width:80px;padding:3px 6px"> '
+            + '<button class="btn btn-secondary btn-sm" aria-label="'+e(<%- JSON.stringify(__('admin:update')) %>+' — '+k.title)+'" onclick="okrSaveProgress('+k.id+')">'+<%- JSON.stringify(__('admin:update')) %>+'</button></div></div>';
+        }).join('');
+        return '<div class="dev-item" style="border:1px solid #d6dee6;border-radius:6px;padding:.6rem;margin-bottom:.6rem">'
+          + '<div class="dev-t" style="font-weight:600">'+e(o.title)+' '+badge(o.status)+' '+statusSelect(o)+(o.period?(' <span class="text-muted">'+e(o.period)+'</span>'):'')+alignSelect(o)+'</div>'
+          + bar(avg)
+          + krHtml
+          + '<div style="margin-top:.4rem;margin-left:1rem;display:flex;gap:.4rem;flex-wrap:wrap">'
+          + '<input type="text" id="kr-new-'+o.id+'" placeholder="'+<%- JSON.stringify(__('admin:new_key_result_placeholder')) %>+'" style="flex:1;min-width:180px;padding:4px 6px">'
+          + '<input type="number" id="kr-tgt-'+o.id+'" placeholder="'+<%- JSON.stringify(__('admin:target_placeholder')) %>+'" style="width:90px;padding:4px 6px">'
+          + '<button class="btn btn-secondary btn-sm" onclick="okrAddKR('+o.id+')">＋ '+<%- JSON.stringify(__('admin:key_result')) %>+'</button></div>'
+          + '</div>';
+      }).join('');
+    }).catch(function(){ document.getElementById('okr-list').innerHTML='<div class="text-muted">'+<%- JSON.stringify(__('admin:error_loading_goals')) %>+'</div>'; });
+  };
+  window.okrAddObjective = function(){
+    var t=document.getElementById('okr-new-title').value.trim(); if(!t) return;
+    var period=document.getElementById('okr-new-period').value.trim()||null;
+    api('/goals',{method:'POST',body:JSON.stringify({employeeId:EMP,kind:'objective',title:t,period:period})}).then(function(r){
+      if(!r.ok){ alert(<%- JSON.stringify(__('admin:could_not_add_goal')) %>+': '+(r.body&&r.body.error||r.status)); return; }
+      document.getElementById('okr-new-title').value=''; document.getElementById('okr-new-period').value=''; window.okrLoad();
+    });
+  };
+  window.okrAddKR = function(objId){
+    var t=document.getElementById('kr-new-'+objId).value.trim(); if(!t) return;
+    var tgt=parseFloat(document.getElementById('kr-tgt-'+objId).value); if(isNaN(tgt)) tgt=null;
+    api('/goals',{method:'POST',body:JSON.stringify({employeeId:EMP,parentId:objId,kind:'key_result',title:t,targetValue:tgt})}).then(function(r){
+      if(!r.ok){ alert(<%- JSON.stringify(__('admin:could_not_add_key_result')) %>+': '+(r.body&&r.body.error||r.status)); return; } window.okrLoad();
+    });
+  };
+  window.okrSaveProgress = function(krId){
+    var v=parseFloat(document.getElementById('kr-val-'+krId).value); if(isNaN(v)) return;
+    api('/goals/'+krId+'/progress',{method:'PATCH',body:JSON.stringify({currentValue:v})}).then(function(r){
+      if(!r.ok){ alert(<%- JSON.stringify(__('admin:could_not_update')) %>+': '+(r.body&&r.body.error||r.status)); return; } window.okrLoad();
+    });
+  };
+  // Status (active / at risk / done / cancelled) — the API accepted it, no screen set it.
+  window.okrSetStatus = function(id, status){
+    api('/goals/'+id+'/progress',{method:'PATCH',body:JSON.stringify({status:status})}).then(function(r){
+      if(!r.ok){ alert(<%- JSON.stringify(__('admin:could_not_update')) %>+': '+(r.body&&r.body.error||r.status)); }
+      window.okrLoad();
+    });
+  };
+  // Align an objective onto an org objective (goal cascade). Offered only when
+  // the viewer may read the org objectives; the server re-checks scope.
+  window.okrAlign = function(goalId, sel){
+    var objId = Number(sel.value); if(!objId) return;
+    var csrf = (document.querySelector('meta[name="csrf-token"]')||{}).content || '';
+    fetch('/v2/cap/objective/'+objId+'/align',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','x-csrf-token':csrf},body:JSON.stringify({goalId:goalId})})
+      .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return {ok:r.ok&&j.ok!==false,body:j,status:r.status}; }); })
+      .then(function(r){ alert(r.ok ? OKR_T.alignDone : (<%- JSON.stringify(__('admin:could_not_update')) %>+': '+(r.body&&r.body.error||r.status))); sel.value=''; });
+  };
+  fetch('/v2/cap/objectives',{headers:{'Accept':'application/json'}})
+    .then(function(r){ return (r.ok && (r.headers.get('content-type')||'').indexOf('json')>-1) ? r.json() : null; })
+    .then(function(j){ OBJECTIVES = (j && j.ok && j.objectives) || null; okrLoad(); })
+    .catch(function(){ okrLoad(); });
+})();
+</script>
+
+<!-- Check-ins / 1-on-1s (Wave 3 — consumes /api/v1) -->
+<section class="card" style="margin-top:1.25rem;padding:1rem;">
+  <h2><i class="fas fa-calendar-days" aria-hidden="true"></i> <%= __('admin:checkins_title') %> <span class="text-muted" style="font-size:.8rem;font-weight:400"><%= __('admin:checkins_subtitle') %></span></h2>
+  <div style="display:flex;gap:.5rem;margin:.5rem 0 1rem;flex-wrap:wrap;align-items:center;">
+    <select id="ci-new-kind" style="padding:6px 8px;"><option value="one_on_one"><%= __('admin:one_on_one') %></option><option value="feedback"><%= __('admin:feedback') %></option><option value="pulse"><%= __('admin:pulse') %></option></select>
+    <input id="ci-new-title" type="text" placeholder="<%= __('admin:topic_placeholder') %>" style="flex:1;min-width:200px;padding:6px 8px;">
+    <input id="ci-new-when" type="date" style="padding:6px 8px;">
+    <select id="ci-new-sentiment" style="padding:6px 8px;"><option value=""><%= __('admin:mood_dash') %></option><option value="1"><span aria-hidden="true">😟</span> 1</option><option value="2"><span aria-hidden="true">🙁</span> 2</option><option value="3"><span aria-hidden="true">😐</span> 3</option><option value="4"><span aria-hidden="true">🙂</span> 4</option><option value="5"><span aria-hidden="true">😀</span> 5</option></select>
+    <button class="btn btn-primary" onclick="ciAdd()">＋ <%= __('admin:add_checkin') %></button>
+  </div>
+  <div id="ci-list"><div class="text-muted"><%= __('admin:loading') %></div></div>
+</section>
+<script nonce="<%= cspNonce %>">
+(function(){
+  var EMP = <%= employee.id %>;
+  var base = '/api/v1';
+  var MOOD = {1:'😟',2:'🙁',3:'😐',4:'🙂',5:'😀'};
+  function e(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function badge(s){ var m={scheduled:'#2f80c4',completed:'#2e9e57',cancelled:'#9e9e9e'}; return '<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:9px;font-weight:700;color:#fff;background:'+(m[s]||'#5b6b7b')+'">'+e(s)+'</span>'; }
+  function kindLabel(k){ return {one_on_one:<%- JSON.stringify(__('admin:one_on_one')) %>,feedback:<%- JSON.stringify(__('admin:feedback')) %>,pulse:<%- JSON.stringify(__('admin:pulse')) %>}[k]||k; }
+  // jamais d'ISO dans une page française. dd/MM/aaaa,
+  // forcé UTC comme fmtPeriodBound côté serveur, « — » si la date est illisible.
+  function dt(s){ if(!s) return ''; try{ var x=new Date(s); if(isNaN(x.getTime())) return '—';
+    var p=function(n){return String(n).padStart(2,'0');};
+    return p(x.getUTCDate())+'/'+p(x.getUTCMonth()+1)+'/'+x.getUTCFullYear(); }catch(_){ return ''; } }
+  function api(path, opts){ return fetch(base+path, Object.assign({headers:{'Content-Type':'application/json'}}, opts||{})).then(function(r){ return r.json().then(function(j){ return {ok:r.ok,status:r.status,body:j}; }); }); }
+
+  function renderItems(ci){
+    return api('/check-ins/'+ci.id+'/items').then(function(res){
+      var items = (res.ok && res.body.data)||[];
+      return items.map(function(it){
+        return '<div style="margin:.2rem 0 .2rem 1rem;font-size:.85rem;display:flex;align-items:center;gap:.4rem">'
+          + (it.isAction ? '<input type="checkbox" '+(it.done?'checked':'')+' onchange="ciToggle('+it.id+',this.checked)">' : '<span class="text-muted">•</span>')
+          + '<span style="'+(it.done?'text-decoration:line-through;opacity:.6':'')+'">'+e(it.body)+(it.isAction?' <span class="text-muted" style="font-size:9px">'+<%- JSON.stringify(__('admin:action_tag')) %>+'</span>':'')+'</span></div>';
+      }).join('');
+    });
+  }
+
+  window.ciLoad = function(){
+    api('/employees/'+EMP+'/check-ins').then(function(res){
+      var box = document.getElementById('ci-list');
+      if(!res.ok){ box.innerHTML='<div class="text-muted">'+<%- JSON.stringify(__('admin:unable_load_checkins')) %>+' ('+res.status+').</div>'; return; }
+      var rows = res.body.data||[];
+      if(!rows.length){ box.innerHTML='<div class="text-muted">'+<%- JSON.stringify(__('admin:no_checkins')) %>+'</div>'; return; }
+      box.innerHTML = rows.map(function(c){
+        var when = dt(c.occurredAt||c.scheduledAt);
+        return '<div class="dev-item" id="ci-'+c.id+'" style="border:1px solid #d6dee6;border-radius:6px;padding:.6rem;margin-bottom:.6rem">'
+          + '<div style="font-weight:600">'+e(kindLabel(c.kind))+(c.title?(' — '+e(c.title)):'')+' '+badge(c.status)
+          + (c.sentiment?(' <span title="mood">'+(MOOD[c.sentiment]||'')+'</span>'):'')
+          + (when?(' <span class="text-muted" style="font-size:.8rem">'+when+'</span>'):'')+'</div>'
+          + (c.sharedNotes?('<div class="text-muted" style="font-size:.85rem;margin:.2rem 0">'+e(c.sharedNotes)+'</div>'):'')
+          + '<div class="ci-items" data-for="'+c.id+'"></div>'
+          + '<div style="margin-top:.4rem;margin-left:1rem;display:flex;gap:.4rem;flex-wrap:wrap">'
+          + '<input type="text" id="ci-item-'+c.id+'" placeholder="'+<%- JSON.stringify(__('admin:talking_point_placeholder')) %>+'" style="flex:1;min-width:180px;padding:4px 6px">'
+          + '<label style="font-size:.8rem;display:flex;align-items:center;gap:3px"><input type="checkbox" id="ci-itemact-'+c.id+'"> '+<%- JSON.stringify(__('admin:action_tag')) %>+'</label>'
+          + '<button class="btn btn-secondary btn-sm" onclick="ciAddItem('+c.id+')">＋ '+<%- JSON.stringify(__('admin:item_label')) %>+'</button>'
+          + (c.status!=='completed'?(' <button class="btn btn-secondary btn-sm" onclick="ciComplete('+c.id+')">'+<%- JSON.stringify(__('admin:mark_complete')) %>+'</button>'):'')
+          + '</div></div>';
+      }).join('');
+      rows.forEach(function(c){ renderItems(c).then(function(html){ var el=document.querySelector('.ci-items[data-for="'+c.id+'"]'); if(el) el.innerHTML=html; }); });
+    }).catch(function(){ document.getElementById('ci-list').innerHTML='<div class="text-muted">'+<%- JSON.stringify(__('admin:error_loading_checkins')) %>+'</div>'; });
+  };
+  window.ciAdd = function(){
+    var kind=document.getElementById('ci-new-kind').value;
+    var title=document.getElementById('ci-new-title').value.trim()||null;
+    var when=document.getElementById('ci-new-when').value||null;
+    var sv=document.getElementById('ci-new-sentiment').value; var sentiment=sv?parseInt(sv,10):null;
+    var payload={employeeId:EMP,kind:kind,title:title,sentiment:sentiment};
+    if(when) payload.scheduledAt=when+'T09:00:00Z';
+    api('/check-ins',{method:'POST',body:JSON.stringify(payload)}).then(function(r){
+      if(!r.ok){ alert(<%- JSON.stringify(__('admin:could_not_add_checkin')) %>+': '+(r.body&&r.body.error||r.status)); return; }
+      document.getElementById('ci-new-title').value=''; document.getElementById('ci-new-when').value=''; document.getElementById('ci-new-sentiment').value=''; window.ciLoad();
+    });
+  };
+  window.ciAddItem = function(id){
+    var b=document.getElementById('ci-item-'+id).value.trim(); if(!b) return;
+    var isAction=document.getElementById('ci-itemact-'+id).checked;
+    api('/check-ins/'+id+'/items',{method:'POST',body:JSON.stringify({body:b,isAction:isAction})}).then(function(r){
+      if(!r.ok){ alert(<%- JSON.stringify(__('admin:could_not_add_item')) %>+': '+(r.body&&r.body.error||r.status)); return; } window.ciLoad();
+    });
+  };
+  window.ciToggle = function(itemId,done){
+    api('/check-in-items/'+itemId,{method:'PATCH',body:JSON.stringify({done:done})}).then(function(r){
+      if(!r.ok){ alert(<%- JSON.stringify(__('admin:could_not_update_item')) %>+': '+(r.body&&r.body.error||r.status)); window.ciLoad(); }
+    });
+  };
+  window.ciComplete = function(id){
+    api('/check-ins/'+id,{method:'PATCH',body:JSON.stringify({status:'completed',occurredAt:new Date().toISOString()})}).then(function(r){
+      if(!r.ok){ alert(<%- JSON.stringify(__('admin:could_not_complete')) %>+': '+(r.body&&r.body.error||r.status)); return; } window.ciLoad();
+    });
+  };
+  ciLoad();
+})();
+</script>
+
+<!-- ══ SECTION operations — "Journal": every trace where this person acted or was the
+     subject, from the append-only system log. Self-contained appended section;
+     admin-only (the controller passes `journal` only then). ══ -->
+<% if (typeof journal !== 'undefined' && journal) { %>
+<div class="card" style="padding:1.1rem;margin-bottom:1rem" id="empJournal">
+  <h2><i class="fas fa-book" aria-hidden="true"></i> <%= __('admin:ops_journal_title') %>
+      <span class="chip"><%= journal.total != null ? journal.total : '—' %></span></h2>
+  <p class="text-muted" style="font-size:.82rem;margin:.2rem 0 .8rem"><%= __('admin:ops_journal_hint') %></p>
+  <% if (!journal.rows.length) { %>
+    <p class="text-muted"><%= __('admin:ops_journal_none') %></p>
+  <% } else { %>
+  <div style="overflow-x:auto">
+    <table class="table">
+      <thead><tr>
+        <th><%= __('admin:ops_journal_col_when') %></th>
+        <th><%= __('admin:ops_journal_col_what') %></th>
+        <th><%= __('admin:ops_journal_col_who') %></th>
+        <th><%= __('admin:ops_journal_col_detail') %></th>
+      </tr></thead>
+      <tbody>
+      <% journal.rows.forEach(function (r) {
+           var actor = r.actorRef || (r.username ? 'admin:' + r.username : null);
+           var isSelf = actor && /^(employee|manager|supervisor):/.test(String(actor))
+                        && String(actor).split(':')[1] === String(employee.id); %>
+        <tr>
+          <td><%= fmtDateTime(r.createdAt) %></td>
+          <td><span class="chip"><%= r.action %></span>
+              <span class="text-muted" style="font-size:.72rem"><%= isSelf ? __('admin:ops_journal_role_actor') : __('admin:ops_journal_role_target') %></span></td>
+          <td><%= r.username || r.actorRef || '—' %></td>
+          <td style="white-space:normal;max-width:40rem"><%= typeof r.details === 'string' ? r.details : JSON.stringify(r.details || '') %></td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin:.6rem 0 0">
+    <a class="btn btn-sm btn-secondary" href="/system-logs?employeeId=<%= employee.id %>&amp;excludeHttp=1"><%= __('admin:ops_journal_more') %></a>
+  </p>
+  <% } %>
+</div>
+<% } %>
+<!-- ══ end SECTION operations ══ -->

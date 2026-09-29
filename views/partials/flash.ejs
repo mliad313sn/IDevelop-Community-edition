@@ -1,0 +1,53 @@
+<%# Server flash banners (req.flash). `data-flash` is the ORIGIN marker main.js
+    keys on: only [data-flash="success"] is ever auto-dismissed, warnings and
+    refusals stay until their close button or the next navigation (the flash is
+    consumed per request, so persistence is bounded to this view). Never select
+    these by `.alert` — that class also carries the licence banner, permanent
+    warnings and in-page notes. The role/aria-live pairs are deliberate and
+    unchanged; the close button sits AFTER the message so the announcement is
+    the message first. %>
+<% const _flashClose = __('chrome:flash_close'); %>
+<% if (typeof success !== 'undefined' && success.length > 0) { %>
+    <% success.forEach(function(message) { %>
+        <%# UX-07: a success is news, not an interruption — role="status" (implicit
+            polite). role="alert" is kept for the error banners only. %>
+        <div class="alert alert-success" role="status" aria-live="polite" data-flash="success">
+            <%= message %>
+            <button type="button" class="flash-close" data-flash-close title="<%= _flashClose %>" aria-label="<%= _flashClose %>">&times;</button>
+        </div>
+    <% }); %>
+<% } %>
+
+<% if (typeof warnings !== 'undefined' && warnings.length > 0) { %>
+    <% warnings.forEach(function(message) { %>
+        <div class="alert alert-warning" role="status" aria-live="polite" data-flash="warning">
+            <%= message %>
+            <button type="button" class="flash-close" data-flash-close title="<%= _flashClose %>" aria-label="<%= _flashClose %>">&times;</button>
+        </div>
+    <% }); %>
+<% } %>
+
+<% if (typeof errors !== 'undefined' && errors.length > 0) { %>
+    <% errors.forEach(function(message) { %>
+        <div class="alert alert-error" role="alert" aria-live="assertive" data-flash="error">
+            <%= message %>
+            <button type="button" class="flash-close" data-flash-close title="<%= _flashClose %>" aria-label="<%= _flashClose %>">&times;</button>
+        </div>
+    <% }); %>
+<% } %>
+<%# The close button must work on every page that includes this partial — the
+    auth pages (login, reset, signup) render it without main.js — so the
+    handler travels with the markup. Delegated, bound once, no animation:
+    closing is the person's own act and must land on the same frame. %>
+<script nonce="<%= (typeof cspNonce !== 'undefined') ? cspNonce : '' %>">
+    (function () {
+        if (window.__flashCloseBound) return;
+        window.__flashCloseBound = true;
+        document.addEventListener('click', function (e) {
+            var b = e.target && e.target.closest ? e.target.closest('[data-flash-close]') : null;
+            if (!b) return;
+            var banner = b.closest('[data-flash]');
+            if (banner) banner.remove();
+        });
+    })();
+</script>

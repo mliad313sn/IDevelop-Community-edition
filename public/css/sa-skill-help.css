@@ -1,0 +1,61 @@
+/* 3.23.21 — « Qu'est-ce que c'est ? » (self-assessment + reviewer console).
+   A native <details> opening INLINE below the skill name: normal flow, nothing
+   above it moves. Theme tokens with safe fallbacks (dark + light). */
+
+.sa-skill-name { font-weight: 600; }
+
+.sa-skill-help { display: block; margin-top: 4px; font-weight: 400; }
+.sa-skill-help-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    min-height: 24px; min-width: 24px; padding: 2px 8px; /* WCAG 2.5.8 target size */
+    border: 1px solid var(--border, #cbd5e1); border-radius: 999px;
+    font-size: .78rem; line-height: 1.2; cursor: pointer; list-style: none;
+    color: var(--text-secondary, #475569); background: var(--bg-elevated, transparent);
+}
+.sa-skill-help-btn::-webkit-details-marker { display: none; }
+.sa-skill-help-btn:focus-visible { outline: 2px solid var(--accent, #2563eb); outline-offset: 2px; }
+.sa-skill-help[open] > .sa-skill-help-btn { border-color: var(--accent, #2563eb); }
+.sa-skill-help-icon { font-size: .95rem; }
+
+.sa-skill-help-panel {
+    margin-top: 6px; padding: 8px 10px; max-width: 60ch;
+    border-left: 3px solid var(--accent, #2563eb); border-radius: 6px;
+    background: var(--bg-subtle, rgba(127, 127, 127, .08));
+    font-size: .85rem; line-height: 1.45; text-align: left;
+}
+/* Line breaks of the description are kept by CSS — never by markup. */
+.sa-skill-desc { margin: 0 0 6px; white-space: pre-line; overflow-wrap: anywhere; }
+.sa-skill-desc-missing { font-style: italic; color: var(--text-secondary, #64748b); }
+.sa-skill-sub { margin: 0 0 6px; color: var(--text-secondary, #64748b); }
+.sa-skill-levels-title { margin: 6px 0 2px; font-weight: 600; }
+.sa-skill-levels { margin: 0; padding-left: 1.1rem; }
+.sa-skill-levels li { margin: 2px 0; }
+.sa-skill-levels li.is-selected { font-weight: 600; }
+.sa-lvl-tag, .sa-req-tag {
+    display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 999px;
+    font-size: .7rem; font-weight: 600; border: 1px solid currentColor;
+}
+.sa-lvl-tag[hidden], .sa-req-tag[hidden] { display: none; }
+
+/* D3: meaning of the chosen level, under the rating control. */
+.sa-level-line { margin: 4px 0 0; font-size: .8rem; color: var(--text-secondary, #64748b); max-width: 40ch; }
+.sa-level-line:empty { display: none; }
+.sa-req-gap { color: var(--text-secondary, #64748b); font-weight: 400; }
+
+/* D4: the scale, read rather than hovered. */
+.sa-scale-dl { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0 0; }
+.sa-scale-dl > div { display: flex; gap: 6px; }
+.sa-scale-dl dt { font-weight: 600; }
+.sa-scale-dl dd { margin: 0; }
+
+/* D8: intro. */
+.sa-intro { margin: 0 0 8px; }
+.sa-intro-head { cursor: pointer; font-weight: 600; min-height: 24px; }
+.sa-intro-list { margin: 6px 0 0; padding-left: 1.2rem; }
+.sa-intro-list li { margin: 2px 0; }
+
+/* HR quality page. */
+.sq-table td, .sq-table th { vertical-align: top; }
+.sq-text { white-space: pre-line; max-width: 60ch; }
+.sq-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+.sq-edit textarea { width: 100%; min-height: 80px; }

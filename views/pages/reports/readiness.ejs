@@ -1,0 +1,143 @@
+<div class="page-header">
+    <h1><%= __('reports:readiness_title') %></h1>
+    <div class="page-actions">
+        <a href="/reports/readiness?format=csv" class="btn btn-secondary"><%= __('reports:export_csv') %></a>
+        <a href="/reports/readiness?format=json" class="btn btn-secondary"><%= __('reports:export_json') %></a>
+    </div>
+</div>
+
+<div class="report-summary">
+    <h2><%= __('reports:summary') %></h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3><%= __('reports:total_employees') %></h3>
+            <p class="stat-value">
+                <%= organizationalReadiness.totalEmployees %>
+            </p>
+        </div>
+        <div class="stat-card">
+            <h3><%= __('reports:ready') %></h3>
+            <p class="stat-value">
+                <%= organizationalReadiness.readyCount %>
+            </p>
+        </div>
+        <div class="stat-card">
+            <h3><%= __('reports:not_ready') %></h3>
+            <p class="stat-value">
+                <%= organizationalReadiness.notReadyCount %>
+            </p>
+        </div>
+        <div class="stat-card">
+            <h3><%= __('reports:pct_role_ready') %></h3>
+            <p class="stat-value">
+                <%= organizationalReadiness.overallReadinessPercent %>%
+            </p>
+        </div>
+    </div>
+</div>
+
+<div class="report-section">
+    <h2><%= __('reports:readiness_distribution') %></h2>
+    <div class="readiness-bars">
+        <div class="readiness-bar">
+            <span class="bar-label">0-20%</span>
+            <div class="bar-container">
+                <div class="bar"
+                    style="width: <%= organizationalReadiness.totalEmployees > 0 ? (organizationalReadiness.readinessDistribution['0-20'] / organizationalReadiness.totalEmployees * 100) : 0 %>%">
+                </div>
+            </div>
+            <span class="bar-value">
+                <%= organizationalReadiness.readinessDistribution['0-20'] %>
+            </span>
+        </div>
+        <div class="readiness-bar">
+            <span class="bar-label">21-40%</span>
+            <div class="bar-container">
+                <div class="bar"
+                    style="width: <%= organizationalReadiness.totalEmployees > 0 ? (organizationalReadiness.readinessDistribution['21-40'] / organizationalReadiness.totalEmployees * 100) : 0 %>%">
+                </div>
+            </div>
+            <span class="bar-value">
+                <%= organizationalReadiness.readinessDistribution['21-40'] %>
+            </span>
+        </div>
+        <div class="readiness-bar">
+            <span class="bar-label">41-60%</span>
+            <div class="bar-container">
+                <div class="bar"
+                    style="width: <%= organizationalReadiness.totalEmployees > 0 ? (organizationalReadiness.readinessDistribution['41-60'] / organizationalReadiness.totalEmployees * 100) : 0 %>%">
+                </div>
+            </div>
+            <span class="bar-value">
+                <%= organizationalReadiness.readinessDistribution['41-60'] %>
+            </span>
+        </div>
+        <div class="readiness-bar">
+            <span class="bar-label">61-79%</span>
+            <div class="bar-container">
+                <div class="bar"
+                    style="width: <%= organizationalReadiness.totalEmployees > 0 ? (organizationalReadiness.readinessDistribution['61-79'] / organizationalReadiness.totalEmployees * 100) : 0 %>%">
+                </div>
+            </div>
+            <span class="bar-value">
+                <%= organizationalReadiness.readinessDistribution['61-79'] %>
+            </span>
+        </div>
+        <div class="readiness-bar">
+            <span class="bar-label">80-100%</span>
+            <div class="bar-container">
+                <div class="bar"
+                    style="width: <%= organizationalReadiness.totalEmployees > 0 ? (organizationalReadiness.readinessDistribution['80-100'] / organizationalReadiness.totalEmployees * 100) : 0 %>%">
+                </div>
+            </div>
+            <span class="bar-value">
+                <%= organizationalReadiness.readinessDistribution['80-100'] %>
+            </span>
+        </div>
+    </div>
+</div>
+
+<% if (organizationalReadiness.readinessData && organizationalReadiness.readinessData.length> 0) { %>
+    <div class="report-section">
+        <h2><%= __('reports:employee_readiness_details') %></h2>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th><%= __('reports:employee_number') %></th>
+                    <th><%= __('reports:name') %></th>
+                    <th><%= __('reports:role') %></th>
+                    <th><%= __('reports:readiness_pct') %></th>
+                    <th><%= __('reports:skills_met') %></th>
+                    <th><%= __('reports:status') %></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% organizationalReadiness.readinessData.forEach(function(rd) { %>
+                    <tr>
+                        <td>
+                            <%= rd.employee.employeeNumber %>
+                        </td>
+                        <td>
+                            <%= rd.employee.firstName %>
+                                <%= rd.employee.lastName %>
+                        </td>
+                        <td>
+                            <%= rd.employee.roleName %>
+                        </td>
+                        <td>
+                            <%= rd.readinessPercent == null ? __('dash:rd_not_measured') : rd.readinessPercent + '%' %>
+                        </td>
+                        <td>
+                            <%= rd.skillsMet %> / <%= rd.totalRequired %>
+                        </td>
+                        <td>
+                            <span class="badge <%= rd.isReady ? 'badge-ready' : 'badge-not-ready' %>">
+                                <%= rd.isReady ? __('reports:ready') : __('reports:not_ready') %>
+                            </span>
+                        </td>
+                    </tr>
+                    <% }); %>
+            </tbody>
+        </table>
+    </div>
+    <% } %>

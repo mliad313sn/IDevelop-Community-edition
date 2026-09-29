@@ -1,0 +1,160 @@
+<%
+// UX-6: the kind of a reason is said in WORDS (« Bloquant : » / « Attention : »
+// / « Observation : »), never by colour alone.
+function reasonPrefix(x) {
+    if (x.observe) return __('safety:prefix_observe');
+    return x.blocking ? __('safety:prefix_blocking') : __('safety:prefix_warning');
+}
+function reasonText(x) {
+    var s = __('safety:reason_' + x.code);
+    if (x.skillName) s = x.skillName + ' — ' + s;
+    if (x.code === 'level_below_min' || x.code === 'not_assessed' || x.code === 'level_not_validated') {
+        if (x.requiredLevel) s += ' (' + __('safety:required_level', { level: x.requiredLevel }) + ')';
+    }
+    if (x.code === 'assessment_too_old') {
+        s += ' (' + __('safety:max_age_value', { months: x.maxAgeMonths }) +
+            (x.assessedOn ? ' ; ' + __('safety:assessed_on', { date: fmtPeriodBound(x.assessedOn) }) : '') + ')';
+    }
+    if (x.expiresOn) s += ' (' + __('safety:expires_on', { date: fmtPeriodBound(x.expiresOn) }) + ')';
+    return s;
+}
+%>
+<div class="page-header" style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;justify-content:space-between;">
+    <h1><i class="fas fa-helmet-safety" aria-hidden="true"></i> <%= __('safety:title') %></h1>
+    <% if (canConfigure) { %>
+    <a class="btn btn-secondary" href="/safety-gate/config"><i class="fas fa-sliders" aria-hidden="true"></i> <%= __('safety:configure_link') %></a>
+    <% } %>
+</div>
+
+<p class="help-text" style="margin-bottom:1rem;"><%= __('safety:intro') %></p>
+
+<form method="GET" action="/safety-gate" class="card sg-filters">
+    <label for="sg-site"><%= __('safety:filter_site') %></label>
+    <select id="sg-site" name="site" class="form-control">
+        <option value=""><%= __('safety:all_sites') %></option>
+        <% options.sites.forEach(function (s) { %>
+        <option value="<%= s.id %>" <%= String(filters.site) === String(s.id) ? 'selected' : '' %>><%= s.name %></option>
+        <% }); %>
+    </select>
+    <label for="sg-role"><%= __('safety:filter_role') %></label>
+    <select id="sg-role" name="role" class="form-control">
+        <option value=""><%= __('safety:all_roles') %></option>
+        <% options.roles.forEach(function (r) { %>
+        <option value="<%= r.id %>" <%= String(filters.role) === String(r.id) ? 'selected' : '' %>><%= r.name %></option>
+        <% }); %>
+    </select>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('safety:filter_apply') %></button>
+</form>
+
+<div class="sg-kpis">
+    <% var observeCount = blocked.filter(function (r) { return r.observeOnly; }).length; %>
+    <div class="card sg-kpi sg-kpi-blocked"><strong><%= counts.BLOCKED %></strong><span><%= __('safety:kpi_blocked') %></span>
+        <% if (observeCount) { %><span><%= __('safety:kpi_blocked_observe', { count: observeCount }) %></span><% } %></div>
+    <div class="card sg-kpi sg-kpi-expiring"><strong><%= counts.EXPIRING %></strong><span><%= __('safety:kpi_expiring') %></span></div>
+    <div class="card sg-kpi sg-kpi-cleared"><strong><%= counts.CLEARED %></strong><span><%= __('safety:kpi_cleared') %></span></div>
+    <div class="card sg-kpi"><strong><%= counts.NOT_CONFIGURED %></strong><span><%= __('safety:kpi_not_configured') %></span></div>
+</div>
+
+<% if (rulesNone) { %>
+<div class="card sg-empty" role="status">
+    <p style="margin:0;"><strong><%= __('safety:rules_none') %></strong></p>
+    <p class="help-text" style="margin:.3rem 0 0;"><%= __('safety:not_configured_is_not_denial') %></p>
+    <% if (canConfigure) { %><p style="margin:.5rem 0 0;"><a href="/safety-gate/config"><%= __('safety:configure_link') %></a></p><% } %>
+</div>
+<% } %>
+
+<h2 class="sg-h2"><i class="fas fa-ban" aria-hidden="true"></i> <%= __('safety:blocked_title') %></h2>
+<div class="card" style="padding:0;margin-bottom:1.2rem;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('safety:th_person') %></th>
+                <th><%= __('safety:th_where') %></th>
+                <th><%= __('safety:th_role') %></th>
+                <th><%= __('safety:th_reasons') %></th>
+            </tr></thead>
+            <tbody>
+            <% if (!blocked.length) { %>
+                <tr><td colspan="4" class="text-muted" style="text-align:center;padding:1.2rem;"><%= rulesNone ? __('safety:rules_none') : __('safety:blocked_none') %></td></tr>
+            <% } %>
+            <% blocked.forEach(function (r) { %>
+                <tr>
+                    <td><a href="/employees/<%= r.employeeId %>"><%= r.name %></a>
+                        <div class="sg-sub"><%= r.employeeNumber %></div>
+                        <% if (r.observeOnly) { %><div class="sg-observe"><%= __('safety:observe_only_badge') %></div><% } %></td>
+                    <td class="sg-small"><%= r.siteName || '—' %></td>
+                    <td class="sg-small"><%= r.roleName || '—' %></td>
+                    <td class="sg-small">
+                        <ul class="sg-reasons">
+                        <% r.reasons.forEach(function (x) { %>
+                            <li class="<%= x.observe ? 'is-observe' : (x.blocking ? 'is-blocking' : 'is-warning') %>"><strong><%= reasonPrefix(x) %></strong> <%= reasonText(x) %></li>
+                        <% }); %>
+                        </ul>
+                    </td>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<h2 class="sg-h2"><i class="fas fa-hourglass-half" aria-hidden="true"></i> <%= __('safety:expiring_title') %></h2>
+<p class="help-text"><%= __('safety:expiring_window', { days: settings.expiryWarningDays }) %></p>
+<div class="card" style="padding:0;margin-bottom:1.2rem;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('safety:th_person') %></th>
+                <th><%= __('safety:th_where') %></th>
+                <th><%= __('safety:th_role') %></th>
+                <th><%= __('safety:th_reasons') %></th>
+                <th><%= __('safety:th_expiry') %></th>
+            </tr></thead>
+            <tbody>
+            <% if (!expiring.length) { %>
+                <tr><td colspan="5" class="text-muted" style="text-align:center;padding:1.2rem;"><%= __('safety:expiring_none') %></td></tr>
+            <% } %>
+            <% expiring.forEach(function (r) { %>
+                <tr>
+                    <td><a href="/employees/<%= r.employeeId %>"><%= r.name %></a>
+                        <div class="sg-sub"><%= r.employeeNumber %></div></td>
+                    <td class="sg-small"><%= r.siteName || '—' %></td>
+                    <td class="sg-small"><%= r.roleName || '—' %></td>
+                    <td class="sg-small">
+                        <ul class="sg-reasons">
+                        <% r.reasons.forEach(function (x) { %>
+                            <li class="<%= x.observe ? 'is-observe' : 'is-warning' %>"><strong><%= reasonPrefix(x) %></strong> <%= reasonText(x) %></li>
+                        <% }); %>
+                        </ul>
+                    </td>
+                    <td><strong><%= fmtPeriodBound(r.nextExpiry) %></strong></td>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<p class="help-text" style="font-size:.8rem;"><i class="fas fa-plug" aria-hidden="true"></i> <%= __('safety:api_help') %></p>
+
+<style>
+.sg-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:.85rem 1.1rem;margin-bottom:1rem}
+.sg-filters .form-control{max-width:220px}
+.sg-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:1.2rem}
+.sg-kpi{padding:.8rem 1rem;display:flex;flex-direction:column;gap:2px}
+.sg-kpi strong{font-size:1.6rem;line-height:1.1}
+.sg-kpi span{font-size:.8rem;color:var(--text-secondary,#475569)}
+.sg-kpi-blocked strong{color:var(--danger,#b91c1c)}
+.sg-kpi-expiring strong{color:var(--warning,#b45309)}
+.sg-kpi-cleared strong{color:var(--success,#15803d)}
+.sg-h2{font-size:1.05rem;margin:.4rem 0 .6rem}
+.sg-sub{font-size:.74rem;color:var(--text-muted)}
+.sg-small{font-size:.83rem}
+.sg-reasons{margin:0;padding-left:1.1rem}
+.sg-reasons li.is-blocking{color:var(--danger,#b91c1c)}
+.sg-reasons li.is-warning{color:var(--warning,#b45309)}
+.sg-reasons li.is-observe{color:var(--text-secondary,#475569)}
+.sg-observe{font-size:.74rem;font-weight:600;color:var(--text-secondary,#475569)}
+.sg-empty{padding:.9rem 1.1rem;margin-bottom:1.2rem;border-left:4px solid var(--warning,#b45309)}
+@media (max-width:640px){ .sg-filters .form-control{flex:1 1 100%;max-width:none} }
+</style>

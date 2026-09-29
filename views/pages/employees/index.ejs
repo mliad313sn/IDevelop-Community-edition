@@ -1,0 +1,390 @@
+<style nonce="<%= cspNonce %>">
+    /* A deactivated person must never read as current staff. Muted, but still
+       legible — this row exists so an administrator can find and reactivate it. */
+    .emp-inactive > td { opacity: .55; }
+    .emp-inactive-badge {
+        display: inline-block; margin-left: .5rem; padding: 1px 7px;
+        border: 1px solid var(--danger, #b91c1c); border-radius: 999px;
+        color: var(--danger, #b91c1c); background: var(--danger-dim, transparent);
+        font: 600 10px/1.6 var(--font-data, system-ui); text-transform: uppercase;
+        letter-spacing: .04em; vertical-align: middle; white-space: nowrap;
+    }
+    /* Three DISTINCT states, never to be confused: a leaver ("Sorti", red), a
+       record VOIDED as created-in-error (amber — it was never a departure and
+       is reversible from the maintenance panel), and a GDPR-ERASED subject
+       (grey — irreversible). */
+    .emp-voided-badge {
+        border-color: var(--warning, #b45309); color: var(--warning, #b45309);
+        background: var(--warning-dim, transparent);
+    }
+    .emp-erased-badge {
+        border-color: var(--text-muted, #64748b); color: var(--text-muted, #64748b);
+        background: transparent;
+    }
+    .emp-void-reason { display:block; margin-top:2px; font-size: .78rem; color: var(--text-muted, #64748b); font-weight: 400; }
+    /* Sortable headers (server-side links): the whole header is the control. */
+    th.sortable a.th-sort { color: inherit; text-decoration: none; display: inline-block; }
+    th.sortable a.th-sort:hover, th.sortable a.th-sort:focus { text-decoration: underline; }
+    th[aria-sort="ascending"] a.th-sort, th[aria-sort="descending"] a.th-sort { color: var(--brand-text, inherit); }
+    .list-range { margin: .25rem 0 .75rem; font-size: .9rem; }
+</style>
+<%
+    // pager / sort models come from utils/listTools via the controller.
+    const pg = (typeof pager !== 'undefined' && pager) || null;
+    const sc = (typeof sortCols !== 'undefined' && sortCols) || {};
+    const isGrouped = (typeof grouped === 'undefined') ? true : !!grouped;
+%>
+<%
+    // account + campaign chips per row, org filters, export.
+    const accOf = (id) => (typeof accountStates !== 'undefined' && accountStates && accountStates.get) ? accountStates.get(Number(id)) : null;
+    const campOf = (id) => (typeof campaignStates !== 'undefined' && campaignStates && campaignStates.get) ? campaignStates.get(Number(id)) : null;
+    const accCls = (s) => ({ active: 'badge-success', locked: 'badge-danger', expired: 'badge-danger', disabled: 'badge-danger', none: 'badge-danger', stale: 'badge-warning', pending: 'badge-warning', never_invited: 'badge-warning', sso: 'badge-info' })[s] || 'badge-secondary';
+    const campCls = (s) => ({ approved: 'badge-success', in_review: 'badge-info', in_progress: 'badge-warning', not_started: 'badge-danger', excluded: 'badge-secondary' })[s] || 'badge-secondary';
+    const mgrUser = (typeof isManagerUser !== 'undefined' && isManagerUser);
+    // Each filter is read with a `typeof` guard: this view is also rendered with a
+    // partial set of locals (tests, embedded lists), and EJS throws a
+    // ReferenceError — not undefined — on a name that was never passed.
+    const exportQs = new URLSearchParams(Object.fromEntries(Object.entries({
+        search: typeof search === 'undefined' ? '' : (search || ''),
+        siteId: typeof siteId === 'undefined' ? '' : (siteId || ''),
+        departmentId: typeof departmentId === 'undefined' ? '' : (departmentId || ''),
+        serviceId: typeof serviceId === 'undefined' ? '' : (serviceId || ''),
+        roleId: typeof roleId === 'undefined' ? '' : (roleId || ''),
+        supervisorId: typeof supervisorId === 'undefined' ? '' : (supervisorId || ''),
+        status: typeof status === 'undefined' ? '' : (status || ''),
+        sort: (!isGrouped && sort) ? sort.key : '', dir: (!isGrouped && sort) ? sort.dir : '',
+    }).filter(([k, v]) => v))).toString();
+%>
+<style nonce="<%= cspNonce %>">
+    .badge-info { background:#dbeafe; color:#1e40af; }
+    .emp-chip-note { display:block; font-size:.72rem; color: var(--text-muted, #64748b); }
+    .sup-msg { display:block; font-size:.75rem; margin-top:2px; }
+</style>
+<div class="page-header">
+    <h1><%= __('admin:employees') %></h1>
+    <div class="page-actions">
+        <a href="/organization?tab=employees" class="btn btn-secondary">← <%= __('admin:back_to_organization') %></a>
+        <%# `/employees/:id` matches `/employees/export.csv` first, so the export is a
+     flag on the list route itself — same handler, same scope, same filters. %>
+        <a href="/employees?export=csv&amp;<%= exportQs %>" class="btn btn-secondary" title="<%= __('admin:emp_export_title') %>"><i class="fas fa-file-csv" aria-hidden="true"></i> <%= __('admin:emp_export') %></a>
+        <% if (typeof canSeeAccounts !== 'undefined' && canSeeAccounts) { %><a href="/admin/accounts<%= siteId ? '?siteId=' + siteId : '' %>" class="btn btn-secondary"><i class="fas fa-users-gear" aria-hidden="true"></i> <%= __('admin:acc_title') %></a><% } %>
+        <%# The route requires `edit_employees`. Rendering the button to someone who
+     lacks it produced a 403 on click - a control that always fails is worse
+     than an absent one. %>
+        <% if (typeof can !== 'function' || can('edit_employees')) { %><a href="/employees/create" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:create_employee') %></a><% } %>
+    </div>
+</div>
+
+<div class="search-bar">
+    <%# data-filter-memory: the last filter set is re-applied
+        when the page is opened without a query string; « Réinitialiser » clears it.
+        The selects submit through [data-auto-submit] / [data-per-page] (CSP-clean). %>
+    <form action="/employees" method="GET" class="search-form" data-filter-memory>
+        <div class="search-input-wrapper">
+            <input type="search" name="search" class="search-input"
+                placeholder="<%= __('admin:search_employees_placeholder') %>" aria-label="<%= __('admin:search_employees_placeholder') %>" value="<%= search || '' %>">
+            <% if (!isGrouped && typeof sort !== 'undefined' && sort) { %>
+                <input type="hidden" name="sort" value="<%= sort.key %>">
+                <input type="hidden" name="dir" value="<%= sort.dir %>">
+            <% } %>
+        </div>
+        <% if (typeof sites !== 'undefined' && sites && sites.length) { %>
+            <select name="siteId" class="search-input" data-auto-submit
+                aria-label="<%= __('admin:site') %>" style="max-width: 220px;">
+                <%# a scope with exactly one site never offers the misleading "all sites" option. %>
+                <% if (sites.length !== 1) { %><option value=""><%= __('dash:all_sites') %></option><% } %>
+                <% sites.forEach(function(s){ %>
+                    <option value="<%= s.id %>" <%= (typeof siteId !== 'undefined' && siteId && String(siteId) === String(s.id)) ? 'selected' : '' %>><%= s.name %></option>
+                <% }); %>
+            </select>
+        <% } %>
+        <%# Org filters: department / service cascade from the site, plus role
+            and supervisor. Options follow the caller's scope (or span, for a manager). %>
+        <% if (typeof departments !== 'undefined' && departments && departments.length) { %>
+            <select name="departmentId" class="search-input" data-auto-submit aria-label="<%= __('admin:department') %>" style="max-width: 220px;">
+                <option value=""><%= __('admin:emp_filter_all_departments') %></option>
+                <% departments.forEach(function(d){ %>
+                    <option value="<%= d.id %>" <%= (typeof departmentId !== 'undefined' && departmentId && String(departmentId) === String(d.id)) ? 'selected' : '' %>><%= d.name %><%= (!siteId && d.siteName) ? ' (' + d.siteName + ')' : '' %></option>
+                <% }); %>
+            </select>
+        <% } %>
+        <% if (typeof services !== 'undefined' && services && services.length && (typeof departmentId !== 'undefined' && departmentId)) { %>
+            <select name="serviceId" class="search-input" data-auto-submit aria-label="<%= __('admin:service') %>" style="max-width: 200px;">
+                <option value=""><%= __('admin:emp_filter_all_services') %></option>
+                <% services.forEach(function(s){ %>
+                    <option value="<%= s.id %>" <%= (typeof serviceId !== 'undefined' && serviceId && String(serviceId) === String(s.id)) ? 'selected' : '' %>><%= s.name %></option>
+                <% }); %>
+            </select>
+        <% } %>
+        <% if (typeof roles !== 'undefined' && roles && roles.length) { %>
+            <select name="roleId" class="search-input" data-auto-submit aria-label="<%= __('admin:role') %>" style="max-width: 200px;">
+                <option value=""><%= __('admin:emp_filter_all_roles') %></option>
+                <% roles.forEach(function(r){ %>
+                    <option value="<%= r.id %>" <%= (roleId && String(roleId) === String(r.id)) ? 'selected' : '' %>><%= r.name %></option>
+                <% }); %>
+            </select>
+        <% } %>
+        <% if (typeof supervisors !== 'undefined' && supervisors && supervisors.length) { %>
+            <select name="supervisorId" class="search-input" data-auto-submit aria-label="<%= __('admin:supervisor') %>" style="max-width: 220px;">
+                <option value=""><%= __('admin:emp_filter_all_supervisors') %></option>
+                <% supervisors.forEach(function(s){ %>
+                    <option value="<%= s.id %>" <%= (typeof supervisorId !== 'undefined' && supervisorId && String(supervisorId) === String(s.id)) ? 'selected' : '' %>><%= personName(s) %><%= s.employeeNumber ? ' (' + s.employeeNumber + ')' : '' %></option>
+                <% }); %>
+            </select>
+        <% } %>
+        <%# Leavers are hidden by default. This is how an administrator finds one
+            again in order to reactivate the account — without it, a deactivated
+            record would be unreachable from the UI. %>
+        <% if (typeof statusOptions !== 'undefined' && statusOptions) { %>
+            <select name="status" class="search-input" data-auto-submit
+                aria-label="<%= __('admin:emp_status_filter') %>" style="max-width: 190px;">
+                <% statusOptions.forEach(function(s){ %>
+                    <option value="<%= s %>" <%= (typeof status !== 'undefined' && status === s) ? 'selected' : '' %>><%= __('admin:emp_status_' + s) %></option>
+                <% }); %>
+            </select>
+        <% } %>
+        <% if (typeof perPageOptions !== 'undefined' && perPageOptions) { %>
+            <select name="perPage" class="search-input" data-per-page
+                aria-label="<%= __('admin:rows_per_page') %>" style="max-width: 150px;">
+                <% perPageOptions.forEach(function(n){ %>
+                    <option value="<%= n %>" <%= (typeof perPage !== 'undefined' && String(perPage) === String(n)) ? 'selected' : '' %>><%= n %> / <%= __('admin:page') %></option>
+                <% }); %>
+            </select>
+        <% } %>
+        <button type="submit" class="btn btn-primary"><%= __('admin:search') %></button>
+    </form>
+</div>
+<% if (typeof total !== 'undefined') { %>
+    <p class="text-muted list-range">
+        <% if (pg && pg.total > 0) { %>
+            <%= __('admin:list_range', { from: pg.from, to: pg.to, total: pg.total }) %> —
+        <% } %>
+        <%= total %> <%= (total === 1 ? __('admin:employee_singular') : __('admin:employee_plural')) %>
+        <% if (!isGrouped) { %> · <span><%= __('admin:list_sorted_flat_hint') %></span><% } %>
+    </p>
+<% } %>
+
+<div class="table-wrapper">
+    <table class="table">
+        <thead>
+            <tr>
+                <%# Server-side sort: every header is a link built from the
+                    whitelist (utils/listTools.sortLinks); aria-sort announces the state. %>
+                <% [['employeeNumber', 'admin:employee_number_short'], ['lastName', 'admin:name'], ['role', 'admin:role'],
+                    ['site', 'admin:site'], ['department', 'admin:department'], ['service', 'admin:service']].forEach(function (col) {
+                    const c = sc[col[0]]; const label = __(col[1]); %>
+                <th class="sortable" aria-sort="<%= c ? c.ariaSort : 'none' %>">
+                    <% if (c) { %>
+                        <a href="<%= c.url %>" class="th-sort" aria-label="<%= __('admin:list_sort_by', { col: label }) %>"><%= label %><% if (c.active) { %> <i class="fas fa-arrow-<%= c.dir === 'desc' ? 'down' : 'up' %>" aria-hidden="true"></i><% } %></a>
+                    <% } else { %><%= label %><% } %>
+                </th>
+                <% }); %>
+                <th><%= __('admin:supervisor') %></th>
+                <th><%= __('admin:emp_th_campaign') %></th>
+                <th class="sortable" aria-sort="<%= sc.lastLogin ? sc.lastLogin.ariaSort : 'none' %>"><% if (sc.lastLogin) { %><a href="<%= sc.lastLogin.url %>" class="th-sort" aria-label="<%= __('admin:list_sort_by', { col: __('admin:emp_th_account') }) %>"><%= __('admin:emp_th_account') %><% if (sc.lastLogin.active) { %> <i class="fas fa-arrow-<%= sc.lastLogin.dir === 'desc' ? 'down' : 'up' %>" aria-hidden="true"></i><% } %></a><% } else { %><%= __('admin:emp_th_account') %><% } %></th>
+                <th><%= __('admin:actions') %></th>
+            </tr>
+        </thead>
+        <tbody>
+            <% if (employees && employees.length> 0) { %>
+                <%# Site separator rows only in the default (site-grouped) order: a
+                    column sort renders FLAT so the separators can never break it. %>
+                <% let currentSite=null; employees.forEach(function(employee) { if (isGrouped && currentSite !==employee.siteName) {
+                    currentSite=employee.siteName; %>
+                    <tr class="site-separator" data-ts-skip>
+                        <td colspan="10"
+                            style="background: var(--bg-elevated); padding: 9px 14px; font: 600 12px/1 var(--font-data); letter-spacing: .04em; text-transform: uppercase; color:var(--brand-text); border-top: 1px solid var(--border);">
+                            <i class="fas fa-building" aria-hidden="true" style="color:var(--brand-text); opacity: .8;"></i> <%= employee.siteName %>
+                        </td>
+                    </tr>
+                    <% } %>
+                        <%# A deactivated person is never shown as if they were still
+                            staff: the row is muted AND carries an explicit badge, so
+                            the state is legible at a glance and not inferred. %>
+                        <% const empInactive = employee.isActive === false || employee.isActive === 0; %>
+                        <%# A VOIDED record (created in error, MaintenanceService: cancelled_at
+                            set, reversible) and a GDPR-ERASED subject (erased_at set,
+                            irreversible) are NOT leavers and must never wear the same
+                            "Sorti" badge as a departed employee. %>
+                        <% const empErased = Boolean(employee.erasedAt); %>
+                        <% const empVoided = !empErased && Boolean(employee.cancelledAt); %>
+                        <tr class="<%= empInactive ? 'emp-inactive' : '' %>">
+                            <td>
+                                <%= employee.employeeNumber %>
+                            </td>
+                            <td data-record-state="<%= empErased ? 'erased' : (empVoided ? 'voided' : (empInactive ? 'inactive' : 'active')) %>"><strong>
+                                    <%= employee.firstName %>
+                                        <%= employee.lastName %>
+                                </strong><% if (empErased) { %>
+                                    <span class="emp-inactive-badge emp-erased-badge" title="<%= __('admin:emp_erased_title') %>"><%= __('admin:emp_erased_badge') %></span>
+                                <% } else if (empVoided) { %>
+                                    <span class="emp-inactive-badge emp-voided-badge" title="<%= __('admin:emp_voided_title') %>"><%= __('admin:emp_voided_badge') %></span>
+                                    <% if (employee.cancelReason) { %><span class="emp-void-reason"><%= __('admin:emp_voided_reason', { reason: employee.cancelReason }) %></span><% } %>
+                                <% } else if (empInactive) { %>
+                                    <span class="emp-inactive-badge" title="<%= __('admin:emp_inactive_title') %>"><%= __('admin:emp_inactive_badge') %></span>
+                                <% } %></td>
+                            <td>
+                                <%= employee.roleName %>
+                            </td>
+                            <td>
+                                <%= employee.siteName %>
+                            </td>
+                            <td>
+                                <%= employee.departmentName %>
+                            </td>
+                            <td>
+                                <%= employee.serviceName %>
+                            </td>
+                            <td>
+                                <% if (supervisorCandidates && supervisorCandidates.length) { %>
+                                    <!-- Manager-user: assign a supervisor (self or someone they govern) inline. -->
+                                    <select class="sup-set" data-emp="<%= employee.id %>"
+                                            aria-label="<%= __('admin:set_supervisor_for') %> <%= employee.firstName %> <%= employee.lastName %>"
+                                            style="max-width:180px;padding:4px 6px;">
+                                        <option value=""><%= __('admin:no_supervisor') %></option>
+                                        <% var _inList = supervisorCandidates.some(function(c){ return String(c.id) === String(employee.supervisorId); }); %>
+                                        <% if (employee.supervisorId && !_inList) { %>
+                                            <!-- Current supervisor is outside this manager's span — keep it visible/selected so it can't be cleared by accident. -->
+                                            <option value="<%= employee.supervisorId %>" selected><%= employee.supervisorName || ('#' + employee.supervisorId) %></option>
+                                        <% } %>
+                                        <% supervisorCandidates.forEach(function(c){ if (String(c.id) === String(employee.id)) return; %>
+                                            <option value="<%= c.id %>" <%= String(employee.supervisorId) === String(c.id) ? 'selected' : '' %>><%= c.name %></option>
+                                        <% }); %>
+                                    </select>
+                                <% } else if (employee.lineName) { %>
+                                    <%# 3.23.18: the EFFECTIVE line — live supervisor, else live
+                                        manager (employee or admin account), labelled when it is not
+                                        the supervisor. %>
+                                    <%= employee.lineName %>
+                                    <% if (employee.lineKind === 'manager') { %>
+                                        <span class="text-muted" style="font-size:.78rem" title="<%= __('employee:line_manager_title') %>">(<%= __('employee:line_manager_tag') %>)</span>
+                                    <% } else if (employee.lineKind === 'admin') { %>
+                                        <span class="text-muted" style="font-size:.78rem" title="<%= __('employee:line_admin_title') %>">(<%= __('employee:line_admin_tag') %>)</span>
+                                    <% } %>
+                                <% } else if (employee.supervisorName) { %>
+                                    <%= employee.supervisorName %>
+                                    <span class="text-muted" style="font-size:.78rem" title="<%= __('employee:line_inactive_title') %>">(<%= __('employee:line_inactive_tag') %>)</span>
+                                <% } else { %>
+                                    —
+                                <% } %>
+                                <span class="sup-msg" data-sup-msg="<%= employee.id %>" aria-live="polite"></span>
+                            </td>
+                            <%# Campaign state in the running campaign (roster view, read-only) —
+                                « — » when the person is in no running campaign, never a false 0. %>
+                            <td>
+                                <% const cp = campOf(employee.id); if (cp) { %>
+                                    <span class="badge <%= campCls(cp.state) %>" title="<%= cp.cycleCode || cp.cycleId %>"><%= __('admin:emp_campaign_' + cp.state) %></span>
+                                <% } else { %><span class="text-muted">—</span><% } %>
+                            </td>
+                            <%# Account state: the same rules as the Accounts console (EmployeeModel.accountStates). %>
+                            <td>
+                                <% const ac = accOf(employee.id); if (ac) { %>
+                                    <span class="badge <%= accCls(ac.state) %>" data-acc-state="<%= ac.state %>" title="<%= __('admin:acc_state_' + ac.state + '_title') %>"><%= __('admin:acc_state_' + ac.state) %></span>
+                                    <span class="emp-chip-note"><%= ac.lastLoginAt ? __('admin:emp_last_login_short', { date: fmtDate(ac.lastLoginAt) }) : __('admin:acc_never') %><% if (ac.state === 'locked' && ac.lockedUntil) { %> · <%= __('admin:acc_locked_until', { time: fmtDateTime(ac.lockedUntil), n: ac.failedAttempts }) %><% } %></span>
+                                <% } else { %><span class="text-muted">—</span><% } %>
+                            </td>
+                            <td>
+                                <div class="table-actions">
+                                    <a href="/employees/<%= employee.id %>" class="btn btn-sm" title="<%= __('admin:view_details') %>"><i class="fas fa-eye" aria-hidden="true"></i>
+                                        <%= __('admin:view') %></a>
+                                    <a href="/employees/<%= employee.id %>/assessments" class="btn btn-sm"
+                                        title="<%= __('admin:assess_skills') %>"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('admin:assess') %></a>
+                                    <a href="/employees/<%= employee.id %>/edit" class="btn btn-sm"
+                                        title="<%= __('admin:edit_employee') %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></a>
+                                </div>
+                            </td>
+                        </tr>
+                        <% }); %>
+                            <% } else { %>
+                                <%# Empty state adapted to the caller: a manager gets "nobody in
+                                    your team matches", a filtered admin gets "no match + reset"; the
+                                    "create your first employee" CTA only when the directory is truly empty
+                                    AND the caller may create. %>
+                                <tr class="empty-row">
+                                    <td colspan="10" style="text-align: center; padding: 3rem;">
+                                        <div class="empty-state">
+                                            <div class="empty-state-icon"><i class="fas fa-users" aria-hidden="true"></i></div>
+                                            <% if (mgrUser) { %>
+                                                <h3><%= __('admin:emp_empty_team_filter') %></h3>
+                                                <p><a href="/employees?reset=1"><%= __('admin:reset_filters') %></a></p>
+                                            <% } else if (typeof filtersActive !== 'undefined' && filtersActive) { %>
+                                                <h3><%= __('admin:emp_empty_no_match') %></h3>
+                                                <p><a href="/employees?reset=1"><%= __('admin:reset_filters') %></a></p>
+                                            <% } else { %>
+                                                <h3><%= __('admin:no_employees_found') %></h3>
+                                                <% if (typeof can === 'function' && can('edit_employees')) { %>
+                                                    <p><%= __('admin:get_started_employee') %></p>
+                                                    <a href="/employees/create" class="btn btn-primary"><%= __('admin:create_employee') %></a>
+                                                <% } %>
+                                            <% } %>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <% } %>
+        </tbody>
+    </table>
+</div>
+
+<%# every pager link is built from the FULL current query (status, site,
+    search, perPage, sort…) — utils/listTools.buildPager — so page 2 of « Tous »
+    is still « Tous ». %>
+<% if (pg && pg.totalPages > 1) { %>
+    <nav class="pagination" aria-label="<%= __('admin:page') %>">
+        <% if (pg.hasPrev) { %>
+            <a href="<%= pg.prevUrl %>" rel="prev">« <%= __('admin:previous') %></a>
+        <% } %>
+        <% pg.items.forEach(function (it) { if (it.gap) { %>
+            <span>...</span>
+        <% } else { %>
+            <a href="<%= it.url %>" class="<%= it.active ? 'active' : '' %>" <%- it.active ? 'aria-current="page"' : '' %>><%= it.n %></a>
+        <% } }); %>
+        <% if (pg.hasNext) { %>
+            <a href="<%= pg.nextUrl %>" rel="next"><%= __('admin:next') %> »</a>
+        <% } %>
+    </nav>
+<% } %>
+
+<% if (supervisorCandidates && supervisorCandidates.length) { %>
+<script nonce="<%= cspNonce %>">
+// Inline supervisor assignment (manager-users): save on change, revert on failure.
+// Feedback is ALWAYS visible next to the control — the toast is a bonus,
+// never the only signal; refusals arrive translated from the server.
+(function () {
+    var MSG_OK = <%- JSON.stringify(__('admin:sup_saved')) %>;
+    var MSG_FAIL = <%- JSON.stringify(__('admin:sup_save_failed')) %>;
+    function note(emp, text, ok) {
+        var el = document.querySelector('[data-sup-msg="' + emp + '"]');
+        if (el) { el.textContent = text; el.style.color = ok ? '#15803d' : '#b91c1c'; }
+        if (window.toast) window.toast(text, ok ? 'success' : 'error');
+    }
+    document.querySelectorAll('select.sup-set').forEach(function (sel) {
+        sel.dataset.prev = sel.value;
+        sel.addEventListener('change', async function () {
+            sel.disabled = true;
+            try {
+                var r = await fetch('/employees/' + sel.dataset.emp + '/supervisor', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ supervisorId: sel.value || null, _csrf: '<%= csrfToken %>' })
+                });
+                var j = await r.json().catch(function () { return {}; });
+                if (r.ok && j.success) {
+                    sel.dataset.prev = sel.value;
+                    note(sel.dataset.emp, j.message || MSG_OK, true);
+                } else {
+                    sel.value = sel.dataset.prev;
+                    // the server's `error` is trusted ONLY when it carries a
+                    // `code` (which means it came through req.t and is localized).
+                    // The frozen JSON 403 has no code and is English — never show it
+                    // on a French page; the page's own message says the same thing.
+                    note(sel.dataset.emp, j.code ? (j.error || MSG_FAIL) : MSG_FAIL, false);
+                }
+            } catch (e) {
+                sel.value = sel.dataset.prev;
+                note(sel.dataset.emp, MSG_FAIL, false);
+            } finally { sel.disabled = false; }
+        });
+    });
+})();
+</script>
+<% } %>

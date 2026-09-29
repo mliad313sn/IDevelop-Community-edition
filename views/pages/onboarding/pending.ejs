@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="<%= typeof lang !== 'undefined' ? lang : 'fr' %>">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= __('auth:pend_page_title') %> - IDevelop</title>
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css?v=6.4.0">
+    <% if (typeof externalFonts !== 'undefined' && externalFonts === true) { %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript>
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    </noscript>
+    <% } %>
+    <link rel="stylesheet" href="/css/style.css?v=<%= assetVersion %>">
+    <link rel="stylesheet" href="/css/login.css?v=<%= assetVersion %>">
+    <script nonce="<%= cspNonce %>">(function(){var t=localStorage.getItem('theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');})();</script>
+    <%- include('../../partials/pwa-head') %>
+</head>
+
+<body class="login-page">
+    <%# Three honest states instead of one static leaflet. `state` is present only
+        for the applicant whose own signup this session submitted; anyone else
+        (an SSO parking, a shared link) falls through to the generic copy, which
+        stays accurate. %>
+    <% var st = (typeof state !== 'undefined' && state) ? state : null;
+       var status = st ? st.status : 'pending'; %>
+    <div class="login-container" style="text-align:center;">
+        <img src="/brand/idevelop-mark.svg" alt="" class="login-mark" width="56" height="56">
+        <h1>IDevelop</h1>
+
+        <% if (status === 'approved') { %>
+            <div style="font-size:3rem; margin:1rem 0; color: var(--success, #2e7d32);">
+                <i class="fas fa-circle-check" aria-hidden="true"></i>
+            </div>
+            <h2><%= __('admin:onbx_pend_approved_title') %></h2>
+            <p class="login-help-text" style="margin:1rem 0;">
+                <%= __('admin:onbx_pend_approved_body', { email: st.email }) %>
+                <% if (st.source === 'sso') { %><br><%= __('admin:onbx_pend_sso_hint') %><% } %>
+            </p>
+            <a href="/login" class="btn btn-primary btn-block"><%= __('admin:onbx_pend_approved_cta') %></a>
+
+        <% } else if (status === 'rejected') { %>
+            <div style="font-size:3rem; margin:1rem 0; color: var(--warning, #b45309);">
+                <i class="fas fa-circle-xmark" aria-hidden="true"></i>
+            </div>
+            <h2><%= __('admin:onbx_pend_rejected_title') %></h2>
+            <p class="login-help-text" style="margin:1rem 0;">
+                <%= __('admin:onbx_pend_rejected_body') %>
+                <% if (st.decisionNote) { %>
+                    <br><strong><%= __('admin:onbx_pend_rejected_reason') %></strong> <%= st.decisionNote %>
+                <% } %>
+            </p>
+            <a href="/login" class="btn btn-secondary btn-block"><%= __('auth:pend_back') %></a>
+
+        <% } else { %>
+            <div style="font-size:3rem; margin:1rem 0; color: var(--brand, #6656f0);">
+                <i class="fas fa-user-clock" aria-hidden="true"></i>
+            </div>
+            <h2><%= __('auth:pend_heading') %></h2>
+            <p class="login-help-text" style="margin:1rem 0;">
+                <%= __('auth:pend_body') %>
+            </p>
+            <%# What happens next, and what the applicant can DO — the old page
+                ended here, with nothing but a link back to a sign-in they cannot
+                yet use. %>
+            <div class="login-help-text" style="text-align:left; margin:1rem 0;">
+                <strong><%= __('admin:onbx_pend_next_title') %></strong>
+                <ol style="margin:.5rem 0 0; padding-left:1.2rem;">
+                    <li><%= __('admin:onbx_pend_next_placement') %></li>
+                    <li>
+                        <% if (st && st.source === 'sso') { %>
+                            <%= __('admin:onbx_pend_next_signin_sso') %>
+                        <% } else if (st && st.email) { %>
+                            <%= __('admin:onbx_pend_next_signin_local', { email: st.email }) %>
+                        <% } else { %>
+                            <%= __('admin:onbx_pend_next_signin_generic') %>
+                        <% } %>
+                    </li>
+                    <li><%= __('admin:onbx_pend_next_recheck') %></li>
+                </ol>
+            </div>
+            <% if (st) { %>
+                <a href="/onboarding/pending" class="btn btn-primary btn-block"><%= __('admin:onbx_pend_recheck_btn') %></a>
+            <% } %>
+            <a href="/login" class="btn btn-secondary btn-block"><%= __('auth:pend_back') %></a>
+        <% } %>
+    </div>
+</body>
+
+</html>

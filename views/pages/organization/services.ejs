@@ -1,0 +1,172 @@
+<%
+/* Write access comes from the permission SLUG, never from the role shape. */
+const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user && user.role === 'superadmin');
+/* a refused POST comes back with its safe body in `draft`;
+   `__from` tells whether it was the create form or an edit (…/services/<id>). */
+const d = (typeof draft !== 'undefined' && draft) || {};
+const isCreateDraft = d.__from === '/organization/services';
+const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : ''; };
+%>
+<div class="page-header">
+    <h1><%= __('admin:services') %></h1>
+    <% if (canManage) { %>
+    <button class="btn btn-primary" onclick="document.getElementById('createModal').style.display='block'"><%= __('admin:create_service') %></button>
+    <% } %>
+</div>
+
+<%- include('../../partials/org-subnav') %>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th><%= __('admin:site') %></th>
+            <th><%= __('admin:department') %></th>
+            <th><%= __('admin:name') %></th>
+            <th><%= __('admin:code') %></th>
+            <th><%= __('admin:description') %></th>
+            <% if (canManage) { %>
+            <th><%= __('admin:actions') %></th>
+            <% } %>
+        </tr>
+    </thead>
+    <tbody>
+        <% services.forEach(function(service) { %>
+        <tr>
+            <td><%= service.siteName %></td>
+            <td><%= service.departmentName %></td>
+            <td><%= service.name %></td>
+            <td><%= service.code || '-' %></td>
+            <td><%= service.description || '-' %></td>
+            <% if (canManage) { %>
+            <td>
+                <button class="btn btn-sm" onclick="editService(<%= JSON.stringify(service).replace(/"/g, '&quot;') %>)"><%= __('admin:edit') %></button>
+                <%- include('./_unit-actions', { kind: 'service', unit: service, from: 'page' }) %>
+            </td>
+            <% } %>
+        </tr>
+        <% }); %>
+    </tbody>
+</table>
+
+<% if (canManage) { %>
+<%- include('./_deactivated-panel', { kinds: ['service'], from: 'page' }) %>
+
+<!-- Create Modal -->
+<div id="createModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <span class="close" onclick="document.getElementById('createModal').style.display='none'">&times;</span>
+        <h2><%= __('admin:create_service') %></h2>
+        <form action="/organization/services" method="POST">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="form-group">
+                <label for="svc-f1-departmentId"><%= __('admin:department') %> *</label>
+                <select id="svc-f1-departmentId" name="departmentId" required>
+                    <option value=""><%= __('admin:select_department') %></option>
+                    <% departments.forEach(function(dept) { %>
+                    <option value="<%= dept.id %>" <%= dc('departmentId') === String(dept.id) ? 'selected' : '' %>><%= dept.siteName %> - <%= dept.name %></option>
+                    <% }); %>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="svc-f1-name"><%= __('admin:name') %> *</label>
+                <input id="svc-f1-name" type="text" name="name" required value="<%= dc('name') %>">
+            </div>
+            <div class="form-group">
+                <label for="svc-f1-code"><%= __('admin:code') %></label>
+                <input id="svc-f1-code" type="text" name="code" value="<%= dc('code') %>">
+            </div>
+            <div class="form-group">
+                <label for="svc-f1-description"><%= __('admin:description') %></label>
+                <textarea id="svc-f1-description" name="description"><%= dc('description') %></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary"><%= __('admin:create') %></button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('createModal').style.display='none'"><%= __('admin:cancel') %></button>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="editModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <span class="close" onclick="document.getElementById('editModal').style.display='none'">&times;</span>
+        <h2><%= __('admin:edit_service') %></h2>
+        <form id="editForm" method="POST">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="form-group">
+                <label for="editDepartmentId"><%= __('admin:department') %> *</label>
+                <select name="departmentId" id="editDepartmentId" required>
+                    <option value=""><%= __('admin:select_department') %></option>
+                    <% departments.forEach(function(dept) { %>
+                    <option value="<%= dept.id %>"><%= dept.siteName %> - <%= dept.name %></option>
+                    <% }); %>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="editName"><%= __('admin:name') %> *</label>
+                <input type="text" name="name" id="editName" required>
+            </div>
+            <div class="form-group">
+                <label for="editCode"><%= __('admin:code') %></label>
+                <input type="text" name="code" id="editCode">
+            </div>
+            <div class="form-group">
+                <label for="editDescription"><%= __('admin:description') %></label>
+                <textarea name="description" id="editDescription"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary"><%= __('admin:update') %></button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('editModal').style.display='none'"><%= __('admin:cancel') %></button>
+        </form>
+    </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+/* Deactivation is reversible but it hides the unit from every list, dropdown,
+   cascade and report filter — so it gets a real explanation (unit name, how many
+   child units go with it, where to restore it) instead of a bare confirm(). The
+   message is rendered server-side onto the form data-msg. A unit that still has
+   active employees is never rendered as submittable, and the server refuses it. */
+document.addEventListener('submit', function (e) {
+    const form = e.target;
+    if (!form || !form.hasAttribute || !form.hasAttribute('data-org-deactivate')) return;
+    e.preventDefault();
+    window.confirmDialog(form.getAttribute('data-msg'), {
+        title: form.getAttribute('data-title'),
+        confirmText: form.getAttribute('data-yes'),
+        cancelText: form.getAttribute('data-no'),
+        danger: true
+    }).then(function (ok) {
+        if (ok) HTMLFormElement.prototype.submit.call(form);
+    });
+}, true);
+
+function editService(service) {
+    document.getElementById('editDepartmentId').value = service.departmentId || '';
+    document.getElementById('editName').value = service.name || '';
+    document.getElementById('editCode').value = service.code || '';
+    document.getElementById('editDescription').value = service.description || '';
+    document.getElementById('editForm').action = '/organization/services/' + service.id;
+    document.getElementById('editModal').style.display = 'block';
+}
+
+// Reopen the modal a refused submission came from, with what was typed.
+(function restoreDraft() {
+    const D = <%- include('../../partials/json-script', { v: d }) %>;
+    const m = String(D.__from || '').match(/^\/organization\/services(?:\/(\d+))?$/);
+    if (!m) return;
+    if (m[1]) editService({ id: m[1], departmentId: D.departmentId, name: D.name, code: D.code, description: D.description });
+    else document.getElementById('createModal').style.display = 'block';
+})();
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const createModal = document.getElementById('createModal');
+    const editModal = document.getElementById('editModal');
+    if (event.target == createModal) {
+        createModal.style.display = 'none';
+    }
+    if (event.target == editModal) {
+        editModal.style.display = 'none';
+    }
+}
+</script>
+<% } %>

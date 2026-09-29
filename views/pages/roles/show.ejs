@@ -1,0 +1,699 @@
+<%
+/* Level labels shared by the server-rendered <option>s and the JS that builds a
+   row for a newly added requirement — one source of truth, both localized. */
+const LEVEL_LABELS = [
+    __('admin:scale_none'),
+    __('admin:scale_basic_awareness'),
+    __('admin:scale_guided'),
+    __('admin:scale_autonomous'),
+    __('admin:scale_expert')
+];
+%>
+<a href="/roles" class="btn-back">← <%= __('admin:back_to_roles') %></a>
+
+<div class="page-header">
+    <h1><%= __('admin:role') %>: <%= role.name %>
+    </h1>
+    <div class="page-actions">
+        <button class="btn btn-secondary" onclick='editRole(<%= JSON.stringify(role) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit_role') %></button>
+        <%# Styled confirmation (ui-feedback data-confirm) — never the native confirm. %>
+        <form action="/roles/<%= role.id %>/duplicate" method="POST" style="display:inline;"
+            data-confirm="<%= __('admin:duplicate_role_confirm', { name: role.name }) %>">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button type="submit" class="btn btn-secondary" title="<%= __('admin:duplicate_role_tooltip') %>"><i class="fas fa-copy" aria-hidden="true"></i> <%= __('admin:duplicate') %></button>
+        </form>
+    </div>
+</div>
+
+<!-- Role Statistics -->
+<div class="dashboard-stats" style="margin-bottom: 2rem;">
+    <div class="stat-card">
+        <h3><%= __('admin:total_employees') %></h3>
+        <p class="stat-value">
+            <%= employeeCount %>
+        </p>
+    </div>
+    <div class="stat-card">
+        <h3><%= __('admin:skill_requirements') %></h3>
+        <p class="stat-value" id="reqTotalStat">
+            <%= requirements.length %>
+        </p>
+    </div>
+    <div class="stat-card">
+        <h3><%= __('admin:ready_employees') %></h3>
+        <p class="stat-value">
+            <%= roleReadinessStats.readyCount %> / <%= roleReadinessStats.totalEmployees %>
+        </p>
+    </div>
+    <div class="stat-card">
+        <h3><%= __('admin:average_readiness') %></h3>
+        <p class="stat-value">
+            <%= roleReadinessStats.averageReadiness %>%
+        </p>
+    </div>
+</div>
+
+<!-- Role Information -->
+<div class="dashboard-section">
+    <h2><%= __('admin:role_information') %></h2>
+    <div style="display: grid; grid-template-columns: auto 1fr; gap: 1rem; align-items: start;">
+        <strong><%= __('admin:name') %>:</strong>
+        <div>
+            <%= role.name %>
+        </div>
+        <strong><%= __('admin:description') %>:</strong>
+        <div>
+            <%= role.description || ('<em>' + __('admin:no_description_provided') + '</em>') %>
+        </div>
+    </div>
+</div>
+
+<!--
+    Skill Requirements — edited INLINE, saved in ONE request.
+
+    The requirement count per role is department-designed (161 on the largest role)
+    and is never trimmed here: every requirement stays on the page, visible and
+    editable. What changed is the cost of editing one — it used to be a modal plus a
+    full page reload per row. Now the level and the critical flag are edited in the
+    table itself, several rows at a time via the bulk bar, and the whole batch goes
+    to the server in a single POST with no reload. The ~1,100-option skill picker is
+    rendered ONCE, in the Add modal, never per row.
+-->
+<div class="dashboard-section">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: .75rem;">
+        <h2><%= __('admin:skill_requirements') %></h2>
+        <button class="btn btn-primary" onclick="showModal('addRequirementModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:add_requirement') %></button>
+    </div>
+
+    <% if (requirements.length===0) { %>
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-bullseye" aria-hidden="true"></i></div>
+            <h3><%= __('admin:no_requirements') %></h3>
+            <p><%= __('admin:no_requirements_hint') %></p>
+            <button class="btn btn-primary" onclick="showModal('addRequirementModal')"><%= __('admin:add_first_requirement') %></button>
+        </div>
+        <% } else { %>
+            <p style="opacity:.85; margin-top:0;"><%= __('admin:org_req_bulk_help') %></p>
+
+            <!-- Bulk bar: re-level or (un)flag many requirements at once -->
+            <div class="form-row" id="reqBulkBar"
+                style="display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:.75rem 0 1rem;">
+                <input type="text" id="reqFilter" autocomplete="off"
+                    placeholder="<%= __('admin:org_req_filter_placeholder') %>"
+                    aria-label="<%= __('admin:org_req_filter_placeholder') %>"
+                    style="flex:1 1 260px; min-width:200px; padding:.5rem .75rem; border:2px solid var(--border); border-radius:6px;">
+                <span id="reqShownCount" aria-live="polite" style="opacity:.8; font-size:.9rem;"></span>
+                <span style="flex-basis:100%; height:0;"></span>
+                <label for="reqBulkScope" style="margin:0;"><%= __('admin:org_req_apply') %></label>
+                <select id="reqBulkScope" aria-label="<%= __('admin:org_req_apply') %>"
+                    style="padding:.5rem .6rem; border:2px solid var(--border); border-radius:6px;">
+                    <option value="shown"><%= __('admin:org_req_apply_to_shown') %></option>
+                    <option value="selected"><%= __('admin:org_req_apply_to_selected') %></option>
+                </select>
+                <select id="reqBulkLevel" aria-label="<%= __('admin:org_req_apply_level') %>"
+                    style="padding:.5rem .6rem; border:2px solid var(--border); border-radius:6px;">
+                    <% LEVEL_LABELS.forEach(function (label, i) { %>
+                        <option value="<%= i %>"><%= i %> - <%= label %></option>
+                    <% }); %>
+                </select>
+                <button type="button" class="btn btn-sm" id="reqApplyLevel"><i class="fas fa-layer-group" aria-hidden="true"></i> <%= __('admin:org_req_apply_level') %></button>
+                <button type="button" class="btn btn-sm" id="reqMarkCritical"><i class="fas fa-circle-exclamation" aria-hidden="true"></i> <%= __('admin:org_req_mark_critical') %></button>
+                <button type="button" class="btn btn-sm" id="reqUnmarkCritical"><i class="fas fa-circle-minus" aria-hidden="true"></i> <%= __('admin:org_req_unmark_critical') %></button>
+            </div>
+
+            <div class="table-wrapper">
+                <table class="table" id="role-req-table">
+                    <thead>
+                        <tr>
+                            <th style="width:2.5rem;">
+                                <input type="checkbox" id="reqSelectAll"
+                                    aria-label="<%= __('admin:org_req_select_all') %>"
+                                    title="<%= __('admin:org_req_select_all') %>">
+                            </th>
+                            <th class="sortable"><%= __('admin:domain') %></th>
+                            <th class="sortable"><%= __('admin:skill') %></th>
+                            <th><%= __('admin:required_level') %></th>
+                            <th><%= __('admin:critical') %></th>
+                            <th><%= __('admin:actions') %></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% requirements.forEach(function(req) { %>
+                            <tr data-req-id="<%= req.id %>"
+                                data-search="<%= req.domainName %> <%= req.skillName %>">
+                                <td>
+                                    <input type="checkbox" class="req-select"
+                                        aria-label="<%= __('admin:org_req_select_row') %>">
+                                </td>
+                                <td class="req-domain">
+                                    <%= req.domainName %>
+                                </td>
+                                <td><strong class="req-skill">
+                                        <%= req.skillName %>
+                                    </strong></td>
+                                <td>
+                                    <select class="req-level" data-orig="<%= req.requiredLevel %>"
+                                        aria-label="<%= __('admin:required_level') %> — <%= req.skillName %>"
+                                        style="padding:.35rem .5rem; border:2px solid var(--border); border-radius:6px;">
+                                        <% LEVEL_LABELS.forEach(function (label, i) { %>
+                                            <option value="<%= i %>" <%= Number(req.requiredLevel)===i ? 'selected' : '' %>><%= i %> - <%= label %></option>
+                                        <% }); %>
+                                    </select>
+                                </td>
+                                <td>
+                                    <label style="display:inline-flex; align-items:center; gap:.4rem; margin:0;">
+                                        <input type="checkbox" class="req-critical"
+                                            data-orig="<%= req.isCritical ? 1 : 0 %>" <%= req.isCritical ? 'checked' : '' %>
+                                            aria-label="<%= __('admin:critical_skill') %> — <%= req.skillName %>">
+                                        <span class="req-critical-label"><%= req.isCritical ? __('admin:critical') : __('admin:standard') %></span>
+                                    </label>
+                                </td>
+                                <td>
+                                    <div class="table-actions">
+                                        <span class="req-state"></span>
+                                        <button type="button" class="btn btn-sm btn-danger req-remove"
+                                            title="<%= __('admin:remove_requirement_tooltip') %>"><i class="fas fa-trash-can" aria-hidden="true"></i> <%= __('admin:remove') %></button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <% }); %>
+                        <tr id="reqNoMatchRow" style="display:none;">
+                            <td colspan="6" style="text-align:center; padding:1.5rem; opacity:.75;">
+                                <%= __('admin:org_req_none_shown') %>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Save bar: one request for every pending change -->
+            <div id="reqSaveBar" style="display:none; position:sticky; bottom:0; z-index:5;
+                margin-top:1rem; padding:.75rem 1rem; border:1px solid var(--border);
+                border-radius:8px; background:var(--bg-elevated);
+                box-shadow:0 -6px 18px rgba(2,8,20,.18);
+                align-items:center; gap:.75rem; flex-wrap:wrap;">
+                <strong id="reqDirtyCount" aria-live="polite"></strong>
+                <span style="flex:1;"></span>
+                <button type="button" class="btn btn-secondary" id="reqDiscard"><i class="fas fa-rotate-left" aria-hidden="true"></i> <%= __('admin:org_req_discard') %></button>
+                <button type="button" class="btn btn-primary" id="reqSave"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('admin:org_req_save_all') %></button>
+            </div>
+            <% } %>
+</div>
+
+<!-- Employees with this Role -->
+<% if (employeeCount> 0) { %>
+    <div class="dashboard-section">
+        <h2><%= __('admin:employees_with_role') %> (<%= employeeCount %>)</h2>
+        <p><a href="/employees?roleId=<%= role.id %>" class="btn btn-secondary"><%= __('admin:view_all_employees') %> →</a></p>
+    </div>
+    <% } %>
+
+        <!-- Add Requirement Modal — the only place the full skill list is rendered -->
+        <div id="addRequirementModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><%= __('admin:add_skill_requirement') %></h2>
+                    <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('addRequirementModal')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="addRequirementForm">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <div class="form-group">
+                            <label class="required"><%= __('admin:domain') %></label>
+                            <select id="requirementDomainFilter" onchange="filterSkillsByDomain()"
+                                style="width: 100%; padding: 0.75rem 1rem; border: 2px solid var(--border); border-radius: 6px; font-size: 1rem;">
+                                <option value=""><%= __('admin:all_domains') %></option>
+                                <% const domains=[...new Set(allSkills.map(s=> s.domainName))].sort();
+                                    domains.forEach(function(domain) { %>
+                                    <option value="<%= domain %>">
+                                        <%= domain %>
+                                    </option>
+                                    <% }); %>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="required"><%= __('admin:skill') %></label>
+                            <select name="skillId" id="requirementSkillSelect" data-searchable required
+                                style="width: 100%; padding: 0.75rem 1rem; border: 2px solid var(--border); border-radius: 6px; font-size: 1rem;">
+                                <option value=""><%= __('admin:select_skill') %></option>
+                                <% allSkills.forEach(function(skill) { %>
+                                    <option value="<%= skill.id %>" data-domain="<%= skill.domainName %>">
+                                        <%= skill.domainName %> - <%= skill.name %>
+                                    </option>
+                                    <% }); %>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="required"><%= __('admin:required_level') %></label>
+                            <select name="requiredLevel" required
+                                style="width: 100%; padding: 0.75rem 1rem; border: 2px solid var(--border); border-radius: 6px; font-size: 1rem;">
+                                <option value="0">0 - <%= __('admin:scale_none') %></option>
+                                <option value="1">1 - <%= __('admin:scale_basic_awareness') %></option>
+                                <option value="2">2 - <%= __('admin:scale_guided') %></option>
+                                <option value="3">3 - <%= __('admin:scale_autonomous') %></option>
+                                <option value="4">4 - <%= __('admin:scale_expert') %></option>
+                            </select>
+                            <div class="form-help"><%= __('admin:min_level_help') %></div>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" name="isCritical" value="true" style="margin-right: 0.5rem;">
+                                <strong><%= __('admin:critical_skill') %></strong>
+                            </label>
+                            <div class="form-help"><%= __('admin:critical_skill_help') %></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:add_requirement') %></button>
+                            <button type="button" class="btn btn-secondary"
+                                onclick="hideModal('addRequirementModal')"><%= __('admin:cancel') %></button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Role Modal -->
+        <div id="editRoleModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><%= __('admin:edit_role') %></h2>
+                    <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editRoleModal')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="editRoleForm" method="POST">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <div class="form-group">
+                            <label class="required"><%= __('admin:name') %></label>
+                            <input type="text" name="name" id="editRoleName" required>
+                        </div>
+                        <div class="form-group">
+                            <label><%= __('admin:description') %></label>
+                            <textarea name="description" id="editRoleDescription"></textarea>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="submit" class="btn btn-primary"><%= __('admin:update') %></button>
+                            <button type="button" class="btn btn-secondary"
+                                onclick="hideModal('editRoleModal')"><%= __('admin:cancel') %></button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <script nonce="<%= cspNonce %>">
+            // Filter skills by domain (Add modal only)
+            function filterSkillsByDomain() {
+                const domainFilter = document.getElementById('requirementDomainFilter').value;
+                const skillSelect = document.getElementById('requirementSkillSelect');
+                const options = skillSelect.querySelectorAll('option');
+
+                options.forEach(option => {
+                    if (option.value === '') {
+                        option.style.display = '';
+                    } else {
+                        const skillDomain = option.getAttribute('data-domain');
+                        if (domainFilter === '' || skillDomain === domainFilter) {
+                            option.style.display = '';
+                        } else {
+                            option.style.display = 'none';
+                        }
+                    }
+                });
+
+                // Reset selection if current selection is hidden
+                if (skillSelect.value && skillSelect.options[skillSelect.selectedIndex].style.display === 'none') {
+                    skillSelect.value = '';
+                }
+            }
+
+            // Edit role
+            function editRole(role) {
+                document.getElementById('editRoleName').value = role.name || '';
+                document.getElementById('editRoleDescription').value = role.description || '';
+                document.getElementById('editRoleForm').action = '/roles/' + role.id;
+                showModal('editRoleModal');
+            }
+
+            /* ---------------------------------------------------------------
+               Inline requirement editor.
+
+               Every requirement stays in the table (nothing is paged away or
+               sampled); the filter only hides rows from VIEW and never from the
+               save — the payload is built from the dirty rows, hidden or not.
+               One POST carries the whole batch; no full page reload anywhere.
+               --------------------------------------------------------------- */
+            const ROLE_ID = <%- include('../../partials/json-script', { v: String(role.id) }) %>;
+            const CSRF = <%- include('../../partials/json-script', { v: csrfToken }) %>;
+            const LEVELS = <%- include('../../partials/json-script', { v: LEVEL_LABELS }) %>;
+            const I18N = (function () {
+                return {
+                    shown: <%- JSON.stringify(__('admin:org_req_shown_count')) %>,
+                    dirty: <%- JSON.stringify(__('admin:org_req_dirty_count')) %>,
+                    saved: <%- JSON.stringify(__('admin:org_req_saved')) %>,
+                    saveError: <%- JSON.stringify(__('admin:org_req_save_error')) %>,
+                    noChanges: <%- JSON.stringify(__('admin:org_req_no_changes')) %>,
+                    noSelection: <%- JSON.stringify(__('admin:org_req_no_selection')) %>,
+                    modified: <%- JSON.stringify(__('admin:org_req_modified')) %>,
+                    saving: <%- JSON.stringify(__('admin:org_req_saving')) %>,
+                    removeConfirm: <%- JSON.stringify(__('admin:org_req_remove_confirm')) %>,
+                    removed: <%- JSON.stringify(__('admin:org_req_removed')) %>,
+                    removing: <%- JSON.stringify(__('admin:removing_requirement')) %>,
+                    removeError: <%- JSON.stringify(__('admin:error_removing_requirement')) %>,
+                    added: <%- JSON.stringify(__('admin:org_req_added')) %>,
+                    addingReq: <%- JSON.stringify(__('admin:adding_requirement')) %>,
+                    addError: <%- JSON.stringify(__('admin:error_adding_requirement')) %>,
+                    selectSkill: <%- JSON.stringify(__('admin:please_select_skill')) %>,
+                    leaveWarning: <%- JSON.stringify(__('admin:org_req_leave_warning')) %>,
+                    critical: <%- JSON.stringify(__('admin:critical')) %>,
+                    standard: <%- JSON.stringify(__('admin:standard')) %>,
+                    remove: <%- JSON.stringify(__('admin:remove')) %>,
+                    removeTip: <%- JSON.stringify(__('admin:remove_requirement_tooltip')) %>,
+                    levelLabel: <%- JSON.stringify(__('admin:required_level')) %>,
+                    criticalLabel: <%- JSON.stringify(__('admin:critical_skill')) %>,
+                    selectRow: <%- JSON.stringify(__('admin:org_req_select_row')) %>,
+                    confirmTitle: <%- JSON.stringify(__('admin:remove')) %>,
+                    cancel: <%- JSON.stringify(__('admin:cancel')) %>
+                };
+            })();
+
+            /* Inline editor — only wired when the role already has requirements; the
+               Add flow below works with or without it. */
+            (function () {
+                const table = document.getElementById('role-req-table');
+                if (!table) return;
+
+                const tbody = table.tBodies[0];
+                const noMatchRow = document.getElementById('reqNoMatchRow');
+                const saveBar = document.getElementById('reqSaveBar');
+                const dirtyLabel = document.getElementById('reqDirtyCount');
+                const shownLabel = document.getElementById('reqShownCount');
+                const filterInput = document.getElementById('reqFilter');
+                const totalStat = document.getElementById('reqTotalStat');
+
+                const rows = () => Array.prototype.slice.call(tbody.rows)
+                    .filter((r) => r.hasAttribute('data-req-id'));
+                const shownRows = () => rows().filter((r) => r.style.display !== 'none');
+                const selectedRows = () => rows().filter((r) => {
+                    const c = r.querySelector('.req-select');
+                    return c && c.checked && r.style.display !== 'none';
+                });
+                const fold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+                function state(row) {
+                    const lvl = row.querySelector('.req-level');
+                    const crit = row.querySelector('.req-critical');
+                    return {
+                        id: Number(row.getAttribute('data-req-id')),
+                        level: Number(lvl.value),
+                        critical: !!crit.checked,
+                        origLevel: Number(lvl.getAttribute('data-orig')),
+                        origCritical: crit.getAttribute('data-orig') === '1'
+                    };
+                }
+                const isDirty = (row) => {
+                    const s = state(row);
+                    return s.level !== s.origLevel || s.critical !== s.origCritical;
+                };
+
+                function refresh() {
+                    let dirty = 0;
+                    rows().forEach((row) => {
+                        const d = isDirty(row);
+                        if (d) dirty++;
+                        row.style.background = d ? 'var(--bg-subtle)' : '';
+                        const badge = row.querySelector('.req-state');
+                        if (badge) {
+                            badge.textContent = d ? I18N.modified : '';
+                            badge.className = d ? 'req-state badge badge-info' : 'req-state';
+                        }
+                        const lab = row.querySelector('.req-critical-label');
+                        if (lab) lab.textContent = row.querySelector('.req-critical').checked ? I18N.critical : I18N.standard;
+                    });
+                    saveBar.style.display = dirty > 0 ? 'flex' : 'none';
+                    dirtyLabel.textContent = I18N.dirty.replace('%COUNT%', dirty);
+                    const all = rows().length;
+                    const shown = shownRows().length;
+                    shownLabel.textContent = I18N.shown.replace('%SHOWN%', shown).replace('%TOTAL%', all);
+                    if (totalStat) totalStat.textContent = all;
+                    if (noMatchRow) noMatchRow.style.display = (all > 0 && shown === 0) ? '' : 'none';
+                    return dirty;
+                }
+
+                function applyFilter() {
+                    const q = fold(filterInput ? filterInput.value.trim() : '');
+                    rows().forEach((row) => {
+                        const hay = fold(row.getAttribute('data-search') || row.textContent);
+                        row.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+                    });
+                    refresh();
+                }
+
+                function scopeRows() {
+                    const scope = document.getElementById('reqBulkScope').value;
+                    if (scope === 'selected') {
+                        const sel = selectedRows();
+                        if (!sel.length) { window.toast(I18N.noSelection, 'warn'); return null; }
+                        return sel;
+                    }
+                    return shownRows();
+                }
+
+                // --- bulk actions (view-only helpers: they never drop a requirement) ---
+                document.getElementById('reqApplyLevel').addEventListener('click', function () {
+                    const target = scopeRows();
+                    if (!target) return;
+                    const lvl = document.getElementById('reqBulkLevel').value;
+                    target.forEach((row) => { row.querySelector('.req-level').value = lvl; });
+                    refresh();
+                });
+                function setCritical(flag) {
+                    const target = scopeRows();
+                    if (!target) return;
+                    target.forEach((row) => { row.querySelector('.req-critical').checked = flag; });
+                    refresh();
+                }
+                document.getElementById('reqMarkCritical').addEventListener('click', () => setCritical(true));
+                document.getElementById('reqUnmarkCritical').addEventListener('click', () => setCritical(false));
+
+                const selectAll = document.getElementById('reqSelectAll');
+                if (selectAll) {
+                    selectAll.addEventListener('change', function () {
+                        shownRows().forEach((row) => {
+                            const c = row.querySelector('.req-select');
+                            if (c) c.checked = selectAll.checked;
+                        });
+                    });
+                }
+                if (filterInput) filterInput.addEventListener('input', applyFilter);
+
+                tbody.addEventListener('change', function (e) {
+                    if (e.target.classList.contains('req-level') || e.target.classList.contains('req-critical')) {
+                        refresh();
+                    }
+                });
+
+                // --- save: ONE request for the whole batch ---------------------------
+                document.getElementById('reqSave').addEventListener('click', function () {
+                    const payload = rows().filter(isDirty).map((row) => {
+                        const s = state(row);
+                        return { id: s.id, requiredLevel: s.level, isCritical: s.critical };
+                    });
+                    if (!payload.length) { window.toast(I18N.noChanges, 'info'); return; }
+
+                    showLoading(I18N.saving);
+                    fetch('/roles/' + ROLE_ID + '/requirements', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ bulk: payload, _csrf: CSRF })
+                    })
+                        .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+                        .then(({ ok, data }) => {
+                            hideLoading();
+                            if (!ok || !data.success) {
+                                window.toast((data && data.error) || I18N.saveError, 'error');
+                                return;
+                            }
+                            // Saved values become the new baseline — no reload needed.
+                            rows().forEach((row) => {
+                                const lvl = row.querySelector('.req-level');
+                                const crit = row.querySelector('.req-critical');
+                                lvl.setAttribute('data-orig', lvl.value);
+                                crit.setAttribute('data-orig', crit.checked ? '1' : '0');
+                            });
+                            refresh();
+                            window.toast(I18N.saved.replace('%COUNT%', data.updated), 'success');
+                        })
+                        .catch((err) => {
+                            hideLoading();
+                            console.error('Bulk requirement save failed:', err);
+                            window.toast(I18N.saveError, 'error');
+                        });
+                });
+
+                document.getElementById('reqDiscard').addEventListener('click', function () {
+                    rows().forEach((row) => {
+                        const lvl = row.querySelector('.req-level');
+                        const crit = row.querySelector('.req-critical');
+                        lvl.value = lvl.getAttribute('data-orig');
+                        crit.checked = crit.getAttribute('data-orig') === '1';
+                    });
+                    refresh();
+                });
+
+                window.addEventListener('beforeunload', function (e) {
+                    if (rows().some(isDirty)) { e.preventDefault(); e.returnValue = I18N.leaveWarning; return I18N.leaveWarning; }
+                });
+
+                // --- remove one requirement (no reload) ------------------------------
+                tbody.addEventListener('click', function (e) {
+                    const btn = e.target.closest ? e.target.closest('.req-remove') : null;
+                    if (!btn) return;
+                    const row = btn.closest('tr');
+                    const skill = row.querySelector('.req-skill').textContent.trim();
+                    window.confirmDialog(I18N.removeConfirm.replace('%SKILL%', skill), {
+                        danger: true, confirmText: I18N.remove, cancelText: I18N.cancel
+                    }).then(function (ok) {
+                        if (!ok) return;
+                        showLoading(I18N.removing);
+                        fetch('/roles/' + ROLE_ID + '/requirements/' + row.getAttribute('data-req-id') + '/delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ _csrf: CSRF })
+                        })
+                            .then((res) => res.json())
+                            .then((data) => {
+                                hideLoading();
+                                if (!data.success) { window.toast(data.error || I18N.removeError, 'error'); return; }
+                                row.remove();
+                                refresh();
+                                window.toast(I18N.removed, 'success');
+                            })
+                            .catch((err) => {
+                                hideLoading();
+                                console.error('Remove requirement failed:', err);
+                                window.toast(I18N.removeError, 'error');
+                            });
+                    });
+                });
+
+                // --- add one requirement (no reload) ---------------------------------
+                function buildRow(r) {
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-req-id', r.id);
+                    tr.setAttribute('data-search', r.domainName + ' ' + r.skillName);
+
+                    const tdSel = document.createElement('td');
+                    const sel = document.createElement('input');
+                    sel.type = 'checkbox'; sel.className = 'req-select';
+                    sel.setAttribute('aria-label', I18N.selectRow);
+                    tdSel.appendChild(sel);
+
+                    const tdDomain = document.createElement('td');
+                    tdDomain.className = 'req-domain';
+                    tdDomain.textContent = r.domainName;
+
+                    const tdSkill = document.createElement('td');
+                    const strong = document.createElement('strong');
+                    strong.className = 'req-skill';
+                    strong.textContent = r.skillName;
+                    tdSkill.appendChild(strong);
+
+                    const tdLevel = document.createElement('td');
+                    const lvl = document.createElement('select');
+                    lvl.className = 'req-level';
+                    lvl.setAttribute('data-orig', String(r.requiredLevel));
+                    lvl.setAttribute('aria-label', I18N.levelLabel + ' — ' + r.skillName);
+                    LEVELS.forEach(function (label, i) {
+                        const o = document.createElement('option');
+                        o.value = String(i); o.textContent = i + ' - ' + label;
+                        if (i === Number(r.requiredLevel)) o.selected = true;
+                        lvl.appendChild(o);
+                    });
+                    tdLevel.appendChild(lvl);
+
+                    const tdCrit = document.createElement('td');
+                    const lab = document.createElement('label');
+                    lab.style.display = 'inline-flex'; lab.style.alignItems = 'center'; lab.style.gap = '.4rem';
+                    const crit = document.createElement('input');
+                    crit.type = 'checkbox'; crit.className = 'req-critical';
+                    crit.checked = Number(r.isCritical) === 1;
+                    crit.setAttribute('data-orig', crit.checked ? '1' : '0');
+                    crit.setAttribute('aria-label', I18N.criticalLabel + ' — ' + r.skillName);
+                    const critText = document.createElement('span');
+                    critText.className = 'req-critical-label';
+                    critText.textContent = crit.checked ? I18N.critical : I18N.standard;
+                    lab.appendChild(crit); lab.appendChild(critText);
+                    tdCrit.appendChild(lab);
+
+                    const tdAct = document.createElement('td');
+                    const wrap = document.createElement('div');
+                    wrap.className = 'table-actions';
+                    const stateSpan = document.createElement('span');
+                    stateSpan.className = 'req-state';
+                    const rm = document.createElement('button');
+                    rm.type = 'button'; rm.className = 'btn btn-sm btn-danger req-remove';
+                    rm.title = I18N.removeTip; rm.textContent = I18N.remove;
+                    wrap.appendChild(stateSpan); wrap.appendChild(rm);
+                    tdAct.appendChild(wrap);
+
+                    [tdSel, tdDomain, tdSkill, tdLevel, tdCrit, tdAct].forEach((td) => tr.appendChild(td));
+                    return tr;
+                }
+
+                // Let the Add flow (bound below, and alive even on an empty role)
+                // drop the new requirement straight into this table.
+                window.__roleReqEditor = {
+                    appendRow: function (r) {
+                        if (noMatchRow) tbody.insertBefore(buildRow(r), noMatchRow);
+                        else tbody.appendChild(buildRow(r));
+                        applyFilter();
+                    }
+                };
+
+                refresh();
+            })();
+
+            /* Add one requirement. Bound whether or not the table exists yet: on a
+               role that had none, the very first add reloads once so the editor can
+               render; from then on every add lands in place. */
+            (function () {
+                const addForm = document.getElementById('addRequirementForm');
+                if (!addForm) return;
+                addForm.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    const fd = new FormData(this);
+                    const data = {
+                        skillId: fd.get('skillId'),
+                        requiredLevel: fd.get('requiredLevel'),
+                        isCritical: fd.get('isCritical') === 'true',
+                        _csrf: fd.get('_csrf')
+                    };
+                    if (!data.skillId) { window.toast(I18N.selectSkill, 'warn'); return; }
+
+                    showLoading(I18N.addingReq);
+                    fetch('/roles/' + ROLE_ID + '/requirements', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    })
+                        .then((res) => res.json().then((d) => ({ ok: res.ok, d })))
+                        .then(({ ok, d }) => {
+                            hideLoading();
+                            if (!ok || !d.success) { window.toast((d && d.error) || I18N.addError, 'error'); return; }
+                            hideModal('addRequirementModal');
+                            this.reset();
+                            if (d.requirement && window.__roleReqEditor) {
+                                window.__roleReqEditor.appendRow(d.requirement);
+                                window.toast(I18N.added, 'success');
+                            } else {
+                                location.reload();
+                            }
+                        })
+                        .catch((err) => {
+                            hideLoading();
+                            console.error('Add requirement failed:', err);
+                            window.toast(I18N.addError, 'error');
+                        });
+                });
+            })();
+        </script>

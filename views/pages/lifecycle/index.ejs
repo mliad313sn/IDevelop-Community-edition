@@ -1,0 +1,215 @@
+<%
+  // JML ledger: server-side filters + paging (utils/listTools), a searchable
+  // picker (datalist, same pattern as the maintenance panel), a reason + effective
+  // date on every event, and an honest state per row.
+  const pg = (typeof pager !== 'undefined' && pager) || null;
+  const f = (typeof filters !== 'undefined' && filters) || {};
+  const kindLabel = (k) => k === 'joiner' ? __('talentx:lc_joiner') : (k === 'mover' ? __('talentx:lc_mover') : (k === 'leaver' ? __('talentx:lc_leaver') : k));
+  // a null/unknown state used to render as a bare dash ("Statut -"), which
+  // reads as "no answer" rather than "not processed yet". An event with no state
+  // IS pending by definition.
+  const stateLabel = (s) => __('talentx:lc_state_' + (s || 'pending'), { defaultValue: s || '' });
+  const who = (ref) => ref ? String(ref) : '';
+%>
+<div class="page-header">
+  <h1><i class="fas fa-user-gear" aria-hidden="true"></i> <%= __('talentx:lc_title') %></h1>
+  <p class="text-muted"><%= __('talentx:lc_intro') %></p>
+</div>
+
+<% if (typeof pendingRequests !== 'undefined' && pendingRequests > 0) { %>
+<div class="card" style="padding:.8rem 1.1rem;margin-bottom:1rem;border-left:4px solid #b45309;">
+  <strong><i class="fas fa-door-closed" aria-hidden="true"></i> <%= __('talentx:lc_requests_banner', { count: pendingRequests }) %></strong>
+  <a href="/v2/lifecycle?state=requested" class="btn btn-sm btn-secondary" style="margin-left:.6rem;"><%= __('talentx:lc_state_requested') %></a>
+</div>
+<% } %>
+
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><%= __('talentx:lc_record_heading') %></h3>
+  <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end">
+    <div style="flex:1 1 18rem">
+      <label for="lc-emp"><%= __('talentx:employee') %> *</label><br>
+      <input id="lc-emp" list="lc-emp-list" class="form-control" autocomplete="off" placeholder="<%= __('talentx:lc_pick_employee_ph') %>">
+      <datalist id="lc-emp-list">
+        <% (employees||[]).forEach(function(e){ %>
+          <option value="<%= e.id %>"><%= e.name %><%= e.number ? ' · ' + e.number : '' %></option>
+        <% }); %>
+      </datalist>
+    </div>
+    <div>
+      <label for="lc-kind"><%= __('talentx:lc_event') %> *</label><br>
+      <select id="lc-kind" class="form-control">
+        <option value="joiner"><%= __('talentx:lc_joiner') %></option>
+        <option value="mover"><%= __('talentx:lc_mover') %></option>
+        <%# A manager (or an admin without edit_employees) may only REQUEST a departure. %>
+        <option value="leaver"><%= (typeof canDecide !== 'undefined' && canDecide) ? __('talentx:lc_leaver') : __('talentx:lc_request_leaver') %></option>
+      </select>
+    </div>
+    <div>
+      <label for="lc-effective"><%= __('talentx:lc_effective_label') %></label><br>
+      <input id="lc-effective" type="date" class="form-control">
+    </div>
+    <div style="flex:1 1 16rem">
+      <label for="lc-reason"><%= __('talentx:lc_reason_label') %></label><br>
+      <input id="lc-reason" type="text" class="form-control" maxlength="500" placeholder="<%= __('talentx:lc_reason_ph') %>">
+    </div>
+    <button class="btn btn-primary" id="lc-record-btn"><%= __('talentx:lc_record') %></button>
+  </div>
+  <small class="text-muted"><%= (typeof canDecide !== 'undefined' && canDecide) ? __('talentx:lc_warning') : __('talentx:lc_request_hint') %> <%= __('talentx:lc_effective_hint') %></small>
+</div>
+
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <form method="GET" action="/v2/lifecycle" class="search-form" data-filter-memory style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
+    <select name="kind" class="form-control" data-auto-submit aria-label="<%= __('talentx:lc_event') %>" style="max-width:180px">
+      <option value=""><%= __('talentx:lc_filter_kind_all') %></option>
+      <% (kinds||[]).forEach(function(k){ %><option value="<%= k %>" <%= f.kind === k ? 'selected' : '' %>><%= kindLabel(k) %></option><% }); %>
+    </select>
+    <select name="state" class="form-control" data-auto-submit aria-label="<%= __('talentx:lc_status') %>" style="max-width:200px">
+      <option value=""><%= __('talentx:lc_filter_state_all') %></option>
+      <% (states||[]).forEach(function(s){ %><option value="<%= s %>" <%= f.state === s ? 'selected' : '' %>><%= stateLabel(s) %></option><% }); %>
+    </select>
+    <% if (sites && sites.length) { %>
+    <select name="siteId" class="form-control" data-auto-submit aria-label="<%= __('talentx:lc_th_site') %>" style="max-width:200px">
+      <%# %><% if (sites.length !== 1) { %><option value=""><%= __('talentx:lc_all_sites') %></option><% } %>
+      <% sites.forEach(function(s){ %><option value="<%= s.id %>" <%= String(f.siteId||'') === String(s.id) ? 'selected' : '' %>><%= s.name %></option><% }); %>
+    </select>
+    <% } %>
+    <input type="search" name="q" class="form-control" value="<%= f.q || '' %>" placeholder="<%= __('talentx:lc_search_ph') %>" aria-label="<%= __('talentx:lc_search_ph') %>" style="max-width:220px">
+    <select name="perPage" class="form-control" data-per-page aria-label="<%= __('admin:rows_per_page') %>" style="max-width:120px">
+      <% (perPageOptions||[]).forEach(function(n){ %><option value="<%= n %>" <%= String(f.perPage) === String(n) ? 'selected' : '' %>><%= n %> / <%= __('admin:page') %></option><% }); %>
+    </select>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('talentx:lc_apply') %></button>
+  </form>
+  <p class="text-muted" style="margin:.5rem 0 0;font-size:.85rem">
+    <% if (pg && pg.total > 0) { %><%= __('admin:list_range', { from: pg.from, to: pg.to, total: pg.total }) %><% } else { %><%= __('talentx:lc_no_events') %><% } %>
+  </p>
+</div>
+
+<div class="card" style="padding:0">
+  <div class="table-wrapper" style="margin:0;box-shadow:none;border:none">
+  <table class="table" id="lcv-table">
+    <thead><tr>
+      <th><%= __('talentx:employee') %></th>
+      <th><%= __('talentx:lc_event') %></th>
+      <th><%= __('talentx:lc_occurred') %></th>
+      <th><%= __('talentx:lc_th_effective') %></th>
+      <th><%= __('talentx:lc_th_reason') %></th>
+      <th><%= __('talentx:lc_status') %></th>
+      <th></th>
+    </tr></thead>
+    <tbody>
+      <% if (!events || !events.length) { %>
+        <tr><td colspan="7"><em><%= __('talentx:lc_no_events') %></em></td></tr>
+      <% } else { events.forEach(function(ev){ %>
+        <tr class="<%= ev.revertedAt ? 'lc-reverted-row' : '' %>" data-lc-state="<%= ev.state %>">
+          <td><a href="/employees/<%= ev.employeeId %>"><%= (ev.firstName||'') + ' ' + (ev.lastName||'') %></a>
+            <div style="color:var(--text-muted);font-size:.78rem"><%= ev.employeeNumber||'' %><%= ev.siteName ? ' · ' + ev.siteName : '' %></div></td>
+          <td><span class="lc-kind" data-k="<%= ev.kind %>"><%= kindLabel(ev.kind) %></span></td>
+          <td><%= fmtDateTime(ev.occurredAt) %></td>
+          <td><%= ev.effectiveAt ? fmtDate(ev.effectiveAt) : '—' %></td>
+          <td class="lc-reason"><%= ev.reason || '—' %>
+            <% if (ev.requestedBy) { %><div style="font-size:.75rem;color:var(--text-muted)"><%= __('talentx:lc_requested_by', { who: who(ev.requestedBy) }) %></div><% } %>
+            <% if (ev.decidedAt) { %><div style="font-size:.75rem;color:var(--text-muted)"><%= __('talentx:lc_decided_by', { who: ev.decidedByName || '', date: fmtDate(ev.decidedAt) }) %></div><% } %>
+          </td>
+          <td>
+            <span class="lc-state lc-state-<%= ev.state %>" title="<%= ev.processedAt ? fmtDateTime(ev.processedAt) : '' %>"><%= stateLabel(ev.state) %></span>
+            <% if (ev.state === 'skipped') { %><div style="font-size:.75rem;color:var(--text-muted)"><%= __('talentx:lc_skipped_no_cycle') %></div><% } %>
+            <% if (ev.state === 'reverted') { %><div style="font-size:.75rem;color:var(--text-muted)"><%= (ev.revertedByName ? ev.revertedByName + ' — ' : '') + fmtDateTime(ev.revertedAt) %></div><% } %>
+          </td>
+          <td style="white-space:nowrap">
+            <% if (ev.canDecideRow) { %>
+              <button class="btn btn-sm btn-primary lc-decide" data-id="<%= ev.id %>" data-decision="approved"><i class="fas fa-check" aria-hidden="true"></i> <%= __('talentx:lc_decide_approve') %></button>
+              <button class="btn btn-sm btn-secondary lc-decide" data-id="<%= ev.id %>" data-decision="declined"><i class="fas fa-xmark" aria-hidden="true"></i> <%= __('talentx:lc_decide_decline') %></button>
+            <% } else if (ev.canRevert) { %>
+              <button class="btn btn-sm btn-secondary lc-revert" data-id="<%= ev.id %>" data-kind="<%= ev.kind %>" title="<%= __('talentx:lc_revert_hint') %>"><i class="fas fa-rotate-left" aria-hidden="true"></i> <%= __('talentx:lc_revert') %></button>
+            <% } %>
+          </td>
+        </tr>
+      <% }); } %>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<% if (pg && pg.totalPages > 1) { %>
+<nav class="pagination" aria-label="<%= __('admin:page') %>">
+  <% if (pg.hasPrev) { %><a href="<%= pg.prevUrl %>" rel="prev">« <%= __('admin:previous') %></a><% } %>
+  <% pg.items.forEach(function (it) { if (it.gap) { %><span>...</span><% } else { %>
+    <a href="<%= it.url %>" class="<%= it.active ? 'active' : '' %>" <%- it.active ? 'aria-current="page"' : '' %>><%= it.n %></a>
+  <% } }); %>
+  <% if (pg.hasNext) { %><a href="<%= pg.nextUrl %>" rel="next"><%= __('admin:next') %> »</a><% } %>
+</nav>
+<% } %>
+
+<style nonce="<%= cspNonce %>">
+  .lc-kind{padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:#64748b}
+  .lc-kind[data-k="joiner"]{background:#0f8a3c}
+  .lc-kind[data-k="mover"]{background:#1b56b8}
+  .lc-kind[data-k="leaver"]{background:#b00020}
+  .lc-state{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.78em;border:1px solid var(--border,#cbd5e1)}
+  .lc-state-requested{border-color:#b45309;color:#b45309}
+  .lc-state-scheduled{border-color:#1b56b8;color:#1b56b8}
+  .lc-state-done{border-color:#0f8a3c;color:#0f8a3c}
+  .lc-state-reverted{border-color:#7c3aed;color:#7c3aed}
+  .lc-state-declined,.lc-state-skipped{color:var(--text-muted,#64748b)}
+  .lc-reverted-row td{opacity:.65}
+  .lc-reason{max-width:26rem;white-space:normal;font-size:.9em}
+</style>
+<script nonce="<%= cspNonce %>">
+(function () {
+  'use strict';
+  var T = <%- include('../../partials/json-script', { v: {
+    pick: __('talentx:ct_select_employee'),
+    reasonRequired: __('talentx:lc_err_lc_reason_required'),
+    leaverConfirm: __('talentx:lc_leaver_confirm'),
+    requestConfirm: __('talentx:lc_request_confirm'),
+    revertConfirm: __('talentx:lc_revert_confirm'),
+    revertNote: __('talentx:lc_revert_note'),
+    decideNote: __('talentx:lc_decide_note'),
+    approveConfirm: __('talentx:lc_approve_confirm'),
+    generic: __('talentx:lc_err_generic')
+  } }) %>;
+  var canDecide = <%- include('../../partials/json-script', { v: !!(typeof canDecide !== 'undefined' && canDecide) }) %>;
+  function post(url, body) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j.__status = r.status; return j; }); });
+  }
+  function done(j) {
+    // Success / error feedback BEFORE the reload: the admin knows the click worked.
+    if (j && j.ok !== false && j.__status < 400) {
+      if (window.toast) window.toast(j.message || 'OK', 'success');
+      setTimeout(function () { location.reload(); }, 700);
+    } else if (window.toast) window.toast((j && j.error) || T.generic, 'error');
+    else alert((j && j.error) || T.generic);
+  }
+  document.getElementById('lc-record-btn').addEventListener('click', async function () {
+    var employeeId = Number(document.getElementById('lc-emp').value);
+    var kind = document.getElementById('lc-kind').value;
+    var reason = (document.getElementById('lc-reason').value || '').trim();
+    var effectiveAt = document.getElementById('lc-effective').value || null;
+    if (!employeeId) { (window.toast || alert)(T.pick, 'error'); return; }
+    if (kind === 'leaver') {
+      if (!reason) { (window.toast || alert)(T.reasonRequired, 'error'); return; }
+      var ok = await window.confirmDialog(canDecide ? T.leaverConfirm : T.requestConfirm, { danger: canDecide });
+      if (!ok) return;
+    }
+    done(await post('/v2/lifecycle/events', { employeeId: employeeId, kind: kind, reason: reason, effectiveAt: effectiveAt, payload: {} }));
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.lc-decide'), function (btn) {
+    btn.addEventListener('click', async function () {
+      var decision = btn.getAttribute('data-decision');
+      if (decision === 'approved' && !(await window.confirmDialog(T.approveConfirm, { danger: true }))) return;
+      var note = await window.promptDialog(T.decideNote, '', { required: decision === 'declined', multiline: true });
+      if (note === null) return;
+      done(await post('/v2/lifecycle/events/' + btn.getAttribute('data-id') + '/decide', { decision: decision, note: note }));
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.lc-revert'), function (btn) {
+    btn.addEventListener('click', async function () {
+      if (!(await window.confirmDialog(T.revertConfirm, { danger: true }))) return;
+      var note = await window.promptDialog(T.revertNote, '', { multiline: true });
+      if (note === null) return;
+      done(await post('/v2/lifecycle/events/' + btn.getAttribute('data-id') + '/revert', { note: note }));
+    });
+  });
+})();
+</script>

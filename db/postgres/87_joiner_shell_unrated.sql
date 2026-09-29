@@ -1,0 +1,22 @@
+-- FMEA (criticality 480) — an arrival looked 13/13 assessed on day one.
+--
+-- `onJoiner` seeds one self-assessment shell per required skill so the employee has
+-- a ready worksheet. Those shells were written with `self_rated_level = 0`, and
+-- 0 is a REAL rating on the 0-4 scale ("None"). Two things followed:
+--
+--   * `v_cycle_participant_status` counts rated = self_rated_level IS NOT NULL, so
+--     the joiner jumped straight from `not_started` to `in_progress` with every
+--     skill "rated" before they had opened the page — an absence of measurement
+--     presented as a measurement, and one that feeds readiness and gap analysis.
+--   * `cycle-nudge` finds non-starters with NOT EXISTS(any self_assessments row).
+--     The shells made that false, so the reminder written specifically for people
+--     who have not begun could never reach a joiner again.
+--
+-- "Not yet rated" needs a value distinct from "rated None". That value is NULL.
+--
+-- Existing rows are deliberately NOT converted: `locked_state='provisional'` is the
+-- normal state of every in-flight assessment (176 of 177 here), so a stored 0 cannot
+-- be told apart from an employee who genuinely answered "None". Rewriting them would
+-- destroy real answers to tidy up synthetic ones.
+
+ALTER TABLE self_assessments ALTER COLUMN self_rated_level DROP NOT NULL;

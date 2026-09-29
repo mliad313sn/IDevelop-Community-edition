@@ -1,0 +1,88 @@
+{
+  "root": true,
+  "env": {
+    "node": true,
+    "browser": true,
+    "es2022": true,
+    "jest": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "script"
+  },
+  "extends": ["eslint:recommended", "plugin:n/recommended", "prettier"],
+  "plugins": ["n", "security"],
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "no-console": "off",
+    "no-empty": ["warn", { "allowEmptyCatch": true }],
+    "n/no-process-exit": "off",
+    "n/no-missing-require": "off",
+    "security/detect-object-injection": "off",
+    "security/detect-non-literal-fs-filename": "off"
+  },
+  "overrides": [
+    {
+      "files": ["tests/**/*.js", "**/*.test.js", "**/*.spec.js"],
+      "env": { "jest": true },
+      "rules": { "n/no-unpublished-require": "off" }
+    },
+    {
+      "files": ["public/js/**/*.js"],
+      "env": { "browser": true, "node": false },
+      "globals": {
+        "indexedDB": "readonly",
+        "Chart": "readonly",
+        "ChartTheme": "readonly",
+        "bootstrap": "readonly",
+        "showModal": "readonly",
+        "hideModal": "readonly",
+        "showLoading": "readonly",
+        "hideLoading": "readonly"
+      },
+      "rules": { "no-inner-declarations": "off" }
+    },
+    // 3.23.18 CQ-01: the SQLite-compat translator in PostgresDatabase.js is FROZEN.
+    // New SQL is written in PostgreSQL, never in SQLite dialect it has to rewrite.
+    {
+      "files": ["src/**/*.js"],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "Literal[value=/(strftime|julianday|ifnull)\\s*\\(|datetime\\s*\\(\\s*'now'/i]",
+            "message": "SQLite dialect in SQL (strftime/julianday/ifnull/datetime('now')). Write PostgreSQL: to_char(), now(), COALESCE(), interval arithmetic. The compat translator is frozen (CQ-01)."
+          },
+          {
+            "selector": "TemplateElement[value.raw=/(strftime|julianday|ifnull)\\s*\\(|datetime\\s*\\(\\s*'now'/i]",
+            "message": "SQLite dialect in SQL (strftime/julianday/ifnull/datetime('now')). Write PostgreSQL: to_char(), now(), COALESCE(), interval arithmetic. The compat translator is frozen (CQ-01)."
+          }
+        ]
+      }
+    },
+    // CQ-01 legacy exceptions, measured 2026-09-26 (5 files, 6 literals). Remove a
+    // file once its SQL is rewritten in PostgreSQL; never add one.
+    {
+      "files": [
+        "src/services/BulkDataService.js",
+        "src/services/ImportExportService.js",
+        "src/services/UnifiedImportService.js",
+        "src/models/PasswordHistoryModel.js",
+        "src/models/LoginAttemptModel.js"
+      ],
+      "rules": { "no-restricted-syntax": "off" }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules/",
+    "dist/",
+    "data/",
+    "tmp/",
+    "logs/",
+    "coverage/",
+    "playwright-report/",
+    "test-results/",
+    "public/vendor/",
+    "AI_Engine_Docs/"
+  ]
+}

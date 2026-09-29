@@ -1,0 +1,146 @@
+<div class="page-header">
+    <h1><i class="fas fa-bullseye" aria-hidden="true"></i> <%= __('employee:okr_title') %></h1>
+    <p class="text-muted"><%= __('employee:okr_intro') %></p>
+</div>
+
+<!-- My OKRs -->
+<section class="card" style="padding:1rem;margin-bottom:1.25rem;">
+  <h2 style="margin-top:0;"><i class="fas fa-bullseye" aria-hidden="true"></i> <%= __('employee:okr_goals_heading') %></h2>
+  <p class="text-muted" style="font-size:.85rem;margin:.2rem 0 .9rem;"><%= __('employee:okr_goals_hint') %></p>
+  <div id="okr-list"><div class="text-muted"><%= __('employee:okr_loading') %></div></div>
+</section>
+
+<!-- My 1-on-1s -->
+<section class="card" style="padding:1rem;">
+  <h2 style="margin-top:0;"><i class="fas fa-calendar-days" aria-hidden="true"></i> <%= __('employee:okr_checkins_heading') %></h2>
+  <p class="text-muted" style="font-size:.85rem;margin:.2rem 0 .9rem;"><%= __('employee:okr_checkins_hint') %></p>
+  <div id="ci-list"><div class="text-muted"><%= __('employee:okr_loading') %></div></div>
+</section>
+
+<style>
+.okr-obj { border:1px solid var(--border-light,#2a3148); border-radius:10px; padding:.7rem .9rem; margin-bottom:.7rem; }
+.okr-obj-title { font-weight:600; }
+.okr-kr { margin:.45rem 0 .45rem 1rem; font-size:.9rem; }
+.okr-bar { height:10px; border-radius:5px; background:var(--bg-inset,rgba(255,255,255,.06)); overflow:hidden; margin-top:4px; max-width:420px; }
+.okr-bar > div { height:100%; background:#2f80c4; }
+.okr-badge { display:inline-block; padding:1px 7px; border-radius:10px; font-size:9px; font-weight:700; color:#fff; }
+.okr-kr-edit { display:inline-flex; gap:.35rem; align-items:center; margin-left:.5rem; }
+.okr-kr-edit input { width:90px; padding:3px 6px; }
+.ci-card { border:1px solid var(--border-light,#2a3148); border-radius:10px; padding:.7rem .9rem; margin-bottom:.7rem; }
+.ci-item { margin:.2rem 0 .2rem 1rem; font-size:.87rem; display:flex; align-items:center; gap:.4rem; }
+</style>
+
+<script nonce="<%= cspNonce %>">
+(function(){
+  var EMP = <%= employee.id %>;
+  var T = {
+    noGoals: <%- JSON.stringify(__('employee:okr_no_goals')) %>,
+    loadError: <%- JSON.stringify(__('employee:okr_load_error')) %>,
+    noCheckins: <%- JSON.stringify(__('employee:okr_no_checkins')) %>,
+    update: <%- JSON.stringify(__('employee:okr_update')) %>,
+    updateFailed: <%- JSON.stringify(__('employee:okr_update_failed')) %>,
+    withWord: <%- JSON.stringify(__('employee:okr_with')) %>,
+    addPoint: <%- JSON.stringify(__('employee:okr_add_point')) %>,
+    pointPh: <%- JSON.stringify(__('employee:okr_point_ph')) %>,
+    actionTag: <%- JSON.stringify(__('employee:okr_action_tag')) %>,
+    lang: <%- include('../../partials/json-script', { v: typeof lang !== 'undefined' ? lang : 'fr' }) %>,
+    SL: <%- include('../../partials/json-script', { v: { active: __('employee:okr_st_active'), at_risk: __('employee:okr_st_at_risk'), done: __('employee:okr_st_done'), cancelled: __('employee:okr_st_cancelled'), scheduled: __('employee:okr_st_scheduled'), completed: __('employee:okr_st_completed') } }) %>
+  };
+  function e(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function slbl(s){ return (T.SL && T.SL[s]) || s; }
+  function api(path, opts){ return fetch('/api/v1'+path, Object.assign({headers:{'Content-Type':'application/json'}}, opts||{})).then(function(r){ return r.json().then(function(j){ return {ok:r.ok,status:r.status,body:j}; }); }); }
+  function badge(s,map){ return '<span class="okr-badge" style="background:'+(map[s]||'#5b6b7b')+'">'+e(slbl(s))+'</span>'; }
+  // The API accepted a status (active / at risk / done / cancelled) but no screen could set it.
+  var ST_LABEL = <%- JSON.stringify(__('talentx:okr_status')) %>;
+  function statusSelect(g){ return '<select aria-label="'+e(ST_LABEL)+'" style="padding:2px 4px;font-size:.8rem;margin-left:.3rem" onchange="goalStatus('+Number(g.id)+',this.value)">'
+    + ['active','at_risk','done','cancelled'].map(function(s){ return '<option value="'+s+'"'+(s===g.status?' selected':'')+'>'+e(slbl(s))+'</option>'; }).join('') + '</select>'; }
+  var GB={active:'#2f80c4',at_risk:'#e6921e',done:'#2e9e57',cancelled:'#9e9e9e'};
+  var CB={scheduled:'#2f80c4',completed:'#2e9e57',cancelled:'#9e9e9e'};
+  var MOOD={1:'😟',2:'🙁',3:'😐',4:'🙂',5:'😀'};
+  function dt(s){ if(!s) return ''; try{ return new Date(s).toLocaleDateString(T.lang); }catch(_){ return ''; } }
+
+  window.okrLoad = function(){
+    api('/employees/'+EMP+'/goals').then(function(res){
+      var box=document.getElementById('okr-list');
+      if(!res.ok){ box.innerHTML='<div class="text-muted">'+T.loadError+' ('+res.status+')</div>'; return; }
+      var goals=res.body.data||[];
+      var objectives=goals.filter(function(g){return g.kind==='objective';});
+      var krs={}; goals.filter(function(g){return g.kind==='key_result';}).forEach(function(k){ (krs[k.parentId]=krs[k.parentId]||[]).push(k); });
+      if(!objectives.length){ box.innerHTML='<div class="text-muted">'+T.noGoals+'</div>'; return; }
+      box.innerHTML=objectives.map(function(o){
+        var kids=krs[o.id]||[];
+        return '<div class="okr-obj"><div class="okr-obj-title">'+e(o.title)+' '+badge(o.status,GB)+statusSelect(o)+(o.period?' <span class="text-muted" style="font-size:.8rem">'+e(o.period)+'</span>':'')+'</div>'
+          + kids.map(function(k){
+              var tgt=Number(k.targetValue)||0, cur=Number(k.currentValue)||0;
+              var pct=tgt>0?Math.max(0,Math.min(100,Math.round(100*cur/tgt))):0;
+              return '<div class="okr-kr">'+e(k.title)+' '+badge(k.status,GB)+statusSelect(k)
+                + ' <span class="text-muted" style="font-size:.82rem">'+cur+(tgt?(' / '+tgt):'')+(k.metricUnit?(' '+e(k.metricUnit)):'')+'</span>'
+                + '<span class="okr-kr-edit"><input type="number" step="any" id="kr-'+k.id+'" value="'+cur+'" aria-label="'+T.update+'">'
+                + '<button class="btn btn-secondary btn-sm" onclick="krSave('+k.id+')">'+T.update+'</button></span>'
+                + (tgt?('<div class="okr-bar"><div style="width:'+pct+'%"></div></div>'):'')
+                + '</div>';
+            }).join('')
+          + '</div>';
+      }).join('');
+    }).catch(function(){ document.getElementById('okr-list').innerHTML='<div class="text-muted">'+T.loadError+'</div>'; });
+  };
+  window.krSave = function(id){
+    var v=parseFloat(document.getElementById('kr-'+id).value);
+    if(!isFinite(v)) return;
+    api('/goals/'+id+'/progress',{method:'PATCH',body:JSON.stringify({currentValue:v})}).then(function(r){
+      if(!r.ok){ alert(T.updateFailed+': '+(r.body&&r.body.error||r.status)); return; }
+      window.okrLoad();
+    });
+  };
+  window.goalStatus = function(id, status){
+    api('/goals/'+id+'/progress',{method:'PATCH',body:JSON.stringify({status:status})}).then(function(r){
+      if(!r.ok){ alert(T.updateFailed+': '+(r.body&&r.body.error||r.status)); }
+      window.okrLoad();
+    });
+  };
+
+  function renderItems(ciId){
+    return api('/check-ins/'+ciId+'/items').then(function(res){
+      var items=(res.ok&&res.body.data)||[];
+      return items.map(function(it){
+        return '<div class="ci-item">'
+          + (it.isAction?'<input type="checkbox" '+(it.done?'checked':'')+' onchange="ciToggle('+it.id+',this.checked)">':'<span class="text-muted">•</span>')
+          + '<span style="'+(it.done?'text-decoration:line-through;opacity:.6':'')+'">'+e(it.body)+(it.isAction?' <span class="text-muted" style="font-size:9px">'+T.actionTag+'</span>':'')+'</span></div>';
+      }).join('');
+    });
+  }
+  window.ciLoad = function(){
+    api('/employees/'+EMP+'/check-ins').then(function(res){
+      var box=document.getElementById('ci-list');
+      if(!res.ok){ box.innerHTML='<div class="text-muted">'+T.loadError+' ('+res.status+')</div>'; return; }
+      var rows=res.body.data||[];
+      if(!rows.length){ box.innerHTML='<div class="text-muted">'+T.noCheckins+'</div>'; return; }
+      box.innerHTML=rows.map(function(c){
+        var when=dt(c.occurredAt||c.scheduledAt);
+        return '<div class="ci-card"><div style="font-weight:600">'+e(c.title||c.kind)+' '+badge(c.status,CB)
+          + (c.sentiment?(' <span>'+(MOOD[c.sentiment]||'')+'</span>'):'')
+          + (when?(' <span class="text-muted" style="font-size:.8rem">'+when+'</span>'):'')
+          + (c.managerName?(' <span class="text-muted" style="font-size:.8rem">· '+T.withWord+' '+e(c.managerName)+'</span>'):'')+'</div>'
+          + (c.sharedNotes?('<div class="text-muted" style="font-size:.85rem;margin:.2rem 0">'+e(c.sharedNotes)+'</div>'):'')
+          + '<div class="ci-items" data-for="'+c.id+'"></div>'
+          + '<div style="margin-top:.4rem;margin-left:1rem;display:flex;gap:.4rem;flex-wrap:wrap">'
+          + '<input type="text" id="ci-item-'+c.id+'" placeholder="'+T.pointPh+'" style="flex:1;min-width:180px;padding:4px 6px">'
+          + '<button class="btn btn-secondary btn-sm" onclick="ciAddItem('+c.id+')">＋ '+T.addPoint+'</button>'
+          + '</div></div>';
+      }).join('');
+      rows.forEach(function(c){ renderItems(c.id).then(function(html){ var el=document.querySelector('.ci-items[data-for="'+c.id+'"]'); if(el) el.innerHTML=html; }); });
+    }).catch(function(){ document.getElementById('ci-list').innerHTML='<div class="text-muted">'+T.loadError+'</div>'; });
+  };
+  window.ciAddItem = function(id){
+    var b=document.getElementById('ci-item-'+id).value.trim(); if(!b) return;
+    api('/check-ins/'+id+'/items',{method:'POST',body:JSON.stringify({body:b,isAction:false})}).then(function(r){
+      if(!r.ok){ alert(T.updateFailed+': '+(r.body&&r.body.error||r.status)); return; } window.ciLoad();
+    });
+  };
+  window.ciToggle = function(id,done){
+    api('/check-in-items/'+id,{method:'PATCH',body:JSON.stringify({done:done})}).then(function(r){ if(!r.ok) window.ciLoad(); });
+  };
+
+  window.okrLoad(); window.ciLoad();
+})();
+</script>

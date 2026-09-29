@@ -1,0 +1,295 @@
+<div class="page-header">
+  <h1><i class="fas fa-layer-group" aria-hidden="true"></i> <%= __('talentx:cap_suite_title') %></h1>
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#cap-cal-table, #cap-goal-table, #cap-opp-table, #cap-svy-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+  <p class="text-muted"><%= __('talentx:cap_suite_intro') %></p>
+</div>
+
+<!-- ===================== AI COPILOT ===================== -->
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><i class="fas fa-robot" aria-hidden="true"></i> <%= __('talentx:cap_copilot') %> <span class="text-muted" style="font-size:.7em">— <%= __('talentx:cap_copilot_scoped') %></span></h3>
+  <p class="text-muted" style="font-size:.72em;margin:.1rem 0 .6rem"><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('talentx:cap_copilot_onprem') %></p>
+  <div style="display:flex;gap:.5rem;align-items:flex-end">
+    <div style="flex:1"><label for="cop-q"><%= __('talentx:cap_ask_label') %></label><br><input id="cop-q" class="form-control" placeholder="<%= __('talentx:cap_ask_ph') %>" onkeydown="if(event.key==='Enter')CAP.ask()"></div>
+    <button class="btn btn-primary" onclick="CAP.ask()"><%= __('talentx:cap_ask_btn') %></button>
+  </div>
+  <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem">
+    <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('Who is at flight risk?')"><%= __('talentx:cap_q_flight') %></button>
+    <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('Who needs development first?')"><%= __('talentx:cap_q_dev') %></button>
+    <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('Readiness by site')"><%= __('talentx:cap_q_readiness_site') %></button>
+    <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('What are our top skill gaps?')"><%= __('talentx:cap_q_gaps') %></button>
+    <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('How many people are not assessed yet?')"><%= __('talentx:cap_q_coverage') %></button>
+    <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('Open PIPs?')"><%= __('talentx:cap_q_pips') %></button>
+  </div>
+  <div id="cop-a" style="margin-top:.6rem;font-size:.92em;white-space:pre-wrap"></div>
+</div>
+
+<!-- ===================== CALIBRATION ===================== -->
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><%= __('talentx:cap_calibration') %></h3>
+  <p class="text-muted" style="margin:.2rem 0"><%= __('talentx:cap_calibration_intro') %></p>
+  <button class="btn btn-primary btn-sm" onclick="CAP.newCalibration()"><%= __('talentx:cap_new_session') %></button>
+  <table class="table" id="cap-cal-table" style="margin-top:.6rem"><thead><tr><th><%= __('talentx:cap_col_scope') %></th><th><%= __('talentx:status') %></th><th><%= __('talentx:cap_col_adjustments') %></th><th><%= __('talentx:cap_col_created') %></th></tr></thead>
+    <tbody>
+      <% (calibrations||[]).forEach(function(c){ %><tr><td><%= enumLabel(c.scopeType) %></td><td><span class="badge"><%= enumLabel(c.status) %></span></td><td><%= c.adjustments %></td><td><%= fmtDate(c.createdAt) %></td></tr><% }); %>
+      <% if(!(calibrations||[]).length){ %><tr><td colspan="4"><em><%= __('talentx:cap_no_sessions') %></em></td></tr><% } %>
+    </tbody></table>
+</div>
+
+<!-- ===================== GOAL CASCADING ===================== -->
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><%= __('talentx:cap_objectives') %></h3>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div><label for="obj-level"><%= __('talentx:cap_level') %></label><br><select id="obj-level" class="form-control"><option value="company"><%= __('talentx:cap_lvl_company') %></option><option value="site"><%= __('talentx:cap_lvl_site') %></option><option value="department"><%= __('talentx:cap_lvl_department') %></option><option value="team"><%= __('talentx:cap_lvl_team') %></option></select></div>
+    <div style="flex:1;min-width:240px"><label for="obj-title"><%= __('talentx:cap_title') %></label><br><input id="obj-title" class="form-control" placeholder="<%= __('talentx:cap_obj_title_ph') %>"></div>
+    <div><label for="obj-period"><%= __('talentx:cap_period') %></label><br><input id="obj-period" class="form-control" placeholder="<%= __('talentx:cap_period_ph') %>" style="width:110px"></div>
+    <button class="btn btn-primary" onclick="CAP.newObjective()"><%= __('talentx:cap_add_objective') %></button>
+  </div>
+  <table class="table" id="cap-goal-table" style="margin-top:.6rem"><thead><tr><th><%= __('talentx:cap_level') %></th><th><%= __('talentx:cap_title') %></th><th><%= __('talentx:cap_col_aligned') %></th></tr></thead>
+    <tbody><% (objectives||[]).forEach(function(o){ %><tr><td><%= enumLabel(o.level) %></td><td><%= o.title %></td><td><%= o.alignedGoals %></td></tr><% }); %>
+    <% if(!(objectives||[]).length){ %><tr><td colspan="3"><em><%= __('talentx:cap_none') %></em></td></tr><% } %></tbody></table>
+</div>
+
+<!-- ===================== MOBILITY ===================== -->
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><%= __('talentx:cap_mobility') %></h3>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div><label for="opp-kind"><%= __('talentx:cap_kind') %></label><br><select id="opp-kind" class="form-control"><option value="gig"><%= __('talentx:cap_kind_gig') %></option><option value="project"><%= __('talentx:cap_kind_project') %></option><option value="mentorship"><%= __('talentx:cap_kind_mentorship') %></option><option value="role"><%= __('talentx:cap_kind_role') %></option></select></div>
+    <div style="flex:1;min-width:220px"><label for="opp-title"><%= __('talentx:cap_title') %></label><br><input id="opp-title" class="form-control" placeholder="<%= __('talentx:cap_opp_title_ph') %>"></div>
+    <div><label for="opp-closes"><%= __('talentx:cap_closes_on') %></label><br><input id="opp-closes" type="date" class="form-control"></div>
+    <button class="btn btn-primary" onclick="CAP.newOpportunity()"><%= __('talentx:cap_post_opp') %></button>
+  </div>
+  <table class="table" id="cap-opp-table" style="margin-top:.6rem"><thead><tr><th><%= __('talentx:cap_kind') %></th><th><%= __('talentx:cap_title') %></th><th><%= __('talentx:cap_closes_on') %></th><th><%= __('talentx:cap_col_applicants') %></th><th></th></tr></thead>
+    <tbody><% (opportunities||[]).forEach(function(o){ %><tr><td><%= enumLabel(o.kind) %></td><td><%= o.title %></td>
+      <td><% if (o.closesOn) { %><%= fmtDate(o.closesOn) %><% if (o.expired) { %> <span class="badge badge-warning"><%= __('talentx:cap_expired') %></span><% } %><% } else { %>—<% } %></td>
+      <td><%= o.applicants %></td>
+      <td style="white-space:nowrap"><button class="btn btn-sm btn-secondary" onclick="CAP.applicants(<%= o.id %>)"><%= __('talentx:cap_applicants_btn') %></button>
+        <button class="btn btn-sm btn-secondary" onclick="CAP.match(<%= o.id %>)"><%= __('talentx:cap_match_candidates') %></button>
+        <% if (o.canClose) { %><button class="btn btn-sm btn-success" onclick="CAP.oppState(<%= o.id %>,'filled')"><%= __('talentx:cap_fill_opp') %></button>
+        <button class="btn btn-sm btn-secondary" onclick="CAP.oppState(<%= o.id %>,'closed')"><%= __('talentx:cap_close_opp') %></button><% } %></td></tr><% }); %>
+    <% if(!(opportunities||[]).length){ %><tr><td colspan="5"><em><%= __('talentx:cap_no_opps') %></em></td></tr><% } %></tbody></table>
+  <div id="opp-match" class="text-muted" style="font-size:.85em;margin-top:.4rem"></div>
+  <div id="opp-applicants" style="margin-top:.6rem"></div>
+</div>
+
+<!-- ===================== SURVEYS ===================== -->
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><%= __('talentx:cap_surveys') %></h3>
+  <button class="btn btn-primary btn-sm" onclick="CAP.newSurvey()"><%= __('talentx:cap_new_survey') %></button>
+  <!-- Minimal question editor. The builder used to create every survey with the
+       same three hard-coded ENGLISH questions and an anonymity threshold of 4. -->
+  <div id="svy-builder" hidden style="border:1px solid var(--border-color,#334155);border-radius:8px;padding:.8rem;margin-top:.6rem">
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+      <div style="flex:1;min-width:220px"><label for="svy-title"><%= __('talentx:cap_title') %></label><br><input id="svy-title" class="form-control" maxlength="200"></div>
+      <div><label for="svy-kind"><%= __('talentx:cap_kind') %></label><br><select id="svy-kind" class="form-control">
+        <% ['pulse','engagement','enps','onboarding','exit'].forEach(function(k){ %><option value="<%= k %>"><%= __('talentx:cap_svy_kind_' + k) %></option><% }); %>
+      </select></div>
+      <div><label for="svy-min"><%= __('talentx:cap_survey_min') %></label><br><input id="svy-min" type="number" min="5" value="5" class="form-control" style="width:110px"></div>
+      <div><label class="eg-check" style="display:flex;gap:.4rem;align-items:center"><input type="checkbox" id="svy-anon" checked> <%= __('talentx:cap_survey_anonymous') %></label></div>
+    </div>
+    <p class="text-muted" style="font-size:.8em;margin:.3rem 0"><%= __('talentx:cap_survey_min_hint') %></p>
+    <div id="svy-questions"></div>
+    <div style="display:flex;gap:.5rem;margin-top:.5rem">
+      <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.addQuestion()">+ <%= __('talentx:cap_add_question') %></button>
+      <button type="button" class="btn btn-sm btn-primary" onclick="CAP.createSurvey()"><%= __('talentx:cap_create_survey') %></button>
+      <button type="button" class="btn btn-sm btn-link" onclick="document.getElementById('svy-builder').hidden=true"><%= __('talentx:cap_cancel') %></button>
+    </div>
+  </div>
+  <table class="table" id="cap-svy-table" style="margin-top:.6rem"><thead><tr><th><%= __('talentx:cap_title') %></th><th><%= __('talentx:cap_kind') %></th><th><%= __('talentx:state') %></th><th><%= __('talentx:cap_col_respondents') %></th><th></th></tr></thead>
+    <tbody><% (surveys||[]).forEach(function(s){ %><tr><td><%= s.title %></td><td><%= __('talentx:cap_svy_kind_' + (['pulse','engagement','enps','onboarding','exit'].indexOf(s.kind) > -1 ? s.kind : 'pulse')) %></td><td><span class="badge"><%= enumLabel(s.state) %></span></td><td><%= s.respondents %></td>
+      <td style="white-space:nowrap"><% if(s.state==='draft'){ %><button class="btn btn-sm btn-success" onclick="CAP.surveyOpen(<%= s.id %>)"><%= __('talentx:open') %></button><% } %>
+        <% if(s.state==='open'){ %><button class="btn btn-sm btn-secondary" onclick="CAP.surveyClose(<%= s.id %>)"><%= __('talentx:cap_close_survey') %></button><% } %>
+        <button class="btn btn-sm btn-secondary" onclick="CAP.surveyResults(<%= s.id %>)"><%= __('talentx:cap_results') %></button></td></tr><% }); %>
+    <% if(!(surveys||[]).length){ %><tr><td colspan="5"><em><%= __('talentx:cap_no_surveys') %></em></td></tr><% } %></tbody></table>
+  <div id="survey-results" class="text-muted" style="font-size:.85em;margin-top:.4rem"></div>
+</div>
+
+<!-- ===================== RECOGNITION ===================== -->
+<div class="card" style="padding:1rem;margin-bottom:1rem">
+  <h3 style="margin-top:0"><%= __('talentx:cap_recognition') %></h3>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div><label for="rec-to"><%= __('talentx:cap_rec_to') %></label><br><input id="rec-to" class="form-control" style="width:140px"></div>
+    <div><label for="rec-tag"><%= __('talentx:cap_value') %></label><br><input id="rec-tag" class="form-control" placeholder="<%= __('talentx:cap_value_ph') %>" style="width:140px"></div>
+    <div style="flex:1;min-width:200px"><label for="rec-msg"><%= __('talentx:cap_message') %></label><br><input id="rec-msg" class="form-control" placeholder="<%= __('talentx:cap_rec_msg_ph') %>"></div>
+    <button class="btn btn-primary" onclick="CAP.give()"><%= __('talentx:cap_recognize') %></button>
+  </div>
+  <ul style="margin:.6rem 0 0;font-size:.9em">
+    <% (recognitions||[]).forEach(function(r){ %><li><strong><%= (r.toFirst||'')+' '+(r.toLast||'') %></strong> — <%= r.message %> <% if(r.valueTag){ %><span class="badge"><%= r.valueTag %></span><% } %></li><% }); %>
+    <% if(!(recognitions||[]).length){ %><li><em><%= __('talentx:cap_no_recognitions') %></em></li><% } %>
+  </ul>
+</div>
+
+<!-- ===================== DEI ===================== -->
+<div class="card" style="padding:1rem">
+  <h3 style="margin-top:0"><%= __('talentx:cap_dei') %> <span class="text-muted" style="font-size:.7em"><%= __('talentx:cap_dei_suppressed') %></span></h3>
+  <div style="display:flex;gap:.5rem;align-items:flex-end">
+    <div><label for="dei-dim"><%= __('talentx:cap_dimension') %></label><br><select id="dei-dim" class="form-control"><option value="gender"><%= __('talentx:cap_dim_gender') %></option><option value="ethnicity"><%= __('talentx:cap_dim_ethnicity') %></option><option value="age_band"><%= __('talentx:cap_dim_age_band') %></option><option value="nationality"><%= __('talentx:cap_dim_nationality') %></option></select></div>
+    <button class="btn btn-secondary" onclick="CAP.dei()"><%= __('talentx:cap_representation') %></button>
+    <button class="btn btn-secondary" onclick="CAP.deiNineBox()"><%= __('talentx:cap_ninebox_group') %></button>
+    <button class="btn btn-secondary" onclick="CAP.deiPip()"><%= __('talentx:cap_pip_rate_group') %></button>
+  </div>
+  <div id="dei-out" style="margin-top:.5rem;font-size:.88em"></div>
+</div>
+
+<%# UNE SEULE discipline de reseau pour toute l application :
+    public/js/sa-console-net.js. Une reponse REDIRIGEE, non-JSON, 401/440 est
+    un ECHEC -- jamais un succes -- et le refus est ecrit dans la langue de la
+    page. Charge AVANT le script de la page (non differe) pour que SAConsoleNet
+    existe au premier appel. %>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  // Titre de la carte de refus : neutre, car ces ecrans ne sont pas la console de
+  // revue (sans cela ils affichaient « La file de revue n a pas pu etre chargee »).
+  load_failed: __('dash:unable_to_load'),
+  pending_failed: __('dash:unable_to_load'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+const CAP_T = <%- include('../../partials/json-script', { v: {
+  colon: colon,
+  thinking: __('talentx:cap_thinking'), aiUnavail: __('talentx:cap_ai_unavail'),
+  aiLlm: __('talentx:cap_ai_llm'), aiBuiltin: __('talentx:cap_ai_builtin'),
+  basedOn: __('talentx:cap_based_on'), person: __('talentx:cap_person'), people: __('talentx:cap_people'),
+  inScope: __('talentx:cap_in_scope'), askError: __('talentx:cap_ask_error'),
+  needTitle: __('talentx:cap_need_title'), topMatches: __('talentx:cap_top_matches'),
+  noMatch: __('talentx:cap_no_match'), surveyPrompt: __('talentx:cap_survey_title_prompt'),
+  surveyDefault: __('talentx:cap_survey_default'), needRec: __('talentx:cap_need_rec'),
+  suppressed: __('talentx:cap_suppressed'), responses: __('talentx:cap_responses'),
+  noDemo: __('talentx:cap_no_demo'), http: 'HTTP', representation: __('talentx:cap_representation'),
+  nineboxGroup: __('talentx:cap_ninebox_group'), pipRate: __('talentx:cap_pip_rate_group'),
+  noApplicants: __('talentx:cap_no_applicants'), colName: __('talentx:cap_col_name'), colFit: __('talentx:cap_col_fit'),
+  colAppliedOn: __('talentx:cap_col_applied_on'), colStatus: __('talentx:status'), colNote: __('talentx:cap_col_note'),
+  accept: __('talentx:cap_accept'), decline: __('talentx:cap_decline'), fitUnmeasured: __('talentx:cap_fit_unmeasured'),
+  declineReason: __('talentx:cap_decline_reason_prompt'), acceptNote: __('talentx:cap_accept_note_prompt'),
+  closeReason: __('talentx:cap_close_reason_prompt'), fillReason: __('talentx:cap_fill_reason_prompt'),
+  reasonRequired: __('talentx:cap_reason_required'),
+  appSt: { applied: __('talentx:cap_app_st_applied'), accepted: __('talentx:cap_app_st_accepted'), declined: __('talentx:cap_app_st_declined') },
+  qtypes: { scale: __('talentx:cap_qtype_scale'), nps: __('talentx:cap_qtype_nps'), text: __('talentx:cap_qtype_text') },
+  qTextPh: __('talentx:cap_q_text_ph'), removeQ: __('talentx:cap_remove_question'), needQuestion: __('talentx:cap_need_question'),
+  defaultQs: [
+    { text: __('talentx:cap_default_q1'), qtype: 'scale' },
+    { text: __('talentx:cap_default_q2'), qtype: 'scale' },
+    { text: __('talentx:cap_default_q3'), qtype: 'nps' }
+  ],
+  openConfirm: __('talentx:cap_open_survey_confirm'), closeConfirm: __('talentx:cap_close_survey_confirm'),
+  invited: __('talentx:cap_survey_invited'), avg: __('talentx:cap_avg'), textAnswers: __('talentx:cap_text_answers')
+} }) %>;
+// Every value that comes from the server is escaped before it touches innerHTML
+// (DEI group labels and survey question texts were written raw: stored XSS).
+function capEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+const CAP = {
+  // L assistant reseau ne se recopie plus ici : il vit dans
+  // public/js/sa-console-net.js (SAConsoleNet.call). L ancien corps avalait
+  // `r.json` en `{}` ; sur une session expiree le serveur repondait
+  // `302 -> /login`, le fetch de navigateur SUIVAIT la redirection, la page de
+  // connexion arrivait en `200 text/html`, `r.ok` valait donc true et `j`
+  // valait `{}` : le test `if(!r.ok||j.ok===false)` ne voyait rien.
+  async api(m,p,b){ try { return await SAConsoleNet.call(p, m, b); } catch(e){ alert(e.message); throw e; } },
+  async ask(){ const q=document.getElementById('cop-q').value.trim(); if(!q)return; const out=document.getElementById('cop-a'); out.textContent=CAP_T.thinking; try{
+      // SAConsoleNet.call directement (pas this.api) : un echec rend le message
+      // en place, sans l alert de l assistant partage.
+      // Meme defaut, meme correction que l assistant ci-dessus : le copilote
+      // passait par un fetch nu dont le `{}` franchissait `if(!r.ok||j.ok===false)`,
+      // et `esc(j.answer)` affichait alors « undefined » comme une reponse.
+      // Mesure du 16/09/2026 sur une base de developpement.
+      const j=await SAConsoleNet.call('/v2/cap/copilot/ask','POST',{question:q});
+      // Show the answer plainly; put provenance in a subtle muted line (no raw error, no dev "[scope N]").
+      const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+      const src = j.mode==='fallback' ? CAP_T.aiUnavail : j.mode==='llm' ? CAP_T.aiLlm : CAP_T.aiBuiltin;
+      const note = CAP_T.basedOn+' '+(j.scope||0)+' '+((j.scope===1)?CAP_T.person:CAP_T.people)+' '+CAP_T.inScope+' · '+src;
+      out.innerHTML = '<div>'+esc(j.answer)+'</div><div class="text-muted" style="font-size:.72em;margin-top:.4rem">'+esc(note)+'</div>';
+    // Le refus du catalogue dit POURQUOI (session, perimetre, reseau) et il est
+    // dans la langue de la page ; CAP_T.askError ne reste que pour une erreur
+    // sans code stable.
+    }catch(e){ out.textContent=(e&&e.code&&e.message)?e.message:CAP_T.askError; } },
+  quickAsk(q){ document.getElementById('cop-q').value=q; this.ask(); },
+  async newCalibration(){ await this.api('POST','/v2/cap/calibration',{scopeType:'org'}); location.reload(); },
+  async newObjective(){ const t=document.getElementById('obj-title').value.trim(); if(!t){alert(CAP_T.needTitle);return;} await this.api('POST','/v2/cap/objective',{level:document.getElementById('obj-level').value,title:t,period:document.getElementById('obj-period').value||null}); location.reload(); },
+  async newOpportunity(){ const t=document.getElementById('opp-title').value.trim(); if(!t){alert(CAP_T.needTitle);return;} await this.api('POST','/v2/cap/opportunity',{kind:document.getElementById('opp-kind').value,title:t,skillsSought:[],closesOn:document.getElementById('opp-closes').value||null}); location.reload(); },
+  async match(id){ const j=await this.api('GET','/v2/cap/opportunity/'+id+'/match'); document.getElementById('opp-match').textContent=j.candidates.length?(CAP_T.topMatches+' '+j.candidates.slice(0,5).map(c=>'#'+c.employeeId+' '+c.matchPct+'%').join(', ')):CAP_T.noMatch; },
+  // Applicants of one posting: name, fit, date, status, and the decision.
+  async applicants(id){
+    const box=document.getElementById('opp-applicants');
+    const j=await this.api('GET','/v2/cap/opportunity/'+id+'/applicants');
+    const list=j.applicants||[];
+    if(!list.length){ box.innerHTML='<em class="text-muted">'+capEsc(CAP_T.noApplicants)+'</em>'; return; }
+    const lang=document.documentElement.lang||'fr';
+    const d=s=>{ if(!s) return '—'; const x=new Date(s); return isNaN(x.getTime())?'—':x.toLocaleDateString(lang); };
+    box.innerHTML='<table class="table"><thead><tr><th>'+capEsc(CAP_T.colName)+'</th><th>'+capEsc(CAP_T.colFit)+'</th><th>'+capEsc(CAP_T.colAppliedOn)+'</th><th>'+capEsc(CAP_T.colStatus)+'</th><th>'+capEsc(CAP_T.colNote)+'</th><th></th></tr></thead><tbody>'
+      + list.map(a=>'<tr><td>'+capEsc(a.name)+'</td>'
+        // Fit is null — not 0 — when it cannot be measured.
+        + '<td>'+(a.fitPct==null?'<span class="text-muted">'+capEsc(CAP_T.fitUnmeasured)+'</span>':capEsc(a.fitPct)+'%')+'</td>'
+        + '<td>'+capEsc(d(a.appliedAt))+'</td>'
+        + '<td><span class="badge">'+capEsc((CAP_T.appSt||{})[a.status]||a.status)+'</span>'+(a.decisionNote?'<div class="text-muted" style="font-size:.8em">'+capEsc(a.decisionNote)+'</div>':'')+'</td>'
+        + '<td style="max-width:260px;font-size:.85em">'+capEsc(a.note||'')+'</td>'
+        + '<td style="white-space:nowrap">'+(a.status==='applied'
+            ? '<button class="btn btn-sm btn-success" data-app="'+Number(a.id)+'" data-dec="accepted" data-opp="'+Number(id)+'">'+capEsc(CAP_T.accept)+'</button> '
+            + '<button class="btn btn-sm btn-secondary" data-app="'+Number(a.id)+'" data-dec="declined" data-opp="'+Number(id)+'">'+capEsc(CAP_T.decline)+'</button>'
+            : '')+'</td></tr>').join('')
+      + '</tbody></table>';
+    box.querySelectorAll('button[data-app]').forEach(b=>{ b.onclick=()=>CAP.decide(Number(b.dataset.app), b.dataset.dec, Number(b.dataset.opp)); });
+  },
+  async decide(appId, decision, oppId){
+    const note=await window.promptDialog(decision==='declined'?CAP_T.declineReason:CAP_T.acceptNote,'');
+    if(note===null) return;
+    if(decision==='declined' && !String(note).trim()){ alert(CAP_T.reasonRequired); return; }
+    const j=await this.api('POST','/v2/cap/opportunity/application/'+appId+'/decide',{decision:decision,note:String(note||'').trim()||null});
+    if(j && j.ok===false && j.reason){ alert(j.reason); }
+    await this.applicants(oppId);
+  },
+  async oppState(id, state){
+    const reason=await window.promptDialog(state==='filled'?CAP_T.fillReason:CAP_T.closeReason,'');
+    if(reason===null) return;
+    if(!String(reason).trim()){ alert(CAP_T.reasonRequired); return; }
+    await this.api('POST','/v2/cap/opportunity/'+id+'/state',{state:state,reason:String(reason).trim()});
+    location.reload();
+  },
+  // --- Survey builder (FR-first default questions come from the locale) ---
+  newSurvey(){
+    const b=document.getElementById('svy-builder');
+    document.getElementById('svy-title').value=CAP_T.surveyDefault||'';
+    const qs=document.getElementById('svy-questions'); qs.textContent='';
+    (CAP_T.defaultQs||[]).forEach(q=>this.addQuestion(q));
+    b.hidden=false; document.getElementById('svy-title').focus();
+  },
+  addQuestion(q){
+    q=q||{text:'',qtype:'scale'};
+    const row=document.createElement('div'); row.className='svy-q'; row.style.cssText='display:flex;gap:.4rem;margin:.3rem 0;flex-wrap:wrap';
+    const t=document.createElement('input'); t.className='form-control svy-q-text'; t.maxLength=500; t.placeholder=CAP_T.qTextPh; t.value=q.text||''; t.style.cssText='flex:1;min-width:220px'; t.setAttribute('aria-label',CAP_T.qTextPh);
+    const s=document.createElement('select'); s.className='form-control svy-q-type'; s.style.width='auto';
+    ['scale','nps','text'].forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=(CAP_T.qtypes||{})[k]||k; if(k===q.qtype) o.selected=true; s.appendChild(o); });
+    const rm=document.createElement('button'); rm.type='button'; rm.className='btn btn-sm btn-link'; rm.textContent=CAP_T.removeQ; rm.onclick=()=>row.remove();
+    row.append(t,s,rm); document.getElementById('svy-questions').appendChild(row);
+  },
+  async createSurvey(){
+    const title=document.getElementById('svy-title').value.trim(); if(!title){ alert(CAP_T.needTitle); return; }
+    const questions=[...document.querySelectorAll('#svy-questions .svy-q')].map(r=>({text:r.querySelector('.svy-q-text').value.trim(),qtype:r.querySelector('.svy-q-type').value})).filter(q=>q.text);
+    if(!questions.length){ alert(CAP_T.needQuestion); return; }
+    const min=Math.max(5,parseInt(document.getElementById('svy-min').value,10)||5);
+    await this.api('POST','/v2/cap/survey',{kind:document.getElementById('svy-kind').value,title:title,anonymous:document.getElementById('svy-anon').checked,minResponses:min,questions:questions});
+    location.reload();
+  },
+  async surveyOpen(id){ if(window.confirmDialog && !(await window.confirmDialog(CAP_T.openConfirm))) return; const j=await this.api('POST','/v2/cap/survey/'+id+'/open'); if(j && j.invited!=null) alert(String(CAP_T.invited).replace('{{n}}', j.invited)); location.reload(); },
+  async surveyClose(id){ if(window.confirmDialog && !(await window.confirmDialog(CAP_T.closeConfirm))) return; await this.api('POST','/v2/cap/survey/'+id+'/close'); location.reload(); },
+  async surveyResults(id){
+    const j=await this.api('GET','/v2/cap/survey/'+id+'/results');
+    document.getElementById('survey-results').innerHTML=(j.results||[]).map(r=>{
+      if(r.suppressed) return capEsc(r.text)+CAP_T.colon+' '+capEsc(CAP_T.suppressed)+' ('+capEsc(r.responses)+' '+capEsc(CAP_T.responses)+')';
+      if(r.qtype==='text') return '<strong>'+capEsc(r.text)+'</strong> — '+capEsc(CAP_T.textAnswers)+' ('+capEsc(r.responses)+')<ul style="margin:.2rem 0 .4rem">'+(r.answers||[]).map(a=>'<li>'+capEsc(a)+'</li>').join('')+'</ul>';
+      return capEsc(r.text)+CAP_T.colon+' '+capEsc(CAP_T.avg)+' '+capEsc(r.avgScore==null?'—':r.avgScore)+(r.enps!=null?(' · eNPS '+capEsc(r.enps)):'');
+    }).join('<br>');
+  },
+  async give(){ const to=Number(document.getElementById('rec-to').value); const msg=document.getElementById('rec-msg').value.trim(); if(!to||!msg){alert(CAP_T.needRec);return;} await this.api('POST','/v2/cap/recognition',{toEmployeeId:to,valueTag:document.getElementById('rec-tag').value||null,message:msg}); location.reload(); },
+  async dei(){ const j=await this.api('GET','/v2/cap/dei/representation?dim='+encodeURIComponent(document.getElementById('dei-dim').value)); document.getElementById('dei-out').innerHTML='<strong>'+capEsc(CAP_T.representation)+':</strong> '+j.data.map(d=>d.suppressed?(capEsc(d.grp)+': '+capEsc(CAP_T.suppressed)):(capEsc(d.grp)+': '+capEsc(d.n))).join(' · '); },
+  async deiNineBox(){ const j=await this.api('GET','/v2/cap/dei/ninebox?dim='+encodeURIComponent(document.getElementById('dei-dim').value)); document.getElementById('dei-out').innerHTML='<strong>'+capEsc(CAP_T.nineboxGroup)+':</strong> '+(j.data.length?j.data.map(d=>d.suppressed?(capEsc(d.grp)+'/'+capEsc(d.box)+': '+capEsc(CAP_T.suppressed)):(capEsc(d.grp)+'/'+capEsc(d.box)+': '+capEsc(d.n))).join(' · '):capEsc(CAP_T.noDemo)); },
+  async deiPip(){ const j=await this.api('GET','/v2/cap/dei/piprate?dim='+encodeURIComponent(document.getElementById('dei-dim').value)); document.getElementById('dei-out').innerHTML='<strong>'+capEsc(CAP_T.pipRate)+':</strong> '+(j.data.length?j.data.map(d=>d.suppressed?(capEsc(d.grp)+': '+capEsc(CAP_T.suppressed)):(capEsc(d.grp)+': '+capEsc(d.pipRatePct)+'%')).join(' · '):capEsc(CAP_T.noDemo)); }
+};
+</script>

@@ -1,0 +1,246 @@
+{
+  "name": "IDevelop starter descriptions",
+  "version": 1,
+  "license": "CC0-1.0",
+  "note": "Generated from starter-framework.json. Loaded as PROPOSALS (never overwrites) for skills that have no description yet.",
+  "items": [
+    {
+      "skill": "Setting direction",
+      "pillar": "Leadership & People",
+      "subDomain": "Leading teams",
+      "fr": "Donne un cap clair à l'équipe et relie le travail quotidien aux objectifs.",
+      "en": "Gives the team a clear direction and links daily work to objectives."
+    },
+    {
+      "skill": "Delegation & empowerment",
+      "pillar": "Leadership & People",
+      "subDomain": "Leading teams",
+      "fr": "Confie des responsabilités adaptées et laisse l'autonomie nécessaire pour les assumer.",
+      "en": "Hands over suitable responsibilities and the autonomy needed to carry them."
+    },
+    {
+      "skill": "Giving feedback",
+      "pillar": "Leadership & People",
+      "subDomain": "Leading teams",
+      "fr": "Donne un retour factuel, régulier et utile, positif comme correctif.",
+      "en": "Gives factual, regular and useful feedback, both positive and corrective."
+    },
+    {
+      "skill": "Coaching",
+      "pillar": "Leadership & People",
+      "subDomain": "Developing people",
+      "fr": "Aide une personne à trouver ses propres solutions par le questionnement et l'écoute.",
+      "en": "Helps a person find their own solutions through questions and listening."
+    },
+    {
+      "skill": "Performance conversations",
+      "pillar": "Leadership & People",
+      "subDomain": "Developing people",
+      "fr": "Conduit des entretiens d'évaluation équitables, fondés sur des faits et orientés vers l'avenir.",
+      "en": "Runs fair, fact-based and forward-looking performance conversations."
+    },
+    {
+      "skill": "Development planning",
+      "pillar": "Leadership & People",
+      "subDomain": "Developing people",
+      "fr": "Construit avec la personne un plan de développement réaliste et suivi.",
+      "en": "Builds a realistic, followed-up development plan together with the person."
+    },
+    {
+      "skill": "Written communication",
+      "pillar": "Collaboration & Communication",
+      "subDomain": "Communication",
+      "fr": "Rédige des messages et documents clairs, structurés et adaptés au lecteur.",
+      "en": "Writes clear, structured messages and documents suited to the reader."
+    },
+    {
+      "skill": "Presenting",
+      "pillar": "Collaboration & Communication",
+      "subDomain": "Communication",
+      "fr": "Présente une idée ou un résultat de manière claire et convaincante.",
+      "en": "Presents an idea or a result clearly and convincingly."
+    },
+    {
+      "skill": "Active listening",
+      "pillar": "Collaboration & Communication",
+      "subDomain": "Communication",
+      "fr": "Écoute pour comprendre, reformule et vérifie sa compréhension.",
+      "en": "Listens to understand, rephrases and checks understanding."
+    },
+    {
+      "skill": "Cross-functional collaboration",
+      "pillar": "Collaboration & Communication",
+      "subDomain": "Teamwork",
+      "fr": "Travaille efficacement avec d'autres équipes vers un objectif commun.",
+      "en": "Works effectively with other teams toward a shared goal."
+    },
+    {
+      "skill": "Conflict resolution",
+      "pillar": "Collaboration & Communication",
+      "subDomain": "Teamwork",
+      "fr": "Traite les désaccords tôt et de façon constructive.",
+      "en": "Addresses disagreements early and constructively."
+    },
+    {
+      "skill": "Stakeholder management",
+      "pillar": "Collaboration & Communication",
+      "subDomain": "Teamwork",
+      "fr": "Identifie les parties prenantes, gère leurs attentes et les tient informées.",
+      "en": "Identifies stakeholders, manages their expectations and keeps them informed."
+    },
+    {
+      "skill": "Office productivity tools",
+      "pillar": "Digital & Data",
+      "subDomain": "Digital workplace",
+      "fr": "Utilise efficacement traitement de texte, tableur et présentation.",
+      "en": "Uses word processing, spreadsheets and presentation tools effectively."
+    },
+    {
+      "skill": "Collaboration platforms",
+      "pillar": "Digital & Data",
+      "subDomain": "Digital workplace",
+      "fr": "Partage, co-édite et organise l'information sur les outils collaboratifs.",
+      "en": "Shares, co-edits and organises information on collaboration platforms."
+    },
+    {
+      "skill": "Information security hygiene",
+      "pillar": "Digital & Data",
+      "subDomain": "Digital workplace",
+      "fr": "Protège ses accès, reconnaît l'hameçonnage et signale les incidents.",
+      "en": "Protects credentials, recognises phishing and reports incidents."
+    },
+    {
+      "skill": "Data literacy",
+      "pillar": "Digital & Data",
+      "subDomain": "Data & analysis",
+      "fr": "Comprend l'origine, la qualité et les limites d'une donnée.",
+      "en": "Understands where data comes from, its quality and its limits."
+    },
+    {
+      "skill": "Spreadsheet analysis",
+      "pillar": "Digital & Data",
+      "subDomain": "Data & analysis",
+      "fr": "Nettoie, analyse et synthétise des données dans un tableur.",
+      "en": "Cleans, analyses and summarises data in a spreadsheet."
+    },
+    {
+      "skill": "Reporting & dashboards",
+      "pillar": "Digital & Data",
+      "subDomain": "Data & analysis",
+      "fr": "Construit des indicateurs et tableaux de bord lisibles et fiables.",
+      "en": "Builds readable, reliable indicators and dashboards."
+    },
+    {
+      "skill": "Planning & scheduling",
+      "pillar": "Operations & Delivery",
+      "subDomain": "Process excellence",
+      "fr": "Planifie les activités et les ressources pour tenir les délais.",
+      "en": "Plans activities and resources to meet deadlines."
+    },
+    {
+      "skill": "Quality management",
+      "pillar": "Operations & Delivery",
+      "subDomain": "Process excellence",
+      "fr": "Applique les standards de qualité et traite les non-conformités.",
+      "en": "Applies quality standards and handles non-conformities."
+    },
+    {
+      "skill": "Continuous improvement",
+      "pillar": "Operations & Delivery",
+      "subDomain": "Process excellence",
+      "fr": "Identifie les pertes et met en œuvre des améliorations mesurables.",
+      "en": "Spots waste and implements measurable improvements."
+    },
+    {
+      "skill": "Project management",
+      "pillar": "Operations & Delivery",
+      "subDomain": "Project delivery",
+      "fr": "Cadre, pilote et clôture un projet en maîtrisant périmètre, délais et coûts.",
+      "en": "Scopes, runs and closes a project, controlling scope, time and cost."
+    },
+    {
+      "skill": "Risk management",
+      "pillar": "Operations & Delivery",
+      "subDomain": "Project delivery",
+      "fr": "Identifie, évalue et traite les risques d'une activité ou d'un projet.",
+      "en": "Identifies, assesses and treats the risks of an activity or project."
+    },
+    {
+      "skill": "Budget management",
+      "pillar": "Operations & Delivery",
+      "subDomain": "Project delivery",
+      "fr": "Prépare et suit un budget, explique les écarts.",
+      "en": "Prepares and tracks a budget and explains variances."
+    },
+    {
+      "skill": "Hazard identification",
+      "pillar": "Health, Safety & Environment",
+      "subDomain": "Workplace safety",
+      "fr": "Repère les dangers de son poste et applique les mesures de prévention.",
+      "en": "Spots the hazards of the job and applies preventive measures."
+    },
+    {
+      "skill": "Incident reporting",
+      "pillar": "Health, Safety & Environment",
+      "subDomain": "Workplace safety",
+      "fr": "Signale sans délai incidents et presque-accidents, avec les faits utiles.",
+      "en": "Reports incidents and near-misses promptly, with the relevant facts."
+    },
+    {
+      "skill": "Emergency response",
+      "pillar": "Health, Safety & Environment",
+      "subDomain": "Workplace safety",
+      "fr": "Connaît et applique les consignes d'urgence et d'évacuation.",
+      "en": "Knows and follows emergency and evacuation procedures."
+    },
+    {
+      "skill": "Environmental awareness",
+      "pillar": "Health, Safety & Environment",
+      "subDomain": "Environmental stewardship",
+      "fr": "Connaît les impacts environnementaux de son activité et les limite.",
+      "en": "Knows the environmental impacts of the work and limits them."
+    },
+    {
+      "skill": "Waste & resource management",
+      "pillar": "Health, Safety & Environment",
+      "subDomain": "Environmental stewardship",
+      "fr": "Trie les déchets et utilise l'énergie et les ressources avec sobriété.",
+      "en": "Sorts waste and uses energy and resources sparingly."
+    },
+    {
+      "skill": "Personal data protection",
+      "pillar": "Compliance & Ethics",
+      "subDomain": "Regulatory compliance",
+      "fr": "Traite les données personnelles conformément à la réglementation (ex. RGPD).",
+      "en": "Handles personal data in line with regulation (e.g. GDPR)."
+    },
+    {
+      "skill": "Business ethics & anti-corruption",
+      "pillar": "Compliance & Ethics",
+      "subDomain": "Regulatory compliance",
+      "fr": "Reconnaît et refuse les situations de conflit d'intérêts ou de corruption.",
+      "en": "Recognises and refuses conflicts of interest and bribery."
+    },
+    {
+      "skill": "Policy & procedure compliance",
+      "pillar": "Compliance & Ethics",
+      "subDomain": "Regulatory compliance",
+      "fr": "Connaît et applique les politiques et procédures qui s'appliquent à son poste.",
+      "en": "Knows and applies the policies and procedures relevant to the role."
+    },
+    {
+      "skill": "Mandatory training currency",
+      "pillar": "Compliance & Ethics",
+      "subDomain": "Certification & audit",
+      "fr": "Maintient à jour ses formations et habilitations obligatoires.",
+      "en": "Keeps mandatory training and authorisations up to date."
+    },
+    {
+      "skill": "Audit readiness",
+      "pillar": "Compliance & Ethics",
+      "subDomain": "Certification & audit",
+      "fr": "Tient à jour les preuves et prépare les contrôles internes et externes.",
+      "en": "Keeps evidence current and prepares for internal and external audits."
+    }
+  ]
+}

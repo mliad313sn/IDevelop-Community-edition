@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="<%= typeof lang !== 'undefined' ? lang : 'fr' %>">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= __('auth:su_page_title') %> - IDevelop</title>
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css?v=6.4.0">
+    <% if (typeof externalFonts !== 'undefined' && externalFonts === true) { %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript>
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    </noscript>
+    <% } %>
+    <link rel="stylesheet" href="/css/style.css?v=<%= assetVersion %>">
+    <link rel="stylesheet" href="/css/login.css?v=<%= assetVersion %>">
+    <script nonce="<%= cspNonce %>">(function(){var t=localStorage.getItem('theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');})();</script>
+    <%- include('../../partials/pwa-head') %>
+</head>
+
+<body class="login-page">
+    <div class="login-container">
+        <img src="/brand/idevelop-mark.svg" alt="" class="login-mark" width="56" height="56">
+        <h1>IDevelop</h1>
+        <h2><%= __('auth:su_heading') %></h2>
+
+        <%- include('../../partials/flash') %>
+
+        <p class="login-help-text" style="margin-bottom:1rem;">
+            <%= __('auth:su_intro') %>
+            <% if (allowedDomains && allowedDomains.length) { %>
+                <br><%= __('auth:su_allowed_domains') %> <strong><%= allowedDomains.join(', ') %></strong>.
+            <% } %>
+        </p>
+
+        <% if (typeof ssoProviders !== 'undefined' && ssoProviders && ssoProviders.length) { %>
+            <%# One-click SSO registration: the normal SSO flow parks unknown
+                identities in the onboarding queue, so "sign in with…" IS the
+                signup — no password to invent, admin places them as usual. %>
+            <% ssoProviders.forEach(function (p) { %>
+                <a href="/auth/sso/<%= p.key %>" class="btn btn-secondary btn-block sso-btn" role="button">
+                    <i class="<%= p.icon %>" aria-hidden="true"></i>
+                    <%= __('auth:su_sso_prefix') %> <%= p.label.replace(/^Sign in with\s*/i, '') %>
+                </a>
+            <% }); %>
+            <p class="login-help-text" style="margin:.4rem 0 0;">
+                <%= __('auth:su_sso_help') %>
+            </p>
+            <% if (typeof allowForm !== 'undefined' && allowForm) { %>
+                <div class="login-divider" style="margin:1rem 0;"><span><%= __('auth:su_or_email') %></span></div>
+            <% } %>
+        <% } %>
+
+        <% if (typeof allowForm === 'undefined' || allowForm) { %>
+        <form action="/signup" method="POST" class="login-form">
+            <% if (typeof csrfToken !== 'undefined' && csrfToken) { %>
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <% } %>
+            <%# Honeypot — hidden from humans; bots that fill it are silently dropped %>
+            <div aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden">
+                <label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+            </div>
+            <div class="form-group">
+                <label for="email"><%= __('auth:su_email') %></label>
+                <input type="email" id="email" name="email" required autofocus class="form-control" placeholder="<%= __('admin:onbx_su_email_ph') %>" value="<%= (typeof prefill !== 'undefined' && prefill.email) || '' %>">
+            </div>
+            <div class="form-group">
+                <label for="firstName"><%= __('auth:su_first') %></label>
+                <input type="text" id="firstName" name="firstName" class="form-control" placeholder="<%= __('auth:su_first') %>" value="<%= (typeof prefill !== 'undefined' && prefill.firstName) || '' %>">
+            </div>
+            <div class="form-group">
+                <label for="lastName"><%= __('auth:su_last') %></label>
+                <input type="text" id="lastName" name="lastName" class="form-control" placeholder="<%= __('auth:su_last') %>" value="<%= (typeof prefill !== 'undefined' && prefill.lastName) || '' %>">
+            </div>
+            <div class="form-group">
+                <label for="password"><%= __('auth:su_password') %></label>
+                <input type="password" id="password" name="password" required class="form-control" placeholder="<%= __('auth:su_password_ph') %>" aria-describedby="pwHint">
+                <%# State the rule up front: the same localized sentence the server
+                    answers with, so a rejected password is never a surprise. %>
+                <small id="pwHint" class="login-help-text"><%= __('admin:onbx_su_password_policy') %></small>
+            </div>
+            <div class="form-group">
+                <label for="confirmPassword"><%= __('auth:su_confirm') %></label>
+                <input type="password" id="confirmPassword" name="confirmPassword" required class="form-control" placeholder="<%= __('auth:su_confirm_ph') %>">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block"><%= __('auth:su_create_btn') %></button>
+            <p class="login-help-text" style="margin-top:1rem;">
+                <%= __('auth:su_have_account') %> <a href="/login"><%= __('auth:su_sign_in') %></a>
+            </p>
+        </form>
+        <% } else { %>
+            <p class="login-help-text" style="margin-top:1rem;">
+                <%= __('auth:su_have_account') %> <a href="/login"><%= __('auth:su_sign_in') %></a>
+            </p>
+        <% } %>
+    </div>
+</body>
+
+</html>

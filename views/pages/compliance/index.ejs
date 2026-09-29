@@ -1,0 +1,666 @@
+<div class="page-header">
+    <h1><i class="fas fa-clipboard-check" aria-hidden="true"></i> <%= __('compliance:title') %></h1>
+</div>
+
+<!-- KPI summary (all figures scoped to what YOU govern) -->
+<div class="report-summary">
+    <h2><%= __('compliance:kpi_status') %></h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3><%= __('compliance:kpi_valid') %></h3>
+            <p class="stat-value" style="color:#27ae60;"><%= counts.valid + counts.no_expiry %></p>
+        </div>
+        <div class="stat-card">
+            <h3><%= __('compliance:kpi_expiring') %></h3>
+            <p class="stat-value" style="color:#e67e22;"><%= counts.expiring %></p>
+        </div>
+        <div class="stat-card">
+            <h3><%= __('compliance:kpi_expired') %></h3>
+            <p class="stat-value" style="color:#c0392b;"><%= counts.expired %></p>
+        </div>
+        <div class="stat-card">
+            <h3><%= __('compliance:kpi_lapsed') %></h3>
+            <p class="stat-value" style="color:#c0392b;"><%= lapsed.length %></p>
+        </div>
+        <div class="stat-card">
+            <h3><%= __('compliance:kpi_breach') %></h3>
+            <p class="stat-value" style="color:<%= coverage.filter(r => !r.satisfied).length ? '#c0392b' : '#27ae60' %>;">
+                <%= coverage.filter(r => !r.satisfied).length %> / <%= coverage.length %>
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Position-coverage rules -->
+<div class="report-section">
+    <h2><%= __('compliance:sec_coverage') %></h2>
+    <div class="table-wrapper">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('compliance:th_rule') %></th><th><%= __('compliance:th_scope') %></th>
+                <th><%= __('compliance:th_skill_min') %></th><th><%= __('compliance:th_required') %></th>
+                <th><%= __('compliance:th_qualified') %></th><th><%= __('compliance:th_status') %></th>
+                <th><%= __('compliance:th_predicted') %></th>
+                <% if (canManage) { %><th></th><% } %>
+            </tr></thead>
+            <tbody>
+                <% coverage.forEach(function (r) { %>
+                <tr>
+                    <td><strong><%= r.name %></strong> <% if (r.severity === 'critical') { %><span class="badge badge-danger"><%= __('compliance:severity_critical').toLowerCase() %></span><% } %></td>
+                    <td><%= [r.siteName, r.departmentName, r.serviceName].filter(Boolean).join(' / ') || __('compliance:whole_org') %></td>
+                    <td><%= r.skillName %> (&ge;<%= r.minLevel %><%= r.requireValidCert ? ', ' + __('compliance:valid') + ' cert' : '' %>)</td>
+                    <td>&ge; <%= r.minHeadcount %></td>
+                    <td><%= r.qualifiedHeadcount %></td>
+                    <td>
+                        <% if (r.satisfied) { %><span class="badge badge-success"><%= __('compliance:covered') %></span>
+                        <% } else { %><span class="badge badge-danger"><%= __('compliance:breach') %><%= r.breachedSince ? ' ' + __('compliance:since') + ' ' + fmtDate(r.breachedSince) : '' %></span><% } %>
+                    </td>
+                    <td>
+                        <% if (r.predictedBreachOn) { %>
+                            <span class="badge badge-warning" title="<%= __('compliance:predicted_tip') %>">
+                                <i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= fmtPeriodBound(r.predictedBreachOn) %> (<%= r.predictedQualified %>/<%= r.minHeadcount %>)</span>
+                        <% } else { %><span class="text-muted">—</span><% } %>
+                    </td>
+                    <% if (canManage) { %>
+                    <td style="text-align:right;white-space:nowrap;">
+                        <button type="button" class="btn btn-sm btn-secondary" data-toggle-rule="<%= r.ruleId %>"><%= __('compliance:disable') %></button>
+                        <button type="button" class="btn btn-sm btn-danger" data-del-rule="<%= r.ruleId %>"
+                            data-rule-name="<%= r.name %>" title="<%= __('compliance:delete_rule') %>"
+                            aria-label="<%= __('compliance:delete_rule') %>"><i class="fas fa-trash-can" aria-hidden="true"></i></button>
+                    </td>
+                    <% } %>
+                </tr>
+                <% }); %>
+                <% if (!coverage.length) { %>
+                <tr><td colspan="<%= canManage ? 8 : 7 %>" style="text-align:center;padding:2rem;color:var(--text-muted);"><%= __('compliance:no_rules') %><%= canManage ? __('compliance:no_rules_create') : '' %>.</td></tr>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card" style="padding:1.1rem 1.25rem;margin-top:1rem;">
+        <h3 style="margin:0 0 .35rem;font-size:1rem;"><%= __('compliance:sec_absences') %></h3>
+        <p class="text-muted" style="font-size:.82rem;margin:0 0 .8rem;"><%= __('compliance:absences_help') %></p>
+        <div class="table-wrapper" style="max-height:220px;overflow-y:auto;">
+            <table class="table">
+                <thead><tr>
+                    <th><%= __('compliance:th_employee') %></th><th><%= __('compliance:th_from') %></th>
+                    <th><%= __('compliance:th_to') %></th><th><%= __('compliance:th_kind') %></th>
+                    <th><%= __('compliance:th_note') %></th><% if (canRecord) { %><th></th><% } %>
+                </tr></thead>
+                <tbody>
+                    <% absences.forEach(function (a) { %>
+                    <tr>
+                        <td><%= a.employeeName %></td>
+                        <td><%= fmtPeriodBound(a.startsOn) %></td>
+                        <td><%= fmtPeriodBound(a.endsOn) %></td>
+                        <td><%= __('compliance:kind_' + a.kind) %></td>
+                        <td style="font-size:.82rem;color:var(--text-muted);"><%= a.note || '' %></td>
+                        <% if (canRecord) { %>
+                        <td style="text-align:right;"><button type="button" class="btn btn-sm btn-danger" data-del-absence="<%= a.id %>"><i class="fas fa-trash-can" aria-hidden="true"></i></button></td>
+                        <% } %>
+                    </tr>
+                    <% }); %>
+                    <% if (!absences.length) { %>
+                    <tr><td colspan="<%= canRecord ? 6 : 5 %>" style="text-align:center;padding:1.2rem;color:var(--text-muted);"><%= __('compliance:no_absences') %></td></tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+        <% if (canRecord) { %>
+        <form method="POST" action="/compliance/absences" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-top:.8rem;">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="form-group" style="margin:0;min-width:240px;">
+                <label for="abs-employee"><%= __('compliance:th_employee') %></label>
+                <input list="cmp-roster" id="abs-employee" name="employeeId" required class="form-control" placeholder="<%= __('compliance:roster_ph') %>">
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label for="abs-starts-on"><%= __('compliance:th_from') %></label>
+                <input type="date" id="abs-starts-on" name="startsOn" required class="form-control">
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label for="abs-ends-on"><%= __('compliance:th_to') %></label>
+                <input type="date" id="abs-ends-on" name="endsOn" required class="form-control">
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label for="abs-kind"><%= __('compliance:th_kind') %></label>
+                <select name="kind" id="abs-kind" class="form-control">
+                    <option value="leave"><%= __('compliance:kind_leave') %></option>
+                    <option value="training"><%= __('compliance:kind_training') %></option>
+                    <option value="mission"><%= __('compliance:kind_mission') %></option>
+                    <option value="medical"><%= __('compliance:kind_medical') %></option>
+                    <option value="other"><%= __('compliance:kind_other') %></option>
+                </select>
+            </div>
+            <div class="form-group" style="margin:0;min-width:200px;">
+                <label for="abs-note"><%= __('compliance:th_note') %></label>
+                <input type="text" id="abs-note" name="note" class="form-control" placeholder="<%= __('compliance:optional') %>">
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-calendar-plus" aria-hidden="true"></i> <%= __('compliance:record_absence') %></button>
+        </form>
+        <% } %>
+    </div>
+
+    <% if (canManage) { %>
+    <!-- Bulk generation: the whole site/department grid in one pass. Preview
+         first — nothing is written until the operator commits. -->
+    <div class="card" style="padding:1.1rem 1.25rem;margin-top:1rem;">
+        <h3 style="margin:0 0 .35rem;font-size:1rem;"><%= __('admin:cg_title') %></h3>
+        <p class="text-muted" style="font-size:.82rem;margin:0 0 .8rem;"><%= __('admin:cg_intro') %></p>
+        <p class="text-muted" style="font-size:.82rem;margin:-.5rem 0 .8rem;"><%= __('compliance:gen_cap_note') %></p>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+            <div class="form-group" style="margin:0;min-width:220px;flex:1;">
+                <label for="cg-domain"><%= __('admin:cg_domain') %></label>
+                <select id="cg-domain" class="form-control">
+                    <option value=""><%= __('compliance:any') %></option>
+                    <% domains.forEach(function (d) { %>
+                    <option value="<%= d.id %>"><%= d.name %> (<%= d.skillCount %>)</option>
+                    <% }); %>
+                </select>
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label for="cg-scope"><%= __('admin:cg_scope') %></label>
+                <select id="cg-scope" class="form-control">
+                    <option value="site"><%= __('admin:cg_scope_site') %></option>
+                    <option value="department"><%= __('admin:cg_scope_department') %></option>
+                    <option value="company"><%= __('admin:cg_scope_company') %></option>
+                </select>
+            </div>
+            <div class="form-group" style="margin:0;max-width:130px;">
+                <label for="cg-level"><%= __('admin:cg_min_level') %></label>
+                <input type="number" id="cg-level" class="form-control" min="1" max="5" value="2">
+            </div>
+            <div class="form-group" style="margin:0;max-width:150px;">
+                <label for="cg-headcount"><%= __('admin:cg_min_headcount') %></label>
+                <input type="number" id="cg-headcount" class="form-control" min="1" value="2">
+            </div>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:.84rem;">
+                <input type="checkbox" id="cg-cert"> <%= __('admin:cg_require_cert') %></label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:.84rem;">
+                <input type="checkbox" id="cg-staffed" checked> <%= __('admin:cg_only_staffed') %></label>
+            <button type="button" class="btn btn-secondary" id="cg-preview"><%= __('admin:cg_preview') %></button>
+            <button type="button" class="btn btn-primary" id="cg-commit" disabled><%= __('admin:cg_commit') %></button>
+        </div>
+        <div id="cg-result" style="margin-top:.7rem;font-size:.85rem;"></div>
+    </div>
+
+    <div class="card" style="padding:1.1rem 1.25rem;margin-top:1rem;">
+        <h3 style="margin:0 0 .8rem;font-size:1rem;"><%= __('compliance:new_rule') %></h3>
+        <form method="POST" action="/compliance/rules" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="form-group" style="margin:0;min-width:200px;flex:1;">
+                <label for="rule-name"><%= __('compliance:rule_name') %></label>
+                <input type="text" id="rule-name" name="name" required class="form-control" placeholder="e.g. First-aiders - Site A">
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label for="rule-site"><%= __('compliance:site_optional') %></label>
+                <select name="siteId" id="rule-site" class="form-control">
+                    <option value=""><%= __('compliance:any') %></option>
+                    <% orgUnits.sites.forEach(function (s) { %><option value="<%= s.id %>"><%= s.name %></option><% }); %>
+                </select>
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label for="rule-department"><%= __('compliance:dept_optional') %></label>
+                <select name="departmentId" id="rule-department" class="form-control">
+                    <option value=""><%= __('compliance:any') %></option>
+                    <% orgUnits.departments.forEach(function (d) { %><option value="<%= d.id %>"><%= d.siteName %> / <%= d.name %></option><% }); %>
+                </select>
+            </div>
+            <div class="form-group" style="margin:0;min-width:220px;">
+                <label for="rule-skill"><%= __('compliance:skill_cert') %></label>
+                <select name="skillId" id="rule-skill" required class="form-control">
+                    <% skills.forEach(function (s) { %><option value="<%= s.id %>"><%= s.name %></option><% }); %>
+                </select>
+            </div>
+            <div class="form-group" style="margin:0;width:90px;">
+                <label for="rule-min-level"><%= __('compliance:min_level') %></label>
+                <input type="number" id="rule-min-level" name="minLevel" class="form-control" value="1" min="1" max="5">
+            </div>
+            <div class="form-group" style="margin:0;width:110px;">
+                <label for="rule-min-headcount"><%= __('compliance:min_people') %></label>
+                <input type="number" id="rule-min-headcount" name="minHeadcount" class="form-control" value="2" min="1" required>
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label for="rule-severity"><%= __('compliance:severity') %></label>
+                <select name="severity" id="rule-severity" class="form-control">
+                    <option value="critical"><%= __('compliance:severity_critical') %></option>
+                    <option value="warning"><%= __('compliance:severity_warning') %></option>
+                </select>
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;margin:0 0 .55rem;">
+                <input type="checkbox" name="requireValidCert" value="1"> <%= __('compliance:require_valid_cert') %>
+            </label>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('compliance:create_rule') %></button>
+        </form>
+    </div>
+    <% } %>
+</div>
+
+<!-- Expiring / current certifications -->
+<div class="report-section">
+    <h2><%= __('compliance:sec_certs') %></h2>
+    <div class="table-wrapper">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('compliance:th_employee') %></th><th><%= __('compliance:skill_cert') %></th>
+                <th><%= __('compliance:th_cert_no') %></th><th><%= __('compliance:th_issued') %></th>
+                <th><%= __('compliance:th_expires') %></th><th><%= __('compliance:th_status') %></th>
+                <th><%= __('compliance:th_evidence') %></th>
+            </tr></thead>
+            <tbody>
+                <% expiring.forEach(function (c) { %>
+                <tr>
+                    <td><a href="/employees/<%= c.employeeId %>"><%= c.fullName %></a>
+                        <div style="font-size:.78rem;color:var(--text-muted);"><%= c.departmentName %></div></td>
+                    <td><%= c.skillName %></td>
+                    <td><%= c.certNumber || '-' %></td>
+                    <td><%= c.issuedOn ? fmtPeriodBound(c.issuedOn) : '-' %></td>
+                    <td><%= c.expiresOn ? fmtPeriodBound(c.expiresOn) : __('compliance:never') %></td>
+                    <td>
+                        <% if (c.certStatus === 'expired') { %><span class="badge badge-danger"><%= __('compliance:expired') %></span>
+                        <% } else if (c.certStatus === 'expiring') { %><span class="badge badge-warning"><%= c.daysToExpiry %><%= __('compliance:days_left') %></span>
+                        <% } else { %><span class="badge badge-success"><%= c.certStatus === 'no_expiry' ? __('compliance:no_expiry') : __('compliance:valid') %></span><% } %>
+                    </td>
+                    <td><% if (c.avStatus === 'clean') { %><a href="/compliance/evidence/<%= c.certificationId %>" class="btn btn-sm btn-secondary"><i class="fas fa-paperclip" aria-hidden="true"></i></a><% } else { %>-<% } %></td>
+                </tr>
+                <% }); %>
+                <% if (!expiring.length) { %>
+                <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted);"><%= __('compliance:no_certs') %></td></tr>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+
+    <% if (canConfigure) { %>
+    <div class="card" style="padding:1.1rem 1.25rem;margin-top:1rem;">
+        <h3 style="margin:0 0 .35rem;font-size:1rem;"><%= __('compliance:import_title') %></h3>
+        <p class="text-muted" style="font-size:.82rem;margin:0 0 .8rem;"><%= __('compliance:import_help') %></p>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+            <a href="/data-management/templates/certifications" class="btn btn-secondary">
+                <i class="fas fa-file-arrow-down" aria-hidden="true"></i> <%= __('compliance:download_template') %></a>
+            <div class="form-group" style="margin:0;min-width:260px;">
+                <label for="cert-import-file"><%= __('compliance:filled_template') %></label>
+                <input type="file" id="cert-import-file" class="form-control" accept=".xlsx">
+            </div>
+            <button type="button" class="btn btn-secondary" id="cert-import-preview">
+                <i class="fas fa-magnifying-glass" aria-hidden="true"></i> <%= __('compliance:preview') %></button>
+            <button type="button" class="btn btn-primary" id="cert-import-commit" disabled>
+                <i class="fas fa-file-import" aria-hidden="true"></i> <%= __('compliance:import') %></button>
+        </div>
+        <div id="cert-import-result" style="margin-top:.7rem;font-size:.85rem;"></div>
+    </div>
+    <% } %>
+
+    <%# The VOC sign-off is a FIELD act: a site supervisor or training
+        coordinator records it, not only an HR administrator. canRecord is
+        true for a manager (their own reports) and for any delegate holding
+        manage_compliance; the route enforces the same and the controller
+        scope-checks the target employee. %>
+    <% if (canRecord) { %>
+    <div class="card" style="padding:1.1rem 1.25rem;margin-top:1rem;">
+        <h3 style="margin:0 0 .8rem;font-size:1rem;"><%= __('compliance:record_title') %></h3>
+        <form method="POST" action="/compliance/certifications" enctype="multipart/form-data" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="form-group" style="margin:0;min-width:240px;">
+                <label for="cert-employee"><%= __('compliance:th_employee') %></label>
+                <input list="cmp-roster" id="cert-employee" name="employeeId" required class="form-control" placeholder="<%= __('compliance:roster_ph') %>">
+                <datalist id="cmp-roster">
+                    <% roster.forEach(function (e) { %><option value="<%= e.id %>"><%= personName(e) %> (<%= e.employeeNumber %>)</option><% }); %>
+                </datalist>
+            </div>
+            <div class="form-group" style="margin:0;min-width:220px;">
+                <label for="cert-skill"><%= __('compliance:skill_cert') %></label>
+                <select name="skillId" id="cert-skill" required class="form-control">
+                    <% skills.forEach(function (s) { %><option value="<%= s.id %>"><%= s.name %></option><% }); %>
+                </select>
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label for="cert-number"><%= __('compliance:th_cert_no') %></label>
+                <input type="text" id="cert-number" name="certNumber" class="form-control" placeholder="<%= __('compliance:optional') %>">
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label for="cert-issued-on"><%= __('compliance:issued_on') %></label>
+                <input type="date" id="cert-issued-on" name="issuedOn" required class="form-control">
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label for="cert-expires-on"><%= __('compliance:expires_on') %> <small style="color:var(--text-muted);"><%= __('compliance:expires_hint') %></small></label>
+                <input type="date" id="cert-expires-on" name="expiresOn" class="form-control">
+            </div>
+            <div class="form-group" style="margin:0;min-width:220px;">
+                <label for="cert-evidence"><%= __('compliance:th_evidence') %> <small style="color:var(--text-muted);"><%= __('compliance:evidence_hint') %></small></label>
+                <input type="file" id="cert-evidence" name="evidence" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx">
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-stamp" aria-hidden="true"></i> <%= __('compliance:record') %></button>
+        </form>
+    </div>
+
+    <% } %>
+
+    <% if (canConfigure) { %>
+    <div class="card" style="padding:1.1rem 1.25rem;margin-top:1rem;">
+        <h3 style="margin:0 0 .35rem;font-size:1rem;"><%= __('compliance:sec_policy') %></h3>
+        <p class="text-muted" style="font-size:.82rem;margin:0 0 .8rem;"><%= __('compliance:policy_help') %></p>
+        <form method="POST" action="/compliance/policies" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="form-group" style="margin:0;min-width:220px;">
+                <label for="policy-skill"><%= __('compliance:skill') %></label>
+                <select name="skillId" id="policy-skill" required class="form-control">
+                    <% skills.forEach(function (s) { %><option value="<%= s.id %>"><%= s.name %></option><% }); %>
+                </select>
+            </div>
+            <div class="form-group" style="margin:0;width:130px;">
+                <label for="policy-validity-months"><%= __('compliance:validity_months') %></label>
+                <input type="number" id="policy-validity-months" name="validityMonths" class="form-control" min="1" max="120" placeholder="<%= __('compliance:never') %>">
+            </div>
+            <div class="form-group" style="margin:0;width:150px;">
+                <label for="policy-reval-window"><%= __('compliance:reval_window') %></label>
+                <input type="number" id="policy-reval-window" name="revalidationWindowDays" class="form-control" value="90" min="7" max="365">
+            </div>
+            <div class="form-group" style="margin:0;width:130px;">
+                <label for="policy-decay-months"><%= __('compliance:decay_months') %></label>
+                <input type="number" id="policy-decay-months" name="decayMonths" class="form-control" min="1" max="120" placeholder="<%= __('compliance:off') %>">
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('compliance:save_policy') %></button>
+        </form>
+        <% if (policies.length) { %>
+        <%# --text-secondary, not --text-muted: these chips sit on --bg-subtle, where
+            muted measures 4.32:1 at .82rem. Secondary is 6.16:1 dark / 5.32:1 light. %>
+        <div style="margin-top:.8rem;font-size:.82rem;color:var(--text-secondary);">
+            <% policies.forEach(function (p) { %>
+                <span style="display:inline-block;margin:2px 10px 2px 0;padding:2px 8px;background:var(--bg-secondary);border-radius:10px;">
+                    <%= p.skillName %>: <%= p.validityMonths ? p.validityMonths + 'mo' : __('compliance:never') %> / <%= p.revalidationWindowDays %>d / <%= p.decayMonths ? p.decayMonths + 'mo' : __('compliance:off') %>
+                </span>
+            <% }); %>
+        </div>
+        <% } %>
+    </div>
+    <% } %>
+</div>
+
+<!-- Lapsed certificates that are actually degrading a role requirement.
+     This is the proof that compliance is no longer decorative: every row here
+     is a person the readiness, benchmark and succession screens now count as
+     NOT qualified for that skill, purely because the certificate lapsed. -->
+<div class="report-section">
+    <h2><%= __('compliance:sec_impact') %></h2>
+    <p class="text-muted" style="font-size:.85rem;margin:-.4rem 0 .8rem;"><%= __('compliance:impact_help') %></p>
+    <div class="table-wrapper">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('compliance:th_employee') %></th><th><%= __('compliance:th_role') %></th>
+                <th><%= __('compliance:skill_cert') %></th><th><%= __('compliance:th_required') %></th>
+                <th><%= __('compliance:th_assessed_level') %></th><th><%= __('compliance:th_reason') %></th>
+                <th><%= __('compliance:th_expires') %></th>
+            </tr></thead>
+            <tbody>
+                <% lapseImpact.forEach(function (i) { %>
+                <tr>
+                    <td><a href="/employees/<%= i.employeeId %>"><%= i.fullName %></a>
+                        <div style="font-size:.78rem;color:var(--text-muted);"><%= i.departmentName %></div></td>
+                    <td><%= i.roleName %></td>
+                    <td><%= i.skillName %> <% if (i.isCritical) { %><span class="badge badge-danger"><%= __('compliance:critical') %></span><% } %></td>
+                    <td>&ge; <%= i.requiredLevel %></td>
+                    <td><span class="badge badge-warning">L<%= i.assessedLevel %> &rarr; 0</span></td>
+                    <td><%= __('compliance:lapse_' + i.lapseReason) %></td>
+                    <td><%= i.lastExpiresOn ? fmtPeriodBound(i.lastExpiresOn) : '-' %></td>
+                </tr>
+                <% }); %>
+                <% if (!lapseImpact.length) { %>
+                <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted);"><%= __('compliance:no_impact') %></td></tr>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Skill currency (decay) -->
+<div class="report-section">
+    <h2><%= __('compliance:sec_currency') %></h2>
+    <div class="table-wrapper">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('compliance:th_employee') %></th><th><%= __('compliance:skill') %></th>
+                <th><%= __('compliance:th_level') %></th><th><%= __('compliance:th_last_assessed') %></th>
+                <th><%= __('compliance:th_age') %></th>
+            </tr></thead>
+            <tbody>
+                <% lapsed.forEach(function (l) { %>
+                <tr>
+                    <td><a href="/employees/<%= l.employeeId %>"><%= l.fullName %></a>
+                        <div style="font-size:.78rem;color:var(--text-muted);"><%= l.departmentName %></div></td>
+                    <td><%= l.skillName %></td>
+                    <td><span class="badge badge-warning">L<%= l.level %> - <%= __('compliance:unverified') %></span></td>
+                    <td><%= l.assessedAt ? fmtDate(l.assessedAt) : '-' %></td>
+                    <td><%= l.daysSinceAssessed %>d (<%= l.decayMonths %> <%= __('compliance:decay_suffix') %>)</td>
+                </tr>
+                <% }); %>
+                <% if (!lapsed.length) { %>
+                <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted);"><%= __('compliance:no_lapsed') %></td></tr>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<% if (canConfigure || canRecord) { %>
+<script nonce="<%= cspNonce %>">
+(function () {
+    // ---- Bulk certification import (preview-before-commit) ----
+    var fileEl = document.getElementById('cert-import-file');
+    var resEl = document.getElementById('cert-import-result');
+    var commitBtn = document.getElementById('cert-import-commit');
+    function runImport(dryRun) {
+        if (!fileEl.files || !fileEl.files[0]) { resEl.textContent = 'Choose a filled template file first.'; return; }
+        var fd = new FormData();
+        fd.append('file', fileEl.files[0]);
+        fd.append('dryRun', dryRun ? '1' : '0');
+        fd.append('_csrf', '<%= csrfToken %>');
+        resEl.style.color = 'var(--text-muted,#6b7280)';
+        resEl.textContent = dryRun ? 'Validating…' : 'Importing…';
+        fetch('/data-management/import/certifications', { method: 'POST', body: fd })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (o) {
+                if (!o.ok || o.j.error) { resEl.style.color = '#b91c1c'; resEl.textContent = o.j.error || 'Import failed'; commitBtn.disabled = true; return; }
+                var r = o.j.results;
+                var errHtml = r.errors.slice(0, 8).map(function (e) { return 'Row ' + e.row + ': ' + e.error; }).join('<br>');
+                if (o.j.dryRun) {
+                    resEl.style.color = r.errors.length ? '#b45309' : '#15803d';
+                    resEl.innerHTML = 'Preview: <strong>' + r.valid + '</strong> row(s) would be imported, ' +
+                        r.skipped + ' duplicate(s) skipped, ' + r.errors.length + ' error(s) of ' + r.total + ' total.' +
+                        (errHtml ? '<br>' + errHtml + (r.errors.length > 8 ? '<br>…' : '') : '');
+                    commitBtn.disabled = r.valid === 0;
+                } else {
+                    resEl.style.color = '#15803d';
+                    resEl.innerHTML = '✓ Imported <strong>' + r.created + '</strong> certification(s), ' +
+                        r.skipped + ' duplicate(s) skipped, ' + r.errors.length + ' error(s).';
+                    commitBtn.disabled = true;
+                    setTimeout(function () { location.reload(); }, 1400);
+                }
+            })
+            .catch(function () { resEl.style.color = '#b91c1c'; resEl.textContent = 'Network error'; });
+    }
+    if (fileEl) {
+        document.getElementById('cert-import-preview').addEventListener('click', function () { runImport(true); });
+        commitBtn.addEventListener('click', function () { runImport(false); });
+        fileEl.addEventListener('change', function () { commitBtn.disabled = true; resEl.textContent = ''; });
+    }
+
+    // Localised strings for every dialog/result on this page. Native confirm
+    // is not used any more (house dialog + FR-first copy).
+    var CT = <%- include('../../partials/json-script', { v: {
+        confirmAbsence: __('compliance:js_confirm_absence'),
+        confirmToggle: __('compliance:js_confirm_toggle'),
+        confirmDelete: __('compliance:js_confirm_delete'),
+        netErr: __('compliance:js_neterr'),
+        denied: __('compliance:js_denied'),
+        genPlanned: __('compliance:gen_planned'),
+        genBreaches: __('compliance:gen_breaches'),
+        genSkipped: __('compliance:gen_skipped'),
+        genCreated: __('compliance:gen_created'),
+        genConfirm: __('compliance:gen_confirm'),
+        genConfirmBreach: __('compliance:gen_confirm_breach'),
+        genPreviewFirst: __('compliance:gen_preview_first'),
+        genChanged: __('compliance:gen_changed'),
+        genTooMany: __('compliance:gen_too_many'),
+        genNone: __('compliance:gen_none'),
+    } }) %>;
+    // ui-feedback.js is loaded on every page (layouts/main.ejs),
+    // so the native-confirm fallback was dead code with a different look.
+    function ask(msg) {
+        return window.confirmDialog(msg);
+    }
+    function post(url) {
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CSRF-Token': '<%= csrfToken %>' }, body: '{}' })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
+    }
+
+    document.querySelectorAll('[data-del-absence]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            ask(CT.confirmAbsence).then(function (yes) {
+                if (!yes) return;
+                post('/compliance/absences/' + btn.getAttribute('data-del-absence') + '/delete')
+                    .then(function () { location.reload(); })
+                    .catch(function () { window.toast(CT.netErr, 'error'); });
+            });
+        });
+    });
+
+    document.querySelectorAll('[data-toggle-rule]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            ask(CT.confirmToggle).then(function (yes) {
+                if (!yes) return;
+                post('/compliance/rules/' + btn.getAttribute('data-toggle-rule') + '/toggle')
+                    .then(function () { location.reload(); })
+                    .catch(function () { window.toast(CT.netErr, 'error'); });
+            });
+        });
+    });
+
+    // Delete ONE rule. Destructive and named in the prompt — the bulk generator
+    // can produce a grid nobody wants, and disabling every bad rule one by one
+    // was the only escape hatch there used to be.
+    document.querySelectorAll('[data-del-rule]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var name = btn.getAttribute('data-rule-name') || '';
+            ask(CT.confirmDelete.replace('{name}', name)).then(function (yes) {
+                if (!yes) return;
+                post('/compliance/rules/' + btn.getAttribute('data-del-rule') + '/delete')
+                    .then(function (o) {
+                        if (!o.ok) { var m = o.j && o.j.error ? CT.denied : CT.netErr; window.toast(m, 'error'); return; }
+                        location.reload();
+                    })
+                    .catch(function () { window.toast(CT.netErr, 'error'); });
+            });
+        });
+    });
+
+    // ---- bulk coverage-rule generation: preview → CONFIRM → commit ----
+    // The old flow said only "N rule(s) to create". Generating the whole grid
+    // could create ~2,000 rules, every one instantly breached and every one an
+    // alert. The preview now also states how many would be IN BREACH the moment
+    // they exist, the commit echoes both numbers back so the server can refuse a
+    // plan that moved since the preview, and a named confirmation stands between
+    // the operator and the write.
+    (function () {
+        var btnPreview = document.getElementById('cg-preview');
+        var btnCommit = document.getElementById('cg-commit');
+        var out = document.getElementById('cg-result');
+        if (!btnPreview) return;
+        var lastPlan = null;   // { rules, breaches } from the most recent preview
+
+        function spec(commit) {
+            var body = {
+                domainId: document.getElementById('cg-domain').value || null,
+                scope: document.getElementById('cg-scope').value,
+                minLevel: document.getElementById('cg-level').value,
+                minHeadcount: document.getElementById('cg-headcount').value,
+                requireValidCert: document.getElementById('cg-cert').checked ? '1' : '0',
+                onlyWhereStaffed: document.getElementById('cg-staffed').checked ? '1' : '0',
+                commit: commit ? '1' : '0',
+            };
+            if (commit && lastPlan) {
+                body.expectedRules = lastPlan.rules;
+                body.expectedBreaches = lastPlan.breaches;
+            }
+            return body;
+        }
+        function invalidate() { lastPlan = null; btnCommit.disabled = true; out.textContent = ''; }
+        ['cg-domain', 'cg-scope', 'cg-level', 'cg-headcount', 'cg-cert', 'cg-staffed'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('change', invalidate);
+        });
+
+        function call(commit) {
+            out.style.color = 'var(--text-muted)';
+            out.textContent = '…';
+            return fetch('/compliance/rules/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'CSRF-Token': '<%= csrfToken %>' },
+                body: JSON.stringify(spec(commit)),
+            }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
+        }
+
+        btnPreview.addEventListener('click', function () {
+            call(false).then(function (o) {
+                var j = o.j;
+                if (!o.ok || j.error) {
+                    out.style.color = '#b91c1c';
+                    out.textContent = j.error === 'too_many_rules'
+                        ? CT.genTooMany.replace('{n}', j.plannedCount).replace('{cap}', j.cap)
+                        : (j.error || CT.netErr);
+                    invalidate();
+                    return;
+                }
+                lastPlan = { rules: j.plannedCount, breaches: j.immediateBreaches };
+                if (!j.plannedCount) {
+                    out.style.color = 'var(--text-muted)';
+                    out.textContent = CT.genNone;
+                    btnCommit.disabled = true;
+                    return;
+                }
+                var overCap = j.plannedCount > j.cap;
+                out.style.color = (j.immediateBreaches || overCap) ? '#b45309' : 'var(--text-primary)';
+                var sample = (j.planned || []).slice(0, 3).map(function (p) { return p.name; }).join(' · ');
+                out.textContent =
+                    CT.genPlanned.replace('{n}', j.plannedCount) + ' — ' +
+                    CT.genBreaches.replace('{n}', j.immediateBreaches) +
+                    (j.skipped ? ', ' + CT.genSkipped.replace('{n}', j.skipped) : '') +
+                    (sample ? ' — ' + sample + (j.plannedCount > 3 ? ' …' : '') : '') +
+                    (overCap ? ' — ' + CT.genTooMany.replace('{n}', j.plannedCount).replace('{cap}', j.cap) : '');
+                btnCommit.disabled = overCap;
+            }).catch(function () { out.style.color = '#b91c1c'; out.textContent = CT.netErr; invalidate(); });
+        });
+
+        btnCommit.addEventListener('click', function () {
+            if (!lastPlan) { out.style.color = '#b45309'; out.textContent = CT.genPreviewFirst; return; }
+            var msg = CT.genConfirm.replace('{n}', lastPlan.rules) +
+                (lastPlan.breaches ? ' ' + CT.genConfirmBreach.replace('{n}', lastPlan.breaches) : '');
+            ask(msg).then(function (yes) {
+                if (!yes) return;
+                call(true).then(function (o) {
+                    var j = o.j;
+                    if (!o.ok || j.error) {
+                        out.style.color = '#b91c1c';
+                        if (j.error === 'plan_changed') {
+                            lastPlan = { rules: j.plannedCount, breaches: j.immediateBreaches };
+                            out.textContent = CT.genChanged
+                                .replace('{n}', j.plannedCount).replace('{b}', j.immediateBreaches);
+                        } else if (j.error === 'too_many_rules') {
+                            out.textContent = CT.genTooMany.replace('{n}', j.plannedCount).replace('{cap}', j.cap);
+                        } else {
+                            out.textContent = j.error || CT.netErr;
+                        }
+                        btnCommit.disabled = true;
+                        return;
+                    }
+                    out.style.color = '#15803d';
+                    out.textContent = CT.genCreated.replace('{n}', j.created).replace('{b}', j.immediateBreaches);
+                    btnCommit.disabled = true;
+                    setTimeout(function () { location.reload(); }, 1200);
+                }).catch(function () { out.style.color = '#b91c1c'; out.textContent = CT.netErr; });
+            });
+        });
+    })();
+})();
+</script>
+<% } %>

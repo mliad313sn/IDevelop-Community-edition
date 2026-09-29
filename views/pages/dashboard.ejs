@@ -1,0 +1,1254 @@
+<div class="dashboard-container">
+
+    <% if (typeof setupPending !== 'undefined' && setupPending) { %>
+    <!-- First-run setup banner (SuperAdmin, until complete or dismissed) -->
+    <div class="card" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:14px;border-left:3px solid var(--brand,#7C6CFF);">
+        <i class="fas fa-list-check" aria-hidden="true" style="color:var(--brand,#7C6CFF);font-size:1.2rem;"></i>
+        <div style="flex:1;">
+            <strong><%= __('admin:setup_banner_title', { brand: (typeof brandName!=='undefined' && brandName) ? brandName : 'IDevelop' }) %></strong>
+            <div style="font-size:.85rem;color:var(--text-secondary);"><%= __('admin:setup_banner_sub') %></div>
+        </div>
+        <a href="/setup" class="btn btn-primary btn-sm"><%= __('admin:setup_banner_cta') %></a>
+    </div>
+    <% } %>
+
+    <!-- Header & Title -->
+    <div class="dashboard-header">
+        <h1><%= __('dash:workforce_capability_dashboard') %></h1>
+        <div class="last-updated">
+            <%= __('dash:data_real_time') %>
+        </div>
+    </div>
+
+    <!-- Global Filters -->
+    <div class="dashboard-filters">
+        <div class="filter-group">
+            <label for="filter-site"><%= __('dash:site') %></label>
+            <select id="filter-site">
+                <%# a scope with exactly one site never offers the misleading "all sites" option. %>
+                <% if (filterOptions.sites.length !== 1) { %><option value=""><%= __('dash:all_sites') %></option><% } %>
+                <% filterOptions.sites.forEach(site=> { %>
+                    <option value="<%= site.name %>">
+                        <%= site.name %>
+                    </option>
+                    <% }); %>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="filter-department"><%= __('dash:department') %></label>
+            <select id="filter-department">
+                <option value=""><%= __('dash:all_departments') %></option>
+                <% filterOptions.departments.forEach(dept=> { %>
+                    <option value="<%= dept.name %>">
+                        <%= dept.name %>
+                    </option>
+                    <% }); %>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="filter-service"><%= __('dash:service') %></label>
+            <select id="filter-service">
+                <option value=""><%= __('dash:all_services') %></option>
+                <% filterOptions.services.forEach(svc=> { %>
+                    <option value="<%= svc.name %>">
+                        <%= svc.name %>
+                    </option>
+                    <% }); %>
+            </select>
+        </div>
+        <div class="filter-actions">
+            <button id="btn-apply-filters" class="btn btn-primary"><%= __('dash:apply') %></button>
+            <button id="btn-reset-filters" class="btn btn-secondary"><%= __('dash:reset') %></button>
+            <a href="/reports/dept-analytics" class="btn btn-secondary" title="<%= __('chrome:nav_dept_analytics_title') %>"><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('chrome:nav_dept_analytics') %></a>
+        </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="dashboard-tabs">
+        <% const _ws = (typeof wsVisible === 'function') ? wsVisible : function(){ return true; }; %>
+        <% if (_ws('tab:executive')) { %><button class="tab-btn active" data-tab="executive"><%= __('dash:executive_overview') %></button><% } %>
+        <% if (_ws('tab:training')) { %><button class="tab-btn" data-tab="training"><%= __('dash:training_priorities') %></button><% } %>
+        <% if (_ws('tab:talentdev')) { %><button class="tab-btn" data-tab="talentdev"><%= __('dash:talent_development') %></button><% } %>
+        <% if (_ws('tab:team')) { %><button class="tab-btn" data-tab="team" style="display: none !important;"><%= __('dash:team_development') %></button><% } %>
+        <% if (_ws('tab:capability')) { %><button class="tab-btn" data-tab="capability"><%= __('dash:capability_map') %></button><% } %>
+        <% if (_ws('tab:comparator')) { %><button class="tab-btn" data-tab="comparator"><%= __('dash:comparator') %></button><% } %>
+    </div>
+
+    <!-- TAB 1: EXECUTIVE OVERVIEW -->
+    <div id="tab-executive" class="tab-panel active">
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- SECTION 1: HEADLINE — scope + health index + decision KPIs      -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <%# M-12 (résiduel) : le bandeau écrit le périmètre RÉEL du lecteur.
+            Il rendait « Tous les sites · Tous les départements · Tous les services »
+            pour TOUT LE MONDE (libellé de la première option des listes), y compris
+            pour un lecteur borné dont la tuile du même onglet imprimait 1 site /
+            1 département / 1 service. Le serveur résout ici le périmètre RBAC avec
+            le prédicat de la tuile ; `dashboard.js` ne remplace un segment que
+            lorsqu'un filtre est réellement appliqué. Rendu côté serveur pour que la
+            page dise vrai même sans JavaScript. %>
+        <% const _rs = (typeof readerScope !== 'undefined' && readerScope) ? readerScope : { restricted: false };
+           const _scopeParts = _rs.restricted && _rs.empty
+               ? [_rs.emptyLabel]
+               : [_rs.site || __('dash:all_sites'), _rs.department || __('dash:all_departments'), _rs.service || __('dash:all_services')]; %>
+        <div class="exec-scope<%= _rs.restricted ? ' is-scoped' : '' %>" id="exec-scope-bar" data-scoped="<%= _rs.restricted ? '1' : '0' %>">
+            <i class="fas fa-filter" aria-hidden="true"></i>
+            <span class="exec-scope-label"><%= __('dash:exec_scope_label') %></span>
+            <span class="exec-scope-value" id="exec-scope-value"><%= _scopeParts.join(' · ') %></span>
+            <span class="exec-scope-own" id="exec-scope-own" <%= _rs.restricted ? '' : 'hidden' %>><%= _rs.limitedLabel || __('dash:scope_limited') %></span>
+            <%# M-12 (arbitrage 4b) : la garantie ne porte plus que sur ce qu'elle tient
+                réellement. Le seul bloc de l'onglet qui ne suit pas le périmètre est le
+                RÉFÉRENTIEL de compétences (cartes marquées « référentiel »), exclu ici
+                nommément plutôt que démenti par ses propres chiffres. %>
+            <span class="exec-scope-hint"><%= __('dash:exec_scope_hint') %></span>
+        </div>
+
+        <div class="section-divider first-section">
+            <h2 class="section-title"><span class="section-icon"><i class="fas fa-bullseye" aria-hidden="true"></i></span> <%= __('dash:strategic_health') %></h2>
+            <p class="section-subtitle"><%= __('dash:strategic_health_sub') %></p>
+        </div>
+
+        <div class="exec-hero">
+            <div class="chart-box risk-gauge-box">
+                <h3><%= __('dash:workforce_health_score') %></h3>
+                <p class="chart-caption" style="margin:-4px 0 8px;color:var(--text-muted);font-size:.8rem"><%= __('dash:workforce_health_hint') %></p>
+                <div id="risk-gauge-container" class="risk-gauge-wrapper">
+                    <div class="chart-loading"><%= __('dash:loading') %></div>
+                </div>
+                <p class="exec-trend-caption" id="exec-trend-caption" aria-live="polite"></p>
+                <div id="risk-breakdown-container" class="risk-breakdown"></div>
+            </div>
+            <div class="chart-box exec-hero-kpis">
+                <h3><%= __('dash:decision_kpis') %></h3>
+                <!-- KPI Grid -->
+                <div class="kpi-grid" id="executive-kpis">
+                    <!-- Populated by JS -->
+                </div>
+                <!-- Provenance strip: says how much of the workforce the KPIs above
+                     are actually based on, so "never assessed" can never be read as
+                     an honest zero. Populated by JS. -->
+                <p class="exec-provenance" id="exec-provenance" aria-live="polite"></p>
+            </div>
+        </div>
+
+        <!-- Trend Chart -->
+        <div class="chart-box wide">
+            <h3><%= __('dash:workforce_trend_6m') %></h3>
+            <div class="chart-container-inner" style="height: 300px;">
+                <canvas id="chart-trend"></canvas>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- SECTION 2: OPERATIONAL OVERVIEW                                -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <div class="section-divider">
+            <h2 class="section-title"><span class="section-icon"><i class="fas fa-chart-column" aria-hidden="true"></i></span> <%= __('dash:operational_overview') %></h2>
+            <p class="section-subtitle"><%= __('dash:operational_overview_sub') %></p>
+        </div>
+
+        <div class="chart-row">
+            <div class="chart-box org-health-box" style="flex: 2;">
+                <h3><%= __('dash:org_health_scorecard') %></h3>
+                <div id="org-health-grid" class="org-health-grid">
+                    <div class="chart-loading"><%= __('dash:loading') %></div>
+                </div>
+            </div>
+            <div class="chart-box" style="flex: 1;">
+                <h3><%= __('dash:readiness_distribution') %></h3>
+                <div class="chart-container-inner">
+                    <canvas id="chart-readiness-dist"></canvas>
+                </div>
+            </div>
+            <div class="chart-box" style="flex: 1; display: none !important;">
+                <div class="box-header">
+                    <h3><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('dash:domain_proficiency_summary') %></h3>
+                </div>
+                <div class="table-container" id="org-radar-summary-table">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- SECTION 2b: WORKFORCE & TALENT MEASURES (collapsed by default)  -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <details class="exec-disclosure" id="dsc-measures">
+            <summary>
+                <span class="section-icon"><i class="fas fa-gauge-high" aria-hidden="true"></i></span>
+                <span class="exec-disclosure-title"><%= __('dash:workforce_talent_measures') %></span>
+                <span class="exec-disclosure-count" id="measures-count" hidden></span>
+                <i class="fas fa-chevron-down exec-disclosure-chev" aria-hidden="true"></i>
+                <span class="exec-disclosure-sub"><%= __('dash:workforce_talent_measures_sub') %></span>
+            </summary>
+            <div class="exec-disclosure-body">
+                <div id="measures-grid" class="measures-grid"><div class="chart-loading"><%= __('dash:loading_measures') %></div></div>
+            </div>
+        </details>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- SECTION 3: RISK & FOCUS AREAS                                  -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <div class="section-divider">
+            <h2 class="section-title"><span class="section-icon"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i></span> <%= __('dash:risk_focus_areas') %></h2>
+            <p class="section-subtitle"><%= __('dash:risk_focus_areas_sub') %></p>
+        </div>
+
+        <!-- Critical Roles + Impact Gaps -->
+        <div class="chart-row strategic-row">
+            <div class="chart-box" style="flex: 1;">
+                <div class="box-header">
+                    <h3><i class="fas fa-triangle-exclamation" aria-hidden="true"></i><%= __('dash:critical_roles_at_risk') %></h3>
+                    <span class="badge badge-count" id="critical-roles-count">0</span>
+                </div>
+                <div class="table-container" id="critical-roles-container">
+                    <div class="chart-loading"><%= __('dash:loading') %></div>
+                </div>
+            </div>
+            <div class="chart-box" style="flex: 1;">
+                <h3><i class="fas fa-fire" aria-hidden="true"></i> <%= __('dash:top5_skill_gaps_by_impact') %></h3>
+                <div id="impact-gaps-container" class="impact-gaps-container">
+                    <div class="chart-loading"><%= __('dash:loading') %></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Compliance & Campaign strip (migrations 56/57): certification expiry
+             pressure, coverage breaches, current-campaign completion. -->
+        <div class="chart-box wide" id="compliance-strip-box">
+            <div class="box-header">
+                <h3><i class="fas fa-clipboard-check" aria-hidden="true"></i> <%= __('dash:compliance_campaign_title') %></h3>
+                <span>
+                    <a href="/compliance" class="btn btn-sm btn-secondary"><%= __('dash:cc_open_compliance') %></a>
+                    <a href="/reports/dept-analytics" class="btn btn-sm btn-secondary"><%= __('dash:cc_open_analytics') %></a>
+                </span>
+            </div>
+            <p class="section-subtitle" style="margin:.15rem 0 .7rem;"><%= __('dash:compliance_campaign_sub') %></p>
+            <div id="compliance-strip" style="display:flex;flex-wrap:wrap;gap:12px;">
+                <div class="chart-loading"><%= __('dash:loading') %></div>
+            </div>
+        </div>
+        <script nonce="<%= cspNonce %>">
+        (function () {
+            'use strict';
+            var T = <%- include('../partials/json-script', { v: {
+                expiring: __('dash:cc_certs_expiring'), expired: __('dash:cc_certs_expired'),
+                lapsed: __('dash:cc_lapsed_levels'), breaches: __('dash:cc_coverage_breaches'),
+                campaign: __('dash:cc_campaign_completion'), noCampaign: __('dash:cc_no_campaign'),
+                daysLeft: __('dash:cc_days_left'), overdue: __('dash:cc_overdue'),
+                criticalSuffix: __('dash:cc_critical_suffix'),
+                notLaunched: __('dash:cmp_not_launched'), noRoster: __('dash:cmp_no_roster'),
+                rosterUnavailable: __('dash:cmp_roster_unavailable'),
+                funnel: __('dash:cmp_funnel'),
+            } }) %>;
+            function card(label, value, color, sub, href) {
+                var a = document.createElement(href ? 'a' : 'div');
+                if (href) { a.href = href; a.style.textDecoration = 'none'; }
+                a.style.cssText += ';flex:1;min-width:150px;padding:.7rem .9rem;border:1px solid var(--border-color,#e5e7eb);border-radius:10px;background:var(--bg-primary,transparent);color:inherit;';
+                var h = document.createElement('div');
+                h.style.cssText = 'font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted,#6b7280);';
+                h.textContent = label;
+                var v = document.createElement('div');
+                v.style.cssText = 'font-size:1.45rem;font-weight:700;color:' + color + ';';
+                v.textContent = value;
+                a.appendChild(h); a.appendChild(v);
+                if (sub) {
+                    var s = document.createElement('div');
+                    s.style.cssText = 'font-size:.75rem;color:var(--text-muted,#6b7280);';
+                    s.textContent = sub;
+                    a.appendChild(s);
+                }
+                return a;
+            }
+            fetch('/api/dashboard/compliance-summary', { headers: { Accept: 'application/json' } })
+                .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                .then(function (d) {
+                    var el = document.getElementById('compliance-strip');
+                    el.innerHTML = '';
+                    var c = d.certifications, cov = d.coverage, cp = d.campaign;
+                    el.appendChild(card(T.expiring, c.expiring, c.expiring ? '#e67e22' : '#27ae60', null, '/compliance'));
+                    el.appendChild(card(T.expired, c.expired, c.expired ? '#c0392b' : '#27ae60', null, '/compliance'));
+                    el.appendChild(card(T.lapsed, c.lapsed, c.lapsed ? '#c0392b' : '#27ae60', null, '/compliance'));
+                    el.appendChild(card(T.breaches, cov.breached + ' / ' + cov.rules,
+                        cov.breached ? '#c0392b' : '#27ae60',
+                        cov.critical ? (cov.critical + ' ' + T.criticalSuffix) : null, '/compliance'));
+                    if (cp && cp.launched) {
+                        // Denominator = the ENROLLED ROSTER (migration 70), so the
+                        // people who never opened the campaign are counted. The
+                        // sub-line states the funnel: submitted / asked, and how
+                        // many have not started at all.
+                        var funnel = T.funnel
+                            .replace('{submitted}', cp.submitted)
+                            .replace('{total}', cp.enrolled)
+                            .replace('{notStarted}', cp.notStarted);
+                        var when = cp.daysLeft == null ? null
+                            : (cp.daysLeft >= 0 ? (cp.daysLeft + ' ' + T.daysLeft) : T.overdue);
+                        el.appendChild(card(T.campaign + ' — ' + cp.code,
+                            cp.completionPct + '%',
+                            cp.completionPct >= 80 ? '#27ae60' : (cp.completionPct >= 50 ? '#e67e22' : '#c0392b'),
+                            funnel + (when ? ' · ' + when : ''),
+                            '/cycles'));
+                    } else if (cp) {
+                        // Open cycle, but nobody enrolled in this scope (or the
+                        // roster is unavailable): "non lancée" — NEVER 100 %.
+                        el.appendChild(card(T.campaign + ' — ' + cp.code, '—',
+                            'var(--text-muted,#6b7280)',
+                            cp.rosterAvailable === false ? T.rosterUnavailable
+                                : (T.notLaunched + ' · ' + T.noRoster),
+                            '/cycles'));
+                    } else {
+                        el.appendChild(card(T.campaign, '—', 'var(--text-muted,#6b7280)', T.noCampaign));
+                    }
+                })
+                .catch(function () {
+                    var el = document.getElementById('compliance-strip');
+                    if (el) el.innerHTML = '';
+                    var box = document.getElementById('compliance-strip-box');
+                    if (box) box.style.display = 'none'; // fail closed & quiet — never break the exec tab
+                });
+        })();
+        </script>
+
+        <div class="chart-row" style="display: none !important;">
+            <div class="chart-box wide">
+                <h3><%= __('dash:staffing_risks_spof') %></h3>
+                <div class="table-container" id="staffing-risk-container">
+                    <!-- HTML Table -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ Capability Radar (Domain & Sub-Domain) — collapsed by default ═══ -->
+        <details class="exec-disclosure" id="dsc-radar">
+            <summary>
+                <span class="section-icon"><i class="fas fa-diagram-project" aria-hidden="true"></i></span>
+                <span class="exec-disclosure-title"><%= __('dash:capability_radar') %></span>
+                <span class="exec-disclosure-count" id="radar-count" hidden></span>
+                <i class="fas fa-chevron-down exec-disclosure-chev" aria-hidden="true"></i>
+                <span class="exec-disclosure-sub"><%= __('dash:capability_radar_sub') %></span>
+            </summary>
+            <div class="exec-disclosure-body">
+
+        <!-- Top/Worst Domains -->
+        <div class="chart-row">
+            <div class="chart-box" style="flex: 1; min-width: 320px;">
+                <div class="box-header">
+                    <h3><i class="fas fa-trophy" aria-hidden="true"></i> <%= __('dash:top10_domains') %></h3>
+                    <span class="chart-subtitle"><%= __('dash:highest_actual_proficiency') %></span>
+                </div>
+                <div class="chart-container-inner" style="height: 370px;">
+                    <canvas id="chart-org-radar-top"></canvas>
+                </div>
+                <div class="radar-legend-inline">
+                    <span class="radar-legend-item"><span class="radar-dot actual"></span> <%= __('dash:actual_avg') %></span>
+                    <span class="radar-legend-item"><span class="radar-dot required"></span> <%= __('dash:required_avg') %></span>
+                </div>
+            </div>
+            <div class="chart-box" style="flex: 1; min-width: 320px;">
+                <div class="box-header">
+                    <h3><i class="fas fa-triangle-exclamation" aria-hidden="true"></i><%= __('dash:worst10_domains') %></h3>
+                    <span class="chart-subtitle"><%= __('dash:largest_proficiency_gaps') %></span>
+                </div>
+                <div class="chart-container-inner" style="height: 370px;">
+                    <canvas id="chart-org-radar-worst"></canvas>
+                </div>
+                <div class="radar-legend-inline">
+                    <span class="radar-legend-item"><span class="radar-dot actual"></span> <%= __('dash:actual_avg') %></span>
+                    <span class="radar-legend-item"><span class="radar-dot required"></span> <%= __('dash:required_avg') %></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sub-Domain Capability Radar (V3 — domain → sub-domain axis) -->
+        <div class="chart-row">
+            <div class="chart-box" style="flex: 1; min-width: 320px;">
+                <div class="box-header">
+                    <h3><i class="fas fa-diagram-project" aria-hidden="true"></i> <%= __('dash:subdomain_capability') %></h3>
+                    <span class="chart-subtitle"><%= __('dash:subdomain_capability_sub') %></span>
+                    <select id="subdomain-radar-pillar" class="filter-select" style="margin-left:auto; max-width: 260px;" aria-label="<%= __('dash:pillar_domain') %>">
+                        <option value=""><%= __('dash:all_pillars') %></option>
+                    </select>
+                </div>
+                <div class="chart-container-inner" style="height: 420px;">
+                    <canvas id="chart-org-subdomain-radar"></canvas>
+                </div>
+                <p id="subdomain-radar-caption" class="chart-caption" aria-live="polite"></p>
+                <div class="radar-legend-inline">
+                    <span class="radar-legend-item"><span class="radar-dot actual"></span> <%= __('dash:actual_avg') %></span>
+                    <span class="radar-legend-item"><span class="radar-dot required"></span> <%= __('dash:required_avg') %></span>
+                </div>
+            </div>
+        </div>
+            </div>
+        </details>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- SECTION 4: ORGANIZATIONAL BREAKDOWN (collapsed by default)     -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <details class="exec-disclosure" id="dsc-orgdist">
+            <summary>
+                <span class="section-icon"><i class="fas fa-building" aria-hidden="true"></i></span>
+                <span class="exec-disclosure-title"><%= __('dash:organizational_breakdown') %></span>
+                <span class="exec-disclosure-count" id="orgdist-count" hidden></span>
+                <i class="fas fa-chevron-down exec-disclosure-chev" aria-hidden="true"></i>
+                <span class="exec-disclosure-sub"><%= __('dash:organizational_breakdown_sub') %></span>
+            </summary>
+            <div class="exec-disclosure-body">
+
+        <div class="chart-row">
+            <div class="chart-box">
+                <h3><%= __('dash:readiness_by_site') %></h3>
+                <div class="chart-container-inner">
+                    <canvas id="chart-readiness-site"></canvas>
+                </div>
+            </div>
+            <div class="chart-box">
+                <h3><%= __('dash:readiness_by_department') %></h3>
+                <div class="chart-container-inner">
+                    <canvas id="chart-readiness-department"></canvas>
+                </div>
+            </div>
+            <div class="chart-box">
+                <h3><%= __('dash:readiness_by_service') %></h3>
+                <div class="chart-container-inner">
+                    <canvas id="chart-readiness-service"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-row strategic-row">
+            <div class="chart-box wide">
+                <h3><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('dash:dept_performance_ranking') %></h3>
+                <div class="chart-container-inner" style="height: 300px;">
+                    <canvas id="chart-dept-ranking"></canvas>
+                </div>
+            </div>
+        </div>
+            </div>
+        </details>
+
+        <!-- ═══ Benchmark Fit — how current occupants meet each role's required benchmark ═══ -->
+        <details class="exec-disclosure" id="dsc-benchmark">
+            <summary>
+                <span class="section-icon"><i class="fas fa-people-arrows" aria-hidden="true"></i></span>
+                <span class="exec-disclosure-title"><%= __('dash:benchmark_fit_by_role') %></span>
+                <span class="exec-disclosure-count" id="benchmark-fit-count" hidden></span>
+                <i class="fas fa-chevron-down exec-disclosure-chev" aria-hidden="true"></i>
+                <span class="exec-disclosure-sub"><%= __('dash:benchmark_fit_by_role_sub') %></span>
+            </summary>
+            <div class="exec-disclosure-body">
+                <p class="section-subtitle" style="margin:0 0 .6rem;"><a href="/benchmark"><%= __('dash:open_full_benchmark_matrix') %></a></p>
+                <div class="chart-row strategic-row">
+                    <div class="chart-box wide">
+                        <div class="table-container" id="benchmark-fit-container"><!-- populated by loadBenchmarkFit() --></div>
+                    </div>
+                </div>
+            </div>
+        </details>
+        <style>
+        #benchmark-fit-container .bm-fitbar { position:relative; height:20px; background:var(--bg-subtle); border-radius:6px; overflow:hidden; min-width:150px; }
+        #benchmark-fit-container .bm-fitbar-fill { height:100%; background:#4CAF50; }
+        #benchmark-fit-container .bm-fitbar-fill.fit-good { background:#4CAF50; }
+        #benchmark-fit-container .bm-fitbar-fill.fit-mid { background:#FF9800; }
+        #benchmark-fit-container .bm-fitbar-fill.fit-low { background:#F44336; }
+        #benchmark-fit-container .bm-fitbar-label { position:absolute; top:0; left:8px; line-height:20px; font-size:.75rem; font-weight:600; color:var(--text-primary); }
+        #benchmark-fit-container .bm-nodata { display:inline-block; padding:2px 10px; border-radius:6px; background:var(--bg-subtle); border:1px dashed var(--border-color,#3a3a3a); color:var(--text-muted); font-size:.78rem; }
+        </style>
+    </div>
+
+    <!-- TAB 2: TRAINING PRIORITIES -->
+    <div id="tab-training" class="tab-panel">
+        <div class="tab-extra-filters">
+            <label for="filter-gap-domain"><%= __('dash:filter_gap_domain') %></label>
+            <select id="filter-gap-domain">
+                <option value=""><%= __('dash:all_domains') %></option>
+                <% filterOptions.domains.forEach(d=> { %>
+                    <option value="<%= d.name %>">
+                        <%= d.name %>
+                    </option>
+                    <% }); %>
+            </select>
+        </div>
+
+        <!-- Top Impact Gaps Chart -->
+        <div class="chart-box wide">
+            <h3><%= __('dash:top15_skills_by_impact') %></h3>
+            <div class="chart-container-inner" style="height: 350px;">
+                <canvas id="chart-impact-gaps"></canvas>
+            </div>
+        </div>
+
+        <!-- Priority Table -->
+        <div class="chart-box wide">
+            <div class="box-header">
+                <h3><%= __('dash:high_priority_training_needs') %></h3>
+                <button class="btn-copy" onclick="Dashboard.copyToClipboard('training-priority-table')"><%= __('dash:copy_table') %></button>
+            </div>
+            <div class="table-responsive" id="training-priority-container">
+                <!-- Data Table -->
+            </div>
+        </div>
+
+        <div class="chart-row">
+            <div class="chart-box">
+                <h3><%= __('dash:total_gaps_by_domain') %></h3>
+                <div class="chart-container-inner">
+                    <canvas id="chart-domain-gaps"></canvas>
+                </div>
+            </div>
+            <div class="chart-box" style="display: none !important;">
+                <h3><%= __('dash:gap_concentration_by_department') %></h3>
+                <div class="chart-container-inner">
+                    <canvas id="chart-department-gaps"></canvas>
+                </div>
+            </div>
+            <div class="chart-box" style="display: none !important;">
+                <h3><%= __('dash:gap_concentration_by_service') %></h3>
+                <div class="chart-container-inner">
+                    <canvas id="chart-service-gaps"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB: TALENT DEVELOPMENT PERFORMANCE -->
+    <div id="tab-talentdev" class="tab-panel">
+        <div class="section-divider first-section">
+            <h2 class="section-title"><span class="section-icon"><i class="fas fa-seedling" aria-hidden="true"></i></span> <%= __('dash:talentdev_performance') %></h2>
+            <p class="section-subtitle"><%= __('dash:talentdev_performance_sub') %></p>
+        </div>
+
+        <!-- KPI Grid -->
+        <div class="kpi-grid" id="talentdev-kpis">
+            <div class="chart-loading"><%= __('dash:loading') %></div>
+        </div>
+
+        <!-- Activity charts -->
+        <div class="section-divider">
+            <h2 class="section-title"><span class="section-icon"><i class="fas fa-chart-line" aria-hidden="true"></i></span> <%= __('dash:development_activity') %></h2>
+            <p class="section-subtitle"><%= __('dash:development_activity_sub') %></p>
+        </div>
+        <div class="chart-row">
+            <div class="chart-box" style="flex: 1;">
+                <h3><%= __('dash:coaching_mentoring_by_status') %></h3>
+                <div class="chart-container-inner"><canvas id="chart-coaching-state"></canvas></div>
+            </div>
+            <div class="chart-box" style="flex: 1;">
+                <h3><%= __('dash:development_focus') %></h3>
+                <p class="chart-subtitle"><%= __('dash:development_focus_sub') %></p>
+                <div class="chart-container-inner"><canvas id="chart-coaching-context"></canvas></div>
+            </div>
+            <div class="chart-box" style="flex: 1;">
+                <h3><%= __('dash:ninebox_talent_distribution') %></h3>
+                <p class="chart-subtitle"><%= __('dash:approved_placements_only') %></p>
+                <div class="chart-container-inner"><canvas id="chart-ninebox-dist"></canvas></div>
+            </div>
+        </div>
+
+        <div class="chart-row strategic-row">
+            <div class="chart-box wide">
+                <h3><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('dash:talent_bell_curve') %></h3>
+                <p class="chart-subtitle"><%= __('dash:talent_bell_curve_sub') %></p>
+                <div class="chart-container-inner" style="height: 320px;"><canvas id="chart-talent-bellcurve"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Pipelines + 9-box grid + attention -->
+        <div class="section-divider">
+            <h2 class="section-title"><span class="section-icon"><i class="fas fa-compass" aria-hidden="true"></i></span> <%= __('dash:pipelines_attention') %></h2>
+            <p class="section-subtitle"><%= __('dash:pipelines_attention_sub') %></p>
+        </div>
+        <div class="chart-row strategic-row">
+            <div class="chart-box" style="flex: 1;">
+                <h3><%= __('dash:pip_idp_pipeline') %></h3>
+                <div id="talentdev-pipelines"></div>
+            </div>
+            <div class="chart-box" style="flex: 1;">
+                <h3><%= __('dash:ninebox_grid') %></h3>
+                <div id="talentdev-ninebox-grid" class="td-ninebox-grid"></div>
+            </div>
+            <div class="chart-box" style="flex: 1;">
+                <h3><i class="fas fa-triangle-exclamation" aria-hidden="true"></i><%= __('dash:needs_attention') %></h3>
+                <div id="talentdev-attention"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 3: TEAM DEVELOPMENT -->
+    <div id="tab-team" class="tab-panel" style="display: none !important;">
+
+        <!-- Manager Action Board (New) -->
+        <div class="action-board-row">
+            <div class="chart-box">
+                <div class="box-header">
+                    <h3><i class="fas fa-triangle-exclamation" aria-hidden="true"></i><%= __('dash:needs_attention_stale') %></h3>
+                </div>
+                <div class="table-container" id="action-stale-container">
+                    <!-- Stale Table -->
+                </div>
+            </div>
+            <div class="chart-box">
+                <div class="box-header">
+                    <h3><i class="fas fa-star" aria-hidden="true"></i> <%= __('dash:team_experts_level4') %></h3>
+                </div>
+                <div class="table-container" id="action-experts-container">
+                    <!-- Experts Table -->
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-extra-filters">
+            <%# public/js/dashboard.js owns this input (it re-queries the team
+                tab server-side); main.js must not also filter rows underneath it. %>
+            <input type="text" id="team-search" data-no-client-search placeholder="<%= __('dash:search_employee_placeholder') %>" class="search-input" aria-label="<%= __('dash:search_employee_placeholder') %>">
+
+            <select id="team-role-filter" aria-label="<%= __('dash:all_roles') %>">
+                <option value=""><%= __('dash:all_roles') %></option>
+                <% filterOptions.roles.forEach(r=> { %>
+                    <option value="<%= r.id %>">
+                        <%= r.name %>
+                    </option>
+                    <% }); %>
+            </select>
+
+            <% if (user.userType==='employee' || user.userType==='manager' ) { %>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="team-my-reports"> <%= __('dash:my_direct_reports_only') %>
+                </label>
+                <% } %>
+        </div>
+
+        <div class="chart-box wide">
+            <div class="box-header">
+                <h3><%= __('dash:employee_list') %></h3>
+                <button class="btn-copy" onclick="Dashboard.copyToClipboard('employee-table')"><%= __('dash:copy_table') %></button>
+            </div>
+            <div class="table-responsive" id="employee-table-container">
+                <!-- Employee Table -->
+            </div>
+            <div class="pagination" id="employee-pagination">
+                <!-- Pagination -->
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 4: CAPABILITY MAP -->
+    <div id="tab-capability" class="tab-panel">
+        <div class="tab-extra-filters">
+            <div class="radio-group">
+                <label><%= __('dash:group_heatmap_by') %></label>
+                <label><input type="radio" name="heatmap-group" value="site" checked> <%= __('dash:site') %></label>
+                <label><input type="radio" name="heatmap-group" value="department"> <%= __('dash:department') %></label>
+                <label><input type="radio" name="heatmap-group" value="service"> <%= __('dash:service') %></label>
+            </div>
+        </div>
+
+        <div class="chart-box wide">
+            <h3><%= __('dash:domain_competency_heatmap') %></h3>
+            <div class="heatmap-container" id="domain-heatmap">
+                <!-- Heatmap Table -->
+            </div>
+        </div>
+
+        <div class="chart-row">
+            <div class="chart-box wide">
+                <h3><%= __('dash:role_staffing_overview') %></h3>
+                <div class="table-container" id="role-staffing-container">
+                    <!-- Staffing Table -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 5: COMPARATOR (RADAR) -->
+    <div id="tab-comparator" class="tab-panel">
+        <!-- Inline Filters -->
+        <div class="comparator-filter-bar">
+            <div class="filter-group">
+                <label for="comp-filter-site"><%= __('dash:site') %></label>
+                <select id="comp-filter-site" class="form-control form-control-sm">
+                    <%# %><% if ((filterOptions.sites || []).length !== 1) { %><option value=""><%= __('dash:all_sites') %></option><% } %>
+                    <% (filterOptions.sites || []).forEach(s=> { %>
+                        <option value="<%= s.name %>">
+                            <%= s.name %>
+                        </option>
+                        <% }); %>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="comp-filter-department"><%= __('dash:department') %></label>
+                <select id="comp-filter-department" class="form-control form-control-sm">
+                    <option value=""><%= __('dash:all_departments') %></option>
+                    <% (filterOptions.departments || []).forEach(d=> { %>
+                        <option value="<%= d.name %>">
+                            <%= d.name %>
+                        </option>
+                        <% }); %>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="comp-filter-service"><%= __('dash:service') %></label>
+                <select id="comp-filter-service" class="form-control form-control-sm">
+                    <option value=""><%= __('dash:all_services') %></option>
+                    <% (filterOptions.services || []).forEach(s=> { %>
+                        <option value="<%= s.name %>">
+                            <%= s.name %>
+                        </option>
+                        <% }); %>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="comp-filter-domain"><%= __('dash:domain') %></label>
+                <select id="comp-filter-domain" class="form-control form-control-sm">
+                    <option value=""><%= __('dash:all_domains') %></option>
+                    <% (filterOptions.domains || []).forEach(d=> { %>
+                        <option value="<%= d.name %>">
+                            <%= d.name %>
+                        </option>
+                        <% }); %>
+                </select>
+            </div>
+        </div>
+
+        <!-- SUB-GROUP A: Capability vs Required Target (actual proficiency against the benchmark) -->
+        <div class="section-divider first-section">
+            <h2 class="section-title"><span class="section-icon"><i class="fas fa-bullseye" aria-hidden="true"></i></span> <%= __('dash:capability_vs_required_target') %></h2>
+            <p class="section-subtitle"><%= __('dash:capability_vs_required_target_sub') %></p>
+        </div>
+        <div class="comparator-grid">
+            <!-- Actual vs Required, by Category -->
+            <div class="chart-box comparator-panel">
+                <h3><%= __('dash:actual_vs_required_by_category') %></h3>
+                <p class="chart-subtitle"><%= __('dash:actual_vs_required_by_category_sub') %></p>
+                <div class="chart-container-inner" style="height: 350px;">
+                    <canvas id="chart-comp-actual-vs-required"></canvas>
+                </div>
+            </div>
+
+            <!-- Actual vs Required, by Domain / Pillar -->
+            <div class="chart-box comparator-panel">
+                <h3><%= __('dash:proficiency_by_domain') %></h3>
+                <p class="chart-subtitle"><%= __('dash:proficiency_by_domain_sub') %></p>
+                <div class="chart-container-inner" style="height: 350px;">
+                    <canvas id="chart-comp-by-domain"></canvas>
+                </div>
+            </div>
+
+            <!-- Actual vs Required, by Sub-Domain (V3) -->
+            <div class="chart-box comparator-panel">
+                <h3><%= __('dash:proficiency_by_subdomain') %></h3>
+                <p class="chart-subtitle"><%= __('dash:proficiency_by_subdomain_sub') %></p>
+                <div class="chart-container-inner" style="height: 350px;">
+                    <canvas id="chart-comp-by-subdomain"></canvas>
+                </div>
+            </div>
+
+            <!-- Top Skill Gaps -->
+            <div class="chart-box comparator-panel">
+                <h3><%= __('dash:top_skill_gaps') %></h3>
+                <p class="chart-subtitle"><%= __('dash:top_skill_gaps_sub') %></p>
+                <div class="chart-container-inner" style="height: 350px;">
+                    <canvas id="chart-comp-by-skill"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUB-GROUP B: Organizational Comparison (how units stack up against each other) -->
+        <div class="section-divider">
+            <h2 class="section-title"><span class="section-icon"><i class="fas fa-building" aria-hidden="true"></i></span> <%= __('dash:organizational_comparison') %></h2>
+            <p class="section-subtitle"><%= __('dash:organizational_comparison_sub') %></p>
+        </div>
+        <div class="comparator-grid">
+            <!-- By Site -->
+            <div class="chart-box comparator-panel">
+                <h3><%= __('dash:comparison_by_site') %></h3>
+                <p class="chart-subtitle"><%= __('dash:comparison_by_site_sub') %></p>
+                <div class="chart-container-inner" style="height: 350px;">
+                    <canvas id="chart-comp-by-site"></canvas>
+                </div>
+            </div>
+
+            <!-- By Department -->
+            <div class="chart-box comparator-panel">
+                <h3><%= __('dash:comparison_by_department') %></h3>
+                <p class="chart-subtitle"><%= __('dash:comparison_by_department_sub') %></p>
+                <div class="chart-container-inner" style="height: 350px;">
+                    <canvas id="chart-comp-by-department"></canvas>
+                </div>
+            </div>
+
+            <!-- By Service -->
+            <div class="chart-box comparator-panel">
+                <h3><%= __('dash:comparison_by_service') %></h3>
+                <p class="chart-subtitle"><%= __('dash:comparison_by_service_sub') %></p>
+                <div class="chart-container-inner" style="height: 350px;">
+                    <canvas id="chart-comp-by-service"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scale Legend (Sticky Footer) -->
+    <div class="scale-legend">
+        <span><strong><%= __('dash:proficiency_scale') %></strong></span>
+        <span class="legend-item"><span class="dot heat-0"></span> <%= __('dash:scale_0_no_knowledge') %></span>
+        <span class="legend-item"><span class="dot heat-1"></span> <%= __('dash:scale_1_basic_awareness') %></span>
+        <span class="legend-item"><span class="dot heat-2"></span> <%= __('dash:scale_2_guided_performance') %></span>
+        <span class="legend-item"><span class="dot heat-3"></span> <%= __('dash:scale_3_autonomous') %></span>
+        <span class="legend-item"><span class="dot heat-4"></span> <%= __('dash:scale_4_expert_can_teach') %></span>
+    </div>
+
+</div>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="hidden">
+    <div class="spinner"></div>
+    <div class="loading-text"><%= __('dash:loading_dashboard_data') %></div>
+</div>
+
+<!-- Scripts -->
+<script src="/vendor/chart.umd.min.js?v=<%= assetVersion %>"></script>
+<script src="/js/chart-theme.js?v=<%= assetVersion %>"></script>
+<script src="/js/chart-axis-fit.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+    // Server-side data injection
+    window.__DASHBOARD__ = {
+        user: <%- include('../partials/json-script', { v: {
+            id: user.id || null,
+            role: user.role || 'user',
+            userType: user.userType || 'employee',
+            isManager: user.isManager || false,
+            siteId: user.siteId || null
+        } }) %>,
+        filterOptions: <%- include('../partials/json-script', { v: filterOptions || {} }) %>,
+        // M-12 (résiduel) : périmètre RBAC du lecteur, pour que le bandeau garde
+        // la vérité quand un filtre est retiré ou réinitialisé.
+        scope: <%- include('../partials/json-script', { v: (typeof readerScope !== 'undefined' && readerScope) ? readerScope : { restricted: false } }) %>
+    };
+    // Client-side i18n labels for dashboard.js (EN fallback lives in the JS).
+    window.__I18N__ = {
+        // FRENCH-FIRST: the session language, so no Number/Date format call on
+        // this page falls back to the runtime default. It resolved to en-US on
+        // the appliance, which renders 3371 as "3,371" — a French reader parses
+        // that comma as a decimal point and reads 3.371, off by a factor of a
+        // thousand, on the coverage KPI. report-builder.js already does this.
+        lang: <%- JSON.stringify(typeof lang !== 'undefined' && lang === 'en' ? 'en-GB' : 'fr-FR') %>,
+        domain: <%- JSON.stringify(__('dash:domain')) %>,
+        // 3.23.17 — Talent tab: pipelines, 9-box cells and axes, no English left.
+        tdPipeHeadingPip: <%- JSON.stringify(__('dash:td_pipe_heading_pip')) %>,
+        tdPipeHeadingIdp: <%- JSON.stringify(__('dash:td_pipe_heading_idp')) %>,
+        tdPipeProposed: <%- JSON.stringify(__('dash:td_pipe_proposed')) %>,
+        tdPipeClosedSuccess: <%- JSON.stringify(__('dash:td_pipe_closed_success')) %>,
+        tdPipeClosedFailure: <%- JSON.stringify(__('dash:td_pipe_closed_failure')) %>,
+        tdPipeDraft: <%- JSON.stringify(__('dash:td_pipe_draft')) %>,
+        tdTipIdeal: <%- JSON.stringify(__('dash:td_tip_ideal')) %>,
+        tdTipEmployees: <%- JSON.stringify(__('dash:td_tip_employees')) %>,
+        tdNbCellTitle: <%- JSON.stringify(__('dash:td_nb_cell_title')) %>,
+        nbLevels: <%- JSON.stringify({ low: __('dash:td_lvl_low'), medium: __('dash:td_lvl_medium'), high: __('dash:td_lvl_high') }) %>,
+        nbAxisPot: <%- JSON.stringify(__('talentx:nb_axis_pot')) %>,
+        nbAxisPerf: <%- JSON.stringify(__('talentx:nb_axis_perf')) %>,
+        nbCells: <%- JSON.stringify({
+            'high-low': __('talentx:nb_cell_diamond'), 'high-medium': __('talentx:nb_cell_shooting'), 'high-high': __('talentx:nb_cell_gold'),
+            'medium-low': __('talentx:nb_cell_dilemma'), 'medium-medium': __('talentx:nb_cell_critical'), 'medium-high': __('talentx:nb_cell_emerging'),
+            'low-low': __('talentx:nb_cell_concern'), 'low-medium': __('talentx:nb_cell_essential'), 'low-high': __('talentx:nb_cell_trusted')
+        }) %>,
+        gap: <%- JSON.stringify(__('dash:gap')) %>,
+        status: <%- JSON.stringify(__('dash:status')) %>,
+        statusOnTrack: <%- JSON.stringify(__('dash:status_on_track')) %>,
+        statusCriticalGap: <%- JSON.stringify(__('dash:status_critical_gap')) %>,
+        statusNeedsFocus: <%- JSON.stringify(__('dash:status_needs_focus')) %>,
+        statusExceeds: <%- JSON.stringify(__('dash:status_exceeds')) %>,
+        actualAvg: <%- JSON.stringify(__('dash:actual_avg')) %>,
+        requiredAvg: <%- JSON.stringify(__('dash:required_avg')) %>,
+        noData: <%- JSON.stringify(__('dash:no_data')) %>,
+        scopeLimited: <%- JSON.stringify(__('dash:scope_limited')) %>,
+        scopeYourPerimeter: <%- JSON.stringify(__('dash:scope_your_perimeter')) %>,
+        noDataYet: <%- JSON.stringify(__('dash:no_data_yet')) %>,
+        noDataAvailable: <%- JSON.stringify(__('dash:no_data_available')) %>,
+        noCapabilityData: <%- JSON.stringify(__('dash:no_capability_data')) %>,
+        loading: <%- JSON.stringify(__('dash:loading')) %>,
+        ready: <%- JSON.stringify(__('dash:ready')) %>,
+        role: <%- JSON.stringify(__('dash:role')) %>,
+        occupants: <%- JSON.stringify(__('dash:occupants')) %>,
+        benchmarkFit: <%- JSON.stringify(__('dash:benchmark_fit')) %>,
+        coverage: <%- JSON.stringify(__('dash:coverage')) %>,
+        criticalFit: <%- JSON.stringify(__('dash:critical_fit')) %>,
+        critGaps: <%- JSON.stringify(__('dash:crit_gaps')) %>,
+        readyGe80: <%- JSON.stringify(__('dash:ready_ge80')) %>,
+        benchmarkFitUnavailable: <%- JSON.stringify(__('dash:benchmark_fit_unavailable')) %>,
+        noOccupantsInScope: <%- JSON.stringify(__('dash:no_occupants_in_scope')) %>,
+        heatLegendLabel: <%- JSON.stringify(__('dash:heat_legend_label')) %>,
+        scale: [<%- JSON.stringify(__('dash:none')) %>, <%- JSON.stringify(__('dash:basic_awareness')) %>, <%- JSON.stringify(__('dash:guided')) %>, <%- JSON.stringify(__('dash:autonomous')) %>, <%- JSON.stringify(__('dash:expert')) %>],
+        kpiAvgProficiency: <%- JSON.stringify(__('dash:kpi_avg_proficiency')) %>,
+        kpiAvgAcross: <%- JSON.stringify(__('dash:kpi_avg_across')) %>,
+        kpiMappedEmployees: <%- JSON.stringify(__('dash:kpi_mapped_employees')) %>,
+        kpiRoleReady: <%- JSON.stringify(__('dash:kpi_role_ready')) %>,
+        kpiCriticalGaps: <%- JSON.stringify(__('dash:kpi_critical_gaps')) %>,
+        kpiBelow50: <%- JSON.stringify(__('dash:kpi_below_50')) %>,
+        kpiCriticalCompliance: <%- JSON.stringify(__('dash:kpi_critical_compliance')) %>,
+        kpiSafetySkills: <%- JSON.stringify(__('dash:kpi_safety_skills')) %>,
+        <%# kpi_assessment_coverage / prov_read_body retired with the duplicate
+            "Assessment Coverage 100 %" card (Wave 2): exactly one coverage
+            number is rendered now, and it is assessed/expected requirements. %>
+        kpiRolesAtRisk: <%- JSON.stringify(__('dash:kpi_roles_at_risk')) %>,
+        kpiSingleEmpRoles: <%- JSON.stringify(__('dash:kpi_single_emp_roles')) %>,
+        // Assessment provenance — never assessed vs. an honest zero.
+        provReadLabel: <%- JSON.stringify(__('dash:prov_read_label')) %>,
+        provReadAssessedOnly: <%- JSON.stringify(__('dash:prov_read_assessed_only')) %>,
+        provReadPeople: <%- JSON.stringify(__('dash:prov_read_people')) %>,
+        provReadNone: <%- JSON.stringify(__('dash:prov_read_none')) %>,
+        provReadSelfOnly: <%- JSON.stringify(__('dash:prov_read_self_only')) %>,
+        sdRadarCapped: <%- JSON.stringify(__('dash:sd_radar_capped')) %>,
+        sdRadarUnmeasured: <%- JSON.stringify(__('dash:sd_radar_unmeasured')) %>,
+        sdRadarFilterHint: <%- JSON.stringify(__('dash:sd_radar_filter_hint')) %>,
+        provKpiCoverage: <%- JSON.stringify(__('dash:prov_kpi_coverage')) %>,
+        provKpiCoverageSub: <%- JSON.stringify(__('dash:prov_kpi_coverage_sub')) %>,
+        provKpiCoverageNone: <%- JSON.stringify(__('dash:prov_kpi_coverage_none')) %>,
+        provBasedOn: <%- JSON.stringify(__('dash:prov_based_on')) %>,
+        provBasedOnNone: <%- JSON.stringify(__('dash:prov_based_on_none')) %>,
+        provProfileCoverage: <%- JSON.stringify(__('dash:prov_profile_coverage')) %>,
+        provProfileNever: <%- JSON.stringify(__('dash:prov_profile_never')) %>,
+        provProfileAssessedOnly: <%- JSON.stringify(__('dash:prov_profile_assessed_only')) %>,
+        provNeverAssessed: <%- JSON.stringify(__('dash:prov_never_assessed')) %>,
+        provAssessedZero: <%- JSON.stringify(__('dash:prov_assessed_zero')) %>,
+        provSelfOnly: <%- JSON.stringify(__('dash:prov_self_only')) %>,
+        provValidated: <%- JSON.stringify(__('dash:prov_validated')) %>,
+        provNeverAssessedTitle: <%- JSON.stringify(__('dash:prov_never_assessed_title')) %>,
+        provAssessedZeroTitle: <%- JSON.stringify(__('dash:prov_assessed_zero_title')) %>,
+        provCertLapsed: <%- JSON.stringify(__('dash:prov_cert_lapsed')) %>,
+        provCertLapsedTitle: <%- JSON.stringify(__('dash:prov_cert_lapsed_title')) %>,
+        provSelfOnlyTitle: <%- JSON.stringify(__('dash:prov_self_only_title')) %>,
+        provValidatedTitle: <%- JSON.stringify(__('dash:prov_validated_title')) %>,
+        provThNeverAssessed: <%- JSON.stringify(__('dash:prov_th_never_assessed')) %>,
+        provThProvenance: <%- JSON.stringify(__('dash:prov_th_provenance')) %>,
+        provBlindSpot: <%- JSON.stringify(__('dash:prov_blind_spot')) %>,
+        // ONE readiness number, with its coverage denominator (Wave 2).
+        rdBasedOnAssessed: <%- JSON.stringify(__('dash:rd_based_on_assessed')) %>,
+        rdNoRequirementAssessed: <%- JSON.stringify(__('dash:rd_no_requirement_assessed')) %>,
+        rdOfMeasured: <%- JSON.stringify(__('dash:rd_of_measured')) %>,
+        rdOfFullyAssessed: <%- JSON.stringify(__('dash:rd_of_fully_assessed')) %>,
+        rdMeasuredBelow50: <%- JSON.stringify(__('dash:rd_measured_below_50')) %>,
+        rdDistNeverAssessed: <%- JSON.stringify(__('dash:rd_dist_never_assessed')) %>,
+        rdNotMeasured: <%- JSON.stringify(__('dash:rd_not_measured')) %>,
+        riskPartial: <%- JSON.stringify(__('dash:risk_partial')) %>,
+        rdNotMeasuredTitle: <%- JSON.stringify(__('dash:rd_not_measured_title')) %>,
+        rdReadBodyAssessedOnly: <%- JSON.stringify(__('dash:rd_read_body_assessed_only')) %>,
+        thSitesPresent: <%- JSON.stringify(__('dash:th_sites_present')) %>,
+        thAvgReadiness: <%- JSON.stringify(__('dash:th_avg_readiness')) %>,
+        thSkill: <%- JSON.stringify(__('dash:th_skill')) %>,
+        thDomain: <%- JSON.stringify(__('dash:th_domain')) %>,
+        thAffectedEmp: <%- JSON.stringify(__('dash:th_affected_emp')) %>,
+        thGapPoints: <%- JSON.stringify(__('dash:th_gap_points')) %>,
+        thAvgGap: <%- JSON.stringify(__('dash:th_avg_gap')) %>,
+        thImpactScore: <%- JSON.stringify(__('dash:th_impact_score')) %>,
+        thName: <%- JSON.stringify(__('dash:th_name')) %>,
+        thSite: <%- JSON.stringify(__('dash:th_site')) %>,
+        thReadiness: <%- JSON.stringify(__('dash:th_readiness')) %>,
+        thGaps: <%- JSON.stringify(__('dash:th_gaps')) %>,
+        thTopGap: <%- JSON.stringify(__('dash:th_top_gap')) %>,
+        thHeadcount: <%- JSON.stringify(__('dash:th_headcount')) %>,
+        thRisk: <%- JSON.stringify(__('dash:th_risk')) %>,
+        thEmployee: <%- JSON.stringify(__('dash:th_employee')) %>,
+        thLastAssessed: <%- JSON.stringify(__('dash:th_last_assessed')) %>,
+        thDaysStale: <%- JSON.stringify(__('dash:th_days_stale')) %>,
+        radarActual: <%- JSON.stringify(__('dash:radar_actual')) %>,
+        radarRequired: <%- JSON.stringify(__('dash:radar_required')) %>,
+        scoreLabels: {
+            readiness: <%- JSON.stringify(__('dash:sc_readiness')) %>,
+            coverage: <%- JSON.stringify(__('dash:sc_coverage')) %>,
+            compliance: <%- JSON.stringify(__('dash:sc_compliance')) %>,
+            staffing: <%- JSON.stringify(__('dash:sc_staffing')) %>,
+            freshness: <%- JSON.stringify(__('dash:sc_freshness')) %>
+        },
+        ohBenchDepth: <%- JSON.stringify(__('dash:oh_bench_depth')) %>,
+        ohBenchDepthUnit: <%- JSON.stringify(__('dash:oh_bench_depth_unit')) %>,
+        ohBenchDepthTip: <%- JSON.stringify(__('dash:oh_bench_depth_tip')) %>,
+        ohAssessmentFreshness: <%- JSON.stringify(__('dash:oh_assessment_freshness')) %>,
+        ohWithin6Months: <%- JSON.stringify(__('dash:oh_within_6_months')) %>,
+        ohAssessmentFreshnessTip: <%- JSON.stringify(__('dash:oh_assessment_freshness_tip')) %>,
+        ohSkillCoverage: <%- JSON.stringify(__('dash:oh_skill_coverage')) %>,
+        ohRequiredAssessed: <%- JSON.stringify(__('dash:oh_required_assessed')) %>,
+        ohSkillCoverageTip: <%- JSON.stringify(__('dash:oh_skill_coverage_tip')) %>,
+        ohNeverAssessed: <%- JSON.stringify(__('dash:oh_never_assessed')) %>,
+        ohEmployees: <%- JSON.stringify(__('dash:oh_employees')) %>,
+        ohNeverAssessedTip: <%- JSON.stringify(__('dash:oh_never_assessed_tip')) %>,
+        unableToLoad: <%- JSON.stringify(__('dash:unable_to_load')) %>,
+        noCriticalRoleRisks: <%- JSON.stringify(__('dash:no_critical_role_risks')) %>,
+        noTrendDataYet: <%- JSON.stringify(__('dash:no_trend_data_yet')) %>,
+        noExpertsFound: <%- JSON.stringify(__('dash:no_experts_found')) %>,
+        allUpToDate: <%- JSON.stringify(__('dash:all_up_to_date')) %>,
+        noRisks: <%- JSON.stringify(__('dash:no_risks')) %>,
+        noStaffingRisks: <%- JSON.stringify(__('dash:no_staffing_risks')) %>,
+        scopeUnmeasured: <%- JSON.stringify(__('dash:scope_unmeasured')) %>,
+        filterAll: <%- JSON.stringify(__('dash:filter_all')) %>,
+        tipCoverageShare: <%- JSON.stringify(__('dash:tip_coverage_share')) %>,
+        tipCritOccupants: <%- JSON.stringify(__('dash:tip_crit_occupants')) %>,
+        chartHeadcount: <%- JSON.stringify(__('dash:chart_headcount')) %>,
+        chartEmployees: <%- JSON.stringify(__('dash:chart_employees')) %>,
+        chartIdealDistribution: <%- JSON.stringify(__('dash:chart_ideal_distribution')) %>,
+        pipeAwaitingPip: <%- JSON.stringify(__('dash:pipe_awaiting_pip')) %>,
+        pipeDraftIdp: <%- JSON.stringify(__('dash:pipe_draft_idp')) %>,
+        pipeCoachingNotStarted: <%- JSON.stringify(__('dash:pipe_coaching_not_started')) %>,
+        pipeAllInMotion: <%- JSON.stringify(__('dash:pipe_all_in_motion')) %>,
+        pagerTotal: <%- JSON.stringify(__('dash:pager_total')) %>,
+        pagerPrev: <%- JSON.stringify(__('dash:pager_prev')) %>,
+        pagerNext: <%- JSON.stringify(__('dash:pager_next')) %>,
+        heatmapDomain: <%- JSON.stringify(__('dash:heatmap_domain')) %>,
+        thExpert: <%- JSON.stringify(__('dash:th_expert')) %>,
+        thNumSkillsLvl4: <%- JSON.stringify(__('dash:th_num_skills_lvl4')) %>,
+        thExpertise: <%- JSON.stringify(__('dash:th_expertise')) %>,
+        never: <%- JSON.stringify(__('dash:never')) %>,
+        heroAvgMastery: <%- JSON.stringify(__('dash:hero_avg_mastery')) %>,
+        heroOver6m: <%- JSON.stringify(__('dash:hero_over_6m')) %>,
+        heroTrendStable: <%- JSON.stringify(__('dash:hero_trend_stable')) %>,
+        <%# Trend + KPI-delta vocabulary. The trend series is a PERCENTAGE read
+            from recorded snapshots (kpi_snapshots); the old wording called it a
+            "/ 4" mastery score, which was the wrong unit for the value shown. %>
+        heroAvgReadiness: <%- JSON.stringify(__('dash:hero_avg_readiness')) %>,
+        trendAvgReadiness: <%- JSON.stringify(__('dash:trend_avg_readiness')) %>,
+        trendCoverage: <%- JSON.stringify(__('dash:trend_coverage')) %>,
+        trendMeasured: <%- JSON.stringify(__('dash:trend_measured')) %>,
+        trendNoHistoryYet: <%- JSON.stringify(__('dash:trend_no_history_yet')) %>,
+        trendNoScopedHistory: <%- JSON.stringify(__('dash:trend_no_scoped_history')) %>,
+        trendSinglePoint: <%- JSON.stringify(__('dash:trend_single_point')) %>,
+        trendSince: <%- JSON.stringify(__('dash:trend_since')) %>,
+        kpiDeltaSince: <%- JSON.stringify(__('dash:kpi_delta_since')) %>,
+        kpiDeltaPopulation: <%- JSON.stringify(__('dash:kpi_delta_population')) %>,
+        kpiDeltaCohortChanged: <%- JSON.stringify(__('dash:kpi_delta_cohort_changed')) %>,
+        kpiDeltaCohortTag: <%- JSON.stringify(__('dash:kpi_delta_cohort_tag')) %>,
+        showNMore: <%- JSON.stringify(__('dash:show_n_more')) %>,
+        showLess: <%- JSON.stringify(__('dash:show_less')) %>,
+        previewTopN: <%- JSON.stringify(__('dash:preview_top_n')) %>,
+        thRiskType: <%- JSON.stringify(__('dash:th_risk_type')) %>,
+        thQualifiedStaff: <%- JSON.stringify(__('dash:th_qualified_staff')) %>,
+        thSites: <%- JSON.stringify(__('dash:th_sites')) %>,
+        riskGeneric: <%- JSON.stringify(__('dash:risk_generic')) %>,
+        riskVacant: <%- JSON.stringify(__('dash:risk_vacant')) %>,
+        riskVacantDesc: <%- JSON.stringify(__('dash:risk_vacant_desc')) %>,
+        riskNoCapability: <%- JSON.stringify(__('dash:risk_no_capability')) %>,
+        riskNoCapabilityDesc: <%- JSON.stringify(__('dash:risk_no_capability_desc')) %>,
+        riskSingle: <%- JSON.stringify(__('dash:risk_single')) %>,
+        riskSingleDesc: <%- JSON.stringify(__('dash:risk_single_desc')) %>,
+        riskLowDepth: <%- JSON.stringify(__('dash:risk_low_depth')) %>,
+        riskLowDepthDesc: <%- JSON.stringify(__('dash:risk_low_depth_desc')) %>,
+        gapsNone: <%- JSON.stringify(__('dash:gaps_none')) %>,
+        showingTopGaps: <%- JSON.stringify(__('dash:showing_top_gaps')) %>,
+        tagCritical: <%- JSON.stringify(__('dash:tag_critical')) %>,
+        impactAffected: <%- JSON.stringify(__('dash:impact_affected')) %>,
+        impactGap: <%- JSON.stringify(__('dash:impact_gap')) %>,
+        noDepartmentData: <%- JSON.stringify(__('dash:no_department_data')) %>,
+        talentTierAxis: <%- JSON.stringify(__('dash:talent_tier_axis')) %>,
+        tdActiveCoaching: <%- JSON.stringify(__('dash:td_active_coaching')) %>,
+        tdActiveMentoring: <%- JSON.stringify(__('dash:td_active_mentoring')) %>,
+        tdMentoringRel: <%- JSON.stringify(__('dash:td_mentoring_rel')) %>,
+        tdIdpsInProgress: <%- JSON.stringify(__('dash:td_idps_in_progress')) %>,
+        tdActivePips: <%- JSON.stringify(__('dash:td_active_pips')) %>,
+        tdPipSuccess: <%- JSON.stringify(__('dash:td_pip_success')) %>,
+        tdNineboxAssessed: <%- JSON.stringify(__('dash:td_ninebox_assessed')) %>,
+        tdLevelUps: <%- JSON.stringify(__('dash:td_level_ups')) %>,
+        tdLevelUpsSub: <%- JSON.stringify(__('dash:td_level_ups_sub')) %>,
+        tdIdpCompletion: <%- JSON.stringify(__('dash:td_idp_completion')) %>,
+        tdSubNotStarted: <%- JSON.stringify(__('dash:td_sub_not_started')) %>,
+        tdSubIdp: <%- JSON.stringify(__('dash:td_sub_idp')) %>,
+        tdSubAwaiting: <%- JSON.stringify(__('dash:td_sub_awaiting')) %>,
+        tdSubNinebox: <%- JSON.stringify(__('dash:td_sub_ninebox')) %>,
+        tdSubActionsDone: <%- JSON.stringify(__('dash:td_sub_actions_done')) %>,
+        tdSubPipClosures: <%- JSON.stringify(__('dash:td_sub_pip_closures')) %>,
+        tdSubPlansRun: <%- JSON.stringify(__('dash:td_sub_plans_run')) %>,
+        tdStActive: <%- JSON.stringify(__('dash:td_st_active')) %>,
+        tdStCompleted: <%- JSON.stringify(__('dash:td_st_completed')) %>,
+        tdStCancelled: <%- JSON.stringify(__('dash:td_st_cancelled')) %>,
+        tdCauseSkillGap: <%- JSON.stringify(__('dash:td_cause_skill_gap')) %>,
+        tdCauseOther: <%- JSON.stringify(__('dash:td_cause_other')) %>,
+        tdTierTop: <%- JSON.stringify(__('dash:td_tier_top')) %>,
+        tdTierCore: <%- JSON.stringify(__('dash:td_tier_core')) %>,
+        tdTierRisk: <%- JSON.stringify(__('dash:td_tier_risk')) %>,
+        tdNoNinebox: <%- JSON.stringify(__('dash:td_no_ninebox')) %>,
+        talentTiers: [<%- JSON.stringify(__('dash:talent_tier_0')) %>, <%- JSON.stringify(__('dash:talent_tier_1')) %>, <%- JSON.stringify(__('dash:talent_tier_2')) %>, <%- JSON.stringify(__('dash:talent_tier_3')) %>, <%- JSON.stringify(__('dash:talent_tier_4')) %>]
+    };
+</script>
+<script src="/js/dashboard.js?v=<%= assetVersion %>"></script>
+<link rel="stylesheet" href="/css/dashboard.css?v=<%= assetVersion %>">
+
+<!-- Additional workforce & talent measures (non-security) -->
+<style>
+/* Mirrors the proven .org-health-grid pattern on this same dashboard: plain
+   repeat(4,1fr) with VERTICALLY-stacked, centered cards. Stacked content keeps each
+   card's min-content small so 1fr tracks never blow out the page; overflow:hidden is
+   a hard backstop and overflow-wrap breaks long labels. Columns step down by width. */
+.measures-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:4px 0 8px; overflow:hidden; }
+@media (max-width:1200px){ .measures-grid{grid-template-columns:repeat(3,1fr);} }
+@media (max-width:820px){ .measures-grid{grid-template-columns:repeat(2,1fr);} }
+@media (max-width:480px){ .measures-grid{grid-template-columns:1fr;} }
+.measure-card { min-width:0; background:var(--bg-subtle); border:1px solid var(--border-light,#2a3148); border-radius:12px; padding:16px 12px; display:flex; flex-direction:column; align-items:center; text-align:center; gap:7px; }
+.measure-ic { width:40px; height:40px; border-radius:10px; flex:none; display:flex; align-items:center; justify-content:center; font-size:1.05rem; background:var(--brand-dim,rgba(124, 108, 255,.15)); color:var(--brand,#7C6CFF); }
+.measure-body { min-width:0; max-width:100%; display:flex; flex-direction:column; align-items:center; }
+.measure-val { font-size:1.5rem; font-weight:800; color:var(--text-primary); line-height:1.1; font-variant-numeric:tabular-nums; }
+.measure-lbl { font-size:.78rem; color:var(--text-secondary); overflow-wrap:anywhere; }
+.measure-sub { font-size:.7rem; color:var(--text-muted); overflow-wrap:anywhere; }
+/* M-12 : marque les cartes que le périmètre NE borne PAS (le référentiel). */
+.measure-chip { margin-top:.3rem; font-size:.63rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+    padding:.08rem .4rem; border-radius:999px; border:1px dashed var(--border-light,rgba(255,255,255,.22));
+    color:var(--text-muted,#8a93a6); cursor:help; }
+
+/* ═══ Executive information architecture ═══════════════════════════════════
+   Progressive disclosure for the exec tab: an always-visible scope line, a
+   headline band (health index + decision KPIs) above the fold, collapsible
+   low-frequency sections, and folded previews for long inline tables.
+   Selectors are exec-scoped so nothing else on the dashboard shifts. */
+.exec-scope { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin:0 0 1rem;
+    padding:.55rem .85rem; border:1px solid var(--border-light,rgba(255,255,255,.12));
+    border-left:3px solid var(--text-tertiary,#8a93a6); border-radius:10px;
+    background:var(--bg-subtle,rgba(255,255,255,.04)); font-size:.85rem; }
+.exec-scope.is-filtered { border-left-color:var(--brand,#7C6CFF); }
+.exec-scope > i { color:var(--text-muted,#8a93a6); }
+.exec-scope-label { text-transform:uppercase; letter-spacing:.06em; font-size:.7rem; font-weight:700; color:var(--text-muted,#8a93a6); }
+.exec-scope-value { font-weight:700; color:var(--text-primary); overflow-wrap:anywhere; }
+.exec-scope-hint { margin-left:auto; font-size:.75rem; color:var(--text-muted,#8a93a6); }
+/* M-12 (résiduel) : marque un périmètre IMPOSÉ (RBAC), que le lecteur ne choisit
+   pas dans les listes — à ne pas confondre avec un filtre appliqué. */
+.exec-scope-own { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+    padding:.1rem .4rem; border-radius:999px; color:var(--text-muted,#8a93a6);
+    border:1px solid var(--border-color,rgba(255,255,255,.12)); }
+@media (max-width:700px){ .exec-scope-hint { margin-left:0; flex:1 1 100%; } }
+
+.exec-hero { display:grid; grid-template-columns:minmax(240px,320px) minmax(0,1fr); gap:1rem; align-items:stretch; margin-bottom:1rem; }
+@media (max-width:900px){ .exec-hero { grid-template-columns:1fr; } }
+.exec-hero .risk-gauge-box { max-width:none; min-width:0; }
+.exec-hero-kpis { min-width:0; display:flex; flex-direction:column; }
+.exec-hero-kpis .kpi-grid { margin-bottom:0; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); }
+/* Assessment provenance — "never assessed" must never read as an honest zero. */
+.exec-provenance { margin:.7rem 0 0; padding:.6rem .75rem; font-size:.8rem; line-height:1.45;
+    color:var(--text-secondary); border-left:3px solid var(--text-tertiary,#8a93a6); border-radius:8px;
+    background:var(--bg-subtle,rgba(255,255,255,.04)); }
+.exec-provenance:empty { display:none; }
+.exec-provenance.is-blind { border-left-color:var(--warn,#b45309); }
+.exec-provenance .prov-label { text-transform:uppercase; letter-spacing:.06em; font-size:.7rem;
+    font-weight:700; color:var(--text-muted,#8a93a6); margin-right:.4rem; }
+.exec-provenance strong { color:var(--text-primary); }
+
+.prov-badge { display:inline-flex; align-items:center; gap:.25rem; font-size:.68rem; font-weight:700;
+    padding:.1rem .4rem; border-radius:999px; border:1px solid var(--border-light,rgba(255,255,255,.18));
+    color:var(--text-secondary); white-space:nowrap; }
+.prov-badge.never { border-color:var(--warn,#b45309); color:var(--warn,#b45309); }
+.prov-badge.self { border-color:var(--info,#4a90d9); color:var(--info,#4a90d9); }
+.prov-badge.validated { border-color:var(--success,#2DD4A0); color:var(--success,#2DD4A0); }
+
+/* A required skill nobody has ever rated: dashed frame + em-dash, never a "0". */
+.skill-card.prov-never { border-style:dashed !important; opacity:.85; }
+.skill-card.prov-never .actual { color:var(--warn,#b45309); font-weight:700; }
+.skill-card .prov-mark { font-size:.66rem; font-weight:700; letter-spacing:.04em;
+    display:block; margin-top:.15rem; color:var(--text-muted,#8a93a6); }
+.skill-card.prov-never .prov-mark { color:var(--warn,#b45309); }
+.skill-card.prov-self .prov-mark { color:var(--info,#4a90d9); }
+/* A lapsed certificate: the effective level is 0 but it is a caution, not a
+   scored 0 — dashed frame and amber mark so it never reads as a passed skill. */
+.skill-card.prov-lapsed { border-style:dashed !important; }
+.skill-card.prov-lapsed .actual { color:var(--warn,#b45309); font-weight:700; }
+.skill-card.prov-lapsed .prov-mark { color:var(--warn,#b45309); }
+.detail-stats .prov-stat { color:var(--text-secondary); }
+.detail-stats .prov-stat.is-blind { color:var(--warn,#b45309); font-weight:700; }
+
+.exec-trend-caption { margin:.55rem 0 0; font-size:.8rem; color:var(--text-secondary); text-align:center; }
+.exec-trend-caption:empty { display:none; }
+.exec-trend-caption .delta-up { color:var(--success,#2DD4A0); font-weight:700; }
+.exec-trend-caption .delta-down { color:var(--danger,#F06060); font-weight:700; }
+
+/* KPI-card movement chip. Rendered ONLY when a real prior snapshot exists —
+   there is deliberately no "0" state for "no history". */
+.kpi-delta { display:inline-block; margin-left:.4rem; font-size:.6em; font-weight:700;
+    vertical-align:middle; padding:.1rem .4rem; border-radius:999px;
+    background:var(--bg-subtle,rgba(255,255,255,.06)); }
+.kpi-delta.delta-up { color:var(--success,#2DD4A0); }
+.kpi-delta.delta-down { color:var(--danger,#F06060); }
+.kpi-delta.delta-flat { color:var(--text-muted,#8a93a6); }
+/* J8 — a visible caveat that the delta compared a different measured population. */
+.kpi-delta-note { margin-left:.3rem; font-size:.62em; font-weight:600; vertical-align:middle;
+    color:var(--text-muted,#8a93a6); cursor:help; }
+
+.exec-disclosure { margin:1.5rem 0; border-top:2px solid rgba(255,255,255,.08); }
+.exec-disclosure > summary { list-style:none; cursor:pointer; display:flex; align-items:center; flex-wrap:wrap; gap:.55rem; padding:1rem 0 .55rem; }
+.exec-disclosure > summary::-webkit-details-marker { display:none; }
+.exec-disclosure > summary:focus-visible { outline:2px solid var(--brand,#7C6CFF); outline-offset:3px; border-radius:6px; }
+.exec-disclosure-title { font-size:1.3rem; font-weight:700; color:var(--text-primary,#e0e0e0); }
+.exec-disclosure-count { font-size:.75rem; font-weight:700; padding:.14rem .55rem; border-radius:999px;
+    background:var(--bg-subtle,rgba(255,255,255,.06)); border:1px solid var(--border-light,rgba(255,255,255,.12)); color:var(--text-secondary); }
+.exec-disclosure-chev { margin-left:auto; color:var(--text-muted,#8a93a6); transition:transform .18s ease; }
+.exec-disclosure[open] > summary .exec-disclosure-chev { transform:rotate(180deg); }
+.exec-disclosure-sub { flex:1 1 100%; margin:0; font-size:.85rem; color:var(--text-muted,#8a93a6); }
+.exec-disclosure-body { padding-top:.25rem; min-width:0; }
+
+/* Folded table previews (top-N inline, rest one click away) */
+.rowfold-hidden { display:none !important; }
+.rowfold-bar { display:flex; align-items:center; flex-wrap:wrap; gap:.6rem; margin:.6rem 0 .1rem; }
+.rowfold-note { font-size:.76rem; color:var(--text-muted,#8a93a6); }
+.rowfold-toggle { display:inline-flex; align-items:center; gap:.4rem; background:transparent;
+    border:1px solid var(--border-light,rgba(255,255,255,.14)); color:var(--text-secondary);
+    border-radius:8px; padding:.35rem .7rem; font-size:.8rem; font-weight:600; cursor:pointer; }
+.rowfold-toggle:hover { border-color:var(--brand,#7C6CFF); color:var(--text-primary); }
+.rowfold-toggle:focus-visible { outline:2px solid var(--brand,#7C6CFF); outline-offset:2px; }
+#critical-roles-container, #benchmark-fit-container { overflow-x:auto; }
+</style>
+<script nonce="<%= cspNonce %>">
+(function(){
+  var ICON={people:'fa-users',sites:'fa-location-dot',depts:'fa-diagram-project',services:'fa-people-group',roles:'fa-id-badge',
+    span:'fa-sitemap',managers:'fa-user-tie',layers:'fa-layer-group',ninebox:'fa-table-cells',coaching:'fa-people-arrows',
+    idp:'fa-seedling',pip:'fa-clipboard-check',goals:'fa-bullseye',checkins:'fa-calendar-check',skills:'fa-screwdriver-wrench',domains:'fa-folder-tree'};
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function card(m,chip,hint){
+    // M-12 (arbitrage 4b) : une carte qui ne suit PAS le périmètre le porte
+    // écrit. Le référentiel de compétences est conçu par les départements et
+    // reste celui de toute l'organisation — il n'est jamais réduit.
+    var mark = m.framework ? '<span class="measure-chip" title="'+esc(hint)+'">'+esc(chip)+'</span>' : '';
+    return '<div class="measure-card"><span class="measure-ic"><i class="fas '+(ICON[m.key]||'fa-gauge')+'" aria-hidden="true"></i></span>'+
+      '<span class="measure-body"><span class="measure-val">'+(m.value==null?'—':m.value)+'</span>'+
+      '<span class="measure-lbl">'+m.label+'</span>'+(m.sub?'<span class="measure-sub">'+m.sub+'</span>':'')+mark+'</span></div>';
+  }
+  // M-12 (arbitrage 4a) : la tuile interroge le serveur AVEC le filtre appliqué,
+  // comme tous les autres blocs de l'onglet. Elle lisait `/api/dashboard/measures`
+  // sans aucun paramètre : la charge était identique octet pour octet avec et sans
+  // filtre pendant que le KPI voisin passait de 76 à 17.
+  function activeQuery(){
+    var q=[]; var ids=[['filter-site','siteName'],['filter-department','departmentName'],['filter-service','serviceName']];
+    for(var i=0;i<ids.length;i++){
+      var el=document.getElementById(ids[i][0]);
+      var v=el&&el.value?String(el.value).trim():'';
+      if(v) q.push(encodeURIComponent(ids[i][1])+'='+encodeURIComponent(v));
+    }
+    return q.length?('?'+q.join('&')):'';
+  }
+  function load(){
+    var box=document.getElementById('measures-grid'); if(!box) return;
+    fetch('/api/dashboard/measures'+activeQuery(),{headers:{'Accept':'application/json'}})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        var m=(d&&d.measures)||[];
+        var chip=(d&&d.frameworkChip)||'', hint=(d&&d.frameworkHint)||'';
+        // M-12 (résiduel) : `scoped` était renvoyé « pour que la vue puisse
+        // l'écrire au lieu de l'affirmer » et n'était lu NULLE PART. Il l'est :
+        // le bandeau « Périmètre » suit ce que la charge vient de mesurer.
+        if (window.Dashboard && typeof window.Dashboard.setMeasuresScoped === 'function') {
+          window.Dashboard.setMeasuresScoped(!!(d && d.scoped));
+        }
+        // Empty state, not the loading class: that one draws a spinning ring, and a
+        // ring that turns next to « Aucune mesure disponible. » says the opposite of
+        // the text. Same for the error state below (role="alert" so it is announced).
+        box.innerHTML = m.length? m.map(function(x){return card(x,chip,hint);}).join('') : '<p class="empty-state">'+<%- JSON.stringify(__('dash:no_measures_available')) %>+'</p>';
+        var badge=document.getElementById('measures-count');
+        if(badge && m.length){ badge.textContent = m.length; badge.hidden = false; }
+      })
+      .catch(function(){ box.innerHTML='<p class="empty-state" role="alert">'+<%- JSON.stringify(__('dash:could_not_load_measures')) %>+'</p>'; });
+  }
+  function bind(){
+    load();
+    // Les deux boutons sont déjà câblés par dashboard.js ; `addEventListener` est
+    // additif. Le rechargement est différé d'une macro-tâche pour que « Réinitialiser »
+    // ait FINI de vider les listes déroulantes avant qu'on les relise.
+    ['btn-apply-filters','btn-reset-filters'].forEach(function(id){
+      var b=document.getElementById(id);
+      if(b) b.addEventListener('click', function(){ setTimeout(load,0); });
+    });
+  }
+  if(document.readyState!=='loading') bind(); else document.addEventListener('DOMContentLoaded', bind);
+})();
+</script>

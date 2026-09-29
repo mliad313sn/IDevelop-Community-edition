@@ -1,0 +1,86 @@
+<div class="page-header">
+    <h1><i class="fas fa-bell" aria-hidden="true"></i> <%= __('chrome:notifications_title') %></h1>
+    <div class="page-actions">
+        <% if (notifications && notifications.some(function(n){return !n.read;})) { %>
+        <form method="POST" action="/notifications/read-all" style="display:inline">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button type="submit" class="btn btn-secondary"><i class="fas fa-check-double" aria-hidden="true"></i> <%= __('chrome:notifications_mark_all') %></button>
+        </form>
+        <% } %>
+    </div>
+</div>
+
+<%# the centre is a LIST — server-side filters (read state, kind family)
+    and a pager from utils/listTools, so nothing older than the newest 100 rows is
+    unreachable any more. %>
+<form method="GET" action="/notifications" class="card notif-filters" data-filter-memory>
+    <label class="sr-only" for="nt-state"><%= __('chrome:notifications_filter_state') %></label>
+    <select id="nt-state" name="state" class="form-control" aria-label="<%= __('chrome:notifications_filter_state') %>">
+        <option value=""><%= __('chrome:notifications_all_states') %></option>
+        <option value="unread" <%= filters.state === 'unread' ? 'selected' : '' %>><%= __('chrome:notifications_unread_only') %></option>
+        <option value="read" <%= filters.state === 'read' ? 'selected' : '' %>><%= __('chrome:notifications_read_only') %></option>
+    </select>
+    <label class="sr-only" for="nt-family"><%= __('chrome:notifications_filter_family') %></label>
+    <select id="nt-family" name="family" class="form-control" aria-label="<%= __('chrome:notifications_filter_family') %>">
+        <option value=""><%= __('chrome:notifications_all_families') %></option>
+        <% (families || []).forEach(function (f) { %>
+        <option value="<%= f.family %>" <%= filters.family === f.family ? 'selected' : '' %>><%= __('chrome:notif_family_' + f.family, { defaultValue: f.family }) %> (<%= f.count %>)</option>
+        <% }); %>
+    </select>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('chrome:notifications_apply') %></button>
+</form>
+
+<% if (pager && pager.total) { %>
+<p class="text-muted notif-range"><%= __('admin:list_range', { from: pager.from, to: pager.to, total: pager.total }) %></p>
+<% } %>
+
+<div class="notif-list">
+    <% if (!notifications || !notifications.length) { %>
+        <div class="notif-empty">
+            <i class="fas fa-inbox" aria-hidden="true"></i>
+            <%# Rule 1: "no match for these filters" is not "you have no notifications". %>
+            <p><%= (filters.state || filters.family) ? __('chrome:notifications_none_match') : __('chrome:notifications_empty') %></p>
+        </div>
+    <% } else { %>
+        <% notifications.forEach(function(n){ %>
+        <a class="notif-row <%= n.read ? 'is-read' : 'is-unread' %>" href="/notifications/<%= n.id %>/go">
+            <span class="notif-ic"><i class="fas <%= n.icon %>" aria-hidden="true"></i></span>
+            <span class="notif-main">
+                <span class="notif-title"><%= n.title %></span>
+                <%# one date format per language, from the shared helper. %>
+                <span class="notif-time"><%= n.createdAt ? fmtDateTime(n.createdAt) : '' %></span>
+            </span>
+            <% if (!n.read) { %><span class="notif-dot" aria-label="unread"></span><% } %>
+            <i class="fas fa-chevron-right notif-go" aria-hidden="true"></i>
+        </a>
+        <% }); %>
+    <% } %>
+</div>
+
+<% if (pager && pager.totalPages > 1) { %>
+<nav class="pagination" aria-label="<%= __('admin:page') %>" style="max-width:760px;margin:10px auto;">
+    <% if (pager.hasPrev) { %><a href="<%= pager.prevUrl %>" rel="prev">&laquo; <%= __('admin:previous') %></a><% } %>
+    <% pager.items.forEach(function (it) { if (it.gap) { %><span>...</span><% } else { %>
+        <a href="<%= it.url %>" class="<%= it.active ? 'active' : '' %>" <%- it.active ? 'aria-current="page"' : '' %>><%= it.n %></a>
+    <% } }); %>
+    <% if (pager.hasNext) { %><a href="<%= pager.nextUrl %>" rel="next"><%= __('admin:next') %> &raquo;</a><% } %>
+</nav>
+<% } %>
+
+<style>
+.notif-filters{max-width:760px;margin:8px auto 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:.7rem 1rem}
+.notif-range{max-width:760px;margin:8px auto 0;font-size:.8rem}
+.notif-list{max-width:760px;margin:8px auto;border:1px solid var(--border-color,#e2e8f0);border-radius:12px;overflow:hidden;background:var(--bg-elevated,#fff)}
+.notif-row{display:flex;align-items:center;gap:12px;padding:13px 16px;text-decoration:none;color:var(--text-primary,#0f172a);border-bottom:1px solid var(--border-color,#f1f5f9)}
+.notif-row:last-child{border-bottom:0}
+.notif-row:hover{background:var(--bg-subtle,#f8fafc)}
+.notif-row.is-unread{background:rgba(185,147,31,.06)}
+.notif-ic{width:34px;height:34px;flex:0 0 34px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--bg-subtle,#eef2ff);color:var(--brand,#5140d9)}
+.notif-main{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.notif-title{font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.notif-time{font-size:.76rem;color:var(--text-muted,#94a3b8)}
+.notif-dot{width:9px;height:9px;border-radius:50%;background:#5140d9;flex:0 0 9px}
+.notif-go{color:var(--text-muted,#cbd5e1)}
+.notif-empty{max-width:760px;margin:24px auto;text-align:center;color:var(--text-muted,#94a3b8);padding:40px 16px}
+.notif-empty i{font-size:2.2rem;margin-bottom:10px;opacity:.6}
+</style>

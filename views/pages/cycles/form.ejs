@@ -1,0 +1,52 @@
+<%
+/*
+ * « Nouvelle campagne » / edit of a draft (folded in from /v2/slf/cycles, /
+ * ). Validated server-side (unique code, closes ≥ opens); a refused
+ * submission comes back with what was typed.
+ */
+const d = (typeof draft !== 'undefined' && draft) || {};
+const cur = cycle || {};
+const ymd = function (v) { return v ? String(v instanceof Date ? v.toISOString() : v).slice(0, 10) : ''; };
+const val = function (k) { return d[k] != null ? String(d[k]) : (k === 'opensAt' ? ymd(cur.openedAt) : k === 'closesAt' ? ymd(cur.closesAt) : (cur[k] != null ? String(cur[k]) : '')); };
+%>
+<div class="page-header">
+  <a href="<%= cycle ? '/cycles/' + cycle.id : '/cycles' %>" class="btn btn-sm btn-secondary" style="float:right">
+    <i class="fas fa-arrow-left" aria-hidden="true"></i> <%= cycle ? __('admin:cyc_back_console') : __('admin:cyc_back') %>
+  </a>
+  <h1><i class="fas fa-calendar-plus" aria-hidden="true"></i> <%= cycle ? __('admin:cyc_edit') : __('admin:cyc_new') %></h1>
+  <p class="text-muted"><%= __('admin:cyc_form_intro') %></p>
+</div>
+<% if (d.__from) { %>
+<p class="text-muted" style="margin:-.5rem 0 1rem;"><i class="fas fa-rotate-left" aria-hidden="true"></i> <%= __('validation:draft_kept') %></p>
+<% } %>
+
+<form action="<%= action %>" method="POST" class="form card" style="padding:1rem;max-width:640px">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <div class="form-row">
+    <div class="form-group">
+      <label for="cyc-code"><%= __('admin:cyc_th_code') %> *</label>
+      <input type="text" id="cyc-code" name="code" class="form-control" required maxlength="40" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" value="<%= val('code') %>" placeholder="<%= __('admin:cyc_code_ph') %>">
+      <small class="text-muted"><%= __('admin:cyc_code_hint') %></small>
+    </div>
+    <div class="form-group" style="flex:1">
+      <label for="cyc-label"><%= __('admin:cyc_th_label') %></label>
+      <input type="text" id="cyc-label" name="label" class="form-control" maxlength="200" value="<%= val('label') %>" placeholder="<%= __('admin:cyc_label_ph') %>">
+    </div>
+  </div>
+  <div class="form-row">
+    <div class="form-group">
+      <label for="cyc-opens"><%= __('admin:cyc_th_opens') %> *</label>
+      <input type="date" id="cyc-opens" name="opensAt" class="form-control" required value="<%= val('opensAt') %>">
+    </div>
+    <div class="form-group">
+      <label for="cyc-closes"><%= __('admin:cyc_th_closes') %> *</label>
+      <input type="date" id="cyc-closes" name="closesAt" class="form-control" required value="<%= val('closesAt') %>">
+      <small class="text-muted"><%= __('admin:cyc_closes_hint') %></small>
+    </div>
+  </div>
+  <p class="text-muted" style="font-size:.85rem"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:cyc_form_launch_hint') %></p>
+  <div style="display:flex;gap:.5rem">
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save" aria-hidden="true"></i> <%= cycle ? __('admin:cyc_save') : __('admin:cyc_create') %></button>
+    <a class="btn btn-secondary" href="<%= cycle ? '/cycles/' + cycle.id : '/cycles' %>"><%= __('admin:cyc_dlg_cancel') %></a>
+  </div>
+</form>

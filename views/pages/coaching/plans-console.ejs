@@ -1,0 +1,256 @@
+<div class="page-header">
+  <h1><i class="fas fa-people-arrows" aria-hidden="true"></i> <%= __('coaching:cm_title') %></h1>
+  <p class="text-muted"><%= __('coaching:cm_intro') %></p>
+</div>
+
+<div class="nb-tabs" style="display:flex;gap:.5rem;margin-bottom:1rem">
+  <button class="btn btn-primary" id="cp-tab-roster" onclick="CP.show('roster')"><%= __('coaching:tab_my_people') %></button>
+  <button class="btn btn-secondary" id="cp-tab-plans" onclick="CP.show('plans')"><%= __('coaching:tab_plans') %></button>
+</div>
+
+<!-- ROSTER -->
+<div id="cp-roster-panel" class="card" style="padding:0;overflow:hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem;border-bottom:1px solid #eee">
+    <strong><%= __('coaching:roster_heading') %></strong>
+    <input id="cp-search" class="form-control" placeholder="<%= __('coaching:search_placeholder') %>" style="max-width:280px" oninput="CP.renderRoster()">
+  </div>
+  <table style="width:100%;border-collapse:collapse;font-size:.92rem">
+    <thead><tr style="text-align:left;background:#f8fafc;color:#64748b;font-size:.78rem;text-transform:uppercase">
+      <th style="padding:.5rem .75rem"><%= __('common:employee') %></th><th style="padding:.5rem"><%= __('coaching:th_role') %></th>
+      <th style="padding:.5rem"><%= __('coaching:th_service_site') %></th><th style="padding:.5rem"><%= __('coaching:th_active_plans') %></th>
+      <th style="padding:.5rem;text-align:right"><%= __('coaching:th_action') %></th>
+    </tr></thead>
+    <tbody id="cp-roster-body"><tr><td style="padding:1rem"><%= __('coaching:loading') %></td></tr></tbody>
+  </table>
+  <div style="padding:.5rem .75rem;color:#94a3b8;font-size:.8rem" id="cp-roster-count"></div>
+</div>
+
+<!-- PLANS -->
+<div id="cp-plans-panel" style="display:none">
+  <div class="card" id="cp-monitor" style="padding:1rem;margin-bottom:1rem"><strong><%= __('coaching:monitor') %></strong> <span id="cp-monitor-body"><%= __('coaching:loading') %></span></div>
+  <div class="card" style="padding:0">
+    <table class="table" id="cp-table">
+      <thead><tr><th><%= __('common:employee') %></th><th><%= __('coaching:kind') %></th><th><%= __('common:title') %></th><th><%= __('coaching:th_context') %></th><th><%= __('coaching:th_target') %></th><th><%= __('coaching:th_state') %></th><th><%= __('coaching:th_progress') %></th><th><%= __('common:actions') %></th></tr></thead>
+      <tbody><tr><td colspan="8"><%= __('coaching:loading') %></td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- CREATE PLAN MODAL -->
+<div id="cp-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:1000;align-items:center;justify-content:center">
+  <div class="card" style="width:460px;max-width:92vw;padding:1.25rem">
+    <h3 style="margin-top:0"><%= __('coaching:modal_title_prefix') %> <span id="cp-modal-name"></span></h3>
+    <input type="hidden" id="cp-emp">
+    <div style="margin:.5rem 0"><label><%= __('coaching:type') %></label>
+      <select id="cp-kind" class="form-control">
+        <option value="coaching"><%= __('coaching:kind_coaching') %></option>
+        <option value="mentoring"><%= __('coaching:kind_mentoring') %></option>
+      </select>
+      <div class="cp-fieldhint"><%= __('coaching:kind_hint') %></div>
+    </div>
+    <div style="margin:.5rem 0"><label><%= __('coaching:context_label') %> * <small style="color:#94a3b8"><%= __('coaching:context_help_small') %></small></label>
+      <select id="cp-context" class="form-control"><option value=""><%= __('coaching:context_loading') %></option></select>
+      <div id="cp-context-hint" class="cp-fieldhint"><%= __('coaching:context_hint') %></div></div>
+    <div id="cp-error" class="cp-error" hidden></div>
+    <div style="margin:.5rem 0"><label><%= __('coaching:title_label') %> *</label><input id="cp-title" class="form-control" placeholder="<%= __('coaching:title_ph') %>"></div>
+    <div style="margin:.5rem 0"><label><%= __('coaching:objective_label') %></label><input id="cp-obj" class="form-control" placeholder="<%= __('coaching:objective_ph') %>"></div>
+    <div style="margin:.5rem 0"><label><%= __('coaching:outcome_label') %></label><input id="cp-out" class="form-control" placeholder="<%= __('coaching:outcome_ph') %>"></div>
+    <div style="margin:.5rem 0"><label><%= __('coaching:target_date_label') %></label><input id="cp-target" class="form-control" type="date"></div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.75rem">
+      <button class="btn btn-secondary" onclick="CP.closeModal()"><%= __('common:cancel') %></button>
+      <button class="btn btn-primary" onclick="CP.create()"><%= __('coaching:create_plan') %></button>
+    </div>
+  </div>
+</div>
+
+<div id="cp-toasts" class="cp-toast-container" aria-live="assertive"></div>
+
+<style>
+.cp-fieldhint{color:#94a3b8;font-size:.78rem;margin-top:4px}
+.cp-error{margin:.25rem 0 .5rem;padding:9px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#b91c1c;font-size:.85rem}
+.cp-invalid{border:2px solid #ef4444 !important;outline:none;box-shadow:0 0 0 3px rgba(239,68,68,.15)}
+.cp-toast-container{position:fixed;top:18px;right:18px;z-index:2000;display:flex;flex-direction:column;gap:10px}
+.cp-toast{min-width:240px;max-width:380px;padding:12px 16px;border-radius:10px;color:#fff;font-size:.9rem;box-shadow:0 8px 24px rgba(2,32,71,.18);opacity:0;transform:translateY(-8px);transition:opacity .25s,transform .25s}
+.cp-toast.show{opacity:1;transform:translateY(0)}
+.cp-toast-success{background:#15803d}.cp-toast-error{background:#b91c1c}.cp-toast-info{background:#1d4ed8}
+</style>
+
+<%# UNE SEULE discipline de reseau pour toute l application :
+    public/js/sa-console-net.js. Une reponse REDIRIGEE, non-JSON, 401/440 est
+    un ECHEC -- jamais un succes -- et le refus est ecrit dans la langue de la
+    page. Charge AVANT le script de la page (non differe) pour que SAConsoleNet
+    existe au premier appel. %>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  // Titre de la carte de refus : neutre, car ces ecrans ne sont pas la console de
+  // revue (sans cela ils affichaient « La file de revue n a pas pu etre chargee »).
+  load_failed: __('dash:unable_to_load'),
+  pending_failed: __('dash:unable_to_load'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+const CP_T = {
+  loading: <%- JSON.stringify(__('coaching:context_loading')) %>,
+  noEmployees: <%- JSON.stringify(__('coaching:no_employees')) %>,
+  activeSuffix: <%- JSON.stringify(__('coaching:active_suffix')) %>,
+  none: <%- JSON.stringify(__('coaching:none')) %>,
+  startPlan: <%- JSON.stringify(__('coaching:start_plan')) %>,
+  rosterCount: <%- JSON.stringify(__('coaching:roster_count')) %>,
+  ctxSelect: <%- JSON.stringify(__('coaching:ctx_select')) %>,
+  ctxGaps: <%- JSON.stringify(__('coaching:ctx_gaps')) %>,
+  ctxLevel: <%- JSON.stringify(__('coaching:ctx_level')) %>,
+  ctxCritical: <%- JSON.stringify(__('coaching:ctx_critical')) %>,
+  ctxIdps: <%- JSON.stringify(__('coaching:ctx_idps')) %>,
+  ctxPips: <%- JSON.stringify(__('coaching:ctx_pips')) %>,
+  ctxNone: <%- JSON.stringify(__('coaching:ctx_none')) %>,
+  ctxFailed: <%- JSON.stringify(__('coaching:ctx_failed')) %>,
+  errPickContext: <%- JSON.stringify(__('coaching:err_pick_context')) %>,
+  errTitleRequired: <%- JSON.stringify(__('coaching:err_title_required')) %>,
+  toastCreated: <%- JSON.stringify(__('coaching:toast_created')) %>,
+  noPlans: <%- JSON.stringify(__('coaching:no_plans')) %>,
+  promptSessionNote: <%- JSON.stringify(__('coaching:prompt_session_note')) %>,
+  btnNote: <%- JSON.stringify(__('coaching:btn_note')) %>,
+  btnValidate: <%- JSON.stringify(__('coaching:btn_validate')) %>,
+  btnCancel: <%- JSON.stringify(__('coaching:btn_cancel')) %>,
+  monitorOverdue: <%- JSON.stringify(__('coaching:monitor_overdue')) %>,
+  st: <%- include('../../partials/json-script', { v: { draft: __('coaching:st_draft'), active: __('coaching:st_active'), completed: __('coaching:st_completed'), cancelled: __('coaching:st_cancelled') } }) %>,
+  kind: <%- include('../../partials/json-script', { v: { coaching: __('coaching:kind_coaching'), mentoring: __('coaching:kind_mentoring') } }) %>,
+  promptCancelReason: <%- JSON.stringify(__('coaching:prompt_cancel_reason')) %>,
+  cancelRequested: <%- JSON.stringify(__('coaching:cancel_requested')) %>
+};
+const CP = {
+  roster:[],
+  lbl(map,v){ return (map && map[v]) || v || ''; },
+  // L assistant reseau ne se recopie plus ici : il vit dans
+  // public/js/sa-console-net.js (SAConsoleNet.call). L ancien corps avalait
+  // `r.json` en `{}` ; sur une session expiree le serveur repondait
+  // `302 -> /login`, le fetch de navigateur SUIVAIT la redirection, la page de
+  // connexion arrivait en `200 text/html`, `r.ok` valait donc true et `j`
+  // valait `{}` : le test `if(!r.ok||j.ok===false)` ne voyait rien.
+  // Mesure du 16/09/2026 : create enchainait sur un toast VERT « Plan de coaching cree » pendant que coaching_plans restait a 0 avant / 0 apres.
+  async api(p,m,b){ try { return await SAConsoleNet.call(p,m,b); } catch(e){ this.toast(e.message,'error'); throw e; } },
+
+  toast(msg,type){const c=document.getElementById('cp-toasts');const t=document.createElement('div');t.className='cp-toast cp-toast-'+(type||'info');t.textContent=msg;c.appendChild(t);requestAnimationFrame(()=>t.classList.add('show'));setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300);},type==='error'?5000:3000);},
+  fieldError(msg,focusId){const e=document.getElementById('cp-error');e.textContent=msg;e.hidden=false;if(focusId){const f=document.getElementById(focusId);if(f){f.classList.add('cp-invalid');f.focus();f.addEventListener('change',()=>f.classList.remove('cp-invalid'),{once:true});}}},
+  clearError(){const e=document.getElementById('cp-error');e.hidden=true;e.textContent='';['cp-context','cp-title'].forEach(id=>{const f=document.getElementById(id);if(f)f.classList.remove('cp-invalid');});},
+
+  show(which){
+    document.getElementById('cp-roster-panel').style.display = which==='roster'?'':'none';
+    document.getElementById('cp-plans-panel').style.display  = which==='plans'?'':'none';
+    document.getElementById('cp-tab-roster').className='btn '+(which==='roster'?'btn-primary':'btn-secondary');
+    document.getElementById('cp-tab-plans').className ='btn '+(which==='plans'?'btn-primary':'btn-secondary');
+    if(which==='plans') this.load();
+  },
+
+  // roster
+  async loadRoster(){ const j=await this.api('/api/coaching/roster'); this.roster=j.employees||[]; this.renderRoster(); },
+  renderRoster(){
+    const q=(document.getElementById('cp-search').value||'').toLowerCase();
+    const rows=this.roster.filter(e=>!q||((e.firstName+' '+e.lastName+' '+(e.roleName||'')+' '+(e.serviceName||'')+' '+(e.employeeNumber||'')).toLowerCase().includes(q)));
+    const body=document.getElementById('cp-roster-body');
+    if(!rows.length){ body.innerHTML='<tr><td style="padding:1rem;color:#94a3b8" colspan="5">'+esc(CP_T.noEmployees)+'</td></tr>'; document.getElementById('cp-roster-count').textContent=''; return; }
+    body.innerHTML=rows.map(e=>'<tr style="border-top:1px solid #f1f5f9">'+
+      '<td style="padding:.5rem .75rem"><strong>'+esc(e.firstName+" "+e.lastName)+'</strong><div style="color:#94a3b8;font-size:.78rem">'+esc(e.employeeNumber||'')+'</div></td>'+
+      '<td style="padding:.5rem">'+esc(e.roleName||'—')+'</td>'+
+      '<td style="padding:.5rem;color:#64748b">'+esc((e.serviceName||'—')+' · '+(e.siteName||'—'))+'</td>'+
+      '<td style="padding:.5rem">'+(e.planCount?('<span class="badge" style="background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:999px;font-size:.78rem">'+e.planCount+' '+esc(CP_T.activeSuffix)+'</span>'):'<span style="color:var(--text-muted)">'+esc(CP_T.none)+'</span>')+'</td>'+
+      '<td style="padding:.5rem;text-align:right;white-space:nowrap">'+
+        '<button class="btn btn-sm btn-primary" data-emp="'+esc(e.employeeId)+'" data-name="'+esc(e.firstName+" "+e.lastName)+'" onclick="CP.startBtn(this)"><i class="fas fa-people-arrows" aria-hidden="true"></i> '+esc(CP_T.startPlan)+'</button>'+
+      '</td></tr>').join('');
+    document.getElementById('cp-roster-count').textContent=CP_T.rosterCount.replace('{{shown}}',rows.length).replace('{{total}}',this.roster.length);
+  },
+
+  // The employee travels on data- attributes and is read back through dataset.
+  // It used to be spliced into onclick="CP.start(id,'coaching','NAME')" behind
+  // esc(name).replace(/'/g,...) - a no-op, because esc had already turned the
+  // quote into &#39;, which the HTML parser decodes back BEFORE the handler is
+  // compiled: a first name  x');alert(1);//  ran for every manager opening this
+  // page, and O'Brien threw a SyntaxError. Never put a value in a JS string
+  // inside an HTML attribute.
+  startBtn(btn){ this.start(Number(btn.dataset.emp),'coaching',btn.dataset.name||''); },
+
+  // modal
+  start(empId,kind,name){
+    document.getElementById('cp-emp').value=empId;
+    document.getElementById('cp-kind').value=kind||'coaching';
+    document.getElementById('cp-modal-name').textContent=name;
+    ['cp-title','cp-obj','cp-out','cp-target'].forEach(id=>document.getElementById(id).value='');
+    this.clearError();
+    this.loadContext(empId);
+    document.getElementById('cp-modal').style.display='flex';
+  },
+  async loadContext(empId){
+    const sel=document.getElementById('cp-context');
+    sel.innerHTML='<option value="">'+esc(CP_T.loading)+'</option>';
+    try{
+      const {options}=await this.api('/api/coaching/context/'+empId);
+      const g=options.gaps||[], idps=options.idps||[], pips=options.pips||[];
+      let html='<option value="">'+esc(CP_T.ctxSelect)+'</option>';
+      if(g.length) html+='<optgroup label="'+esc(CP_T.ctxGaps)+'">'+g.map(x=>'<option value="skill_gap:'+x.skillId+'">'+esc(x.skillName)+' ('+esc(CP_T.ctxLevel)+' '+x.current+'→'+x.required+(x.isCritical?', '+esc(CP_T.ctxCritical):'')+')</option>').join('')+'</optgroup>';
+      if(idps.length) html+='<optgroup label="'+esc(CP_T.ctxIdps)+'">'+idps.map(p=>'<option value="idp:'+p.id+'">IDP #'+p.id+' — '+esc(p.status)+' ('+esc(p.priority)+')</option>').join('')+'</optgroup>';
+      if(pips.length) html+='<optgroup label="'+esc(CP_T.ctxPips)+'">'+pips.map(p=>'<option value="pip:'+p.id+'">PIP #'+p.id+' — '+esc(p.state)+'</option>').join('')+'</optgroup>';
+      if(!(g.length||idps.length||pips.length)) html='<option value="">'+esc(CP_T.ctxNone)+'</option>';
+      sel.innerHTML=html;
+    }catch(e){ sel.innerHTML='<option value="">'+esc(CP_T.ctxFailed)+'</option>'; }
+  },
+  closeModal(){ this.clearError(); document.getElementById('cp-modal').style.display='none'; },
+  async create(){
+    this.clearError();
+    const ctxRaw=document.getElementById('cp-context').value;
+    if(!ctxRaw){this.fieldError(CP_T.errPickContext,'cp-context');return;}
+    const body={employeeId:Number(document.getElementById('cp-emp').value),kind:document.getElementById('cp-kind').value,title:document.getElementById('cp-title').value,objective:document.getElementById('cp-obj').value,expectedOutcome:document.getElementById('cp-out').value,targetDate:document.getElementById('cp-target').value||null};
+    if(!body.title){this.fieldError(CP_T.errTitleRequired,'cp-title');return;}
+    const sep=ctxRaw.indexOf(':');const contextType=ctxRaw.slice(0,sep);const ctxId=Number(ctxRaw.slice(sep+1));
+    body.contextType=contextType;
+    if(contextType==='idp')body.idpId=ctxId; else if(contextType==='pip')body.pipId=ctxId; else if(contextType==='skill_gap')body.skillId=ctxId;
+    const created=await this.api('/api/coaching','POST',body);
+    // « Cree » seulement sur la PREUVE renvoyee par le serveur (le plan), jamais
+    // sur la seule absence d erreur : `{}` n est pas une preuve.
+    if(!SAConsoleNet.confirmed(created,'plan')){ this.toast(SAConsoleNet.t('err_format'),'error'); return; }
+    this.toast(CP_T.toastCreated,'success');
+    this.closeModal();
+    await this.loadRoster();
+  },
+
+  async act(id,action,kind){
+    const ask=window.promptDialog;
+    if(action==='session'){const n=await ask(CP_T.promptSessionNote);if(n!==null&&n.trim())await this.api('/api/coaching/'+id+'/session','POST',{note:n});}
+    if(action==='validate')await this.api('/api/coaching/'+id+'/validate','POST',{});
+    if(action==='cancel'){
+      // Cancellation is a governed action (two-person rule): request it, a local
+      // admin approves it in the Cancellations queue. Reason is mandatory.
+      const reason=await ask(CP_T.promptCancelReason);
+      if(!reason||!reason.trim())return;
+      const et=(kind==='mentor'||kind==='mentoring')?'mentoring':'coaching';
+      const r=await this.api('/cancellations','POST',{entityType:et,entityId:id,reason:reason.trim()});
+      // `if(r)` etait vrai pour `{}` : l ecran annoncait « Annulation demandee »
+      // sur une regle des DEUX PERSONNES ou cancellation_requests restait a 0.
+      // La preuve, ici, c est le `ok:true` du controleur.
+      if(!SAConsoleNet.confirmed(r,'ok')){ this.toast(SAConsoleNet.t('err_format'),'error'); return; }
+      (window.toast||this.toast.bind(this))(CP_T.cancelRequested,'success');
+    }
+    await this.load(); await this.loadRoster();
+  },
+  badge(s){const c={draft:'#888',active:'#1b56b8',completed:'#0f8a3c',cancelled:'#b00020'}[s]||'#555';return '<span style="padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:'+c+'">'+esc(this.lbl(CP_T.st,s))+'</span>';},
+  async load(){
+    const [q,m]=await Promise.all([this.api('/api/coaching/queue'),this.api('/api/coaching/monitor')]);
+    const tb=document.querySelector('#cp-table tbody');
+    tb.innerHTML=q.items.length?q.items.map(p=>'<tr><td>'+esc((p.firstName||'')+' '+(p.lastName||''))+'</td><td>'+esc(this.lbl(CP_T.kind,p.kind))+'</td><td>'+esc(p.title)+'</td><td>'+(p.contextLabel?'<span style="background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:999px;font-size:.78rem">'+esc(p.contextLabel)+'</span>':'<span style="color:var(--text-muted)">—</span>')+'</td><td>'+(p.targetDate?String(p.targetDate).slice(0,10):'-')+'</td><td>'+this.badge(p.state)+'</td><td>'+p.progress+'%</td><td>'+
+      '<button class="btn btn-sm btn-secondary" onclick="CP.act('+p.id+',\'session\')">'+esc(CP_T.btnNote)+'</button> '+
+      (p.state==='active'?'<button class="btn btn-sm btn-success" onclick="CP.act('+p.id+',\'validate\')">'+esc(CP_T.btnValidate)+'</button> <button class="btn btn-sm btn-danger" data-kind="'+((p.kind==='mentoring'||p.kind==='mentor')?'mentoring':'coaching')+'" onclick="CP.act('+Number(p.id)+',\'cancel\',this.dataset.kind)">'+esc(CP_T.btnCancel)+'</button>':'')+
+      '</td></tr>').join(''):'<tr><td colspan="8"><em>'+esc(CP_T.noPlans)+'</em></td></tr>';
+    document.getElementById('cp-monitor-body').innerHTML=(m.monitor.byState||[]).map(s=>this.badge(s.state)+' '+s.n).join(' &nbsp; ')+' &nbsp; | '+esc(CP_T.monitorOverdue)+': '+m.monitor.overdue.length;
+  }
+};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+CP.loadRoster();
+</script>

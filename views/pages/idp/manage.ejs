@@ -1,0 +1,68 @@
+<div class="page-header">
+    <h1><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('idp:manage_heading') %></h1>
+    <a href="/v2/idp/new" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('idp:new_idp') %></a>
+</div>
+
+<div class="help-text" style="margin-bottom:1.25rem;">
+    <%= __('idp:manage_intro') %>
+</div>
+
+<%
+    const C = counts || {};
+    const badge = { draft: 'badge-secondary', active: 'badge-success', completed: 'badge-info', archived: 'badge-secondary' };
+    const statusLabel = { draft: __('idp:st_draft'), active: __('idp:st_active'), completed: __('idp:st_completed'), archived: __('idp:st_archived') };
+    const priorityLabel = { low: __('idp:pr_low'), medium: __('idp:pr_medium'), high: __('idp:pr_high') };
+%>
+<div style="margin-bottom:1rem;">
+    <span class="pill" style="display:inline-block;background:var(--bg-elevated);color:var(--text-secondary);border:1px solid var(--border);border-radius:20px;padding:2px 10px;margin:2px 4px 2px 0"><%= __('idp:st_draft') %>: <%= C.draft || 0 %></span>
+    <span class="pill" style="display:inline-block;background:var(--emerald-dim);color:var(--emerald-text);border:1px solid var(--emerald);border-radius:20px;padding:2px 10px;margin:2px 4px 2px 0"><%= __('idp:st_active') %>: <%= C.active || 0 %></span>
+    <span class="pill" style="display:inline-block;background:var(--blue-dim,rgba(91,157,245,.1));color:var(--blue-text);border:1px solid var(--blue);border-radius:20px;padding:2px 10px;margin:2px 4px 2px 0"><%= __('idp:st_completed') %>: <%= C.completed || 0 %></span>
+</div>
+
+<% if (!list || list.length === 0) { %>
+    <div class="dashboard-section"><p><%= __('idp:manage_empty') %></p></div>
+<% } else { %>
+    <div class="dashboard-section">
+        <div class="table-wrapper">
+<div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#idpm-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
+            <table class="table" id="idpm-table">
+                <thead>
+                    <tr>
+                        <th scope="col"><%= __('common:employee') %></th>
+                        <th scope="col"><%= __('idp:unit') %></th>
+                        <th scope="col"><%= __('idp:status') %></th>
+                        <th scope="col"><%= __('idp:priority') %></th>
+                        <th scope="col"><%= __('idp:objectives') %></th>
+                        <th scope="col"><%= __('idp:open_actions') %></th>
+                        <th scope="col"><%= __('idp:window') %></th>
+                        <th scope="col"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% list.forEach(function (p) { %>
+                        <tr>
+                            <th scope="row" style="text-align:left">
+                                <%= ((p.firstName || '') + ' ' + (p.lastName || '')).trim() || ('#' + p.employeeId) %>
+                                <% if (p.employeeNumber) { %><span class="text-muted" style="font-size:.85em">(<%= p.employeeNumber %>)</span><% } %>
+                            </th>
+                            <td class="text-muted" style="font-size:.9em"><%= [p.siteName, p.departmentName].filter(Boolean).join(' / ') || '—' %></td>
+                            <td>
+                                <span class="badge <%= badge[p.status] || 'badge-secondary' %>"><%= statusLabel[p.status] || p.status %></span>
+                                <% if (p.status === 'active' && p.endsOn && new Date(p.endsOn) < new Date()) { %>
+                                    <span class="badge badge-danger" title="<%= __('idp:overdue_title') %>"><%= __('idp:overdue') %></span>
+                                <% } %>
+                            </td>
+                            <td><%= priorityLabel[p.priority] || p.priority %></td>
+                            <td style="text-align:center"><%= p.objectiveCount %></td>
+                            <td style="text-align:center"><%= p.openActionCount %><span class="text-muted" style="font-size:.85em">/<%= p.actionCount %></span></td>
+                            <td class="text-muted" style="font-size:.9em">
+                                <%= p.startsOn ? new Date(p.startsOn).toLocaleDateString(typeof lang !== 'undefined' ? lang : 'fr') : '—' %><%= p.endsOn ? ' → ' + new Date(p.endsOn).toLocaleDateString(typeof lang !== 'undefined' ? lang : 'fr') : '' %>
+                            </td>
+                            <td><a class="btn btn-sm" href="/v2/idp/<%= p.id %>"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i> <%= __('idp:open') %></a></td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+<% } %>

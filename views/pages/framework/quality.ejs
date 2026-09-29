@@ -1,0 +1,153 @@
+<%#
+  « Qualité du référentiel » (3.23.21, D12/D13). HR / SuperAdmin only.
+  Every text goes through the escaping output tag. Draft proposals are listed HERE only — an
+  employee never sees one; approving copies the text into the skill.
+-%>
+<% var _canManage = (typeof can !== 'function') || can('manage_domains_skills'); %>
+<link rel="stylesheet" href="/css/sa-skill-help.css?v=<%= assetVersion %>">
+<div class="page-header">
+    <h1><i class="fas fa-spell-check" aria-hidden="true"></i> <%= __('framework:sq_title') %></h1>
+    <p class="text-muted"><%= __('framework:sq_intro') %></p>
+    <p><a href="/domains-skills"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('framework:sq_back') %></a></p>
+</div>
+
+<section class="card" style="padding:1rem;margin-bottom:1rem" aria-labelledby="sqCountsTitle">
+    <h2 id="sqCountsTitle" style="margin-top:0"><%= __('framework:sq_counts_title') %></h2>
+    <ul>
+        <li><%= __('framework:sq_count_used', { n: quality.counts.used }) %></li>
+        <li><%= __('framework:sq_count_missing', { n: quality.counts.missingDescription }) %></li>
+        <li><%= __('framework:sq_count_few', { n: quality.counts.fewAnchors }) %></li>
+        <li><%= __('framework:sq_count_open', { n: openCount }) %></li>
+    </ul>
+    <div class="sq-actions">
+        <a class="btn btn-secondary btn-sm" href="/framework/quality/export.xlsx"><i class="fas fa-file-excel" aria-hidden="true"></i> <%= __('framework:sq_export') %></a>
+        <% if (_canManage) { %>
+        <form id="sqImportForm" action="/framework/quality/import" method="POST" enctype="multipart/form-data" class="sq-actions" data-csrf="<%= csrfToken %>">
+            <label for="sqImportFile" class="sr-only"><%= __('framework:sq_import_label') %></label>
+            <input type="file" id="sqImportFile" name="file" accept=".xlsx" required>
+            <button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('framework:sq_import') %></button>
+            <span id="sqImportStatus" role="status" aria-live="polite"></span>
+        </form>
+        <% if (starterAvailable) { %>
+        <form action="/framework/quality/load-starter" method="POST">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('framework:sq_load_starter') %></button>
+        </form>
+        <% } %>
+        <% } %>
+    </div>
+    <p class="text-muted" style="font-size:.85rem;margin-bottom:0"><%= __('framework:sq_import_hint') %></p>
+</section>
+
+<section class="card" style="padding:1rem;margin-bottom:1rem" aria-labelledby="sqPropTitle">
+    <h2 id="sqPropTitle" style="margin-top:0"><%= __('framework:sq_proposals_title') %></h2>
+    <nav aria-label="<%= __('framework:sq_status_nav') %>" class="sq-actions" style="margin-bottom:.6rem">
+        <% ['proposed', 'approved', 'rejected'].forEach(function (s) { %>
+        <a class="btn btn-sm <%= status === s ? 'btn-primary' : 'btn-secondary' %>" href="/framework/quality?status=<%= s %>"<%= status === s ? ' aria-current=page' : '' %>><%= __('framework:sq_status_' + s) %></a>
+        <% }); %>
+    </nav>
+    <% if (!proposals.length) { %>
+        <p><em><%= __('framework:sq_no_proposals') %></em></p>
+    <% } else { %>
+    <% if (status === 'proposed' && _canManage) { %>
+    <form id="sqBulkForm" action="/framework/proposals/bulk-approve" method="POST"></form>
+    <% } %>
+    <div class="table-wrapper"><table class="table sq-table">
+        <thead><tr>
+            <% if (status === 'proposed' && _canManage) { %><th scope="col"><span class="sr-only"><%= __('framework:sq_select') %></span></th><% } %>
+            <th scope="col"><%= __('framework:sq_col_skill') %></th>
+            <th scope="col"><%= __('framework:sq_col_proposal') %></th>
+            <th scope="col"><%= __('framework:sq_col_source') %></th>
+            <% if (status === 'proposed' && _canManage) { %><th scope="col"><%= __('framework:sq_col_actions') %></th><% } %>
+            <% if (status === 'rejected') { %><th scope="col"><%= __('framework:sq_col_reason') %></th><% } %>
+        </tr></thead>
+        <tbody>
+        <% proposals.forEach(function (p) { %>
+            <tr>
+                <% if (status === 'proposed' && _canManage) { %>
+                <td><input type="checkbox" name="ids" value="<%= p.id %>" form="sqBulkForm" aria-label="<%= __('framework:sq_select_one', { skill: p.skillName }) %>"></td>
+                <% } %>
+                <th scope="row">
+                    <strong><%= p.skillName %></strong><br>
+                    <small class="text-muted"><%= p.pillar %><% if (p.subDomain) { %> › <%= p.subDomain %><% } %> · <%= p.category || '' %></small>
+                    <% if (p.currentFr || p.currentEn) { %><br><small><%= __('framework:sq_has_current') %></small><% } %>
+                </th>
+                <td>
+                    <% if (status === 'proposed' && _canManage) { %>
+                    <form class="sq-edit" action="/framework/proposals/<%= p.id %>" method="POST">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <label for="sqFr<%= p.id %>"><%= __('framework:sq_text_fr') %></label>
+                        <textarea id="sqFr<%= p.id %>" name="textFr" maxlength="2000"><%= p.textFr || '' %></textarea>
+                        <label for="sqEn<%= p.id %>"><%= __('framework:sq_text_en') %></label>
+                        <textarea id="sqEn<%= p.id %>" name="textEn" maxlength="2000"><%= p.textEn || '' %></textarea>
+                        <button type="submit" class="btn btn-secondary btn-sm"><%= __('framework:sq_save') %></button>
+                    </form>
+                    <% } else { %>
+                    <div class="sq-text"><strong>FR</strong> — <%= p.textFr || '—' %></div>
+                    <div class="sq-text"><strong>EN</strong> — <%= p.textEn || '—' %></div>
+                    <% } %>
+                </td>
+                <td><%= __('framework:sq_source_' + p.source) %></td>
+                <% if (status === 'proposed' && _canManage) { %>
+                <td class="sq-actions">
+                    <form action="/framework/proposals/<%= p.id %>/approve" method="POST">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <button type="submit" class="btn btn-success btn-sm"><%= __('framework:sq_approve') %></button>
+                    </form>
+                    <form action="/framework/proposals/<%= p.id %>/reject" method="POST">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <label for="sqWhy<%= p.id %>" class="sr-only"><%= __('framework:sq_reject_reason') %></label>
+                        <input id="sqWhy<%= p.id %>" name="reason" required maxlength="1000" placeholder="<%= __('framework:sq_reject_reason') %>">
+                        <button type="submit" class="btn btn-danger btn-sm"><%= __('framework:sq_reject') %></button>
+                    </form>
+                </td>
+                <% } %>
+                <% if (status === 'rejected') { %><td class="sq-text"><%= p.reason || '' %></td><% } %>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+    <% if (status === 'proposed' && _canManage) { %>
+    <div class="sq-actions" style="margin-top:.6rem">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" form="sqBulkForm">
+        <label><input type="checkbox" name="confirm" value="1" form="sqBulkForm" required> <%= __('framework:sq_bulk_confirm') %></label>
+        <button type="submit" class="btn btn-primary btn-sm" form="sqBulkForm"><%= __('framework:sq_bulk_approve') %></button>
+    </div>
+    <% } %>
+    <% } %>
+</section>
+
+<section class="card" style="padding:1rem" aria-labelledby="sqTodoTitle">
+    <h2 id="sqTodoTitle" style="margin-top:0"><%= __('framework:sq_todo_title') %></h2>
+    <p class="text-muted"><%= __('framework:sq_todo_intro') %></p>
+    <% if (!quality.items.length) { %>
+        <p><em><%= __('framework:sq_todo_none') %></em></p>
+    <% } else { %>
+    <div class="table-wrapper"><table class="table sq-table">
+        <thead><tr>
+            <th scope="col"><%= __('framework:sq_col_skill') %></th>
+            <th scope="col"><%= __('framework:sq_col_employees') %></th>
+            <th scope="col"><%= __('framework:sq_col_roles') %></th>
+            <th scope="col"><%= __('framework:sq_col_description') %></th>
+            <th scope="col"><%= __('framework:sq_col_anchors') %></th>
+        </tr></thead>
+        <tbody>
+        <% quality.items.forEach(function (q) { %>
+            <tr>
+                <th scope="row"><%= q.name %><br><small class="text-muted"><%= q.pillar %><% if (q.subDomain) { %> › <%= q.subDomain %><% } %> · <%= q.category || '' %></small></th>
+                <td><%= q.employees %></td>
+                <td><%= q.roles %></td>
+                <td><%= q.hasDescription ? __('framework:sq_yes') : (q.hasOpenProposal ? __('framework:sq_proposed') : __('framework:sq_no')) %></td>
+                <td><%= q.ownAnchors %>/5</td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+    <% } %>
+</section>
+
+<script type="application/json" id="sqI18n"><%- include('../../partials/json-script', { v: {
+    sending: __('framework:sq_import_sending'),
+    failed: __('framework:sq_err_generic')
+} }) %></script>
+<script src="/js/skill-quality.js?v=<%= assetVersion %>"></script>

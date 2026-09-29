@@ -1,0 +1,205 @@
+<%
+  // Local twin of src/utils/dateFormat.fmtDateTime — dd/MM/yyyy HH:mm in BOTH
+  // languages. Defined here rather than relied on as a view local: this view's
+  // controller does not pass one. The locale-free call this replaces printed
+  // the browser's own format -- "3/4/2026" reads as two different days to a
+  // French and an English reader.
+  function _vdt(v) {
+    if (!v) return '—';
+    var x = new Date(v);
+    if (isNaN(x.getTime())) return '—';
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return p(x.getDate()) + '/' + p(x.getMonth() + 1) + '/' + x.getFullYear()
+         + ' ' + p(x.getHours()) + ':' + p(x.getMinutes());
+  }
+%>
+<div class="page-header">
+    <h1><i class="fas fa-user-clock" aria-hidden="true"></i> <%= __('admin:onboarding_queue') %></h1>
+</div>
+
+<div class="help-text" style="margin-bottom:1.5rem;">
+    <%= __('admin:onboarding_help') %>
+</div>
+
+<%
+    const siteName = {}; (sites || []).forEach(s => siteName[String(s.id)] = s.name);
+    const deptName = {}; (departments || []).forEach(d => deptName[String(d.id)] = d.name);
+%>
+
+<% if (!requests || requests.length === 0) { %>
+    <div class="dashboard-section"><p><%= __('admin:no_pending_onboarding') %> <i class="fas fa-circle-check" aria-hidden="true"></i></p></div>
+<% } else { %>
+    <% requests.forEach(function (r) { %>
+        <div class="dashboard-section">
+            <h2 style="display:flex; align-items:center; gap:.5rem;">
+                <%= (r.firstName || r.lastName) ? ((r.firstName || '') + ' ' + (r.lastName || '')).trim() : r.email %>
+                <span class="badge <%= r.source === 'sso' ? 'badge-success' : 'badge-secondary' %>"><%= r.source === 'sso' ? ('SSO: ' + (r.authProvider || '')) : __('admin:signup_badge') %></span>
+            </h2>
+            <p class="help-text"><strong><%= __('admin:email') %>:</strong> <%= r.email %>
+                &nbsp;·&nbsp; <strong><%= __('admin:requested') %>:</strong> <%= r.requestedAt ? _vdt(r.requestedAt) : '' %></p>
+
+            <% var _mergeDefault = false;
+               if (r.source === 'sso' && r.hasMatches) {
+                 var mergeable = r.matches.employees.concat((typeof isSuperAdmin !== 'undefined' && isSuperAdmin) ? r.matches.admins.map(function(a){a._admin=true;return a;}) : []);
+                 // F10 (3.23.21): during an SSO migration, attaching is the default.
+                 _mergeDefault = mergeable.length > 0 && typeof migrationRunning !== 'undefined' && !!migrationRunning;
+               if (mergeable.length) { %>
+            <div class="callout" style="border:1px solid var(--brand,#b8860b); border-radius:8px; padding:.85rem 1rem; margin:.5rem 0 1rem; background:rgba(184,134,11,.06);">
+                <p style="margin:0 0 .5rem;"><i class="fas fa-link" aria-hidden="true"></i>
+                    <strong><%= __('admin:onb_merge_title') %></strong>
+                    <%= __('admin:onb_merge_body') %></p>
+                <form action="/onboarding/<%= r.id %>/merge" method="POST" style="display:flex; flex-wrap:wrap; gap:.5rem; align-items:center;">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <select name="_target" class="form-control" style="max-width:420px;"
+                        onchange="var v=this.value.split(':'); this.form.targetType.value=v[0]; this.form.targetId.value=v[1];">
+                        <% mergeable.forEach(function(m){ %>
+                            <option value="<%= m._admin ? 'admin' : 'employee' %>:<%= m.id %>">
+                                <%= m._admin ? __('admin:onb_role_admin') : __('admin:onb_role_employee') %>: <%= m.username %><%= m.email ? ' · ' + m.email : '' %><%= m._admin ? ' · ' + m.role : (m.employeeNumber ? ' · ' + m.employeeNumber : '') %><%= m.hasIdentity ? __('admin:onb_already_linked') : '' %>
+                            </option>
+                        <% }); %>
+                    </select>
+                    <input type="hidden" name="targetType" value="<%= mergeable[0]._admin ? 'admin' : 'employee' %>">
+                    <input type="hidden" name="targetId" value="<%= mergeable[0].id %>">
+                    <button type="submit" class="btn <%= _mergeDefault ? 'btn-primary' : 'btn-secondary' %>" data-onb-merge-default="<%= _mergeDefault ? '1' : '0' %>"><i class="fas fa-code-merge" aria-hidden="true"></i> <%= __('admin:onb_merge_btn') %></button>
+                </form>
+                <% if (_mergeDefault) { %><p class="help-text" style="margin:.5rem 0 0;"><%= __('admin:ssom_onb_merge_default') %></p><% } %>
+            </div>
+            <% } } %>
+
+            <% const pd = (typeof placementDraft !== 'undefined' && placementDraft && String(placementDraft.requestId) === String(r.id)) ? placementDraft : null; %>
+            <% if (_mergeDefault) { %><details class="onb-create-anyway"><summary><%= __('admin:ssom_onb_create_anyway') %></summary><% } %>
+            <form action="/onboarding/<%= r.id %>/approve" method="POST" class="onb-placement-form">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <% if (_mergeDefault) { %>
+                <label for="onb-<%= r.id %>-create-anyway" style="display:flex; gap:.5rem; align-items:flex-start; margin:.5rem 0;">
+                    <input type="checkbox" id="onb-<%= r.id %>-create-anyway" name="createAnyway" value="1" required>
+                    <span><%= __('admin:ssom_onb_create_anyway_check') %></span>
+                </label>
+                <% } %>
+                <div class="form-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem;">
+                    <div class="form-group">
+                        <label for="onb-<%= r.id %>-f2-employeeNumber"><%= __('admin:employee_number_label') %></label>
+                        <input id="onb-<%= r.id %>-f2-employeeNumber" type="text" name="employeeNumber" class="form-control" value="<%= pd ? (pd.employeeNumber || '') : '' %>" placeholder="ONB-<%= r.id %> <%= __('admin:auto_if_blank') %>">
+                    </div>
+                    <div class="form-group">
+                        <label for="onb-<%= r.id %>-f2-firstName"><%= __('admin:onb_first_name') %></label>
+                        <input id="onb-<%= r.id %>-f2-firstName" type="text" name="firstName" class="form-control" value="<%= pd ? (pd.firstName || '') : (r.firstName || '') %>" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="onb-<%= r.id %>-f2-lastName"><%= __('admin:onb_last_name') %></label>
+                        <input id="onb-<%= r.id %>-f2-lastName" type="text" name="lastName" class="form-control" value="<%= pd ? (pd.lastName || '') : (r.lastName || '') %>" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="onb-<%= r.id %>-f2-siteId"><%= __('admin:site') %> *</label>
+                        <select id="onb-<%= r.id %>-f2-siteId" name="siteId" class="form-control" required data-cascade="site">
+                            <option value=""><%= __('admin:select_option') %></option>
+                            <% (sites || []).forEach(s => { %><option value="<%= s.id %>" <%= pd && String(pd.siteId) === String(s.id) ? 'selected' : '' %>><%= s.name %></option><% }); %>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="onb-<%= r.id %>-f2-departmentId"><%= __('admin:department') %> *</label>
+                        <select id="onb-<%= r.id %>-f2-departmentId" name="departmentId" class="form-control" required data-cascade="department">
+                            <option value=""><%= __('admin:select_option') %></option>
+                            <% (departments || []).forEach(d => { %><option value="<%= d.id %>" data-site-id="<%= d.siteId || '' %>" <%= pd && String(pd.departmentId) === String(d.id) ? 'selected' : '' %>><%= d.name %><%= d.siteId && siteName[String(d.siteId)] ? ' (' + siteName[String(d.siteId)] + ')' : '' %></option><% }); %>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="onb-<%= r.id %>-f2-serviceId"><%= __('admin:service') %> *</label>
+                        <select id="onb-<%= r.id %>-f2-serviceId" name="serviceId" class="form-control" required data-cascade="service">
+                            <option value=""><%= __('admin:select_option') %></option>
+                            <% (services || []).forEach(sv => { %><option value="<%= sv.id %>" data-department-id="<%= sv.departmentId || '' %>" data-site-id="<%= sv.departmentId && departments && (departments.find(function(d){return String(d.id)===String(sv.departmentId);})||{}).siteId || '' %>" <%= pd && String(pd.serviceId) === String(sv.id) ? 'selected' : '' %>><%= sv.name %><%= sv.departmentId && deptName[String(sv.departmentId)] ? ' (' + deptName[String(sv.departmentId)] + ')' : '' %></option><% }); %>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="onb-<%= r.id %>-f2-roleId"><%= __('admin:role') %> *</label>
+                        <select id="onb-<%= r.id %>-f2-roleId" name="roleId" class="form-control" required>
+                            <option value=""><%= __('admin:select_option') %></option>
+                            <% (roles || []).forEach(ro => { %><option value="<%= ro.id %>" <%= pd && String(pd.roleId) === String(ro.id) ? 'selected' : '' %>><%= ro.name %></option><% }); %>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="onb-<%= r.id %>-f2-supervisorId"><%= __('admin:supervisor_optional') %></label>
+                        <select id="onb-<%= r.id %>-f2-supervisorId" name="supervisorId" class="form-control" data-searchable data-cascade="person">
+                            <option value=""><%= __('admin:none_option') %></option>
+                            <% (employees || []).forEach(e => { %><option value="<%= e.id %>" data-site-id="<%= e.siteId || '' %>" <%= pd && String(pd.supervisorId) === String(e.id) ? 'selected' : '' %>><%= personName(e) %> (<%= e.employeeNumber %>)</option><% }); %>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="onb-<%= r.id %>-f2-managerId"><%= __('admin:manager_optional') %></label>
+                        <select id="onb-<%= r.id %>-f2-managerId" name="managerId" class="form-control" data-searchable data-cascade="person">
+                            <option value=""><%= __('admin:none_option') %></option>
+                            <% (employees || []).forEach(e => { %><option value="<%= e.id %>" data-site-id="<%= e.siteId || '' %>" <%= pd && String(pd.managerId) === String(e.id) ? 'selected' : '' %>><%= personName(e) %> (<%= e.employeeNumber %>)</option><% }); %>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn <%= _mergeDefault ? 'btn-secondary' : 'btn-primary' %>"><i class="fas fa-user-check" aria-hidden="true"></i> <%= __('admin:place_create_account') %></button>
+            </form>
+            <% if (_mergeDefault) { %></details><% } %>
+
+            <form action="/onboarding/<%= r.id %>/reject" method="POST" style="margin-top:.75rem;"
+                data-confirm="<%= __('admin:reject_onboarding_confirm') %>" data-confirm-title="<%= __('admin:cfm_reject_title') %>" data-confirm-danger>
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="text" name="note" class="form-control" placeholder="<%= __('admin:reason_optional') %>" style="display:inline-block; max-width:320px;">
+                <button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-user-xmark" aria-hidden="true"></i> <%= __('admin:reject') %></button>
+            </form>
+        </div>
+    <% }); %>
+<% } %>
+
+<%# Site-scoped cascade: site names legitimately repeat across the 9 sites, so a
+    flat cross-site option list lets a reviewer place someone into a department /
+    service / supervisor that belongs to a DIFFERENT site. This narrows each
+    dependent picker to the chosen site (and the service picker to the chosen
+    department). Options carry data-site-id / data-department-id; we only
+    show/hide — the POST payload is unchanged. %>
+<script nonce="<%= cspNonce %>">
+    (function () {
+        // Show only options whose `attr` matches `value` (empty value or empty
+        // option attribute => always shown, e.g. the "— select —" placeholder).
+        // If the current selection gets hidden, clear it so a stale cross-site
+        // value can't be submitted.
+        function filterByAttr(select, attr, value) {
+            if (!select) return;
+            var opts = select.options, clearSel = false;
+            for (var i = 0; i < opts.length; i++) {
+                var o = opts[i];
+                if (o.value === '') { o.hidden = false; o.disabled = false; continue; }
+                var ov = o.getAttribute(attr) || '';
+                var show = !value || !ov || ov === value;
+                o.hidden = !show;
+                o.disabled = !show; // Safari ignores hidden options
+                if (!show && o.selected) clearSel = true;
+            }
+            if (clearSel) select.value = '';
+        }
+
+        document.querySelectorAll('form.onb-placement-form').forEach(function (form) {
+            var siteSel = form.querySelector('[data-cascade="site"]');
+            var deptSel = form.querySelector('[data-cascade="department"]');
+            var svcSel = form.querySelector('[data-cascade="service"]');
+            var persons = form.querySelectorAll('[data-cascade="person"]');
+
+            function applyDept() { filterByAttr(deptSel, 'data-site-id', siteSel ? siteSel.value : ''); }
+            function applyService() {
+                if (!svcSel) return;
+                var deptVal = deptSel ? deptSel.value : '';
+                var siteVal = siteSel ? siteSel.value : '';
+                // Department is the tighter constraint; fall back to site when no
+                // department is chosen yet.
+                if (deptVal) filterByAttr(svcSel, 'data-department-id', deptVal);
+                else filterByAttr(svcSel, 'data-site-id', siteVal);
+            }
+            function applyPersons() {
+                var v = siteSel ? siteSel.value : '';
+                persons.forEach(function (p) { filterByAttr(p, 'data-site-id', v); });
+            }
+
+            if (siteSel) siteSel.addEventListener('change', function () { applyDept(); applyService(); applyPersons(); });
+            if (deptSel) deptSel.addEventListener('change', applyService);
+
+            // Initial pass — respects a repopulated placement draft (consistent
+            // by construction) and no-ops when nothing is selected yet.
+            applyDept(); applyService(); applyPersons();
+        });
+    })();
+</script>

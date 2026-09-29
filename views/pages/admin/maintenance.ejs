@@ -1,0 +1,825 @@
+<%
+/*
+ * SuperAdmin maintenance — cancelling a record that should not exist.
+ *
+ * Every action on this page asks for a reason before it will submit, because the
+ * reason is the only thing that distinguishes maintenance from tampering when
+ * somebody reads the audit trail six months later. The banner says plainly that
+ * these actions bypass the two-person cancellation rule; hiding that would make
+ * the panel feel safer than it is.
+ *
+ * Lists are bounded (see MaintenanceService) so this page cannot grow into the
+ * multi-megabyte render that made /skill-matrix time out.
+ */
+// One date format per language — the shared helper, not toLocaleString.
+const fmtDate = (d) => (typeof fmtDateTime === 'function' ? fmtDateTime(d) : (d ? new Date(d).toLocaleString('fr') : '—'));
+// one order product-wide (src/utils/personName.js) — given name, then
+// family name; never a stray separator when one of the two halves is missing.
+const who = (r) => [r.firstName, r.lastName].map((v) => String(v == null ? '' : v).trim()).filter(Boolean).join(' ');
+// States come from three different enums; enumLabel keeps them out of the page raw.
+const st = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel(v) : v) : '—');
+const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state', v) : v) : '—');
+%>
+
+<%
+/* Pager strip shared by the six lists: range, previous, next — every other
+   filter is already in the URLs the controller built. */
+%>
+<% const pager = function (p, anchor) { %>
+  <div class="mnt-pager" id="<%= anchor %>">
+    <span class="text-muted"><%= __('admin:ops_maint_range', { from: p.from, to: p.to, total: p.total }) %></span>
+    <% if (p.prevUrl) { %><a class="btn btn-sm" href="<%= p.prevUrl %>"><%= __('admin:ops_maint_prev') %></a><% } %>
+    <% if (p.nextUrl) { %><a class="btn btn-sm" href="<%= p.nextUrl %>"><%= __('admin:ops_maint_next') %></a><% } %>
+  </div>
+<% }; %>
+
+<div class="page-header">
+  <h1><i class="fas fa-screwdriver-wrench" aria-hidden="true"></i> <%= __('admin:maint_title') %></h1>
+  <p class="text-muted"><%= __('admin:maint_subtitle') %></p>
+</div>
+
+<div class="card mnt-warn" role="note">
+  <strong><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('admin:maint_warn_title') %></strong>
+  <p style="margin:.4rem 0 0"><%= __('admin:maint_warn_body') %></p>
+</div>
+
+<!-- ── Search / filter (): server-side, applies to every list ──── -->
+<form class="card mnt-card mnt-filters" method="GET" action="/admin/maintenance" data-filter-memory>
+  <h2 class="mnt-h2"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:ops_maint_filters') %></h2>
+  <div class="mnt-row">
+    <label class="mnt-label" for="mntQ"><%= __('admin:maint_col_employee') %></label>
+    <input id="mntQ" type="search" name="q" class="form-control mnt-input" value="<%= filters.q || '' %>" placeholder="<%= __('admin:ops_maint_q_ph') %>">
+    <label class="mnt-label" for="mntSite"><%= __('admin:ops_maint_site') %></label>
+    <select id="mntSite" name="siteId" class="form-control">
+      <option value=""><%= __('admin:ops_maint_all') %></option>
+      <% sites.forEach(function(s){ %><option value="<%= s.id %>" <%= String(filters.siteId) === String(s.id) ? 'selected' : '' %>><%= s.name %></option><% }); %>
+    </select>
+    <% if (filters.employeeId) { %><input type="hidden" name="employee" value="<%= filters.employeeId %>"><% } %>
+    <button type="submit" class="btn btn-primary"><%= __('admin:ops_maint_apply') %></button>
+    <a class="btn" href="/admin/maintenance?reset=1"><%= __('admin:ops_maint_reset') %></a>
+  </div>
+</form>
+
+<!-- ── IDP / PIP ─────────────────────────────────────────────────────────── -->
+<section class="card mnt-card">
+  <h2 class="mnt-h2"><%= __('admin:maint_plans_title') %> <span class="chip"><%= plansPager.total %></span></h2>
+  <p class="text-muted mnt-hint"><%= __('admin:maint_plans_hint') %></p>
+  <% if (!plans.length) { %>
+    <p class="text-muted"><%= plansPager.total ? __('admin:ops_maint_none') : __('admin:maint_none_plans') %></p>
+  <% } else { %>
+  <div class="mnt-scroll">
+    <table class="table">
+      <thead><tr>
+        <th><%= __('admin:maint_col_type') %></th>
+        <th><%= __('admin:maint_col_employee') %></th>
+        <th><%= __('admin:maint_col_state') %></th>
+        <th><%= __('admin:maint_col_created') %></th>
+        <th class="mnt-right"><%= __('admin:maint_col_action') %></th>
+      </tr></thead>
+      <tbody>
+      <% plans.forEach(function(p){ %>
+        <tr>
+          <td><span class="chip"><%= p.entityType.toUpperCase() %></span></td>
+          <td><%= who(p) %><%= p.employeeNumber ? ' · ' + p.employeeNumber : '' %></td>
+          <td><%= st(p.state) %></td>
+          <td><%= fmtDate(p.createdAt) %></td>
+          <td class="mnt-right">
+            <button type="button" class="btn btn-sm btn-danger"
+                    data-mnt-action="plan" data-mnt-id="<%= p.id %>" data-mnt-type="<%= p.entityType %>" data-mnt-what="<%= p.entityType.toUpperCase() + ' — ' + who(p) %>">
+              <%= __('admin:maint_cancel') %>
+            </button>
+          </td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% pager(plansPager, 'pPlans'); %>
+  <% } %>
+</section>
+
+<!-- ── Plans this panel cancelled — the "Rétablir" list  ───────────── -->
+<section class="card mnt-card">
+  <h2 class="mnt-h2"><%= __('admin:ops_maint_cancelled_plans') %> <span class="chip"><%= cancelledPlansPager.total %></span></h2>
+  <% if (!cancelledPlans.length) { %>
+    <p class="text-muted"><%= __('admin:ops_maint_none') %></p>
+  <% } else { %>
+  <div class="mnt-scroll">
+    <table class="table">
+      <thead><tr>
+        <th><%= __('admin:maint_col_type') %></th>
+        <th><%= __('admin:maint_col_employee') %></th>
+        <th><%= __('admin:ops_maint_prev_state') %></th>
+        <th><%= __('admin:ops_maint_cancelled_at') %></th>
+        <th><%= __('admin:ops_maint_reason_col') %></th>
+        <th class="mnt-right"><%= __('admin:maint_col_action') %></th>
+      </tr></thead>
+      <tbody>
+      <% cancelledPlans.forEach(function(p){ %>
+        <tr>
+          <td><span class="chip"><%= String(p.entityType).toUpperCase() %></span></td>
+          <td><%= who(p) %><%= p.employeeNumber ? ' · ' + p.employeeNumber : '' %></td>
+          <td><%= st(p.previousState) %></td>
+          <td><%= fmtDate(p.cancelledAt) %></td>
+          <td class="mnt-reason"><%= p.reason || '—' %></td>
+          <td class="mnt-right">
+            <button type="button" class="btn btn-sm"
+                    data-mnt-action="restorePlan" data-mnt-id="<%= p.id %>" data-mnt-type="<%= p.entityType %>" data-mnt-what="<%= String(p.entityType).toUpperCase() + ' — ' + who(p) %>">
+              <%= __('admin:ops_maint_restore') %>
+            </button>
+          </td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% pager(cancelledPlansPager, 'pCplans'); %>
+  <% } %>
+</section>
+
+<!-- ── Assessments ───────────────────────────────────────────────────────── -->
+<section class="card mnt-card">
+  <h2 class="mnt-h2"><%= __('admin:maint_assess_title') %> <span class="chip"><%= assessmentsPager.total %></span></h2>
+  <p class="text-muted mnt-hint"><%= __('admin:maint_assess_hint') %></p>
+  <% if (!assessments.length) { %>
+    <p class="text-muted"><%= assessmentsPager.total ? __('admin:ops_maint_none') : __('admin:maint_none_assessments') %></p>
+  <% } else { %>
+  <div class="mnt-scroll">
+    <table class="table">
+      <thead><tr>
+        <th><%= __('admin:maint_col_employee') %></th>
+        <th><%= __('admin:maint_col_skill') %></th>
+        <th><%= __('admin:maint_col_self_level') %></th>
+        <th><%= __('admin:maint_col_state') %></th>
+        <th><%= __('admin:maint_col_updated') %></th>
+        <th class="mnt-right"><%= __('admin:maint_col_action') %></th>
+      </tr></thead>
+      <tbody>
+      <% assessments.forEach(function(a){ %>
+        <tr>
+          <td><%= who(a) %><%= a.employeeNumber ? ' · ' + a.employeeNumber : '' %></td>
+          <td><%= a.skillName || ('#' + a.skillId) %></td>
+          <td><%= a.selfLevel != null ? a.selfLevel : '—' %></td>
+          <td><%= saSt(a.state) %></td>
+          <td><%= fmtDate(a.updatedAt) %></td>
+          <td class="mnt-right">
+            <% if (a.state === 'approved') { %>
+            <button type="button" class="btn btn-sm"
+                    data-mnt-action="reopen" data-mnt-id="<%= a.id %>" data-mnt-what="<%= (a.skillName || ('#' + a.skillId)) + ' — ' + who(a) %>">
+              <%= __('admin:maint_reopen') %>
+            </button>
+            <% } %>
+            <% if (a.state === 'under_review' || a.state === 'changes_requested' || a.state === 'reviewed') { %>
+            <button type="button" class="btn btn-sm"
+                    data-mnt-action="review" data-mnt-id="<%= a.id %>" data-mnt-what="<%= (a.skillName || ('#' + a.skillId)) + ' — ' + who(a) %>">
+              <%= __('admin:maint_withdraw_review') %>
+            </button>
+            <% } %>
+            <button type="button" class="btn btn-sm btn-danger"
+                    data-mnt-action="assessment" data-mnt-id="<%= a.id %>" data-mnt-what="<%= (a.skillName || ('#' + a.skillId)) + ' — ' + who(a) %>">
+              <%= __('admin:maint_cancel') %>
+            </button>
+          </td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% pager(assessmentsPager, 'pAssess'); %>
+  <% } %>
+</section>
+
+<!-- ── 9-box ─────────────────────────────────────────────────────────────── -->
+<section class="card mnt-card">
+  <h2 class="mnt-h2"><%= __('admin:maint_ninebox_title') %> <span class="chip"><%= placementsPager.total %></span></h2>
+  <p class="text-muted mnt-hint"><%= __('admin:maint_ninebox_hint') %></p>
+  <% if (!placements.length) { %>
+    <p class="text-muted"><%= placementsPager.total ? __('admin:ops_maint_none') : __('admin:maint_none_placements') %></p>
+  <% } else { %>
+  <div class="mnt-scroll">
+    <table class="table">
+      <thead><tr>
+        <th><%= __('admin:maint_col_employee') %></th>
+        <th><%= __('admin:maint_col_box') %></th>
+        <th><%= __('admin:maint_col_state') %></th>
+        <th><%= __('admin:maint_col_updated') %></th>
+        <th class="mnt-right"><%= __('admin:maint_col_action') %></th>
+      </tr></thead>
+      <tbody>
+      <% placements.forEach(function(p){ %>
+        <tr>
+          <td><%= who(p) %><%= p.employeeNumber ? ' · ' + p.employeeNumber : '' %></td>
+          <td><%= p.boxLabel || (p.box != null ? ('Box ' + p.box) : '—') %></td>
+          <td><%= st(p.status) %></td>
+          <td><%= fmtDate(p.updatedAt) %></td>
+          <td class="mnt-right">
+            <button type="button" class="btn btn-sm btn-danger"
+                    data-mnt-action="placement" data-mnt-id="<%= p.id %>" data-mnt-what="<%= (p.boxLabel || ('Box ' + p.box)) + ' — ' + who(p) %>">
+              <%= __('admin:maint_cancel') %>
+            </button>
+          </td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% pager(placementsPager, 'pPlace'); %>
+  <% } %>
+</section>
+
+<!-- ── 9-box positions this panel archived — "Rétablir"  ───────────── -->
+<section class="card mnt-card">
+  <h2 class="mnt-h2"><%= __('admin:ops_maint_cancelled_placements') %> <span class="chip"><%= cancelledPlacementsPager.total %></span></h2>
+  <% if (!cancelledPlacements.length) { %>
+    <p class="text-muted"><%= __('admin:ops_maint_none') %></p>
+  <% } else { %>
+  <div class="mnt-scroll">
+    <table class="table">
+      <thead><tr>
+        <th><%= __('admin:maint_col_employee') %></th>
+        <th><%= __('admin:maint_col_box') %></th>
+        <th><%= __('admin:ops_maint_prev_state') %></th>
+        <th><%= __('admin:ops_maint_cancelled_at') %></th>
+        <th><%= __('admin:ops_maint_reason_col') %></th>
+        <th class="mnt-right"><%= __('admin:maint_col_action') %></th>
+      </tr></thead>
+      <tbody>
+      <% cancelledPlacements.forEach(function(p){ %>
+        <tr>
+          <td><%= who(p) %><%= p.employeeNumber ? ' · ' + p.employeeNumber : '' %></td>
+          <td><%= p.boxLabel || (p.box != null ? ('Box ' + p.box) : '—') %></td>
+          <td><%= st(p.previousState) %></td>
+          <td><%= fmtDate(p.cancelledAt) %></td>
+          <td class="mnt-reason"><%= p.reason || '—' %></td>
+          <td class="mnt-right">
+            <button type="button" class="btn btn-sm"
+                    data-mnt-action="restorePlacement" data-mnt-id="<%= p.id %>" data-mnt-what="<%= (p.boxLabel || ('Box ' + p.box)) + ' — ' + who(p) %>">
+              <%= __('admin:ops_maint_restore') %>
+            </button>
+          </td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% pager(cancelledPlacementsPager, 'pCplace'); %>
+  <% } %>
+</section>
+
+<!-- ── Employee record ───────────────────────────────────────────────────── -->
+<section class="card mnt-card">
+  <h2 class="mnt-h2"><%= __('admin:maint_employee_title') %></h2>
+  <p class="text-muted mnt-hint"><%= __('admin:maint_employee_hint') %></p>
+  <div class="mnt-row">
+    <label for="mntEmp" class="mnt-label"><%= __('admin:maint_employee_pick') %></label>
+    <input id="mntEmp" list="mntEmpList" class="form-control mnt-input"
+           placeholder="<%= __('admin:maint_employee_ph') %>" autocomplete="off">
+    <datalist id="mntEmpList">
+      <% candidates.forEach(function(e){ %>
+        <option value="<%= e.id %>"><%= who(e) %><%= e.employeeNumber ? ' · ' + e.employeeNumber : '' %><%= e.isActive ? '' : ' · ' + __('admin:maint_inactive') %></option>
+      <% }); %>
+    </datalist>
+    <button type="button" class="btn btn-danger" onclick="mntVoidEmployee()"><%= __('admin:maint_void') %></button>
+  </div>
+  <% if (candidatesTruncated) { %>
+    <p class="text-muted mnt-hint"><%= __('admin:maint_employee_truncated') %></p>
+  <% } %>
+</section>
+
+<!-- ── Voided records ────────────────────────────────────────────────────── -->
+<section class="card mnt-card">
+  <h2 class="mnt-h2"><%= __('admin:maint_voided_title') %> <span class="chip"><%= voidedPager.total %></span></h2>
+  <% if (!voided.length) { %>
+    <p class="text-muted"><%= voidedPager.total ? __('admin:ops_maint_none') : __('admin:maint_none_voided') %></p>
+  <% } else { %>
+  <div class="mnt-scroll">
+    <table class="table">
+      <thead><tr>
+        <th><%= __('admin:maint_col_employee') %></th>
+        <th><%= __('admin:maint_col_voided_at') %></th>
+        <th><%= __('admin:maint_col_by') %></th>
+        <th><%= __('admin:maint_col_reason') %></th>
+        <th class="mnt-right"><%= __('admin:maint_col_action') %></th>
+      </tr></thead>
+      <tbody>
+      <% voided.forEach(function(e){ %>
+        <tr>
+          <td><%= who(e) %><%= e.employeeNumber ? ' · ' + e.employeeNumber : '' %></td>
+          <td><%= fmtDate(e.cancelledAt) %></td>
+          <td><%= e.cancelledBy || '—' %></td>
+          <td class="mnt-reason"><%= e.cancelReason %></td>
+          <td class="mnt-right">
+            <button type="button" class="btn btn-sm"
+                    data-mnt-action="restore" data-mnt-id="<%= e.id %>" data-mnt-what="<%= who(e) %>">
+              <%= __('admin:maint_restore') %>
+            </button>
+          </td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% pager(voidedPager, 'pVoid'); %>
+  <% } %>
+</section>
+
+<!-- ── The trail : filterable, paged, exportable ───────────────────── -->
+<section class="card mnt-card">
+  <h2 class="mnt-h2"><%= __('admin:maint_trail_title') %> <span class="chip"><%= actionsPager.total %></span></h2>
+  <p class="text-muted mnt-hint"><%= __('admin:maint_trail_hint') %></p>
+  <form class="mnt-row mnt-trailbar" method="GET" action="/admin/maintenance">
+    <% if (filters.q) { %><input type="hidden" name="q" value="<%= filters.q %>"><% } %>
+    <% if (filters.siteId) { %><input type="hidden" name="siteId" value="<%= filters.siteId %>"><% } %>
+    <% if (filters.employeeId) { %><input type="hidden" name="employee" value="<%= filters.employeeId %>"><% } %>
+    <label class="mnt-label" for="mntTrAction"><%= __('admin:ops_maint_trail_action') %></label>
+    <select id="mntTrAction" name="trailAction" class="form-control">
+      <option value=""><%= __('admin:ops_maint_all') %></option>
+      <% trailActions.forEach(function(a){ %><option value="<%= a.v %>" <%= filters.action === a.v ? 'selected' : '' %>><%= a.v %> (<%= a.n %>)</option><% }); %>
+    </select>
+    <label class="mnt-label" for="mntTrActor"><%= __('admin:ops_maint_trail_actor') %></label>
+    <input id="mntTrActor" type="search" name="trailActor" class="form-control" value="<%= filters.actor || '' %>">
+    <label class="mnt-label" for="mntTrFrom"><%= __('admin:ops_maint_trail_from') %></label>
+    <input id="mntTrFrom" type="date" name="trailFrom" class="form-control" value="<%= filters.from || '' %>">
+    <label class="mnt-label" for="mntTrTo"><%= __('admin:ops_maint_trail_to') %></label>
+    <input id="mntTrTo" type="date" name="trailTo" class="form-control" value="<%= filters.to || '' %>">
+    <button type="submit" class="btn btn-primary"><%= __('admin:ops_maint_apply') %></button>
+    <a class="btn btn-secondary" href="/admin/maintenance/trail/export.csv<%= trailQs ? '?' + trailQs : '' %>"><i class="fas fa-file-csv" aria-hidden="true"></i> <%= __('admin:ops_maint_trail_export') %></a>
+  </form>
+  <% if (!actions.length) { %>
+    <p class="text-muted"><%= actionsPager.total ? __('admin:ops_maint_none') : __('admin:maint_none_actions') %></p>
+  <% } else { %>
+  <div class="mnt-scroll">
+    <table class="table">
+      <thead><tr>
+        <th><%= __('admin:maint_col_when') %></th>
+        <th><%= __('admin:maint_col_action') %></th>
+        <th><%= __('admin:ops_maint_trail_actor') %></th>
+        <th><%= __('admin:ops_maint_trail_employee') %></th>
+        <th><%= __('admin:ops_maint_reason_col') %></th>
+        <th><%= __('admin:maint_col_detail') %></th>
+      </tr></thead>
+      <tbody>
+      <% actions.forEach(function(a){ %>
+        <tr>
+          <td><%= fmtDate(a.createdAt) %></td>
+          <td><span class="chip"><%= a.action %></span></td>
+          <td><%= a.username || a.actorRef || '—' %></td>
+          <td><%= a.employeeName ? (a.employeeName + (a.employeeNumber ? ' · ' + a.employeeNumber : '')) : '—' %></td>
+          <td class="mnt-reason"><%= a.reason || '—' %></td>
+          <td class="mnt-reason"><%= a.details %></td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% pager(actionsPager, 'pTrail'); %>
+  <p class="text-muted mnt-hint"><%= __('admin:ops_maint_trail_capped', { n: 5000 }) %></p>
+  <% } %>
+</section>
+
+<!-- Reason dialog — nothing on this page submits without one. -->
+<dialog id="mntDlg" class="mnt-dlg">
+  <form method="dialog">
+    <h3 id="mntDlgTitle" style="margin:0 0 .3rem;font-size:1.05rem"></h3>
+    <p id="mntDlgWhat" class="text-muted" style="margin:0 0 .8rem;font-size:.85rem"></p>
+    <label for="mntReason" style="display:block;font-weight:600;margin-bottom:.3rem"><%= __('admin:maint_reason_label') %></label>
+    <textarea id="mntReason" rows="3" class="form-control" style="width:100%"
+              placeholder="<%= __('admin:maint_reason_ph') %>"></textarea>
+    <p id="mntDlgErr" class="mnt-err" hidden></p>
+    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.9rem">
+      <button type="button" class="btn" onclick="document.getElementById('mntDlg').close()"><%= __('admin:maint_dlg_cancel') %></button>
+      <button type="button" id="mntDlgOk" class="btn btn-danger"><%= __('admin:maint_dlg_confirm') %></button>
+    </div>
+  </form>
+</dialog>
+
+<style>
+  .mnt-warn{padding:.9rem 1.1rem;margin-bottom:1rem;border-left:4px solid #b45309;background:rgba(180,83,9,.08)}
+  .mnt-card{padding:1.1rem;margin-bottom:1rem}
+  .mnt-h2{margin-top:0;font-size:1.05rem;display:flex;align-items:center;gap:.5rem}
+  .mnt-hint{font-size:.82rem;margin:.2rem 0 .8rem}
+  .mnt-scroll{overflow-x:auto}
+  .mnt-right{text-align:right}
+  .mnt-reason{max-width:44rem;white-space:normal}
+  .mnt-row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+  .mnt-label{font-weight:600}
+  .mnt-input{min-width:18rem;flex:1 1 18rem}
+  .mnt-dlg{border:none;border-radius:10px;padding:1.2rem;max-width:32rem;width:92vw}
+  .mnt-dlg::backdrop{background:rgba(0,0,0,.45)}
+  .mnt-err{color:#c8514b;font-size:.85rem;margin:.5rem 0 0}
+  .mnt-filters .mnt-row{gap:.5rem}
+  .mnt-trailbar{margin:.2rem 0 .8rem;gap:.45rem}
+  .mnt-trailbar .form-control{min-width:9rem}
+  .mnt-pager{display:flex;gap:.5rem;align-items:center;margin-top:.6rem;font-size:.85rem}
+  .chip{display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(127,127,127,.15);font-size:.75rem}
+</style>
+
+<script nonce="<%= cspNonce %>">
+(function(){
+  var CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+  var T = {
+    plan:      <%- JSON.stringify(__('admin:maint_dlg_plan')) %>,
+    assessment:<%- JSON.stringify(__('admin:maint_dlg_assessment')) %>,
+    reopen:    <%- JSON.stringify(__('admin:maint_dlg_reopen')) %>,
+    review:    <%- JSON.stringify(__('admin:maint_dlg_review')) %>,
+    placement: <%- JSON.stringify(__('admin:maint_dlg_placement')) %>,
+    employee:  <%- JSON.stringify(__('admin:maint_dlg_employee')) %>,
+    restore:   <%- JSON.stringify(__('admin:maint_dlg_restore')) %>,
+    restorePlan:      <%- JSON.stringify(__('admin:ops_maint_restore_title')) %>,
+    restorePlacement: <%- JSON.stringify(__('admin:ops_maint_restore_title')) %>,
+    needReason:<%- JSON.stringify(__('admin:maint_err_maintenance_reason_required')) %>,
+    err:       <%- JSON.stringify(__('admin:maint_generic_err')) %>,
+    pickEmp:   <%- JSON.stringify(__('admin:maint_err_pick_employee')) %>
+  };
+  var dlg = document.getElementById('mntDlg');
+  var pending = null;
+
+  // One dialog for every action: kind decides the endpoint and the payload.
+  window.mntAsk = function(kind, id, entityType, what){
+    pending = { kind: kind, id: id, entityType: entityType };
+    document.getElementById('mntDlgTitle').textContent = T[kind === 'plan' ? 'plan' : kind] || T.plan;
+    document.getElementById('mntDlgWhat').textContent = what || '';
+    document.getElementById('mntReason').value = '';
+    var e = document.getElementById('mntDlgErr'); e.hidden = true; e.textContent = '';
+    dlg.showModal();
+    document.getElementById('mntReason').focus();
+  };
+
+  // The row buttons carry their action in data-* attributes (HTML-escaped output),
+  // never in an inline handler holding JSON — JSON.stringify emits DOUBLE quotes,
+  // and inside a double-quoted attribute the first one closed the attribute, so
+  // every one of these buttons was inert from the day it was written. One
+  // delegated listener resolves them; window.mntAsk stays the single entry point.
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target && ev.target.closest ? ev.target.closest('[data-mnt-action]') : null;
+    if (!btn) return;
+    ev.preventDefault();
+    var id = parseInt(btn.getAttribute('data-mnt-id'), 10);
+    if (!id) return;
+    window.mntAsk(btn.getAttribute('data-mnt-action'), id, btn.getAttribute('data-mnt-type') || null, btn.getAttribute('data-mnt-what') || '');
+  });
+
+  // The datalist's option VALUE is the id, so after a pick the input shows a
+  // bare number. The confirm dialog is the last thing a SuperAdmin reads
+  // before removing somebody from the headcount, so it must carry the NAME —
+  // resolved from the option text — never just "#137".
+  window.mntVoidEmployee = function(){
+    var raw = (document.getElementById('mntEmp').value || '').trim();
+    var id = parseInt(raw, 10);
+    if (!id) { (window.toast || alert)(T.pickEmp, 'error'); return; }
+    var label = '#' + id;
+    var opts = document.getElementById('mntEmpList').options;
+    for (var i = 0; i < opts.length; i++) {
+      if (String(opts[i].value) === String(id)) { label = (opts[i].textContent || opts[i].label || '').trim() + ' (#' + id + ')'; break; }
+    }
+    window.mntAsk('employee', id, null, label);
+  };
+
+  var ROUTE = {
+    plan:      '/admin/maintenance/cancel-plan',
+    assessment:'/admin/maintenance/cancel-assessment',
+    reopen:    '/admin/maintenance/reopen-assessment',
+    review:    '/admin/maintenance/withdraw-review',
+    placement: '/admin/maintenance/cancel-placement',
+    employee:  '/admin/maintenance/void-employee',
+    restore:   '/admin/maintenance/restore-employee',
+    restorePlan:      '/admin/maintenance/restore-plan',
+    restorePlacement: '/admin/maintenance/restore-placement'
+  };
+
+  document.getElementById('mntDlgOk').addEventListener('click', function(){
+    if (!pending) return;
+    var reason = (document.getElementById('mntReason').value || '').trim();
+    var errEl = document.getElementById('mntDlgErr');
+    if (!reason) { errEl.textContent = T.needReason; errEl.hidden = false; return; }
+
+    var body = { reason: reason };
+    if (pending.kind === 'plan' || pending.kind === 'restorePlan') { body.entityType = pending.entityType; body.entityId = pending.id; }
+    else if (pending.kind === 'assessment' || pending.kind === 'reopen' || pending.kind === 'review') { body.assessmentId = pending.id; }
+    else if (pending.kind === 'placement' || pending.kind === 'restorePlacement') { body.evaluationId = pending.id; }
+    else { body.employeeId = pending.id; }
+
+    var btn = this; btn.disabled = true;
+    fetch(ROUTE[pending.kind], {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': CSRF },
+      body: JSON.stringify(body)
+    }).then(function(r){ return r.json().catch(function(){ return {}; }); })
+      .then(function(j){
+        btn.disabled = false;
+        if (j && j.ok) { dlg.close(); window.location.reload(); }
+        else { errEl.textContent = (j && j.error) || T.err; errEl.hidden = false; }
+      })
+      .catch(function(){ btn.disabled = false; errEl.textContent = T.err; errEl.hidden = false; });
+  });
+})();
+</script>
+
+<!-- SECTION accounts: DSR block -->
+<!-- ══ SECTION accounts — Export / Erase (GDPR) — self-contained block: own section, own dialog,
+     own script. Reuses the panel's employee datalist (#mntEmpList). ══ -->
+<section class="card mnt-card" id="mntDsr">
+  <h2 class="mnt-h2"><i class="fas fa-user-secret" aria-hidden="true"></i> <%= __('admin:maint_dsr_title') %></h2>
+  <p class="text-muted mnt-hint"><%= __('admin:maint_dsr_hint') %></p>
+  <div class="mnt-row">
+    <label for="mntDsrEmp" class="mnt-label"><%= __('admin:maint_employee_pick') %></label>
+    <input id="mntDsrEmp" list="mntEmpList" class="form-control mnt-input" placeholder="<%= __('admin:maint_employee_ph') %>" autocomplete="off">
+    <button type="button" class="btn btn-secondary" id="mntDsrExport"><i class="fas fa-file-export" aria-hidden="true"></i> <%= __('admin:maint_dsr_export') %></button>
+    <button type="button" class="btn btn-danger" id="mntDsrErase"><i class="fas fa-eraser" aria-hidden="true"></i> <%= __('admin:maint_dsr_erase') %></button>
+  </div>
+  <p class="text-muted mnt-hint" style="margin-top:.6rem"><%= __('admin:maint_dsr_erase_note') %></p>
+</section>
+
+<dialog id="mntDsrDlg" class="mnt-dlg">
+  <form method="dialog">
+    <h3 style="margin:0 0 .3rem;font-size:1.05rem"><%= __('admin:maint_dsr_dlg_title') %></h3>
+    <p id="mntDsrWhat" class="text-muted" style="margin:0 0 .8rem;font-size:.85rem"></p>
+    <label for="mntDsrReason" style="display:block;font-weight:600;margin-bottom:.3rem"><%= __('admin:maint_reason_label') %></label>
+    <textarea id="mntDsrReason" rows="3" class="form-control" style="width:100%" placeholder="<%= __('admin:maint_reason_ph') %>"></textarea>
+    <label for="mntDsrConfirm" style="display:block;font-weight:600;margin:.8rem 0 .3rem"><%= __('admin:maint_dsr_confirm_label') %></label>
+    <input id="mntDsrConfirm" type="text" class="form-control" style="width:100%" autocomplete="off" placeholder="<%= __('admin:maint_dsr_confirm_ph') %>">
+    <p id="mntDsrErr" class="mnt-err" hidden></p>
+    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.9rem">
+      <button type="button" class="btn" id="mntDsrCancel"><%= __('admin:maint_dlg_cancel') %></button>
+      <button type="button" id="mntDsrOk" class="btn btn-danger"><%= __('admin:maint_dsr_erase') %></button>
+    </div>
+  </form>
+</dialog>
+
+<script nonce="<%= cspNonce %>">
+(function(){
+  var CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+  var T = {
+    needReason: <%- JSON.stringify(__('admin:maint_err_maintenance_reason_required')) %>,
+    pickEmp: <%- JSON.stringify(__('admin:maint_err_pick_employee')) %>,
+    err: <%- JSON.stringify(__('admin:maint_generic_err')) %>,
+    done: <%- JSON.stringify(__('admin:maint_dsr_done')) %>
+  };
+  var dlg = document.getElementById('mntDsrDlg');
+  function picked(){
+    var raw = (document.getElementById('mntDsrEmp').value || '').trim();
+    var id = parseInt(raw, 10);
+    if (!id) { (window.toast || alert)(T.pickEmp, 'error'); return null; }
+    var label = '#' + id;
+    var opts = document.getElementById('mntEmpList').options;
+    for (var i = 0; i < opts.length; i++) {
+      if (String(opts[i].value) === String(id)) { label = (opts[i].textContent || opts[i].label || '').trim() + ' (#' + id + ')'; break; }
+    }
+    return { id: id, label: label };
+  }
+  document.getElementById('mntDsrExport').addEventListener('click', function(){
+    var p = picked(); if (!p) return;
+    window.location.href = '/admin/maintenance/dsr/' + p.id + '/export.json';
+  });
+  document.getElementById('mntDsrErase').addEventListener('click', function(){
+    var p = picked(); if (!p) return;
+    dlg.dataset.id = p.id;
+    document.getElementById('mntDsrWhat').textContent = p.label;
+    document.getElementById('mntDsrReason').value = '';
+    document.getElementById('mntDsrConfirm').value = '';
+    var e = document.getElementById('mntDsrErr'); e.hidden = true; e.textContent = '';
+    dlg.showModal();
+    document.getElementById('mntDsrReason').focus();
+  });
+  document.getElementById('mntDsrCancel').addEventListener('click', function(){ dlg.close(); });
+  document.getElementById('mntDsrOk').addEventListener('click', function(){
+    var reason = (document.getElementById('mntDsrReason').value || '').trim();
+    var confirmNumber = (document.getElementById('mntDsrConfirm').value || '').trim();
+    var errEl = document.getElementById('mntDsrErr');
+    if (!reason) { errEl.textContent = T.needReason; errEl.hidden = false; return; }
+    var btn = this; btn.disabled = true;
+    fetch('/admin/maintenance/dsr-erase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': CSRF },
+      body: JSON.stringify({ employeeId: Number(dlg.dataset.id), reason: reason, confirmNumber: confirmNumber })
+    }).then(function(r){ return r.json().catch(function(){ return {}; }); })
+      .then(function(j){
+        btn.disabled = false;
+        if (j && j.ok) { dlg.close(); if (window.toast) window.toast(T.done, 'success'); setTimeout(function(){ window.location.reload(); }, 800); }
+        else { errEl.textContent = (j && j.error) || T.err; errEl.hidden = false; }
+      })
+      .catch(function(){ btn.disabled = false; errEl.textContent = T.err; errEl.hidden = false; });
+  });
+})();
+</script>
+<!-- ══ end SECTION accounts ══ -->
+
+<!-- ══ 3.23.18 (S-07) — Retention: periods, what is due, last run, tombstones.
+     Self-contained: own section, own script; reads /v2/cap/dsr/retention/status. ══ -->
+<section class="card mnt-card" id="mntRet" aria-busy="true">
+  <h2 class="mnt-h2"><i class="fas fa-hourglass-half" aria-hidden="true"></i> <%= __('admin:ret_title') %></h2>
+  <p class="text-muted mnt-hint"><%= __('admin:ret_hint') %></p>
+  <div class="mnt-row">
+    <strong><%= __('admin:ret_mode_label') %><%= colon %></strong>
+    <span id="mntRetMode" class="badge"><%= __('admin:ret_loading') %></span>
+    <button type="button" class="btn btn-danger" id="mntRetModeBtn" hidden></button>
+  </div>
+  <div class="mnt-row" style="margin-top:.6rem">
+    <button type="button" class="btn btn-secondary" id="mntRetRun"><i class="fas fa-play" aria-hidden="true"></i> <%= __('admin:ret_run_now') %></button>
+    <button type="button" class="btn" id="mntRetReapply"><i class="fas fa-rotate" aria-hidden="true"></i> <%= __('admin:ret_reapply') %></button>
+  </div>
+  <p id="mntRetErr" class="mnt-err" hidden></p>
+  <h3 class="mnt-h3" style="font-size:.95rem;margin:1rem 0 .3rem"><%= __('admin:ret_periods') %></h3>
+  <div id="mntRetPeriods" class="text-muted"></div>
+  <h3 class="mnt-h3" style="font-size:.95rem;margin:1rem 0 .3rem"><%= __('admin:ret_due_title') %></h3>
+  <div id="mntRetDue"></div>
+  <p id="mntRetCounts" class="text-muted mnt-hint"></p>
+  <h3 class="mnt-h3" style="font-size:.95rem;margin:1rem 0 .3rem"><%= __('admin:ret_last_run') %></h3>
+  <p id="mntRetLast" class="text-muted"></p>
+  <p id="mntRetTomb" class="text-muted mnt-hint"></p>
+  <h3 class="mnt-h3" style="font-size:.95rem;margin:1rem 0 .3rem"><%= __('admin:ret_prehold_title') %></h3>
+  <p id="mntRetPreHoldHelp" class="text-muted mnt-hint"><%= __('admin:ret_prehold_help') %></p>
+  <div class="mnt-row">
+    <label for="mntRetPreHoldId"><%= __('admin:ret_prehold_id') %></label>
+    <input type="number" min="1" id="mntRetPreHoldId" class="form-control" style="max-width:9rem" aria-describedby="mntRetPreHoldHelp">
+    <button type="button" class="btn btn-secondary" id="mntRetPreHoldBtn"><i class="fas fa-scale-balanced" aria-hidden="true"></i> <%= __('admin:ret_hold_set') %></button>
+  </div>
+</section>
+
+<dialog id="mntRetDlg" class="mnt-dlg" aria-labelledby="mntRetDlgTitle">
+  <form method="dialog">
+    <h3 id="mntRetDlgTitle" style="margin:0 0 .3rem;font-size:1.05rem"></h3>
+    <p id="mntRetDlgWhat" class="text-muted" style="margin:0 0 .8rem;font-size:.85rem"></p>
+    <label for="mntRetDlgReason" style="display:block;font-weight:600;margin-bottom:.3rem"><%= __('admin:maint_reason_label') %></label>
+    <textarea id="mntRetDlgReason" rows="3" class="form-control" style="width:100%" placeholder="<%= __('admin:maint_reason_ph') %>"></textarea>
+    <p id="mntRetDlgErr" class="mnt-err" hidden></p>
+    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.9rem">
+      <button type="button" class="btn" id="mntRetDlgCancel"><%= __('admin:maint_dlg_cancel') %></button>
+      <button type="button" class="btn btn-danger" id="mntRetDlgOk"></button>
+    </div>
+  </form>
+</dialog>
+
+<script nonce="<%= cspNonce %>">
+(function(){
+  var CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+  var T = <%- JSON.stringify({
+    colon: colon,
+    report: __('admin:ret_mode_report'), apply: __('admin:ret_mode_apply'),
+    toApply: __('admin:ret_mode_switch_apply'), toReport: __('admin:ret_mode_switch_report'),
+    confirmApply: __('admin:ret_confirm_apply'), needReason: __('admin:ret_err_reason_required'),
+    err: __('admin:ret_err_generic'), notMeasured: __('admin:ret_not_measured'),
+    colCountry: __('admin:ret_col_country'), colDays: __('admin:ret_col_days'),
+    colEmployee: __('admin:ret_col_employee'), colDue: __('admin:ret_col_due'), colHold: __('admin:ret_col_hold'),
+    dueNone: __('admin:ret_due_none'), pending: __('admin:ret_pending'), unscheduled: __('admin:ret_unscheduled'),
+    lastNone: __('admin:ret_last_run_none'), lastLine: __('admin:ret_last_run_line'),
+    tomb: __('admin:ret_tombstones'), held: __('admin:ret_held'),
+    holdSet: __('admin:ret_hold_set'), holdRelease: __('admin:ret_hold_release'),
+    runDone: __('admin:ret_run_done'), reapplyDone: __('admin:ret_reapply_done'),
+    periodsNone: __('admin:ret_periods_none'),
+    runNow: __('admin:ret_run_now'), confirmRunApply: __('admin:ret_confirm_run_apply'),
+    preHoldTitle: __('admin:ret_prehold_title'), preHoldBadId: __('admin:ret_prehold_bad_id'),
+    actions: {
+      would_erase: __('admin:ret_action_would_erase'), erased: __('admin:ret_action_erased'),
+      skipped_legal_hold: __('admin:ret_action_skipped_legal_hold'), skipped_active: __('admin:ret_action_skipped_active'),
+      already_erased: __('admin:ret_action_already_erased'), failed: __('admin:ret_action_failed'),
+      skipped_claimed: __('admin:ret_action_skipped_claimed'), skipped_missing: __('admin:ret_action_skipped_missing')
+    }
+  }) %>;
+  var box = document.getElementById('mntRet');
+  var errEl = document.getElementById('mntRetErr');
+  var modeNow = null;
+  function fill(tpl, vars){ return String(tpl).replace(/\{\{(\w+)\}\}/g, function(_, k){ return vars[k] == null ? '' : String(vars[k]); }); }
+  function num(v){ return v == null ? T.notMeasured : String(v); }
+  function day(d){ if (!d) return '—'; try { return new Date(d).toLocaleDateString(document.documentElement.lang || 'fr'); } catch (e) { return String(d); } }
+  function el(tag, text, cls){ var e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
+  function showErr(msg){ errEl.textContent = msg || T.err; errEl.hidden = false; }
+  function post(url, body){
+    errEl.hidden = true;
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-csrf-token': CSRF }, body: JSON.stringify(body || {}) })
+      .then(function(r){ return r.json().catch(function(){ return {}; }); });
+  }
+  function table(head, rows){
+    var t = el('table', null, 'table table-sm'); var tr = el('tr');
+    head.forEach(function(h){ tr.appendChild(el('th', h)); });
+    var th = el('thead'); th.appendChild(tr); t.appendChild(th);
+    var tb = el('tbody'); rows.forEach(function(r){ tb.appendChild(r); }); t.appendChild(tb);
+    return t;
+  }
+  function render(s){
+    modeNow = s.mode;
+    var m = document.getElementById('mntRetMode');
+    m.textContent = s.mode === 'apply' ? T.apply : T.report;
+    m.className = 'badge ' + (s.mode === 'apply' ? 'badge-danger' : 'badge-secondary');
+    var btn = document.getElementById('mntRetModeBtn');
+    btn.textContent = s.mode === 'apply' ? T.toReport : T.toApply;
+    btn.className = 'btn ' + (s.mode === 'apply' ? 'btn-secondary' : 'btn-danger');
+    btn.hidden = false;
+
+    var per = document.getElementById('mntRetPeriods'); per.textContent = '';
+    if (s.periods == null) per.textContent = T.notMeasured;
+    else if (!s.periods.length) per.textContent = T.periodsNone;
+    else per.appendChild(table([T.colCountry, T.colDays], s.periods.map(function(p){
+      var tr = el('tr'); tr.appendChild(el('td', (p.name || '') + ' (' + (p.code || '') + ')')); tr.appendChild(el('td', String(p.dsrSlaDays))); return tr;
+    })));
+
+    var due = document.getElementById('mntRetDue'); due.textContent = '';
+    if (s.due == null) due.textContent = T.notMeasured;
+    else if (!s.due.length) due.appendChild(el('p', T.dueNone, 'text-muted'));
+    else due.appendChild(table([T.colEmployee, T.colCountry, T.colDue, T.colHold], s.due.map(function(d){
+      var tr = el('tr');
+      var name = [d.firstName, d.lastName].filter(Boolean).join(' ');
+      tr.appendChild(el('td', (name ? name + ' ' : '') + '(#' + d.employeeId + ')'));
+      tr.appendChild(el('td', d.countryCode || '—'));
+      tr.appendChild(el('td', day(d.dueAt)));
+      var td = el('td');
+      if (d.legalHoldAt) { td.appendChild(el('span', T.held + (d.legalHoldReason ? ' — ' + d.legalHoldReason : ''), 'badge badge-warning')); td.appendChild(document.createTextNode(' ')); }
+      var hb = el('button', d.legalHoldAt ? T.holdRelease : T.holdSet, 'btn btn-sm');
+      hb.type = 'button';
+      hb.addEventListener('click', function(){
+        ask(d.legalHoldAt ? T.holdRelease : T.holdSet, (name ? name + ' ' : '') + '(#' + d.employeeId + ')',
+          d.legalHoldAt ? T.holdRelease : T.holdSet, function(why){
+            return post('/v2/cap/dsr/' + encodeURIComponent(d.employeeId) + '/legal-hold', { hold: !d.legalHoldAt, reason: why });
+          });
+      });
+      td.appendChild(hb); tr.appendChild(td);
+      return tr;
+    })));
+    document.getElementById('mntRetCounts').textContent =
+      fill(T.pending, { n: num(s.pendingNotDue) }) + ' · ' + fill(T.unscheduled, { n: num(s.unscheduledLeavers) });
+
+    var last = document.getElementById('mntRetLast');
+    if (!s.lastRun) last.textContent = T.lastNone;
+    else {
+      var parts = Object.keys(s.lastRun.counts || {}).map(function(k){ return (T.actions[k] || k) + T.colon + ' ' + s.lastRun.counts[k]; });
+      last.textContent = fill(T.lastLine, { at: s.lastRun.at ? new Date(s.lastRun.at).toLocaleString(document.documentElement.lang || 'fr') : '—',
+        mode: s.lastRun.mode === 'apply' ? T.apply : T.report }) + (parts.length ? ' — ' + parts.join(', ') : '');
+    }
+    document.getElementById('mntRetTomb').textContent = fill(T.tomb, { n: num(s.tombstones) });
+    box.setAttribute('aria-busy', 'false');
+  }
+  function load(){
+    fetch('/v2/cap/dsr/retention/status', { headers: { 'Accept': 'application/json' } })
+      .then(function(r){ return r.json(); })
+      .then(function(j){ if (j && j.ok) render(j); else showErr(j && j.error); })
+      .catch(function(){ showErr(); });
+  }
+  // One dialog for every reasoned action on this block (mode switch, legal hold):
+  // a mandatory reason, then `send(reason)` → promise of the JSON answer.
+  var dlg = document.getElementById('mntRetDlg');
+  var dlgSend = null;
+  function ask(title, what, okLabel, send){
+    document.getElementById('mntRetDlgTitle').textContent = title;
+    document.getElementById('mntRetDlgWhat').textContent = what || '';
+    document.getElementById('mntRetDlgOk').textContent = okLabel;
+    document.getElementById('mntRetDlgReason').value = '';
+    var e = document.getElementById('mntRetDlgErr'); e.hidden = true; e.textContent = '';
+    dlgSend = send;
+    dlg.showModal();
+    document.getElementById('mntRetDlgReason').focus();
+  }
+  document.getElementById('mntRetDlgCancel').addEventListener('click', function(){ dlg.close(); });
+  document.getElementById('mntRetDlgOk').addEventListener('click', function(){
+    var reason = (document.getElementById('mntRetDlgReason').value || '').trim();
+    var e = document.getElementById('mntRetDlgErr');
+    if (!reason) { e.textContent = T.needReason; e.hidden = false; return; }
+    var b = this; b.disabled = true;
+    dlgSend(reason)
+      .then(function(j){ b.disabled = false; if (j && j.ok) { dlg.close(); load(); } else { e.textContent = (j && j.error) || T.err; e.hidden = false; } })
+      .catch(function(){ b.disabled = false; e.textContent = T.err; e.hidden = false; });
+  });
+  document.getElementById('mntRetModeBtn').addEventListener('click', function(){
+    var target = modeNow === 'apply' ? 'report' : 'apply';
+    ask(target === 'apply' ? T.toApply : T.toReport, target === 'apply' ? T.confirmApply : '',
+      target === 'apply' ? T.toApply : T.toReport, function(reason){
+        return post('/v2/cap/dsr/retention/mode', { mode: target, reason: reason });
+      });
+  });
+  document.getElementById('mntRetRun').addEventListener('click', function(){
+    var b = this;
+    // UX-5 (3.23.21): in APPLY mode a run erases people — the reasoned
+    // confirmation dialog comes first. In report mode it only lists.
+    if (modeNow === 'apply') {
+      ask(T.runNow, T.confirmRunApply, T.runNow, function(reason){
+        return post('/v2/cap/dsr/retention/run', { reason: reason }).then(function(j){
+          if (j && j.ok && window.toast) window.toast(T.runDone, 'success');
+          return j;
+        });
+      });
+      return;
+    }
+    b.disabled = true;
+    post('/v2/cap/dsr/retention/run', {})
+      .then(function(j){ b.disabled = false; if (j && j.ok) { if (window.toast) window.toast(T.runDone, 'success'); load(); } else showErr(j && j.error); })
+      .catch(function(){ b.disabled = false; showErr(); });
+  });
+  // F11 (3.23.21): legal hold BEFORE departure — on the employee record, carried
+  // into the retention job when the departure schedules it.
+  document.getElementById('mntRetPreHoldBtn').addEventListener('click', function(){
+    var input = document.getElementById('mntRetPreHoldId');
+    var id = parseInt(input.value, 10);
+    if (!(id > 0)) { showErr(T.preHoldBadId); input.focus(); return; }
+    ask(T.preHoldTitle, '#' + id, T.holdSet, function(why){
+      return post('/v2/cap/dsr/' + encodeURIComponent(id) + '/legal-hold', { hold: true, reason: why, beforeDeparture: true });
+    });
+  });
+  document.getElementById('mntRetReapply').addEventListener('click', function(){
+    var b = this; b.disabled = true;
+    post('/v2/cap/dsr/retention/reapply-erasures', {})
+      .then(function(j){ b.disabled = false; if (j && j.ok) { if (window.toast) window.toast(fill(T.reapplyDone, { n: (j.reapplied || []).length }), 'success'); load(); } else showErr(j && j.error); })
+      .catch(function(){ b.disabled = false; showErr(); });
+  });
+  load();
+})();
+</script>
+<!-- ══ end retention ══ -->

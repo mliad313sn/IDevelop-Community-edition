@@ -1,0 +1,11 @@
+{
+  "setup": {
+    "title": "Configurer l'authentification à double facteur",
+    "scan_with_authenticator": "Scannez ce QR code avec Google Authenticator, Authy ou équivalent.",
+    "enter_code": "Code à 6 chiffres"
+  },
+  "backup": {
+    "title": "Codes de secours",
+    "warning_single_use": "Conservez ces codes en lieu sûr. Chacun ne peut servir qu'une fois."
+  }
+}

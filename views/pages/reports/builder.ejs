@@ -1,0 +1,381 @@
+<!-- Report Builder — 3-Panel Composite Layout -->
+
+<div class="rb-app" id="rbApp">
+    <!-- ── Header ── -->
+    <div class="rb-header">
+        <div class="rb-logo"><i class="fas fa-diagram-project" aria-hidden="true"></i> <%= __('admin:rb_title') %></div>
+        <input class="rb-title-input" id="rbReportTitle" type="text" value="<%= __('admin:rb_untitled') %>" spellcheck="false" aria-label="<%= __('admin:rb_section_title') %>">
+        <div class="rb-actions">
+            <a class="rb-btn" href="/reports/schedules" title="<%= __('admin:rb_schedules_title') %>"><span class="icon"><i class="fas fa-clock" aria-hidden="true"></i></span> <%= __('admin:rb_schedules') %></a>
+            <button class="rb-btn" id="rbPrintBtn" title="<%= __('admin:rb_print') %>"><span class="icon"><i class="fas fa-print" aria-hidden="true"></i></span> <%= __('admin:rb_print') %></button>
+            <button class="rb-btn" id="rbImportBtn" title="<%= __('admin:rb_import') %>"><span class="icon"><i class="fas fa-file-import" aria-hidden="true"></i></span> <%= __('admin:rb_import') %></button>
+            <button class="rb-btn" id="rbExportBtn" title="<%= __('admin:rb_export') %>"><span class="icon"><i class="fas fa-file-export" aria-hidden="true"></i></span> <%= __('admin:rb_export') %></button>
+            <button class="rb-btn primary" id="rbSaveBtn" title="<%= __('admin:rb_save') %>"><span class="icon"><i class="fas fa-floppy-disk" aria-hidden="true"></i></span> <%= __('admin:rb_save') %></button>
+        </div>
+    </div>
+
+    <!-- ── Body ── -->
+    <div class="rb-body">
+
+        <!-- Toggle buttons -->
+        <button class="rb-toggle-sidebar" id="rbToggleSidebar" title="<%= __('admin:rb_toggle_sidebar') %>" aria-label="<%= __('admin:rb_toggle_sidebar') %>"><span aria-hidden="true"><i class="fas fa-bars" aria-hidden="true"></i></span></button>
+        <button class="rb-toggle-right" id="rbToggleRight" title="<%= __('admin:rb_toggle_panel') %>" aria-label="<%= __('admin:rb_toggle_panel') %>"><i class="fas fa-table-columns" aria-hidden="true"></i></button>
+
+        <!-- ── Left Sidebar ── -->
+        <div class="rb-sidebar" id="rbSidebar">
+            <div class="rb-sidebar-tabs">
+                <div class="rb-sidebar-tab active" data-tab="config"><%= __('admin:rb_tab_config') %></div>
+                <div class="rb-sidebar-tab" data-tab="sections"><%= __('admin:rb_tab_sections') %></div>
+                <div class="rb-sidebar-tab" data-tab="filters"><%= __('admin:rb_tab_filters') %></div>
+                <div class="rb-sidebar-tab" data-tab="templates"><%= __('admin:rb_tab_templates') %></div>
+            </div>
+            <div class="rb-sidebar-content">
+                <!-- Config Panel -->
+                <div class="rb-sidebar-panel active" id="panelConfig">
+                    <div class="rb-form-group">
+                        <label for="cfgSource"><%= __('admin:rb_data_source') %></label>
+                        <select class="rb-select" id="cfgSource">
+                            <option value=""><%= __('admin:rb_select_source') %></option>
+                        </select>
+                    </div>
+                    <div class="rb-form-group">
+                        <label for="cfgDimension"><%= __('admin:rb_dimension') %></label>
+                        <select class="rb-select" id="cfgDimension">
+                            <option value=""><%= __('admin:rb_select') %></option>
+                        </select>
+                    </div>
+                    <div class="rb-form-group">
+                        <label for="cfgDimension2"><%= __('admin:rb_secondary_dim') %></label>
+                        <select class="rb-select" id="cfgDimension2">
+                            <option value=""><%= __('admin:rb_none_paren') %></option>
+                        </select>
+                    </div>
+                    <div class="rb-form-group">
+                        <label for="cfgMetric"><%= __('admin:rb_metric') %></label>
+                        <select class="rb-select" id="cfgMetric">
+                            <option value=""><%= __('admin:rb_select') %></option>
+                        </select>
+                    </div>
+                    <div class="rb-form-group">
+                        <label for="cfgAggregation"><%= __('admin:rb_aggregation') %></label>
+                        <select class="rb-select" id="cfgAggregation">
+                            <option value="avg"><%= __('admin:rb_agg_avg') %></option>
+                            <option value="sum"><%= __('admin:rb_agg_sum') %></option>
+                            <option value="count"><%= __('admin:rb_agg_count') %></option>
+                            <option value="count_distinct"><%= __('admin:rb_agg_count_distinct') %></option>
+                            <option value="min"><%= __('admin:rb_agg_min') %></option>
+                            <option value="max"><%= __('admin:rb_agg_max') %></option>
+                        </select>
+                    </div>
+                    <div class="rb-form-group">
+                        <label for="cfgChartType"><%= __('admin:rb_chart_type') %></label>
+                        <select class="rb-select" id="cfgChartType">
+                            <option value="bar"><%= __('admin:rb_chart_bar') %></option>
+                            <option value="stackedBar"><%= __('admin:rb_chart_stacked') %></option>
+                            <option value="horizontalBar"><%= __('admin:rb_chart_hbar') %></option>
+                            <option value="line"><%= __('admin:rb_chart_line') %></option>
+                            <option value="area"><%= __('admin:rb_chart_area') %></option>
+                            <option value="radar"><%= __('admin:rb_chart_radar') %></option>
+                            <option value="doughnut"><%= __('admin:rb_chart_doughnut') %></option>
+                            <option value="gauge"><%= __('admin:rb_chart_gauge') %></option>
+                            <option value="scatter"><%= __('admin:rb_chart_scatter') %></option>
+                            <option value="heatmap"><%= __('admin:rb_chart_heatmap') %></option>
+                            <option value="table"><%= __('admin:rb_chart_table') %></option>
+                            <option value="kpi"><%= __('admin:rb_chart_kpi') %></option>
+                            <option value="progress"><%= __('admin:rb_chart_progress') %></option>
+                        </select>
+                    </div>
+                    <div class="rb-form-group">
+                        <label for="cfgColorScheme"><%= __('admin:rb_color_scheme') %></label>
+                        <select class="rb-select" id="cfgColorScheme">
+                            <option value="multi"><%= __('admin:rb_color_multi') %></option>
+                            <option value="gold"><%= __('admin:rb_color_gold') %></option>
+                            <option value="emerald"><%= __('admin:rb_color_emerald') %></option>
+                            <option value="heatscale"><%= __('admin:rb_color_heatscale') %></option>
+                            <option value="cool"><%= __('admin:rb_color_cool') %></option>
+                            <option value="mono"><%= __('admin:rb_color_mono') %></option>
+                            <option value="sunset"><%= __('admin:rb_color_sunset') %></option>
+                        </select>
+                    </div>
+                    <div class="rb-form-group">
+                        <label for="cfgCFPreset"><%= __('admin:rb_cond_fmt') %></label>
+                        <select class="rb-select" id="cfgCFPreset">
+                            <option value=""><%= __('admin:rb_none_paren') %></option>
+                            <option value="readiness"><%= __('admin:rb_cf_readiness') %></option>
+                            <option value="gap"><%= __('admin:rb_cf_gap') %></option>
+                            <option value="level"><%= __('admin:rb_cf_level') %></option>
+                            <option value="coverage"><%= __('admin:rb_cf_coverage') %></option>
+                        </select>
+                    </div>
+                    <div class="rb-form-group">
+                        <label for="cfgSortOrder"><%= __('admin:rb_sort_order') %></label>
+                        <select class="rb-select" id="cfgSortOrder">
+                            <option value="desc"><%= __('admin:rb_sort_desc') %></option>
+                            <option value="asc"><%= __('admin:rb_sort_asc') %></option>
+                            <option value="alpha"><%= __('admin:rb_sort_alpha') %></option>
+                            <option value="none"><%= __('admin:rb_sort_none') %></option>
+                        </select>
+                    </div>
+                    <div class="rb-form-group">
+                        <label for="cfgLimit"><%= __('admin:rb_limit') %></label>
+                        <input class="rb-input" id="cfgLimit" type="number" min="1" max="100" value="20">
+                    </div>
+                    <div class="rb-form-group">
+                        <label for="cfgSectionTitle"><%= __('admin:rb_section_title') %></label>
+                        <input class="rb-input" id="cfgSectionTitle" type="text" placeholder="<%= __('admin:rb_section_title_ph') %>">
+                    </div>
+                    <div class="rb-form-group">
+                        <label for="cfgWidth"><%= __('admin:rb_width') %></label>
+                        <select class="rb-select" id="cfgWidth">
+                            <option value="full"><%= __('admin:rb_width_full') %></option>
+                            <option value="half"><%= __('admin:rb_width_half') %></option>
+                        </select>
+                    </div>
+                    <hr class="rb-divider">
+                    <button class="rb-btn primary" id="cfgAddSection" style="width:100%">
+                        <span class="icon">+</span> <%= __('admin:rb_add_section') %>
+                    </button>
+                </div>
+
+                <!-- Sections Panel -->
+                <div class="rb-sidebar-panel" id="panelSections">
+                    <div id="sectionsList"></div>
+                </div>
+
+                <!-- Filters Panel -->
+                <div class="rb-sidebar-panel" id="panelFilters">
+                    <div class="rb-form-group">
+                        <label id="lblFilterSites"><%= __('admin:rb_sites') %></label>
+                        <div class="rb-check-actions">
+                            <button type="button" onclick="RB.checkAll('filterSites')"><%= __('admin:rb_select_all') %></button>
+                            <button type="button" onclick="RB.checkNone('filterSites')"><%= __('admin:rb_none') %></button>
+                        </div>
+                        <div class="rb-checkbox-group" id="filterSites" role="group" aria-labelledby="lblFilterSites"></div>
+                    </div>
+                    <div class="rb-form-group">
+                        <label id="lblFilterDepts"><%= __('admin:rb_departments') %></label>
+                        <div class="rb-check-actions">
+                            <button type="button" onclick="RB.checkAll('filterDepts')"><%= __('admin:rb_select_all') %></button>
+                            <button type="button" onclick="RB.checkNone('filterDepts')"><%= __('admin:rb_none') %></button>
+                        </div>
+                        <div class="rb-checkbox-group" id="filterDepts" role="group" aria-labelledby="lblFilterDepts"></div>
+                    </div>
+                    <div class="rb-form-group">
+                        <label id="lblFilterDomains"><%= __('admin:rb_domains') %></label>
+                        <div class="rb-check-actions">
+                            <button type="button" onclick="RB.checkAll('filterDomains')"><%= __('admin:rb_select_all') %></button>
+                            <button type="button" onclick="RB.checkNone('filterDomains')"><%= __('admin:rb_none') %></button>
+                        </div>
+                        <div class="rb-checkbox-group" id="filterDomains" role="group" aria-labelledby="lblFilterDomains"></div>
+                    </div>
+                    <div class="rb-form-group">
+                        <label id="lblFilterRoles"><%= __('admin:rb_roles') %></label>
+                        <div class="rb-check-actions">
+                            <button type="button" onclick="RB.checkAll('filterRoles')"><%= __('admin:rb_select_all') %></button>
+                            <button type="button" onclick="RB.checkNone('filterRoles')"><%= __('admin:rb_none') %></button>
+                        </div>
+                        <div class="rb-checkbox-group" id="filterRoles" role="group" aria-labelledby="lblFilterRoles"></div>
+                    </div>
+                    <hr class="rb-divider">
+                    <div class="rb-form-group" role="group" aria-labelledby="lblFilterOptions">
+                        <label id="lblFilterOptions"><%= __('admin:rb_options') %></label>
+                        <label class="rb-checkbox-item" for="filterCritical"><input type="checkbox" id="filterCritical"><span><%= __('admin:rb_critical_only') %></span></label>
+                        <label class="rb-checkbox-item" for="filterGaps"><input type="checkbox" id="filterGaps"><span><%= __('admin:rb_gaps_only') %></span>
+                        </label>
+                        <%# Every report source is built on v_employee_details, which
+                            filters `is_active = true` in the view itself — so reports
+                            are active-only by construction and this can never be
+                            turned off. It was a live checkbox the server ignored: a
+                            user could untick it and be shown the same active-only
+                            figures while believing they had included leavers. Shown
+                            as a fixed statement of scope instead of a false choice. %>
+                        <label class="rb-checkbox-item" for="filterActive" title="<%= __('admin:rb_active_only_fixed') %>">
+                            <input type="checkbox" id="filterActive" checked disabled>
+                            <span><%= __('admin:rb_active_only') %></span>
+                        </label>
+                    </div>
+                    <button class="rb-btn primary" id="applyFiltersBtn" style="width:100%"><%= __('admin:rb_apply_filters') %></button>
+                </div>
+
+                <!-- Templates Panel -->
+                <div class="rb-sidebar-panel" id="panelTemplates">
+                    <h4
+                        style="margin:0 0 12px;font-size:12px;color:var(--rb-text-muted);text-transform:uppercase;letter-spacing:0.5px">
+                        <%= __('admin:rb_prebuilt') %></h4>
+                    <div id="prebuiltTemplates"></div>
+                    <hr class="rb-divider">
+                    <h4
+                        style="margin:0 0 12px;font-size:12px;color:var(--rb-text-muted);text-transform:uppercase;letter-spacing:0.5px">
+                        <%= __('admin:rb_saved') %></h4>
+                    <div id="savedTemplates">
+                        <div class="rb-empty" style="padding:20px">
+                            <p><%= __('admin:rb_no_saved') %></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Canvas ── -->
+        <div class="rb-canvas" id="rbCanvas">
+            <div class="rb-report-header" id="rbReportHeader">
+                <h2 id="rbReportTitleDisplay"><%= __('admin:rb_untitled') %></h2>
+                <div class="rb-meta"><%= __('admin:rb_generated') %> <span id="rbDate"></span> · IDevelop</div>
+                <div class="rb-filter-tags" id="rbFilterTags"></div>
+            </div>
+
+            <div class="rb-sections" id="rbSections">
+                <div class="rb-empty" id="rbEmptyState">
+                    <div class="rb-empty-icon"><i class="fas fa-chart-column" aria-hidden="true"></i></div>
+                    <h3><%= __('admin:rb_no_sections') %></h3>
+                    <p><%= __('admin:rb_no_sections_hint') %></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Right Panel ── -->
+        <div class="rb-right" id="rbRight">
+            <div class="rb-right-tabs">
+                <div class="rb-right-tab active" data-rtab="sql"><%= __('admin:rb_sql') %></div>
+                <div class="rb-right-tab" data-rtab="data"><%= __('admin:rb_data') %></div>
+                <div class="rb-right-tab" data-rtab="rules"><%= __('admin:rb_rules') %></div>
+            </div>
+            <div class="rb-right-content">
+                <div class="rb-right-panel active" id="rpanelSql">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <span
+                            style="font-size:11px;color:var(--rb-text-muted);text-transform:uppercase;font-weight:600"><%= __('admin:rb_sql_preview') %></span>
+                        <button class="rb-btn small" id="rbCopySQL"><%= __('admin:rb_copy') %></button>
+                    </div>
+                    <div class="rb-sql-preview" id="rbSQLContent"><%= __('admin:rb_sql_empty') %></div>
+                </div>
+                <div class="rb-right-panel" id="rpanelData">
+                    <div
+                        style="font-size:11px;color:var(--rb-text-muted);text-transform:uppercase;font-weight:600;margin-bottom:10px">
+                        <%= __('admin:rb_data_preview') %></div>
+                    <div id="rbDataContent"
+                        style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--rb-text-secondary)"><%= __('admin:rb_data_empty') %></div>
+                </div>
+                <div class="rb-right-panel" id="rpanelRules">
+                    <div
+                        style="font-size:11px;color:var(--rb-text-muted);text-transform:uppercase;font-weight:600;margin-bottom:10px">
+                        <%= __('admin:rb_cond_fmt') %></div>
+                    <div id="rbRulesContent" style="font-size:12px;color:var(--rb-text-secondary)">
+                        <p><strong style="color:var(--rb-text-primary)"><%= __('admin:rb_readiness') %></strong><br>&lt;50 → <span
+                                class="rb-badge critical"><%= __('admin:rb_critical') %></span> · 50-79 → <span
+                                class="rb-badge watch"><%= __('admin:rb_watch') %></span> · ≥80 → <span class="rb-badge ready"><%= __('admin:rb_ready') %></span>
+                        </p>
+                        <hr class="rb-divider">
+                        <p><strong style="color:var(--rb-text-primary)"><%= __('admin:rb_gap') %></strong><br>0 → <span
+                                class="rb-badge ready"><%= __('admin:rb_ok') %></span> · 1 → <span class="rb-badge watch"><%= __('admin:rb_watch') %></span> · 2+ →
+                            <span class="rb-badge critical"><%= __('admin:rb_critical') %></span>
+                        </p>
+                        <hr class="rb-divider">
+                        <p><strong style="color:var(--rb-text-primary)"><%= __('admin:rb_level') %></strong><br>0-1 → <span
+                                class="rb-badge critical"><%= __('admin:rb_low') %></span> · 2 → <span class="rb-badge watch"><%= __('admin:rb_mid') %></span> · 3-4
+                            → <span class="rb-badge ready"><%= __('admin:rb_high') %></span></p>
+                        <hr class="rb-divider">
+                        <p><strong style="color:var(--rb-text-primary)"><%= __('admin:rb_coverage') %></strong><br>&lt;60 → <span
+                                class="rb-badge critical"><%= __('admin:rb_low') %></span> · 60-85 → <span class="rb-badge watch"><%= __('admin:rb_mid') %></span> ·
+                            &gt;85 → <span class="rb-badge ready"><%= __('admin:rb_good') %></span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /rb-body -->
+</div><!-- /rb-app -->
+
+<!-- Hidden file input for import (opened by the Import button above) -->
+<input type="file" id="rbImportFile" accept=".json" aria-label="<%= __('admin:rb_import') %>" tabindex="-1" style="display:none">
+
+<!-- Strings the report-builder engine renders at runtime (FR first, EN parity).
+     Kept here rather than in the JS bundle so the source labels, the
+     provenance wording and the error states follow the user's locale. -->
+<script nonce="<%= cspNonce %>">
+    window.RB_I18N = {
+        src_readiness: <%- JSON.stringify(__('admin:rb_src_readiness')) %>,
+        src_gaps: <%- JSON.stringify(__('admin:rb_src_gaps')) %>,
+        src_capability: <%- JSON.stringify(__('admin:rb_src_capability')) %>,
+        src_employees: <%- JSON.stringify(__('admin:rb_src_employees')) %>,
+        src_assessments: <%- JSON.stringify(__('admin:rb_src_assessments')) %>,
+        src_coverage: <%- JSON.stringify(__('admin:rb_src_coverage')) %>,
+        src_provenance: <%- JSON.stringify(__('admin:rb_src_provenance')) %>,
+        src_ninebox: <%- JSON.stringify(__('admin:rb_src_ninebox')) %>,
+        loading: <%- JSON.stringify(__('admin:rb_loading')) %>,
+        load_error: <%- JSON.stringify(__('admin:rb_load_error')) %>,
+        unknown_chart: <%- JSON.stringify(__('admin:rb_unknown_chart')) %>,
+        never_assessed: <%- JSON.stringify(__('admin:rb_status_never_assessed')) %>,
+        unmeasured_groups: <%- JSON.stringify(__('admin:rb_unmeasured_groups')) %>,
+        // Locale tag for every Date/Number format call in report-builder.js —
+        // the bundle must never pin a locale of its own (it used to say 'en-US',
+        // which stamped an English date onto a French report header).
+        lang: <%- include('../../partials/json-script', { v: typeof lang !== 'undefined' && lang === 'en' ? 'en-GB' : 'fr-FR' }) %>,
+        copy: <%- JSON.stringify(__('admin:rb_copy')) %>,
+        copied: <%- JSON.stringify(__('admin:rb_copied')) %>,
+        add_section: <%- JSON.stringify(__('admin:rb_add_section')) %>,
+        update_section: <%- JSON.stringify(__('admin:rb_update_section')) %>,
+        sql_empty: <%- JSON.stringify(__('admin:rb_sql_empty')) %>,
+        no_sections: <%- JSON.stringify(__('admin:rb_no_sections')) %>,
+        no_saved: <%- JSON.stringify(__('admin:rb_no_saved')) %>,
+        select: <%- JSON.stringify(__('admin:rb_select')) %>,
+        none_paren: <%- JSON.stringify(__('admin:rb_none_paren')) %>,
+        tpl_name_prompt: <%- JSON.stringify(__('admin:rb_tpl_name_prompt')) %>,
+        tpl_saved: <%- JSON.stringify(__('admin:rb_tpl_saved')) %>,
+        tpl_saved_local: <%- JSON.stringify(__('admin:rb_tpl_saved_local')) %>,
+        invalid_file: <%- JSON.stringify(__('admin:rb_invalid_file')) %>,
+        // Prebuilt-template gallery labels (names, descriptions, section titles).
+        // They used to be English literals inside report-builder.js, so the French
+        // "Modeles predefinis" gallery rendered entirely in English.
+        pb: {
+            rbp_workforce_readiness_dashboard: <%- JSON.stringify(__('admin:rbp_workforce_readiness_dashboard')) %>,
+            rbp_kpi_strip_bar_by_site_progress_by_dept: <%- JSON.stringify(__('admin:rbp_kpi_strip_bar_by_site_progress_by_dept')) %>,
+            rbp_key_metrics: <%- JSON.stringify(__('admin:rbp_key_metrics')) %>,
+            rbp_readiness_by_site: <%- JSON.stringify(__('admin:rbp_readiness_by_site')) %>,
+            rbp_coverage_by_department: <%- JSON.stringify(__('admin:rbp_coverage_by_department')) %>,
+            rbp_critical_skill_gap_analysis: <%- JSON.stringify(__('admin:rbp_critical_skill_gap_analysis')) %>,
+            rbp_kpi_strip_gap_table_h_bar_by_domain: <%- JSON.stringify(__('admin:rbp_kpi_strip_gap_table_h_bar_by_domain')) %>,
+            rbp_gap_overview: <%- JSON.stringify(__('admin:rbp_gap_overview')) %>,
+            rbp_top_gaps_by_domain: <%- JSON.stringify(__('admin:rbp_top_gaps_by_domain')) %>,
+            rbp_gap_details: <%- JSON.stringify(__('admin:rbp_gap_details')) %>,
+            rbp_site_x_domain_capability: <%- JSON.stringify(__('admin:rbp_site_x_domain_capability')) %>,
+            rbp_heatmap_radar_comparisons: <%- JSON.stringify(__('admin:rbp_heatmap_radar_comparisons')) %>,
+            rbp_capability_heatmap: <%- JSON.stringify(__('admin:rbp_capability_heatmap')) %>,
+            rbp_site_radar: <%- JSON.stringify(__('admin:rbp_site_radar')) %>,
+            rbp_department_radar: <%- JSON.stringify(__('admin:rbp_department_radar')) %>,
+            rbp_bench_strength_report: <%- JSON.stringify(__('admin:rbp_bench_strength_report')) %>,
+            rbp_gauges_stacked_bar_scatter: <%- JSON.stringify(__('admin:rbp_gauges_stacked_bar_scatter')) %>,
+            rbp_overall_readiness: <%- JSON.stringify(__('admin:rbp_overall_readiness')) %>,
+            rbp_qualification_status_by_role: <%- JSON.stringify(__('admin:rbp_qualification_status_by_role')) %>,
+            rbp_9_box_talent_grid: <%- JSON.stringify(__('admin:rbp_9_box_talent_grid')) %>,
+            rbp_assessment_coverage: <%- JSON.stringify(__('admin:rbp_assessment_coverage')) %>,
+            rbp_kpi_progress_line_trend: <%- JSON.stringify(__('admin:rbp_kpi_progress_line_trend')) %>,
+            rbp_coverage_kpis: <%- JSON.stringify(__('admin:rbp_coverage_kpis')) %>,
+            rbp_coverage_by_site: <%- JSON.stringify(__('admin:rbp_coverage_by_site')) %>,
+            rbp_assessment_trend: <%- JSON.stringify(__('admin:rbp_assessment_trend')) %>,
+            rbp_department_comparison: <%- JSON.stringify(__('admin:rbp_department_comparison')) %>,
+            rbp_stacked_bar_radar_overlay: <%- JSON.stringify(__('admin:rbp_stacked_bar_radar_overlay')) %>,
+            rbp_department_x_domain: <%- JSON.stringify(__('admin:rbp_department_x_domain')) %>,
+            rbp_department_radar_overlay: <%- JSON.stringify(__('admin:rbp_department_radar_overlay')) %>,
+            rbp_training_needs_priority: <%- JSON.stringify(__('admin:rbp_training_needs_priority')) %>,
+            rbp_h_bar_table_with_cf: <%- JSON.stringify(__('admin:rbp_h_bar_table_with_cf')) %>,
+            rbp_gaps_by_skill: <%- JSON.stringify(__('admin:rbp_gaps_by_skill')) %>,
+            rbp_priority_list: <%- JSON.stringify(__('admin:rbp_priority_list')) %>,
+            rbp_skills_distribution: <%- JSON.stringify(__('admin:rbp_skills_distribution')) %>,
+            rbp_doughnut_area_progress: <%- JSON.stringify(__('admin:rbp_doughnut_area_progress')) %>,
+            rbp_skills_by_domain: <%- JSON.stringify(__('admin:rbp_skills_by_domain')) %>,
+            rbp_level_trend: <%- JSON.stringify(__('admin:rbp_level_trend')) %>,
+            rbp_domain_coverage: <%- JSON.stringify(__('admin:rbp_domain_coverage')) %>,
+            rbp_executive_summary: <%- JSON.stringify(__('admin:rbp_executive_summary')) %>,
+            rbp_kpi_gauge_bar_heatmap: <%- JSON.stringify(__('admin:rbp_kpi_gauge_bar_heatmap')) %>,
+            rbp_site_x_domain: <%- JSON.stringify(__('admin:rbp_site_x_domain')) %>,
+            rbp_scatter_kpi_by_role: <%- JSON.stringify(__('admin:rbp_scatter_kpi_by_role')) %>,
+            rbp_talent_grid: <%- JSON.stringify(__('admin:rbp_talent_grid')) %>,
+            rbp_role_kpis: <%- JSON.stringify(__('admin:rbp_role_kpis')) %>
+        }
+    };
+</script>
+<script src="/vendor/chart.umd.min.js?v=<%= assetVersion %>"></script>
+<script src="/js/chart-theme.js?v=<%= assetVersion %>"></script>
+<script src="/js/rb-renderers.js?v=<%= assetVersion %>"></script>
+<script src="/js/report-builder.js?v=<%= assetVersion %>"></script>

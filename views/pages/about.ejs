@@ -1,0 +1,137 @@
+<%#
+    every card on this page was hard-coded English on the
+    French UI. Labels and prose are locale keys now; the VALUES (version number,
+    Node runtime, platform, DB engine) stay verbatim — they are machine facts,
+    not prose.
+%>
+<div class="page-header">
+    <h1><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:about_h1') %></h1>
+</div>
+
+<div class="about-hero card">
+    <div class="about-logo"><img src="/brand/idevelop-mark.svg" alt="" width="72" height="72" style="border-radius:18px;box-shadow:0 12px 32px rgba(124,108,255,.35)"></div>
+    <div>
+        <div class="about-name"><%= displayName %></div>
+        <div class="about-tagline"><%= __('admin:about_tagline') %></div>
+        <div class="about-version"><%= __('admin:about_version_word') %> <strong><%= version %></strong>
+            <span class="about-badge">Community Edition</span>
+        </div>
+        <% if (description) { %><div class="about-desc"><%= description %></div><% } %>
+    </div>
+</div>
+
+<!-- Sovereignty & trust posture (the story a sponsor champions) -->
+<h3 class="about-section-title"><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('admin:about_sec_sovereignty') %></h3>
+<div class="about-grid">
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_deployment') %></div><div class="about-v about-v-sm"><%= __('admin:about_v_deployment') %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_residency') %></div><div class="about-v about-v-sm"><%= __('admin:about_v_residency') %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_copilot') %></div><div class="about-v about-v-sm"><%= __('admin:about_v_copilot') %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_cdn') %></div><div class="about-v about-v-sm"><% if (typeof externalFonts !== 'undefined' && !externalFonts) { %><%= __('admin:about_v_cdn_none') %> (<code>DISABLE_EXTERNAL_FONTS=1</code>)<% } else { %><%- __('admin:about_v_cdn_fonts') %><% } %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_audit') %></div><div class="about-v about-v-sm"><%= __('admin:about_v_audit') %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_privacy') %></div><div class="about-v about-v-sm"><%= __('admin:about_v_privacy') %></div></div>
+</div>
+
+<!-- Live system detail — admins only (engine internals not shown to all staff). -->
+<% if (typeof showSystem === 'undefined' || showSystem) { %>
+<h3 class="about-section-title"><i class="fas fa-server" aria-hidden="true"></i> <%= __('admin:about_sec_system') %></h3>
+<div class="about-grid">
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_app_version') %></div><div class="about-v"><%= version %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_environment') %></div><div class="about-v"><%= environment %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_port') %></div><div class="about-v"><%= appPort %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_node') %></div><div class="about-v"><%= nodeVersion %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_platform') %></div><div class="about-v"><%= platform %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_uptime') %></div><div class="about-v" id="about-uptime"><%= Math.floor(uptimeSec/3600) %>h <%= Math.floor((uptimeSec%3600)/60) %>m</div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_database') %></div><div class="about-v about-v-sm"><%= db.engine %><% if (db.name) { %> · <code><%= db.name %></code><% } %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_migrations') %></div><div class="about-v"><%= db.migrations != null ? db.migrations : '—' %><% if (db.latestMigration) { %> <span class="about-sub"><%= __('admin:about_latest') %> <%= db.latestMigration %></span><% } %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_jobs') %></div><div class="about-v about-v-sm"><%= jobsMode %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_v2') %></div><div class="about-v"><%= v2Features ? __('admin:about_enabled') : __('admin:about_disabled') %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_sso') %></div><div class="about-v"><%= ssoEnabled ? __('admin:about_enabled') : __('admin:about_disabled') %></div></div>
+    <%# upgrade readiness and capacity, measured, not inferred. %>
+    <% if (ops) { %>
+    <div class="about-card card"><div class="about-k"><%= __('admin:ops_about_migrations') %></div><div class="about-v"><%= ops.pending ? ops.pending.length : '—' %><% if (ops.pending && ops.pending.length) { %> <span class="about-sub"><%= ops.pending.join(', ') %></span><% } %><% if (ops.ahead && ops.ahead.length) { %> <span class="about-sub"><%= __('admin:health_migrations_ahead', { keys: ops.ahead.join(', ') }) %></span><% } %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:ops_about_db_size') %></div><div class="about-v"><%= ops.sizeBytes != null ? (ops.sizeBytes / 1048576).toFixed(0) + ' MB' : '—' %></div></div>
+    <div class="about-card card"><div class="about-k"><%= __('admin:ops_about_backup') %></div><div class="about-v about-v-sm"><%= ops.backup && ops.backup.lastRunOn ? ops.backup.lastRunOn : '—' %><% if (ops.backup && ops.backup.lastStatus) { %> <span class="about-sub"><%= ops.backup.lastStatus %></span><% } %><% if (ops.isSuperAdmin) { %> <span class="about-sub"><a href="/admin/health"><%= __('admin:ops_about_health_link') %></a></span><% } %></div></div>
+    <% } %>
+</div>
+<% } %>
+
+<!-- V3 Capability Framework -->
+<h3 class="about-section-title"><i class="fas fa-diagram-project" aria-hidden="true"></i> <%= __('admin:about_sec_framework') %></h3>
+<div class="card about-fw">
+    <% if (framework.loaded) { %>
+        <p class="about-fw-lead"><%- __('admin:about_fw_lead') %></p>
+        <div class="about-fw-stats">
+            <div class="fw-stat"><span class="fw-n"><%= framework.pillars ?? '—' %></span><span class="fw-l"><%= __('admin:about_fw_pillars') %></span></div>
+            <div class="fw-stat"><span class="fw-n"><%= framework.subDomains ?? '—' %></span><span class="fw-l"><%= __('admin:about_fw_subdomains') %></span></div>
+            <div class="fw-stat"><span class="fw-n"><%= framework.roleFamilies ?? '—' %></span><span class="fw-l"><%= __('admin:about_fw_families') %></span></div>
+            <div class="fw-stat"><span class="fw-n"><%= framework.skillsTotal ?? '—' %></span><span class="fw-l"><%= __('admin:about_fw_skills') %></span></div>
+            <div class="fw-stat"><span class="fw-n"><%= framework.skillsStandard ?? '—' %></span><span class="fw-l"><%= __('admin:about_fw_standard') %></span></div>
+            <div class="fw-stat"><span class="fw-n"><%= framework.skillsLegacy ?? '—' %></span><span class="fw-l"><%= __('admin:about_fw_legacy') %></span></div>
+            <div class="fw-stat"><span class="fw-n"><%= framework.junctions ?? '—' %></span><span class="fw-l"><%= __('admin:about_fw_junctions') %></span></div>
+        </div>
+        <% if (framework.loadedAt) { %><p class="about-foot"><%= __('admin:about_fw_loaded') %> <%= framework.loadedAt %></p><% } %>
+    <% } else { %>
+        <p class="about-fw-lead"><%- __('admin:about_fw_not_loaded') %></p>
+    <% } %>
+</div>
+
+<!-- Modules -->
+<div class="card about-modules">
+    <h3><i class="fas fa-layer-group" aria-hidden="true"></i> <%= __('admin:about_modules_title') %></h3>
+    <ul class="about-mods">
+        <li><%= __('admin:about_mod_framework') %></li>
+        <li><%= __('admin:about_mod_families') %></li>
+        <li><%= __('admin:about_mod_matrix') %></li>
+        <li><%= __('admin:about_mod_sa') %></li>
+        <li><%= __('admin:about_mod_ninebox') %></li>
+        <li><%= __('admin:about_mod_coaching') %></li>
+        <li><%= __('admin:about_mod_idp_pip') %></li>
+        <li><%= __('admin:about_mod_okr') %></li>
+        <li><%= __('admin:about_mod_continuity') %></li>
+        <li><%= __('admin:about_mod_lms') %></li>
+        <li><%= __('admin:about_mod_powerbi') %></li>
+        <li><%= __('admin:about_mod_radar') %></li>
+        <li><%= __('admin:about_mod_reports') %></li>
+        <li><%- __('admin:about_mod_api') %></li>
+    </ul>
+    <p class="about-links">
+        <a href="/guide" class="btn btn-secondary"><i class="fas fa-book" aria-hidden="true"></i> <%= __('admin:about_link_guide') %></a>
+        <a href="/health" class="btn btn-secondary" target="_blank" rel="noopener"><i class="fas fa-heart-pulse" aria-hidden="true"></i> <%= __('admin:about_link_health') %></a>
+    </p>
+    <p class="about-foot">© <span id="about-year"></span> <%= displayName %> · <%= (typeof branding !== 'undefined' && branding && branding.legalNotice) ? branding.legalNotice : __('admin:about_confidential') %></p>
+</div>
+
+<style>
+.about-hero { display:flex; align-items:center; gap:20px; padding:22px 24px; margin-bottom:18px; }
+.about-logo { width:72px; height:72px; display:flex; align-items:center; justify-content:center; border-radius:16px; }
+.about-name { font-size:1.6rem; font-weight:800; color:var(--text-primary); }
+.about-tagline { color:var(--text-secondary); font-size:.9rem; }
+.about-version { margin-top:6px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.about-version strong { color:var(--brand,#7C6CFF); }
+.about-badge { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--brand,#7C6CFF); border:1px solid var(--brand,#7C6CFF); border-radius:999px; padding:2px 10px; }
+.about-desc { margin-top:8px; color:var(--text-secondary); font-size:.85rem; max-width:70ch; }
+.about-section-title { margin:18px 2px 10px; font-size:1.05rem; color:var(--text-primary); }
+.about-section-title i { color:var(--brand,#7C6CFF); margin-right:6px; }
+.about-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:8px; }
+.about-card { padding:14px 16px; }
+.about-k { font-size:.74rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-secondary); }
+.about-v { font-size:1.15rem; font-weight:700; color:var(--text-primary); margin-top:4px; font-variant-numeric:tabular-nums; }
+.about-v-sm { font-size:.95rem; }
+.about-v code { font-size:.85em; color:var(--brand,#7C6CFF); }
+.about-sub { display:block; font-size:.7rem; font-weight:500; color:var(--text-muted); margin-top:2px; }
+.about-fw { padding:18px 22px; margin-bottom:18px; }
+.about-fw-lead { color:var(--text-secondary); font-size:.9rem; margin:0 0 14px; }
+.about-fw-stats { display:grid; grid-template-columns:repeat(7,1fr); gap:10px; }
+.fw-stat { background:var(--bg-subtle); border-radius:12px; padding:14px 8px; text-align:center; }
+.fw-n { display:block; font-size:1.5rem; font-weight:800; color:var(--brand,#7C6CFF); font-variant-numeric:tabular-nums; }
+.fw-l { display:block; font-size:.7rem; text-transform:uppercase; letter-spacing:.03em; color:var(--text-secondary); margin-top:2px; }
+.about-modules { padding:18px 22px; }
+.about-modules h3 { margin:0 0 12px; font-size:1.05rem; color:var(--text-primary); }
+.about-mods { columns:2; gap:24px; margin:0 0 14px; padding-left:18px; color:var(--text-secondary); }
+.about-mods li { margin:4px 0; }
+.about-links { display:flex; gap:10px; margin:10px 0; }
+.about-foot { color:var(--text-muted); font-size:.8rem; margin-top:8px; }
+@media (max-width:1100px){ .about-grid{grid-template-columns:repeat(2,1fr);} .about-fw-stats{grid-template-columns:repeat(4,1fr);} }
+@media (max-width:680px){ .about-grid{grid-template-columns:1fr 1fr;} .about-mods{columns:1;} .about-fw-stats{grid-template-columns:repeat(2,1fr);} }
+</style>
+<script nonce="<%= cspNonce %>"> document.getElementById('about-year').textContent = new Date().getFullYear(); </script>

@@ -1,0 +1,368 @@
+/* Help System — Dark Theme Compatible */
+
+/* Floating Help Button */
+.help-fab {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    width: 60px;
+    height: 60px;
+    background-color: var(--accent);
+    color: var(--text-inverse);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-lg);
+    cursor: pointer;
+    font-size: 24px;
+    z-index: 1000;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    border: none;
+}
+
+.help-fab:hover {
+    transform: scale(1.1);
+    background-color: var(--accent-hover);
+}
+
+.help-fab-icon {
+    font-weight: bold;
+}
+
+/* Help Modal/Panel */
+.help-panel {
+    position: fixed;
+    bottom: 100px;
+    right: 30px;
+    width: 400px;
+    max-width: 90vw;
+    background-color: var(--bg-surface);
+    border-radius: 12px;
+    box-shadow: var(--shadow-xl);
+    border: 1px solid var(--border);
+    z-index: 999;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(20px);
+    pointer-events: none;
+    transition: all 0.3s ease-out;
+    display: flex;
+    flex-direction: column;
+    max-height: 80vh;
+}
+
+.help-panel.active {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: all;
+}
+
+/* Header */
+.help-header {
+    background-color: var(--accent);
+    color: var(--text-inverse);
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.help-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.help-close {
+    background: none;
+    border: none;
+    color: var(--text-inverse);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    opacity: 0.8;
+}
+
+.help-close:hover {
+    opacity: 1;
+}
+
+/* Tabs */
+.help-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background-color: var(--bg-subtle);
+}
+
+.help-tab {
+    flex: 1;
+    padding: 12px;
+    text-align: center;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+}
+
+.help-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background-color: var(--bg-surface);
+}
+
+/* Content */
+.help-content {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.help-section {
+    display: none;
+    animation: helpFadeIn 0.3s ease-in;
+}
+
+.help-section.active {
+    display: block;
+}
+
+@keyframes helpFadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* Typography in Content */
+.help-block {
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.help-block:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.help-block h4 {
+    margin: 0 0 10px 0;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.help-block p {
+    margin: 0 0 8px 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.help-block ul {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.help-block li {
+    margin-bottom: 5px;
+}
+
+.lang-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    margin-right: 5px;
+    background-color: var(--bg-inset);
+    color: var(--text-secondary);
+}
+
+.badge-role {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 12px;
+    background-color: var(--info-bg);
+    color: var(--blue-text);
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+/* Guide Tab Styles */
+.help-guide-intro {
+    background-color: var(--info-bg);
+    border-left: 4px solid var(--info);
+    padding: 15px;
+    border-radius: 4px;
+}
+
+.help-why {
+    font-size: 0.9rem;
+    color: var(--blue-text);
+    margin: 0;
+}
+
+.help-steps {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.help-steps li {
+    background-color: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.step-text {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    flex: 1;
+}
+
+.btn-show-me {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-show-me:hover {
+    background-color: var(--bg-inset);
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+/* Element Highlighting Animation */
+@keyframes pulseHighlight {
+    0% {
+        box-shadow: 0 0 0 0 var(--accent-glow);
+        outline: 2px solid var(--accent);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(124, 108, 255, 0);
+        outline: 2px solid rgba(124, 108, 255, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(124, 108, 255, 0);
+        outline: 2px solid rgba(124, 108, 255, 0);
+    }
+}
+
+/* Light mode highlight uses purple instead */
+[data-theme="light"] .help-highlight {
+    --highlight-color: rgba(99, 91, 255, 0.7);
+}
+
+.help-highlight {
+    animation: pulseHighlight 1.5s infinite;
+    z-index: 1050;
+    position: relative;
+    border-radius: 4px;
+    scroll-margin-top: 100px;
+}
+
+/* ---- Enriched per-module help (steps / practices / value) ---- */
+.help-block h5 {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    margin: 0 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.help-block h5 i {
+    color: var(--accent);
+}
+
+/* Steps now wrap their content in .step-content so the number aligns with text */
+.help-steps li {
+    display: block;
+    justify-content: flex-start;
+}
+
+.step-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.step-number {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 0.9rem;
+    flex: 0 0 auto;
+}
+
+.help-practices {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.help-practices li {
+    position: relative;
+    padding: 6px 6px 6px 22px;
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    line-height: 1.45;
+}
+
+.help-practices li::before {
+    content: "\2714";
+    position: absolute;
+    left: 0;
+    top: 6px;
+    color: var(--emerald-text);
+    font-size: 0.8rem;
+}
+
+.help-value {
+    background-color: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    padding: 12px 14px;
+    border-radius: 8px;
+}
+
+.help-value p {
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    line-height: 1.5;
+    margin: 0;
+}

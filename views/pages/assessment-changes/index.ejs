@@ -1,0 +1,224 @@
+<%
+// LA DEMANDE DE MODIFICATION, VUE DES DEUX CÔTÉS — une seule page.
+// Entièrement rendue côté serveur et pilotée par des formulaires : elle
+// fonctionne sans JavaScript (navigateurs de site minier), comme les autres
+// écrans de décision. Aucune valeur non mesurée n'est affichée « 0 » : une
+// absence est un tiret.
+var acrLocale = (typeof lang !== 'undefined' && lang === 'en') ? 'en-GB' : 'fr-FR';
+function acrDate(v) { if (!v) return '—'; var d = new Date(v); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString(acrLocale); }
+// QUI A FAIT QUOI (M-04, E-12). Le nom d'abord — le service le résout dans la
+// même requête ; la référence ensuite, si la personne n'est plus joignable ;
+// « — » seulement quand il n'y a rien. Jamais « Employé #136 » quand un nom
+// existe, jamais un nom inventé quand il n'en existe pas.
+var acrMe = (typeof meRef !== 'undefined') ? meRef : null;
+function acrWho(ref, name) {
+  if (name) return String(name);
+  if (!ref) return '—';
+  var m = /^(employee|admin):(\d+)$/.exec(String(ref));
+  if (!m) return String(ref);
+  return (m[1] === 'admin' ? __('assess:acr_who_admin') : __('assess:acr_who_employee')) + ' #' + m[2];
+}
+function acrWhoWithSelf(ref, name) {
+  var who = acrWho(ref, name);
+  return (acrMe && ref && String(ref) === String(acrMe)) ? who + ' — ' + __('assess:acr_who_you') : who;
+}
+function acrStatus(s) { return __('assess:acr_status_' + s); }
+%>
+<div class="page-header">
+  <h1><i class="fas fa-pen-to-square" aria-hidden="true"></i> <%= __('assess:acr_title') %></h1>
+  <p class="text-muted"><%= __('assess:acr_subtitle') %></p>
+</div>
+
+<%# MES évaluations. La section n'est rendue que si quelque chose est réellement
+    déposable : `raisable()` n'y met que ce que `create()` accepterait. %>
+<% if (typeof lockedRows !== 'undefined' && lockedRows && lockedRows.length) { %>
+<section class="card" style="margin-bottom:1rem;padding:1rem;">
+  <h2 style="margin-top:0;"><%= __('assess:acr_raise_title') %></h2>
+  <p class="text-muted" style="margin:.15rem 0 .6rem;"><%= __('assess:acr_raise_help') %></p>
+  <form method="post" action="/assessment-changes/raise">
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end;">
+      <label style="flex:1 1 18rem;">
+        <span><%= __('assess:acr_field_assessment') %></span>
+        <select name="assessmentId" class="form-control" required>
+          <% lockedRows.forEach(function (r) { %>
+            <option value="<%= r.id %>"><%= r.skillName || ('#' + r.skillId) %> — <%= __('employee:state_' + r.workflowState) %></option>
+          <% }); %>
+        </select>
+      </label>
+      <label style="flex:2 1 22rem;">
+        <span><%= __('assess:acr_field_reason') %> <span aria-hidden="true">*</span></span>
+        <input type="text" name="reason" class="form-control" required maxlength="500"
+               placeholder="<%= __('assess:acr_field_reason_ph') %>">
+      </label>
+      <button class="btn btn-primary" type="submit"><%= __('assess:acr_btn_raise') %></button>
+    </div>
+  </form>
+</section>
+<% } %>
+
+<%# LE DÉPÔT DU SUPERVISEUR / DU MANAGER (constats E-02, M-01).
+    Le produit ordonnait « déposez une demande de modification » sur le refus
+    d'annulation d'une évaluation validée, et ne rendait ce formulaire à
+    personne d'autre que le sujet : la liste était calculée sur les évaluations
+    DU LECTEUR. Elle porte maintenant les évaluations VALIDÉES des personnes du
+    périmètre — les seules sur lesquelles le serveur accepte une demande de la
+    part d'un superviseur ; en deçà, il annule directement (section plus bas). %>
+<% if (typeof canDecide !== 'undefined' && canDecide) { %>
+<section class="card" style="margin-bottom:1rem;padding:1rem;">
+  <h2 style="margin-top:0;"><%= __('assess:acr_raise_other_title') %></h2>
+  <p class="text-muted" style="margin:.15rem 0 .6rem;"><%= __('assess:acr_raise_other_help') %></p>
+  <% if (typeof othersRows !== 'undefined' && othersRows && othersRows.length) { %>
+  <form method="post" action="/assessment-changes/raise">
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end;">
+      <label style="flex:1 1 20rem;">
+        <span><%= __('assess:acr_field_assessment') %></span>
+        <select name="assessmentId" class="form-control" required>
+          <% othersRows.forEach(function (r) { %>
+            <option value="<%= r.id %>"><%= r.firstName %> <%= r.lastName %> — <%= r.skillName || ('#' + r.skillId) %> (<%= __('employee:state_' + r.workflowState) %>)</option>
+          <% }); %>
+        </select>
+      </label>
+      <label style="flex:2 1 22rem;">
+        <span><%= __('assess:acr_field_reason') %> <span aria-hidden="true">*</span></span>
+        <input type="text" name="reason" class="form-control" required maxlength="500"
+               placeholder="<%= __('assess:acr_field_reason_ph') %>">
+      </label>
+      <button class="btn btn-primary" type="submit"><%= __('assess:acr_btn_raise') %></button>
+    </div>
+  </form>
+  <% } else { %>
+  <p style="margin:0;"><em><%= __('assess:acr_raise_other_none') %></em></p>
+  <% } %>
+</section>
+<% } %>
+
+<section class="card table-wrapper" style="padding:0;margin-bottom:1rem;">
+  <h2 style="margin:0;padding:1rem 1rem .25rem;"><%= __('assess:acr_mine_title') %></h2>
+  <table class="table">
+    <thead><tr>
+      <th><%= __('assess:acr_th_skill') %></th>
+      <%# M-04 — la liste mêle MES demandes et celles que mon superviseur a
+          déposées SUR mon évaluation : sans cette colonne, une ligne « en
+          attente » ne disait pas qui l'avait déposée. %>
+      <th><%= __('assess:acr_th_requested_by') %></th>
+      <th><%= __('assess:acr_th_requested_on') %></th>
+      <th><%= __('assess:acr_th_state_at_request') %></th>
+      <th><%= __('assess:acr_th_reason') %></th>
+      <th><%= __('assess:acr_th_outcome') %></th>
+      <th><%= __('assess:acr_th_actions') %></th>
+    </tr></thead>
+    <tbody>
+    <% if (typeof mine !== 'undefined' && mine && mine.length) { mine.forEach(function (r) { %>
+      <% var acrIsRequester = acrMe && r.requesterRef && String(r.requesterRef) === String(acrMe); %>
+      <tr>
+        <td><%= r.skillName || ('#' + r.selfAssessmentId) %></td>
+        <td><%= acrWhoWithSelf(r.requesterRef, r.requesterName) %></td>
+        <td><%= acrDate(r.createdAt) %></td>
+        <td><%= __('employee:state_' + r.targetState) %></td>
+        <td><%= r.reason %></td>
+        <td>
+          <strong><%= acrStatus(r.status) %></strong>
+          <% if (r.status !== 'pending') { %>
+            <div class="text-muted" style="font-size:.9em;">
+              <%= __('assess:acr_decided_by') %> <%= acrWho(r.decidedByRef, r.deciderName) %> · <%= acrDate(r.decidedAt) %>
+              <% if (r.decisionReason) { %><br><%= __('assess:acr_th_reason') %><%= colon %> <%= r.decisionReason %><% } %>
+            </div>
+          <% } %>
+        </td>
+        <td>
+          <%# E-16 — « Retirer » n'appartient qu'au DÉPOSANT (`withdraw` refuse
+              les autres, 0 ligne écrite) : ne pas l'offrir sur la demande d'un
+              tiers, et dire pourquoi plutôt que laisser une case vide. %>
+          <% if (r.status === 'pending' && acrIsRequester) { %>
+          <form method="post" action="/assessment-changes/<%= r.id %>/withdraw" style="display:inline;">
+            <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+            <button class="btn btn-sm" type="submit"><%= __('assess:acr_btn_withdraw') %></button>
+          </form>
+          <% } else if (r.status === 'pending') { %>
+            <span class="text-muted" style="font-size:.9em;"><%= __('assess:acr_withdraw_not_yours') %></span>
+          <% } else { %>—<% } %>
+        </td>
+      </tr>
+    <% }); } else { %>
+      <tr><td colspan="7"><em><%= __('assess:acr_mine_none') %></em></td></tr>
+    <% } %>
+    </tbody>
+  </table>
+</section>
+
+<% if (typeof canDecide !== 'undefined' && canDecide) { %>
+<section class="card table-wrapper" style="padding:0;margin-bottom:1rem;">
+  <h2 style="margin:0;padding:1rem 1rem .25rem;"><%= __('assess:acr_queue_title') %></h2>
+  <p class="text-muted" style="margin:0;padding:0 1rem .5rem;"><%= __('assess:acr_queue_help') %></p>
+  <table class="table">
+    <thead><tr>
+      <th><%= __('assess:acr_th_person') %></th>
+      <th><%= __('assess:acr_th_skill') %></th>
+      <th><%= __('assess:acr_th_requested_by') %></th>
+      <th><%= __('assess:acr_th_state_at_request') %></th>
+      <th><%= __('assess:acr_th_reason') %></th>
+      <th><%= __('assess:acr_th_decision') %></th>
+    </tr></thead>
+    <tbody>
+    <% if (typeof queue !== 'undefined' && queue && queue.length) { queue.forEach(function (r) { %>
+      <tr>
+        <td><%= r.employeeName || ('#' + r.employeeId) %></td>
+        <td><%= r.skillName || ('#' + r.selfAssessmentId) %></td>
+        <td><%= acrWho(r.requesterRef, r.requesterName) %> · <%= acrDate(r.createdAt) %></td>
+        <td><%= __('employee:state_' + r.targetState) %></td>
+        <td><%= r.reason %></td>
+        <td>
+          <%# M-03 — aucune commande offerte à quelqu'un que le serveur refusera.
+              `queue()` a déjà sorti mes propres demandes (elles sont dans « Mes
+              demandes ») ; ce qui reste et que je ne peux pas décider garde sa
+              ligne — c'est de l'information — mais dit QUI décide. %>
+          <% if (r.canDecide) { %>
+          <form method="post" action="/assessment-changes/<%= r.id %>/decide">
+            <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+            <input type="text" name="reason" class="form-control" maxlength="500"
+                   placeholder="<%= __('assess:acr_decide_reason_ph') %>" style="margin-bottom:.35rem;">
+            <button class="btn btn-sm btn-primary" type="submit" name="decision" value="granted"><%= __('assess:acr_btn_grant') %></button>
+            <button class="btn btn-sm btn-secondary" type="submit" name="decision" value="refused"><%= __('assess:acr_btn_refuse') %></button>
+          </form>
+          <% } else { %>
+            <span class="text-muted"><%= __('assess:acr_decide_not_yours') %></span>
+          <% } %>
+        </td>
+      </tr>
+    <% }); } else { %>
+      <tr><td colspan="6"><em><%= __('assess:acr_queue_none') %></em></td></tr>
+    <% } %>
+    </tbody>
+  </table>
+</section>
+
+<section class="card" style="margin-bottom:1rem;padding:1rem;">
+  <h2 style="margin-top:0;"><%= __('assess:acr_cancel_title') %></h2>
+  <p class="text-muted" style="margin:.15rem 0 .6rem;"><%= __('assess:acr_cancel_help') %></p>
+  <% if (typeof cancellable !== 'undefined' && cancellable && cancellable.length) { %>
+  <form method="post" action="/assessment-changes/cancel">
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end;">
+      <label style="flex:1 1 20rem;">
+        <span><%= __('assess:acr_field_assessment') %></span>
+        <select name="assessmentId" class="form-control" required>
+          <% cancellable.forEach(function (r) { %>
+            <option value="<%= r.id %>"><%= r.firstName %> <%= r.lastName %> — <%= r.skillName || ('#' + r.skillId) %> (<%= __('employee:state_' + r.workflowState) %>)</option>
+          <% }); %>
+        </select>
+      </label>
+      <label style="flex:2 1 22rem;">
+        <span><%= __('assess:acr_field_reason') %> <span aria-hidden="true">*</span></span>
+        <input type="text" name="reason" class="form-control" required maxlength="500"
+               placeholder="<%= __('assess:acr_cancel_reason_ph') %>">
+      </label>
+      <button class="btn btn-danger" type="submit"><%= __('assess:acr_btn_cancel') %></button>
+    </div>
+  </form>
+  <% } else { %>
+  <p style="margin:0;"><em><%= __('assess:acr_cancel_none') %></em></p>
+  <% } %>
+</section>
+<% } %>

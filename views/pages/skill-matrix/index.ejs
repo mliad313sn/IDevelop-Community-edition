@@ -1,0 +1,404 @@
+<div class="page-header">
+    <h1><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('dash:skill_matrix') %></h1>
+    <div class="page-actions">
+        <button class="btn btn-secondary" onclick="toggleQuickEdit()" id="quickEditToggle" aria-pressed="false"><i class="fas fa-bolt" aria-hidden="true"></i> <%= __('dash:quick_edit_off') %></button>
+        <button class="btn btn-secondary" onclick="toggleCompactView()" id="viewToggle"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('dash:compact_view') %></button>
+        <button class="btn btn-secondary" onclick="exportMatrix()"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('dash:export_csv') %></button>
+    </div>
+</div>
+
+<div class="help-text" style="margin-bottom: 1.5rem;">
+    <%= __('dash:sm_help_1') %> <strong><%= __('dash:quick_edit') %></strong> <%= __('dash:sm_help_2') %>
+</div>
+<style>
+#matrixTable.quick-edit td.skill-cell { cursor: cell; }
+#matrixTable.quick-edit td.skill-cell:hover { outline: 2px solid var(--brand, #7C6CFF); outline-offset: -2px; }
+td.skill-cell { position: relative; }
+.qe-select { position: absolute; inset: 2px; width: calc(100% - 4px); z-index: 5; font-size: .82rem;
+    background: var(--bg-elevated, #1b1b1b); color: var(--text-primary, #eee);
+    border: 1px solid var(--brand, #7C6CFF); border-radius: 4px; }
+</style>
+
+<!-- Filters and Search -->
+<div class="matrix-controls">
+    <div class="search-bar" style="flex: 1; max-width: 400px;">
+        <div class="search-input-wrapper">
+            <%# this box has its OWN handler (public/js/skill-matrix.js re-renders
+                the matrix). data-no-client-search stops main.js binding a SECOND, generic
+                row filter to it, which used to hide rows the matrix had just drawn. %>
+            <input type="search" class="search-input" id="employeeSearch" data-no-client-search
+                placeholder="<%= __('dash:search_employees_placeholder') %>"
+                aria-label="<%= __('dash:search_employees_placeholder') %>">
+        </div>
+    </div>
+
+    <div class="matrix-filters">
+        <div class="filter-group">
+            <label><%= __('dash:site_colon') %></label>
+            <select id="filterSite" onchange="smServerFilter()">
+                <%# %><% if (sites.length !== 1) { %><option value=""><%= __('dash:all_sites') %></option><% } %>
+                <% sites.forEach(function(site) { %>
+                    <option value="<%= site.name %>" <%= (typeof filters !== 'undefined' && filters.site === site.name) ? 'selected' : '' %>>
+                        <%= site.name %>
+                    </option>
+                    <% }); %>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label><%= __('dash:department_colon') %></label>
+            <select id="filterDepartment" onchange="smServerFilter()">
+                <option value=""><%= __('dash:all_departments') %></option>
+                <% departments.forEach(function(dept) { %>
+                    <option value="<%= dept.name %>" <%= (typeof filters !== 'undefined' && filters.department === dept.name) ? 'selected' : '' %>>
+                        <%= dept.name %>
+                    </option>
+                    <% }); %>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label><%= __('dash:service_colon') %></label>
+            <select id="filterService" onchange="smServerFilter()">
+                <option value=""><%= __('dash:all_services') %></option>
+                <% services.forEach(function(svc) { %>
+                    <option value="<%= svc.name %>" <%= (typeof filters !== 'undefined' && filters.service === svc.name) ? 'selected' : '' %>>
+                        <%= svc.name %>
+                    </option>
+                    <% }); %>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label><%= __('dash:role_colon') %></label>
+            <select id="filterRole" onchange="smServerFilter()">
+                <option value=""><%= __('dash:all_roles') %></option>
+                <% roles.forEach(function(role) { %>
+                    <option value="<%= role.name %>" <%= (typeof filters !== 'undefined' && filters.role === role.name) ? 'selected' : '' %>>
+                        <%= role.name %>
+                    </option>
+                    <% }); %>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label><%= __('dash:readiness_colon') %></label>
+            <select id="filterReadiness" onchange="applyFilters()">
+                <option value=""><%= __('dash:all') %></option>
+                <option value="ready"><%= __('dash:ready') %></option>
+                <option value="not-ready"><%= __('dash:not_ready') %></option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics -->
+<div class="matrix-stats">
+    <div class="stat-item">
+        <span class="stat-label"><%= __('dash:total_employees_colon') %></span>
+        <span class="stat-value" id="totalEmployeesDisplay">
+            <%= totalEmployees %>
+        </span>
+    </div>
+    <div class="stat-item">
+        <span class="stat-label"><%= __('dash:total_skills_colon') %></span>
+        <span class="stat-value">
+            <%= totalSkills %>
+        </span>
+    </div>
+    <div class="stat-item">
+        <span class="stat-label"><%= __('dash:ready_employees_colon') %></span>
+        <span class="stat-value" id="readyCount">-</span>
+    </div>
+    <div class="stat-item">
+        <span class="stat-label"><%= __('dash:filtered_colon') %></span>
+        <span class="stat-value" id="filteredCount">
+            <%= totalEmployees %>
+        </span>
+    </div>
+</div>
+
+<!-- Legend -->
+<div class="matrix-legend">
+    <div class="legend-item">
+        <div class="skill-level level-0" style="margin: 0;">0</div>
+        <span><%= __('dash:none') %></span>
+    </div>
+    <div class="legend-item">
+        <div class="skill-level level-1" style="margin: 0;">1</div>
+        <span><%= __('dash:basic_awareness') %></span>
+    </div>
+    <div class="legend-item">
+        <div class="skill-level level-2" style="margin: 0;">2</div>
+        <span><%= __('dash:guided') %></span>
+    </div>
+    <div class="legend-item">
+        <div class="skill-level level-3" style="margin: 0;">3</div>
+        <span><%= __('dash:autonomous') %></span>
+    </div>
+    <div class="legend-item">
+        <div class="skill-level level-4" style="margin: 0;">4</div>
+        <span><%= __('dash:expert') %></span>
+    </div>
+    <div class="legend-item" style="margin-left: 1rem;">
+        <span class="requirement-indicator" aria-hidden="true"><i class="fas fa-circle" aria-hidden="true"></i></span>
+        <span><%= __('dash:required') %></span>
+    </div>
+    <div class="legend-item">
+        <span class="requirement-indicator critical" aria-hidden="true"><i class="fas fa-bolt" aria-hidden="true"></i></span>
+        <span><%= __('dash:critical') %></span>
+    </div>
+</div>
+
+<!-- Skill Matrix Table -->
+<div class="matrix-container" id="matrixContainer">
+    <div class="matrix-table-wrapper">
+        <table class="matrix-table" id="matrixTable">
+            <thead>
+                <tr>
+                    <th class="sticky-col sticky-header">
+                        <div><%= __('dash:employee') %></div>
+                        <div class="header-subtitle"><%= __('dash:num_role') %></div>
+                    </th>
+                    <th class="sticky-col sticky-header readiness-col">
+                        <div><%= __('dash:readiness') %></div>
+                        <div class="header-subtitle"><%= __('dash:status') %></div>
+                    </th>
+                    <% Object.keys(skillsByDomain).forEach(function(domainId) { %>
+                        <% const domainData=skillsByDomain[domainId]; %>
+                            <% if (domainData.skills.length> 0) { %>
+                                <th class="domain-header" colspan="<%= domainData.skills.length %>">
+                                    <%= domainData.domain.name %>
+                                </th>
+                                <% } %>
+                                    <% }); %>
+                </tr>
+                <tr>
+                    <th class="sticky-col sticky-header"></th>
+                    <th class="sticky-col sticky-header"></th>
+                    <% Object.keys(skillsByDomain).forEach(function(domainId) { %>
+                        <% const domainData=skillsByDomain[domainId]; %>
+                            <% domainData.skills.forEach(function(skill) { %>
+                                <th class="skill-header" data-skill-id="<%= skill.id %>"
+                                    data-domain-id="<%= domainData.domain.id %>"
+                                    data-skill-name="<%= skill.name %>" data-domain-name="<%= domainData.domain.name %>">
+                                    <div class="skill-header-content">
+                                        <%# The name is ellipsised when the vertical run exceeds the cap, so the
+                                            tooltip must always carry the FULL name — a description alone would
+                                            leave a truncated header with no way to read what the column is. %>
+                                        <div class="skill-name" title="<%= skill.name %><%= skill.description ? ' — ' + skill.description : '' %>">
+                                            <%= skill.name %>
+                                        </div>
+                                    </div>
+                                </th>
+                                <% }); %>
+                                    <% }); %>
+                </tr>
+            </thead>
+            <tbody>
+                <% let currentSite=null; let skillCount=0; Object.keys(skillsByDomain).forEach(function(domainId) {
+                    skillCount +=skillsByDomain[domainId].skills.length; }); const totalCols=2 + skillCount;
+                    employees.forEach(function(employee) { if (currentSite !==employee.siteName) {
+                    currentSite=employee.siteName; %>
+                    <tr class="site-separator" style="background-color: var(--bg-elevated);">
+                        <td colspan="<%= totalCols %>"
+                            style="padding: 6px 12px; font-weight: 600; color: var(--text-primary); border-top: 2px solid var(--border); border-bottom: 1px solid var(--border);">
+                            <i class="fas fa-building" aria-hidden="true"></i> <%= employee.siteName %>
+                        </td>
+                    </tr>
+                    <% } %>
+                        <tr data-employee-id="<%= employee.id %>" 
+                            data-site-id="<%= employee.siteId %>" data-site-name="<%= employee.siteName %>"
+                            data-department-id="<%= employee.departmentId %>" data-department-name="<%= employee.departmentName %>"
+                            data-service-id="<%= employee.serviceId %>" data-service-name="<%= employee.serviceName %>" 
+                            data-role-id="<%= employee.roleId %>" data-role-name="<%= employee.roleName %>"
+                            data-employee-name="<%= (employee.firstName + ' ' + employee.lastName).toLowerCase() %>"
+                            data-emp-name="<%= employee.firstName %> <%= employee.lastName %>"
+                            data-employee-number="<%= employee.employeeNumber.toLowerCase() %>">
+                            <td class="sticky-col employee-name">
+                                <a href="/employees/<%= employee.id %>" class="employee-link">
+                                    <strong>
+                                        <%= employee.firstName %>
+                                            <%= employee.lastName %>
+                                    </strong>
+                                </a>
+                                <div class="employee-meta">
+                                    <span>#<%= employee.employeeNumber %></span>
+                                    <span class="role-badge">
+                                        <%= employee.roleName %>
+                                    </span>
+                                </div>
+                                <div class="employee-org">
+                                    <%= employee.siteName %> / <%= employee.departmentName %>
+                                </div>
+                            </td>
+                            <td class="sticky-col readiness-cell">
+                                <%# readinessPercent is readiness_assessed_only: null (never 0) when nobody was ever assessed. %>
+                                <% const readiness=readinessMap[employee.id];
+                                   const rp = readiness ? readiness.readinessPercent : null;
+                                   const readinessPercent = rp == null ? __('dash:rd_not_measured') : rp + '%';
+                                   const isReady=readiness ? readiness.isReady : false;
+                                    %>
+                                    <div class="readiness-indicator <%= isReady ? 'ready' : 'not-ready' %>"
+                                        title="<%= __('dash:readiness_colon') %> <%= readinessPercent %><%= readiness && readiness.gaps.length > 0 ? '\\n' + __('dash:gaps_colon') + ' ' + readiness.gaps.length : '' %>">
+                                        <div class="readiness-percent">
+                                            <%= readinessPercent %>
+                                        </div>
+                                        <div class="readiness-status">
+                                            <%= isReady ? '✓ ' + __('dash:ready') : '✗ ' + __('dash:not_ready') %>
+                                        </div>
+                                    </div>
+                                    <a href="/employees/<%= employee.id %>/assessments" class="btn btn-sm"
+                                        style="margin-top: 0.5rem; width: 100%;"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('dash:assess') %></a>
+                            </td>
+                            <% Object.keys(skillsByDomain).forEach(function(domainId) { %>
+                                <% const domainData=skillsByDomain[domainId]; %>
+                                    <% domainData.skills.forEach(function(skill) {
+                                        const assessment = assessmentMap[employee.id] && assessmentMap[employee.id][skill.id];
+                                        const level = assessment ? assessment.currentLevel : 0;
+                                        const roleReqs = roleRequirementsMap[employee.roleId] || {};
+                                        const requirement = roleReqs[skill.id];
+                                        const isRequired = !!requirement;
+                                        const isCritical = requirement && requirement.isCritical;
+                                        const requiredLevel = requirement ? requirement.requiredLevel : null;
+                                        const isMet = requiredLevel !== null ? level >= requiredLevel : true;
+                                    %><td class="skill-cell clickable" data-skill-id="<%= skill.id %>" data-employee-id="<%= employee.id %>"><div class="skill-cell-content"><div class="skill-level level-<%= level %><%= (!isMet && isRequired) ? ' not-met' : '' %>"><%= level %></div><% if (isRequired) { %><div class="requirement-badge<%= isCritical ? ' critical' : '' %>" data-required-level="<%= requiredLevel %>"><i class="fas <%= isCritical ? 'fa-bolt' : 'fa-circle' %>" aria-hidden="true"></i><span class="sr-only"><%= isCritical ? __('dash:critical_requirement') : __('dash:required') %>, <%= __('dash:level_lc') %> <%= requiredLevel %></span></div><% } %></div></td><% }); %>
+                                            <% }); %>
+                        </tr>
+                        <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Pagination (server-side: only a bounded slice is rendered to avoid lag) -->
+<% if (typeof pageInfo !== 'undefined') { %>
+<div class="matrix-pagination" style="display:flex;align-items:center;gap:.75rem;justify-content:center;margin:1rem 0;flex-wrap:wrap;">
+    <button class="btn btn-secondary btn-sm" onclick="smGoPage(<%= pageInfo.page - 1 %>)" <%= pageInfo.page <= 1 ? 'disabled' : '' %>><%= __('dash:prev') %></button>
+    <span><%= __('dash:page') %> <strong><%= pageInfo.page %></strong> / <%= pageInfo.totalPages %> · <%= __('dash:showing_lc') %> <%= pageInfo.showing %> <%= __('dash:of_lc') %> <%= pageInfo.total %> <%= __('dash:employees_lc') %></span>
+    <button class="btn btn-secondary btn-sm" onclick="smGoPage(<%= pageInfo.page + 1 %>)" <%= pageInfo.page >= pageInfo.totalPages ? 'disabled' : '' %>><%= __('dash:next') %></button>
+    <label style="margin-left:1rem;"><%= __('dash:per_page') %>
+        <select onchange="smSetPageSize(this.value)">
+            <% [25, 50, 100, 200].forEach(function (sz) { %>
+            <option value="<%= sz %>" <%= pageInfo.pageSize === sz ? 'selected' : '' %>><%= sz %></option>
+            <% }); %>
+        </select>
+    </label>
+</div>
+<% } %>
+<script nonce="<%= cspNonce %>">
+    function smCurrentParams() { return new URLSearchParams(location.search); }
+    function smServerFilter() {
+        const p = new URLSearchParams();
+        const v = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+        if (v('filterSite')) p.set('site', v('filterSite'));
+        if (v('filterDepartment')) p.set('department', v('filterDepartment'));
+        if (v('filterService')) p.set('service', v('filterService'));
+        if (v('filterRole')) p.set('role', v('filterRole'));
+        const ps = smCurrentParams().get('pageSize'); if (ps) p.set('pageSize', ps);
+        p.set('page', '1');
+        location.search = p.toString();
+    }
+    function smGoPage(n) { const p = smCurrentParams(); p.set('page', String(n)); location.search = p.toString(); }
+    function smSetPageSize(sz) { const p = smCurrentParams(); p.set('pageSize', String(sz)); p.set('page', '1'); location.search = p.toString(); }
+</script>
+
+<!-- Assessment Modal -->
+<div id="assessmentModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><%= __('dash:assess_skill') %></h2>
+            <button class="close" onclick="hideModal('assessmentModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="assessment-info">
+                <p><strong><%= __('dash:employee_colon') %></strong> <span id="modalEmployeeName"></span></p>
+                <p><strong><%= __('dash:skill_colon') %></strong> <span id="modalSkillName"></span> (<span id="modalDomainName"></span>)</p>
+            </div>
+
+            <div class="modal-tabs">
+                <button class="tab-btn active" onclick="switchModalTab('assess')"><%= __('dash:assess') %></button>
+                <button class="tab-btn" onclick="switchModalTab('history')"><%= __('dash:history') %></button>
+            </div>
+
+            <div id="tab-assess" class="tab-content active">
+                <form id="assessmentForm">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <input type="hidden" id="modalEmployeeId" name="employeeId">
+                    <input type="hidden" id="modalSkillId" name="skillId">
+
+                    <div class="form-group">
+                        <label class="required"><%= __('dash:skill_level') %></label>
+                        <div class="level-selector">
+                            <button type="button" class="level-btn" data-level="0" onclick="selectLevel(0)">
+                                <div class="skill-level level-0">0</div>
+                                <span><%= __('dash:none') %></span>
+                            </button>
+                            <button type="button" class="level-btn" data-level="1" onclick="selectLevel(1)">
+                                <div class="skill-level level-1">1</div>
+                                <span><%= __('dash:basic_awareness') %></span>
+                            </button>
+                            <button type="button" class="level-btn" data-level="2" onclick="selectLevel(2)">
+                                <div class="skill-level level-2">2</div>
+                                <span><%= __('dash:guided') %></span>
+                            </button>
+                            <button type="button" class="level-btn" data-level="3" onclick="selectLevel(3)">
+                                <div class="skill-level level-3">3</div>
+                                <span><%= __('dash:autonomous') %></span>
+                            </button>
+                            <button type="button" class="level-btn" data-level="4" onclick="selectLevel(4)">
+                                <div class="skill-level level-4">4</div>
+                                <span><%= __('dash:expert') %></span>
+                            </button>
+                        </div>
+                        <input type="hidden" id="selectedLevel" name="currentLevel" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label><%= __('dash:notes_optional') %></label>
+                        <textarea name="notes" id="assessmentNotes" rows="3"
+                            placeholder="<%= __('dash:notes_placeholder') %>"></textarea>
+                    </div>
+
+                    <div id="requirementInfo" class="requirement-info" style="display: none;">
+                        <div class="alert alert-info">
+                            <strong><%= __('dash:role_requirement_colon') %></strong> <%= __('dash:req_info_1') %> <span id="requirementType"></span> <%= __('dash:req_info_2') %>
+                            <%= __('dash:required_level_colon') %> <strong id="requiredLevelDisplay"></strong>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('dash:save_assessment') %></button>
+                    <button type="button" class="btn btn-secondary"
+                        onclick="hideModal('assessmentModal')"><%= __('dash:cancel') %></button>
+                </form>
+            </div>
+            <div id="tab-history" class="tab-content">
+                <div id="historyLoading" style="display: none;"><%= __('dash:loading_history') %></div>
+                <div id="historyList"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<link rel="stylesheet" href="/css/skill-matrix.css?v=<%= assetVersion %>">
+<link rel="stylesheet" href="/css/skill-matrix-history.css?v=<%= assetVersion %>">
+
+<%# Strings skill-matrix.js writes into the DOM at runtime (the assessment
+    modal, the Quick Edit dropdown, the readiness cell, the history list).
+    They live here, in the session language, because the bundle is static and
+    used to hard-code English — a French reader got "Not measured" and
+    "Basic Awareness" on an otherwise French page. The EN wording stays in the
+    JS as a fallback, so a missing key degrades to English, never to blank. %>
+<script nonce="<%= cspNonce %>">
+    window.SM_I18N = <%- include('../../partials/json-script', { v: {
+        selectLevel: __('dash:sm_select_level'), saving: __('dash:sm_saving'),
+        saveFailed: __('dash:sm_save_failed'), noNotes: __('dash:sm_no_notes'),
+        noHistory: __('dash:sm_no_history'), historyError: __('dash:sm_history_error'),
+        byAdmin: __('dash:sm_by_admin'), levelTitle: __('dash:sm_level_title'),
+        levelUnknown: __('dash:sm_level_unknown'), notMeasured: __('dash:rd_not_measured'),
+        ready: __('dash:ready'), notReady: __('dash:not_ready'),
+        readinessColon: __('dash:readiness_colon'), gapsColon: __('dash:gaps_colon'),
+        requiredColon: __('dash:required_colon'), compactView: __('dash:compact_view'),
+        expandedView: __('dash:expanded_view'), quickEditOn: __('dash:quick_edit_on'),
+        quickEditOff: __('dash:quick_edit_off'),
+        levels: [__('dash:none'), __('dash:basic_awareness'), __('dash:guided'),
+            __('dash:autonomous'), __('dash:expert')]
+    } }) %>;
+</script>
+<script src="/js/skill-matrix.js?v=<%= assetVersion %>"></script>

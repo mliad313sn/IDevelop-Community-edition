@@ -1,0 +1,95 @@
+<%#
+    SSO test sign-in result (SSO facilitator, phase 1). The round trip went to
+    the identity provider and back through the full validation; NOTHING was
+    written — no session, no identity link, no claimed mapping, no onboarding
+    request. This page shows what the IdP released and which account it WOULD
+    open, so an administrator can fix the claims before anyone signs in.
+%>
+<%
+var d = (result && result.diagnosis) || {};
+var p = d.principal;
+var refusalText = {
+  admin_password_only: __('admin:ssof_r_admin'),
+  admin_ineligible: __('admin:ssof_r_admin_ineligible'),
+  superadmin_sso_forbidden: __('admin:ssof_r_superadmin_forbidden'),
+  local_only: __('admin:ssof_r_local_only'),
+  not_provisioned: __('admin:ssof_r_not_provisioned'),
+  email_ambiguous: __('admin:ssof_r_email_ambiguous')
+};
+var viaText = {
+  linked: __('admin:ssof_via_linked'),
+  mapping: __('admin:ssof_via_mapping'),
+  email: __('admin:ssof_via_email')
+};
+%>
+<div class="page-header">
+  <h1><i class="fas fa-vial-circle-check" aria-hidden="true"></i> <%= __('admin:ssof_test_title') %></h1>
+  <div class="page-actions">
+    <a href="/app-settings/sso" class="btn btn-secondary"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('admin:sso_h1') %></a>
+    <a href="/app-settings/sso/test-signin/<%= result.provider %>" class="btn btn-primary"><i class="fas fa-rotate" aria-hidden="true"></i> <%= __('admin:ssof_test_again') %></a>
+  </div>
+</div>
+
+<p class="help-text"><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('admin:ssof_test_nothing_written') %></p>
+
+<% if (result.pending) { %>
+  <div class="card" style="padding:1rem"><%= __('admin:ssof_test_pending') %></div>
+<% } else if (!result.ok) { %>
+  <div class="card" style="padding:1rem;margin-bottom:1rem">
+    <h2 style="margin-top:0"><%= __('admin:ssof_test_verdict') %></h2>
+    <p><span class="badge badge-danger"><%= __('admin:ssof_test_refused') %></span>
+      <%= __('admin:ssof_fail_' + (result.code || 'unknown'), { defaultValue: __('admin:ssof_fail_unknown') }) %></p>
+    <% if (result.detail || result.error) { %>
+      <details><summary><%= __('admin:ssof_test_technical') %></summary><code><%= result.detail || result.error %></code></details>
+    <% } %>
+  </div>
+  <% if (result.claims && Object.keys(result.claims).length) { %>
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table class="table">
+      <caption class="sr-only"><%= __('admin:ssof_test_claims') %></caption>
+      <thead><tr><th scope="col"><%= __('admin:ssof_th_claim') %></th><th scope="col"><%= __('admin:ssof_th_value') %></th></tr></thead>
+      <tbody><% Object.keys(result.claims).forEach(function (k) { %><tr><td><code><%= k %></code></td><td><%= result.claims[k] %></td></tr><% }); %></tbody>
+    </table>
+  </div>
+  <% } %>
+<% } else { %>
+  <div class="card" style="padding:1rem;margin-bottom:1rem">
+    <h2 style="margin-top:0"><%= __('admin:ssof_test_verdict') %></h2>
+    <% if (p && !d.refusal) { %>
+      <p><span class="badge badge-success"><%= __('admin:ssof_test_would_sign_in') %></span>
+        <strong><%= p.username || ('#' + p.id) %></strong> (<%= p.kind === 'admin' ? __('admin:ssof_kind_admin') : __('admin:ssof_kind_employee') %> #<%= p.id %>)
+        — <%= viaText[d.matchedBy] || d.matchedBy %></p>
+    <% } else { %>
+      <p><span class="badge badge-warning"><%= __('admin:ssof_test_would_not') %></span>
+        <%= refusalText[d.refusal] || d.refusal %>
+        <% if (p) { %>(<%= p.username || ('#' + p.id) %>)<% } %></p>
+    <% } %>
+    <ul class="ssof-checks">
+      <li><% var tRec = d.tenant && d.tenant.received; %><span aria-hidden="true"><%= !tRec ? '—' : (d.tenant.ok ? '✓' : '✗') %></span>
+        <span class="sr-only"><%= !tRec ? __('admin:ssof_sr_missing') : (d.tenant.ok ? __('admin:ssof_sr_ok') : __('admin:ssof_sr_bad')) %></span> <%= __('admin:ssof_check_tenant') %>
+        <code><%= (d.tenant && d.tenant.received) || '—' %></code>
+        <% if (d.tenant && d.tenant.expected) { %>(<%= __('admin:ssof_check_expected') %> <code><%= d.tenant.expected %></code>)<% } %></li>
+      <li><span aria-hidden="true"><%= result.mapped && result.mapped.oid ? '✓' : '✗' %></span>
+        <span class="sr-only"><%= result.mapped && result.mapped.oid ? __('admin:ssof_sr_ok') : __('admin:ssof_sr_missing') %></span> <%= __('admin:ssof_check_oid') %> <code><%= (result.mapped && result.mapped.oid) || '—' %></code></li>
+      <li><%= result.mapped && result.mapped.upn ? '✓' : '—' %> UPN <code><%= (result.mapped && result.mapped.upn) || '—' %></code></li>
+      <li><%= result.mapped && result.mapped.employeeId ? '✓' : '—' %> employeeId <code><%= (result.mapped && result.mapped.employeeId) || '—' %></code></li>
+      <li><%= d.guest ? '✗ ' + __('admin:ssof_check_guest') : '✓ ' + __('admin:ssof_check_member') %></li>
+    </ul>
+    <% if (!(result.mapped && result.mapped.oid)) { %>
+      <p class="help-text"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:ssof_hint_oid') %></p>
+    <% } %>
+  </div>
+
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table class="table">
+      <caption class="sr-only"><%= __('admin:ssof_test_claims') %></caption>
+      <thead><tr><th scope="col"><%= __('admin:ssof_th_claim') %></th><th scope="col"><%= __('admin:ssof_th_value') %></th></tr></thead>
+      <tbody>
+        <% Object.keys(result.claims || {}).forEach(function (k) { %>
+          <tr><td><code><%= k %></code></td><td><%= result.claims[k] %></td></tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+<style nonce="<%= cspNonce %>">.ssof-checks{list-style:none;padding-left:0;line-height:1.8}</style>

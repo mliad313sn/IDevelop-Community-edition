@@ -1,0 +1,83 @@
+{
+  "community": {
+    "identity": "community",
+    "categorical": [
+      "#7C6CFF",
+      "#CA72A7",
+      "#DF5920",
+      "#626A84",
+      "#8F8314",
+      "#187EAA",
+      "#728D35",
+      "#17A1A1"
+    ],
+    "semantic": {
+      "good": "#1F7A56",
+      "mid": "#866F13",
+      "low": "#E02929",
+      "neutral": "#187EAA",
+      "accent": "var(--brand)"
+    },
+    "heat": [
+      "rgba(224,41,41,.32)",
+      "rgba(134,111,19,.30)",
+      "rgba(24,126,170,.28)",
+      "rgba(31,122,86,.32)",
+      "rgba(31,122,86,.55)"
+    ],
+    "roles": {
+      "measured": "#7C6CFF",
+      "reference": "#DF5920",
+      "measured-alt": "#17A1A1",
+      "reference-alt": "#CA72A7",
+      "measured-warm": "#8F8314",
+      "guide": "#626A84",
+      "progress": "#187EAA",
+      "progress-alt": "#8F8314",
+      "achieved": "#1F7A56",
+      "achieved-alt": "#728D35",
+      "outstanding": "#DF5920",
+      "ramp-mid": "#4FAF8A",
+      "mid-low": "#C9702F",
+      "nodata": "rgba(127,134,154,0.35)",
+      "neutral-fill": "rgba(24,126,170,0.20)",
+      "neutral-fill-soft": "rgba(24,126,170,0.14)",
+      "low-fill": "rgba(224,41,41,0.10)",
+      "accent-fill": "rgba(124,108,255,0.12)"
+    },
+    "ramp": ["#A8434F", "#C45A2C", "#A7822A", "#4E9A48", "#2FA77A"],
+    "diag": ["#187EAA", "#E02929", "#7C6CFF", "#626A84", "#17A1A1", "#8F8314"],
+    "schemes": {
+      "gold": ["#7c6cff", "#7162e8", "#6659d1", "#5b4fba", "#4f45a3", "#443b8c", "#393275"],
+      "emerald": ["#17a1a1", "#159393", "#138484", "#117676", "#0f6767", "#0d5959", "#0b4a4a"],
+      "multi": [
+        "#7C6CFF",
+        "#CA72A7",
+        "#DF5920",
+        "#626A84",
+        "#8F8314",
+        "#187EAA",
+        "#728D35",
+        "#17A1A1"
+      ],
+      "heatscale": ["#E02929", "#8F8314", "#626A84", "#728D35", "#1F7A56"],
+      "cool": ["#187eaa", "#16739b", "#14678b", "#125c7c", "#0f516d", "#0d455e", "#0b3a4e"],
+      "mono": ["#626a84", "#596078", "#50576c", "#484d60", "#3f4454", "#363a49", "#2d313d"],
+      "sunset": ["#df5920", "#cf531e", "#c04d1c", "#b04619", "#a14017", "#913a15", "#813413"]
+    },
+    "geometry": {
+      "line-tension": "0.35",
+      "line-width": "2.5",
+      "point-radius": "2.6",
+      "point-hover-radius": "5",
+      "point-border-width": "0",
+      "bar-radius": "4",
+      "arc-border-width": "0",
+      "arc-spacing": "2",
+      "legend-box": "9",
+      "tooltip-radius": "12",
+      "font-weight": "500"
+    },
+    "pointCycle": ["circle", "rectRot", "triangle", "rect", "rectRounded"]
+  }
+}

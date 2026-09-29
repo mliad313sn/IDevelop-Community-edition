@@ -1,0 +1,146 @@
+<%
+// Notifications monitor — in-app + email, delivery state, re-queue for failed.
+// Server-rendered (no-JS friendly): filters are GET query params, retry is a POST.
+var _f = (typeof filters !== 'undefined' && filters) ? filters : {};
+var _q = (typeof query !== 'undefined' && query) ? query : {};
+var pg = (typeof pager !== 'undefined' && pager) || null;
+var _stats = (typeof stats !== 'undefined' && stats) ? stats : { byChannel: {}, byState: {}, total: 0 };
+var _rows = (typeof rows !== 'undefined' && rows) ? rows : [];
+var _kinds = (typeof kinds !== 'undefined' && kinds) ? kinds : [];
+var _fd = (typeof fmtDateTime === 'function') ? fmtDateTime : function (d) { return d ? String(d) : '—'; };
+var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+var opt = function (value, label, selected) { return '<option value="' + esc(value) + '"' + (selected ? ' selected' : '') + '>' + esc(label) + '</option>'; };
+var stateLabel = function (s) { return __('admin:notif_state_' + s); };
+var channelLabel = function (c) { return __('admin:notif_channel_' + c); };
+var stateClass = { queued: 'badge-info', sent: 'badge-success', failed: 'badge-danger', snoozed: 'badge-muted' };
+%>
+<div class="page-header">
+    <h1><i class="fas fa-bell" aria-hidden="true"></i> <%= __('admin:notif_title') %></h1>
+</div>
+<p class="text-muted" style="margin-top:-.5rem"><%= __('admin:notif_subtitle') %></p>
+
+<!-- Summary: totals by channel and by delivery state. -->
+<div class="emp-cards" style="margin-bottom:1rem">
+    <% ['inapp','email'].forEach(function(ch){ var c = _stats.byChannel[ch] || { total: 0 }; %>
+    <div class="emp-stat">
+        <div class="emp-n"><%= c.total || 0 %></div>
+        <div class="emp-l"><i class="fas <%= ch === 'email' ? 'fa-envelope' : 'fa-bell' %>" aria-hidden="true"></i> <%= channelLabel(ch) %></div>
+        <div class="emp-sub">
+            <%= (c.sent || 0) %> <%= __('admin:notif_state_sent') %> ·
+            <%= (c.queued || 0) %> <%= __('admin:notif_state_queued') %><% if (c.failed) { %> · <span style="color:var(--danger,#b3261e);font-weight:700"><%= c.failed %> <%= __('admin:notif_state_failed') %></span><% } %>
+        </div>
+    </div>
+    <% }); %>
+    <div class="emp-stat">
+        <div class="emp-n" style="color:<%= _stats.byState.failed ? 'var(--danger,#b3261e)' : 'inherit' %>"><%= (_stats.byState.failed || 0) %></div>
+        <div class="emp-l"><%= __('admin:notif_state_failed') %></div>
+        <div class="emp-sub"><%= __('admin:notif_failed_hint') %></div>
+    </div>
+    <div class="emp-stat">
+        <div class="emp-n"><%= _stats.total || 0 %></div>
+        <div class="emp-l"><%= __('admin:notif_total') %></div>
+    </div>
+</div>
+
+<!-- Filter bar (GET). -->
+<form method="get" action="/admin/notifications" class="card" style="padding:1rem;display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+    <label>
+        <span class="form-label"><%= __('admin:notif_f_channel') %></span>
+        <select name="channel" class="form-control">
+            <%- opt('', __('admin:notif_all'), !_f.channel) %>
+            <% channels.forEach(function(c){ %><%- opt(c, channelLabel(c), _f.channel === c) %><% }); %>
+        </select>
+    </label>
+    <label>
+        <span class="form-label"><%= __('admin:notif_f_state') %></span>
+        <select name="state" class="form-control">
+            <%- opt('', __('admin:notif_all'), !_f.state) %>
+            <% states.forEach(function(s){ %><%- opt(s, stateLabel(s), _f.state === s) %><% }); %>
+        </select>
+    </label>
+    <label>
+        <span class="form-label"><%= __('admin:notif_f_recipient_type') %></span>
+        <select name="userType" class="form-control">
+            <%- opt('', __('admin:notif_all'), !_f.userType) %>
+            <% userTypes.forEach(function(u){ %><%- opt(u, __('admin:notif_type_' + u), _f.userType === u) %><% }); %>
+        </select>
+    </label>
+    <label>
+        <span class="form-label"><%= __('admin:notif_f_kind') %></span>
+        <select name="kind" class="form-control">
+            <%- opt('', __('admin:notif_all'), !_f.kind) %>
+            <% _kinds.forEach(function(k){ %><%- opt(k, k, _f.kind === k) %><% }); %>
+        </select>
+    </label>
+    <label>
+        <span class="form-label"><%= __('admin:notif_f_recipient') %></span>
+        <input type="search" name="q" class="form-control" value="<%= esc(_q.q || '') %>" placeholder="<%= __('admin:notif_f_recipient_ph') %>">
+    </label>
+    <label>
+        <span class="form-label"><%= __('admin:notif_f_from') %></span>
+        <input type="date" name="from" class="form-control" value="<%= esc(_f.from || '') %>">
+    </label>
+    <label>
+        <span class="form-label"><%= __('admin:notif_f_to') %></span>
+        <input type="date" name="to" class="form-control" value="<%= esc(_f.to || '') %>">
+    </label>
+    <div style="display:flex;gap:.5rem">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:notif_filter') %></button>
+        <a href="/admin/notifications" class="btn btn-secondary"><%= __('admin:notif_reset') %></a>
+    </div>
+</form>
+
+<div class="card" style="padding:0;margin-top:1rem">
+    <% if (!_rows.length) { %>
+        <p class="text-muted" style="padding:1.25rem"><%= __('admin:notif_empty') %></p>
+    <% } else { %>
+    <div class="emp-tablewrap">
+    <table class="table">
+        <thead>
+            <tr>
+                <th><%= __('admin:notif_col_recipient') %></th>
+                <th><%= __('admin:notif_col_channel') %></th>
+                <th><%= __('admin:notif_col_kind') %></th>
+                <th><%= __('admin:notif_col_state') %></th>
+                <th><%= __('admin:notif_col_created') %></th>
+                <th><%= __('admin:notif_col_sent') %></th>
+                <th><%= __('admin:notif_col_read') %></th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            <% _rows.forEach(function(r){ %>
+            <tr>
+                <td>
+                    <%= esc(r.recipientName || ('#' + r.userId)) %>
+                    <span class="text-muted" style="font-size:.78rem">· <%= __('admin:notif_type_' + r.userType) %></span>
+                </td>
+                <td><i class="fas <%= r.channel === 'email' ? 'fa-envelope' : 'fa-bell' %>" aria-hidden="true"></i> <%= channelLabel(r.channel) %></td>
+                <td><code style="font-size:.82rem"><%= esc(r.kind) %></code></td>
+                <td><span class="badge <%= stateClass[r.state] || 'badge-muted' %>"><%= stateLabel(r.state) %></span></td>
+                <td><%= _fd(r.createdAt) %></td>
+                <td><%= r.sentAt ? _fd(r.sentAt) : '—' %></td>
+                <td><%= r.readAt ? _fd(r.readAt) : '—' %></td>
+                <td>
+                    <% if (r.state === 'failed') { %>
+                    <form method="post" action="/admin/notifications/<%= r.id %>/retry" style="margin:0">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <button type="submit" class="btn btn-sm btn-secondary" title="<%= __('admin:notif_retry_title') %>"><i class="fas fa-rotate-right" aria-hidden="true"></i> <%= __('admin:notif_retry') %></button>
+                    </form>
+                    <% } %>
+                </td>
+            </tr>
+            <% }); %>
+        </tbody>
+    </table>
+    </div>
+    <% } %>
+</div>
+
+<% if (pg && pg.totalPages > 1) { %>
+<nav class="pager" style="margin-top:1rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+    <% if (pg.prevUrl) { %><a class="btn btn-secondary btn-sm" href="<%= pg.prevUrl %>"><%= __('admin:notif_prev') %></a><% } %>
+    <span class="text-muted"><%= __('admin:notif_page') %> <%= pg.page %> / <%= pg.totalPages %></span>
+    <% if (pg.nextUrl) { %><a class="btn btn-secondary btn-sm" href="<%= pg.nextUrl %>"><%= __('admin:notif_next') %></a><% } %>
+</nav>
+<% } %>

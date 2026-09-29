@@ -1,0 +1,1164 @@
+/* ================================================================
+   REPORT BUILDER — Industrial Command Console Theme
+   ================================================================ */
+
+/* Fonts are loaded via an async <link> in the page <head> (see
+   layouts/main.ejs), not a render-blocking @import. */
+
+/* ── Design Tokens ── */
+:root {
+    --rb-bg-base: #0A0C18;
+    --rb-bg-panel: #0F1222;
+    --rb-bg-card: #151931;
+    --rb-bg-elevated: #1F2442;
+    --rb-text-primary: #E4E8F0;
+    --rb-text-secondary: rgba(255, 255, 255, 0.55);
+    --rb-text-muted: rgba(255, 255, 255, 0.28);
+    --rb-brand: #7C6CFF;
+    --rb-brand-dim: rgba(124, 108, 255, 0.12);
+    --rb-emerald: #2DD4A0;
+    --rb-amber: #F5A623;
+    --rb-red: #F06060;
+    --rb-blue: #5B9DF5;
+    --rb-violet: #9B7DFF;
+    --rb-cyan: #22D3EE;
+    --rb-border: rgba(255, 255, 255, 0.055);
+    --rb-border-focus: rgba(124, 108, 255, 0.4);
+    --rb-radius-sm: 8px;
+    --rb-radius-lg: 12px;
+    --rb-sidebar-w: 330px;
+    --rb-right-w: 280px;
+    --rb-header-h: 56px;
+}
+
+/* ── Full Page Override ── */
+.rb-app {
+    display: flex;
+    flex-direction: column;
+    background: var(--rb-bg-base);
+    color: var(--rb-text-primary);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 14px;
+    overflow: hidden;
+    height: calc(100vh - var(--rb-header-h) - 60px);
+    min-height: 600px;
+    border-radius: 12px;
+    position: relative;
+}
+
+/* Brand grid overlay */
+.rb-app::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(var(--rb-brand) 1px, transparent 1px),
+        linear-gradient(90deg, var(--rb-brand) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.015;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* ── Header / Toolbar ── */
+.rb-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: var(--rb-header-h);
+    padding: 0 20px;
+    background: var(--rb-bg-panel);
+    border-bottom: 1px solid var(--rb-border);
+    z-index: 10;
+    flex-shrink: 0;
+}
+
+.rb-header .rb-logo {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--rb-brand);
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.rb-header .rb-title-input {
+    flex: 1;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--rb-text-primary);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: var(--rb-radius-sm);
+    transition: border-color 0.2s;
+}
+
+.rb-header .rb-title-input:hover {
+    border-color: var(--rb-border);
+}
+
+.rb-header .rb-title-input:focus {
+    border-color: var(--rb-border-focus);
+    outline: none;
+}
+
+.rb-header .rb-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* ── Buttons ── */
+.rb-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: 1px solid var(--rb-border);
+    border-radius: var(--rb-radius-sm);
+    background: var(--rb-bg-elevated);
+    color: var(--rb-text-secondary);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.rb-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--rb-text-primary);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.rb-btn.primary {
+    background: var(--rb-brand-dim);
+    color: var(--rb-brand);
+    border-color: rgba(124, 108, 255, 0.25);
+}
+
+.rb-btn.primary:hover {
+    background: rgba(124, 108, 255, 0.2);
+    border-color: var(--rb-brand);
+}
+
+.rb-btn.danger {
+    color: var(--rb-red);
+}
+
+.rb-btn.small {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+.rb-btn .icon {
+    font-size: 14px;
+}
+
+/* ── 3-Panel Body ── */
+.rb-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+}
+
+/* ── Left Sidebar ── */
+.rb-sidebar {
+    width: var(--rb-sidebar-w);
+    background: var(--rb-bg-panel);
+    border-right: 1px solid var(--rb-border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+    transition: width 0.25s, opacity 0.25s;
+}
+
+.rb-sidebar.collapsed {
+    width: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.rb-sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--rb-border);
+    flex-shrink: 0;
+}
+
+.rb-sidebar-tab {
+    flex: 1;
+    padding: 10px 6px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--rb-text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.rb-sidebar-tab:hover {
+    color: var(--rb-text-secondary);
+}
+
+.rb-sidebar-tab.active {
+    color: var(--rb-brand);
+    border-bottom-color: var(--rb-brand);
+}
+
+.rb-sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+.rb-sidebar-panel {
+    display: none;
+}
+
+.rb-sidebar-panel.active {
+    display: block;
+}
+
+/* ── Canvas (Center) ── */
+.rb-canvas {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    min-width: 0;
+}
+
+.rb-canvas-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+/* Report Header on Canvas */
+.rb-report-header {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--rb-border);
+}
+
+.rb-report-header h2 {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 4px;
+    color: var(--rb-text-primary);
+}
+
+.rb-report-header .rb-meta {
+    font-size: 12px;
+    color: var(--rb-text-muted);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Filter tags */
+.rb-filter-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.rb-filter-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    background: var(--rb-brand-dim);
+    border: 1px solid rgba(124, 108, 255, 0.2);
+    border-radius: 20px;
+    font-size: 11px;
+    color: var(--rb-brand);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.rb-filter-tag .remove {
+    cursor: pointer;
+    opacity: 0.6;
+    font-size: 13px;
+}
+
+.rb-filter-tag .remove:hover {
+    opacity: 1;
+}
+
+/* Section Rows */
+.rb-sections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+/* ── Section Card ── */
+.rb-section {
+    background: var(--rb-bg-card);
+    border: 1px solid var(--rb-border);
+    border-radius: var(--rb-radius-lg);
+    overflow: hidden;
+    animation: rbFadeUp 0.35s ease both;
+    position: relative;
+}
+
+.rb-section.full {
+    width: 100%;
+    flex: 0 0 100%;
+}
+
+.rb-section.half {
+    width: calc(50% - 10px);
+    flex: 0 0 calc(50% - 10px);
+}
+
+.rb-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--rb-border);
+    background: var(--rb-bg-elevated);
+}
+
+.rb-section-header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--rb-text-primary);
+}
+
+.rb-section-header .rb-section-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.rb-section-header .rb-section-actions button {
+    background: none;
+    border: none;
+    color: var(--rb-text-muted);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    transition: all 0.15s;
+}
+
+.rb-section-header .rb-section-actions button:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--rb-text-primary);
+}
+
+.rb-section-body {
+    padding: 16px;
+    min-height: 200px;
+    position: relative;
+}
+
+.rb-section-body canvas {
+    max-width: 100%;
+}
+
+.rb-section-body .rb-chart-wrap {
+    position: relative;
+    height: 280px;
+}
+
+.rb-section-body .rb-chart-wrap.tall {
+    height: 350px;
+}
+
+/* ── Right Panel ── */
+.rb-right {
+    width: var(--rb-right-w);
+    background: var(--rb-bg-panel);
+    border-left: 1px solid var(--rb-border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+    transition: width 0.25s, opacity 0.25s;
+}
+
+.rb-right.collapsed {
+    width: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.rb-right-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--rb-border);
+    flex-shrink: 0;
+}
+
+.rb-right-tab {
+    flex: 1;
+    padding: 10px 6px;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--rb-text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.rb-right-tab:hover {
+    color: var(--rb-text-secondary);
+}
+
+.rb-right-tab.active {
+    color: var(--rb-brand);
+    border-bottom-color: var(--rb-brand);
+}
+
+.rb-right-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+}
+
+.rb-right-panel {
+    display: none;
+}
+
+.rb-right-panel.active {
+    display: block;
+}
+
+/* SQL Preview */
+.rb-sql-preview {
+    background: var(--rb-bg-base);
+    border: 1px solid var(--rb-border);
+    border-radius: var(--rb-radius-sm);
+    padding: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--rb-text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 100%;
+    overflow-y: auto;
+}
+
+.rb-sql-preview .kw {
+    color: var(--rb-blue);
+    font-weight: 600;
+}
+
+.rb-sql-preview .str {
+    color: var(--rb-emerald);
+}
+
+.rb-sql-preview .num {
+    color: var(--rb-amber);
+}
+
+.rb-sql-preview .cmt {
+    color: var(--rb-text-muted);
+    font-style: italic;
+}
+
+/* ── Sidebar Form Controls ── */
+.rb-form-group {
+    margin-bottom: 14px;
+}
+
+.rb-form-group label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--rb-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.rb-select,
+.rb-input {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--rb-bg-elevated);
+    border: 1px solid var(--rb-border);
+    border-radius: var(--rb-radius-sm);
+    color: var(--rb-text-primary);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 13px;
+    transition: border-color 0.15s;
+}
+
+.rb-select:focus,
+.rb-input:focus {
+    border-color: var(--rb-border-focus);
+    outline: none;
+}
+
+.rb-select option {
+    background: var(--rb-bg-panel);
+    color: var(--rb-text-primary);
+}
+
+/* Checkbox groups */
+.rb-checkbox-group {
+    max-height: 160px;
+    overflow-y: auto;
+    background: var(--rb-bg-base);
+    border: 1px solid var(--rb-border);
+    border-radius: var(--rb-radius-sm);
+    padding: 6px;
+}
+
+.rb-checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--rb-text-secondary);
+    transition: background 0.1s;
+}
+
+.rb-checkbox-item:hover {
+    background: var(--rb-bg-elevated);
+}
+
+.rb-checkbox-item input[type="checkbox"] {
+    accent-color: var(--rb-brand);
+}
+
+/* Select all / none */
+.rb-check-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.rb-check-actions button {
+    background: none;
+    border: none;
+    color: var(--rb-brand);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 0;
+    font-weight: 600;
+}
+
+.rb-check-actions button:hover {
+    text-decoration: underline;
+}
+
+/* Sections list in sidebar */
+.rb-section-list-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--rb-bg-card);
+    border: 1px solid var(--rb-border);
+    border-radius: var(--rb-radius-sm);
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.rb-section-list-item:hover {
+    border-color: var(--rb-border-focus);
+}
+
+.rb-section-list-item.active {
+    border-color: var(--rb-brand);
+    background: var(--rb-brand-dim);
+}
+
+.rb-section-list-item .rb-sec-icon {
+    font-size: 16px;
+}
+
+.rb-section-list-item .rb-sec-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.rb-section-list-item .rb-sec-info .rb-sec-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--rb-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rb-section-list-item .rb-sec-info .rb-sec-type {
+    font-size: 11px;
+    color: var(--rb-text-muted);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Template cards */
+.rb-template-card {
+    padding: 12px;
+    background: var(--rb-bg-card);
+    border: 1px solid var(--rb-border);
+    border-radius: var(--rb-radius-sm);
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.rb-template-card:hover {
+    border-color: var(--rb-brand);
+}
+
+.rb-template-card h5 {
+    margin: 0 0 4px;
+    font-size: 13px;
+    color: var(--rb-text-primary);
+}
+
+.rb-template-card .rb-tpl-desc {
+    font-size: 11px;
+    color: var(--rb-text-muted);
+    line-height: 1.4;
+}
+
+.rb-template-card .rb-tpl-meta {
+    font-size: 10px;
+    color: var(--rb-text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    margin-top: 6px;
+}
+
+/* ── Chart-specific: Heatmap ── */
+.rb-heatmap {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 2px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+}
+
+.rb-heatmap th {
+    padding: 6px 8px;
+    text-align: center;
+    color: var(--rb-text-muted);
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+.rb-heatmap td {
+    padding: 8px;
+    text-align: center;
+    border-radius: 4px;
+    font-weight: 600;
+    min-width: 50px;
+}
+
+.rb-heatmap td.label-cell {
+    text-align: left;
+    color: var(--rb-text-secondary);
+    font-weight: 500;
+    background: transparent !important;
+}
+
+/* ── Chart-specific: Data Table ── */
+.rb-data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.rb-data-table th {
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--rb-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--rb-border);
+    cursor: pointer;
+    user-select: none;
+}
+
+.rb-data-table th:hover {
+    color: var(--rb-text-secondary);
+}
+
+.rb-data-table td {
+    padding: 8px 12px;
+    color: var(--rb-text-secondary);
+    border-bottom: 1px solid var(--rb-border);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.rb-data-table tr:hover td {
+    background: var(--rb-bg-elevated);
+}
+
+/* Badges */
+.rb-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.rb-badge.critical {
+    background: rgba(240, 96, 96, 0.15);
+    color: var(--rb-red);
+}
+
+.rb-badge.watch {
+    background: rgba(245, 166, 35, 0.15);
+    color: var(--rb-amber);
+}
+
+.rb-badge.ready {
+    background: rgba(45, 212, 160, 0.15);
+    color: var(--rb-emerald);
+}
+
+/* ── Chart-specific: KPI Cards ── */
+.rb-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+.rb-kpi-card {
+    background: var(--rb-bg-elevated);
+    border: 1px solid var(--rb-border);
+    border-radius: var(--rb-radius-sm);
+    padding: 16px;
+    text-align: center;
+}
+
+.rb-kpi-card .rb-kpi-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.rb-kpi-card .rb-kpi-label {
+    font-size: 11px;
+    color: var(--rb-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* ── Chart-specific: Progress Bars ── */
+.rb-progress-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.rb-progress-row .rb-prog-label {
+    width: 120px;
+    font-size: 12px;
+    color: var(--rb-text-secondary);
+    text-align: right;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rb-progress-row .rb-prog-bar {
+    flex: 1;
+    height: 22px;
+    background: var(--rb-bg-base);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.rb-progress-row .rb-prog-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s ease;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+}
+
+.rb-progress-row .rb-prog-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Chart-specific: Gauge ── */
+.rb-gauge-wrap {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.rb-gauge-center {
+    position: absolute;
+    bottom: 20%;
+    text-align: center;
+}
+
+.rb-gauge-center .rb-gauge-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 32px;
+    font-weight: 700;
+}
+
+.rb-gauge-center .rb-gauge-label {
+    font-size: 11px;
+    color: var(--rb-text-muted);
+}
+
+/* ── Empty State ── */
+.rb-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: var(--rb-text-muted);
+    text-align: center;
+}
+
+.rb-empty .rb-empty-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.4;
+}
+
+.rb-empty h3 {
+    font-size: 16px;
+    color: var(--rb-text-secondary);
+    margin: 0 0 6px;
+}
+
+.rb-empty p {
+    font-size: 13px;
+    max-width: 320px;
+}
+
+/* ── Panel Toggle Buttons ── */
+.rb-toggle-sidebar,
+.rb-toggle-right {
+    position: absolute;
+    top: 12px;
+    z-index: 20;
+    background: var(--rb-bg-elevated);
+    border: 1px solid var(--rb-border);
+    color: var(--rb-text-muted);
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: all 0.15s;
+}
+
+.rb-toggle-sidebar {
+    left: 8px;
+}
+
+.rb-toggle-right {
+    right: 8px;
+}
+
+.rb-toggle-sidebar:hover,
+.rb-toggle-right:hover {
+    color: var(--rb-brand);
+    border-color: var(--rb-border-focus);
+}
+
+/* Error message */
+.rb-error {
+    background: rgba(240, 96, 96, 0.1);
+    border: 1px solid rgba(240, 96, 96, 0.3);
+    color: var(--rb-red);
+    padding: 12px 16px;
+    border-radius: var(--rb-radius-sm);
+    font-size: 13px;
+}
+
+/* Divider */
+.rb-divider {
+    border: none;
+    border-top: 1px solid var(--rb-border);
+    margin: 16px 0;
+}
+
+/* ── Scrollbar ── */
+.rb-app ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+
+.rb-app ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.rb-app ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+}
+
+.rb-app ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Animations ── */
+@keyframes rbFadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── Print Mode ── */
+.rb-app.print-mode {
+    background: white;
+    color: #1a1a1a;
+    position: static;
+}
+
+.rb-app.print-mode::before {
+    display: none;
+}
+
+.rb-app.print-mode .rb-header,
+.rb-app.print-mode .rb-sidebar,
+.rb-app.print-mode .rb-right,
+.rb-app.print-mode .rb-canvas-toolbar,
+.rb-app.print-mode .rb-section-actions,
+.rb-app.print-mode .rb-toggle-sidebar,
+.rb-app.print-mode .rb-toggle-right {
+    display: none !important;
+}
+
+.rb-app.print-mode .rb-body {
+    display: block;
+}
+
+.rb-app.print-mode .rb-canvas {
+    padding: 20px;
+    overflow: visible;
+}
+
+.rb-app.print-mode .rb-section {
+    background: white;
+    border-color: #ddd;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 20px;
+}
+
+.rb-app.print-mode .rb-section.half {
+    width: 48%;
+    display: inline-block;
+    vertical-align: top;
+}
+
+.rb-app.print-mode .rb-section-header {
+    background: #f5f5f5;
+}
+
+.rb-app.print-mode .rb-section-header h4 {
+    color: #333;
+}
+
+.rb-app.print-mode .rb-kpi-card {
+    background: #f5f5f5;
+    border-color: #ddd;
+}
+
+.rb-app.print-mode .rb-kpi-card .rb-kpi-value {
+    color: #1a1a1a;
+}
+
+.rb-app.print-mode .rb-report-header h2 {
+    color: #1a1a1a;
+}
+
+.rb-app.print-mode .rb-filter-tags {
+    display: none;
+}
+
+@media print {
+
+    .rb-header,
+    .rb-sidebar,
+    .rb-right,
+    .rb-canvas-toolbar,
+    .rb-section-actions,
+    .rb-toggle-sidebar,
+    .rb-toggle-right {
+        display: none !important;
+    }
+
+    .rb-app {
+        position: static;
+        background: white;
+        color: #1a1a1a;
+    }
+
+    .rb-app::before {
+        display: none;
+    }
+
+    .rb-body {
+        display: block;
+    }
+
+    .rb-canvas {
+        padding: 0;
+        overflow: visible;
+    }
+
+    .rb-section {
+        break-inside: avoid;
+        background: white;
+        border-color: #ddd;
+    }
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+    .rb-sidebar {
+        width: 0;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .rb-sidebar.show {
+        width: var(--rb-sidebar-w);
+        opacity: 1;
+        pointer-events: auto;
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 100;
+    }
+
+    .rb-right {
+        width: 0;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .rb-right.show {
+        width: var(--rb-right-w);
+        opacity: 1;
+        pointer-events: auto;
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        right: 0;
+        z-index: 100;
+    }
+}
+
+@media (max-width: 768px) {
+    .rb-section.half {
+        width: 100%;
+        flex: 0 0 100%;
+    }
+}
+
+/* =====================================================================
+   Light Theme Override — remap --rb-* tokens
+   ===================================================================== */
+[data-theme="light"] {
+    --rb-bg-base: #F4F5FB;
+    --rb-bg-panel: #FFFFFF;
+    --rb-bg-card: #FFFFFF;
+    --rb-bg-elevated: #F8F8FD;
+    --rb-text-primary: #161A2E;
+    --rb-text-secondary: #5F647C;
+    --rb-text-muted: #8A8EA3;
+    --rb-brand: #5B4BE0;
+    --rb-brand-dim: rgba(91, 75, 224, 0.10);
+    --rb-emerald: #0F9B6E;
+    --rb-amber: #D4900A;
+    --rb-red: #D04040;
+    --rb-blue: #3570D6;
+    --rb-violet: #7C5FC4;
+    --rb-cyan: #0EA5C0;
+    --rb-border: rgba(0, 0, 0, 0.09);
+    --rb-border-focus: rgba(91, 75, 224, 0.4);
+}
+
+/* Hide the brand grid overlay in light theme */
+[data-theme="light"] .rb-app::before {
+    display: none;
+}
+
+/* Toggle buttons — adjust for light bg */
+[data-theme="light"] .rb-toggle-sidebar,
+[data-theme="light"] .rb-toggle-right {
+    background: var(--rb-bg-elevated);
+    color: var(--rb-text-secondary);
+}
+
+[data-theme="light"] .rb-toggle-sidebar:hover,
+[data-theme="light"] .rb-toggle-right:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--rb-text-primary);
+}
+
+/* Select option bg for light theme */
+[data-theme="light"] .rb-select option {
+    background: #FFFFFF;
+    color: #161A2E;
+}
+
+/* Badge adjustments for light bg */
+[data-theme="light"] .rb-badge.critical {
+    background: rgba(208, 64, 64, 0.10);
+    color: #C03030;
+}
+
+[data-theme="light"] .rb-badge.watch {
+    background: rgba(212, 144, 10, 0.10);
+    color: #B07808;
+}
+
+[data-theme="light"] .rb-badge.ready {
+    background: rgba(15, 155, 110, 0.10);
+    color: #0F9B6E;
+}

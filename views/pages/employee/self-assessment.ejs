@@ -1,0 +1,924 @@
+<%# the three counters are computed server-side. Defaults here so
+    the template still renders when a caller (a test harness, a future partial)
+    passes only the skill list — the numbers are then derived from that list, which
+    is the same truth, never a hard-coded 0. %>
+<% const _saList = skillsWithAssessments || [];
+   const saTotal = (typeof locals.saTotal === 'number') ? locals.saTotal : _saList.length;
+   const saRated = (typeof locals.saRated === 'number') ? locals.saRated : _saList.filter((x) => x.selfRatedLevel != null).length;
+   const saRemaining = (typeof locals.saRemaining === 'number') ? locals.saRemaining : (saTotal - saRated);
+   const saEstimateMin = (typeof locals.saEstimateMin === 'number') ? locals.saEstimateMin : Math.max(1, Math.round((saRemaining * 8) / 60)); %>
+<style nonce="<%= cspNonce %>">
+    /* A never-rated skill is visually distinct from a deliberate "0 — None": muted
+       until the person makes a choice, so an unrated row doesn't masquerade as a 0. */
+    .self-rating-select.sa-unanswered { opacity: .62; font-style: italic; border-style: dashed; }
+</style>
+<div class="page-header">
+    <h1><%= __('employee:sa_title') %></h1>
+    <p><%= __('employee:sa_subtitle') %> <strong><%= employee.roleName %></strong></p>
+</div>
+
+<% if (typeof cycle !== 'undefined' && cycle) { %>
+<!-- Campaign deadline, ON the page where the work happens. -->
+<div class="sa-deadline <%= cycle.daysLeft < 0 ? 'sa-deadline-over' : (cycle.daysLeft <= 3 ? 'sa-deadline-soon' : '') %>">
+    <i class="fas fa-calendar-day" aria-hidden="true"></i>
+    <span>
+        <strong><%= cycle.label %></strong> —
+        <% if (cycle.daysLeft < 0) { %>
+            <%= __('employee:sa_deadline_over') %>
+        <% } else if (cycle.daysLeft === 0) { %>
+            <%= __('employee:sa_deadline_today') %>
+        <% } else { %>
+            <%= __('employee:sa_deadline_in') %> <strong><%= cycle.daysLeft %></strong> <%= __('employee:sa_deadline_days') %>
+        <% } %>
+        <%# was toISOString.slice(0,10) — an ISO date inside a French
+            sentence. The controller formats the bound once (dd/MM/yyyy, UTC). %>
+        (<%= cycle.closesAtText || '—' %>)
+    </span>
+</div>
+<% } else if (skillsWithAssessments && skillsWithAssessments.length) { %>
+<!-- NO open campaign. The form still works (ratings are filed outside any
+     campaign, cycle_id NULL) but the person must be told BEFORE they save that
+     nothing they enter now will move a campaign counter. -->
+<%
+   // TWO different situations used to share one sentence, and one of them was a
+   // false promise:
+   //   * enrolled in a LOCKED campaign -> the server now REFUSES the save
+   //     (409 cycle_locked), so telling the person their notes will be "filed
+   //     outside the campaign" was wrong;
+   //   * enrolled in NO campaign at all -> the save really is accepted and
+   //     filed with no campaign, which is what that sentence describes.
+   var _locked = (typeof lockedCycle !== 'undefined' && lockedCycle) ? lockedCycle : null;
+   // the date used to be built here with toISOString.slice(0,10) —
+   // « clôturée le 2026-08-31 » in French prose. The controller now formats the
+   // bound (dd/MM/yyyy, UTC-forced) so this notice and the 409 refusal agree.
+   var _lcDate = _locked ? (_locked.closesAtText || '—') : '';
+%>
+<div class="alert alert-warning sa-no-campaign" role="status" data-campaign="<%= _locked ? 'locked' : 'none' %>">
+    <i class="fas fa-circle-info" aria-hidden="true"></i>
+    <span>
+        <% if (_locked) { %>
+        <%#  (b): this banner is about the CAMPAIGN, and it used to borrow the
+            per-COMPETENCY lock sentence as its title — it named no competency and told
+            the employee to ask their manager for a reopening, which A5 reserves to the
+            SuperAdmin. Campaign-level title; the competency sentence stays on the rows. %>
+        <strong><%= __('employee:sa_locked_campaign_title') %></strong> &mdash;
+        <%= __('employee:sa_no_campaign_last', { label: _locked.label || _locked.code, date: _lcDate }) %>
+        <%= __('employee:sa_locked_body') %>
+        <% } else { %>
+        <strong><%= __('employee:sa_no_campaign_title') %></strong> &mdash; <%= __('employee:sa_no_campaign_body') %>
+        <% } %>
+    </span>
+</div>
+<% } %>
+
+<link rel="stylesheet" href="/css/sa-skill-help.css?v=<%= assetVersion %>">
+<div class="assessment-info">
+    <%# 3.23.21: « Comment bien vous auto-évaluer » replaces the one-line
+        instructions. Open the first time; sa-skill-help.js folds it once read. %>
+    <details class="sa-intro" id="saIntro" open>
+        <summary class="sa-intro-head"><%= __('employee:sa_intro_title') %></summary>
+        <ul class="sa-intro-list">
+            <li><%= __('employee:sa_intro_1') %></li>
+            <li><%= __('employee:sa_intro_2') %></li>
+            <li><%= __('employee:sa_intro_3') %></li>
+            <li><%= __('employee:sa_intro_4') %></li>
+            <li><%= __('employee:sa_intro_5') %></li>
+        </ul>
+    </details>
+    <%# the scale is READ, not hovered — a visible list, no title= tooltip
+        (unreachable by touch and by keyboard). %>
+    <div class="sa-scale-ref">
+        <strong id="saScaleLabel"><%= __('employee:sa_scale_label') %></strong>
+        <dl class="sa-scale-dl" aria-labelledby="saScaleLabel">
+            <% [0, 1, 2, 3, 4].forEach(function (n) { %>
+            <div><dt><%= n %>&nbsp;<%= __('employee:scale_' + n + '_word') %></dt><dd><%= __('employee:scale_' + n + '_title') %></dd></div>
+            <% }); %>
+        </dl>
+    </div>
+    <p class="sa-scale-ref"><strong><%= __('employee:th_required_level') %></strong> <%= __('employee:sa_req_note_mid') %> <span class="sa-crit-key"><%= __('employee:critical_badge') %></span> <%= __('employee:sa_req_note_post') %></p>
+    <p class="sa-scale-ref sa-estimate">
+        <i class="fas fa-clock" aria-hidden="true"></i>
+        <%# rendered server-side, so the first paint already says
+            "Environ 2 min" instead of an em dash that only JS could fill. %>
+        <%= __('employee:sa_estimate_pre') %> <strong id="saEstimate"><%= saEstimateMin %></strong> <%= __('employee:sa_minutes') %> <%= __('employee:sa_estimate_post') %>
+    </p>
+</div>
+
+<% if (!skillsWithAssessments || !skillsWithAssessments.length) { %>
+<div class="empty-state" style="text-align:center;padding:2.5rem 1rem;max-width:52ch;margin:1.5rem auto">
+    <div style="font-size:2.5rem;color:var(--brand,#6656f0);margin-bottom:.5rem"><i class="fas fa-clipboard-list" aria-hidden="true"></i></div>
+    <h2><%= __('employee:sa_no_skills_title') %></h2>
+    <p class="text-muted"><%= __('employee:sa_no_skills_body') %></p>
+</div>
+<% } else { %>
+<form id="selfAssessmentForm">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <!-- STICKY action bar: progress + filters + save/submit always reachable
+         (previously the Submit button sat below ~5 phone-screens of table). -->
+    <div class="sa-bar" id="saBar">
+        <div class="sa-bar-row">
+            <div class="sa-progress-text">
+                <strong id="saRatedCount"><%= saRated %></strong> <%= __('employee:sa_progress_of') %> <strong id="saTotalCount"><%= saTotal %></strong> <%= __('employee:sa_progress_rated') %>
+                <span class="sa-progress-sub" id="saZeroNote"><%= saRemaining ? ' · ' + saRemaining + ' ' + __('employee:sa_still_zero') : ' · ' + __('employee:sa_all_rated') %></span>
+            </div>
+            <div class="sa-bar-actions">
+                <span class="sa-autosave" id="saAutosave" aria-live="polite"></span>
+                <button type="button" id="saveDraftBtn" class="btn btn-secondary btn-sm"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('employee:sa_save_draft') %></button>
+                <button type="button" id="submitBtn" class="btn btn-primary btn-sm"><i class="fas fa-file-export" aria-hidden="true"></i> <%= __('employee:sa_submit_review') %></button>
+            </div>
+        </div>
+        <div class="sa-progress-bar"><div class="sa-progress-fill" id="saProgressFill" style="width:<%= saTotal ? Math.round((saRated / saTotal) * 100) : 0 %>%"></div></div>
+        <div class="sa-filters" role="group" aria-label="<%= __('employee:sa_filter_aria') %>">
+            <button type="button" class="sa-chip is-active" data-filter="all"><%= __('employee:sa_filter_all') %></button>
+            <button type="button" class="sa-chip" data-filter="unrated"><%= __('employee:sa_filter_unrated') %> <span class="sa-chip-n" id="chipUnrated">0</span></button>
+            <button type="button" class="sa-chip" data-filter="critical"><%= __('employee:sa_filter_critical') %> <span class="sa-chip-n" id="chipCritical">0</span></button>
+            <button type="button" class="sa-chip" data-filter="gap"><%= __('employee:sa_filter_gap') %> <span class="sa-chip-n" id="chipGap">0</span></button>
+            <label class="sa-toggle">
+                <input type="checkbox" id="saShowCurrent"> <%= __('employee:sa_show_current') %>
+            </label>
+        </div>
+        <!-- Power tools: find a skill in a 161-item list, jump straight to the
+             next unrated one, and collapse/expand the whole set. -->
+        <div class="sa-tools">
+            <input type="search" id="saSearch" class="form-control sa-search"
+                   placeholder="<%= __('employee:sa_search_ph') %>" aria-label="<%= __('employee:sa_search_ph') %>">
+            <button type="button" class="btn btn-secondary btn-sm" id="saNextUnrated">
+                <i class="fas fa-forward" aria-hidden="true"></i> <%= __('employee:sa_next_unrated') %>
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="saToggleAll" data-state="open">
+                <i class="fas fa-compress" aria-hidden="true"></i> <span id="saToggleAllLabel"><%= __('employee:sa_collapse_all') %></span>
+            </button>
+            <%# every « Qu'est-ce que c'est ? » at once — separate from the
+                section collapse above; remembered per device by sa-skill-help.js. %>
+            <button type="button" class="btn btn-secondary btn-sm" id="saHelpToggleAll" aria-pressed="false">
+                <span aria-hidden="true">ⓘ</span> <span id="saHelpToggleAllLabel"><%= __('employee:sa_help_show_all') %></span>
+            </button>
+            <span class="sa-kbd-hint"><%= __('employee:sa_kbd_hint') %></span>
+        </div>
+    </div>
+
+    <!-- Inline submit confirmation (replaces browser confirm dialog) -->
+    <div class="sa-confirm" id="saConfirm" role="alertdialog" aria-live="assertive" aria-describedby="saConfirmMsg" hidden>
+        <span class="sa-confirm-msg" id="saConfirmMsg"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('employee:sa_confirm_msg') %></span>
+        <span class="sa-confirm-actions">
+            <button type="button" id="saConfirmYes" class="btn btn-primary btn-sm"><%= __('employee:sa_confirm_yes') %></button>
+            <button type="button" id="saConfirmNo" class="btn btn-secondary btn-sm"><%= __('employee:sa_cancel') %></button>
+        </span>
+    </div>
+
+    <%
+    // Group requirements by pillar/domain — a 44-to-161-row flat table is the
+    // main abandonment driver; sections make the work feel finite.
+    const saGroups = {};
+    skillsWithAssessments.forEach(function (s) {
+        const key = s.domainName || '—';
+        (saGroups[key] = saGroups[key] || []).push(s);
+    });
+    const saGroupNames = Object.keys(saGroups).sort();
+    %>
+
+    <% saGroupNames.forEach(function (groupName, gi) { %>
+    <details class="sa-section" open data-section>
+        <summary class="sa-section-head">
+            <span class="sa-section-title"><%= groupName %></span>
+            <span class="sa-section-meta">
+                <span class="sa-section-count" data-section-progress>0/<%= saGroups[groupName].length %></span>
+                <span class="sa-section-bar"><span class="sa-section-fill" data-section-fill></span></span>
+            </span>
+        </summary>
+
+        <table class="table sa-table">
+            <thead>
+                <tr>
+                    <th scope="col"><%= __('employee:th_skill') %></th>
+                    <th scope="col"><%= __('employee:th_required_level') %></th>
+                    <th scope="col" class="sa-col-current"><%= __('employee:th_current_level') %></th>
+                    <th scope="col"><%= __('employee:th_self_rating') %></th>
+                    <th scope="col"><%= __('employee:th_status') %></th>
+                    <th scope="col"><%= __('employee:th_notes') %></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% saGroups[groupName].forEach(function(skill) { %>
+                <%
+                   // 3.23.21: what the skill and its levels mean, resolved
+                   // once per row by the SAME core the browser uses.
+                   var _shLang = (typeof lang !== 'undefined' && lang === 'en') ? 'en' : 'fr';
+                   var _shCore = (typeof skillHelpCore !== 'undefined' && skillHelpCore) ? skillHelpCore : null;
+                   var _shRes = _shCore ? _shCore.resolve(skill.skillHelp || null, _shLang, _shCore.scaleLabels(__)) : null;
+                   var _shSel = (skill.selfRatedLevel === null || skill.selfRatedLevel === undefined) ? null : Number(skill.selfRatedLevel);
+                   var _shRated = _shSel !== null;
+                   var _shLevelText = (_shRated && _shRes && _shRes.levels[_shSel]) ? _shRes.levels[_shSel].text
+                       : (_shRated ? __('employee:scale_' + _shSel + '_title') : '');
+                   var _shNudge = _shCore ? _shCore.nudgeFor(_shSel, skill.requiredLevel) : 'default';
+                %>
+                <tr data-skill-id="<%= skill.skillId %>"
+                    data-critical="<%= skill.isCritical ? '1' : '0' %>"
+                    data-required="<%= skill.requiredLevel %>">
+                    <th scope="row" class="sa-skill-cell" data-label="<%= __('employee:th_skill') %>">
+                        <%# The SEARCH reads .sa-skill-name only — never the description. %>
+                        <span class="sa-skill-name"><%= skill.skillName %></span>
+                        <% if (skill.isCritical) { %> <span class="sa-crit-key"><%= __('employee:critical_badge') %><span class="sr-only"> — <%= __('employee:critical_title') %></span></span><% } %>
+                        <%- include('../../partials/skill-help', { sh: { id: skill.skillId, raw: skill.skillHelp || null, resolved: _shRes, mode: 'self', selected: _shSel, required: skill.requiredLevel } }) %>
+                    </th>
+                    <%# D5 (PO): the required level is hidden until THIS row is rated, so it
+                        cannot anchor the answer; the « Critique » badge stays visible. %>
+                    <td data-label="<%= __('employee:th_required_level') %>" class="sa-req-cell" data-req-cell<%= _shRated ? ' data-revealed=1' : '' %>><% if (_shRated) { %><%= skill.requiredLevel %><% var _gap = _shCore ? _shCore.gapText(_shSel, skill.requiredLevel, { met: __('employee:sa_req_met'), gap: __('employee:sa_req_gap', { n: '%n%' }) }) : ''; if (_gap) { %><span class="sa-req-gap"> · <%= _gap %></span><% } %><% } else { %><span aria-hidden="true">—</span><span class="sr-only"><%= __('employee:sa_req_hidden_sr') %></span><% } %></td>
+                    <td class="sa-col-current" data-label="<%= __('employee:th_current_level') %>"><%= skill.currentSkillLevel %></td>
+                    <%# An assessment that has left the employee's hands is read-only.
+                        Two reasons this must show in the markup, not just on the server:
+                        · `data-answered` drives collect(), and it was '1' for every
+                          previously rated skill — approved ones included — so a single
+                          "save draft" posted the whole approved set back as drafts.
+                        · a control that looks editable and silently does nothing is
+                          worse than one that is visibly locked.
+                        The server refuses these regardless (SelfAssessmentService); this
+                        makes the page honest about it. %>
+                    <% const saLocked = ['submitted', 'reviewed', 'approved'].includes(skill.status); %>
+                    <td data-label="<%= __('employee:th_self_rating') %>">
+                        <select name="assessments[<%= skill.skillId %>][selfRatedLevel]"
+                                class="self-rating-select<%= skill.selfRatedLevel == null ? ' sa-unanswered' : '' %><%= saLocked ? ' sa-locked' : '' %>"
+                                data-skill-id="<%= skill.skillId %>"
+                                data-answered="<%= (skill.selfRatedLevel != null && !saLocked) ? '1' : '0' %>"
+                                <%# data-rated is "a level was saved", INDEPENDENT of the lock.
+                                    data-answered means "editable AND rated" and drives collect(),
+                                    so it is deliberately 0 on locked rows — but the PROGRESS
+                                    counter also read it, so once everything was submitted the
+                                    page reported "0 of 50 rated · 50 still at level 0" while
+                                    /employee/assessment-status correctly said 3 of 49.
+                                    Completion was structurally unreachable. %>
+                                data-rated="<%= skill.selfRatedLevel != null ? '1' : '0' %>"
+                                <%= saLocked ? 'disabled' : '' %>
+                                aria-label="<%= __('employee:aria_self_rating_for') %> <%= skill.skillName %><%= saLocked ? ' — ' + __('employee:sa_locked_aria') : '' %>"
+                                aria-describedby="sk-desc-<%= skill.skillId %> sk-lvl-<%= skill.skillId %><%= saLocked ? ' sk-lock-' + skill.skillId : '' %>"
+                                required>
+                            <%# A never-rated skill must NOT sit on "0 - Aucun": the control then
+                                looks answered when it is not, and — worse — choosing 0 with the
+                                mouse fires no `change` event (the value never changes), so an
+                                honest "0 — None" was silently dropped by collect(). Keyboard
+                                users could save it; mouse and touch users could not. %>
+                            <% if (skill.selfRatedLevel == null) { %>
+                            <option value="" selected disabled><%= __('employee:opt_pick') %></option>
+                            <% } %>
+                            <option value="0" <%= skill.selfRatedLevel === 0 ? 'selected' : '' %>><%= __('employee:opt_0') %></option>
+                            <option value="1" <%= skill.selfRatedLevel === 1 ? 'selected' : '' %>><%= __('employee:opt_1') %></option>
+                            <option value="2" <%= skill.selfRatedLevel === 2 ? 'selected' : '' %>><%= __('employee:opt_2') %></option>
+                            <option value="3" <%= skill.selfRatedLevel === 3 ? 'selected' : '' %>><%= __('employee:opt_3') %></option>
+                            <option value="4" <%= skill.selfRatedLevel === 4 ? 'selected' : '' %>><%= __('employee:opt_4') %></option>
+                        </select>
+                        <%#  (a): the badge said « Validé » on EVERY locked row —
+                            submitted and reviewed rows included — two columns away from a
+                            Statut column reading « Soumis », and « Validé » is the label of
+                            no state at all (an approved row says « Approuvée »). The badge
+                            states the LOCK; the Statut column keeps stating the state. %>
+                        <%# the lock is explained in words (aria-describedby), not in a hover-only title=. %>
+                        <% if (saLocked) { %><span class="sa-lock-badge"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('employee:sa_rating_locked') %><span class="sr-only" id="sk-lock-<%= skill.skillId %>"> — <%= __('employee:sa_locked_title') %></span></span><% } %>
+                        <%# the meaning of the chosen level, in plain words, announced politely. %>
+                        <p class="sa-level-line" id="sk-lvl-<%= skill.skillId %>" aria-live="polite"><% if (_shRated) { %><%= __('employee:sa_level_line', { n: _shSel }) %> <%= _shLevelText %><% } %></p>
+                        <input type="hidden" name="assessments[<%= skill.skillId %>][skillId]" value="<%= skill.skillId %>">
+                    </td>
+                    <td data-label="<%= __('employee:th_status') %>">
+                        <% if (skill.status === 'draft') { %>
+                            <span class="badge badge-secondary"><%= __('employee:state_draft') %></span>
+                        <% } else if (skill.status === 'submitted' || skill.status === 'under_review') { %>
+                            <span class="badge badge-info"><%= __('employee:state_submitted') %></span>
+                        <% } else if (skill.status === 'reviewed') { %>
+                            <span class="badge badge-success"><%= __('employee:state_reviewed') %></span>
+                        <% } else if (skill.status === 'approved') { %>
+                            <span class="badge badge-success"><%= __('employee:state_approved') %></span>
+                        <% } else if (skill.status === 'changes_requested') { %>
+                            <span class="badge badge-warning"><%= __('employee:state_changes_requested') %></span>
+                        <% } else if (skill.status === 'rejected') { %>
+                            <span class="badge badge-danger"><%= __('employee:state_rejected') %></span>
+                        <% } else if (skill.status === 'arbitration') { %>
+                            <span class="badge badge-warning"><%= __('employee:state_arbitration') %></span>
+                        <% } else { %>
+                            <span class="badge"><%= __('employee:sa_status_not_started') %></span>
+                        <% } %>
+                    </td>
+                    <td data-label="<%= __('employee:th_notes') %>">
+                        <%# The NOTE follows the LOCK of the row it belongs to.
+                            It used to stay editable on a submitted/approved row while
+                            `data-answered` was '0', so collect() never picked the row up:
+                            the employee typed a justification, pressed "Enregistrer le
+                            brouillon", was told « Brouillon enregistré », and the text was
+                            never sent anywhere — a success message over a discarded write.
+                            The server refuses these rows regardless (SelfAssessmentService
+                            returns {skipped:true}); readonly makes the page honest about it
+                            BEFORE the person spends effort on text nobody will read. %>
+                        <textarea name="assessments[<%= skill.skillId %>][notes]"
+                                  class="form-control<%= saLocked ? ' sa-locked' : '' %>"
+                                  rows="2"
+                                  <%= saLocked ? 'readonly' : '' %>
+                                  aria-label="<%= __('employee:aria_notes_for') %> <%= skill.skillName %><%= saLocked ? ' — ' + __('employee:sa_locked_aria') : '' %>"
+                                  <% if (saLocked) { %>title="<%= __('employee:sa_notes_locked_title') %>"<% } %>
+                                  data-default-ph="<%= saLocked ? __('employee:sa_notes_locked_ph') : __('employee:sa_notes_placeholder') %>"
+                                  <%# an evidence nudge, never a requirement. %>
+                                  placeholder="<%= saLocked ? __('employee:sa_notes_locked_ph') : (_shNudge === 'evidence' ? __('employee:sa_nudge_evidence') : (_shNudge === 'training' ? __('employee:sa_nudge_training') : __('employee:sa_notes_placeholder'))) %>"><%= skill.selfAssessment ? skill.selfAssessment.notes || '' : '' %></textarea>
+                        <% if (saLocked) { %><span class="sa-lock-badge"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('employee:sa_notes_locked') %></span><% } %>
+                    </td>
+                </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    </details>
+    <% }); %>
+
+    <div class="sa-empty" id="saEmpty" hidden><%= __('employee:sa_filter_empty') %></div>
+</form>
+<% } %>
+
+<div id="toastContainer" class="toast-container" aria-live="assertive"></div>
+
+<style>
+/* --- deadline banner --- */
+.sa-deadline{display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:10px 16px;border-radius:10px;
+    background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;font-size:.92rem}
+.sa-deadline-soon{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.sa-deadline-over{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+
+/* --- sticky action bar ---
+   `top` is the fixed top bar's height, not 0: with top:0 the bar stuck UNDER the
+   48px .topbar (z-index 150) once the page scrolled — the autosave state and the
+   Save/Submit buttons were fully masked exactly while the person was rating
+   (measured: #saAutosave at y=25, buttons 28/28px hidden after 600px of scroll).
+   z-index 30 stays: the bar no longer shares a single pixel with the top bar. */
+.sa-bar{position:sticky;top:var(--topbar-height,48px);z-index:30;margin:0 0 14px;padding:10px 14px;background:var(--bg-subtle,#f8fafc);
+    border:1px solid var(--border,#e2e8f0);border-radius:10px;box-shadow:0 2px 10px rgba(2,32,71,.06)}
+.sa-bar-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.sa-bar-actions{display:flex;align-items:center;gap:8px}
+.sa-autosave{font-size:.8rem;color:var(--text-secondary,#64748b);min-width:90px;text-align:right}
+/* A failed autosave must not read like the quiet grey of a saved one: unsaved
+   work is the one state on this bar the reader has to act on. */
+.sa-autosave-failed{color:var(--danger,#b91c1c);font-weight:600}
+.sa-autosave-retry{background:none;border:0;padding:0;font:inherit;color:inherit;
+    text-decoration:underline;cursor:pointer}
+.sa-progress-text{font-size:.92rem}
+.sa-progress-sub{color:var(--text-secondary,#64748b);font-size:.85rem}
+.sa-progress-bar{height:8px;margin-top:8px;background:var(--bg-inset,#e2e8f0);border-radius:999px;overflow:hidden}
+.sa-progress-fill{height:100%;width:0;background:linear-gradient(90deg,#2563eb,#0ea5e9);border-radius:999px;transition:width .3s ease}
+
+/* --- power tools row --- */
+.sa-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.sa-search{max-width:260px;height:32px;padding:2px 10px;font-size:.85rem}
+.sa-kbd-hint{font-size:.76rem;color:var(--text-secondary,#64748b)}
+tr.sa-focus{outline:2px solid #2563eb;outline-offset:-2px;background:rgba(37,99,235,.16)}
+
+/* --- filter chips --- */
+.sa-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.sa-chip{border:1px solid var(--border,#cbd5e1);background:var(--bg-elevated,#fff);border-radius:999px;padding:4px 12px;
+    font-size:.82rem;cursor:pointer;color:var(--text-primary,#0f172a)}
+.sa-chip.is-active{background:#2563eb;border-color:#2563eb;color:#fff}
+.sa-chip-n{opacity:.75;font-variant-numeric:tabular-nums}
+.sa-toggle{display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--text-secondary,#64748b);margin-left:auto}
+
+/* --- sections ---
+   NOTE: no `overflow:hidden` here. An ancestor with overflow other than
+   `visible` creates a scroll container and silently breaks `position:sticky`
+   on the action bar (measured: the bar scrolled away with the page). */
+.sa-section{margin:0 0 12px;border:1px solid var(--border,#e2e8f0);border-radius:10px;background:var(--bg-card,#fff)}
+.sa-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;
+    cursor:pointer;background:var(--bg-subtle,#f8fafc);font-weight:600;list-style:none}
+.sa-section-head::-webkit-details-marker{display:none}
+.sa-section-head::before{content:'▸';margin-right:8px;transition:transform .2s;display:inline-block}
+.sa-section[open] .sa-section-head::before{transform:rotate(90deg)}
+.sa-section-title{flex:1}
+.sa-section-meta{display:flex;align-items:center;gap:8px;font-weight:400;font-size:.82rem;color:var(--text-secondary,#64748b)}
+.sa-section-bar{width:70px;height:6px;background:var(--bg-inset,#e2e8f0);border-radius:999px;overflow:hidden}
+.sa-section-fill{display:block;height:100%;width:0;background:#22c55e;transition:width .3s}
+/* Theme-agnostic success tint: a translucent green reads on BOTH the default
+   dark theme and light, and the head text keeps the theme's own color (the old
+   #f0fdf4 turned near-white text invisible on dark). */
+.sa-section.is-complete .sa-section-head{background:rgba(34,197,94,.14)}
+/* Deterministic collapse: don't rely on the browser hiding <details> content —
+   a display override on table elements defeats it (measured: 526px of
+   "collapsed" content still rendered). */
+.sa-section:not([open]) .sa-table{display:none}
+.sa-table{margin:0}
+.sa-skill-cell{font-weight:600;text-align:left}
+.sa-empty{padding:1.5rem;text-align:center;color:var(--text-secondary,#64748b)}
+.sa-estimate{margin-top:6px}
+
+/* current-level column hidden by default (anti-anchoring); toggle reveals it */
+.sa-col-current{display:none}
+body.sa-show-current .sa-col-current{display:table-cell}
+
+/* --- mobile: turn each row into a card (7-col table was unusable on a phone) ---
+   The `:where(.sa-section[open])` scope matters: a blanket `display:block` on
+   table elements ALSO overrides the browser's hiding of a CLOSED <details>,
+   so collapsed sections stayed fully rendered (measured: 526px of "hidden"
+   content). Scoping the card layout to open sections keeps collapse working. */
+@media (max-width:780px){
+    .sa-table thead{display:none}
+    .sa-section[open] .sa-table,
+    .sa-section[open] .sa-table tbody,
+    .sa-section[open] .sa-table tr,
+    .sa-section[open] .sa-table td,
+    .sa-section[open] .sa-table th{display:block;width:100%}
+    .sa-table tr{border:1px solid var(--border,#e2e8f0);border-radius:10px;margin:10px;padding:10px}
+    /* The rows above are display:block, i.e. cards. The global .table rule sets a
+       600px floor for wide scrolling tables — keeping it here would make a stack
+       of cards scroll sideways on a 375px phone, which is exactly what a field
+       supervisor cannot use one-handed. Release the floor for the card layout. */
+    .sa-table{min-width:0}
+    .sa-table td,.sa-table th{border:none;padding:4px 0}
+    .sa-table td[data-label]::before{content:attr(data-label) ' : ';font-weight:600;color:var(--text-secondary,#64748b);font-size:.8rem}
+    body.sa-show-current .sa-col-current{display:block}
+    .sa-skill-cell{font-size:1rem}
+    /* `width:100%; justify-content:flex-end` with NO wrap made this row overflow
+       to the LEFT once the two button labels no longer fitted: measured at 375px
+       the "Enregistrer le brouillon" button sat at left:-49px (-104px at 320px)
+       with no scrollable ancestor — unreachable, and invisible to the usual
+       horizontal-overflow check, which only ever looks at the RIGHT edge
+       (documentElement.scrollWidth was exactly 375). Wrapping is the fix: a
+       wrapped flex line cannot start before the container's content box. */
+    .sa-bar-actions{width:100%;flex-wrap:wrap;justify-content:flex-start;row-gap:8px}
+    .sa-bar-actions .btn{flex:1 1 auto;justify-content:center}
+    .sa-autosave{flex:1 1 100%;min-width:0;text-align:left}
+}
+
+/* --- rating control target size (WCAG 2.2 SC 2.5.8, minimum 24x24 CSS px) ---
+   Measured before this rule: all 50 rating dropdowns rendered 19px tall — under
+   the minimum, on the one control this page exists to operate, 50 times per
+   campaign, often on a phone in the field. 36px is comfortable for a thumb and
+   leaves the 24px floor well behind. Width is left to the content. */
+.self-rating-select{min-height:36px;padding:6px 10px;font-size:.9rem;line-height:1.3;max-width:100%}
+
+.sa-locked{opacity:.62;cursor:not-allowed}
+textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
+.sa-lock-badge{display:inline-block;margin-left:6px;font-size:.72rem;padding:1px 7px;border-radius:999px;
+    background:var(--bg-subtle,#f1f5f9);border:1px solid var(--border,#e2e8f0);color:var(--text-secondary,#64748b);white-space:nowrap}
+.sa-confirm{display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;
+    margin:0 0 16px;padding:12px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;color:#92400e}
+.sa-confirm[hidden]{display:none}
+.sa-confirm-actions{display:flex;gap:8px}
+.btn-sm{padding:5px 12px;font-size:.85rem}
+.toast-container{position:fixed;top:18px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:10px}
+.toast{min-width:240px;max-width:380px;padding:12px 16px;border-radius:10px;color:#fff;font-size:.92rem;
+    box-shadow:0 8px 24px rgba(2,32,71,.18);opacity:0;transform:translateY(-8px);transition:opacity .25s,transform .25s}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast-success{background:#15803d}.toast-error{background:#b91c1c}.toast-info{background:#1d4ed8}
+.sa-scale-ref{margin:8px 0 0;font-size:.85rem;color:var(--text-secondary,#64748b)}
+.sa-scale-ref span[title]{cursor:help;border-bottom:1px dotted currentColor}
+.sa-crit-key{display:inline-block;font-size:.68rem;text-transform:uppercase;letter-spacing:.03em;color:#b91c1c;
+    border:1px solid #b91c1c;border-radius:999px;padding:0 6px;vertical-align:middle}
+</style>
+
+<!-- Offline resilience: cache ratings locally (IndexedDB) and replay when back online. -->
+<!--
+  The replay POSTs under the CURRENT session, and the server writes to req.user.id.
+  On a shared site tablet the store therefore has to know whose drafts these are:
+  without it, drafts A saved offline were replayed into B's assessment after B
+  signed in. `SA_USER_ID` below is script-scoped, so the owner is published here
+  where the two library files can read it.
+-->
+<script nonce="<%= cspNonce %>">
+    window.APP_DRAFT_OWNER = '<%= user && user.id ? user.id : "" %>';
+</script>
+<script src="/js/draft-store.js?v=<%= assetVersion %>"></script>
+<script src="/js/sync-indicator.js?v=<%= assetVersion %>"></script>
+<%# 3.23.21: the strings sa-skill-help.js needs — a JSON data
+    block (never executed, so no nonce needed), escaped by json-script. %>
+<script type="application/json" id="saHelpI18n"><%- include('../../partials/json-script', { v: {
+    levelLine: __('employee:sa_level_line', { n: '%n%' }),
+    met: __('employee:sa_req_met'),
+    gap: __('employee:sa_req_gap', { n: '%n%' }),
+    nudgeEvidence: __('employee:sa_nudge_evidence'),
+    nudgeTraining: __('employee:sa_nudge_training'),
+    showAll: __('employee:sa_help_show_all'),
+    hideAll: __('employee:sa_help_hide_all')
+} }) %></script>
+<script src="/js/sa-skill-help.js?v=<%= assetVersion %>"></script>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+    const selects = Array.from(document.querySelectorAll('.self-rating-select'));
+    const rows = selects.map((s) => s.closest('tr'));
+    const SA_USER_ID = '<%= user && user.id ? user.id : "0" %>';
+    // The REAL campaign id, so an offline draft can state which campaign it
+    // belongs to and the server can refuse to re-file it into a later one.
+    const SA_CYCLE_ID = '<%= typeof cycle !== "undefined" && cycle && cycle.id ? cycle.id : "" %>';
+    const SA_I18N = {
+        stillZero: <%- JSON.stringify(__('employee:sa_still_zero')) %>,
+        allRated: <%- JSON.stringify(__('employee:sa_all_rated')) %>,
+        draftSaved: <%- JSON.stringify(__('employee:sa_toast_draft_saved')) %>,
+        partialSkipped: <%- JSON.stringify(__('employee:sa_toast_partial_skipped')) %>,
+        submitted: <%- JSON.stringify(__('employee:sa_toast_submitted')) %>,
+        errPrefix: <%- JSON.stringify(__('employee:err_prefix')) %>,
+        errNetwork: <%- JSON.stringify(__('employee:err_network')) %>,
+        saving: <%- JSON.stringify(__('employee:sa_autosaving')) %>,
+        saved: <%- JSON.stringify(__('employee:sa_autosaved')) %>,
+        autosavePending: <%- JSON.stringify(__('employee:sa_autosave_pending')) %>,
+        autosaveFailed: <%- JSON.stringify(__('employee:sa_autosave_failed')) %>,
+        autosavePartial: <%- JSON.stringify(__('employee:sa_autosave_partial')) %>,
+        autosaveRetry: <%- JSON.stringify(__('employee:sa_autosave_retry')) %>,
+        minutes: <%- JSON.stringify(__('employee:sa_minutes')) %>,
+        collapseAll: <%- JSON.stringify(__('employee:sa_collapse_all')) %>,
+        expandAll: <%- JSON.stringify(__('employee:sa_expand_all')) %>,
+        // Server returns a STABLE error code (never English prose); map it here.
+        codes: {
+            already_submitted: <%- JSON.stringify(__('employee:err_already_submitted')) %>,
+            invalid_data: <%- JSON.stringify(__('employee:err_invalid_data')) %>,
+            invalid_assessments: <%- JSON.stringify(__('employee:err_invalid_assessments')) %>,
+            rate_at_least_one: <%- JSON.stringify(__('employee:err_rate_at_least_one')) %>,
+            nothing_to_save: <%- JSON.stringify(__('employee:err_nothing_to_save')) %>,
+            validation: <%- JSON.stringify(__('employee:err_validation')) %>,
+            unexpected: <%- JSON.stringify(__('employee:err_unexpected')) %>,
+            cycle_locked: <%- JSON.stringify(__('employee:err_cycle_locked')) %>,
+            cycle_changed: <%- JSON.stringify(__('employee:err_cycle_changed')) %>,
+            unknown: <%- JSON.stringify(__('employee:err_unknown')) %>,
+        },
+    };
+    // Resolve a server error to a localized message. The server now sends a
+    // localized `message` for the campaign refusals, and it is MORE specific
+    // than anything this map can hold (it names the campaign and its closing
+    // date), so prefer it; fall back to the code map, then to a generic line.
+    function errMessage(result, status) {
+        if (result && typeof result.message === 'string' && result.message.trim()) return result.message;
+        const code = result && result.code;
+        return (code && SA_I18N.codes[code]) || SA_I18N.codes.unknown;
+    }
+    const ratedEl = document.getElementById('saRatedCount');
+    const totalEl = document.getElementById('saTotalCount');
+    const fillEl = document.getElementById('saProgressFill');
+    const zeroEl = document.getElementById('saZeroNote');
+    const confirmBox = document.getElementById('saConfirm');
+    const autosaveEl = document.getElementById('saAutosave');
+
+    function toast(msg, type) {
+        const c = document.getElementById('toastContainer');
+        const t = document.createElement('div');
+        t.className = 'toast toast-' + (type || 'info');
+        t.textContent = msg;
+        c.appendChild(t);
+        requestAnimationFrame(() => t.classList.add('show'));
+        setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, type === 'error' ? 5000 : 3000);
+    }
+
+    // "Answered" = the person made a deliberate choice, INCLUDING a considered "0 — None".
+    // Seeded server-side from whether a level was ever saved (null = never rated), and set
+    // on any interaction below. This stops the UI from nagging an honest 0 as "unrated"
+    // (which made completion feel unreachable and penalised honesty).
+    // PROGRESS reads data-rated ("a level exists"), which stays true once a row is
+    // submitted/approved and locked. collect below reads data-answered ("editable
+    // AND rated"), which must stay false on a locked row so saving a draft never
+    // re-posts an approved rating. Two questions, two flags — conflating them made
+    // the progress bar drop back to 0 the moment the person submitted.
+    const isRated = (s) => s.dataset.rated === '1';
+    function markAnswered(s) {
+        if (!s) return;
+        s.dataset.answered = '1';
+        s.dataset.rated = '1';
+        s.classList.remove('sa-unanswered');
+    }
+
+    function updateProgress() {
+        const total = selects.length;
+        const rated = selects.filter(isRated).length;
+        const zeros = total - rated;
+        ratedEl.textContent = rated;
+        totalEl.textContent = total;
+        fillEl.style.width = total ? Math.round((rated / total) * 100) + '%' : '0%';
+        zeroEl.textContent = zeros ? ' · ' + zeros + ' ' + SA_I18N.stillZero : ' · ' + SA_I18N.allRated;
+
+        // Time estimate: ~8s per remaining skill, floor of 1 minute.
+        // The server rendered the same figure; JS only keeps it live while rating.
+        document.getElementById('saEstimate').textContent =
+            String(Math.max(1, Math.round((zeros * 8) / 60)));
+
+        // Per-section progress + completion state.
+        document.querySelectorAll('[data-section]').forEach((sec) => {
+            const secSelects = Array.from(sec.querySelectorAll('.self-rating-select'));
+            const done = secSelects.filter(isRated).length;
+            const cnt = sec.querySelector('[data-section-progress]');
+            const bar = sec.querySelector('[data-section-fill]');
+            if (cnt) cnt.textContent = done + '/' + secSelects.length;
+            if (bar) bar.style.width = secSelects.length ? Math.round((done / secSelects.length) * 100) + '%' : '0%';
+            sec.classList.toggle('is-complete', secSelects.length > 0 && done === secSelects.length);
+        });
+
+        // Filter chip counters.
+        document.getElementById('chipUnrated').textContent = zeros;
+        document.getElementById('chipCritical').textContent =
+            rows.filter((r) => r.dataset.critical === '1').length;
+        document.getElementById('chipGap').textContent = selects.filter((s) => {
+            const req = parseInt(s.closest('tr').dataset.required, 10) || 0;
+            return parseInt(s.value, 10) < req;
+        }).length;
+    }
+
+    // ---- filters: let a person work through a long list in passes ----
+    let activeFilter = 'all';
+    let searchTerm = '';
+    function applyFilter() {
+        let visible = 0;
+        rows.forEach((r, i) => {
+            const s = selects[i];
+            const req = parseInt(r.dataset.required, 10) || 0;
+            let show = true;
+            if (activeFilter === 'unrated') show = !isRated(s);
+            else if (activeFilter === 'critical') show = r.dataset.critical === '1';
+            else if (activeFilter === 'gap') show = parseInt(s.value, 10) < req;
+            // Free-text skill search — essential when a role carries 100+ skills.
+            if (show && searchTerm) {
+                // The NAME only (3.23.21, D1): the cell now also holds the skill's
+                // description and level texts, which must never match a search.
+                const name = (r.querySelector('.sa-skill-name') || {}).textContent || '';
+                show = name.toLowerCase().indexOf(searchTerm) >= 0;
+            }
+            r.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+        // Hide sections that have no visible rows under the active filter.
+        document.querySelectorAll('[data-section]').forEach((sec) => {
+            const any = Array.from(sec.querySelectorAll('tbody tr')).some((r) => r.style.display !== 'none');
+            sec.style.display = any ? '' : 'none';
+            if (any && activeFilter !== 'all') sec.open = true;
+        });
+        document.getElementById('saEmpty').hidden = visible > 0;
+    }
+    document.querySelectorAll('.sa-chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('.sa-chip').forEach((c) => c.classList.remove('is-active'));
+            chip.classList.add('is-active');
+            activeFilter = chip.dataset.filter;
+            applyFilter();
+        });
+    });
+
+    // ---- power tools: search, jump-to-next-unrated, collapse/expand all ----
+    const searchEl = document.getElementById('saSearch');
+    let searchDebounce = null;
+    searchEl.addEventListener('input', () => {
+        clearTimeout(searchDebounce);
+        searchDebounce = setTimeout(() => {
+            searchTerm = searchEl.value.trim().toLowerCase();
+            applyFilter();
+        }, 150);
+    });
+
+    function focusRow(row) {
+        rows.forEach((r) => r.classList.remove('sa-focus'));
+        if (!row) return;
+        row.classList.add('sa-focus');
+        const sec = row.closest('[data-section]');
+        if (sec && !sec.open) sec.open = true;
+        const sel = row.querySelector('.self-rating-select');
+        if (sel) sel.focus({ preventScroll: true });
+        // scrollIntoView({block:'center'}) centred the row in the VIEWPORT, and the
+        // sticky #saBar (top: --topbar-height) covers its upper part: on a short or
+        // narrow viewport the centred row — and the <select> that now holds the
+        // focus — landed under the bar (measured: select 9 / 15 / 36 px masked at
+        // 414x896, 1280x400, 375x812; scroll-margin-top is ignored on a <tr>). So
+        // the target is computed: the row is centred where there is room (1280x800:
+        // identical to before), otherwise it sits 8 px below the bar. One scroll,
+        // no motion added; smooth only when the person has not asked for less.
+        const bar = document.getElementById('saBar');
+        const covered = bar ? (parseFloat(getComputedStyle(bar).top) || 0) + bar.offsetHeight : 0;
+        const r = row.getBoundingClientRect();
+        const rowTop = Math.max((window.innerHeight - r.height) / 2, covered + 8);
+        const reduce = !!(window.MOTION && window.MOTION.reduce);
+        window.scrollTo({ top: Math.max(0, window.scrollY + r.top - rowTop), behavior: reduce ? 'auto' : 'smooth' });
+    }
+    document.getElementById('saNextUnrated').addEventListener('click', () => {
+        // Next unrated AFTER the currently focused one, wrapping around.
+        const cur = rows.findIndex((r) => r.classList.contains('sa-focus'));
+        const order = rows.map((_, i) => (cur + 1 + i) % rows.length);
+        const nextIdx = order.find((i) => !isRated(selects[i]));
+        if (nextIdx === undefined) { toast(SA_I18N.allRated, 'success'); return; }
+        focusRow(rows[nextIdx]);
+    });
+
+    const toggleAllBtn = document.getElementById('saToggleAll');
+    toggleAllBtn.addEventListener('click', () => {
+        const collapsing = toggleAllBtn.dataset.state === 'open';
+        document.querySelectorAll('[data-section]').forEach((s) => { s.open = !collapsing; });
+        toggleAllBtn.dataset.state = collapsing ? 'closed' : 'open';
+        document.getElementById('saToggleAllLabel').textContent = collapsing ? SA_I18N.expandAll : SA_I18N.collapseAll;
+        toggleAllBtn.querySelector('i').className = collapsing ? 'fas fa-expand' : 'fas fa-compress';
+    });
+
+    // Keyboard rating: 0-4 sets the level on the focused row and advances to
+    // the next unrated one — a whole assessment can be done without the mouse.
+    // UX-12 (3.23.17): the shortcuts used to fire wherever the focus was on the
+    // page (the body, the sticky bar, the search box's neighbours), so a stray
+    // "2" or "j" silently rated/moved a background row. They now act ONLY when
+    // the keyboard focus is inside a rating row, and never while typing.
+    document.addEventListener('keydown', (e) => {
+        const tag = e.target && e.target.tagName;
+        const inRatings = !!(e.target && e.target.nodeType === 1 && rows.some((r) => r.contains(e.target)));
+        if (!inRatings) return;
+        if (/^(INPUT|TEXTAREA)$/.test(tag) || (e.target && e.target.isContentEditable)) return;
+        // Don't hijack keys while a button/link (toolbar, filter chip, "Next unrated")
+        // is focused — a digit there must not silently rate a background row.
+        if (tag === 'BUTTON' || tag === 'A') return;
+        // A focused native <select> (rows auto-focus their rating select) must keep
+        // its own keyboard behavior — Arrow/Home/End/Space change the rating for
+        // keyboard & screen-reader users. Don't hijack those (WCAG 2.1.1). The j/k
+        // row-nav and 0–4 quick-set shortcuts below still work while a select is focused.
+        if (tag === 'SELECT' && (e.key === 'ArrowUp' || e.key === 'ArrowDown'
+            || e.key === 'ArrowLeft' || e.key === 'ArrowRight'
+            || e.key === 'Home' || e.key === 'End' || e.key === ' ' || e.key === 'Enter')) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const focused = rows.find((r) => r.contains(e.target)) || rows.find((r) => r.classList.contains('sa-focus'));
+        if (/^[0-4]$/.test(e.key)) {
+            // Rate the ACTUALLY-focused select if a keyboard/SR user is on one — never
+            // redirect a digit to a different (mouse-highlighted) row, which silently
+            // mis-rated the wrong skill.
+            // The row that holds the focus — never a different, merely highlighted one.
+            const ownRow = rows.find((r) => r.contains(e.target));
+            const sel = (tag === 'SELECT' && e.target.classList.contains('self-rating-select'))
+                ? e.target
+                : (tag === 'SELECT' ? null : (ownRow && ownRow.querySelector('.self-rating-select')));
+            if (!sel) return;
+            e.preventDefault();
+            sel.value = e.key;
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            document.getElementById('saNextUnrated').click();
+        } else if (e.key === 'j' || e.key === 'ArrowDown') {
+            const visible = rows.filter((r) => r.style.display !== 'none');
+            const i = visible.indexOf(focused);
+            if (visible.length) { e.preventDefault(); focusRow(visible[Math.min(i + 1, visible.length - 1)] || visible[0]); }
+        } else if (e.key === 'k' || e.key === 'ArrowUp') {
+            const visible = rows.filter((r) => r.style.display !== 'none');
+            const i = visible.indexOf(focused);
+            if (visible.length) { e.preventDefault(); focusRow(visible[Math.max(i - 1, 0)] || visible[0]); }
+        }
+    });
+
+    // ---- anti-anchoring: the validated level is hidden until asked for ----
+    const showCurrent = document.getElementById('saShowCurrent');
+    try {
+        if (localStorage.getItem('saShowCurrent') === '1') { showCurrent.checked = true; document.body.classList.add('sa-show-current'); }
+    } catch (_) { /* private mode */ }
+    showCurrent.addEventListener('change', function () {
+        document.body.classList.toggle('sa-show-current', this.checked);
+        try { localStorage.setItem('saShowCurrent', this.checked ? '1' : '0'); } catch (_) { /* noop */ }
+    });
+
+    selects.forEach((s) => s.addEventListener('change', () => { markAnswered(s); updateProgress(); applyFilter(); }));
+
+    // Persist each rating to the local draft store on change/blur so a network drop
+    // (common on remote sites / mobile) never loses work; sync-indicator.js replays it.
+    function cacheDraft(select) {
+        if (!window.AppDraftStore) return;
+        const row = select.closest('tr');
+        const ta = row ? row.querySelector('textarea') : null;
+        try {
+            window.AppDraftStore.put({
+                userId: SA_USER_ID, cycleId: SA_CYCLE_ID,
+                skillId: select.dataset.skillId,
+                level: select.value,
+                justification: ta ? ta.value : '',
+            });
+        } catch (_) { /* best-effort; IndexedDB may be unavailable */ }
+    }
+
+    function collect() {
+        // Only send skills the employee actually rated. A never-touched <select>
+        // reports value "0" (no option is `selected`), so serializing every select
+        // would silently persist ~every role skill as a real "0 — None", flooding the
+        // manager's review queue and destroying the honest "unrated = null" model.
+        return selects
+            .filter((select) => select.dataset.answered === '1')
+            .map((select) => {
+                const row = select.closest('tr');
+                return {
+                    skillId: select.dataset.skillId,
+                    selfRatedLevel: select.value,
+                    notes: row.querySelector('textarea').value,
+                };
+            });
+    }
+
+    async function post(url, okMsg, opts) {
+        const silent = opts && opts.silent;
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ assessments: collect() }),
+            });
+            const result = await res.json().catch(() => ({}));
+            if (res.ok && result.success) {
+                // A 200 with a non-empty `skipped` list is a PARTIAL save: the server
+                // declined those rows (already submitted/approved, or a closed
+                // campaign). Reporting a plain success over them is the same lie as
+                // the discarded note this page used to accept — say what was refused.
+                const skipped = Array.isArray(result.skipped) ? result.skipped : [];
+                if (!silent) {
+                    if (skipped.length) {
+                        toast(SA_I18N.partialSkipped.replace('{{n}}', String(skipped.length)), 'error');
+                    } else {
+                        toast(okMsg, 'success');
+                    }
+                    setTimeout(() => location.reload(), skipped.length ? 2500 : 1000);
+                }
+                // A partial save is NOT a save. This returned a bare `true`, and
+                // the autosave — which calls with silent:true and so never saw
+                // the toast — printed "enregistré HH:MM:SS" over rows the server
+                // had just declined. The caller gets the refusal count and
+                // decides; nobody is told their work is safe when it is not.
+                return { ok: true, skipped };
+            }
+            if (!silent) toast(SA_I18N.errPrefix + errMessage(result, res.status), 'error');
+            return { ok: false, skipped: [] };
+        } catch (e) {
+            if (!silent) toast(SA_I18N.errNetwork, 'error');
+            return { ok: false, skipped: [] };
+        }
+    }
+
+    // ---- AUTOSAVE: a long form must never lose work to a closed tab ----
+    //
+    // Four states, and each one is true at the moment it is shown:
+    //
+    //   pending  the change is in the browser and NOTHING has been sent yet.
+    //            This said "enregistrement en cours" for the whole 2.5 s
+    //            debounce, i.e. it claimed a request was in flight while none
+    //            was.
+    //   saving   the request has actually departed.
+    //   saved    a 200 with NOTHING skipped. A partial save no longer lands
+    //            here; it lands in `failed`, because rows were refused.
+    //   failed   the save did not happen (or not entirely). It used to blank
+    //            the label, so work that never reached the server showed the
+    //            reader exactly nothing. It now persists and offers a retry.
+    let autosaveTimer = null;
+    let autosaveInFlight = false;
+
+    function renderAutosave(state, detail) {
+        autosaveEl.textContent = '';
+        autosaveEl.classList.toggle('sa-autosave-failed', state === 'failed');
+        if (state === 'pending') { autosaveEl.textContent = SA_I18N.autosavePending; return; }
+        if (state === 'saving') { autosaveEl.textContent = SA_I18N.saving; return; }
+        if (state === 'saved') {
+            autosaveEl.textContent = SA_I18N.saved + ' ' + FMT.time(new Date());
+            return;
+        }
+        // failed — say so, and give a control that actually retries.
+        autosaveEl.appendChild(document.createTextNode((detail || SA_I18N.autosaveFailed) + ' '));
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'btn-link sa-autosave-retry';
+        retry.textContent = SA_I18N.autosaveRetry;
+        retry.addEventListener('click', runAutosave);
+        autosaveEl.appendChild(retry);
+    }
+
+    async function runAutosave() {
+        if (autosaveInFlight) return; // one save at a time; a retry must not pile up
+        autosaveInFlight = true;
+        renderAutosave('saving');
+        try {
+            const r = await post('/employee/self-assessment/save-draft', null, { silent: true });
+            if (r.ok && !r.skipped.length) renderAutosave('saved');
+            else if (r.ok) {
+                renderAutosave('failed', SA_I18N.autosavePartial.replace('{{n}}', String(r.skipped.length)));
+            } else renderAutosave('failed');
+        } finally {
+            autosaveInFlight = false;
+        }
+    }
+
+    function scheduleAutosave() {
+        clearTimeout(autosaveTimer);
+        renderAutosave('pending');
+        autosaveTimer = setTimeout(runAutosave, 2500);
+    }
+    selects.forEach((s) => {
+        s.addEventListener('change', () => { cacheDraft(s); scheduleAutosave(); });
+        const row = s.closest('tr');
+        const ta = row ? row.querySelector('textarea') : null;
+        if (ta) ta.addEventListener('blur', () => { cacheDraft(s); scheduleAutosave(); });
+    });
+
+    document.getElementById('saveDraftBtn').addEventListener('click', function () {
+        this.disabled = true;
+        post('/employee/self-assessment/save-draft', SA_I18N.draftSaved).finally(() => { this.disabled = false; });
+    });
+
+    // Inline confirmation instead of window.confirm
+    document.getElementById('submitBtn').addEventListener('click', function () {
+        confirmBox.hidden = false;
+        confirmBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Move focus into the revealed dialog so keyboard/SR users hear it (WCAG 4.1.3).
+        var yesBtn = document.getElementById('saConfirmYes');
+        if (yesBtn) yesBtn.focus();
+    });
+    function closeConfirm() { confirmBox.hidden = true; var s = document.getElementById('submitBtn'); if (s) s.focus(); }
+    document.getElementById('saConfirmNo').addEventListener('click', closeConfirm);
+    // Escape closes the confirm dialog and returns focus to the trigger (WCAG 2.1.2/2.4.3).
+    confirmBox.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); closeConfirm(); } });
+    document.getElementById('saConfirmYes').addEventListener('click', async function () {
+        this.disabled = true;
+        // `post` reports { ok, skipped }; a partial submit must re-enable the
+        // button too, so the reader can act on what was refused.
+        const r = await post('/employee/self-assessment/submit', SA_I18N.submitted);
+        if (!r.ok || r.skipped.length) { this.disabled = false; } else { confirmBox.hidden = true; }
+    });
+
+    updateProgress();
+    applyFilter();
+})();
+</script>

@@ -1,0 +1,162 @@
+<!-- Floating Help Button -->
+<button id="helpFab" class="help-fab" aria-label="<%= __('chrome:help_aria') %>" aria-expanded="false">
+    <span class="help-fab-icon">?</span>
+</button>
+
+<!-- Help Panel -->
+<div id="helpPanel" class="help-panel" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div class="help-header">
+        <h3 id="helpTitle"><%= __('chrome:help_title') %></h3>
+        <button id="helpClose" class="help-close" aria-label="<%= __('chrome:help_close') %>">&times;</button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="help-tabs">
+        <button class="help-tab active" data-target="tab-guide"><%= __('chrome:help_tab_current') %></button>
+        <button class="help-tab" data-target="tab-manual"><%= __('chrome:help_tab_manual') %></button>
+    </div>
+
+    <!-- Content Area -->
+    <div class="help-content">
+        <!-- Tab 1: Current Page Guide (Dynamic) -->
+        <div id="tab-guide" class="help-section active">
+            <div id="guide-content">
+                <div class="help-block">
+                    <p class="text-muted"><%= __('chrome:help_guide_placeholder') %></p>
+                </div>
+            </div>
+        </div>
+
+        <%#
+            the "Manuel complet" tab used to serve the ADMINISTRATOR
+            manual on EVERY page — an employee opening help on their own
+            self-assessment was told to « se connecter avec les identifiants
+            administrateur » and that « l'installeur génère un mot de passe ». An
+            employee gets the employee guide; everyone else keeps the admin one.
+        %>
+        <% if (user && user.userType === 'employee') { %>
+        <div id="tab-manual" class="help-section">
+            <div class="help-block">
+                <h4><i class="fas fa-book" aria-hidden="true"></i> <%= __('chrome:help_emp_manual_title') %></h4>
+                <p class="text-muted small"><%= __('chrome:help_emp_manual_intro') %></p>
+
+                <details open>
+                    <summary><strong><%= __('chrome:help_e1_title') %></strong></summary>
+                    <ol>
+                        <li><strong><%= __('chrome:help_e1_login_t') %></strong> <%= __('chrome:help_e1_login_d') %></li>
+                        <li><strong><%= __('chrome:help_e1_pwd_t') %></strong> <%= __('chrome:help_e1_pwd_d') %></li>
+                    </ol>
+                </details>
+
+                <details>
+                    <summary><strong><%= __('chrome:help_e2_title') %></strong></summary>
+                    <p><em><%= __('chrome:help_e2_path') %></em></p>
+                    <ol>
+                        <li><strong><%= __('chrome:help_e2_open_t') %></strong> <%= __('chrome:help_e2_open_d') %></li>
+                        <li><strong><%= __('chrome:help_e2_rate_t') %></strong> <%= __('chrome:help_e2_rate_d') %></li>
+                        <li><strong><%= __('chrome:help_e2_submit_t') %></strong> <%= __('chrome:help_e2_submit_d') %></li>
+                    </ol>
+                </details>
+
+                <details>
+                    <summary><strong><%= __('chrome:help_e3_title') %></strong></summary>
+                    <ol>
+                        <li><strong><%= __('chrome:help_e3_status_t') %></strong> <%= __('chrome:help_e3_status_d') %></li>
+                        <li><strong><%= __('chrome:help_e3_reviews_t') %></strong> <%= __('chrome:help_e3_reviews_d') %></li>
+                    </ol>
+                </details>
+
+                <details>
+                    <summary><strong><%= __('chrome:help_e4_title') %></strong></summary>
+                    <ol>
+                        <li><strong><%= __('chrome:help_e4_dev_t') %></strong> <%= __('chrome:help_e4_dev_d') %></li>
+                        <li><strong><%= __('chrome:help_e4_learn_t') %></strong> <%= __('chrome:help_e4_learn_d') %></li>
+                        <li><strong><%= __('chrome:help_e4_cert_t') %></strong> <%= __('chrome:help_e4_cert_d') %></li>
+                    </ol>
+                </details>
+
+                <details>
+                    <summary><strong><%= __('chrome:help_e5_title') %></strong></summary>
+                    <ol>
+                        <li><strong><%= __('chrome:help_e5_opp_t') %></strong> <%= __('chrome:help_e5_opp_d') %></li>
+                        <li><strong><%= __('chrome:help_e5_coach_t') %></strong> <%= __('chrome:help_e5_coach_d') %></li>
+                        <li><strong><%= __('chrome:help_e5_help_t') %></strong> <%= __('chrome:help_e5_help_d') %></li>
+                    </ol>
+                </details>
+            </div>
+        </div>
+        <% } else { %>
+        <!-- Tab 2: Full Manual (Static) -->
+        <div id="tab-manual" class="help-section">
+            <div class="help-block">
+                <h4><i class="fas fa-book" aria-hidden="true"></i> <%= __('chrome:help_manual_title') %></h4>
+                <p class="text-muted small"><%= __('chrome:help_manual_intro') %></p>
+
+                <details open>
+                    <summary><strong><%= __('chrome:help_s1_title') %></strong></summary>
+                    <ol>
+                        <li><strong><%= __('chrome:help_s1_login_t') %></strong> <%= __('chrome:help_s1_login_d') %></li>
+                        <li><strong><%= __('chrome:help_s1_pwd_t') %></strong> <%= __('chrome:help_s1_pwd_d') %></li>
+                    </ol>
+                </details>
+
+                <details>
+                    <summary><strong><%= __('chrome:help_s2_title') %></strong> <%= __('chrome:help_s2_hint') %></summary>
+                    <p><em><%= __('chrome:help_s2_path') %></em></p>
+                    <ol>
+                        <li><strong><%= __('chrome:help_s2_site_t') %></strong> <%= __('chrome:help_s2_site_d') %></li>
+                        <li><strong><%= __('chrome:help_s2_dept_t') %></strong> <%= __('chrome:help_s2_dept_d') %></li>
+                        <li><strong><%= __('chrome:help_s2_svc_t') %></strong> <%= __('chrome:help_s2_svc_d') %></li>
+                    </ol>
+                </details>
+
+                <details>
+                    <summary><strong><%= __('chrome:help_s3_title') %></strong></summary>
+                    <p><em><%= __('chrome:help_s3_path') %></em></p>
+                    <ol>
+                        <li><strong><%= __('chrome:help_s3_dom_t') %></strong> <%= __('chrome:help_s3_dom_d') %></li>
+                        <li><strong><%= __('chrome:help_s3_skill_t') %></strong> <%= __('chrome:help_s3_skill_d') %></li>
+                        <li><strong><%= __('chrome:help_s3_lvl_t') %></strong> <%= __('chrome:help_s3_lvl_d') %></li>
+                    </ol>
+                </details>
+
+                <details>
+                    <summary><strong><%= __('chrome:help_s4_title') %></strong></summary>
+                    <p><em><%= __('chrome:help_s4_path') %></em></p>
+                    <ol>
+                        <li><strong><%= __('chrome:help_s4_role_t') %></strong> <%= __('chrome:help_s4_role_d') %></li>
+                        <li><strong><%= __('chrome:help_s4_req_t') %></strong> <%= __('chrome:help_s4_req_d') %></li>
+                    </ol>
+                </details>
+
+                <details>
+                    <summary><strong><%= __('chrome:help_s5_title') %></strong></summary>
+                    <p><em><%= __('chrome:help_s5_path') %></em></p>
+                    <ol>
+                        <li><strong><%= __('chrome:help_s5_add_t') %></strong> <%= __('chrome:help_s5_add_d') %></li>
+                        <li><strong><%= __('chrome:help_s5_struct_t') %></strong> <%= __('chrome:help_s5_struct_d') %></li>
+                        <li><strong><%= __('chrome:help_s5_role_t') %></strong> <%= __('chrome:help_s5_role_d') %></li>
+                    </ol>
+                </details>
+
+                <details>
+                    <summary><strong><%= __('chrome:help_s6_title') %></strong></summary>
+                    <ol>
+                        <li><strong><%= __('chrome:help_s6_sa_t') %></strong> <%= __('chrome:help_s6_sa_d') %></li>
+                        <li><strong><%= __('chrome:help_s6_val_t') %></strong> <%= __('chrome:help_s6_val_d') %></li>
+                        <li><strong><%= __('chrome:help_s6_ana_t') %></strong> <%= __('chrome:help_s6_ana_d') %></li>
+                    </ol>
+                </details>
+            </div>
+        </div>
+        <% } %>
+    </div>
+</div>
+
+<%# These two are what make the panel a floating drawer rather than page content.
+    help.css gives .help-panel its `position: fixed` and hides it until help.js
+    adds .active. Both were accidentally dropped when this partial was rewritten
+    for i18n, which left the whole manual rendering inline at the foot of EVERY
+    authenticated page. %>
+<link rel="stylesheet" href="/css/help.css?v=<%= assetVersion %>">
+<script src="/js/help.js?v=<%= assetVersion %>" defer></script>

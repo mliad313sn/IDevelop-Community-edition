@@ -1,0 +1,88 @@
+<div class="page-header">
+  <h1><i class="fas fa-hands-helping" aria-hidden="true"></i> <%= __('employee:mc_title') %></h1>
+  <p class="text-muted"><%= __('employee:mc_subtitle') %></p>
+</div>
+<div class="card table-wrapper" style="padding:0;">
+  <table class="table" id="mc-table">
+    <thead><tr><th><%= __('employee:th_kind') %></th><th><%= __('employee:th_title') %></th><th><%= __('employee:th_context') %></th><th><%= __('employee:th_target') %></th><th><%= __('employee:th_state') %></th><th><%= __('employee:th_progress') %></th><th><%= __('employee:th_update') %></th></tr></thead>
+    <tbody>
+    <% if (typeof items !== 'undefined' && items && items.length) { %>
+      <% items.forEach(function(p){ %>
+        <tr>
+          <td><%= ['coaching','mentoring'].includes(p.kind) ? __('employee:mc_kind_'+p.kind) : enumLabel(p.kind) %></td>
+          <td><a href="#" onclick="MC.open(<%= p.id %>);return false"><%= p.title %></a></td>
+          <td><%= p.contextLabel || '—' %></td>
+          <td><%= p.targetDate ? new Date(p.targetDate).toLocaleDateString(typeof lang!=='undefined'?lang:'fr') : '-' %></td>
+          <td><%= ['draft','active','completed','cancelled'].includes(p.state) ? __('employee:mc_st_'+p.state) : enumLabel(p.state) %></td>
+          <td><%= p.progress %>%</td>
+          <td></td>
+        </tr>
+      <% }); %>
+    <% } else if (typeof items !== 'undefined') { %>
+      <tr><td colspan="7"><em><%= __('employee:mc_none') %></em></td></tr>
+    <% } else { %>
+      <tr><td colspan="7"><%= __('employee:loading') %></td></tr>
+    <% } %>
+    </tbody>
+  </table>
+</div>
+<div id="mc-detail" class="card" style="display:none;padding:1rem;margin-top:1rem;"></div>
+<%# UNE SEULE discipline de reseau pour toute l application :
+    public/js/sa-console-net.js. Une reponse REDIRIGEE, non-JSON, 401/440 est
+    un ECHEC -- jamais un succes -- et le refus est ecrit dans la langue de la
+    page. Charge AVANT le script de la page (non differe) pour que SAConsoleNet
+    existe au premier appel. %>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
+  err_session: __('talentx:sar_err_session'),
+  err_forbidden: __('talentx:sar_err_forbidden'),
+  err_notfound: __('talentx:sar_err_notfound'),
+  err_server: __('talentx:sar_err_server'),
+  err_http: __('talentx:sar_err_http'),
+  err_ref: __('talentx:sar_err_ref'),
+  err_network: __('talentx:sar_err_network'),
+  err_format: __('talentx:sar_err_format'),
+  // Titre de la carte de refus : neutre, car ces ecrans ne sont pas la console de
+  // revue (sans cela ils affichaient « La file de revue n a pas pu etre chargee »).
+  load_failed: __('dash:unable_to_load'),
+  pending_failed: __('dash:unable_to_load'),
+  retry: __('talentx:sar_retry'),
+  relogin: __('talentx:sar_relogin')
+} }) %>);
+const MC={
+  I18N: {
+    promptProgress: <%- JSON.stringify(__('employee:mc_prompt_progress')) %>,
+    progressRange: <%- JSON.stringify(__('employee:mc_progress_range')) %>,
+    actionsHeader: <%- JSON.stringify(__('employee:th_actions')) %>,
+    markDone: <%- JSON.stringify(__('employee:mc_btn_mark_done')) %>,
+    noActions: <%- JSON.stringify(__('employee:mc_no_actions')) %>,
+    setPct: <%- JSON.stringify(__('employee:mc_btn_set_pct')) %>,
+    noPlans: <%- JSON.stringify(__('employee:mc_none')) %>,
+    errGeneric: <%- JSON.stringify(__('employee:mc_err_generic')) %>,
+    lang: <%- include('../../partials/json-script', { v: typeof lang !== 'undefined' ? lang : 'fr' }) %>,
+    st: <%- include('../../partials/json-script', { v: { draft: __('employee:mc_st_draft'), active: __('employee:mc_st_active'), completed: __('employee:mc_st_completed'), cancelled: __('employee:mc_st_cancelled') } }) %>,
+    kind: <%- include('../../partials/json-script', { v: { coaching: __('employee:mc_kind_coaching'), mentoring: __('employee:mc_kind_mentoring') } }) %>,
+    ast: <%- include('../../partials/json-script', { v: { pending: __('employee:mc_ast_pending'), in_progress: __('employee:mc_ast_in_progress'), done: __('employee:mc_ast_done') } }) %>
+  },
+  lbl(map,v){ return (map && map[v]) || v || '—'; },
+  fmtDate(d){ if(!d) return '-'; try{ return new Date(d).toLocaleDateString(this.I18N.lang); }catch(_){ return String(d).slice(0,10); } },
+  // L assistant reseau ne se recopie plus ici : il vit dans
+  // public/js/sa-console-net.js (SAConsoleNet.call). L ancien corps avalait
+  // `r.json` en `{}` ; sur une session expiree le serveur repondait
+  // `302 -> /login`, le fetch de navigateur SUIVAIT la redirection, la page de
+  // connexion arrivait en `200 text/html`, `r.ok` valait donc true et `j`
+  // valait `{}` : le test `if(!r.ok||j.ok===false)` ne voyait rien.
+  // Sur un refus, la personne voyait « aucun accompagnement » au lieu d un refus.
+  async api(p,m,b){ try { return await SAConsoleNet.call(p,m,b); } catch(e){ (window.toast||window.alert)(e.message,'error'); throw e; } },
+  badge(s){const c={draft:'#888',active:'#1b56b8',completed:'#0f8a3c',cancelled:'#b00020'}[s]||'#555';return '<span style=\"padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:'+c+'\">'+esc(this.lbl(this.I18N.st,s))+'</span>';},
+  async setProgress(id){const v=await window.promptDialog(this.I18N.promptProgress);if(v===null)return;const n=Number(v);if(!isFinite(n)||n<0||n>100){(window.toast||window.alert)(this.I18N.progressRange||'Enter a number between 0 and 100.','error');return;}await this.api('/api/coaching/'+id+'/progress','POST',{progress:Math.round(n)});await this.load();},
+  async open(id){const j=await this.api('/api/coaching/'+id);const p=j.plan;const d=document.getElementById('mc-detail');d.style.display='block';
+    d.innerHTML='<h3>'+esc(p.title)+' '+this.badge(p.state)+'</h3><p>'+esc(p.objective||'')+'</p><h4>'+esc(this.I18N.actionsHeader)+'</h4>'+(p.actions.length?p.actions.map(a=>'<div style="padding:.3rem 0;border-bottom:1px solid #eee;">'+esc(a.description)+' — <strong>'+esc(this.lbl(this.I18N.ast,a.status))+'</strong> '+(a.status!=='done'?'<button class="btn btn-sm" onclick="MC.actDone('+a.id+')">'+esc(this.I18N.markDone)+'</button>':'')+'</div>').join(''):'<em>'+esc(this.I18N.noActions)+'</em>');},
+  async actDone(actionId){await this.api('/api/coaching/actions/'+actionId,'POST',{status:'done'});await this.load();},
+  async load(){const j=await this.api('/api/coaching/mine');const tb=document.querySelector('#mc-table tbody');
+    tb.innerHTML=j.items.length?j.items.map(p=>'<tr><td>'+esc(this.lbl(this.I18N.kind,p.kind))+'</td><td><a href="#" onclick="MC.open('+p.id+');return false">'+esc(p.title)+'</a></td><td>'+(p.contextLabel?'<span style="background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:999px;font-size:.78rem">'+esc(p.contextLabel)+'</span>':'<span style="color:var(--text-muted)">—</span>')+'</td><td>'+this.fmtDate(p.targetDate)+'</td><td>'+this.badge(p.state)+'</td><td>'+p.progress+'%</td><td>'+(p.state==='active'?'<button class="btn btn-sm btn-secondary" onclick="MC.setProgress('+p.id+')">'+esc(this.I18N.setPct)+'</button>':'')+'</td></tr>').join(''):'<tr><td colspan="7"><em>'+esc(this.I18N.noPlans)+'</em></td></tr>';}
+};
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+MC.load();
+</script>
