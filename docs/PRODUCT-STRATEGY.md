@@ -78,14 +78,23 @@ were reviewed, disputes that were closed and development actions that started.
 
 ### Shipped in this round
 
-| Item                                                                                                                                 | Seat          |
-| ------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
-| ESCO taxonomy import (`npm run import:esco`), then `db:seed:starter -- --file`; CC-BY attribution in `NOTICE`                        | Benchmark, HR |
-| Survey templates (eNPS, engagement pulse, onboarding, manager effectiveness), FR/EN, CC0                                             | Benchmark     |
-| Slack / Microsoft Teams webhooks (`format`: json, slack, teams); chat messages never carry ratings, talent labels or contact details | Benchmark     |
-| Getting-started progress in the sidebar and on the dashboard, with a link to the next step                                           | UX            |
-| Readiness legends and a Role column in the gap report                                                                                | UX            |
-| Card tables on phones, one filter-bar pattern, compact row actions                                                                   | UX            |
+| Item                                                                                                                                    | Seat             |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| ESCO taxonomy import (`npm run import:esco`), then `db:seed:starter -- --file`; CC-BY attribution in `NOTICE`                           | Benchmark, HR    |
+| Survey templates (eNPS, engagement pulse, onboarding, manager effectiveness), FR/EN, CC0                                                | Benchmark        |
+| Slack / Microsoft Teams webhooks (`format`: json, slack, teams); chat messages never carry ratings, talent labels or contact details    | Benchmark        |
+| Works-council (CSE) register generated from the live configuration, printable (`/compliance/register`)                                  | HR               |
+| "What is recorded about me" page for every employee (`/employee/my-data`)                                                               | HR, users        |
+| EU AI Act guardrails: AI label on every answer, no named-person ranking by default, EU-only providers by default, human-oversight audit | HR               |
+| SQL console off unless the operator sets `SQL_CONSOLE_ENABLED=1` (separation of duties)                                                 | HR               |
+| Core workflows never gated by a licence (`EntitlementService.CORE_FEATURES`, tested)                                                    | Chair            |
+| Employee growth: gap against my target role, roles I'm closest to, learning suggested for my gaps                                       | Users, benchmark |
+| 9-box explainer for employees and a setting to hide the 9-box from them                                                                 | Users            |
+| Manager "My team" roster and team-wide approval of agreed ratings, with ready-made change reasons                                       | Users            |
+| Recognition feed scoped to the team circle; thanks limited to colleagues                                                                | Users            |
+| Getting-started progress in the sidebar and on the dashboard, with a link to the next step                                              | UX               |
+| Readiness legends and a Role column in the gap report                                                                                   | UX               |
+| Card tables on phones, one filter-bar pattern, compact row actions                                                                      | UX               |
 
 ### Roadmap
 

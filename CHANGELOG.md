@@ -17,6 +17,14 @@ First public release of **IDevelop Community Edition**.
   self-hosted brand typeface, "Match device" mode, shared empty states, mobile
   layout fixes, friendlier bilingual copy, fictional demo organisation
   (`npm run db:seed:demo-org`).
+- Innovation & business performance committee (`docs/PRODUCT-STRATEGY.md`):
+  ESCO taxonomy import, bilingual survey templates, Slack / Teams webhook
+  formats, works-council register, "What is recorded about me", EU AI Act
+  copilot guardrails, employee growth panels (target-role gap, closest roles,
+  suggested learning), manager team roster and team approval, scoped
+  recognition.
+- UX round 2: getting-started progress, card tables on phones, one filter-bar
+  pattern, readiness legends, UK English, localised numbers and manifest.
 - Appearance menu in the top bar: light/dark mode and four colour themes (Iris,
   Meadow, Sunrise, Ocean), remembered per browser, all measured WCAG AA.
 
@@ -53,6 +61,10 @@ First public release of **IDevelop Community Edition**.
 - Commit scopes are functional areas instead of internal project phases.
 
 ### Security
+
+- SQL console disabled unless `SQL_CONSOLE_ENABLED=1` is set by the operator.
+- Copilot: non-EU providers blocked by default; no named-person ranking unless
+  enabled.
 
 - Imported administrator accounts no longer receive a shared, publicly known
   default password; they get an unknowable secret and a forced change.
