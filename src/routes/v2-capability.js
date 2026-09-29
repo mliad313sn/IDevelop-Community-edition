@@ -1091,7 +1091,13 @@ router.post(
     ah(async (req, res) => {
         const q = String(req.body.question || '').slice(0, 500);
         if (!q) return res.status(400).json({ ok: false, error: 'question required' });
-        res.json({ ok: true, ...(await Copilot.ask(req.user, q)) });
+        const out = await Copilot.ask(req.user, q);
+        // Transparency label, in the session language (EU AI Act): every answer
+        // carries it, the UI shows it next to the answer.
+        if (out.disclaimerKey && typeof req.t === 'function') {
+            out.disclaimer = req.t(out.disclaimerKey, { defaultValue: out.disclaimer });
+        }
+        res.json({ ok: true, ...out });
     })
 );
 router.get(

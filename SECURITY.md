@@ -30,8 +30,12 @@ wish to be named.
   for super-administrators).
 - Keep PostgreSQL private to the application network; use a dedicated database
   role owned by the application.
-- Restrict `/metrics` (see `requireMetricsAccess`). Remember that the SQL console
-  (_Data → SQL console_) gives super-administrators raw database access: keep the
-  number of super-administrators small.
+- Restrict `/metrics` (see `requireMetricsAccess`).
+- The SQL console (_Data → SQL console_) gives super-administrators raw database
+  access. It is **off by default** (separation of duties): its routes answer 404
+  and its menu entry is hidden until the server operator sets
+  `SQL_CONSOLE_ENABLED=1` in the environment. Enable it only for a supervised
+  maintenance window, then remove the variable and restart. Its state is shown on
+  _Admin → Instance health_. Keep the number of super-administrators small.
 - Review _Settings → Security_ (lockout, session lifetime, MFA policy) and enable
   daily backups plus the restore drill.

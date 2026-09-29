@@ -69,6 +69,7 @@
   "badge_superadmin": "Super administrateur",
   "sql_console_desc": "Convertissez un modèle Excel système complet en script SQL — puis relisez-le, copiez-le ou exécutez-le directement sur la base de données (avec un aperçu à blanc). Une alternative au téléversement du fichier Excel.",
   "btn_open_sql_console": "Ouvrir la console SQL",
+  "sql_console_disabled": "La console SQL est désactivée sur cette instance (séparation des tâches). L’exploitant du serveur peut l’activer en définissant SQL_CONSOLE_ENABLED=1 dans l’environnement puis en redémarrant.",
   "json_migration_title": "Migration système JSON (portable)",
   "json_migration_desc_1": "Un format portable et adapté aux développeurs pour le",
   "json_migration_bold": "partage, l'amorçage ou la sauvegarde",

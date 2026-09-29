@@ -17,6 +17,30 @@
 const AppSettingsModel = require('../models/AppSettingsModel');
 const db = require('../config/database');
 
+/**
+ * INVARIANT — "core never gated".
+ *
+ * The core talent workflows are the product. They must never sit behind an
+ * entitlement check: a customer whose licence has lapsed, is over seat, or lists
+ * only add-on modules keeps the full core workflow. `isFeatureEnabled()` returns
+ * `true` for every slug below whatever the licence says, so a future caller that
+ * wraps a core screen in an entitlement check cannot lock anyone out of it.
+ * Entitlement may only gate optional add-on modules.
+ *
+ * Locked by tests/unit/entitlementCoreNeverGated.test.js — do not remove a slug
+ * from this list without a product decision.
+ */
+const CORE_FEATURES = Object.freeze([
+    'framework',
+    'assessment',
+    'readiness',
+    'nine_box',
+    'succession',
+    'idp',
+    'sso',
+    'reports',
+]);
+
 let _cache = null;
 let _cacheAt = 0;
 const TTL_MS = 60 * 1000;
@@ -92,7 +116,15 @@ class EntitlementService {
         return status;
     }
 
+    /** True when `slug` is a core workflow (never gated — see CORE_FEATURES). */
+    isCoreFeature(slug) {
+        return CORE_FEATURES.includes(String(slug || '').toLowerCase());
+    }
+
     async isFeatureEnabled(slug) {
+        // Core never gated: answered before the licence is even read, so neither an
+        // expired/over-seat licence nor a restrictive feature list can disable it.
+        if (this.isCoreFeature(slug)) return true;
         const s = await this.status();
         if (s.unmanaged) return true;
         return s.features.includes('*') || s.features.includes(slug);
@@ -101,12 +133,10 @@ class EntitlementService {
     /** Whether creating another active employee is allowed. Only blocks when the
      *  admin has explicitly turned on the hard cap AND the license is over-seat.
      *
-     *  LANGUE — mesuré le 16/09/2026 : `reason` est une phrase ANGLAISE en dur, et
-     *  c'est elle que /employees/create affichait, y compris en session française
-     *  (la clé de repli citée par le contrôleur, flash:seat_limit_reached,
-     *  n'existait dans AUCUN des deux catalogues et sortait telle quelle).
-     *  On rend donc aussi la clé et ses variables : un appelant HTTP traduit,
-     *  un appelant sans requête (script, job) garde la phrase de repli. */
+     *  Returns a translation key (`reasonKey`) and its variables (`reasonVars`) as
+     *  well as an English fallback sentence (`reason`): an HTTP caller translates
+     *  the key into the session language, a caller with no request (script, job)
+     *  keeps the fallback. */
     async canAddEmployee() {
         const s = await this.status();
         if (s.unmanaged || s.seats == null) return { ok: true };
@@ -130,3 +160,4 @@ class EntitlementService {
 }
 
 module.exports = new EntitlementService();
+module.exports.CORE_FEATURES = CORE_FEATURES;

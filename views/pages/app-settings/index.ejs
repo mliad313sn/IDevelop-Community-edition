@@ -291,8 +291,12 @@
                                 <span style="display:inline-block;margin:2px 8px 2px 0;padding:2px 8px;background:var(--bg-secondary);color:var(--text-secondary);border-radius:10px;"
                                       title="<%= p.url %>">
                                     <code><%= p.name %></code> → <%= p.defaultModel %>
+                                    · <%= p.region === 'local' ? __('admin:copilot_region_local') : (p.euHosted ? __('admin:copilot_region_eu') : __('admin:copilot_region_non_eu', { region: String(p.region || '').toUpperCase() })) %><% if (p.trainsOnData) { %> · <span title="<%= __('admin:copilot_trains_on_data_title') %>"><%= __('admin:copilot_trains_on_data') %></span><% } %>
                                 </span>
                             <% }); %>
+                            <div style="color:var(--text-muted);margin-top:.4rem;" data-copilot-guardrails>
+                                <i class="fas fa-scale-balanced" aria-hidden="true"></i> <%= __('admin:copilot_guardrails_note') %>
+                            </div>
                             <div style="color:#15803d;margin-top:.4rem;">
                                 <i class="fas fa-shield-halved" aria-hidden="true"></i> Moteur d'anonymisation : par défaut, <strong>chaque</strong> requête IA (interne ET externe) ne transporte que des
                                 données chiffrées — noms des personnes, sites, départements, services, postes et identité de l'organisation remplacés

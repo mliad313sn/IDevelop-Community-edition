@@ -99,7 +99,7 @@
            cancellations: gAdmCamp || (gTools && _isMgr),
            postApproval: gAdmCamp || (gTools && _isMgr),
            dataMgmt: gAdmData && (_can('export_data') || _can('import_data')),
-           sqlConsole: gAdmData && _sa,
+           sqlConsole: gAdmData && _sa && (typeof sqlConsoleEnabled !== 'undefined' && sqlConsoleEnabled === true),
            sysLogs: gAdmData && _can('view_system_logs'),
            adminNotif: gAdmData && _sa,
            organization: gAdmSet && _can('manage_organization'),

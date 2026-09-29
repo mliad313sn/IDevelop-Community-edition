@@ -264,8 +264,12 @@
 <div class="dashboard-section" style="border-left: 4px solid #8e44ad;">
     <h2><i class="fas fa-terminal" aria-hidden="true"></i> <%= __('datamgmt:sql_console_title') %> <span class="badge" style="background:#8e44ad; color:#fff; font-size:11px; padding:2px 8px; border-radius:10px;"><%= __('datamgmt:badge_superadmin') %></span></h2>
     <p><%= __('datamgmt:sql_console_desc') %></p>
+    <% if (typeof sqlConsoleEnabled !== 'undefined' && sqlConsoleEnabled) { %>
     <a href="/data-management/sql-console" class="btn btn-purple"><i class="fas fa-terminal" aria-hidden="true"></i>
         <%= __('datamgmt:btn_open_sql_console') %></a>
+    <% } else { %>
+    <p class="text-muted" data-sql-console-disabled><i class="fas fa-lock" aria-hidden="true"></i> <%= __('datamgmt:sql_console_disabled') %></p>
+    <% } %>
 </div>
 <% } %>
 

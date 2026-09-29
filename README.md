@@ -132,6 +132,7 @@ every variable. The essentials:
 | `APP_KEY`                                 | At-rest encryption key for stored secrets (MFA seeds, SSO/LMS/SMTP credentials); rotate only with `scripts/rotate-app-key.js` |
 | `REDIS_URL`                               | Optional: BullMQ workers and shared rate-limit store for multi-instance deployments                                           |
 | `V2_FEATURES=1`                           | Enables the extended talent suite (campaigns, IDP, coaching, PIP, lifecycle) under `/v2/*`                                    |
+| `SQL_CONSOLE_ENABLED=1`                   | Switches on the super-admin SQL console (off by default — separation of duties; routes answer 404 while off)                  |
 | `APP_BASE_URL`, `TRUSTED_HOSTS`           | Public URL used in e-mails and host-header allow-list                                                                         |
 | `SMTP_*`                                  | Outgoing mail (can also be set in _Settings → Email_)                                                                         |
 | `OIDC_*`, `AZURE_*`, `SAML_*`, `GOOGLE_*` | Single sign-on providers                                                                                                      |
