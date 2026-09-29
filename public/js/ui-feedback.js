@@ -65,7 +65,7 @@
         // dialog no longer renders a jarring white box over the dark UI.
         '.uif-modal{background:var(--bg-elevated,#fff);color:var(--text-primary,#0f172a);border:1px solid var(--border-color,transparent);border-radius:14px;max-width:440px;width:100%;padding:22px 24px;box-shadow:0 20px 50px rgba(2,32,71,.45)}' +
         '.uif-modal h4{margin:0 0 10px;font-size:17px;color:var(--text-primary,#0f172a)}.uif-modal p{margin:0 0 16px;color:var(--text-secondary,#334155);font-size:14px;white-space:pre-wrap}' +
-        '.uif-modal input,.uif-modal textarea{width:100%;padding:9px 12px;border:1px solid var(--border-color,#cbd5e1);background:var(--bg-input,#fff);color:var(--text-primary,#0f172a);border-radius:8px;font-size:14px;margin-bottom:16px;font-family:inherit}' +
+        '.uif-modal input,.uif-modal textarea,.uif-modal select{width:100%;padding:9px 12px;border:1px solid var(--border-color,#cbd5e1);background:var(--bg-input,#fff);color:var(--text-primary,#0f172a);border-radius:8px;font-size:14px;margin-bottom:16px;font-family:inherit}' +
         '.uif-modal textarea{min-height:84px;resize:vertical}' +
         '.uif-actions{display:flex;justify-content:flex-end;gap:10px}' +
         '.uif-btn{padding:8px 16px;border-radius:8px;border:0;font-size:14px;font-weight:600;cursor:pointer}' +
@@ -284,13 +284,30 @@
         }, false);
     };
 
+    // `opts.choices` (array of strings): ready-made reasons offered in a <select>
+    // above the free-text field. The resolved value is the chosen reason, then
+    // the free text on its own line — either one alone satisfies `required`.
     window.promptDialog = function (msg, def, opts) {
         opts = opts || {};
+        var choices = Array.isArray(opts.choices) ? opts.choices : null;
         return modal(function (box, close) {
             box.innerHTML =
                 '<h4>' +
                 esc(opts.title || L().promptTitle || 'Saisie requise') +
                 '</h4><p></p>' +
+                (choices
+                    ? '<select data-choice aria-label="' +
+                      esc(opts.choicePlaceholder || '') +
+                      '"><option value="">' +
+                      esc(opts.choicePlaceholder || '—') +
+                      '</option>' +
+                      choices
+                          .map(function (c) {
+                              return '<option value="' + esc(c) + '">' + esc(c) + '</option>';
+                          })
+                          .join('') +
+                      '</select>'
+                    : '') +
                 (opts.multiline ? '<textarea rows="3"></textarea>' : '<input type="text">') +
                 (opts.required
                     ? '<small class="uif-hint" style="display:block;margin:-10px 0 12px;opacity:.75">' +
@@ -306,25 +323,35 @@
                 '</button></div>';
             box.querySelector('p').textContent = msg;
             var inp = box.querySelector('input, textarea');
+            var sel = box.querySelector('select[data-choice]');
             inp.value = def || '';
             if (opts.placeholder) inp.placeholder = opts.placeholder;
             var yes = box.querySelector('[data-yes]');
+            function value() {
+                if (!sel) return inp.value;
+                return [sel.value, inp.value.trim()]
+                    .filter(function (x) {
+                        return !!x;
+                    })
+                    .join('\n');
+            }
             function sync() {
-                yes.disabled = !!opts.required && !inp.value.trim();
+                yes.disabled = !!opts.required && !value().trim();
             }
             sync();
             inp.addEventListener('input', sync);
+            if (sel) sel.addEventListener('change', sync);
             yes.onclick = function () {
-                if (!yes.disabled) close(inp.value);
+                if (!yes.disabled) close(value());
             };
             box.querySelector('[data-no]').onclick = function () {
                 close(null);
             };
-            inp.focus();
+            (sel || inp).focus();
             inp.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter' && !(opts.multiline && !e.ctrlKey)) {
                     e.preventDefault();
-                    if (!yes.disabled) close(inp.value);
+                    if (!yes.disabled) close(value());
                 }
             });
         }, null);

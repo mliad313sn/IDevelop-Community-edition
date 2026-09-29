@@ -516,6 +516,38 @@ class ComplianceController {
         res.redirect('/compliance');
     }
 
+    // ---- Transparency surfaces (ComplianceRegisterService) -------------------
+
+    /**
+     * Employee-representative (works council / CSE) register — SuperAdmin only
+     * (route-gated). Generated from the live configuration on every read, so
+     * it cannot drift from what the appliance actually does; printable.
+     */
+    async register(req, res) {
+        const reg = await require('../services/ComplianceRegisterService').register();
+        res.render('pages/compliance/register', {
+            title: req.t ? req.t('compliance:reg_title') : 'Employee-representative register',
+            reg,
+        });
+    }
+
+    /**
+     * "What is recorded about me" — the signed-in person's OWN data only. No
+     * :id and no query-string employee id: everything keys on req.user.id.
+     */
+    async myData(req, res) {
+        let mine = null;
+        try {
+            mine = await require('../services/ComplianceRegisterService').forEmployee(req.user.id);
+        } catch (_) {
+            mine = null;
+        }
+        res.render('pages/employee/my-data', {
+            title: req.t ? req.t('compliance:mydata_title') : 'What is recorded about me',
+            mine,
+        });
+    }
+
     _wantsJson(req) {
         return (
             req.xhr ||

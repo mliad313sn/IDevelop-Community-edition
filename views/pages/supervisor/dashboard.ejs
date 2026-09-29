@@ -16,6 +16,53 @@
     </div>
 </div>
 
+<%# « Mon équipe » — one row per DIRECT report (TeamRosterService). Readiness
+    is the assessed-only figure with its measured denominator; nothing
+    measured is "not measured", never 0 %. `team` null = the read failed. %>
+<%
+  var _team = (typeof team !== 'undefined') ? team : null;
+  var _chip = { to_review: 'badge-warning', changes_requested: 'badge-danger', in_progress: 'badge-info', completed: 'badge-success', not_started: 'badge-secondary' };
+%>
+<section class="card mgr-team" aria-labelledby="mgr-team-h">
+    <h2 id="mgr-team-h"><i class="fas fa-users" aria-hidden="true"></i> <%= __('talentx:team_title') %></h2>
+    <p class="mgr-team-intro"><%= __('talentx:team_intro') %></p>
+    <% if (!_team) { %>
+        <p class="text-muted"><%= __('talentx:team_failed') %></p>
+    <% } else if (!_team.rows.length) { %>
+        <p class="text-muted"><%= __('talentx:team_empty') %></p>
+    <% } else { %>
+    <div class="table-wrapper"><table class="table">
+        <thead><tr>
+            <th><%= __('talentx:team_th_person') %></th>
+            <th><%= __('talentx:team_th_state') %></th>
+            <th class="num"><%= __('talentx:team_th_readiness') %></th>
+            <th class="num"><%= __('talentx:team_th_critical') %></th>
+            <th><%= __('talentx:team_th_last_1on1') %></th>
+            <th><%= __('talentx:team_th_next') %></th>
+        </tr></thead>
+        <tbody>
+        <% _team.rows.forEach(function (r) { %>
+            <tr>
+                <td><%= (r.firstName || '') + ' ' + (r.lastName || '') %><% if (r.employeeNumber) { %> <span class="text-muted mgr-team-sub"><%= r.employeeNumber %></span><% } %></td>
+                <td><span class="badge <%= _chip[r.state] || 'badge-secondary' %>"><%= __('talentx:team_st_' + r.state) %></span></td>
+                <td class="num">
+                    <% if (r.readinessPercent === null || r.readinessPercent === undefined) { %>
+                        <span class="text-muted"><%= __('talentx:team_not_measured') %></span>
+                    <% } else { %>
+                        <%= __('talentx:team_pct', { n: Math.round(r.readinessPercent) }) %>
+                    <% } %>
+                    <br><span class="text-muted mgr-team-sub"><%= r.totalRequired > 0 ? __('talentx:team_measured_of', { n: r.assessedRequired, total: r.totalRequired }) : __('talentx:team_no_requirement') %></span>
+                </td>
+                <td class="num"><% if (r.readinessPercent === null || r.readinessPercent === undefined) { %><span class="text-muted">—</span><% } else { %><%= r.criticalGaps %><% } %></td>
+                <td><% if (!_team.oneOnOneMeasured) { %><span class="text-muted"><%= __('talentx:team_not_measured') %></span><% } else if (r.lastOneOnOne) { %><%= fmtDate(r.lastOneOnOne) %><% } else { %><span class="text-muted"><%= __('talentx:team_never_1on1') %></span><% } %></td>
+                <td><a class="btn btn-sm btn-secondary" href="<%= r.next.href %>"><%= __('talentx:team_next_' + r.next.key, { n: r.pendingReview }) %></a></td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+    <% } %>
+</section>
+
 <%# ONE primary action. Reviewing the team's self-assessments is the job that
     unblocks every other surface on this page (gaps, coaching, plans all read
     from validated assessments), so it carries the emphasis and the rest are
@@ -46,6 +93,10 @@
 <style>
 .mgr-purpose{margin:0 0 1rem;color:var(--text-secondary,#64748b);font-size:.92rem;max-width:70ch}
 .mgr-next{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
+.mgr-team{margin-bottom:1rem;padding:1rem 1.15rem}
+.mgr-team h2{margin-top:0;font-size:1.05rem}
+.mgr-team-intro{margin:0 0 .6rem;color:var(--text-secondary,#64748b);font-size:.9rem}
+.mgr-team-sub{font-size:.8em}
 .mgr-next-note{color:var(--text-secondary,#64748b);font-size:.9em}
 </style>
 

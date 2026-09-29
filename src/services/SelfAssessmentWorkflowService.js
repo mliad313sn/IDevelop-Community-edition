@@ -72,6 +72,48 @@ function say(e, key, vars = null) {
     return e;
 }
 
+/** A level as a number, or null when it was never given. */
+function _lvl(v) {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * THE "AGREED RATING" RULE — what the team-wide bulk approval may approve
+ * without the reviewer looking at the line. Pure, so it is tested on its own.
+ *
+ * A row is agreed when ALL of these hold:
+ *   - it is waiting for the reviewer (submitted / under_review / reviewed —
+ *     never an arbitration, which is a per-case manager decision);
+ *   - the employee gave a rating;
+ *   - it has NOT been modified: no reviewer rating that differs from the
+ *     employee's, and no change request pending on it;
+ *   - and the rating is one the reviewer would keep: it meets the level the
+ *     role requires, OR it equals the rating a reviewer already entered, OR it
+ *     equals the level the organisation holds today (no change at all).
+ * Anything else stays in the queue for a per-line decision.
+ *
+ * @returns {{ok: boolean, reason: string}}
+ */
+function isAgreedRating(row) {
+    const r = row || {};
+    if (!['submitted', 'under_review', 'reviewed'].includes(r.workflowState))
+        return { ok: false, reason: 'state' };
+    const self = _lvl(r.selfRatedLevel);
+    if (self === null) return { ok: false, reason: 'no_rating' };
+    const open = r.hasOpenChangeRequest;
+    if (open === true || open === 't' || open === 1) return { ok: false, reason: 'change_request' };
+    const sup = _lvl(r.supervisorRatedLevel);
+    if (sup !== null && sup !== self) return { ok: false, reason: 'modified' };
+    const req = _lvl(r.requiredLevel);
+    if (req !== null && self >= req) return { ok: true, reason: 'meets_requirement' };
+    if (sup !== null && sup === self) return { ok: true, reason: 'reviewer_agrees' };
+    const held = _lvl(r.validatedLevel);
+    if (held !== null && held === self) return { ok: true, reason: 'matches_validated' };
+    return { ok: false, reason: req === null ? 'no_requirement' : 'below_requirement' };
+}
+
 class SelfAssessmentWorkflowService {
     // ---- authority resolution -------------------------------------------
     /**
@@ -1152,8 +1194,17 @@ class SelfAssessmentWorkflowService {
         }
     }
 
-    /** Bulk-approve every actionable self-assessment of one employee in one go. */
-    async bulkApproveForEmployee(employeeId, user, req = null) {
+    /**
+     * Bulk-approve every actionable self-assessment of one employee in one go.
+     *
+     * `opts.agreedOnly` narrows the sweep to the AGREED ratings (see
+     * isAgreedRating): the team-wide "approve all agreed ratings" loops this
+     * same method with it set, so every row still goes through `approve` and
+     * its per-row authority check. What the rule declines stays in the queue,
+     * untouched, and is returned as `held` with its reason.
+     */
+    async bulkApproveForEmployee(employeeId, user, req = null, opts = {}) {
+        const agreedOnly = Boolean(opts && opts.agreedOnly);
         // 'any': an explicitly assigned campaign reviewer may bulk-approve too —
         // but only the rows of the cycle(s) they were assigned (narrowed below);
         // every row is re-authorised by approve against its own cycle anyway.
@@ -1171,13 +1222,49 @@ class SelfAssessmentWorkflowService {
         // decision by the manager (arbitrate/managerValidate), never part of a
         // bulk "approve all" — least of all one clicked by the supervisor whose
         // rating is being arbitrated.
-        const rows = await db.all(
-            `SELECT id FROM self_assessments
+        let rows;
+        const held = [];
+        if (agreedOnly) {
+            // The same population as below, with what the rule needs to decide:
+            // the requirement of the person's role, the level the organisation
+            // holds today, any rating a reviewer already entered, and whether a
+            // change request is open on the row.
+            const candidates = await db.all(
+                `SELECT sa.id, sa.workflow_state, sa.self_rated_level,
+                        rsr.required_level AS required_level,
+                        ska.current_level AS validated_level,
+                        (SELECT r.supervisor_rated_level FROM supervisor_reviews r
+                          WHERE r.self_assessment_id = sa.id
+                          ORDER BY r.id DESC LIMIT 1) AS supervisor_rated_level,
+                        EXISTS (SELECT 1 FROM assessment_change_requests o
+                                 WHERE o.self_assessment_id = sa.id AND o.status = 'pending')
+                            AS has_open_change_request
+                   FROM self_assessments sa
+                   JOIN employees e ON e.id = sa.employee_id
+                   LEFT JOIN role_skill_requirements rsr
+                          ON rsr.skill_id = sa.skill_id AND rsr.role_id = e.role_id
+                   LEFT JOIN skill_assessments ska
+                          ON ska.employee_id = sa.employee_id AND ska.skill_id = sa.skill_id
+                  WHERE sa.employee_id = ? AND sa.workflow_state IN ('submitted','under_review','reviewed')
+                  ${onlyAssigned ? 'AND sa.cycle_id = ANY(?)' : ''}
+                  ORDER BY sa.id`,
+                onlyAssigned ? [employeeId, auth.assignedCycleIds] : [employeeId]
+            );
+            rows = [];
+            for (const c of candidates) {
+                const verdict = isAgreedRating(c);
+                if (verdict.ok) rows.push(c);
+                else held.push({ id: Number(c.id), reason: verdict.reason });
+            }
+        } else {
+            rows = await db.all(
+                `SELECT id FROM self_assessments
               WHERE employee_id = ? AND workflow_state IN ('submitted','under_review','reviewed')
               ${onlyAssigned ? 'AND cycle_id = ANY(?)' : ''}
               ORDER BY id`,
-            onlyAssigned ? [employeeId, auth.assignedCycleIds] : [employeeId]
-        );
+                onlyAssigned ? [employeeId, auth.assignedCycleIds] : [employeeId]
+            );
+        }
         let approved = 0;
         const failed = [];
         for (const r of rows) {
@@ -1192,11 +1279,71 @@ class SelfAssessmentWorkflowService {
             req,
             'SA_BULK_APPROVE',
             employeeId,
-            `bulk-approved ${approved}/${rows.length} assessment(s)${failed.length ? `; ${failed.length} skipped` : ''}`
+            `bulk-approved ${approved}/${rows.length} assessment(s)${failed.length ? `; ${failed.length} skipped` : ''}` +
+                (agreedOnly ? ` (agreed ratings only; ${held.length} left in the queue)` : '')
         );
         // Return the failures so the UI can tell the supervisor exactly what was
         // NOT approved (was: silent skip — "9/10 approved" with no why).
-        return { employeeId: Number(employeeId), approved, total: rows.length, failed };
+        const result = { employeeId: Number(employeeId), approved, total: rows.length, failed };
+        if (agreedOnly) result.held = held;
+        return result;
+    }
+
+    /**
+     * "Approve all agreed ratings for my team".
+     *
+     * The population is the reviewer's own queue (reviewQueue: RBAC scope +
+     * explicit campaign assignment), and each person in it goes through
+     * bulkApproveForEmployee with `agreedOnly` — so the per-employee authority
+     * check (resolveAuthority) decides, not this method. Somebody the queue
+     * shows only for READING (an N+2 report, a read-only delegate's scope) is
+     * refused there and counted in `skippedEmployees`; nothing about them is
+     * approved. Never the reviewer's own file.
+     */
+    async bulkApproveAgreedForTeam(user, req = null) {
+        const queue = await this.reviewQueue(user, {});
+        const personId = await GovernanceService.actingPersonId(user);
+        const ids = [];
+        for (const r of queue) {
+            const id = Number(r.employeeId);
+            if (personId != null && id === Number(personId)) continue;
+            if (!['submitted', 'under_review', 'reviewed'].includes(r.workflowState)) continue;
+            if (!ids.includes(id)) ids.push(id);
+        }
+        let approved = 0;
+        let held = 0;
+        let failed = 0;
+        let skippedEmployees = 0;
+        const perEmployee = [];
+        for (const id of ids) {
+            try {
+                const r = await this.bulkApproveForEmployee(id, user, req, { agreedOnly: true });
+                approved += r.approved;
+                held += (r.held || []).length;
+                failed += (r.failed || []).length;
+                perEmployee.push({
+                    employeeId: id,
+                    approved: r.approved,
+                    held: (r.held || []).length,
+                    failed: (r.failed || []).length,
+                });
+            } catch (_) {
+                // Not authorised to ACT on this person (or they vanished): the
+                // rows stay exactly where they were.
+                skippedEmployees++;
+            }
+        }
+        await this._audit(
+            req,
+            'SA_TEAM_BULK_APPROVE',
+            personId != null ? personId : user && user.id != null ? Number(user.id) : null,
+            `team bulk-approve (agreed ratings only): ${approved} approved, ${held} left in the queue, ` +
+                `${failed} failed, over ${ids.length} employee(s)` +
+                (skippedEmployees
+                    ? `; ${skippedEmployees} employee(s) outside the reviewer's authority`
+                    : '')
+        );
+        return { employees: ids.length, approved, held, failed, skippedEmployees, perEmployee };
     }
 
     /** Supervisor or manager rejects (terminal). */
@@ -1809,4 +1956,7 @@ class SelfAssessmentWorkflowService {
     }
 }
 
-module.exports = new SelfAssessmentWorkflowService();
+const _instance = new SelfAssessmentWorkflowService();
+// The approve-all filter rule, exposed for the tests and the team endpoint.
+_instance.isAgreedRating = isAgreedRating;
+module.exports = _instance;

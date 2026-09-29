@@ -1,0 +1,53 @@
+<%#
+  « Ce qui est enregistré sur moi » — the signed-in person's OWN data.
+  Counts come from DSRService.export (ComplianceRegisterService.forEmployee),
+  the very export a formal access request produces. Confidential talent
+  categories are listed without a count. `null` count = "not measured".
+%>
+<div class="page-header">
+  <h1><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('compliance:mydata_title') %></h1>
+  <p class="text-muted"><%= __('compliance:mydata_intro') %></p>
+</div>
+
+<% if (!mine) { %>
+<div class="card md-card"><p><%= __('compliance:mydata_failed') %></p></div>
+<% } else {
+  var retention = (mine.retentionDays === null || mine.retentionDays === undefined)
+    ? __('compliance:mydata_retention_default')
+    : __('compliance:mydata_retention_days', { n: mine.retentionDays });
+%>
+<div class="card md-card">
+  <div class="table-wrapper"><table class="table">
+    <thead><tr>
+      <th><%= __('compliance:reg_th_category') %></th>
+      <th class="num"><%= __('compliance:mydata_th_records') %></th>
+      <th><%= __('compliance:reg_th_audience') %></th>
+      <th><%= __('compliance:mydata_th_retention') %></th>
+    </tr></thead>
+    <tbody>
+      <% (mine.categories || []).forEach(function (c) { %>
+      <tr>
+        <td><%= __('compliance:cat_' + c.key) %><br><span class="text-muted md-group"><%= __('compliance:catgrp_' + c.group) %></span></td>
+        <td class="num"><% if (c.withheld) { %><span class="badge badge-secondary" title="<%= __('compliance:mydata_withheld_title') %>"><%= __('compliance:mydata_withheld') %></span><% } else if (c.count === null || c.count === undefined) { %><span class="text-muted"><%= __('compliance:mydata_unreadable') %></span><% } else { %><%= c.count %><% } %></td>
+        <td><%= __('compliance:reg_aud_' + c.audience) %></td>
+        <td><%= retention %></td>
+      </tr>
+      <% }); %>
+    </tbody>
+  </table></div>
+  <p class="md-note"><%= __('compliance:mydata_after') %></p>
+</div>
+<% } %>
+
+<div class="card md-card">
+  <h2><i class="fas fa-file-export" aria-hidden="true"></i> <%= __('compliance:mydata_rights_title') %></h2>
+  <p><%= __('compliance:mydata_rights_body') %></p>
+  <p class="text-muted md-note"><%= __('compliance:mydata_rights_limits') %></p>
+</div>
+
+<style>
+.md-card { margin-bottom: 1rem; padding: 1rem 1.15rem; }
+.md-card h2 { margin-top: 0; font-size: 1.05rem; }
+.md-group { font-size: .8rem; }
+.md-note { font-size: .88rem; margin: .7rem 0 0; }
+</style>

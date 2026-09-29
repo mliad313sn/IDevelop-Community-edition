@@ -126,7 +126,7 @@
            acr: _at('/assessment-changes'), progress: _at('/employee/my-progress'),
            okr: _at('/employee/okr'), myCoaching: _at('/employee/my-coaching'),
            certs: _at('/employee/my-certifications'), growth: _at('/employee/opportunities'),
-           learning: _at('/employee/my-learning'),
+           learning: _at('/employee/my-learning'), myData: _at('/employee/my-data'),
            myDev: _at('/employee/my-development') || (_at('/v2/idp') && !_at('/v2/idp/manage') && !_at('/v2/idp/new')),
            account: _cp === '/account',
            saReviews: _at('/supervisor/self-assessment-reviews'),
@@ -691,7 +691,7 @@
             </div>
             <% } %>
 
-            <% { const _o = A.status || A.myReviews || (S.acrMine && A.acr) || A.progress || A.certs; %>
+            <% { const _o = A.status || A.myReviews || (S.acrMine && A.acr) || A.progress || A.certs || A.myData; %>
             <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="my_assessments">
                 <div class="sidebar-entry-row">
                     <a href="/employee/self-assessment" class="sidebar-link <%= _on(A.sa) %>" title="<%= __('chrome:nav_my_assessments_title') %>">
@@ -725,6 +725,13 @@
                     <a href="/employee/my-certifications" class="sidebar-link sidebar-sublink <%= _on(A.certs) %>" title="<%= __('employee:cert_nav_title') %>">
                         <i class="fas fa-id-badge" aria-hidden="true"></i>
                         <span class="sidebar-link-text"><%= __('employee:cert_nav') %></span>
+                    </a>
+                    <%# « Mes données » — everything recorded about the person (the
+                        assessment file first among it), who sees it, how long it is
+                        kept, and how to ask for an export or erasure. %>
+                    <a href="/employee/my-data" class="sidebar-link sidebar-sublink <%= _on(A.myData) %>" title="<%= __('compliance:mydata_nav_title') %>">
+                        <i class="fas fa-fingerprint" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('compliance:mydata_nav') %></span>
                     </a>
                 </div>
             </div>
