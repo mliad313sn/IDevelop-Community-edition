@@ -60,7 +60,7 @@
   "pick_subdomain": "Sub-domain",
   "pick_subdomain_none": "— Choose a sub-domain —",
   "pick_subdomain_prompt": "Choose a sub-domain",
-  "pick_subdomain_hint": "The framework holds well over a thousand skills. Pick a sub-domain above to list its own — the “Framework” tab shows the whole tree with its counts.",
+  "pick_subdomain_hint": "Pick a sub-domain above to list its skills, or open the “Framework” tab to see the whole tree with its counts.",
   "showing_subdomain": "{{n}} active skill(s) in this sub-domain.",
   "field_description_fr": "Description (French)",
   "field_description_en": "Description (English)",

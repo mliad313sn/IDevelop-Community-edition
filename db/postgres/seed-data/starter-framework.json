@@ -402,7 +402,7 @@
       ]
     },
     {
-      "name": "HSE Officer",
+      "name": "Health & Safety Officer",
       "family": "Health, Safety & Environment",
       "requirements": [
         ["Hazard identification", 4, true],

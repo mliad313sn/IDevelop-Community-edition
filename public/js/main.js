@@ -328,26 +328,41 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
-// ── Appearance: mode (light/dark) + colour theme ───────────────────
-// Light ("Daylight") is the default; dark is opt-in. The colour theme
-// (iris | meadow | sunrise | ocean) is a per-user preference kept in
-// localStorage. The inline script in each page's <head> applies both before
+// ── Appearance: mode (light / dark / system) + colour theme ─────────
+// The mode is 'light', 'dark' or 'system' (follow the device); with nothing
+// stored the device preference applies. The colour theme is iris | meadow |
+// sunrise | ocean. The inline script in each page's <head> applies both before
 // first paint; these helpers change them afterwards.
 const HZ_PALETTES = ['iris', 'meadow', 'sunrise', 'ocean'];
+const HZ_DARK_QUERY = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
+function hzGet(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (_) {
+        return null;
+    }
+}
 function hzStore(key, value) {
     try {
-        localStorage.setItem(key, value);
+        if (value === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, value);
     } catch (_) {
         /* private mode: the choice lasts for this page only */
     }
 }
 
+function hzApplyMode() {
+    const stored = hzGet('theme');
+    const dark =
+        stored === 'dark' || (stored !== 'light' && HZ_DARK_QUERY && HZ_DARK_QUERY.matches);
+    if (dark) document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', 'light');
+}
+
 function setThemeMode(mode) {
-    const root = document.documentElement;
-    if (mode === 'dark') root.removeAttribute('data-theme');
-    else root.setAttribute('data-theme', 'light');
-    hzStore('theme', mode === 'dark' ? 'dark' : 'light');
+    hzStore('theme', mode === 'dark' || mode === 'light' ? mode : null);
+    hzApplyMode();
     hzSyncMenu();
 }
 
@@ -367,40 +382,56 @@ function toggleTheme() {
 }
 
 function hzSyncMenu() {
-    const root = document.documentElement;
-    const mode = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    const pal = root.getAttribute('data-palette') || 'iris';
-    document.querySelectorAll('[data-hz-mode]').forEach(function (b) {
-        b.setAttribute('aria-pressed', String(b.getAttribute('data-hz-mode') === mode));
+    const stored = hzGet('theme');
+    const mode = stored === 'dark' || stored === 'light' ? stored : 'system';
+    const pal = document.documentElement.getAttribute('data-palette') || 'iris';
+    document.querySelectorAll('input[name="hz-mode"]').forEach(function (i) {
+        i.checked = i.value === mode;
     });
-    document.querySelectorAll('[data-hz-palette]').forEach(function (b) {
-        b.setAttribute('aria-pressed', String(b.getAttribute('data-hz-palette') === pal));
+    document.querySelectorAll('input[name="hz-palette"]').forEach(function (i) {
+        i.checked = i.value === pal;
     });
 }
 
+if (HZ_DARK_QUERY && HZ_DARK_QUERY.addEventListener) {
+    HZ_DARK_QUERY.addEventListener('change', hzApplyMode);
+}
+
+// Current page in the sidebar: announced, not only coloured (WCAG 1.3.1).
 document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.sidebar-link.active').forEach(function (a) {
+        a.setAttribute('aria-current', 'page');
+    });
+});
+
+// Disclosure pattern: a button that shows a panel of two native radio groups.
+document.addEventListener('DOMContentLoaded', function () {
+    const wrap = document.getElementById('hzPalette');
     const btn = document.getElementById('hzPaletteBtn');
     const menu = document.getElementById('hzPaletteMenu');
-    if (!btn || !menu) return;
+    if (!wrap || !btn || !menu) return;
     const close = function () {
         menu.hidden = true;
         btn.setAttribute('aria-expanded', 'false');
     };
-    btn.addEventListener('click', function (e) {
-        e.stopPropagation();
+    btn.addEventListener('click', function () {
         const open = menu.hidden;
         menu.hidden = !open;
         btn.setAttribute('aria-expanded', String(open));
         if (open) hzSyncMenu();
     });
-    menu.addEventListener('click', function (e) {
-        e.stopPropagation();
-        const m = e.target.closest('[data-hz-mode]');
-        if (m) setThemeMode(m.getAttribute('data-hz-mode'));
-        const p = e.target.closest('[data-hz-palette]');
-        if (p) setPalette(p.getAttribute('data-hz-palette'));
+    menu.addEventListener('change', function (e) {
+        if (e.target.name === 'hz-mode') setThemeMode(e.target.value);
+        if (e.target.name === 'hz-palette') setPalette(e.target.value);
     });
-    document.addEventListener('click', close);
+    // Close when focus or a click leaves the widget (2.4.11: never left
+    // covering the element that now has focus).
+    wrap.addEventListener('focusout', function (e) {
+        if (!wrap.contains(e.relatedTarget)) close();
+    });
+    document.addEventListener('click', function (e) {
+        if (!wrap.contains(e.target)) close();
+    });
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !menu.hidden) {
             close();

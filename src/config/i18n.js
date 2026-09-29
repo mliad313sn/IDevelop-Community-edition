@@ -58,7 +58,10 @@ async function init() {
             defaultNS: 'common',
             backend: { loadPath: path.join(LOCALES_DIR, '{{lng}}/{{ns}}.json') },
             detection: {
-                order: ['cookie', 'querystring', 'header'],
+                // An explicit ?lng= (a shared link, the language switch) wins and
+                // is then remembered in the cookie.
+                order: ['querystring', 'cookie', 'header'],
+                lookupQuerystring: 'lng',
                 lookupCookie: 'lang',
                 caches: ['cookie'],
             },

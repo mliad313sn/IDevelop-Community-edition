@@ -17,13 +17,14 @@ const CSS = fs
     .readFileSync(path.join(__dirname, '../../public/css/horizon.css'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '');
 
-/** Custom properties declared by the block whose selector is exactly `sel`. */
+/** Custom properties declared by EVERY block whose selector is exactly `sel`
+ * (later blocks win, as in the cascade). */
 function block(sel) {
     const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const m = new RegExp('(?:^|\\})\\s*' + esc + '\\s*\\{([^}]*)\\}').exec(CSS);
-    if (!m) return {};
     const out = {};
-    for (const d of m[1].matchAll(/--([a-z0-9-]+)\s*:\s*([^;]+);/g)) out[d[1]] = d[2].trim();
+    for (const m of CSS.matchAll(new RegExp('(?:^|\\})\\s*' + esc + '\\s*\\{([^}]*)\\}', 'g'))) {
+        for (const d of m[1].matchAll(/--([a-z0-9-]+)\s*:\s*([^;]+);/g)) out[d[1]] = d[2].trim();
+    }
     return out;
 }
 
@@ -65,6 +66,14 @@ describe.each(['light', 'dark'])('%s mode', (mode) => {
             ['button ink on brand', cr(t['text-inverse'], t.brand)],
             ['primary text on elevated', cr(t['text-primary'], t['bg-elevated'])],
             ['muted text on elevated', cr(t['text-muted'], t['bg-elevated'])],
+            ['brand on canvas (non-text, 3:1)', cr(t.brand, t['bg-base']) >= 3 ? 4.5 : 0],
+            ['input border on card (3:1)', cr(t['border-input'], t['bg-card']) >= 3 ? 4.5 : 0],
+            [
+                'input border on elevated (3:1)',
+                cr(t['border-input'], t['bg-elevated']) >= 3 ? 4.5 : 0,
+            ],
+            ['avatar ink on brand stop', cr(t['text-inverse'], t.brand)],
+            ['avatar ink on duo stop', cr(t['text-inverse'], t['hz-duo'])],
         ];
         for (const [what, ratio] of rows) expect([what, ratio >= 4.5]).toEqual([what, true]);
     });

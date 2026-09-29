@@ -1,0 +1,13 @@
+<%#
+  Shared empty state: an icon in a soft brand circle, a sentence-case title,
+  one line of guidance and (optionally) the one action that fills the page.
+  include('../partials/empty-state', { icon, title, text, ctaHref, ctaLabel })
+%>
+<div class="hz-empty">
+    <span class="hz-empty-icon" aria-hidden="true"><i class="fas <%= icon %>"></i></span>
+    <h3 class="hz-empty-title"><%= title %></h3>
+    <% if (typeof text !== 'undefined' && text) { %><p class="hz-empty-text"><%= text %></p><% } %>
+    <% if (typeof ctaHref !== 'undefined' && ctaHref) { %>
+    <a class="btn btn-primary" href="<%= ctaHref %>"><i class="fas fa-plus" aria-hidden="true"></i> <%= ctaLabel %></a>
+    <% } %>
+</div>

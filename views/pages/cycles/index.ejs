@@ -16,11 +16,15 @@ const pctText = function (v) { return (v === null || v === undefined) ? '—' : 
 const statuses = ['', 'running', 'draft', 'closed', 'cancelled', 'all'];
 %>
 <div class="page-header">
+  <div>
+    <h1><i class="fas fa-bullhorn" aria-hidden="true"></i> <%= __('admin:cyc_title') %></h1>
+    <p class="text-muted"><%= __('admin:cyc_subtitle') %></p>
+  </div>
   <% if (canLaunch) { %>
-    <a href="/cycles/new" class="btn btn-primary" style="float:right"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:cyc_new') %></a>
+  <div class="page-actions">
+    <a href="/cycles/new" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:cyc_new') %></a>
+  </div>
   <% } %>
-  <h1><i class="fas fa-bullhorn" aria-hidden="true"></i> <%= __('admin:cyc_title') %></h1>
-  <p class="text-muted"><%= __('admin:cyc_subtitle') %></p>
 </div>
 
 <% if (!canManage && user && user.userType === 'manager') { %>
@@ -73,7 +77,11 @@ const statuses = ['', 'running', 'draft', 'closed', 'cancelled', 'all'];
     </thead>
     <tbody>
       <% if (!cycles || !cycles.length) { %>
-        <tr><td colspan="7"><em><%= filters.status ? __('admin:cyc_none_for_filter') : __('admin:cyc_none') %></em></td></tr>
+        <% if (filters.status) { %>
+        <tr><td colspan="7"><em><%= __('admin:cyc_none_for_filter') %></em></td></tr>
+        <% } else { %>
+        <tr><td colspan="7"><%- include('../../partials/empty-state', { icon: 'fa-bullhorn', title: __('admin:cyc_empty_title'), text: __('admin:cyc_empty_text'), ctaHref: canLaunch ? '/cycles/new' : null, ctaLabel: __('admin:cyc_new') }) %></td></tr>
+        <% } %>
       <% } else { cycles.forEach(function (c) { %>
         <% const s = summaries && summaries[c.id]; %>
         <tr>

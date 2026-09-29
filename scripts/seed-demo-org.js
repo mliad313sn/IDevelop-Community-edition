@@ -34,7 +34,7 @@ const ORG = [
                 'People & Culture',
                 [
                     ['HR Partners', ['HR Business Partner']],
-                    ['Health & Safety', ['HSE Officer']],
+                    ['Health & Safety', ['Health & Safety Officer']],
                 ],
             ],
         ],

@@ -60,7 +60,7 @@
   "pick_subdomain": "Sous-domaine",
   "pick_subdomain_none": "— Choisissez un sous-domaine —",
   "pick_subdomain_prompt": "Choisissez un sous-domaine",
-  "pick_subdomain_hint": "Le référentiel compte plus d’un millier de compétences. Sélectionnez un sous-domaine ci-dessus pour afficher les siennes — l’onglet « Référentiel » montre l’arborescence complète avec les effectifs.",
+  "pick_subdomain_hint": "Sélectionnez un sous-domaine ci-dessus pour afficher ses compétences, ou ouvrez l’onglet « Référentiel » pour voir tout l’arbre avec ses effectifs.",
   "showing_subdomain": "{{n}} compétence(s) active(s) dans ce sous-domaine.",
   "field_description_fr": "Description (français)",
   "field_description_en": "Description (anglais)",

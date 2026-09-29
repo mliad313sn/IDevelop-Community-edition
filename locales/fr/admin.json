@@ -471,7 +471,7 @@
   "setup_contactable": "Rendez les collaborateurs joignables",
   "setup_contactable_sub": "Le nombre correspond aux collaborateurs actifs sans adresse e-mail — ils ne peuvent recevoir ni invitation ni notification. Corrigez-les depuis la console Invitations.",
   "setup_cycle": "Ouvrez une campagne d'évaluation",
-  "setup_cycle_sub": "Rien n'est évalué tant qu'un cycle n'est pas ouvert — préparation, écarts et analyses en découlent.",
+  "setup_cycle_sub": "Indispensable pour l'auto-évaluation : chacun ne s'évalue que pendant une campagne ouverte. Inutile si les managers évaluent directement dans la matrice.",
   "setup_assessments": "Enregistrez les premières évaluations",
   "setup_assessments_sub": "Évaluez les compétences dans la matrice ou lancez un cycle d'auto-évaluation.",
   "setup_email": "Configurez l'e-mail (SMTP)",
@@ -480,7 +480,7 @@
   "setup_start": "Commencer",
   "setup_dismiss": "Masquer la bannière de configuration du tableau de bord",
   "setup_banner_title": "Terminez la configuration de {{brand}}",
-  "setup_banner_sub": "Quelques étapes restent avant que la plateforme soit pleinement opérationnelle.",
+  "setup_banner_sub": "Encore quelques étapes et tout sera prêt.",
   "setup_banner_cta": "Ouvrir la liste",
   "role_family_label": "Famille de rôle",
   "role_family_none": "— Aucune —",
@@ -3252,5 +3252,11 @@
   "ssom_onb_create_anyway": "Créer quand même un nouveau compte",
   "ssom_onb_create_anyway_check": "Je confirme : créer un nouveau compte malgré le compte existant correspondant",
   "apik_scope_scim": "scim.write — provisionnement des comptes (SCIM)",
-  "ops_apikey_bad_scope": "Cette portée ne peut pas être attribuée."
+  "ops_apikey_bad_scope": "Cette portée ne peut pas être attribuée.",
+  "setup_sample_title": "Envie d'explorer d'abord ?",
+  "setup_sample_body": "Chargez un contenu prêt à l’emploi depuis la ligne de commande du serveur — tout reste modifiable ou supprimable ensuite.",
+  "setup_sample_starter": "Un référentiel de compétences générique (6 piliers, 34 compétences, 6 postes exemples) :",
+  "setup_sample_demo": "Une organisation de démonstration fictive (24 personnes inventées avec leurs évaluations) :",
+  "cyc_empty_title": "Lancez votre première campagne",
+  "cyc_empty_text": "Chacun évalue ses compétences, puis son évaluateur confirme — les rapports de préparation et d’écarts se remplissent ensuite."
 }

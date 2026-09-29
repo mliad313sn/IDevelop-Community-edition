@@ -13,6 +13,10 @@ First public release of **IDevelop Community Edition**.
 - Friendly "Open Horizon" interface (`public/css/horizon.css`): light-first
   Daylight mode and a soft Dusk dark mode, rounded surfaces, pill navigation and
   buttons, gradient page banners, sentence-case labels, no grid texture.
+- UX & design committee round 1 (`docs/DESIGN-REVIEW.md`): WCAG 2.2 AA fixes,
+  self-hosted brand typeface, "Match device" mode, shared empty states, mobile
+  layout fixes, friendlier bilingual copy, fictional demo organisation
+  (`npm run db:seed:demo-org`).
 - Appearance menu in the top bar: light/dark mode and four colour themes (Iris,
   Meadow, Sunrise, Ocean), remembered per browser, all measured WCAG AA.
 

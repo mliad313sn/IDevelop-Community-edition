@@ -92,6 +92,7 @@ cp .env.example .env
 docker compose up -d --build
 docker compose logs app | grep -A2 "FIRST-RUN SUPERADMIN"   # one-time admin password
 docker compose exec app npm run db:seed:starter -- --commit   # optional starter framework
+docker compose exec app npm run db:seed:demo-org -- --commit  # optional: 24 fictional people to explore
 ```
 
 Open <http://localhost:3000>, sign in as `admin` with the printed password,
@@ -110,6 +111,7 @@ cp .env.example .env            # set DATABASE_URL, SESSION_SECRET, APP_KEY
 createdb idevelop               # or let your DBA create it
 npm run db:migrate:all          # schema + all migrations (also runs on boot)
 npm run db:seed:starter -- --commit   # optional: generic starter framework
+npm run db:seed:demo-org -- --commit  # optional: fictional demo organisation (--clean to deactivate)
 npm start                       # http://localhost:3000
 ```
 

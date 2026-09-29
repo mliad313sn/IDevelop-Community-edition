@@ -21,6 +21,7 @@
     <% } %>
     <link rel="stylesheet" href="/css/style.css?v=<%= assetVersion %>">
     <link rel="stylesheet" href="/css/login.css?v=<%= assetVersion %>">
+    <link rel="stylesheet" href="/css/a11y-polish.css?v=<%= assetVersion %>">
     <link rel="stylesheet" href="/css/horizon.css?v=<%= assetVersion %>">
     <% if (_brand.accentCss) { %>
     <style nonce="<%= cspNonce %>"><%- _brand.accentCss %></style>
@@ -39,7 +40,7 @@
     </style>
     <!-- Prevent theme flash: apply saved theme before paint -->
     <script nonce="<%= cspNonce %>">
-        (function(){var d=document.documentElement,t=null,p=null;try{t=localStorage.getItem('theme');p=localStorage.getItem('palette');}catch(e){}if(t!=='dark')d.setAttribute('data-theme','light');if(p&&p!=='iris')d.setAttribute('data-palette',p);})();
+        (function(){var d=document.documentElement,t=null,p=null;try{t=localStorage.getItem('theme');p=localStorage.getItem('palette');}catch(e){}var dk=t==='dark'||(t!=='light'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);if(!dk)d.setAttribute('data-theme','light');if(p&&p!=='iris')d.setAttribute('data-palette',p);})();
     </script>
     <%- include('../../partials/pwa-head') %>
 </head>

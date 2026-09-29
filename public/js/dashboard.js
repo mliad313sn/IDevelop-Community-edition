@@ -2557,14 +2557,25 @@ const Dashboard = (() => {
     function riskStatusLabel(status) {
         const i = window.__I18N__ || {};
         if (i['risk_status_' + status]) return i['risk_status_' + status];
-        const FR = {
-            healthy: 'Sain',
-            moderate: 'Modéré',
-            'at-risk': 'À risque',
-            critical: 'Critique',
-            unknown: '—',
-        };
-        return FR[status] || String(status).replace('-', ' ');
+        // Fallback follows the page language (<html lang>): the English UI
+        // must never show the French label.
+        const fr = (document.documentElement.getAttribute('lang') || 'fr').indexOf('fr') === 0;
+        const L = fr
+            ? {
+                  healthy: 'Sain',
+                  moderate: 'Modéré',
+                  'at-risk': 'À risque',
+                  critical: 'Critique',
+                  unknown: '—',
+              }
+            : {
+                  healthy: 'Healthy',
+                  moderate: 'Moderate',
+                  'at-risk': 'At risk',
+                  critical: 'Critical',
+                  unknown: '—',
+              };
+        return L[status] || String(status).replace('-', ' ');
     }
 
     function renderRiskGauge(containerId, riskData) {

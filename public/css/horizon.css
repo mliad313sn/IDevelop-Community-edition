@@ -20,6 +20,50 @@
    higher-specificity :root block).
    ═══════════════════════════════════════════════════════════════════ */
 
+/* ── 0. Brand typeface — self-hosted (works offline / air-gapped) ─────
+   Plus Jakarta Sans, SIL Open Font License 1.1 (public/vendor/fonts/
+   plus-jakarta-sans/OFL.txt). Latin subset: covers English and French. */
+@font-face {
+    font-family: 'Plus Jakarta Sans';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/vendor/fonts/plus-jakarta-sans/plus-jakarta-sans-latin-400-normal.woff2')
+        format('woff2');
+}
+@font-face {
+    font-family: 'Plus Jakarta Sans';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/vendor/fonts/plus-jakarta-sans/plus-jakarta-sans-latin-500-normal.woff2')
+        format('woff2');
+}
+@font-face {
+    font-family: 'Plus Jakarta Sans';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/vendor/fonts/plus-jakarta-sans/plus-jakarta-sans-latin-600-normal.woff2')
+        format('woff2');
+}
+@font-face {
+    font-family: 'Plus Jakarta Sans';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/vendor/fonts/plus-jakarta-sans/plus-jakarta-sans-latin-700-normal.woff2')
+        format('woff2');
+}
+@font-face {
+    font-family: 'Plus Jakarta Sans';
+    font-style: normal;
+    font-weight: 800;
+    font-display: swap;
+    src: url('/vendor/fonts/plus-jakarta-sans/plus-jakarta-sans-latin-800-normal.woff2')
+        format('woff2');
+}
+
 /* ── 1. Tokens — Dusk (dark mode) ─────────────────────────────────── */
 :root {
     --bg-base: #18172c;
@@ -506,14 +550,14 @@ body::before {
 }
 .hz-mode {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
     gap: 4px;
     padding: 4px;
     border-radius: 999px;
     background: var(--bg-elevated);
     margin-bottom: 16px;
 }
-.hz-mode button {
+.hz-mode .hz-choice span {
     border: 0;
     border-radius: 999px;
     padding: 8px 0;
@@ -522,7 +566,7 @@ body::before {
     font: 600 13px var(--font-body);
     cursor: pointer;
 }
-.hz-mode button[aria-pressed='true'] {
+.hz-mode .hz-choice:has(input:checked) span {
     background: var(--bg-card);
     color: var(--text-primary);
     box-shadow: var(--shadow-sm);
@@ -555,12 +599,12 @@ body::before {
         inset 0 0 0 3px var(--bg-card),
         0 0 0 2px transparent;
 }
-.hz-swatch[aria-pressed='true'] .hz-swatch-dot {
+.hz-swatch:has(input:checked) .hz-swatch-dot {
     box-shadow:
         inset 0 0 0 3px var(--bg-card),
         0 0 0 2px var(--text-primary);
 }
-.hz-swatch[aria-pressed='true'] {
+.hz-swatch:has(input:checked) {
     color: var(--text-primary);
 }
 .hz-dot-iris {
@@ -602,4 +646,276 @@ body::before {
     :root .btn {
         transition: none;
     }
+}
+
+/* ═══ Design-committee round 1 ═══════════════════════════════════════ */
+
+/* No accent rails anywhere: hover and emphasis are tints, not bars. */
+:root .table tbody tr:hover {
+    box-shadow: none;
+}
+:root .dashboard-section,
+:root .detail-panel,
+:root .health-metric-card,
+:root .td-attn-row,
+:root .toast {
+    border-left-width: 1px;
+    border-left-color: var(--border-subtle);
+}
+:root .kpi-card {
+    border-top: 1px solid var(--border-subtle);
+}
+:root .bar {
+    background: linear-gradient(
+        90deg,
+        var(--brand),
+        color-mix(in srgb, var(--brand) 55%, var(--hz-duo))
+    );
+}
+
+/* Sentence case everywhere: the legacy console's uppercase labels go. */
+:root th,
+:root .group-row td,
+:root [class*='-label'],
+:root [class*='-eyebrow'],
+:root .rb-sidebar-tab,
+:root .rb-right-tab,
+:root .rb-form-group label {
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* Report builder: same friendly language as the rest of the product. */
+:root .rb-app::before {
+    display: none;
+}
+:root .rb-header .rb-logo {
+    font: 700 16px/1.2 var(--font-body);
+    letter-spacing: -0.01em;
+}
+:root .rb-app select,
+:root .rb-app input,
+:root .rb-app textarea {
+    border-radius: var(--radius-md);
+}
+:root .rb-app .btn,
+:root .rb-sidebar-tab,
+:root .rb-right-tab {
+    border-radius: 999px;
+}
+:root .rb-sidebar-tabs {
+    padding-left: 44px;
+}
+
+/* Selects stay readable in Dusk, and read left-aligned like other fields. */
+:root select {
+    color: var(--text-primary);
+    background-color: var(--bg-input);
+    text-align: left;
+}
+:root select option {
+    background: var(--bg-panel);
+    color: var(--text-primary);
+}
+
+/* Room for the floating help button so it never hides the last row. */
+:root .content-wrapper {
+    padding-bottom: 96px;
+}
+:root .table td:last-child {
+    white-space: nowrap;
+}
+
+/* ── Small screens ── */
+@media (max-width: 768px) {
+    :root .topbar {
+        padding: 0 14px;
+    }
+    :root .topbar-page-title {
+        display: block;
+        max-width: 42vw;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.95rem;
+    }
+    :root .topbar-right {
+        gap: 6px;
+    }
+    :root .topbar-arrow,
+    :root .topbar-username {
+        display: none;
+    }
+    :root .page-header .page-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    :root .scale-legend {
+        position: static;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 8px 12px;
+        margin-top: 16px;
+        border-radius: var(--radius-lg);
+    }
+    :root .help-fab {
+        width: 48px;
+        height: 48px;
+        right: 16px;
+        bottom: calc(16px + env(safe-area-inset-bottom));
+    }
+}
+@media (max-width: 480px) {
+    /* The page banner already names the page. */
+    :root .topbar-page-title {
+        display: none;
+    }
+    .hz-palette-menu {
+        position: fixed;
+        left: 16px;
+        right: 16px;
+        top: 72px;
+        width: auto;
+    }
+}
+
+/* Required fields: the asterisk is added once by CSS (style.css :has rule);
+   errors show only after the person has interacted (:user-invalid). */
+:root .form-group input:invalid:not(:placeholder-shown),
+:root .form-group select:invalid:not(:placeholder-shown),
+:root .form-group textarea:invalid:not(:placeholder-shown) {
+    border-color: var(--border-input);
+}
+:root .form-group input:user-invalid,
+:root .form-group select:user-invalid,
+:root .form-group textarea:user-invalid {
+    border-color: var(--danger);
+}
+
+/* ═══ Design-committee round 1 — accessibility (WCAG 2.2 AA) ═════════ */
+
+/* 1.4.11: solid input borders, ≥ 3.3:1 on every surface of each mode. */
+:root {
+    --border-input: #7c79a0;
+    --focus-ring: var(--brand);
+    color-scheme: dark;
+}
+:root[data-theme='light'] {
+    --border-input: #7d7a95;
+    color-scheme: light;
+}
+/* Dusk text tokens must win over a11y-polish's generic dark overrides. */
+:root:not([data-theme='light']) {
+    --text-secondary: #c4c2da;
+    --text-muted: #a9a7c4;
+    --text-tertiary: #a9a7c4;
+}
+
+/* 1.4.3: ink on the brand→duo gradients (avatars, help button) holds
+   ≥ 4.98:1 on BOTH stops: dark ink in Dusk, white on dark stops in Daylight. */
+:root[data-theme='light'] {
+    --hz-duo: #c2410c;
+}
+:root[data-theme='light'][data-palette='meadow'] {
+    --hz-duo: #0e6a7a;
+}
+:root[data-theme='light'][data-palette='sunrise'] {
+    --hz-duo: #8a5a00;
+}
+:root[data-theme='light'][data-palette='ocean'] {
+    --hz-duo: #5b4be0;
+}
+:root .topbar-avatar,
+:root .sidebar-user-avatar,
+:root .help-fab {
+    color: var(--text-inverse);
+}
+
+/* 1.4.1 / 1.3.1: the current page is marked by shape, not colour alone. */
+:root .sidebar-link.active,
+:root .sidebar-link[aria-current='page'] {
+    box-shadow: inset 0 0 0 1.5px var(--brand);
+}
+
+/* 2.4.11: nothing fixed may hide the focused element. */
+html {
+    scroll-padding-bottom: 88px;
+}
+
+/* Appearance menu — disclosure with native radio groups. */
+.hz-fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+.hz-mode .hz-choice {
+    display: block;
+    cursor: pointer;
+}
+.hz-mode .hz-choice span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    font-size: 12.5px;
+}
+/* 1.4.11: the chosen mode is marked by a ring, not a 1.1:1 fill change. */
+.hz-mode .hz-choice:has(input:checked) span {
+    box-shadow:
+        var(--shadow-sm),
+        inset 0 0 0 2px var(--brand);
+}
+.hz-palette .hz-choice:has(input:focus-visible) span,
+.hz-palette .hz-swatch:has(input:focus-visible) {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+}
+.hz-swatch {
+    border-radius: var(--radius-md);
+}
+
+/* Shared empty state (views/partials/empty-state.ejs). */
+.hz-empty {
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    padding: 40px 24px;
+    text-align: center;
+}
+.hz-empty-icon {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--brand-dim);
+    color: var(--brand-text);
+    font-size: 1.3rem;
+}
+.hz-empty-title {
+    margin: 4px 0 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.hz-empty-text {
+    margin: 0 0 6px;
+    max-width: 52ch;
+    color: var(--text-secondary);
+}
+
+/* Three modes: icon above label so "Match device" / « Comme l'appareil » fit. */
+.hz-palette-menu {
+    width: 296px;
+}
+.hz-mode .hz-choice span {
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px 4px;
+    font-size: 12px;
+    line-height: 1.2;
+    text-align: center;
 }
