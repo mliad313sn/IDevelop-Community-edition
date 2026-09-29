@@ -216,6 +216,13 @@ const CATEGORIES = [
                 evidence: ['src/services/CopilotService.js'],
                 tests: ['copilotEuAiActGuardrails.test.js', 'c317-H-analytics-copilot.test.js'],
             },
+            {
+                id: 'companion',
+                fr: 'Assistant intégré : fonctionne sans IA externe ; il ne montre que les écrans et les données autorisés à l’utilisateur ; aucune donnée personnelle n’est envoyée à un modèle ; les questions sont journalisées sous forme d’empreinte.',
+                en: 'Built-in assistant: works without external AI; shows only the screens and data the user may access; no personal data is sent to a model; questions are logged as a hash.',
+                evidence: ['src/services/CompanionService.js', 'src/config/companionKnowledge.js'],
+                tests: ['companionService.test.js'],
+            },
         ],
     },
     {

@@ -1436,3 +1436,30 @@ html {
         font-size: 16px; /* no zoom-on-focus on iOS */
     }
 }
+
+/* Assistant tab: the panel keeps a stable height, the question box and send
+   button stay pinned at the bottom, and only the conversation scrolls. */
+:root .help-panel:has(.hz-companion.active) {
+    height: min(80vh, 680px);
+}
+:root .help-content:has(> .hz-companion.active) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+:root .help-section.hz-companion.active {
+    flex: 1 1 auto;
+}
+:root .help-section.hz-companion.active .hz-companion__thread {
+    flex: 1 1 auto;
+    max-height: none;
+    min-height: 0;
+}
+:root .help-section.hz-companion.active > :not(.hz-companion__thread) {
+    flex: none;
+}
+@media (max-width: 600px) {
+    :root .help-panel:has(.hz-companion.active) {
+        height: calc(100dvh - 96px);
+    }
+}
