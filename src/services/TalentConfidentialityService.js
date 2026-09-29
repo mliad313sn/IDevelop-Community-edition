@@ -71,6 +71,22 @@ const GRID_RE = new RegExp(`(?:${GRID_WORDS.map(esc).join('|')})`, 'i');
 const SPLIT_RE = /(?<=[.!?…])\s+|\r?\n+/;
 
 class TalentConfidentialityService {
+    /**
+     * May employees see the 9-box AT ALL? App Setting `nineBoxVisibleToEmployees`
+     * (default true — the historical behaviour). When an organisation turns it
+     * off, every employee-facing surface treats the person's placement as
+     * undisclosed: nothing is shown, and prose naming the cell is redacted.
+     * Never throws: an unreadable setting keeps the default.
+     */
+    async nineBoxVisibleToEmployees() {
+        try {
+            const AppSettingsModel = require('../models/AppSettingsModel');
+            return (await AppSettingsModel.getValue('nineBoxVisibleToEmployees', true)) !== false;
+        } catch (_) {
+            return true;
+        }
+    }
+
     /** Every word this service refuses to show an undisclosed subject. */
     get vocabulary() {
         return {

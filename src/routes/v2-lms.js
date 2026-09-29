@@ -359,9 +359,18 @@ learnerRouter.get(
     requireEmployeeOrManager,
     ah(async (req, res) => {
         const items = await LmsService.listForEmployee(learnerId(req));
+        // « Suggestions pour mes écarts » — the top three from
+        // SkillsIntelligenceService.recommendLearning, for the signed-in person
+        // only (never an id from the request). Never fails the page: an empty
+        // list is the empty state.
+        const suggestions = await require('../services/EmployeeGrowthService').learningSuggestions(
+            learnerId(req),
+            3
+        );
         res.render('pages/employee/my-learning', {
             title: req.t ? req.t('lms:ml_title') : 'My learning',
             items,
+            suggestions,
         });
     })
 );

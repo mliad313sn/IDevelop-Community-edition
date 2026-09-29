@@ -114,6 +114,19 @@ function isPosterOf(user, opp) {
         return Number(opp.postedByAdminId ?? opp.posted_by_admin_id) === Number(user.id);
     return Number(opp.actorEmployeeId ?? opp.actor_employee_id) === Number(user.id);
 }
+/**
+ * Who is reading the recognition feed — see RecognitionService.feed. The
+ * SuperAdmin reads every team item; an employee/manager reads the team items
+ * around them (and a manager also those about the people they govern); a scoped
+ * admin reads those about the people in their scope.
+ */
+async function feedViewer(user) {
+    if (!user) return null;
+    if (RBACService.isSuperAdmin && RBACService.isSuperAdmin(user)) return { all: true };
+    const me = empId(user);
+    if (user.userType === 'employee') return { employeeId: me };
+    return { employeeId: me, scopeIds: await scopeIds(user) };
+}
 function ownerFilter(user) {
     return user.userType === 'admin'
         ? { adminId: Number(user.id) }
@@ -147,7 +160,7 @@ router.get(
         (opportunities || []).forEach((o) => {
             o.canClose = isSuper || isPosterOf(req.user, o);
         });
-        const recognitions = await Rec.feed({ limit: 12 });
+        const recognitions = await Rec.feed({ limit: 12, viewer: await feedViewer(req.user) });
         // the page had a bare "IDevelop" <title>.
         res.render('pages/capability/index', {
             calibrations,
@@ -697,7 +710,10 @@ router.get(
     '/recognition/feed',
     requireAuth,
     ah(async (req, res) => {
-        res.json({ ok: true, feed: await Rec.feed({ limit: 30 }) });
+        res.json({
+            ok: true,
+            feed: await Rec.feed({ limit: 30, viewer: await feedViewer(req.user) }),
+        });
     })
 );
 router.post(
@@ -705,12 +721,42 @@ router.post(
     requireAuth,
     writeActionLimiter,
     ah(async (req, res) => {
+        const to = Number(req.body.toEmployeeId);
+        const message = String(req.body.message || '').trim();
+        if (!to || !message)
+            return res.status(400).json({
+                ok: false,
+                code: 'recognition_required',
+                error: sayText(
+                    req,
+                    'growth:thank_err_required',
+                    'Choose a colleague and write a message.'
+                ),
+            });
+        if (message.length > 1000)
+            return res.status(400).json({
+                ok: false,
+                code: 'recognition_too_long',
+                error: sayText(
+                    req,
+                    'growth:thank_err_too_long',
+                    'Your message is too long (1,000 characters maximum).'
+                ),
+            });
+        if (empId(req.user) && empId(req.user) === to)
+            return res.status(400).json({
+                ok: false,
+                code: 'recognition_self',
+                error: sayText(req, 'growth:thank_err_self', 'You cannot thank yourself.'),
+            });
         const row = await Rec.give({
             fromEmployeeId: empId(req.user),
-            toEmployeeId: Number(req.body.toEmployeeId),
-            valueTag: req.body.valueTag,
-            message: req.body.message,
-            visibility: req.body.visibility,
+            toEmployeeId: to,
+            valueTag: req.body.valueTag
+                ? String(req.body.valueTag).trim().slice(0, 60) || null
+                : null,
+            message,
+            visibility: req.body.visibility || undefined,
         });
         res.json({ ok: true, id: row.id });
     })

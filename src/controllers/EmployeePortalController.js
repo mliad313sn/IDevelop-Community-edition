@@ -14,6 +14,7 @@ const TalentConfidentialityService = require('../services/TalentConfidentialityS
 // never with the toISOString.slice(0,10) the module itself condemns.
 const { fmtPeriodBound } = require('../utils/dateFormat');
 const db = require('../config/database');
+const EmployeeGrowthService = require('../services/EmployeeGrowthService');
 
 // Translate raw/DB errors into a clean HTTP status + STABLE error CODE so the
 // employee never sees a 500/stack trace — and never sees English prose in a
@@ -186,13 +187,20 @@ class EmployeePortalController {
             // Latest APPROVED 9-box placement — only visible to the employee when the
             // hierarchical superior has explicitly DISCLOSED it. Undisclosed placements
             // (and all in-progress ones) stay confidential and are hidden entirely.
-            const nineBox = await db.get(
-                `SELECT performance, potential, box, box_label, approved_at
-                   FROM nine_box_evaluations
-                  WHERE employee_id = ? AND status = 'approved' AND disclosed_to_employee = true
-                  ORDER BY approved_at DESC NULLS LAST, id DESC LIMIT 1`,
-                [employeeId]
-            );
+            //
+            // The organisation may also hide the 9-box from employees ENTIRELY
+            // (App Setting nineBoxVisibleToEmployees, default visible): then even a
+            // disclosed placement is not read, and the page shows no 9-box at all.
+            const nineBoxVisible = await TalentConfidentialityService.nineBoxVisibleToEmployees();
+            const nineBox = nineBoxVisible
+                ? await db.get(
+                      `SELECT performance, potential, box, box_label, approved_at
+                         FROM nine_box_evaluations
+                        WHERE employee_id = ? AND status = 'approved' AND disclosed_to_employee = true
+                        ORDER BY approved_at DESC NULLS LAST, id DESC LIMIT 1`,
+                      [employeeId]
+                  )
+                : null;
 
             // `gaps` counts MEASURED shortfalls only. It used to be total - met,
             // which silently swept every never-assessed skill into the gap tile.
@@ -208,14 +216,24 @@ class EmployeePortalController {
                 coverage,
                 stateRows,
                 nineBox,
+                nineBoxVisible,
             };
         } catch (e) {
             console.error('Employee dashboard error:', e);
+        }
+        // « Mon écart avec mon poste visé » teaser — the person's OWN target role
+        // (employee_aspirations), summarised like the manager's career-path tool.
+        let targetGap = null;
+        try {
+            targetGap = await EmployeeGrowthService.targetRoleGap(employeeId);
+        } catch (_) {
+            /* optional */
         }
         res.render('pages/employee/dashboard', {
             title: req.t ? req.t('employee:dashboard_title') : 'My workspace',
             employee,
             snapshot,
+            targetGap,
         });
     }
 
@@ -578,7 +596,11 @@ class EmployeePortalController {
             // once it has been deliberately disclosed. `redactForSubject` drops
             // the sentence that names it and keeps every other sentence the
             // manager wrote, so the plan still stands on its own reasons.
-            placement = await TalentConfidentialityService.disclosedPlacement(employeeId);
+            // Hidden from employees by the organisation → treated exactly as
+            // undisclosed: nothing shown, and the cell is redacted from the prose.
+            placement = (await TalentConfidentialityService.nineBoxVisibleToEmployees())
+                ? await TalentConfidentialityService.disclosedPlacement(employeeId)
+                : null;
             const disclosed = Boolean(placement);
             const neutral = T(
                 'employee:dev_pip_summary_neutral',

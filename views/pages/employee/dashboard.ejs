@@ -39,6 +39,7 @@
 
 <% if (snapshot) {
    const nb = snapshot.nineBox;
+   const nbVisible = snapshot.nineBoxVisible !== false;
    const BAND = { low: 0, medium: 1, high: 2 };
    // The LOCALIZED 9-box cell name. `nb.boxLabel` is the hardcoded English string
    // NineBoxService wrote at placement time ('Gold Star', 'Shooting Star'…), so
@@ -98,7 +99,7 @@
 </div>
 <% } %>
 <!-- Snapshot stat cards -->
-<div class="emp-cards">
+<div class="emp-cards<%= nbVisible ? '' : ' emp-cards-3' %>">
   <div class="emp-stat">
     <div class="emp-n" style="color:#2563eb"><%= snapshot.readiness === null ? '—' : snapshot.readiness + '%' %></div>
     <div class="emp-l"><%= __('employee:stat_role_readiness') %></div>
@@ -109,11 +110,15 @@
     <div class="emp-l"><%= __('employee:stat_skill_gaps') %></div>
     <div class="emp-sub"><%= snapshot.criticalGaps %> <%= __('employee:stat_critical') %><% if (snapshot.unmeasured) { %> · <span title="<%= __('dash:rd_not_measured_title') %>"><%= snapshot.unmeasured %> <%= __('dash:rd_not_measured') %></span><% } %></div>
   </div>
+  <%# The organisation can hide the 9-box from employees entirely (App Setting
+      nineBoxVisibleToEmployees); then neither the tile nor the card is drawn. %>
+  <% if (nbVisible) { %>
   <div class="emp-stat">
     <div class="emp-n" style="color:#0f8a3c;font-size:1.25rem;line-height:2.1rem"><%= nb ? nbLabel(nb) : __('employee:nb_not_placed') %></div>
     <div class="emp-l"><%= __('employee:stat_ninebox') %></div>
     <div class="emp-sub"><%= nb ? (__('employee:nb_perf_abbr') + ': ' + nbBand(nb.performance) + ' · ' + __('employee:nb_pot_abbr') + ': ' + nbBand(nb.potential)) : __('employee:nb_no_placement') %></div>
   </div>
+  <% } %>
   <div class="emp-stat">
     <div class="emp-l" style="margin-bottom:6px"><%= __('employee:stat_assessment_state') %></div>
     <div class="emp-states">
@@ -125,7 +130,7 @@
   </div>
 </div>
 
-<div class="emp-grid2">
+<div class="emp-grid2<%= nbVisible ? '' : ' emp-grid2-solo' %>">
   <!-- Skill gaps -->
   <div class="card" style="padding:0">
     <div class="emp-section-h"><i class="fas fa-bullseye" aria-hidden="true"></i> <%= __('employee:gaps_header') %> <a href="/employee/self-assessment" class="emp-link"><%= __('employee:gaps_update_link') %> →</a></div>
@@ -161,6 +166,7 @@
   </div>
 
   <!-- 9-box position -->
+  <% if (nbVisible) { %>
   <div class="card">
     <div class="emp-section-h" style="padding:0 0 .5rem"><i class="fas fa-puzzle-piece" aria-hidden="true"></i> <%= __('employee:nb_header') %></div>
     <% if (!nb) { %>
@@ -178,8 +184,21 @@
       </div>
       <div class="nb-axes"><span>← <%= __('employee:nb_axis_perf') %> →</span><span class="nb-yaxis">↑ <%= __('employee:nb_axis_pot') %></span></div>
       <p class="emp-sub" style="margin-top:.5rem"><%= __('employee:nb_placed') %> <%= nb.approvedAt ? new Date(nb.approvedAt).toLocaleDateString(typeof lang !== "undefined" ? lang : undefined) : '' %>. <%= __('employee:nb_performance') %> <strong><%= nbBand(nb.performance) %></strong>, <%= __('employee:nb_potential_lc') %> <strong><%= nbBand(nb.potential) %></strong>.</p>
+      <%# Explainer: what the box means, how it was decided, and the one next
+          step that belongs to the person — the conversation with their manager. %>
+      <details class="emp-nb-explain">
+        <summary><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('employee:nb_explain_summary') %></summary>
+        <h3><%= __('employee:nb_explain_what_title') %></h3>
+        <p><%= __('employee:nb_explain_what') %></p>
+        <h3><%= __('employee:nb_explain_how_title') %></h3>
+        <p><%= __('employee:nb_explain_how') %></p>
+        <h3><%= __('employee:nb_explain_talk_title') %></h3>
+        <p><%= __('employee:nb_explain_talk') %></p>
+        <a href="/employee/okr" class="btn btn-secondary btn-sm"><i class="fas fa-comments" aria-hidden="true"></i> <%= __('employee:nb_explain_talk_cta') %></a>
+      </details>
     <% } %>
   </div>
+  <% } %>
 </div>
 <% } else { %>
 <!-- Snapshot unavailable (data not readable this request). The page must still
@@ -199,6 +218,40 @@
     buttons gave the employee no reading order and no answer to "which one
     first?"; the self-assessment is what feeds every other surface here, so it
     keeps the emphasis and the rest step back to secondary. %>
+<%# « Mon poste visé » teaser — the person's OWN gap against the target role they
+    chose in their aspirations (EmployeeGrowthService.targetRoleGap). Unmeasured
+    requirements are counted apart, never as gaps; readiness is over the measured
+    ones only, and "—" when none is measured. %>
+<% if (typeof targetGap !== 'undefined' && targetGap) { %>
+<section class="card emp-target" aria-labelledby="empTargetH">
+  <div class="emp-section-h">
+    <span id="empTargetH"><i class="fas fa-route" aria-hidden="true"></i> <%= __('employee:tg_title') %><%= colon %> <%= targetGap.roleName %></span>
+    <a href="/employee/opportunities#my-target" class="emp-link"><%= __('employee:tg_link') %> →</a>
+  </div>
+  <div class="emp-target-body">
+    <div class="emp-target-score">
+      <div class="emp-n"><%= targetGap.readiness === null ? '—' : targetGap.readiness + '%' %></div>
+      <div class="emp-sub"><%= targetGap.readiness === null ? __('employee:tg_not_measurable') : __('employee:tg_readiness') %></div>
+    </div>
+    <ul class="emp-target-counts">
+      <li><strong><%= targetGap.metRows.length %></strong> <%= __('employee:tg_met') %></li>
+      <li><strong><%= targetGap.growRows.length %></strong> <%= __('employee:tg_grow') %></li>
+      <li><strong><%= targetGap.unmeasuredRows.length %></strong> <%= __('employee:tg_unmeasured') %></li>
+    </ul>
+  </div>
+</section>
+<% } else { %>
+<section class="card emp-target emp-target-empty" aria-labelledby="empTargetH">
+  <div class="emp-target-body">
+    <div>
+      <strong id="empTargetH"><i class="fas fa-route" aria-hidden="true"></i> <%= __('employee:tg_none_title') %></strong>
+      <p class="emp-sub"><%= __('employee:tg_none_body') %></p>
+    </div>
+    <a href="/employee/opportunities#my-aspirations" class="btn btn-secondary"><%= __('employee:tg_none_cta') %></a>
+  </div>
+</section>
+<% } %>
+
 <h2 style="margin:1.25rem 0 .5rem;font-size:1.05rem"><%= __('employee:quick_actions') %></h2>
 <div class="row">
     <div class="col card">
@@ -283,6 +336,19 @@
 /* The gap table has five columns and cannot compress to a phone rail; scroll it
    inside its own card instead of letting the whole page scroll sideways. */
 .emp-tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.emp-cards-3{grid-template-columns:repeat(3,1fr)}
+.emp-grid2-solo{grid-template-columns:1fr}
+.emp-nb-explain{margin-top:.75rem;border-top:1px solid var(--line,#eef2f7);padding-top:.5rem}
+.emp-nb-explain summary{cursor:pointer;font-weight:600;color:var(--brand-text,#2563eb);font-size:.88rem}
+.emp-nb-explain h3{font-size:.9rem;margin:.75rem 0 .25rem}
+.emp-nb-explain p{font-size:.85rem;color:var(--text-secondary,#64748b);margin:0 0 .5rem}
+.emp-target{padding:0;margin-top:16px}
+.emp-target-body{display:flex;align-items:center;gap:20px;padding:.85rem 1rem;flex-wrap:wrap}
+.emp-target-empty .emp-target-body{justify-content:space-between}
+.emp-target-empty .emp-sub{margin:.25rem 0 0}
+.emp-target-score .emp-n{color:var(--brand-text,#2563eb)}
+.emp-target-counts{list-style:none;margin:0;padding:0;display:flex;gap:18px;flex-wrap:wrap;color:var(--text-secondary,#64748b);font-size:.88rem}
+.emp-target-counts strong{color:var(--text-primary,#1f1d3a);font-size:1.05rem}
 .emp-grid2>.card{min-width:0}
 @media(max-width:900px){.emp-cards{grid-template-columns:repeat(2,1fr)}.emp-grid2{grid-template-columns:1fr}}
 /* Two stat tiles side by side still overflow a 375px viewport once the numbers

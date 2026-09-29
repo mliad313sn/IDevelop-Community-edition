@@ -82,6 +82,9 @@ const CATALOG = {
     // 3.23.18: retention purge — 'report' (default) never erases anyone.
     retentionPurgeMode: { enum: ['report', 'apply'] },
     nineBoxReassessMonths: { min: 1, max: 60, integer: true },
+    // Off = employees never see the 9-box, even a disclosed placement
+    // (TalentConfidentialityService.nineBoxVisibleToEmployees). Default on.
+    nineBoxVisibleToEmployees: { type: 'boolean' },
     dormantAccountDays: { min: 1, max: 3650, integer: true },
     edition: { enum: ['community'] },
     localContentHomeCountry: { optional: true },
@@ -322,6 +325,14 @@ class AppSettingsModel {
                 type: 'number',
                 description:
                     'Minimum readiness percentage required for an employee to be considered ready (0-100)',
+                category: 'readiness',
+            },
+            {
+                key: 'nineBoxVisibleToEmployees',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    'Show employees their own 9-box placement once it has been disclosed to them. Off: the 9-box is hidden from every employee page.',
                 category: 'readiness',
             },
             {

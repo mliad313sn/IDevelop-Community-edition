@@ -12,6 +12,7 @@ const db = require('../config/database');
 const Mob = require('../services/MobilityService');
 const Rec = require('../services/RecognitionService');
 const Sv = require('../services/SurveyService');
+const Growth = require('../services/EmployeeGrowthService');
 
 class EmployeeGrowthController {
     async page(req, res) {
@@ -24,6 +25,9 @@ class EmployeeGrowthController {
         let recognition = [];
         let aspirations = null;
         let applications = [];
+        let targetGap = null;
+        let closest = [];
+        let colleagues = [];
         try {
             // Expired postings (closes_on passed) are hidden by the service.
             opportunities = await Mob.listOpportunities('open');
@@ -63,6 +67,25 @@ class EmployeeGrowthController {
             } catch (_) {
                 /* none yet */
             }
+            // Every read below is keyed on the signed-in person's own id — no
+            // employee id is taken from the request.
+            if (aspirations && aspirations.targetRoleId) {
+                try {
+                    targetGap = await Growth.targetRoleGap(eid);
+                } catch (_) {
+                    /* optional */
+                }
+            }
+            try {
+                closest = await Growth.closestRoles(eid, { limit: 5 });
+            } catch (_) {
+                /* optional */
+            }
+            try {
+                colleagues = await Rec.colleaguesFor(eid);
+            } catch (_) {
+                /* optional */
+            }
             try {
                 // "Which have I applied to" must not count one I withdrew — the
                 // withdrawal is a state now, not a deleted row, so the page
@@ -99,6 +122,9 @@ class EmployeeGrowthController {
             recognition,
             aspirations,
             roles,
+            targetGap,
+            closest,
+            colleagues,
             csrfToken: req.csrfToken ? req.csrfToken() : res.locals && res.locals.csrfToken,
         });
     }
