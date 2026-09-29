@@ -236,7 +236,7 @@ function loadRenderTalentKPIs(i18n) {
         'I18N',
         'esc',
         'pctClass',
-        `${fmtSrc}; ${body}; return renderTalentKPIs;`
+        `${fmtSrc}; const fmtPct = (v) => v + '%'; ${body}; return renderTalentKPIs;`
     );
     return { render: make(document, i18n, esc, pctClass), el };
 }

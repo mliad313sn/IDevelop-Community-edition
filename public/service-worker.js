@@ -25,7 +25,7 @@
  *   the offline page rather than a stale copy of someone's record.
  */
 
-const CACHE = 'app-shell-v7'; // v7: + horizon.css theme layer and brand assets
+const CACHE = 'app-shell-v8'; // v7: + horizon.css theme layer and brand assets
 
 // Bumped whenever the caching RULES change, so an old worker's cache is discarded
 // wholesale by the activate handler rather than lingering with stale semantics.
@@ -34,6 +34,8 @@ const SW_VERSION = 'v4';
 // Cache-first, and safe to do so: none of these vary by user.
 const SHELL = [
     '/manifest.webmanifest',
+    '/manifest.fr.webmanifest',
+    '/manifest.en.webmanifest',
     '/css/style.css',
     '/css/a11y-polish.css',
     '/css/horizon.css',
@@ -52,8 +54,9 @@ const STATIC_PREFIXES = [
     '/vendor/',
     '/img/',
     '/fonts/',
-    '/manifest.webmanifest',
+    '/manifest.',
     '/favicon',
+    '/brand/',
 ];
 
 // Never touched by the cache under any circumstances, belt-and-braces even

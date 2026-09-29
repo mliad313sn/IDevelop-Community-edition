@@ -1,3 +1,12 @@
+// Locale-aware percentage for DISPLAY (never for CSS widths): « 78,2 % » in
+// French, "78.2%" in English. Follows <html lang>.
+function fmtPct(v) {
+    if (v === null || v === undefined || v === '' || Number.isNaN(Number(v))) return String(v);
+    const lang = document.documentElement.getAttribute('lang') || 'fr';
+    const n = new Intl.NumberFormat(lang, { maximumFractionDigits: 1 }).format(Number(v));
+    return lang.indexOf('fr') === 0 ? n + '\u202f%' : n + '%';
+}
+
 const Dashboard = (() => {
     // Escape user-supplied text before injecting via innerHTML (prevents stored
     // XSS from employee/skill/site names and other server data).
@@ -629,7 +638,7 @@ const Dashboard = (() => {
         const cards = [
             {
                 label: I18N.kpiAvgProficiency || 'Avg Proficiency',
-                value: hasReadiness ? `${kpis.avgReadiness}%` : '—',
+                value: hasReadiness ? fmtPct(kpis.avgReadiness) : '—',
                 sub: readinessSub,
                 color: hasReadiness ? getColorForValue(kpis.avgReadiness, 80, 50) : 'neutral',
             },
@@ -657,7 +666,7 @@ const Dashboard = (() => {
                 label: I18N.kpiCriticalCompliance || 'Critical Compliance',
                 // NULL when the scope declares no critical skill at all —
                 // SUM(totalCritical)=0 → NULLIF → null. "null%" was the render.
-                value: kpis.criticalCompliance == null ? '—' : `${kpis.criticalCompliance}%`,
+                value: kpis.criticalCompliance == null ? '—' : fmtPct(kpis.criticalCompliance),
                 // A bare em dash says "something is missing" and nothing else,
                 // so the reader has to come and ask why the figure is empty.
                 // Measured on this instance: 187 critical requirements are in
@@ -1108,12 +1117,12 @@ const Dashboard = (() => {
         let cls = 'readiness-critical';
         if (val >= 80) cls = 'readiness-good';
         else if (val >= 50) cls = 'readiness-warning';
-        return `<span class="badge ${cls}">${val}%</span>`;
+        return `<span class="badge ${cls}">${fmtPct(val)}</span>`;
     }
 
     /** "72.4%" for a measured value, an em dash for an unmeasured one. */
     function pctOrDash(v) {
-        return v === null || v === undefined || v === '' ? '—' : `${v}%`;
+        return v === null || v === undefined || v === '' ? '—' : fmtPct(v);
     }
 
     function renderPagination(containerId, total, page, pageSize) {
@@ -1782,7 +1791,7 @@ const Dashboard = (() => {
                     [options.horizontal ? 'x' : 'y']: {
                         beginAtZero: true,
                         max: options.percent ? 100 : undefined,
-                        ticks: { callback: (v) => (options.percent ? v + '%' : v) },
+                        ticks: { callback: (v) => (options.percent ? fmtPct(v) : v) },
                     },
                 },
             },
@@ -2133,8 +2142,8 @@ const Dashboard = (() => {
                 `<tr><td><a href="/benchmark/role/${f.roleId}"><strong>${esc(f.roleName)}</strong></a></td>` +
                 `<td style="text-align:center;">${f.occupants}</td>` +
                 `<td>${fitCell}</td>` +
-                `<td style="text-align:center;${cov != null && cov < 60 ? 'color:#FF9800;' : ''}">${cov == null ? '—' : cov + '%'}</td>` +
-                `<td style="text-align:center;">${f.criticalFit == null ? '—' : f.criticalFit + '%'}</td>` +
+                `<td style="text-align:center;${cov != null && cov < 60 ? 'color:#FF9800;' : ''}">${cov == null ? '—' : fmtPct(cov)}</td>` +
+                `<td style="text-align:center;">${f.criticalFit == null ? '—' : fmtPct(f.criticalFit)}</td>` +
                 `<td style="text-align:center;${measured && critGap > 0 ? 'color:#F44336;font-weight:700;' : ''}">${measured ? critGap : notMeasured}</td>` +
                 `<td style="text-align:center;">${measured ? `${f.occupantsReady}/${f.occupants}` : notMeasured}</td></tr>`;
         }
@@ -2315,7 +2324,7 @@ const Dashboard = (() => {
                     y: {
                         min: yMin,
                         max: yMax,
-                        ticks: { callback: (v) => v + '%' },
+                        ticks: { callback: (v) => fmtPct(v) },
                     },
                 },
                 plugins: {
@@ -2334,10 +2343,10 @@ const Dashboard = (() => {
                             // let a thin-coverage number read like a solid one.
                             label: (c) => {
                                 const p = series[c.dataIndex] || {};
-                                const lines = [`${c.dataset.label}: ${c.parsed.y}%`];
+                                const lines = [`${c.dataset.label}: ${fmtPct(c.parsed.y)}`];
                                 if (p.coverage != null) {
                                     lines.push(
-                                        `${I18N.trendCoverage || 'Coverage'}: ${p.coverage}%`
+                                        `${I18N.trendCoverage || 'Coverage'}: ${fmtPct(p.coverage)}`
                                     );
                                 }
                                 if (p.measured != null) {
@@ -2679,7 +2688,7 @@ const Dashboard = (() => {
                     : `<span class="breakdown-value">${val.score}</span>`;
                 return `
                 <div class="breakdown-row${unmeasured ? ' is-unmeasured' : ''}">
-                    <span class="breakdown-label">${esc(label)} <small>(${val.weight}%)</small></span>
+                    <span class="breakdown-label">${esc(label)} <small>(${fmtPct(val.weight)})</small></span>
                     <div class="breakdown-bar-track">
                         <div class="breakdown-bar-fill" style="width: ${width}%; background: ${barColor};"></div>
                     </div>
@@ -2703,7 +2712,7 @@ const Dashboard = (() => {
         // branch — so "never measured" was published as a red critical 0 %.
         const band = (v, good, warn) =>
             v == null ? 'neutral' : v >= good ? 'good' : v >= warn ? 'warning' : 'critical';
-        const pct = (v) => (v == null ? UNMEASURED : `${v}%`);
+        const pct = (v) => (v == null ? UNMEASURED : fmtPct(v));
 
         const metrics = [
             {
@@ -2836,7 +2845,7 @@ const Dashboard = (() => {
                         <div style="font-size:0.75rem; opacity:0.7">${esc(riskDesc)}</div>
                     </td>
                     <td>${r.headcount}</td>
-                    <td>${r.avgReadiness != null ? r.avgReadiness + '%' : 'N/A'}</td>
+                    <td>${r.avgReadiness != null ? fmtPct(r.avgReadiness) : 'N/A'}</td>
                     <td class="text-muted" style="font-size:0.85rem">${esc(r.qualifiedNames || '—')}</td>
                     <td class="text-muted" style="font-size:0.85rem">${esc(r.sites || '—')}</td>
                 </tr>
@@ -3095,7 +3104,7 @@ const Dashboard = (() => {
             },
             {
                 label: I18N.tdPipSuccess || 'PIP Success Rate',
-                value: pipMeasured ? `${pip.successRate}%` : I18N.rdNotMeasured || 'Not measured',
+                value: pipMeasured ? fmtPct(pip.successRate) : I18N.rdNotMeasured || 'Not measured',
                 sub: pipSub,
                 color: pipMeasured ? pctClass(pip.successRate, 60, 30) : 'neutral',
                 title: pipMeasured ? '' : I18N.rdNotMeasuredTitle || '',
@@ -3114,7 +3123,7 @@ const Dashboard = (() => {
             },
             {
                 label: I18N.tdIdpCompletion || 'IDP Action Completion',
-                value: idp.completionPct == null ? '—' : `${idp.completionPct}%`,
+                value: idp.completionPct == null ? '—' : fmtPct(idp.completionPct),
                 sub: fmt(
                     I18N.tdSubActionsDone || '{0}/{1} actions done',
                     idp.actionDone,

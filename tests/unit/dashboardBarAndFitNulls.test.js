@@ -79,7 +79,7 @@ describe('N5 — renderBenchmarkFitTable dashes the unmeasured, not 0/0', () => 
         new Function(
             'I18N',
             'container',
-            `${extract('renderBenchmarkFitTable')}; renderBenchmarkFitTable(container, container.__fit);`
+            `const fmtPct = (v) => v + '%'; ${extract('renderBenchmarkFitTable')}; renderBenchmarkFitTable(container, container.__fit);`
         )(I18N, Object.assign(el, { __fit: fit }));
         return el.innerHTML;
     };

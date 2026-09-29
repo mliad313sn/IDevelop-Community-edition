@@ -132,7 +132,7 @@ describe('N1/N2/N3 — the gauge and bars never print 0 or "null" for the unmeas
         'esc',
         'fmt',
         'riskStatusLabel',
-        `${extract('renderRiskGauge')}\n${extract('measuredAxisCount')}\n${extract('renderRiskBreakdown')}; return { g: renderRiskGauge, b: renderRiskBreakdown };`
+        `const fmtPct = (v) => v + '%';\n${extract('renderRiskGauge')}\n${extract('measuredAxisCount')}\n${extract('renderRiskBreakdown')}; return { g: renderRiskGauge, b: renderRiskBreakdown };`
     )(document, I18N, esc, fmt, riskStatusLabel);
 
     const IA = {
