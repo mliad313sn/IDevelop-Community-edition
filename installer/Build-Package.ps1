@@ -244,7 +244,7 @@ $productScripts = @(
 )
 $devOnlyScripts = @(
     # demo data (dev machine only)
-    'seed-demo.js',
+    'seed-demo.js', 'seed-demo-org.js',
     # one-shot data maintenance (dev machine only)
     'backfill-access-profiles.js', 'v3-merge-duplicate-skills.js',
     # QA and documentation tooling

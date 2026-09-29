@@ -32,7 +32,8 @@
     "lint:icons": "node scripts/check-icons.js",
     "vendor:sync": "node -e \"require('fs').copyFileSync('node_modules/chart.js/dist/chart.umd.min.js','public/vendor/chart.umd.min.js');require('fs').copyFileSync('node_modules/chart.js/dist/chart.umd.min.js.map','public/vendor/chart.umd.min.js.map')\"",
     "db:seed:starter": "node scripts/seed-starter-framework.js",
-    "contracts:export": "node scripts/export-contracts.js"
+    "contracts:export": "node scripts/export-contracts.js",
+    "db:seed:demo-org": "node scripts/seed-demo-org.js"
   },
   "keywords": [
     "skills-matrix",
