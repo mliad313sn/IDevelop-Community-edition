@@ -202,13 +202,15 @@ class DashboardController {
             // /setup is now SuperAdmin-only and a banner nobody can open (or dismiss)
             // is a dead end.
             let setupPending = false;
+            let setupProgress = null;
             if (req.user && req.user.userType === 'admin' && req.user.role === 'superadmin') {
                 try {
                     const AppSettingsModel = require('../models/AppSettingsModel');
                     const dismissed = await AppSettingsModel.getValue('setupDismissed', false);
                     if (!dismissed) {
                         const SetupController = require('./SetupController');
-                        setupPending = !(await SetupController.getChecks()).complete;
+                        setupProgress = await SetupController.getProgress();
+                        setupPending = !setupProgress.complete;
                     }
                 } catch (_) {
                     /* banner is best-effort */
@@ -231,6 +233,7 @@ class DashboardController {
                 filterOptions,
                 readerScope,
                 setupPending,
+                setupProgress,
                 // `title` (not just pageTitle) — the top bar and the browser <title>
                 // read `title`; passing only pageTitle left it undefined, so the header
                 // fell back to a hardcoded product name while the sidebar showed the

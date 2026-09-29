@@ -219,13 +219,14 @@ class SupervisorReviewController {
                 rows = await db.all(
                     `SELECT g.employee_id AS "employeeId",
                             e.full_name   AS "employeeName",
+                            e.role_name   AS "roleName",
                             COUNT(*) FILTER (WHERE g.is_assessed = 1 AND g.gap > 0)::int AS "totalGaps",
                             COUNT(*) FILTER (WHERE g.is_assessed = 1 AND g.gap > 0 AND g.is_critical)::int AS "criticalGaps",
                             COUNT(*) FILTER (WHERE g.is_assessed = 0)::int AS "unmeasured"
                        FROM v_employee_skill_gaps g
                        JOIN v_employee_details e ON e.employee_id = g.employee_id
                       WHERE 1 = 1${scope}
-                      GROUP BY g.employee_id, e.full_name
+                      GROUP BY g.employee_id, e.full_name, e.role_name
                      HAVING COUNT(*) FILTER (WHERE g.is_assessed = 1 AND g.gap > 0) > 0
                          OR COUNT(*) FILTER (WHERE g.is_assessed = 0) > 0
                       ORDER BY "criticalGaps" DESC, "totalGaps" DESC, e.full_name`,

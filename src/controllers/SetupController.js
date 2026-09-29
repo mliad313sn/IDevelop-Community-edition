@@ -90,6 +90,28 @@ class SetupController {
         return { checks, complete: required.every((x) => x.done) };
     }
 
+    /**
+     * Compact progress for the dashboard banner and the sidebar pill:
+     * required steps done / total and the first unfinished step. Cached for
+     * 30 s so rendering the sidebar on every page costs one query at most
+     * twice a minute.
+     */
+    async getProgress() {
+        const now = Date.now();
+        if (this._progress && now - this._progressAt < 30000) return this._progress;
+        const { checks, complete } = await this.getChecks();
+        const required = checks.filter((x) => !x.optional);
+        const next = required.find((x) => !x.done) || null;
+        this._progress = {
+            complete,
+            done: required.filter((x) => x.done).length,
+            total: required.length,
+            next: next ? { key: next.key, href: next.href } : null,
+        };
+        this._progressAt = now;
+        return this._progress;
+    }
+
     async index(req, res) {
         try {
             const { checks, complete } = await this.getChecks();

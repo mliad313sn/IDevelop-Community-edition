@@ -2,13 +2,25 @@
 
     <% if (typeof setupPending !== 'undefined' && setupPending) { %>
     <!-- First-run setup banner (SuperAdmin, until complete or dismissed) -->
-    <div class="card hz-callout" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:14px;">
+    <div class="card hz-callout hz-setup-banner" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:14px;flex-wrap:wrap;">
         <i class="fas fa-list-check" aria-hidden="true" style="color:var(--brand,#7C6CFF);font-size:1.2rem;"></i>
         <div style="flex:1;">
             <strong><%= __('admin:setup_banner_title', { brand: (typeof brandName!=='undefined' && brandName) ? brandName : 'IDevelop' }) %></strong>
+            <% if (typeof setupProgress !== 'undefined' && setupProgress) { %>
+            <div style="font-size:.85rem;color:var(--text-secondary);">
+                <%= __('admin:setup_banner_progress', { done: setupProgress.done, total: setupProgress.total }) %><% if (setupProgress.next) { %> · <%= __('admin:setup_banner_next', { step: __('admin:setup_' + setupProgress.next.key) }) %><% } %>
+            </div>
+            <div class="hz-progress" role="progressbar" aria-valuemin="0" aria-valuemax="<%= setupProgress.total %>" aria-valuenow="<%= setupProgress.done %>" aria-label="<%= __('admin:setup_banner_progress', { done: setupProgress.done, total: setupProgress.total }) %>"><span style="width:<%= Math.round(100 * setupProgress.done / Math.max(1, setupProgress.total)) %>%"></span></div>
+            <% } else { %>
             <div style="font-size:.85rem;color:var(--text-secondary);"><%= __('admin:setup_banner_sub') %></div>
+            <% } %>
         </div>
+        <% if (typeof setupProgress !== 'undefined' && setupProgress && setupProgress.next) { %>
+        <a href="<%= setupProgress.next.href %>" class="btn btn-primary btn-sm"><%= __('admin:setup_banner_continue') %></a>
+        <a href="/setup" class="btn btn-secondary btn-sm"><%= __('admin:setup_banner_cta') %></a>
+        <% } else { %>
         <a href="/setup" class="btn btn-primary btn-sm"><%= __('admin:setup_banner_cta') %></a>
+        <% } %>
     </div>
     <% } %>
 
@@ -156,6 +168,7 @@
             </div>
             <div class="chart-box" style="flex: 1;">
                 <h3><%= __('dash:readiness_distribution') %></h3>
+                <p class="hz-legend"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('dash:readiness_legend') %></p>
                 <div class="chart-container-inner">
                     <canvas id="chart-readiness-dist"></canvas>
                 </div>
@@ -246,7 +259,7 @@
                 if (href) { a.href = href; a.style.textDecoration = 'none'; }
                 a.style.cssText += ';flex:1;min-width:150px;padding:.7rem .9rem;border:1px solid var(--border-color,#e5e7eb);border-radius:10px;background:var(--bg-primary,transparent);color:inherit;';
                 var h = document.createElement('div');
-                h.style.cssText = 'font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted,#6b7280);';
+                h.style.cssText = 'font-size:.72rem;letter-spacing:.04em;color:var(--text-muted,#6b7280);';
                 h.textContent = label;
                 var v = document.createElement('div');
                 v.style.cssText = 'font-size:1.45rem;font-weight:700;color:' + color + ';';
@@ -1087,8 +1100,7 @@
 .measure-lbl { font-size:.78rem; color:var(--text-secondary); overflow-wrap:anywhere; }
 .measure-sub { font-size:.7rem; color:var(--text-muted); overflow-wrap:anywhere; }
 /* M-12 : marque les cartes que le périmètre NE borne PAS (le référentiel). */
-.measure-chip { margin-top:.3rem; font-size:.63rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
-    padding:.08rem .4rem; border-radius:999px; border:1px dashed var(--border-light,rgba(255,255,255,.22));
+.measure-chip { margin-top:.3rem; font-size:.63rem; font-weight:700; letter-spacing:.04em; padding:.08rem .4rem; border-radius:999px; border:1px dashed var(--border-light,rgba(255,255,255,.22));
     color:var(--text-muted,#8a93a6); cursor:help; }
 
 /* ═══ Executive information architecture ═══════════════════════════════════
@@ -1102,12 +1114,12 @@
     background:var(--bg-subtle,rgba(255,255,255,.04)); font-size:.85rem; }
 .exec-scope.is-filtered { border-left-color:var(--brand,#7C6CFF); }
 .exec-scope > i { color:var(--text-muted,#8a93a6); }
-.exec-scope-label { text-transform:uppercase; letter-spacing:.06em; font-size:.7rem; font-weight:700; color:var(--text-muted,#8a93a6); }
+.exec-scope-label { letter-spacing:.06em; font-size:.7rem; font-weight:700; color:var(--text-muted,#8a93a6); }
 .exec-scope-value { font-weight:700; color:var(--text-primary); overflow-wrap:anywhere; }
 .exec-scope-hint { margin-left:auto; font-size:.75rem; color:var(--text-muted,#8a93a6); }
 /* M-12 (résiduel) : marque un périmètre IMPOSÉ (RBAC), que le lecteur ne choisit
    pas dans les listes — à ne pas confondre avec un filtre appliqué. */
-.exec-scope-own { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+.exec-scope-own { font-size:.7rem; font-weight:700; letter-spacing:.05em;
     padding:.1rem .4rem; border-radius:999px; color:var(--text-muted,#8a93a6);
     border:1px solid var(--border-color,rgba(255,255,255,.12)); }
 @media (max-width:700px){ .exec-scope-hint { margin-left:0; flex:1 1 100%; } }
@@ -1123,7 +1135,7 @@
     background:var(--bg-subtle,rgba(255,255,255,.04)); }
 .exec-provenance:empty { display:none; }
 .exec-provenance.is-blind { border-left-color:var(--warn,#b45309); }
-.exec-provenance .prov-label { text-transform:uppercase; letter-spacing:.06em; font-size:.7rem;
+.exec-provenance .prov-label { letter-spacing:.06em; font-size:.7rem;
     font-weight:700; color:var(--text-muted,#8a93a6); margin-right:.4rem; }
 .exec-provenance strong { color:var(--text-primary); }
 

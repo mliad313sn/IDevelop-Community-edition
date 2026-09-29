@@ -9,17 +9,17 @@
     <p><span class="chip" style="background:rgba(127,127,127,.18)"><%= __('admin:lic_unmanaged') %></span> <span class="text-muted"><%= __('admin:lic_unmanaged_hint') %></span></p>
   <% } %>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.8rem;">
-    <div><div class="text-muted" style="font-size:.75rem;text-transform:uppercase"><%= __('admin:lic_customer') %></div><div style="font-weight:600"><%= status.customer || '—' %></div></div>
-    <div><div class="text-muted" style="font-size:.75rem;text-transform:uppercase"><%= __('admin:lic_seats') %></div>
+    <div><div class="text-muted" style="font-size:.75rem;"><%= __('admin:lic_customer') %></div><div style="font-weight:600"><%= status.customer || '—' %></div></div>
+    <div><div class="text-muted" style="font-size:.75rem;"><%= __('admin:lic_seats') %></div>
       <div style="font-weight:600<%= status.overSeat ? ';color:#b45309' : '' %>">
         <%= status.seatsUsed %><% if (status.seats != null) { %> / <%= status.seats %><% } else { %> / <%= __('admin:lic_unlimited') %><% } %>
         <% if (status.overSeat) { %><span style="color:#b45309">· <%= __('admin:lic_overseat') %></span><% } %>
       </div>
     </div>
-    <div><div class="text-muted" style="font-size:.75rem;text-transform:uppercase"><%= __('admin:lic_expires') %></div>
+    <div><div class="text-muted" style="font-size:.75rem;"><%= __('admin:lic_expires') %></div>
       <div style="font-weight:600<%= status.expired ? ';color:#c8514b' : '' %>"><%= status.expiresOn ? new Date(status.expiresOn).toLocaleDateString(typeof lang!=='undefined'?lang:'fr') : '—' %><% if (status.expired) { %> · <%= __('admin:lic_expired') %><% } %></div>
     </div>
-    <div><div class="text-muted" style="font-size:.75rem;text-transform:uppercase"><%= __('admin:lic_features') %></div><div style="font-weight:600"><%= (status.features||[]).includes('*') ? __('admin:lic_all_features') : (status.features||[]).join(', ') %></div></div>
+    <div><div class="text-muted" style="font-size:.75rem;"><%= __('admin:lic_features') %></div><div style="font-weight:600"><%= (status.features||[]).includes('*') ? __('admin:lic_all_features') : (status.features||[]).join(', ') %></div></div>
   </div>
 </div>
 

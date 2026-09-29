@@ -751,6 +751,29 @@ app.use(async (req, res, next) => {
     // (setup banner, licence notice, login <title>, reset email) used to hardcode
     // "IDevelop", so a white-labelled install showed TWO product names at once.
     res.locals.brandName = (res.locals.branding && res.locals.branding.appName) || PRODUCT.name;
+    // "Getting started" pill in the sidebar: SuperAdmins only, page renders
+    // only, until the required setup steps are done or the banner is dismissed.
+    res.locals.setupProgress = null;
+    if (
+        req.method === 'GET' &&
+        req.user &&
+        req.user.userType === 'admin' &&
+        req.user.role === 'superadmin' &&
+        !req.path.startsWith('/api/')
+    ) {
+        try {
+            const dismissed = await require('./src/models/AppSettingsModel').getValue(
+                'setupDismissed',
+                false
+            );
+            if (!dismissed) {
+                const p = await require('./src/controllers/SetupController').getProgress();
+                if (!p.complete) res.locals.setupProgress = p;
+            }
+        } catch (_) {
+            /* the pill is best-effort */
+        }
+    }
     next();
 });
 

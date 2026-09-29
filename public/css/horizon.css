@@ -919,3 +919,243 @@ html {
     line-height: 1.2;
     text-align: center;
 }
+
+/* ── Getting started: sidebar pill and banner progress ─────────────────── */
+:root .hz-setup-link {
+    margin: 4px 8px 10px;
+}
+:root .hz-pill {
+    margin-left: auto;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--brand-subtle);
+    color: var(--brand-text);
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+:root .hz-progress {
+    height: 6px;
+    margin-top: 8px;
+    max-width: 320px;
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    overflow: hidden;
+}
+:root .hz-progress > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--brand), var(--hz-duo));
+}
+
+/* ── One filter-bar pattern ──────────────────────────────────────────────
+   Every list page's search and filters sit on the same soft surface, wrap
+   instead of overflowing, and stack to full width on a phone. `.filter-bar`
+   is the name for new pages; the historical page-local names are aliased. */
+:root .filter-bar,
+:root .search-bar,
+:root .toolbar,
+:root .cyc-filters,
+:root .matrix-filters,
+:root .sa-filters,
+:root .tl-filters,
+:root .sl-filterbar,
+:root .tri-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px 12px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle, var(--border));
+    border-radius: 14px;
+}
+:root .filter-bar .filter-group,
+:root .search-bar .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 160px;
+}
+:root .filter-bar label,
+:root .search-bar .filter-group label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: none;
+    letter-spacing: 0;
+}
+@media (max-width: 767px) {
+    :root .filter-bar > *,
+    :root .search-bar > *,
+    :root .search-bar .filter-group {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+}
+
+/* ── Legends ─────────────────────────────────────────────────────────── */
+:root .hz-legend {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin: 0 0 12px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+:root .hz-legend i {
+    margin-top: 3px;
+    color: var(--brand-text);
+}
+
+/* ── Compact row actions and a sticky actions column ─────────────────── */
+:root .table-actions-compact {
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+:root .table-actions-compact .btn,
+:root .table-actions-compact form .btn {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+:root .table-sticky-actions td.cell-actions,
+:root .table-sticky-actions td:last-child {
+    white-space: nowrap;
+}
+@media (min-width: 768px) {
+    :root .table-sticky-actions th:last-child,
+    :root .table-sticky-actions td:last-child {
+        position: sticky;
+        right: 0;
+        z-index: 1;
+        background: var(--bg-card);
+        box-shadow: -8px 0 12px -10px rgba(0, 0, 0, 0.25);
+    }
+}
+
+/* ── Card tables below 768 px ─────────────────────────────────────────
+   Rows become cards; each cell shows its column name (data-label, filled
+   by main.js from the header when a view does not set it). */
+@media (max-width: 767px) {
+    :root .table.table-cards {
+        min-width: 0;
+        border: 0;
+    }
+    :root .table.table-cards thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+    :root .table.table-cards,
+    :root .table.table-cards tbody,
+    :root .table.table-cards tr,
+    :root .table.table-cards td {
+        display: block;
+        width: 100%;
+    }
+    :root .table.table-cards tbody tr {
+        margin: 0 0 12px;
+        padding: 10px 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle, var(--border));
+        border-radius: 14px;
+    }
+    :root .table.table-cards tbody tr.empty-row {
+        border: 0;
+        background: none;
+    }
+    :root .table.table-cards td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 6px 0;
+        border: 0;
+        text-align: right;
+        white-space: normal;
+    }
+    :root .table.table-cards td[data-label]::before {
+        content: attr(data-label);
+        flex: 0 0 auto;
+        max-width: 45%;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-align: left;
+    }
+    :root .table.table-cards td[colspan] {
+        display: block;
+        text-align: center;
+    }
+    :root .table.table-cards td.cell-actions,
+    :root .table.table-cards td:last-child {
+        justify-content: flex-end;
+        padding-top: 10px;
+    }
+    :root .table.table-cards td.cell-actions::before {
+        content: none;
+    }
+    :root .table.table-cards,
+    :root .table-responsive > .table.table-cards {
+        min-width: 0 !important;
+        max-width: 100%;
+    }
+    :root .table.table-cards td.cell-actions {
+        flex-wrap: wrap;
+        white-space: normal !important;
+    }
+}
+
+/* Setup banner: one row on desktop — icon, progress, actions. */
+:root .hz-callout.hz-setup-banner {
+    flex-direction: row;
+    align-items: center;
+    text-align: left;
+}
+:root .hz-callout.hz-setup-banner > div {
+    flex: 1 1 260px;
+}
+:root .hz-callout.hz-setup-banner .btn {
+    margin: 0;
+}
+:root .search-bar {
+    justify-content: flex-start;
+}
+:root .search-bar .search-input-wrapper {
+    flex: 1 1 280px;
+    max-width: 520px;
+}
+@media (max-width: 767px) {
+    :root .search-bar .search-input-wrapper {
+        max-width: none;
+    }
+    :root .filter-bar select,
+    :root .filter-bar input,
+    :root .search-bar select,
+    :root .search-bar input:not([type='checkbox']):not([type='radio']) {
+        width: 100%;
+        /* Page markup caps some selects inline for desktop; on a phone they
+           take the full row like every other field. */
+        max-width: none !important;
+    }
+    :root .search-bar form {
+        width: 100%;
+    }
+}
+/* Secondary row actions stay quiet; only the destructive one is tinted. */
+:root .table-actions-compact .btn:not(.btn-danger):not(.btn-primary) {
+    background: var(--bg-card);
+    color: var(--brand-text);
+    border: 1px solid var(--border-input);
+    box-shadow: none;
+}

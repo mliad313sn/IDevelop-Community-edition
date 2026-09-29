@@ -27,6 +27,7 @@
   "operational_overview": "Operational Overview",
   "operational_overview_sub": "Key performance indicators & distribution",
   "readiness_distribution": "Readiness Distribution",
+  "readiness_legend": "Readiness is the share of a role’s required skills a person meets. Ready = every required skill met. Skills not yet rated are left out of the score, never counted as zero.",
   "domain_proficiency_summary": "Domain Proficiency Summary",
   "risk_focus_areas": "Risk & Focus Areas",
   "risk_focus_areas_sub": "Critical gaps, roles at risk, and areas for improvement",

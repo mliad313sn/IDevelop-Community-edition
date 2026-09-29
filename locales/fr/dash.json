@@ -27,6 +27,7 @@
   "operational_overview": "Vue opérationnelle",
   "operational_overview_sub": "Indicateurs clés de performance & distribution",
   "readiness_distribution": "Distribution de la préparation",
+  "readiness_legend": "La préparation est la part des compétences requises par le rôle qu’une personne atteint. Prêt = toutes les compétences requises atteintes. Les compétences pas encore évaluées sont exclues du score, jamais comptées pour zéro.",
   "domain_proficiency_summary": "Synthèse de maîtrise par domaine",
   "risk_focus_areas": "Risques & axes prioritaires",
   "risk_focus_areas_sub": "Écarts critiques, postes à risque et axes d'amélioration",

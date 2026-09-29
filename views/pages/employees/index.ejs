@@ -6,8 +6,7 @@
         display: inline-block; margin-left: .5rem; padding: 1px 7px;
         border: 1px solid var(--danger, #b91c1c); border-radius: 999px;
         color: var(--danger, #b91c1c); background: var(--danger-dim, transparent);
-        font: 600 10px/1.6 var(--font-data, system-ui); text-transform: uppercase;
-        letter-spacing: .04em; vertical-align: middle; white-space: nowrap;
+        font: 600 10px/1.6 var(--font-data, system-ui); letter-spacing: .04em; vertical-align: middle; white-space: nowrap;
     }
     /* Three DISTINCT states, never to be confused: a leaver ("Sorti", red), a
        record VOIDED as created-in-error (amber — it was never a departure and
@@ -165,7 +164,7 @@
 <% } %>
 
 <div class="table-wrapper">
-    <table class="table">
+    <table class="table table-cards table-sticky-actions">
         <thead>
             <tr>
                 <%# Server-side sort: every header is a link built from the
@@ -193,7 +192,7 @@
                     currentSite=employee.siteName; %>
                     <tr class="site-separator" data-ts-skip>
                         <td colspan="10"
-                            style="background: var(--bg-elevated); padding: 9px 14px; font: 600 12px/1 var(--font-data); letter-spacing: .04em; text-transform: uppercase; color:var(--brand-text); border-top: 1px solid var(--border);">
+                            style="background: var(--bg-elevated); padding: 9px 14px; font: 600 12px/1 var(--font-data); letter-spacing: .04em; color:var(--brand-text); border-top: 1px solid var(--border);">
                             <i class="fas fa-building" aria-hidden="true" style="color:var(--brand-text); opacity: .8;"></i> <%= employee.siteName %>
                         </td>
                     </tr>

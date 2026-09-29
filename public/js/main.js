@@ -404,6 +404,25 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
+// Card tables below 768 px: each cell shows its column header as a label.
+// Cells that already carry data-label keep it; colspan rows are left alone.
+function hzLabelCardTables(root) {
+    (root || document).querySelectorAll('table.table-cards').forEach(function (t) {
+        const heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) {
+            return (th.textContent || '').replace(/\s+/g, ' ').trim();
+        });
+        t.querySelectorAll('tbody tr').forEach(function (tr) {
+            Array.prototype.forEach.call(tr.children, function (td, i) {
+                if (td.hasAttribute('colspan') || td.hasAttribute('data-label')) return;
+                if (heads[i]) td.setAttribute('data-label', heads[i]);
+            });
+        });
+    });
+}
+document.addEventListener('DOMContentLoaded', function () {
+    hzLabelCardTables(document);
+});
+
 // Disclosure pattern: a button that shows a panel of two native radio groups.
 document.addEventListener('DOMContentLoaded', function () {
     const wrap = document.getElementById('hzPalette');

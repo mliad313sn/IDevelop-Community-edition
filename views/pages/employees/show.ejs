@@ -24,7 +24,7 @@
     const recDate = (d) => { try { return new Date(d).toLocaleDateString(typeof lang !== 'undefined' && lang === 'en' ? 'en-GB' : 'fr-FR', { year: 'numeric', month: 'long', day: 'numeric' }); } catch (e) { return String(d).slice(0, 10); } };
 %>
 <style nonce="<%= cspNonce %>">
-    .rec-badge { display:inline-block; padding:2px 9px; border:1px solid; border-radius:999px; font: 600 11px/1.6 var(--font-data, system-ui); text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+    .rec-badge { display:inline-block; padding:2px 9px; border:1px solid; border-radius:999px; font: 600 11px/1.6 var(--font-data, system-ui); letter-spacing:.04em; white-space:nowrap; }
     .rec-badge[data-s="inactive"] { border-color: var(--danger, #b91c1c); color: var(--danger, #b91c1c); }
     .rec-badge[data-s="voided"]   { border-color: var(--warning, #b45309); color: var(--warning, #b45309); }
     .rec-badge[data-s="erased"]   { border-color: var(--text-muted, #64748b); color: var(--text-muted, #64748b); }
@@ -428,7 +428,7 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
 .tl-dot{flex:0 0 12px;width:12px;height:12px;border-radius:50%;margin-top:5px}
 .tl-when{color:#94a3b8;font-size:.76rem;white-space:nowrap}
 .tl-txt{font-size:.86rem;color:var(--ink,#0f172a)}
-.tl-k{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-right:6px}
+.tl-k{font-size:.7rem;letter-spacing:.04em;font-weight:700;margin-right:6px}
 </style>
 <script nonce="<%= cspNonce %>">
 (function(){

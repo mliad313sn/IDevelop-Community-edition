@@ -60,21 +60,38 @@ fictional demo organisation, plus the theme, layout and locale sources.
 - Mobile: top-bar title truncates or hides and header actions wrap. The
   proficiency legend and help button no longer cover content.
 
-## Roadmap (next rounds)
+## Done in round 2
 
-| Item                                                                                                                    | Source     | Size  |
-| ----------------------------------------------------------------------------------------------------------------------- | ---------- | ----- |
-| Restructure the sidebar: Dashboard first, "Getting started" with a progress pill, collapse advanced sections by default | UX         | 1 day |
-| Dashboard setup banner states progress and links to the next step                                                       | UX         | 2 h   |
-| Row actions as an overflow menu; hide empty columns; sticky actions column                                              | Visual, UX | 3 h   |
-| Card layout for tables below 768 px; filters in a collapsible panel                                                     | Content    | 3 h   |
-| One filter-bar pattern across pages                                                                                     | Visual     | 3 h   |
-| Readiness legend ("Ready = every required skill met"); role column in the gap report                                    | UX         | 2 h   |
-| Standardise terms: pillar → sub-domain → skill; "Skills framework" in navigation                                        | UX         | 1 h   |
-| Locale-aware number formatting (78,2 % in French)                                                                       | Content    | 2 h   |
-| Choose one English spelling (UK) across all English strings                                                             | Content    | 1 h   |
-| Remaining uppercase labels in inline view styles; org-chart avatar colours from the Horizon palette                     | Visual     | 2 h   |
-| Localised PWA manifest                                                                                                  | Content    | 1 h   |
+- **Getting started, everywhere it matters.** SuperAdmins see a "Getting
+  started" link with a progress pill (for example 5/6) at the top of the
+  sidebar until the required steps are done. The dashboard banner states
+  "5 of 6 steps done · Next: …", shows a progress bar and links straight to the
+  next step.
+- **Row actions.** Roles use compact icon buttons with accessible names and a
+  sticky actions column; the Description column disappears when no role has
+  one.
+- **Card tables below 768 px.** `.table-cards` turns rows into labelled cards
+  (roles, employees, skills, gap report). `main.js` fills each cell's label from
+  its column header, so any table can opt in with one class.
+- **One filter-bar pattern.** `.filter-bar` (and the historical page-local
+  names) share one surface, wrap instead of overflowing and stack to full width
+  on a phone.
+- **Readiness explained.** Legends on the dashboard and the gap report: "Ready =
+  every required skill met", and unrated skills never count as zero. The gap
+  report gains a Role column.
+- **Words and numbers.** UK English throughout the English catalogue; pillar →
+  sub-domain → skill and "Skills framework" in navigation; percentages follow
+  the page language (78,2 % in French).
+- **Leftovers.** Inline uppercase labels removed; org-chart avatars use the
+  Horizon gradient; PWA manifest localised (French and English).
+
+## Still open
+
+| Item                                                                 | Source | Size  |
+| -------------------------------------------------------------------- | ------ | ----- |
+| Move Dashboard to the top of the sidebar; collapse advanced sections | UX     | 1 day |
+| Overflow ("more") menu for tables with more than four row actions    | Visual | 3 h   |
+| Card layout for the self-assessment grid below 768 px                | Mobile | 3 h   |
 
 ## Kept, by consensus
 

@@ -15,13 +15,15 @@
     </div>
 </div>
 
+<%# Hide the description column when no role has one — an all-dash column is noise. %>
+<% const _hasDesc = roles.some(function (r) { return r.description && String(r.description).trim(); }); %>
 <div class="table-wrapper">
-    <table class="table" id="rolesTable">
+    <table class="table table-cards table-sticky-actions" id="rolesTable">
         <thead>
             <tr>
                 <th class="sortable"><%= __('admin:name') %></th>
                 <th class="sortable"><%= __('admin:role_family_label') %></th>
-                <th class="sortable"><%= __('admin:description') %></th>
+                <% if (_hasDesc) { %><th class="sortable"><%= __('admin:description') %></th><% } %>
                 <th class="sortable"><%= __('admin:requirements') %></th>
                 <th class="sortable"><%= __('admin:employees') %></th>
                 <th><%= __('admin:actions') %></th>
@@ -30,7 +32,7 @@
         <tbody>
             <% if (roles.length===0) { %>
                 <tr class="empty-row">
-                    <td colspan="6" style="text-align: center; padding: 3rem;">
+                    <td colspan="<%= _hasDesc ? 6 : 5 %>" style="text-align: center; padding: 3rem;">
                         <div class="empty-state">
                             <div class="empty-state-icon"><i class="fas fa-user-tie" aria-hidden="true"></i></div>
                             <h3><%= __('admin:no_roles_found') %></h3>
@@ -42,25 +44,27 @@
                 <% } else { %>
                     <% roles.forEach(function(role) { %>
                         <tr>
-                            <td><strong>
+                            <td data-label="<%= __('admin:name') %>"><strong>
                                     <%= role.name %>
                                 </strong></td>
-                            <td>
+                            <td data-label="<%= __('admin:role_family_label') %>">
                                 <% if (role.familyName) { %>
                                     <span class="badge badge-secondary"><%= role.familyName %></span>
                                 <% } else { %>
                                     <span class="text-muted">—</span>
                                 <% } %>
                             </td>
-                            <td>
-                                <%= role.description || '-' %>
+                            <% if (_hasDesc) { %>
+                            <td data-label="<%= __('admin:description') %>">
+                                <%= role.description || '—' %>
                             </td>
-                            <td>
+                            <% } %>
+                            <td data-label="<%= __('admin:requirements') %>">
                                 <span class="badge badge-info">
                                     <%= role.requirementCount %> <%= role.requirementCount !==1 ? __('admin:skill_plural') : __('admin:skill_singular') %>
                                 </span>
                             </td>
-                            <td>
+                            <td data-label="<%= __('admin:employees') %>">
                                 <% if (role.employeeCount> 0) { %>
                                     <a href="/employees?roleId=<%= role.id %>" class="badge badge-success">
                                         <%= role.employeeCount %> <%= role.employeeCount !==1 ? __('admin:employee_plural') : __('admin:employee_singular') %>
@@ -69,23 +73,21 @@
                                         <span class="badge badge-secondary">0 <%= __('admin:employee_plural') %></span>
                                         <% } %>
                             </td>
-                            <td>
-                                <div class="table-actions">
-                                    <a href="/roles/<%= role.id %>" class="btn btn-sm" title="<%= __('admin:view_details') %>"><i class="fas fa-eye" aria-hidden="true"></i> <%= __('admin:view') %></a>
+                            <td class="cell-actions">
+                                <div class="table-actions table-actions-compact">
+                                    <a href="/roles/<%= role.id %>" class="btn btn-sm" title="<%= __('admin:view_details') %>"><i class="fas fa-eye" aria-hidden="true"></i><span class="sr-only"> <%= __('admin:view') %></span></a>
                                     <button class="btn btn-sm" onclick='editRole(<%= JSON.stringify(role) %>)'
-                                        title="<%= __('admin:edit_role_tooltip') %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                        title="<%= __('admin:edit_role_tooltip') %>"><i class="fas fa-pen" aria-hidden="true"></i><span class="sr-only"> <%= __('admin:edit') %></span></button>
                                     <%# Styled confirmation (ui-feedback data-confirm) — never the native confirm. %>
                                     <form action="/roles/<%= role.id %>/duplicate" method="POST" style="display:inline;"
                                         data-confirm="<%= __('admin:duplicate_role_confirm', { name: role.name }) %>">
                                         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                                        <button type="submit" class="btn btn-sm" title="<%= __('admin:duplicate_role_tooltip') %>"><i class="fas fa-copy" aria-hidden="true"></i>
-                                            <%= __('admin:duplicate') %></button>
+                                        <button type="submit" class="btn btn-sm" title="<%= __('admin:duplicate_role_tooltip') %>"><i class="fas fa-copy" aria-hidden="true"></i><span class="sr-only"> <%= __('admin:duplicate') %></span></button>
                                     </form>
                                     <form action="/roles/<%= role.id %>/delete" method="POST" style="display:inline;"
                                         data-confirm="<%= __('admin:delete_role_confirm') %><%= role.employeeCount > 0 ? '\n\n' + __('admin:delete_role_warning', { n: role.employeeCount }) : '' %>" data-confirm-danger>
                                         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                                        <button type="submit" class="btn btn-sm btn-danger" title="<%= __('admin:delete_role_tooltip') %>"><i class="fas fa-trash-can" aria-hidden="true"></i>
-                                            <%= __('admin:delete') %></button>
+                                        <button type="submit" class="btn btn-sm btn-danger" title="<%= __('admin:delete_role_tooltip') %>"><i class="fas fa-trash-can" aria-hidden="true"></i><span class="sr-only"> <%= __('admin:delete') %></span></button>
                                     </form>
                                 </div>
                             </td>

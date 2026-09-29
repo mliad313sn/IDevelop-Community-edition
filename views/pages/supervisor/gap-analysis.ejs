@@ -9,10 +9,13 @@
         <p><%= __('chrome:ga_none') %></p>
     </div>
 <% } else { %>
-    <table class="table">
+    <p class="hz-legend"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('chrome:ga_legend') %></p>
+    <div class="table-responsive">
+    <table class="table table-cards">
         <thead>
             <tr>
                 <th><%= __('chrome:ga_col_employee') %></th>
+                <th><%= __('chrome:ga_col_role') %></th>
                 <th><%= __('chrome:ga_col_total') %></th>
                 <th><%= __('chrome:ga_col_critical') %></th>
                 <th><%= __('dash:rd_not_measured') %></th>
@@ -22,9 +25,10 @@
         <tbody>
             <% gapAnalysis.forEach(function(analysis) { %>
             <tr>
-                <td><%= analysis.employeeName %></td>
-                <td><%= analysis.totalGaps %></td>
-                <td>
+                <td data-label="<%= __('chrome:ga_col_employee') %>"><%= analysis.employeeName %></td>
+                <td data-label="<%= __('chrome:ga_col_role') %>"><%= analysis.roleName || '—' %></td>
+                <td data-label="<%= __('chrome:ga_col_total') %>"><%= analysis.totalGaps %></td>
+                <td data-label="<%= __('chrome:ga_col_critical') %>">
                     <% if (analysis.criticalGaps > 0) { %>
                         <span class="badge badge-danger"><%= analysis.criticalGaps %></span>
                     <% } else { %>
@@ -33,14 +37,14 @@
                 </td>
                 <%# Measurement debt, not a shortfall — amber, and never folded
                     into the gap counts beside it. %>
-                <td>
+                <td data-label="<%= __('dash:rd_not_measured') %>">
                     <% if (analysis.unmeasured > 0) { %>
                         <span class="badge badge-warning" title="<%= __('dash:rd_not_measured_title') %>"><%= analysis.unmeasured %></span>
                     <% } else { %>
                         <span class="text-muted">—</span>
                     <% } %>
                 </td>
-                <td style="white-space:nowrap">
+                <td class="cell-actions" style="white-space:nowrap">
                     <a class="btn btn-sm" href="/employees/<%= analysis.employeeId %>" title="<%= __('chrome:ga_develop_title') %>"><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('chrome:ga_develop') %></a>
                     <a class="btn btn-sm" href="/coaching/plans" title="<%= __('chrome:ga_coach_title') %>"><i class="fas fa-people-arrows" aria-hidden="true"></i> <%= __('chrome:ga_coach') %></a>
                     <a class="btn btn-sm btn-secondary" href="/v2/idp/new?employeeId=<%= analysis.employeeId %>" title="<%= __('chrome:ga_dev_plan_title') %>"><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('chrome:ga_dev_plan') %></a>
@@ -49,4 +53,5 @@
             <% }); %>
         </tbody>
     </table>
+    </div>
 <% } %>
