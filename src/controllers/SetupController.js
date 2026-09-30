@@ -28,6 +28,16 @@ class SetupController {
         // Optional modules: done once a stage has been recorded (chosen on
         // /admin/modules, or stage 3 recorded for a V2_FEATURES=1 upgrade).
         const mods = await require('../services/ModuleService').resolve();
+        // HRIS connector: an OPTIONAL step (never counted in the required steps).
+        let hris = null;
+        try {
+            hris = await db.get(
+                'SELECT provider FROM hris_connectors WHERE enabled = true LIMIT 1'
+            );
+        } catch (_) {
+            hris = null;
+        }
+        const hrisOn = Boolean(hris && hris.provider);
         const checks = [
             // « Choose what to switch on » — OPTIONAL, so it never changes the
             // required-steps count (sidebar pill, dashboard banner, companion).
@@ -89,6 +99,13 @@ class SetupController {
                 done: c.assessments > 0,
                 href: '/skill-matrix',
                 count: c.assessments,
+            },
+            {
+                key: 'hris',
+                done: hrisOn,
+                href: '/admin/integrations/hris',
+                count: hrisOn ? hris.provider : '—',
+                optional: true,
             },
             {
                 key: 'email',

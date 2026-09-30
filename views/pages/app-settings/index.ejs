@@ -133,6 +133,18 @@
                     </div>
                     <% } %>
 
+                    <% if (user && user.role === 'superadmin') { %>
+                    <!-- Integrations: people data from the HRIS (SuperAdmin only, like the page) -->
+                    <div class="dashboard-section" id="integrations">
+                        <h2><i class="fas fa-plug" aria-hidden="true"></i> <%= __('admin:integrations_h') %></h2>
+                        <div class="card" style="padding:1rem 1.2rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
+                            <i class="fas fa-people-arrows" aria-hidden="true" style="font-size:1.4rem;"></i>
+                            <div style="flex:1;min-width:220px;"><strong><%= __('admin:hris_title') %></strong><div class="text-muted" style="font-size:.88rem;"><%= __('admin:integrations_hris_text') %></div></div>
+                            <a href="/admin/integrations/hris" class="btn btn-secondary"><%= __('admin:integrations_hris_link') %></a>
+                        </div>
+                    </div>
+                    <% } %>
+
                     <!-- Send Test Email -->
                     <div class="dashboard-section">
                         <h2><i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('admin:email_delivery_test') %></h2>

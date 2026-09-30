@@ -1102,6 +1102,78 @@ router.post(
     _smc(SsoMigrationController.undo)
 );
 
+// Integrations → HRIS synchronisation (connectors, mappings, dry run, apply,
+// history). SuperAdmin only, core (no module switch). Saving CREDENTIALS needs
+// a recent sign-in or the current password, like minting an API key; the CSV
+// upload is multipart, sent by public/js/hris-admin.js with the CSRF header.
+const HrisSyncController = require('../controllers/HrisSyncController');
+const _hris = (fn) => _ahAR(fn.bind(HrisSyncController));
+const _hrisUpload = require('multer')({
+    storage: require('multer').memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+    fileFilter: (req, file, cb) => cb(null, /\.(csv|tsv|txt)$/i.test(file.originalname || '')),
+});
+const _hrisHasCredentials = (req) =>
+    Boolean(
+        req.body &&
+        req.body.credentials &&
+        typeof req.body.credentials === 'object' &&
+        Object.values(req.body.credentials).some((v) => String(v || '').trim() !== '')
+    );
+router.get('/admin/integrations/hris', requireSuperAdmin, _hris(HrisSyncController.page));
+router.get(
+    '/admin/integrations/hris/template.csv',
+    requireSuperAdmin,
+    _hris(HrisSyncController.template)
+);
+router.post(
+    '/admin/integrations/hris/connector',
+    requireSuperAdmin,
+    requireRecentAuth({
+        action: 'HRIS credentials',
+        when: _hrisHasCredentials,
+        redirectTo: (req) =>
+            `/admin/integrations/hris?provider=${encodeURIComponent(String((req.body && req.body.provider) || 'csv').replace(/[^a-z]/g, ''))}`,
+    }),
+    _hris(HrisSyncController.saveConnector)
+);
+router.post('/admin/integrations/hris/scim', requireSuperAdmin, _hris(HrisSyncController.saveScim));
+router.post('/admin/integrations/hris/test', requireSuperAdmin, _hris(HrisSyncController.test));
+router.post(
+    '/admin/integrations/hris/dry-run',
+    requireSuperAdmin,
+    _hris(HrisSyncController.dryRun)
+);
+router.post(
+    '/admin/integrations/hris/upload',
+    requireSuperAdmin,
+    (req, res, next) =>
+        _hrisUpload.single('file')(req, res, (err) => {
+            if (!err) return next();
+            return res.status(400).json({
+                ok: false,
+                code: 'upload_refused',
+                error: req.t ? req.t('admin:hris_err_upload') : 'Upload refused',
+            });
+        }),
+    _hris(HrisSyncController.upload)
+);
+router.post(
+    '/admin/integrations/hris/runs/:id(\\d+)/apply',
+    requireSuperAdmin,
+    _hris(HrisSyncController.apply)
+);
+router.post(
+    '/admin/integrations/hris/mappings',
+    requireSuperAdmin,
+    _hris(HrisSyncController.addMapping)
+);
+router.post(
+    '/admin/integrations/hris/mappings/:id(\\d+)/delete',
+    requireSuperAdmin,
+    _hris(HrisSyncController.deleteMapping)
+);
+
 // Maintenance — the SuperAdmin's way back out of a record raised in error
 // (IDP, PIP, 9-box position, employee record). Every action is reasoned,
 // reversible in principle, and written to system_logs + the movement feed.

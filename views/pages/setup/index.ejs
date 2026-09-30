@@ -35,6 +35,7 @@
     cycle: [__('admin:setup_cycle'), __('admin:setup_cycle_sub')],
         assessments: [__('admin:setup_assessments'), __('admin:setup_assessments_sub')],
         email: [__('admin:setup_email'), __('admin:setup_email_sub')],
+        hris: [__('admin:setup_hris'), __('admin:setup_hris_sub')],
     }; %>
     <% checks.forEach(function(c, i){ const l = LBL[c.key] || [c.key, '']; %>
         <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;<%= i < checks.length-1 ? 'border-bottom:1px solid var(--border);' : '' %>">

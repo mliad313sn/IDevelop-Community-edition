@@ -1,0 +1,489 @@
+<%#
+  Integrations → HRIS synchronisation (SuperAdmin only).
+  Connector + write-only credentials, value mappings, test / dry run / upload,
+  the plan (joiners, movers, leavers, unmapped values, errors), apply, history.
+  Every string is a literal admin: key resolved here; codes from the service are
+  mapped to labels through the dictionaries below, never interpolated into a key.
+%>
+<%
+const PROV = { csv: __('admin:hris_provider_csv'), personio: __('admin:hris_provider_personio'), lucca: __('admin:hris_provider_lucca') };
+const PROV_SUB = { csv: __('admin:hris_provider_csv_sub'), personio: __('admin:hris_provider_personio_sub'), lucca: __('admin:hris_provider_lucca_sub') };
+const FIELD = {
+  externalId: __('admin:hris_f_external_id'), employeeNumber: __('admin:hris_f_employee_number'),
+  firstName: __('admin:hris_f_first_name'), lastName: __('admin:hris_f_last_name'), email: __('admin:hris_f_email'),
+  jobTitle: __('admin:hris_f_job_title'), department: __('admin:hris_f_department'), site: __('admin:hris_f_site'),
+  service: __('admin:hris_f_service'), managerExternalId: __('admin:hris_f_manager'), manager: __('admin:hris_f_manager'),
+  startDate: __('admin:hris_f_start_date'), endDate: __('admin:hris_f_end_date'), status: __('admin:hris_f_status'),
+  role: __('admin:hris_f_role'), siteId: __('admin:hris_f_site'), departmentId: __('admin:hris_f_department'),
+  serviceId: __('admin:hris_f_service'), roleId: __('admin:hris_f_role'), supervisorId: __('admin:hris_f_manager')
+};
+const CRED = { client_id: __('admin:hris_cred_client_id'), client_secret: __('admin:hris_cred_client_secret'), api_key: __('admin:hris_cred_api_key') };
+const STATUS = { running: __('admin:hris_st_running'), planned: __('admin:hris_st_planned'), applied: __('admin:hris_st_applied'), aborted: __('admin:hris_st_aborted'), failed: __('admin:hris_st_failed'), superseded: __('admin:hris_st_superseded') };
+const STATUS_CLASS = { planned: 'badge-warning', applied: 'badge-success', aborted: 'badge-danger', failed: 'badge-danger', running: 'badge-secondary', superseded: 'badge-secondary' };
+const TRIGGER = { manual: __('admin:hris_tr_manual'), upload: __('admin:hris_tr_upload'), schedule: __('admin:hris_tr_schedule'), test: __('admin:hris_tr_manual') };
+const MODE = { dry_run: __('admin:hris_mode_dry_run'), apply: __('admin:hris_mode_apply') };
+const REASON = {
+  ended: __('admin:hris_r_ended'), missing: __('admin:hris_r_missing'),
+  role_missing: __('admin:hris_r_role_missing'), department_missing: __('admin:hris_r_department_missing'),
+  name_missing: __('admin:hris_r_name_missing'), site_mismatch: __('admin:hris_r_site_mismatch'),
+  unmapped_site: __('admin:hris_r_unmapped_site'), unmapped_department: __('admin:hris_r_unmapped_department'),
+  unmapped_service: __('admin:hris_r_unmapped_service'), unmapped_role: __('admin:hris_r_unmapped_role'),
+  placement_incomplete: __('admin:hris_r_placement_incomplete'),
+  email_ambiguous: __('admin:hris_r_email_ambiguous'), inactive_here: __('admin:hris_r_inactive_here'),
+  external_id_missing: __('admin:hris_r_external_id_missing'), duplicate_external_id: __('admin:hris_r_duplicate_external_id'),
+  seat_limit: __('admin:hris_r_seat_limit'), placement_inconsistent: __('admin:hris_r_placement_inconsistent'),
+  employee_number_taken: __('admin:hris_r_employee_number_taken'), employee_not_found: __('admin:hris_r_employee_not_found'),
+  hris_guard_tripped: __('admin:hris_r_guard_tripped'), too_many_leavers: __('admin:hris_r_too_many_leavers'),
+  empty_export: __('admin:hris_r_empty_export')
+};
+const reasonOf = function (c, msg) { return REASON[c] || msg || c; };
+const KIND = { site: __('admin:hris_f_site'), department: __('admin:hris_f_department'), service: __('admin:hris_f_service'), role: __('admin:hris_f_role') };
+const _name = function (list, fmt) { const m = {}; (list || []).forEach(function (x) { m[String(x.id)] = fmt ? fmt(x) : x.name; }); return m; };
+const SITE_N = _name(refs.sites);
+const DEPT_N = _name(refs.departments, function (d) { return d.name + ' (' + d.siteName + ')'; });
+const SVC_N = _name(refs.services, function (s) { return s.name + ' — ' + s.departmentName + ' (' + s.siteName + ')'; });
+const ROLE_N = _name(refs.roles);
+const unitName = function (field, id) {
+  if (id == null) return '—';
+  const k = String(id);
+  if (field === 'siteId') return SITE_N[k] || ('#' + k);
+  if (field === 'departmentId') return DEPT_N[k] || ('#' + k);
+  if (field === 'serviceId') return SVC_N[k] || ('#' + k);
+  if (field === 'roleId') return ROLE_N[k] || ('#' + k);
+  return '#' + k;
+};
+const OPTIONS = { site: refs.sites, department: refs.departments, service: refs.services, role: refs.roles };
+const optLabel = function (kind, x) { return kind === 'department' ? DEPT_N[String(x.id)] : (kind === 'service' ? SVC_N[String(x.id)] : x.name); };
+const cfg = connector.config || {};
+const _fdt = (typeof fmtDateTime === 'function') ? fmtDateTime : function (d) { return d ? String(d) : '—'; };
+const enabledProvider = providers.find(function (p) { return connectors[p].enabled; });
+%>
+
+<div class="page-header">
+  <div>
+    <h1><i class="fas fa-people-arrows" aria-hidden="true"></i> <%= __('admin:hris_title') %></h1>
+    <p class="text-muted"><%= __('admin:hris_intro') %></p>
+  </div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    <a href="/app-settings" class="btn btn-secondary btn-sm"><i class="fas fa-gear" aria-hidden="true"></i> <%= __('admin:app_settings') %></a>
+    <a href="<%= hrisBase %>/template.csv" class="btn btn-secondary btn-sm"><i class="fas fa-download" aria-hidden="true"></i> <%= __('admin:hris_template') %></a>
+  </div>
+</div>
+
+<div class="card hz-callout" role="status" style="padding:14px 18px;margin-bottom:1rem;">
+  <i class="fas fa-circle-info" aria-hidden="true"></i>
+  <% if (enabledProvider) { %>
+    <%= __('admin:hris_state_enabled', { provider: PROV[enabledProvider] }) %>
+    <% if (connectors[enabledProvider].autoApply) { %><%= __('admin:hris_state_auto') %><% } else { %><%= __('admin:hris_state_review') %><% } %>
+  <% } else { %>
+    <%= __('admin:hris_state_disabled') %>
+  <% } %>
+</div>
+
+<%# ── 1. Connector ─────────────────────────────────────────────────────── %>
+<div class="card" style="padding:1rem 1.2rem;margin-bottom:1rem;">
+  <h2 style="margin-top:0;font-size:1.1rem"><i class="fas fa-plug" aria-hidden="true"></i> <%= __('admin:hris_connector_h') %></h2>
+  <nav class="filter-bar" aria-label="<%= __('admin:hris_connector_h') %>" style="margin-bottom:1rem">
+    <% providers.forEach(function (p) { %>
+      <a href="<%= hrisBase %>?provider=<%= p %>" class="btn btn-sm <%= p === provider ? 'btn-primary' : 'btn-secondary' %>" <%= p === provider ? 'aria-current=page' : '' %>>
+        <%= PROV[p] %><% if (connectors[p].enabled) { %> · <%= __('admin:enabled') %><% } %>
+      </a>
+    <% }); %>
+  </nav>
+  <p class="text-muted" style="margin-top:0"><%= PROV_SUB[provider] %></p>
+  <% if (provider !== 'csv') { %>
+    <p class="text-muted" style="margin-top:0"><i class="fas fa-flask" aria-hidden="true"></i> <%= __('admin:hris_not_validated') %></p>
+  <% } %>
+
+  <form method="POST" action="<%= hrisBase %>/connector" autocomplete="off">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="provider" value="<%= provider %>">
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem 1rem;">
+      <label style="display:flex;gap:.5rem;align-items:center"><input type="checkbox" name="enabled" value="true" <%= connector.enabled ? 'checked' : '' %>> <%= __('admin:hris_enabled') %></label>
+      <label style="display:flex;gap:.5rem;align-items:center"><input type="checkbox" name="autoApply" value="true" <%= connector.autoApply ? 'checked' : '' %>> <%= __('admin:hris_auto_apply') %></label>
+      <div>
+        <label for="hris-guard"><%= __('admin:hris_guard_pct') %></label>
+        <input id="hris-guard" class="form-control" type="number" name="leaverGuardPct" min="1" max="100" step="0.5" value="<%= connector.leaverGuardPct %>">
+      </div>
+      <div>
+        <label for="hris-hour"><%= __('admin:hris_schedule_hour') %></label>
+        <input id="hris-hour" class="form-control" type="number" name="scheduleHour" min="0" max="23" value="<%= connector.scheduleHour %>">
+      </div>
+      <div>
+        <label for="hris-mode"><%= __('admin:hris_mode') %></label>
+        <select id="hris-mode" name="config[mode]" class="form-control">
+          <option value="full" <%= cfg.mode !== 'delta' ? 'selected' : '' %>><%= __('admin:hris_mode_full') %></option>
+          <option value="delta" <%= cfg.mode === 'delta' ? 'selected' : '' %>><%= __('admin:hris_mode_delta') %></option>
+        </select>
+      </div>
+      <div>
+        <label for="hris-match"><%= __('admin:hris_match_by_name') %></label>
+        <select id="hris-match" name="config[match_by_name]" class="form-control">
+          <option value="true" <%= cfg.match_by_name !== false ? 'selected' : '' %>><%= __('admin:enabled') %></option>
+          <option value="false" <%= cfg.match_by_name === false ? 'selected' : '' %>><%= __('admin:disabled') %></option>
+        </select>
+      </div>
+    </div>
+    <small class="text-muted" style="display:block;margin:.4rem 0 1rem"><%= __('admin:hris_guard_hint') %></small>
+
+    <% if (provider === 'csv') { %>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem 1rem;">
+        <div style="grid-column:1/-1">
+          <label for="hris-folder"><%= __('admin:hris_folder') %></label>
+          <input id="hris-folder" class="form-control" name="config[folder_path]" value="<%= cfg.folder_path || '' %>" placeholder="C:\ProgramData\IDevelop\hris-drop" maxlength="1000">
+          <small class="text-muted"><%= __('admin:hris_folder_hint') %></small>
+        </div>
+        <div>
+          <label for="hris-delim"><%= __('admin:hris_delimiter') %></label>
+          <select id="hris-delim" name="config[delimiter]" class="form-control">
+            <% [['auto', __('admin:hris_delim_auto')], [',', ','], [';', ';'], ['tab', __('admin:hris_delim_tab')], ['|', '|']].forEach(function (d) { %>
+              <option value="<%= d[0] %>" <%= (cfg.delimiter || 'auto') === d[0] ? 'selected' : '' %>><%= d[1] %></option>
+            <% }); %>
+          </select>
+        </div>
+      </div>
+      <details style="margin-top:1rem">
+        <summary><%= __('admin:hris_columns_h') %></summary>
+        <p class="text-muted"><%= __('admin:hris_columns_hint') %></p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.5rem 1rem;">
+          <% Object.keys(csvColumns).forEach(function (f) { %>
+            <div>
+              <label for="hris-col-<%= f %>"><%= FIELD[f] %></label>
+              <input id="hris-col-<%= f %>" class="form-control" name="config[columns][<%= f %>]" value="<%= (cfg.columns && cfg.columns[f]) || '' %>" placeholder="<%= csvColumns[f] %>" maxlength="120">
+            </div>
+          <% }); %>
+        </div>
+      </details>
+    <% } else { %>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem 1rem;">
+        <div style="grid-column:1/-1">
+          <label for="hris-base"><%= __('admin:hris_base_url') %></label>
+          <input id="hris-base" class="form-control" type="url" name="config[base_url]" value="<%= cfg.base_url || '' %>" placeholder="<%= provider === 'personio' ? 'https://api.personio.de' : 'https://acme.ilucca.net' %>" maxlength="300">
+          <small class="text-muted"><%= provider === 'personio' ? __('admin:hris_base_url_personio_hint') : __('admin:hris_base_url_lucca_hint') %></small>
+        </div>
+        <% if (provider === 'lucca') { %>
+        <div>
+          <label for="hris-site-src"><%= __('admin:hris_lucca_site_source') %></label>
+          <select id="hris-site-src" name="config[site_source]" class="form-control">
+            <option value="legal_entity" <%= cfg.site_source !== 'establishment' ? 'selected' : '' %>><%= __('admin:hris_lucca_legal_entity') %></option>
+            <option value="establishment" <%= cfg.site_source === 'establishment' ? 'selected' : '' %>><%= __('admin:hris_lucca_establishment') %></option>
+          </select>
+        </div>
+        <% } %>
+      </div>
+      <% if (provider === 'personio') { %>
+      <details style="margin-top:1rem">
+        <summary><%= __('admin:hris_attributes_h') %></summary>
+        <p class="text-muted"><%= __('admin:hris_attributes_hint') %></p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.5rem 1rem;">
+          <% Object.keys(personioAttributes).forEach(function (f) { %>
+            <div>
+              <label for="hris-attr-<%= f %>"><%= FIELD[f] %></label>
+              <input id="hris-attr-<%= f %>" class="form-control" name="config[attributes][<%= f %>]" value="<%= (cfg.attributes && cfg.attributes[f]) || '' %>" placeholder="<%= personioAttributes[f] || '' %>" maxlength="120">
+            </div>
+          <% }); %>
+        </div>
+      </details>
+      <% } %>
+
+      <fieldset style="border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-top:1rem">
+        <legend style="padding:0 .3rem;font-weight:600"><%= __('admin:hris_credentials_h') %></legend>
+        <p class="text-muted" style="margin-top:0"><%= __('admin:hris_credentials_hint') %></p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem 1rem;">
+          <% credentialKeys.forEach(function (k) { %>
+            <div>
+              <label for="hris-cred-<%= k %>"><%= CRED[k] %>
+                <% if (connector.credentialsStored[k]) { %><span class="badge badge-success"><%= __('admin:hris_cred_stored') %></span><% } else { %><span class="badge badge-secondary"><%= __('admin:not_set') %></span><% } %>
+              </label>
+              <input id="hris-cred-<%= k %>" class="form-control" type="password" name="credentials[<%= k %>]" value="" autocomplete="new-password" maxlength="500" placeholder="<%= connector.credentialsStored[k] ? '••••••••' : '' %>">
+            </div>
+          <% }); %>
+          <div>
+            <label for="hris-current-password"><%= __('admin:reauth_current_password') %></label>
+            <input id="hris-current-password" class="form-control" type="password" name="currentPassword" autocomplete="current-password" maxlength="200" aria-describedby="hris-reauth-hint">
+          </div>
+        </div>
+        <small id="hris-reauth-hint" class="text-muted" style="display:block;margin-top:.4rem"><%= __('admin:reauth_hint', { minutes: 15 }) %></small>
+      </fieldset>
+    <% } %>
+
+    <div style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+      <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('admin:hris_save') %></button>
+    </div>
+  </form>
+
+  <div style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+    <form method="POST" action="<%= hrisBase %>/test" style="display:inline">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="provider" value="<%= provider %>">
+      <button type="submit" class="btn btn-secondary" <%= connector.exists ? '' : 'disabled' %>><i class="fas fa-stethoscope" aria-hidden="true"></i> <%= __('admin:hris_test') %></button>
+    </form>
+    <form method="POST" action="<%= hrisBase %>/dry-run" style="display:inline">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="provider" value="<%= provider %>">
+      <button type="submit" class="btn btn-secondary" <%= connector.exists ? '' : 'disabled' %>><i class="fas fa-flask" aria-hidden="true"></i> <%= __('admin:hris_dry_run') %></button>
+    </form>
+  </div>
+
+  <% if (provider === 'csv') { %>
+  <form id="hris-upload" method="POST" action="<%= hrisBase %>/upload" enctype="multipart/form-data" data-csrf="<%= csrfToken %>" style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div>
+      <label for="hris-file"><%= __('admin:hris_upload') %></label>
+      <input id="hris-file" class="form-control" type="file" name="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" required>
+    </div>
+    <button type="submit" class="btn btn-secondary"><i class="fas fa-upload" aria-hidden="true"></i> <%= __('admin:hris_upload_btn') %></button>
+    <span id="hris-upload-msg" role="status" class="text-muted"></span>
+  </form>
+  <small class="text-muted" style="display:block;margin-top:.3rem"><%= __('admin:hris_upload_hint') %></small>
+  <% } %>
+</div>
+
+<%# ── 2. Plan of the selected run ──────────────────────────────────────── %>
+<div class="card" style="padding:1rem 1.2rem;margin-bottom:1rem;" id="hris-plan">
+  <h2 style="margin-top:0;font-size:1.1rem"><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('admin:hris_plan_h') %></h2>
+  <% if (!run) { %>
+    <%- include('../../partials/empty-state', { icon: 'fa-flask', title: __('admin:hris_plan_empty_title'), text: __('admin:hris_plan_empty_text') }) %>
+  <% } else { %>
+    <p style="margin-top:0">
+      <strong>#<%= run.id %></strong> · <%= PROV[run.provider] || run.provider %> · <%= MODE[run.mode] || run.mode %> ·
+      <span class="badge <%= STATUS_CLASS[run.status] || 'badge-secondary' %>"><%= STATUS[run.status] || run.status %></span> ·
+      <%= TRIGGER[run.trigger] || run.trigger %> · <%= _fdt(run.startedAt) %>
+      <% if (run.sourceLabel) { %> · <code><%= run.sourceLabel %></code><% } %>
+    </p>
+    <% if (run.status === 'failed' && (!plan)) { %>
+      <div class="card hz-callout" role="alert" style="padding:12px 16px;">
+        <i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('admin:hris_run_failed') %>
+        <ul style="margin:.4rem 0 0">
+          <% (run.errors || []).forEach(function (e) { %><li><code><%= e.code %></code> <%= e.message || '' %></li><% }); %>
+        </ul>
+      </div>
+    <% } %>
+    <% if (plan) { const c = plan.counts || {}; const g = plan.guard || {}; %>
+      <% if (g.tripped) { %>
+        <div class="card hz-callout" role="alert" style="padding:12px 16px;margin-bottom:1rem;">
+          <i class="fas fa-shield-halved" aria-hidden="true"></i>
+          <strong><%= __('admin:hris_guard_tripped_title') %></strong>
+          <%= reasonOf(g.reason) %> — <%= __('admin:hris_guard_numbers', { leavers: g.leavers, population: g.population, pct: g.pct, limit: g.limitPct }) %>
+        </div>
+      <% } %>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.5rem;margin-bottom:1rem;">
+        <% [['joiners', __('admin:hris_c_joiners')], ['movers', __('admin:hris_c_movers')], ['updates', __('admin:hris_c_updates')], ['leavers', __('admin:hris_c_leavers')], ['links', __('admin:hris_c_links')], ['blocked', __('admin:hris_c_blocked')], ['unmapped', __('admin:hris_c_unmapped')], ['errors', __('admin:hris_c_errors')], ['unchanged', __('admin:hris_c_unchanged')]].forEach(function (k) { %>
+          <div class="card" style="padding:.6rem .8rem"><div style="font-size:1.3rem;font-weight:700;font-family:var(--font-data)"><%= c[k[0]] || 0 %></div><div class="text-muted" style="font-size:.82rem"><%= k[1] %></div></div>
+        <% }); %>
+      </div>
+
+      <% if (run.mode === 'dry_run' && run.status === 'planned') { %>
+        <form method="POST" action="<%= hrisBase %>/runs/<%= run.id %>/apply" data-confirm="<%= __('admin:hris_apply_confirm', { joiners: c.joiners || 0, movers: c.movers || 0, leavers: c.leavers || 0 }) %>" style="margin-bottom:1rem">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button type="submit" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i> <%= __('admin:hris_apply') %></button>
+          <small class="text-muted"><%= __('admin:hris_apply_hint') %></small>
+        </form>
+      <% } %>
+
+      <% if ((plan.unmapped || []).length) { %>
+        <h3 id="hris-unmapped" style="font-size:1rem"><%= __('admin:hris_unmapped_h') %></h3>
+        <p class="text-muted"><%= __('admin:hris_unmapped_hint') %></p>
+        <table class="table table-cards">
+          <thead><tr><th><%= __('admin:hris_th_field') %></th><th><%= __('admin:hris_th_value') %></th><th><%= __('admin:hris_th_count') %></th><th><%= __('admin:hris_th_map_to') %></th></tr></thead>
+          <tbody>
+            <% plan.unmapped.forEach(function (u) { %>
+              <tr>
+                <td data-label="<%= __('admin:hris_th_field') %>"><%= FIELD[u.field] || u.field %></td>
+                <td data-label="<%= __('admin:hris_th_value') %>"><code><%= u.value %></code><% if (u.people && u.people.length) { %><div class="text-muted" style="font-size:.8rem"><%= u.people.join(', ') %></div><% } %></td>
+                <td data-label="<%= __('admin:hris_th_count') %>"><%= u.count %></td>
+                <td data-label="<%= __('admin:hris_th_map_to') %>">
+                  <% if (OPTIONS[u.field]) { %>
+                    <form method="POST" action="<%= hrisBase %>/mappings" style="display:flex;gap:.4rem;flex-wrap:wrap">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <input type="hidden" name="kind" value="<%= u.field %>">
+                      <input type="hidden" name="externalValue" value="<%= u.value %>">
+                      <input type="hidden" name="run" value="<%= run.id %>">
+                      <select name="targetId" class="form-control" required aria-label="<%= __('admin:hris_th_map_to') %>">
+                        <option value=""><%= __('admin:hris_choose') %></option>
+                        <% (OPTIONS[u.field] || []).forEach(function (x) { %><option value="<%= x.id %>"><%= optLabel(u.field, x) %></option><% }); %>
+                      </select>
+                      <button type="submit" class="btn btn-sm btn-secondary"><%= __('admin:hris_map') %></button>
+                    </form>
+                  <% } else { %>
+                    <span class="text-muted"><%= __('admin:hris_manager_unmapped_hint') %></span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+
+      <% if ((plan.joiners || []).length) { %>
+        <h3 style="font-size:1rem"><%= __('admin:hris_c_joiners') %></h3>
+        <table class="table table-cards">
+          <thead><tr><th><%= __('admin:hris_th_person') %></th><th><%= __('admin:hris_f_site') %></th><th><%= __('admin:hris_f_department') %></th><th><%= __('admin:hris_f_service') %></th><th><%= __('admin:hris_f_role') %></th></tr></thead>
+          <tbody>
+            <% plan.joiners.forEach(function (j) { %>
+              <tr>
+                <td data-label="<%= __('admin:hris_th_person') %>"><strong><%= j.name %></strong><div class="text-muted" style="font-size:.8rem"><%= j.externalId %><%= j.employeeNumber ? ' · ' + j.employeeNumber : '' %><%= j.email ? ' · ' + j.email : '' %></div></td>
+                <td data-label="<%= __('admin:hris_f_site') %>"><%= unitName('siteId', j.siteId) %></td>
+                <td data-label="<%= __('admin:hris_f_department') %>"><%= unitName('departmentId', j.departmentId) %></td>
+                <td data-label="<%= __('admin:hris_f_service') %>"><%= unitName('serviceId', j.serviceId) %></td>
+                <td data-label="<%= __('admin:hris_f_role') %>"><%= unitName('roleId', j.roleId) %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+
+      <% if ((plan.movers || []).length || (plan.updates || []).length) { %>
+        <h3 style="font-size:1rem"><%= __('admin:hris_c_movers') %></h3>
+        <table class="table table-cards">
+          <thead><tr><th><%= __('admin:hris_th_person') %></th><th><%= __('admin:hris_th_changes') %></th></tr></thead>
+          <tbody>
+            <% (plan.movers || []).concat(plan.updates || []).forEach(function (m) { %>
+              <tr>
+                <td data-label="<%= __('admin:hris_th_person') %>"><a href="/employees/<%= m.employeeId %>"><%= m.name %></a><div class="text-muted" style="font-size:.8rem"><%= m.externalId %></div></td>
+                <td data-label="<%= __('admin:hris_th_changes') %>">
+                  <ul style="margin:0;padding-left:1rem">
+                    <% Object.keys(m.changes || {}).forEach(function (f) { %><li><%= FIELD[f] || f %> : <%= unitName(f, m.changes[f].from) %> → <%= unitName(f, m.changes[f].to) %></li><% }); %>
+                    <% if (m.managerPendingExternalId) { %><li><%= FIELD.manager %> → <%= m.managerPendingExternalId %></li><% } %>
+                    <% Object.keys(m.profile || {}).forEach(function (f) { %><li><%= FIELD[f] || f %> → <%= m.profile[f] %></li><% }); %>
+                  </ul>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+
+      <% if ((plan.leavers || []).length) { %>
+        <h3 style="font-size:1rem"><%= __('admin:hris_c_leavers') %></h3>
+        <table class="table table-cards">
+          <thead><tr><th><%= __('admin:hris_th_person') %></th><th><%= __('admin:hris_th_reason') %></th></tr></thead>
+          <tbody>
+            <% plan.leavers.forEach(function (l) { %>
+              <tr>
+                <td data-label="<%= __('admin:hris_th_person') %>"><a href="/employees/<%= l.employeeId %>"><%= l.name %></a><div class="text-muted" style="font-size:.8rem"><%= l.externalId %></div></td>
+                <td data-label="<%= __('admin:hris_th_reason') %>"><%= reasonOf(l.reason) %><%= l.endDate ? ' (' + l.endDate + ')' : '' %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+
+      <% const _issues = [].concat((plan.blocked || []).map(function (b) { return { name: b.name, id: b.externalId, text: b.reasons.map(function (r) { return reasonOf(r); }).join(' · ') }; }), (plan.review || []).map(function (r) { return { name: r.name, id: r.externalId, text: reasonOf(r.reason) }; }), (plan.errors || []).map(function (e) { return { name: e.name || (e.row ? __('admin:hris_row', { n: e.row }) : ''), id: e.externalId || '', text: reasonOf(e.code, e.message) }; })); %>
+      <% if (_issues.length) { %>
+        <h3 style="font-size:1rem"><%= __('admin:hris_issues_h') %></h3>
+        <table class="table table-cards">
+          <thead><tr><th><%= __('admin:hris_th_person') %></th><th><%= __('admin:hris_th_reason') %></th></tr></thead>
+          <tbody>
+            <% _issues.forEach(function (x) { %>
+              <tr>
+                <td data-label="<%= __('admin:hris_th_person') %>"><%= x.name %><div class="text-muted" style="font-size:.8rem"><%= x.id %></div></td>
+                <td data-label="<%= __('admin:hris_th_reason') %>"><%= x.text %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+      <% if ((plan.upcoming || []).length) { %>
+        <p class="text-muted"><i class="fas fa-calendar-plus" aria-hidden="true"></i> <%= __('admin:hris_upcoming', { n: plan.upcoming.length }) %></p>
+      <% } %>
+      <% if (run.mode === 'apply' && (run.errors || []).length) { %>
+        <h3 style="font-size:1rem"><%= __('admin:hris_apply_errors_h') %></h3>
+        <ul>
+          <% run.errors.forEach(function (e) { %><li><%= e.name || e.externalId || '' %> — <%= reasonOf(e.code, e.message) %></li><% }); %>
+        </ul>
+      <% } %>
+    <% } %>
+  <% } %>
+</div>
+
+<%# ── 3. Value mappings ────────────────────────────────────────────────── %>
+<div class="card" style="padding:1rem 1.2rem;margin-bottom:1rem;" id="hris-mappings">
+  <h2 style="margin-top:0;font-size:1.1rem"><i class="fas fa-right-left" aria-hidden="true"></i> <%= __('admin:hris_mappings_h') %></h2>
+  <p class="text-muted"><%= __('admin:hris_mappings_hint') %></p>
+  <form method="POST" action="<%= hrisBase %>/mappings" class="filter-bar" style="margin-bottom:1rem">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div class="filter-group">
+      <label for="hris-map-kind"><%= __('admin:hris_th_field') %></label>
+      <select id="hris-map-kind" name="kind" class="form-control">
+        <% Object.keys(KIND).forEach(function (k) { %><option value="<%= k %>"><%= KIND[k] %></option><% }); %>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="hris-map-value"><%= __('admin:hris_th_value') %></label>
+      <input id="hris-map-value" class="form-control" name="externalValue" required maxlength="300">
+    </div>
+    <div class="filter-group">
+      <label for="hris-map-target"><%= __('admin:hris_th_map_to') %></label>
+      <select id="hris-map-target" name="targetId" class="form-control" required>
+        <option value=""><%= __('admin:hris_choose') %></option>
+        <% Object.keys(KIND).forEach(function (k) { %>
+          <optgroup label="<%= KIND[k] %>">
+            <% (OPTIONS[k] || []).forEach(function (x) { %><option value="<%= x.id %>" data-kind="<%= k %>"><%= optLabel(k, x) %></option><% }); %>
+          </optgroup>
+        <% }); %>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-secondary"><%= __('admin:hris_map') %></button>
+  </form>
+  <% if (!mappings.length) { %>
+    <%- include('../../partials/empty-state', { icon: 'fa-right-left', title: __('admin:hris_mappings_empty_title'), text: __('admin:hris_mappings_empty_text') }) %>
+  <% } else { %>
+    <table class="table table-cards">
+      <thead><tr><th><%= __('admin:hris_th_field') %></th><th><%= __('admin:hris_th_value') %></th><th><%= __('admin:hris_th_map_to') %></th><th><span class="sr-only"><%= __('admin:actions') %></span></th></tr></thead>
+      <tbody>
+        <% mappings.forEach(function (m) { %>
+          <tr>
+            <td data-label="<%= __('admin:hris_th_field') %>"><%= KIND[m.kind] || m.kind %></td>
+            <td data-label="<%= __('admin:hris_th_value') %>"><code><%= m.externalValue %></code></td>
+            <td data-label="<%= __('admin:hris_th_map_to') %>"><%= m.targetName || ('#' + m.targetId) %><% if (m.targetDepartmentName) { %> — <%= m.targetDepartmentName %><% } %><% if (m.targetSiteName) { %> (<%= m.targetSiteName %>)<% } %></td>
+            <td class="cell-actions">
+              <form method="POST" action="<%= hrisBase %>/mappings/<%= m.id %>/delete" data-confirm="<%= __('admin:hris_mapping_delete_confirm') %>">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button type="submit" class="btn btn-sm btn-secondary"><i class="fas fa-trash" aria-hidden="true"></i> <%= __('admin:hris_remove') %></button>
+              </form>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<%# ── 4. SCIM placement ────────────────────────────────────────────────── %>
+<div class="card" style="padding:1rem 1.2rem;margin-bottom:1rem;">
+  <h2 style="margin-top:0;font-size:1.1rem"><i class="fas fa-id-badge" aria-hidden="true"></i> <%= __('admin:hris_scim_h') %></h2>
+  <p class="text-muted"><%= __('admin:hris_scim_hint') %></p>
+  <form method="POST" action="<%= hrisBase %>/scim" style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <label style="display:flex;gap:.5rem;align-items:center"><input type="checkbox" name="scimAutoPlace" value="true" <%= scimAutoPlace ? 'checked' : '' %>> <%= __('admin:hris_scim_toggle') %></label>
+    <button type="submit" class="btn btn-secondary btn-sm"><%= __('admin:hris_save') %></button>
+  </form>
+</div>
+
+<%# ── 5. History ───────────────────────────────────────────────────────── %>
+<div class="card" style="padding:1rem 1.2rem;margin-bottom:1rem;">
+  <h2 style="margin-top:0;font-size:1.1rem"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> <%= __('admin:hris_history_h') %></h2>
+  <% if (!runs.length) { %>
+    <%- include('../../partials/empty-state', { icon: 'fa-clock-rotate-left', title: __('admin:hris_history_empty_title'), text: __('admin:hris_history_empty_text') }) %>
+  <% } else { %>
+    <table class="table table-cards">
+      <thead><tr><th>#</th><th><%= __('admin:hris_th_when') %></th><th><%= __('admin:hris_th_connector') %></th><th><%= __('admin:hris_th_mode') %></th><th><%= __('admin:hris_th_status') %></th><th><%= __('admin:hris_th_trigger') %></th><th><%= __('admin:hris_th_counts') %></th></tr></thead>
+      <tbody>
+        <% runs.forEach(function (r) { const c = r.counts || {}; %>
+          <tr>
+            <td data-label="#"><a href="<%= hrisBase %>?run=<%= r.id %>">#<%= r.id %></a></td>
+            <td data-label="<%= __('admin:hris_th_when') %>"><%= _fdt(r.startedAt) %></td>
+            <td data-label="<%= __('admin:hris_th_connector') %>"><%= PROV[r.provider] || r.provider %><% if (r.sourceLabel) { %><div class="text-muted" style="font-size:.8rem"><%= r.sourceLabel %></div><% } %></td>
+            <td data-label="<%= __('admin:hris_th_mode') %>"><%= MODE[r.mode] || r.mode %></td>
+            <td data-label="<%= __('admin:hris_th_status') %>"><span class="badge <%= STATUS_CLASS[r.status] || 'badge-secondary' %>"><%= STATUS[r.status] || r.status %></span></td>
+            <td data-label="<%= __('admin:hris_th_trigger') %>"><%= TRIGGER[r.trigger] || r.trigger %><% if (r.actorRef) { %><div class="text-muted" style="font-size:.8rem"><%= r.actorRef %></div><% } %></td>
+            <td data-label="<%= __('admin:hris_th_counts') %>" style="font-size:.85rem"><%= __('admin:hris_counts_line', { j: c.joiners || 0, m: c.movers || 0, l: c.leavers || 0, u: c.unmapped || 0, e: c.errors || 0 }) %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<script src="/js/hris-admin.js?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>"></script>
