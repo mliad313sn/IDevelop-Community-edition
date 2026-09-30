@@ -62,7 +62,7 @@ services:
 
   redis:
     <<: *hardening
-    image: redis:7-alpine
+    image: redis:8-alpine
     # redis user (uid 999 on Alpine); no persistence (`--save ''`), queues are
     # rebuilt by the app. /data is the working directory only.
     user: '999:999'
