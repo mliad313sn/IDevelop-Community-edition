@@ -186,6 +186,9 @@ describe('SEC-2 — issuable scopes: ONE list for the admin page and /api/v1', (
         app.use((req, _res, next) => {
             req.user = { id: 1, userType: 'admin', role: 'superadmin' };
             req.isAuthenticated = () => true;
+            // A fresh sign-in: key creation now needs one, or the current
+            // password (ASVS 3.7.1). The gate itself: recentAuth.test.js.
+            req.session = { meta: { loginAt: Date.now() } };
             next();
         });
         app.use('/api/v1', require('../../src/api/v1'));

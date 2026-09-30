@@ -76,14 +76,14 @@
             </div>
             <div class="form-group">
                 <label for="password"><%= __('auth:su_password') %></label>
-                <input type="password" id="password" name="password" required class="form-control" placeholder="<%= __('auth:su_password_ph') %>" aria-describedby="pwHint">
+                <input type="password" id="password" name="password" required minlength="12" maxlength="128" autocomplete="new-password" class="form-control" placeholder="<%= __('auth:su_password_ph') %>" aria-describedby="pwHint">
                 <%# State the rule up front: the same localized sentence the server
                     answers with, so a rejected password is never a surprise. %>
                 <small id="pwHint" class="login-help-text"><%= __('admin:onbx_su_password_policy') %></small>
             </div>
             <div class="form-group">
                 <label for="confirmPassword"><%= __('auth:su_confirm') %></label>
-                <input type="password" id="confirmPassword" name="confirmPassword" required class="form-control" placeholder="<%= __('auth:su_confirm_ph') %>">
+                <input type="password" id="confirmPassword" name="confirmPassword" required minlength="12" maxlength="128" autocomplete="new-password" class="form-control" placeholder="<%= __('auth:su_confirm_ph') %>">
             </div>
             <button type="submit" class="btn btn-primary btn-block"><%= __('auth:su_create_btn') %></button>
             <p class="login-help-text" style="margin-top:1rem;">

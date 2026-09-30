@@ -603,6 +603,8 @@ router.get(
 router.post(
     '/admin/api-keys',
     apiSuperadminSession,
+    // ASVS 3.7.1: a recent sign-in or the current password (`currentPassword`).
+    require('../../middleware/recentAuth').requireRecentAuth({ action: 'API key creation' }),
     asyncH(async (req, res) => {
         const { label, scope } = req.body || {};
         if (!label || !String(label).trim())
@@ -614,11 +616,14 @@ router.post(
         const asked = scope == null ? '' : String(scope).trim();
         const granted = asked ? issuableScope(asked) : 'powerbi.read';
         if (!granted) return res.status(400).json({ error: 'bad_scope' });
-        const k = await ApiKeyService.generate({
-            label: String(label).trim(),
-            scope: granted,
-            createdBy: req.user.id,
-        });
+        const k = await ApiKeyService.generate(
+            {
+                label: String(label).trim(),
+                scope: granted,
+                createdBy: req.user.id,
+            },
+            req
+        );
         res.status(201).json({
             data: k,
             note: 'Store this key now — it is shown only once and cannot be retrieved later.',
@@ -632,7 +637,7 @@ router.delete(
     asyncH(async (req, res) => {
         const id = parseInt(req.params.id, 10);
         if (!Number.isFinite(id)) return res.status(400).json({ error: 'bad_id' });
-        await ApiKeyService.revoke(id);
+        await ApiKeyService.revoke(id, req);
         res.json({ status: 'revoked', id });
     })
 );

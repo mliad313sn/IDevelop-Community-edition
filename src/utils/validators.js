@@ -215,14 +215,19 @@ const adminEmailRules = () => [
         .withMessage('validation:email_invalid'),
 ];
 
+const requireCharClasses = () => require('./passwordValidator').requireCharClasses();
+
 const adminValidation = [
     body('username').trim().notEmpty().withMessage('validation:username_required'),
     ...adminEmailRules(),
     body('password').isLength({ min: 12 }).withMessage('validation:pw_min_length'),
-    body('password').matches(/[a-z]/).withMessage('validation:pw_lowercase'),
-    body('password').matches(/[A-Z]/).withMessage('validation:pw_uppercase'),
-    body('password').matches(/[0-9]/).withMessage('validation:pw_number'),
+    // Character classes only when the organisation opts in (ASVS 2.1.9: no
+    // composition rules by default; see src/utils/passwordValidator.js).
+    body('password').if(requireCharClasses).matches(/[a-z]/).withMessage('validation:pw_lowercase'),
+    body('password').if(requireCharClasses).matches(/[A-Z]/).withMessage('validation:pw_uppercase'),
+    body('password').if(requireCharClasses).matches(/[0-9]/).withMessage('validation:pw_number'),
     body('password')
+        .if(requireCharClasses)
         .matches(/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/)
         .withMessage('validation:pw_special'),
     body('passwordConfirm').custom((value, { req }) => {
