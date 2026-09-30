@@ -85,9 +85,11 @@ Transactions propagate through `AsyncLocalStorage`, so a service called inside
 3. **Session & identity**: PostgreSQL-backed sessions (`connect-pg-simple`),
    Passport strategies, forced password change, MFA enrolment enforcement,
    per-user auth policy, activity trail.
-4. **Locals**: locale (FR/EN), branding (`src/utils/branding.js`), permissions and
-   navigation are resolved once and exposed to every view.
-5. **Routing**: `/api/v1` (JSON) and `/` (HTML + feature routers under `/v2/*`).
+4. **Locals**: locale (FR/EN), branding (`src/utils/branding.js`), permissions,
+   the optional-module flags (`appModules`, `adoptionStage`) and navigation are
+   resolved once and exposed to every view.
+5. **Routing**: `/api/v1` (JSON) and `/` (HTML + feature routers under `/v2/*`,
+   always mounted; the optional ones sit behind their module guard).
 6. **Errors**: a single `notFoundHandler` and `errorHandler` render HTML or JSON
    depending on what the client accepts.
 
@@ -105,6 +107,35 @@ Transactions propagate through `AsyncLocalStorage`, so a service called inside
 | Observability  | `/health`, `/readyz`, `/metrics`                                                   | Prometheus text format, job-run ledger, health page for super-admins            |
 | Offline        | `public/service-worker.js`, `public/js/draft-store.js`                             | Static-asset cache only; drafts in IndexedDB, replayed per owner                |
 
+### Optional modules and adoption stages
+
+The talent suite is split into optional modules — `campaigns`, `development`
+(IDP, coaching, PIP, learning), `talent` (calibration, succession, continuity),
+`mobility`, `engagement` (surveys, recognition, OKRs and 1:1s), `ai` (copilot)
+and `localContent` — catalogued in `src/config/modules.js`. `ModuleService`
+resolves them per request from database settings:
+
+1. `V2_FEATURES=1` in the environment (legacy) forces every module except
+   `localContent` on, whatever is stored;
+2. otherwise `adoption.stage` = `1` | `2` | `3` applies a preset — stage 1
+   (framework and assessment: campaigns), stage 2 (+ development, talent,
+   mobility), stage 3 (+ engagement, AI) — and `custom` reads each
+   `modules.<name>` switch;
+3. no stored stage reads as stage 1 (fresh install). At boot, an install started
+   with `V2_FEATURES=1` and no stored stage is recorded at stage 3, so removing
+   the variable later takes nothing away.
+
+`localContent` keeps its historical `featureLocalContent` switch, independent of
+the stage. The `/v2/*` routers are always mounted; `ModuleService.requireModule`
+(and `capGuard` for the `/v2/cap` sub-paths) answers the normal 404 while a module
+is off. Reads go through the TTL-cached `AppSettingsModel.getValue`, and every
+`setValue` busts that cache, so a switch applies on the next request without a
+restart. The core — framework, roles, self-assessments, reviews and disputes,
+readiness, gaps, the 9-box grid, the person's own development plan, reports, SSO,
+access management, GDPR — is never behind a module (`CORE_PREFIXES`, tested).
+SuperAdmins choose on `/admin/modules`, which previews the menus that appear or
+disappear and audit-logs every change (`MODULES_UPDATED`).
+
 ### AI companion
 
 The "Assistant" tab of the help panel (`views/partials/contextual-help.ejs`,
@@ -117,8 +148,8 @@ CSRF, per-user `writeActionLimiter`, 500-character cap, 404 while the
 routes a question to one of `capabilities`, `next`, `page`, `self`, `data`,
 `concept` or `howto`, and answers from `src/config/companionKnowledge.js` — a
 bilingual knowledge base whose entries carry the roles, permission slugs and
-V2 flag that may open their link, so an answer never points someone at a screen
-they cannot use. Personal answers stay narrow: `next` reuses
+optional module that may open their link, so an answer never points someone at a
+screen they cannot use or a module that is switched off. Personal answers stay narrow: `next` reuses
 `TalentActionsController.collectMyActions` (the Action Center list) plus the setup
 checklist for SuperAdmins; `self` reads only the asker's own row of
 `v_employee_assessment_coverage` / `v_employee_skill_gaps`; `data` questions from

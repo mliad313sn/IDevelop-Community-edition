@@ -187,7 +187,7 @@ These were read in the source and, where noted, exercised by the existing tests.
 | `/signup`, `/onboarding/pending`                                                            | Settings-gated (see SA-00) and rate-limited.                                              |
 | `/api/powerbi/*`, `/scim/v2/*`, `/v2/safety-gate/status*`, `/api/v1/*` (data routes)        | API key or Entra bearer with per-feed scope. `/api/v1` also accepts a session.            |
 | `/api/v1/`, `/api/v1/openapi.json`                                                          | Public API description only.                                                              |
-| `/integrations/lms/:provider/webhook`                                                       | Per-provider shared secret in a header. Returns 404 unless `V2_FEATURES=1`.               |
+| `/integrations/lms/:provider/webhook`                                                       | Per-provider shared secret in a header. Returns 404 while the development module is off.  |
 | `/.well-known/lms-jwks.json`, `/lti/:provider/auth`                                         | Public JWKS. The LTI auth endpoint redirects to `/login` without a session.               |
 | static `/public/**`                                                                         | Assets only. The user guide moved to `private/` behind `requireAuth`.                     |
 

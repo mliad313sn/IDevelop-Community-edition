@@ -3266,6 +3266,44 @@ document.addEventListener('DOMContentLoaded', () => {
             ),
         },
 
+        '/admin/modules': {
+            title: L('Modules &amp; adoption stage', 'Modules et étape d’adoption'),
+            why: L(
+                '<strong>Process:</strong> Choose how much of the platform your organisation uses. Stage 1 covers the skills framework, assessments, reviews, readiness, gaps, reports and campaigns; stage 2 adds development, talent and mobility; stage 3 adds engagement and the AI copilot. Custom lets you switch each module yourself.',
+                '<strong>Processus :</strong> choisissez quelle part de la plateforme votre organisation utilise. L’étape 1 couvre le référentiel, les évaluations, les revues, la préparation, les écarts, les rapports et les campagnes ; l’étape 2 ajoute le développement, les talents et la mobilité ; l’étape 3 ajoute l’engagement et le copilote IA. Personnalisé vous laisse activer chaque module.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        '<strong>Pick a stage</strong> (or Custom and tick the modules you want).',
+                        '<strong>Choisissez une étape</strong> (ou Personnalisé, puis cochez les modules voulus).'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Read the preview</strong>: the menus that will appear or disappear for everyone.',
+                        '<strong>Lisez l’aperçu</strong> : les menus qui apparaîtront ou disparaîtront pour tout le monde.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Save</strong>: the change applies on the next page, without a restart, and is recorded in the audit log.',
+                        '<strong>Enregistrez</strong> : le changement s’applique dès la page suivante, sans redémarrage, et il est tracé dans le journal d’audit.'
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'Start at stage 1 and move on once assessments run smoothly — switching a module off hides it but keeps its data.',
+                    'Commencez à l’étape 1 et avancez quand les évaluations tournent bien — désactiver un module le masque mais conserve ses données.'
+                ),
+            ],
+            value: L(
+                'A first-time administrator sees only what the organisation is ready to use.',
+                'Un administrateur qui débute ne voit que ce que l’organisation est prête à utiliser.'
+            ),
+        },
+
         '/employee/opportunities': {
             title: L('My Growth', 'Mon évolution'),
             why: L(

@@ -338,7 +338,7 @@ router.post('/uplifts/:id/decline', requireAuth, decide('decline'));
 // ---- Learner surface (mounted at /employee, OUTSIDE the V2/admin gate) -----
 // An employee was told "a training course was assigned to you", followed the
 // link to /v2/lms and was refused — that router requires manager status or
-// configure_lms, and only exists when V2_FEATURES=1. Meanwhile lms_courses.url
+// configure_lms, and answers 404 while the development module is off. Meanwhile lms_courses.url
 // was captured on every sync and never shown to anybody. This is the missing
 // end of the loop: the learner's own list, with the link that actually opens
 // the course.
