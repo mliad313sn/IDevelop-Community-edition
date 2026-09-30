@@ -49,7 +49,11 @@
        const _sa = user.role === 'superadmin';
        const _can = (s) => (typeof can === 'function') && can(s);
        const _ws = (k) => typeof wsVisible !== 'function' || wsVisible(k);
-       const _v2 = typeof v2Features !== 'undefined' && !!v2Features;
+       // Optional modules (Administration → Modules), resolved once per request
+       // in server.js: a module that is off loses its menu entries (its routes
+       // answer 404). Core entries never read these flags.
+       const _mods = (typeof appModules !== 'undefined' && appModules) ? appModules : {};
+       const _m = (k) => _mods[k] === true;
        const _lc = typeof featureLocalContent !== 'undefined' && !!featureLocalContent;
        const _cp = (typeof currentPath !== 'undefined' && currentPath) ? String(currentPath) : '';
        const _at = (p) => _cp.startsWith(p);
@@ -83,19 +87,19 @@
            acrMine: _isEmp,                      // an employee reads it under « Mes évaluations »
            acrHub: _isMgr || gAdmCamp,           // a manager / admin decides it under « Revues & contestations »
            account: _isEmp,
-           saReviews: gTeam, supDash: gTeam && _isMgr, gap: gTeam, coaching: gTeam,
-           idpManage: gTeam && _v2, pip: gTeam && _v2, disputes: gTeam && _v2,
+           saReviews: gTeam, supDash: gTeam && _isMgr, gap: gTeam, coaching: gTeam && _m('development'),
+           idpManage: gTeam && _m('development'), pip: gTeam && _m('development'), disputes: gTeam,
            nineBox: gTalent, talentActions: gTalent, careerPath: gTalent, orgChart: gTalent,
-           lifecycle: gTalent && _v2,
-           continuity: gTalent && _v2 && canCont, keyPerson: gTalent && _v2 && canCont,
-           lms: gTalent && _v2 && canLms && _can('configure_lms'),
-           cap: gTalent && _v2 && canLms,
+           lifecycle: gTalent && _m('mobility'),
+           continuity: gTalent && _m('talent') && canCont, keyPerson: gTalent && _m('talent') && canCont,
+           lms: gTalent && _m('development') && canLms && _can('configure_lms'),
+           cap: gTalent && canLms && (_m('talent') || _m('mobility') || _m('engagement') || _m('ai')),
            accounts: gAdmComptes && _can('manage_invitations'),
            onboarding: gAdmComptes && _can('manage_onboarding'),
            admins: gAdmComptes && _can('manage_admins'), delegation: gAdmComptes && _can('manage_admins'),
            accessReview: gAdmComptes && _sa, ssoMigration: gAdmComptes && _sa, sessions: gAdmComptes && _sa,
-           makerChecker: gAdmCamp && _v2 && _sa,
-           cycles: gAdmCamp && _can('manage_cycles'),
+           makerChecker: gAdmCamp && _sa,
+           cycles: gAdmCamp && _can('manage_cycles') && _m('campaigns'),
            cancellations: gAdmCamp || (gTools && _isMgr),
            postApproval: gAdmCamp || (gTools && _isMgr),
            dataMgmt: gAdmData && (_can('export_data') || _can('import_data')),
@@ -108,6 +112,7 @@
            appSettings: gAdmSet && _can('view_app_settings'),
            sso: gAdmSet && _sa, apiKeys: gAdmSet && _sa, health: gAdmSet && _sa,
            license: gAdmSet && _sa, maintenance: gAdmSet && _sa, setup: gAdmSet && _sa,
+           modulesAdmin: gAdmSet && _sa,
            reports: gTools, deptAnalytics: gTools, localContent: gTools && _lc,
            compliance: gTools && (_isMgr || _can('view_compliance')),
            qualified: gTools, movements: gTools,
@@ -150,7 +155,7 @@
            domainsSkills: _at('/domains') || _at('/skills') || _at('/domains-skills'),
            roles: _at('/roles'), appSettings: _cp === '/app-settings', sso: _at('/app-settings/sso'),
            apiKeys: _at('/admin/api-keys'), health: _at('/admin/health'), license: _at('/admin/license'),
-           maintenance: _at('/admin/maintenance'), setup: _at('/setup'),
+           maintenance: _at('/admin/maintenance'), setup: _at('/setup'), modulesAdmin: _at('/admin/modules'),
            reports: _at('/reports') && !_at('/reports/local-content') && !_at('/reports/dept-analytics'),
            deptAnalytics: _at('/reports/dept-analytics'), localContent: _at('/reports/local-content'),
            compliance: _at('/compliance'), qualified: _at('/qualified'), movements: _at('/movements'),
@@ -589,8 +594,8 @@
                 </div>
             </div>
             <% } %>
-            <% if (_any('organization', 'domainsSkills', 'roles', 'appSettings', 'sso', 'apiKeys', 'health', 'license', 'maintenance', 'setup')) {
-                const _o = _open([['organization', 'organization'], ['domainsSkills', 'domainsSkills'], ['roles', 'roles'], ['appSettings', 'appSettings'], ['sso', 'sso'], ['apiKeys', 'apiKeys'], ['health', 'health'], ['license', 'license'], ['maintenance', 'maintenance'], ['setup', 'setup']]); %>
+            <% if (_any('organization', 'domainsSkills', 'roles', 'appSettings', 'sso', 'apiKeys', 'health', 'license', 'maintenance', 'setup', 'modulesAdmin')) {
+                const _o = _open([['organization', 'organization'], ['domainsSkills', 'domainsSkills'], ['roles', 'roles'], ['appSettings', 'appSettings'], ['sso', 'sso'], ['apiKeys', 'apiKeys'], ['health', 'health'], ['license', 'license'], ['maintenance', 'maintenance'], ['setup', 'setup'], ['modulesAdmin', 'modulesAdmin']]); %>
             <%# Réglages — the framework and the instance itself. %>
             <div class="sidebar-entry sidebar-hub<%= _o ? ' is-open' : '' %>" data-entry-key="settings">
                 <button type="button" class="sidebar-link sidebar-hub-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-settings" title="<%= __('chrome:section_settings') %>">
@@ -639,6 +644,13 @@
                     <a href="/admin/health" class="sidebar-link sidebar-sublink <%= _on(A.health) %>" title="<%= __('chrome:nav_health') %>">
                         <i class="fas fa-heart-pulse" aria-hidden="true"></i>
                         <span class="sidebar-link-text"><%= __('chrome:nav_health') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.modulesAdmin) { %>
+                    <%# Administration → Modules: the adoption stage and the module switches. %>
+                    <a href="/admin/modules" class="sidebar-link sidebar-sublink <%= _on(A.modulesAdmin) %>" title="<%= __('chrome:nav_modules_title') %>">
+                        <i class="fas fa-toggle-on" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_modules') %></span>
                     </a>
                     <% } %>
                     <% if (S.license) { %>
@@ -737,7 +749,9 @@
             </div>
             <% } %>
 
-            <% { const _o = A.okr || A.myCoaching || A.growth; %>
+            <% { const _okr = _m('engagement'), _myCo = _m('development'), _grow = _m('mobility') || _m('engagement');
+                 const _hasSub = _okr || _myCo || _grow;
+                 const _o = (_okr && A.okr) || (_myCo && A.myCoaching) || (_grow && A.growth); %>
             <%# « Mon plan de développement »: the person's OWN plans (PAP, PDI) and
                 everything that feeds them — objectives, coaching, opportunities. %>
             <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="my_plan">
@@ -746,22 +760,33 @@
                         <i class="fas fa-seedling" aria-hidden="true"></i>
                         <span class="sidebar-link-text"><%= __('chrome:nav_my_plan') %></span>
                     </a>
+                    <% if (_hasSub) { %>
                     <button type="button" class="sidebar-entry-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-my_plan" aria-label="<%= _tg(__('chrome:nav_my_plan')) %>"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+                    <% } %>
                 </div>
+                <% if (_hasSub) { %>
+                <%# Each sub-entry belongs to an optional module (Administration → Modules). %>
                 <div class="sidebar-sub" id="sbsub-my_plan" role="group" aria-label="<%= __('chrome:nav_my_plan') %>">
+                    <% if (_okr) { %>
                     <a href="/employee/okr" class="sidebar-link sidebar-sublink <%= _on(A.okr) %>" title="<%= __('chrome:nav_my_okr_title') %>">
                         <i class="fas fa-bullseye" aria-hidden="true"></i>
                         <span class="sidebar-link-text"><%= __('chrome:nav_my_okr') %></span>
                     </a>
+                    <% } %>
+                    <% if (_myCo) { %>
                     <a href="/employee/my-coaching" class="sidebar-link sidebar-sublink <%= _on(A.myCoaching) %>" title="<%= __('chrome:nav_my_coaching_title') %>">
                         <i class="fas fa-hands-helping" aria-hidden="true"></i>
                         <span class="sidebar-link-text"><%= __('chrome:nav_my_coaching') %></span>
                     </a>
+                    <% } %>
+                    <% if (_grow) { %>
                     <a href="/employee/opportunities" class="sidebar-link sidebar-sublink <%= _on(A.growth) %>" title="<%= __('chrome:nav_my_growth_title') %>">
                         <i class="fas fa-compass" aria-hidden="true"></i>
                         <span class="sidebar-link-text"><%= __('chrome:nav_my_growth') %></span>
                     </a>
+                    <% } %>
                 </div>
+                <% } %>
             </div>
             <% } %>
 

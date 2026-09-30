@@ -300,12 +300,48 @@ const BEFORE = {
 // « Mes données » (/employee/my-data) is the person's OWN data register — the
 // route is requireEmployeeOrManager and keys on req.user.id — so it is a
 // legitimate addition for exactly the two accounts that have a « mine » section.
+// Administration → Modules (/admin/modules) is the SuperAdmin's switchboard for
+// the optional modules that replaced the boot-time V2_FEATURES gate — its route
+// is requireSuperAdminPage, so it is a legitimate SuperAdmin-only addition.
 const ALLOWED_ADDITIONS = {
     employee: ['/account', '/employee/my-data'],
     manager: ['/employee/my-data'],
     localadmin_ops: ['/safety-gate'],
-    superadmin: ['/safety-gate'],
+    superadmin: ['/safety-gate', '/admin/modules'],
 };
+
+// Optional modules (config/modules.js). The BEFORE sets were captured with the
+// old `v2Features` local: `v2=true` is now "every module on" (what V2_FEATURES=1
+// still forces), and `v2=false` is a FRESH install at adoption stage 1
+// (campaigns only). Two deliberate differences from the old v2=false rail:
+//  - /v2/slf/disputes and /v2/uam/maker-checker/queue are CORE now (their
+//    routers are always mounted, never behind a module), so they may appear;
+//  - the pre-V2 employee OKR / coaching / growth pages and the coaching console
+//    belong to the engagement, development and mobility modules, which stage 1
+//    leaves off, so they are expected to disappear.
+const ALL_MODULES_ON = {
+    campaigns: true,
+    development: true,
+    talent: true,
+    mobility: true,
+    engagement: true,
+    ai: true,
+};
+const STAGE_1 = {
+    campaigns: true,
+    development: false,
+    talent: false,
+    mobility: false,
+    engagement: false,
+    ai: false,
+};
+const CORE_NOW = ['/v2/slf/disputes', '/v2/uam/maker-checker/queue'];
+const STAGE_1_HIDDEN = [
+    '/employee/okr',
+    '/employee/my-coaching',
+    '/employee/opportunities',
+    '/coaching/plans',
+];
 
 function locals(role, { v2, lc, ws = true, currentPath = '/nowhere', lang = 'fr' }) {
     const r = ROLES[role];
@@ -313,7 +349,7 @@ function locals(role, { v2, lc, ws = true, currentPath = '/nowhere', lang = 'fr'
         user: r.user,
         can: (s) => r.perms === '*' || r.perms.includes(s),
         wsVisible: () => ws,
-        v2Features: v2,
+        appModules: { ...(v2 ? ALL_MODULES_ON : STAGE_1), localContent: !!lc },
         sqlConsoleEnabled: true,
         featureLocalContent: lc,
         currentPath,
@@ -342,8 +378,12 @@ const CONFIGS = Object.keys(BEFORE).map((k) => {
 describe('UX-03 — the rail is cut by task and keeps every gate', () => {
     test.each(CONFIGS)('$key: no new visibility, nothing lost', ({ key, role, v2, lc }) => {
         const got = hrefs(navOf(render(SIDEBAR, locals(role, { v2, lc }))));
-        const before = new Set(BEFORE[key]);
-        const allowed = new Set([...before, ...(ALLOWED_ADDITIONS[role] || [])]);
+        const before = new Set(BEFORE[key].filter((h) => v2 || !STAGE_1_HIDDEN.includes(h)));
+        const allowed = new Set([
+            ...before,
+            ...(ALLOWED_ADDITIONS[role] || []),
+            ...(v2 ? [] : CORE_NOW),
+        ]);
         // (b) nothing a role could not reach before becomes visible
         expect([...got].filter((h) => !allowed.has(h))).toEqual([]);
         // (c) every destination visible before is still reachable in the rail

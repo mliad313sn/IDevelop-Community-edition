@@ -51,5 +51,6 @@
   "sugg_explain_page": "Explain this page",
   "sugg_next": "What should I do next?",
   "sugg_capabilities": "What can you do?",
-  "sugg_my_readiness": "What is my readiness?"
+  "sugg_my_readiness": "What is my readiness?",
+  "data_ai_off": "Questions about your organisation’s data are answered by the AI copilot, which is switched off here. A SuperAdmin can switch it on under Administration → Modules. Meanwhile, the dashboard and the reports show the figures."
 }

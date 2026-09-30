@@ -4,6 +4,19 @@ All notable changes to IDevelop Community Edition are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- The talent suite is no longer gated by the boot-time `V2_FEATURES=1`: optional
+  modules (campaigns, development, talent, mobility, engagement, AI, local
+  content) are switched from **Administration → Modules** (`/admin/modules`)
+  without a restart, with three adoption stages (framework & assessment, plus
+  talent & development, plus engagement & AI) or custom switches. A fresh install
+  starts at stage 1; `V2_FEATURES=1` still forces every module on and an install
+  started with it is recorded at stage 3. i18n no longer depends on
+  `V2_FEATURES`.
+
 ## [1.0.0] — 2026-09-29
 
 First public release of **IDevelop Community Edition**.

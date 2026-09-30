@@ -51,5 +51,6 @@
   "sugg_explain_page": "Explique-moi cette page",
   "sugg_next": "Que dois-je faire maintenant ?",
   "sugg_capabilities": "Que peux-tu faire ?",
-  "sugg_my_readiness": "Quelle est ma préparation ?"
+  "sugg_my_readiness": "Quelle est ma préparation ?",
+  "data_ai_off": "Les questions sur les données de votre organisation sont traitées par le copilote IA, qui n’est pas activé ici. Un super-administrateur peut l’activer dans Administration → Modules. En attendant, le tableau de bord et les rapports donnent les chiffres."
 }

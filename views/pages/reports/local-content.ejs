@@ -227,7 +227,7 @@
                         <td style="text-align:center;"><%= s.readinessPercent === null ? __('localcontent:not_measured') : s.readinessPercent + ' %' %><% if (s.isReady) { %> <span class="badge badge-success"><%= __('localcontent:ready') %></span><% } %></td>
                         <td style="text-align:center;"><%= s.coveragePercent === null ? '—' : s.coveragePercent + ' %' %></td>
                         <td style="text-align:center;"><%= s.gapsMeasured === null ? '—' : s.gapsMeasured %><% if (s.gapsUnmeasured) { %> <span class="lc-small lc-muted">(+<%= s.gapsUnmeasured %> <%= __('localcontent:nat_unmeasured') %>)</span><% } %></td>
-                        <td><% if (s.idpId) { %><a href="/v2/idp/<%= s.idpId %>" aria-label="<%= __('localcontent:nat_idp_open_for', { name: sName }) %>"><%= __('localcontent:nat_idp_open') %></a> <span class="lc-small lc-muted">(<%= idpStatusLabel(s.idpStatus) %>)</span><% } else { %><span class="lc-muted">—</span><% } %></td>
+                        <td><% if (s.idpId && (typeof appModules === 'undefined' || !appModules || appModules.development)) { %><a href="/v2/idp/<%= s.idpId %>" aria-label="<%= __('localcontent:nat_idp_open_for', { name: sName }) %>"><%= __('localcontent:nat_idp_open') %></a> <span class="lc-small lc-muted">(<%= idpStatusLabel(s.idpStatus) %>)</span><% } else { %><span class="lc-muted">—</span><% } %></td>
                         <td style="text-align:right;white-space:nowrap;">
                             <% if (natCanWrite && p.state === 'active' && !s.outOfScope) { %>
                             <form method="post" action="/reports/local-content/nationalisation/successors/<%= s.id %>/idp" class="lc-inline">

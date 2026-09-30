@@ -322,11 +322,37 @@ describe('role filtering — an employee never gets admin links or other people�
         expect(sa).toEqual(expect.arrayContaining(['/app-settings', '/setup', '/admin/health']));
     });
 
-    test('V2-only screens are not offered when V2 features are off', () => {
+    // Was « V2-only screens are not offered when V2 features are off »: the
+    // V2_FEATURES gate became per-module switches (Administration → Modules).
+    // Coaching plans now belong to the development module, so at stage 1 they
+    // are hidden like the PIP; disputes are core and stay offered.
+    test('screens of a switched-off module are not offered; core screens are', async () => {
+        const ModuleService = require('../../src/services/ModuleService');
         process.env.V2_FEATURES = '0';
-        const hrefs = K.ENTRIES.filter((e) => Companion.canSee(MANAGER, e)).map((e) => e.link);
+        settings({ 'adoption.stage': '1' });
+        await ModuleService.resolve();
+        let hrefs = K.ENTRIES.filter((e) => Companion.canSee(MANAGER, e)).map((e) => e.link);
         expect(hrefs).not.toContain('/v2/pip');
+        expect(hrefs).not.toContain('/coaching/plans');
+        expect(hrefs).toContain('/v2/slf/disputes');
+        settings({ 'adoption.stage': '2' });
+        await ModuleService.resolve();
+        hrefs = K.ENTRIES.filter((e) => Companion.canSee(MANAGER, e)).map((e) => e.link);
+        expect(hrefs).toContain('/v2/pip');
         expect(hrefs).toContain('/coaching/plans');
+        expect(hrefs).not.toContain('/employee/okr'); // engagement: stage 3
+    });
+
+    test('a data question never reaches the copilot while the AI module is off', async () => {
+        const ModuleService = require('../../src/services/ModuleService');
+        process.env.V2_FEATURES = '0';
+        settings({ 'adoption.stage': '2' });
+        await ModuleService.resolve();
+        const spy = jest.spyOn(Copilot, 'ask');
+        const out = await Companion.ask(MANAGER, 'What is the readiness by site?', { lng: 'en' });
+        expect(spy).not.toHaveBeenCalled();
+        expect(out.answer).toMatch(/switched off/);
+        spy.mockRestore();
     });
 });
 

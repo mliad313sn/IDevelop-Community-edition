@@ -194,7 +194,8 @@
         <p><%= __('employee:nb_explain_how') %></p>
         <h3><%= __('employee:nb_explain_talk_title') %></h3>
         <p><%= __('employee:nb_explain_talk') %></p>
-        <a href="/employee/okr" class="btn btn-secondary btn-sm"><i class="fas fa-comments" aria-hidden="true"></i> <%= __('employee:nb_explain_talk_cta') %></a>
+        <%# optional module (Administration → Modules): no link to a page that answers 404 %>
+        <% if (typeof appModules === 'undefined' || !appModules || appModules.engagement) { %><a href="/employee/okr" class="btn btn-secondary btn-sm"><i class="fas fa-comments" aria-hidden="true"></i> <%= __('employee:nb_explain_talk_cta') %></a><% } %>
       </details>
     <% } %>
   </div>
@@ -226,7 +227,7 @@
 <section class="card emp-target" aria-labelledby="empTargetH">
   <div class="emp-section-h">
     <span id="empTargetH"><i class="fas fa-route" aria-hidden="true"></i> <%= __('employee:tg_title') %><%= colon %> <%= targetGap.roleName %></span>
-    <a href="/employee/opportunities#my-target" class="emp-link"><%= __('employee:tg_link') %> →</a>
+    <% if (typeof appModules === 'undefined' || !appModules || appModules.mobility) { %><a href="/employee/opportunities#my-target" class="emp-link"><%= __('employee:tg_link') %> →</a><% } %>
   </div>
   <div class="emp-target-body">
     <div class="emp-target-score">
@@ -247,7 +248,7 @@
       <strong id="empTargetH"><i class="fas fa-route" aria-hidden="true"></i> <%= __('employee:tg_none_title') %></strong>
       <p class="emp-sub"><%= __('employee:tg_none_body') %></p>
     </div>
-    <a href="/employee/opportunities#my-aspirations" class="btn btn-secondary"><%= __('employee:tg_none_cta') %></a>
+    <% if (typeof appModules === 'undefined' || !appModules || appModules.mobility) { %><a href="/employee/opportunities#my-aspirations" class="btn btn-secondary"><%= __('employee:tg_none_cta') %></a><% } %>
   </div>
 </section>
 <% } %>
@@ -276,11 +277,13 @@
             signatures and a real empty state; /v2/idp was a bare table header. %>
         <a href="/employee/my-development" class="btn btn-secondary"><%= __('employee:qa_idp_btn') %></a>
     </div>
+    <% if (typeof appModules === 'undefined' || !appModules || appModules.development) { %>
     <div class="col card">
         <h2><i class="fas fa-compass" aria-hidden="true"></i> <%= __('employee:qa_coaching_title') %></h2>
         <p><%= __('employee:qa_coaching_body') %></p>
         <a href="/employee/my-coaching" class="btn btn-secondary"><%= __('employee:qa_coaching_btn') %></a>
     </div>
+    <% } %>
     <%# « Mon profil » — the entry point to /account. The employee menu lives in the
         shared chrome, which this lot may not edit, so the way in is here, on the
         employee's own landing page. When the record carries NO email the card is

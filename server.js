@@ -430,13 +430,15 @@ try {
     console.warn('SSO configuration skipped:', e.message);
 }
 
-// i18n (Phase 6) — only enabled when V2_FEATURES=1; FR primary, EN fallback.
+// i18n (Phase 6) — FR primary, EN fallback. Always on: it used to be switched
+// on by V2_FEATURES=1 too, and without it every page that calls `__` failed to
+// render (the optional modules are now settings, see ModuleService).
 // IMPORTANT ordering fix: i18next inits asynchronously, but Express dispatches
 // middleware in REGISTRATION order — anything `app.use`d after the routers never
 // runs for router-handled pages. So we register a synchronous WRAPPER here
 // (before the routers) that delegates to the real i18next handle once init
 // completes; until then `__` is an identity fallback (keys pass through).
-if (process.env.V2_FEATURES === '1') {
+{
     let _i18nHandle = null;
     app.use((req, res, next) => {
         const finish = () => {
@@ -733,9 +735,17 @@ app.use(async (req, res, next) => {
     // always get true (the feature is admin-only).
     const workspaceComponents = require('./src/config/workspaceComponents');
     res.locals.wsVisible = (key) => workspaceComponents.isVisible(key, req.user);
-    // Expose the V2 feature flag so navigation only links to V2-gated modules
-    // when they are actually mounted (avoids dead links).
-    res.locals.v2Features = process.env.V2_FEATURES === '1';
+    // Optional modules (Administration → Modules): computed ONCE per request
+    // from TTL-cached settings, so navigation only links to modules that are
+    // switched on (their routes answer 404 otherwise) and a change applies on
+    // the next request. V2_FEATURES=1 (legacy) forces every module on.
+    {
+        const ModuleService = require('./src/services/ModuleService');
+        const _ms = await ModuleService.resolve();
+        res.locals.appModules = _ms.modules;
+        res.locals.adoptionStage = _ms.stage;
+        res.locals.modulesLegacy = _ms.legacy;
+    }
     // SQL console is an operator switch (SQL_CONSOLE_ENABLED=1): hide its menu entry
     // and its Data Management card when it is off (its routes answer 404 then).
     res.locals.sqlConsoleEnabled = require('./src/services/SqlConsoleService').isEnabled();
@@ -771,18 +781,11 @@ app.use(async (req, res, next) => {
                 ? enumLabel(a, b, req.t, lang)
                 : enumLabel(a, lang);
     }
-    // Optional-module flags (settings-gated; TTL-cached reads so this is cheap).
-    try {
-        const AppSettingsModel = require('./src/models/AppSettingsModel');
-        // Strict on-check — a boolean setting stored with type 'string' returns '0',
-        // and Boolean('0') is truthy, which would keep the module's sidebar link /
-        // employee-form field visible while it reads "0". Treat only explicit truthy
-        // values as ON.
-        const _lc = await AppSettingsModel.getValue('featureLocalContent', false);
-        res.locals.featureLocalContent = _lc === true || _lc === 1 || _lc === '1' || _lc === 'true';
-    } catch (_) {
-        res.locals.featureLocalContent = false;
-    }
+    // Local-content module: its flag comes from the same resolution as the
+    // other modules (strict boolean parse — a '0' stored as a string is OFF).
+    res.locals.featureLocalContent = Boolean(
+        res.locals.appModules && res.locals.appModules.localContent
+    );
     // AI companion (help panel « Assistant » tab) — default ON; only an explicit
     // off value hides it. Rendered pages only need it for signed-in users.
     res.locals.companionEnabled = true;
@@ -1061,6 +1064,18 @@ async function startServer() {
         console.log('Seeding default data...');
         await db.seed();
         console.log('✓ Database seeding completed');
+
+        // Optional modules: an install started with the legacy V2_FEATURES=1 and
+        // no recorded adoption stage is recorded at stage 3 (everything on), so
+        // removing the variable later takes nothing away. A fresh install records
+        // nothing and reads as stage 1 until a SuperAdmin chooses on /admin/modules.
+        try {
+            if (await require('./src/services/ModuleService').ensureLegacyStage()) {
+                console.log('✓ V2_FEATURES=1 found: adoption stage recorded as 3 (all modules on)');
+            }
+        } catch (e) {
+            console.warn('Adoption stage upgrade skipped:', e.message);
+        }
 
         // Re-register SSO strategies from the merged DB(Settings)+env config now
         // that the database is up, so providers configured in the in-app Settings

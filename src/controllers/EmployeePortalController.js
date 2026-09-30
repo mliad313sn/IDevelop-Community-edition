@@ -688,9 +688,10 @@ class EmployeePortalController {
                 // requireAuth + canAccessIdp(own plan → true) and derives the
                 // 'employee' slot from the relationship, so this is the ONE write
                 // path the service already supports for the subject. It only exists
-                // when the V2 routers are mounted; otherwise the page is read-only
-                // rather than offering a button that 404s.
-                const v2 = process.env.V2_FEATURES === '1';
+                // while the development module is on (Administration → Modules);
+                // otherwise the page is read-only rather than offering a button
+                // that 404s.
+                const v2 = await require('../services/ModuleService').isOn('development');
 
                 idps = planRows.map((p) => {
                     const pid = Number(p.id);

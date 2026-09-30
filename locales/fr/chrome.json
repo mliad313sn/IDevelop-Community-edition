@@ -560,5 +560,7 @@
   "palette_meadow": "Prairie",
   "palette_sunrise": "Aurore",
   "palette_ocean": "Océan",
-  "theme_system": "Comme l'appareil"
+  "theme_system": "Comme l'appareil",
+  "nav_modules": "Modules",
+  "nav_modules_title": "Choisir les modules optionnels activés (étape d’adoption)"
 }

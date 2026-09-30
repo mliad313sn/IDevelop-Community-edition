@@ -25,7 +25,19 @@ class SetupController {
                    (SELECT count(*) FROM assessment_cycles WHERE status = 'open')::int AS open_cycles,
                    (SELECT count(*) FROM skill_assessments)::int AS assessments`);
         const smtpHost = await AppSettingsModel.getValue('smtpHost', '');
+        // Optional modules: done once a stage has been recorded (chosen on
+        // /admin/modules, or stage 3 recorded for a V2_FEATURES=1 upgrade).
+        const mods = await require('../services/ModuleService').resolve();
         const checks = [
+            // « Choose what to switch on » — OPTIONAL, so it never changes the
+            // required-steps count (sidebar pill, dashboard banner, companion).
+            {
+                key: 'modules',
+                done: Boolean(mods.stored),
+                href: '/admin/modules',
+                count: mods.stored ? mods.stage : '—',
+                optional: true,
+            },
             {
                 key: 'org',
                 done: c.sites > 0 && c.departments > 0 && c.services > 0,
@@ -86,8 +98,11 @@ class SetupController {
                 optional: true,
             },
         ];
-        const required = checks.filter((x) => !x.optional);
-        return { checks, complete: required.every((x) => x.done) };
+        // No campaign step while the campaigns module is switched off (the
+        // console answers 404 then).
+        const shown = mods.modules.campaigns ? checks : checks.filter((x) => x.key !== 'cycle');
+        const required = shown.filter((x) => !x.optional);
+        return { checks: shown, complete: required.every((x) => x.done) };
     }
 
     /**

@@ -74,7 +74,7 @@
                     <td><% if (v==null) { %><span class="bm-nodata" title="<%= __('dash:rd_not_measured_title') %>"><%= __('dash:rd_not_measured') %></span><% } else { %><div class="bm-fitbar"><div class="bm-fitbar-fill <%= v>=80?'fit-good':(v>=50?'fit-mid':'fit-low') %>" style="width:<%= v %>%;"></div><span class="bm-fitbar-label"><%= v %>%</span></div><% } %><small class="text-muted bm-cand-cov" title="<%= __('dash:rd_not_measured_title') %>"><%= cAssessed %> / <%= cReq %> <%= __('dash:bm_cand_coverage_suffix') %></small></td>
                     <td style="text-align:center;" title="<%= __('dash:bm_cand_gaps_measured_title') %>"><% if (cAssessed===0) { %>—<% } else { %><%= c.gapSkills %><% } %></td>
                     <td style="text-align:center;<%= c.critGapSkills>0 ? 'color:#F44336;font-weight:700;' : '' %>" title="<%= __('dash:bm_cand_gaps_measured_title') %>"><% if (cAssessed===0) { %>—<% } else { %><%= c.critGapSkills %><% } %></td>
-                    <td style="text-align:center;"><a href="/v2/idp/new?employeeId=<%= c.employeeId %>" class="btn btn-xs btn-secondary" title="<%= __('dash:start_idp_title') %>"><%= __('dash:develop') %></a></td>
+                    <td style="text-align:center;"><% if (typeof appModules === 'undefined' || !appModules || appModules.development) { %><a href="/v2/idp/new?employeeId=<%= c.employeeId %>" class="btn btn-xs btn-secondary" title="<%= __('dash:start_idp_title') %>"><%= __('dash:develop') %></a><% } else { %>—<% } %></td>
                 </tr>
             <% }); } %>
         </tbody>

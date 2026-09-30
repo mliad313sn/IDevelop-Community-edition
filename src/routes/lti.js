@@ -15,8 +15,10 @@ const crypto = require('crypto');
 const router = express.Router();
 const ah = require('../utils/asyncHandler');
 
-function gated(res) {
-    if (process.env.V2_FEATURES !== '1') {
+// LTI belongs to the development module (Administration → Modules); while it
+// is off these public endpoints answer 404. Read per request — no restart.
+async function gated(res) {
+    if (!(await require('../services/ModuleService').isOn('development'))) {
         res.status(404).end();
         return true;
     }
@@ -34,7 +36,7 @@ function esc(s) {
 router.get(
     '/.well-known/lms-jwks.json',
     ah(async (req, res) => {
-        if (gated(res)) return;
+        if (await gated(res)) return;
         const db = require('../config/database');
         const LmsService = require('../services/LmsService');
         const keys = [];
@@ -59,7 +61,7 @@ router.get(
 router.get(
     '/lti/:provider/auth',
     ah(async (req, res) => {
-        if (gated(res)) return;
+        if (await gated(res)) return;
         // SECURITY: the Platform asserts the identity of the AUTHENTICATED user, never an
         // identity echoed from the query. Without this, anyone could mint a Platform-signed
         // id_token for an arbitrary email (login_hint) and replay it to impersonate that user

@@ -78,11 +78,14 @@
         <p><%= __('chrome:mgr_gap_sub') %></p>
         <a href="/supervisor/gap-analysis" class="btn btn-secondary"><%= __('chrome:mgr_gap_btn') %></a>
     </div>
+    <%# coaching is the development optional module (Administration → Modules): no link to a page that answers 404 %>
+    <% if (typeof appModules === 'undefined' || !appModules || appModules.development) { %>
     <div class="col card">
         <h2><i class="fas fa-compass" aria-hidden="true"></i> <%= __('chrome:mgr_coaching') %></h2>
         <p><%= __('chrome:mgr_coaching_sub') %></p>
         <a href="/coaching/plans" class="btn btn-secondary"><%= __('chrome:mgr_coaching_btn') %></a>
     </div>
+    <% } %>
     <div class="col card">
         <h2><i class="fas fa-book" aria-hidden="true"></i> <%= __('chrome:mgr_my_dev') %></h2>
         <p><%= __('chrome:mgr_my_dev_sub') %></p>
