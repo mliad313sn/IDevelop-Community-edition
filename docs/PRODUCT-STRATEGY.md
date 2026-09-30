@@ -17,13 +17,15 @@ This document records what they found, what was decided and what has shipped.
 | HR / enterprise | 6.5 / 10 | Conditional yes for a pilot. Needs a works-council pack, AI Act guardrails and real HRIS sync before a full rollout. |
 | Employee        | 6.5 / 10 | Honest and safe on a shared device, but "what's in it for me" is thin once the self-assessment is submitted.         |
 | Line manager    | 6 / 10   | Good review console. No roster of my people and approvals are one person at a time.                                  |
-| Benchmark       | —        | The only complete, self-hosted, open-source skills and talent suite. Gaps: taxonomy, 360, in-flow nudges.            |
+| Benchmark       | —        | A rare self-hosted, open-source suite that is deep on skills and talent. Gaps: taxonomy, 360, in-flow nudges.        |
 
 ## Positioning
 
-> For regulated, frontline-heavy and sovereignty-conscious organisations,
-> IDevelop CE is the only complete, self-hosted, open-source skills and talent
-> suite: auditable, offline-capable and free of licence fees.
+> For regulated, industrial and sovereignty-conscious organisations, IDevelop CE
+> is a self-hosted, open-source skills and talent suite that goes deeper than the
+> open-source HR tools: auditable, bilingual and free of licence fees. It is not
+> (yet) a continuous-performance platform: 360 feedback, rich OKRs and HRIS
+> connectors are on the roadmap.
 
 **The three things to lead with:**
 

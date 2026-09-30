@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <b>Open-source skills, talent and continuous-performance platform.</b><br>
+  <b>Open-source skills and talent management platform.</b><br>
   Capability frameworks · Assessments & reviews · Role readiness · 9-box & succession · Development plans · Analytics
 </p>
 
@@ -19,8 +19,9 @@
 IDevelop Community Edition (**IDevelop CE**) helps an organisation describe the
 skills its roles need, measure the skills its people have, and act on the gap —
 fairly, transparently and with a full audit trail. It runs on your own
-infrastructure (a single Node.js process and PostgreSQL), works offline-first
-on the shop floor, and every screen is available in French and English.
+infrastructure (a single Node.js process and PostgreSQL), keeps self-assessment
+drafts on the device when the network drops, and every screen is available in
+French and English.
 
 ![Executive dashboard — Daylight mode, Iris theme](docs/images/dashboard-daylight.png)
 
@@ -34,7 +35,7 @@ colour themes — **Iris**, **Meadow**, **Sunrise** or **Ocean**.
 
 ## Contents
 
-- [Features](#features)
+- [Features](#features) · [What it is not (yet)](#what-it-is-not-yet)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Tech stack](#tech-stack)
@@ -54,17 +55,20 @@ roles) can be loaded in one command.
 
 **Assessment** — self-assessment campaigns, supervisor reviews with evidence,
 change requests and disputes with SLA escalation, maker-checker approvals,
-certification validity and expiry reminders, offline drafts that sync when the
-network returns.
+certification validity and expiry reminders. Self-assessment drafts are saved
+on the device and sent when the network returns (the rest of the application
+needs a connection).
 
 **Readiness & analytics** — role-readiness and gap analysis that separate
 _unmeasured_ from _zero_, executive dashboard, capability map, benchmark and
 comparator views, report builder with scheduled delivery, department briefs,
 key-person and retention risk, workforce planning signals.
 
-**Talent** — 9-box calibration (one person, one position), succession plans and
-coverage floors, individual development plans, coaching plans, performance
-improvement plans, mobility postings, recognition, pulse surveys.
+**Talent** — 9-box placement and calibration (manual, one person, one position),
+succession plans and coverage floors, individual development plans, coaching
+plans, performance improvement plans, internal mobility postings with rule-based
+matching, a team recognition feed, pulse and eNPS surveys with an anonymity
+floor, and basic goals and check-ins.
 
 **Governance & security** — fine-grained RBAC with geographic/organisational
 scopes, access reviews and a tamper-evident (hash-chained) audit trail, MFA
@@ -72,18 +76,43 @@ scopes, access reviews and a tamper-evident (hash-chained) audit trail, MFA
 Google), SCIM provisioning, per-client API keys, GDPR export/erasure with legal
 hold, retention policies, rate limiting, CSP with nonces.
 
-**Integrations** — versioned JSON API (`/api/v1`, OpenAPI 3), signed webhooks,
-LMS connectors (LTI 1.3, xAPI LRS and more), SMTP notifications and digests,
-optional LLM "talent copilot" behind an anonymisation layer (off by default).
+**Integrations** — versioned JSON API (`/api/v1`, OpenAPI 3; a focused set of
+endpoints, not full coverage of the UI), signed outgoing webhooks that can post
+notifications to Slack or Microsoft Teams channels (one-way), SCIM user
+provisioning, LMS connectors (LTI 1.3, xAPI LRS, Cornerstone), Power BI feeds,
+SMTP notifications and digests. People data comes in through Excel/CSV import or
+SCIM: there are no packaged HRIS connectors (Workday, SAP, Personio…) yet.
 
-**AI companion** — an "Assistant" tab in the help panel for every user: how-to
-answers with a link to the right screen, personalised next steps, page and
-concept explanations, in French and English. Works fully offline with no language
-model; employees only ever see their own data.
+**Assistant and copilot** — an "Assistant" tab in the help panel for every user:
+how-to answers with a link to the right screen, personalised next steps, page and
+concept explanations, in French and English. It is rule-based and works without
+any language model; employees only ever see their own data. Managers and
+administrators can also switch on an optional LLM **copilot** (off by default,
+EU-hosted or on-premises providers only by default, names anonymised before
+anything leaves the server, "decision support only" label on every answer). Skill
+suggestions are computed from evidence (certificates, courses, plans) with
+transparent rules, not machine learning.
 
 **Operations** — health/readiness/metrics endpoints, in-process job scheduler
 (or BullMQ on Redis for multi-instance), daily database backups, restore drills,
 installable PWA, Windows installer, Docker image.
+
+### What it is not (yet)
+
+Being clear about the limits saves everyone time. Today IDevelop CE does **not**
+offer:
+
+- **360° / multi-rater feedback** — only free-form feedback notes;
+- **rich OKRs and shared 1:1 meetings** — goals and check-ins are basic, and not
+  linked to review forms;
+- **packaged HRIS connectors** — use Excel/CSV import or SCIM;
+- **an interactive Slack or Teams app** — notifications are one-way;
+- **a full offline mode or a store-published mobile app** — it is an installable
+  web app (PWA); only self-assessment drafts work offline;
+- **languages beyond French and English**;
+- **multi-tenant hosting** — one installation serves one organisation.
+
+These are on the roadmap in [docs/PRODUCT-STRATEGY.md](docs/PRODUCT-STRATEGY.md).
 
 ## Quick start
 

@@ -1,7 +1,7 @@
 {
   "name": "idevelop",
   "version": "1.0.0",
-  "description": "IDevelop Community Edition — open-source skills, talent and continuous-performance platform (capability frameworks, assessments, readiness, 9-box, development plans, analytics).",
+  "description": "IDevelop Community Edition — open-source skills and talent management platform (capability frameworks, assessments, readiness, 9-box, development plans, analytics).",
   "main": "server.js",
   "engines": {
     "node": ">=20.19.0"

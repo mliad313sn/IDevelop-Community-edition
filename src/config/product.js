@@ -28,7 +28,7 @@ const PRODUCT = Object.freeze({
     slug: 'idevelop',
     /** One-line description — meta description, OpenAPI, package manifests. */
     description:
-        'Open-source skills, talent and continuous-performance platform: capability frameworks, ' +
+        'Open-source skills and talent management platform: capability frameworks, ' +
         'assessments, readiness, 9-box calibration, development plans and analytics.',
     /** Line shown on /about. */
     legalNotice: 'Free software — licensed under the GNU AGPL v3.0 or later.',
