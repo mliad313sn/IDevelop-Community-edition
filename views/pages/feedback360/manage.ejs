@@ -57,7 +57,7 @@
             <label for="f360-people"><%= __('talentx:f360_f_people') %></label>
             <select id="f360-people" name="employeeIds" class="form-control hz-360-people" multiple required size="8">
                 <% candidates.forEach(function (c) { %>
-                <option value="<%= c.id %>"><%= (c.lastName || '') + ' ' + (c.firstName || '') %><% if (c.employeeNumber) { %> (<%= c.employeeNumber %>)<% } %></option>
+                <option value="<%= c.id %>"><%= (c.firstName || '') + ' ' + (c.lastName || '') %><% if (c.employeeNumber) { %> (<%= c.employeeNumber %>)<% } %></option>
                 <% }); %>
             </select>
             <small class="text-muted"><%= __('talentx:f360_f_people_hint') %></small>

@@ -1073,7 +1073,7 @@ class Feedback360Service {
         const rows = await db.all(
             `SELECT id, first_name, last_name FROM employees
               WHERE is_active = true AND cancelled_at IS NULL
-                AND (first_name || ' ' || last_name ILIKE ? OR last_name || ' ' || first_name ILIKE ?)
+                AND (first_name || ' ' || last_name ILIKE ? OR last_name ILIKE ?)
               ORDER BY last_name, first_name, id LIMIT 20`,
             [like, like]
         );

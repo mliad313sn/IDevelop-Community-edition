@@ -262,6 +262,24 @@ const REDACTED_ON_ERASURE = [
         erased: ['title', 'shared_notes'],
         kept: ['id', 'kind', 'created_at'],
     },
+    // THE ONE-TO-ONE SPACE (migration 161). The export gives the person the
+    // agenda of their own meetings, the shared notes there, and every note they
+    // wrote themselves (their private ones included) — never someone else's
+    // private note. The erasure redacts the text of every note and topic of
+    // their meetings (including the other party's private notes, which are
+    // about them) and of everything they wrote. Bodies are NOT NULL → marker.
+    {
+        key: 'oneOnOneAgenda',
+        table: 'one_on_one_agenda_items',
+        erased: ['body'],
+        kept: ['id', 'check_in_id', 'discussed', 'created_at'],
+    },
+    {
+        key: 'oneOnOneNotes',
+        table: 'one_on_one_notes',
+        erased: ['body'],
+        kept: ['id', 'check_in_id', 'visibility', 'created_at'],
+    },
     {
         key: 'surveyResponses',
         table: 'survey_responses',
@@ -395,6 +413,17 @@ const DISCLOSED_ABOUT_SUBJECT = [
     // redacte et qui est déclaré ci-dessus. L'en-tête du plan est la structure
     // du dossier de développement, pas une appréciation sur la personne.
     { key: 'idp', table: 'idp_plans', kept: ['id', 'status', 'priority'] },
+    // 360° FEEDBACK (migration 161): that a round about the person took place.
+    // The answers themselves are ANONYMOUS and are not exported raw — handing a
+    // subject the comments of a group the report hides (fewer than 3 answers)
+    // would break the promise made to those raters; the person reads what may
+    // be read in their released report. The erasure deletes the free-text
+    // comments about them (the anonymous ratings, which name nobody, stay).
+    {
+        key: 'feedback360',
+        table: 'feedback360_subjects',
+        kept: ['id', 'round_id', 'status', 'created_at'],
+    },
 ];
 
 class DSRService {
@@ -551,6 +580,27 @@ class DSRService {
         await q(
             'checkins',
             'SELECT id, kind, title, shared_notes, created_at FROM check_ins WHERE employee_id = ?',
+            [employeeId]
+        );
+        await q(
+            'oneOnOneAgenda',
+            `SELECT g.id, g.check_in_id, g.body, g.discussed, g.created_at
+               FROM one_on_one_agenda_items g
+               JOIN check_ins c ON c.id = g.check_in_id
+              WHERE c.employee_id = ? OR g.author_employee_id = ?`,
+            [employeeId, employeeId]
+        );
+        await q(
+            'oneOnOneNotes',
+            `SELECT n.id, n.check_in_id, n.visibility, n.body, n.created_at
+               FROM one_on_one_notes n
+               JOIN check_ins c ON c.id = n.check_in_id
+              WHERE n.author_employee_id = ? OR (n.visibility = 'shared' AND c.employee_id = ?)`,
+            [employeeId, employeeId]
+        );
+        await q(
+            'feedback360',
+            'SELECT id, round_id, status, created_at FROM feedback360_subjects WHERE employee_id = ?',
             [employeeId]
         );
         await q('idp', 'SELECT id, status, priority FROM idp_plans WHERE employee_id = ?', [
@@ -737,6 +787,24 @@ class DSRService {
             // these can abort the transaction.
             await db.run(
                 "UPDATE check_ins SET title = '[erased]', shared_notes = NULL WHERE employee_id = ?",
+                [employeeId]
+            );
+            await db.run(
+                `UPDATE one_on_one_agenda_items SET body = '[erased]'
+                  WHERE author_employee_id = ? OR check_in_id IN (SELECT id FROM check_ins WHERE employee_id = ?)`,
+                [employeeId, employeeId]
+            );
+            await db.run(
+                `UPDATE one_on_one_notes SET body = '[erased]'
+                  WHERE author_employee_id = ? OR check_in_id IN (SELECT id FROM check_ins WHERE employee_id = ?)`,
+                [employeeId, employeeId]
+            );
+            await db.run(
+                `DELETE FROM feedback360_answers
+                  WHERE item_type = 'comment'
+                    AND response_id IN (SELECT r.id FROM feedback360_responses r
+                                          JOIN feedback360_subjects s ON s.id = r.subject_id
+                                         WHERE s.employee_id = ?)`,
                 [employeeId]
             );
             await db.run('UPDATE skill_assessments SET notes = NULL WHERE employee_id = ?', [
