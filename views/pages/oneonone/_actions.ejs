@@ -1,0 +1,25 @@
+<%# Action items of a one-to-one: owner, due date, optional IDP objective or
+    goal. `list` and `W` (may write) come from the including page. %>
+<% if (!list.length) { %>
+    <p class="text-muted"><%= __('growth:oo_actions_empty') %></p>
+<% } else { %>
+<ul class="hz-oneone-list">
+    <% list.forEach(function (a) { %>
+    <li class="<%= a.done ? 'is-done' : '' %>">
+        <% if (W) { %>
+        <form method="post" action="/one-on-one/actions/<%= a.id %>/done" class="hz-oneone-check">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="done" value="<%= a.done ? 'false' : 'true' %>">
+            <button type="submit" class="btn btn-link btn-sm" aria-label="<%= a.done ? __('growth:oo_mark_open') : __('growth:oo_mark_done') %>"><i class="far <%= a.done ? 'fa-square-check' : 'fa-square' %>" aria-hidden="true"></i></button>
+        </form>
+        <% } %>
+        <span class="hz-oneone-body"><%= a.body %></span>
+        <span class="text-muted hz-oneone-by">
+            <% if (a.owner) { %><%= a.owner %><% } %><% if (a.dueOn) { %> · <%= __('growth:oo_due_on', { date: fmtDate(a.dueOn) }) %><% } %>
+            <% if (a.objective) { %> · <i class="fas fa-seedling" aria-hidden="true"></i> <%= String(a.objective.text || '').slice(0, 60) %><% } %>
+            <% if (a.goal) { %> · <i class="fas fa-bullseye" aria-hidden="true"></i> <%= a.goal.title %><% } %>
+        </span>
+    </li>
+    <% }); %>
+</ul>
+<% } %>

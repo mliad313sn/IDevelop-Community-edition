@@ -180,7 +180,14 @@ const TICKS = [
         everyMin: 60,
         keep: 30,
         fn: () => require('./reminders').tick(),
-    }, // "nothing slips" nudges — IDP signoff stall / LMS unstarted / survey non-responders / access-review (exactly-once via reminder_log)
+    },
+    {
+        name: 'feedback360.tick',
+        cron: '47 * * * *',
+        everyMin: 60,
+        keep: 30,
+        fn: () => require('./feedback360').tick(),
+    }, // 360° feedback: close rounds past their deadline, remind non-responders (development module only) // "nothing slips" nudges — IDP signoff stall / LMS unstarted / survey non-responders / access-review (exactly-once via reminder_log)
     // ---- Proactive continuity, retention & handover automation -------------
     // Key-person risk had no tick at all: succession queries ran only when
     // somebody opened /v2/continuity, and retention risk was computed only by a

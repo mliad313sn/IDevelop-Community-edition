@@ -1,0 +1,118 @@
+<%# « Mon feedback 360° » — the person's own rounds (as the subject), the
+    questionnaires waiting for them (as a rater) and, for a manager, the
+    nominations to approve. Nothing here names who answered what. %>
+<%
+  const ST = {
+      nominating: __('talentx:f360_st_nominating'),
+      awaiting_approval: __('talentx:f360_st_awaiting_approval'),
+      collecting: __('talentx:f360_st_collecting'),
+      closed: __('talentx:f360_st_closed'),
+  };
+  const GR = {
+      self: __('talentx:f360_group_self'),
+      manager: __('talentx:f360_group_manager'),
+      peer: __('talentx:f360_group_peer'),
+      direct_report: __('talentx:f360_group_direct_report'),
+      other: __('talentx:f360_group_other'),
+  };
+%>
+<div class="page-header">
+    <h1><i class="fas fa-users-viewfinder" aria-hidden="true"></i> <%= __('talentx:f360_title') %></h1>
+    <p><%= __('talentx:f360_intro') %></p>
+    <% if (isStaff) { %>
+    <p><a class="btn btn-secondary btn-sm" href="/feedback-360/manage"><i class="fas fa-sliders" aria-hidden="true"></i> <%= __('talentx:f360_open_console') %></a></p>
+    <% } %>
+</div>
+
+<div class="hz-callout hz-360-note card">
+    <i class="fas fa-user-shield" aria-hidden="true"></i>
+    <p><%= __('talentx:f360_anonymity_promise') %></p>
+</div>
+
+<section class="card hz-360-section" aria-labelledby="f360-answer-h">
+    <h2 id="f360-answer-h"><i class="fas fa-pen-to-square" aria-hidden="true"></i> <%= __('talentx:f360_to_answer') %></h2>
+    <% if (!home.toAnswer.length) { %>
+        <%- include('../../partials/empty-state', { icon: 'fa-mug-hot', title: __('talentx:f360_to_answer_none'), text: __('talentx:f360_to_answer_none_text') }) %>
+    <% } else { %>
+    <div class="table-responsive"><table class="table table-cards">
+        <thead><tr>
+            <th><%= __('talentx:f360_th_about') %></th>
+            <th><%= __('talentx:f360_th_as') %></th>
+            <th><%= __('talentx:f360_th_round') %></th>
+            <th><%= __('talentx:f360_th_deadline') %></th>
+            <th><span class="sr-only"><%= __('talentx:f360_th_action') %></span></th>
+        </tr></thead>
+        <tbody>
+        <% home.toAnswer.forEach(function (a) { %>
+            <tr>
+                <td data-label="<%= __('talentx:f360_th_about') %>"><%= a.subjectName || __('talentx:f360_about_yourself') %></td>
+                <td data-label="<%= __('talentx:f360_th_as') %>"><%= GR[a.group] || a.group %></td>
+                <td data-label="<%= __('talentx:f360_th_round') %>"><%= a.title %></td>
+                <td data-label="<%= __('talentx:f360_th_deadline') %>"><%= fmtDate(a.deadline) %></td>
+                <td class="cell-actions"><a class="btn btn-primary btn-sm" href="/feedback-360/answer/<%= a.nominationId %>"><%= __('talentx:f360_answer_btn') %></a></td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+    <% } %>
+</section>
+
+<% if (home.toApprove.length) { %>
+<section class="card hz-360-section" aria-labelledby="f360-approve-h">
+    <h2 id="f360-approve-h"><i class="fas fa-user-check" aria-hidden="true"></i> <%= __('talentx:f360_to_approve') %></h2>
+    <div class="table-responsive"><table class="table table-cards">
+        <thead><tr>
+            <th><%= __('talentx:f360_th_person') %></th>
+            <th><%= __('talentx:f360_th_round') %></th>
+            <th><%= __('talentx:f360_th_deadline') %></th>
+            <th><span class="sr-only"><%= __('talentx:f360_th_action') %></span></th>
+        </tr></thead>
+        <tbody>
+        <% home.toApprove.forEach(function (s) { %>
+            <tr>
+                <td data-label="<%= __('talentx:f360_th_person') %>"><%= s.name %></td>
+                <td data-label="<%= __('talentx:f360_th_round') %>"><%= s.round.title %></td>
+                <td data-label="<%= __('talentx:f360_th_deadline') %>"><%= fmtDate(s.round.deadline) %></td>
+                <td class="cell-actions"><a class="btn btn-primary btn-sm" href="/feedback-360/subjects/<%= s.id %>"><%= __('talentx:f360_review_nominations') %></a></td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+</section>
+<% } %>
+
+<section class="card hz-360-section" aria-labelledby="f360-mine-h">
+    <h2 id="f360-mine-h"><i class="fas fa-user" aria-hidden="true"></i> <%= __('talentx:f360_my_rounds') %></h2>
+    <% if (!home.asSubject.length) { %>
+        <%- include('../../partials/empty-state', { icon: 'fa-users-viewfinder', title: __('talentx:f360_my_rounds_none'), text: __('talentx:f360_my_rounds_none_text') }) %>
+    <% } else { %>
+    <div class="table-responsive"><table class="table table-cards">
+        <thead><tr>
+            <th><%= __('talentx:f360_th_round') %></th>
+            <th><%= __('talentx:f360_th_status') %></th>
+            <th><%= __('talentx:f360_th_deadline') %></th>
+            <th><span class="sr-only"><%= __('talentx:f360_th_action') %></span></th>
+        </tr></thead>
+        <tbody>
+        <% home.asSubject.forEach(function (s) { %>
+            <tr>
+                <td data-label="<%= __('talentx:f360_th_round') %>"><%= s.round.title %></td>
+                <td data-label="<%= __('talentx:f360_th_status') %>"><span class="badge badge-secondary"><%= ST[s.status] || s.status %></span></td>
+                <td data-label="<%= __('talentx:f360_th_deadline') %>"><%= fmtDate(s.round.deadline) %></td>
+                <td class="cell-actions">
+                    <% if (s.reportVisible) { %>
+                        <a class="btn btn-primary btn-sm" href="/feedback-360/subjects/<%= s.id %>/report"><%= __('talentx:f360_read_my_report') %></a>
+                    <% } else if (s.status === 'nominating' && s.round.status === 'open') { %>
+                        <a class="btn btn-primary btn-sm" href="/feedback-360/subjects/<%= s.id %>"><%= __('talentx:f360_choose_raters') %></a>
+                    <% } else if (s.round.status === 'closed') { %>
+                        <span class="text-muted"><%= __('talentx:f360_awaiting_release') %></span>
+                    <% } else { %>
+                        <a class="btn btn-secondary btn-sm" href="/feedback-360/subjects/<%= s.id %>"><%= __('talentx:f360_see_raters') %></a>
+                    <% } %>
+                </td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+    <% } %>
+</section>

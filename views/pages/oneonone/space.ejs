@@ -1,0 +1,207 @@
+<%# Shared one-to-one space of a person and their manager (OneOnOneService).
+    Plain forms: it works without JavaScript. Private notes come from the
+    service ONLY for their author — this template never receives anyone else's. %>
+<%
+  const S = space;
+  const W = S.canWrite;
+  const next = S.next;
+  const other = S.role === 'employee' ? (S.manager && S.manager.name) : S.employee.name;
+  const heading = S.role === 'employee'
+      ? (S.manager ? __('growth:oo_heading_employee', { name: S.manager.name }) : __('growth:oo_title'))
+      : (S.role === 'manager' ? __('growth:oo_heading_manager', { name: S.employee.name }) : __('growth:oo_heading_hr', { name: S.employee.name }));
+  const owners = [];
+  owners.push({ id: S.employee.id, name: S.employee.name });
+  if (S.manager) owners.push({ id: S.manager.id, name: S.manager.name });
+  const when = (m) => m.occurredAt ? fmtDateTime(m.occurredAt) : (m.scheduledAt ? fmtDateTime(m.scheduledAt) : __('growth:oo_no_date'));
+  const localInput = (d) => { if (!d) return ''; const x = new Date(d); if (isNaN(x.getTime())) return ''; const p = (n) => String(n).padStart(2, '0'); return x.getFullYear() + '-' + p(x.getMonth() + 1) + '-' + p(x.getDate()) + 'T' + p(x.getHours()) + ':' + p(x.getMinutes()); };
+%>
+<div class="page-header">
+    <h1><i class="fas fa-people-arrows" aria-hidden="true"></i> <%= heading %></h1>
+    <p><%= __('growth:oo_intro') %></p>
+    <% if (S.role === 'manager') { %>
+    <p><a class="btn btn-secondary btn-sm" href="/supervisor/dashboard"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('growth:oo_back_team') %></a></p>
+    <% } %>
+</div>
+
+<% if (S.role === 'hr') { %>
+<div class="hz-callout card hz-oneone-note">
+    <i class="fas fa-eye" aria-hidden="true"></i>
+    <p><%= __('growth:oo_hr_readonly') %></p>
+</div>
+<% } %>
+
+<% if (!S.manager && S.role === 'employee') { %>
+<div class="hz-callout card hz-oneone-note">
+    <i class="fas fa-circle-info" aria-hidden="true"></i>
+    <p><%= __('growth:oo_no_manager') %></p>
+</div>
+<% } %>
+
+<% if (S.manager && (S.role !== 'hr' || next)) { %>
+<section class="card hz-oneone-section" aria-labelledby="oo-next-h">
+    <div class="hz-oneone-head">
+        <h2 id="oo-next-h"><i class="fas fa-calendar-day" aria-hidden="true"></i> <%= __('growth:oo_next_title') %></h2>
+        <% if (next && next.scheduledAt) { %><span class="badge badge-info"><%= fmtDateTime(next.scheduledAt) %></span><% } %>
+    </div>
+
+    <% if (W && next) { %>
+    <form method="post" action="/one-on-one/meetings/<%= next.id %>/schedule" class="hz-oneone-inline">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label for="oo-when"><%= __('growth:oo_when') %></label>
+        <input id="oo-when" type="datetime-local" name="scheduledAt" class="form-control" value="<%= localInput(next.scheduledAt) %>" required>
+        <button type="submit" class="btn btn-secondary btn-sm"><%= __('growth:oo_set_date') %></button>
+    </form>
+    <% } %>
+
+    <h3><%= __('growth:oo_agenda') %></h3>
+    <p class="text-muted"><%= __('growth:oo_agenda_hint', { name: other || '' }) %></p>
+    <% if (!next || !next.agenda.length) { %>
+        <p class="text-muted"><%= __('growth:oo_agenda_empty') %></p>
+    <% } else { %>
+    <ul class="hz-oneone-list">
+        <% next.agenda.forEach(function (t) { %>
+        <li class="<%= t.discussed ? 'is-done' : '' %>">
+            <% if (W) { %>
+            <form method="post" action="/one-on-one/topics/<%= t.id %>/discussed" class="hz-oneone-check">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="discussed" value="<%= t.discussed ? 'false' : 'true' %>">
+                <button type="submit" class="btn btn-link btn-sm" aria-label="<%= t.discussed ? __('growth:oo_mark_open') : __('growth:oo_mark_discussed') %>"><i class="far <%= t.discussed ? 'fa-square-check' : 'fa-square' %>" aria-hidden="true"></i></button>
+            </form>
+            <% } %>
+            <span class="hz-oneone-body"><%= t.body %></span>
+            <span class="text-muted hz-oneone-by"><%= t.author %></span>
+            <% if (W && t.mine && !t.discussed) { %>
+            <form method="post" action="/one-on-one/topics/<%= t.id %>/delete" class="hz-oneone-check">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button type="submit" class="btn btn-link btn-sm" aria-label="<%= __('growth:oo_remove_topic') %>"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+            </form>
+            <% } %>
+        </li>
+        <% }); %>
+    </ul>
+    <% } %>
+    <% if (W) { %>
+    <form method="post" action="/one-on-one/<%= S.employee.id %>/topics" class="hz-oneone-inline">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label for="oo-topic" class="sr-only"><%= __('growth:oo_add_topic') %></label>
+        <input id="oo-topic" name="body" class="form-control" maxlength="1000" required placeholder="<%= __('growth:oo_topic_ph') %>">
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('growth:oo_add_topic') %></button>
+    </form>
+    <% } %>
+
+    <% if (next) { %>
+    <h3><%= __('growth:oo_shared_notes') %></h3>
+    <p class="text-muted"><%= __('growth:oo_shared_hint') %></p>
+    <% next.shared.filter(function (n) { return !n.mine; }).forEach(function (n) { %>
+    <div class="hz-oneone-note-block"><strong><%= n.author %></strong><p><%= n.body %></p></div>
+    <% }); %>
+    <% if (W) { const mineShared = next.shared.find(function (n) { return n.mine; }); %>
+    <form method="post" action="/one-on-one/meetings/<%= next.id %>/notes">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="visibility" value="shared">
+        <label for="oo-shared" class="sr-only"><%= __('growth:oo_shared_notes') %></label>
+        <textarea id="oo-shared" name="body" class="form-control" rows="4" maxlength="10000"><%= mineShared ? mineShared.body : '' %></textarea>
+        <button type="submit" class="btn btn-secondary btn-sm"><%= __('growth:oo_save_shared') %></button>
+    </form>
+    <% } else { next.shared.filter(function (n) { return n.mine; }).forEach(function (n) { %>
+    <div class="hz-oneone-note-block"><strong><%= n.author %></strong><p><%= n.body %></p></div>
+    <% }); } %>
+
+    <% if (W) { %>
+    <h3><i class="fas fa-lock" aria-hidden="true"></i> <%= __('growth:oo_private_notes') %></h3>
+    <p class="text-muted"><%= __('growth:oo_private_hint') %></p>
+    <form method="post" action="/one-on-one/meetings/<%= next.id %>/notes">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="visibility" value="private">
+        <label for="oo-private" class="sr-only"><%= __('growth:oo_private_notes') %></label>
+        <textarea id="oo-private" name="body" class="form-control" rows="3" maxlength="10000"><%= next.mine ? next.mine.body : '' %></textarea>
+        <button type="submit" class="btn btn-secondary btn-sm"><%= __('growth:oo_save_private') %></button>
+    </form>
+    <% } %>
+
+    <h3><%= __('growth:oo_actions') %></h3>
+    <%- include('./_actions', { list: next.actions, W: W }) %>
+    <% if (W) { %>
+    <form method="post" action="/one-on-one/meetings/<%= next.id %>/actions" class="hz-oneone-action-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="form-group hz-oneone-wide">
+            <label for="oo-act"><%= __('growth:oo_action_label') %></label>
+            <input id="oo-act" name="body" class="form-control" maxlength="500" required>
+        </div>
+        <div class="form-group">
+            <label for="oo-owner"><%= __('growth:oo_owner') %></label>
+            <select id="oo-owner" name="ownerId" class="form-control">
+                <% owners.forEach(function (o) { %><option value="<%= o.id %>"><%= o.name %></option><% }); %>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="oo-due"><%= __('growth:oo_due') %></label>
+            <input id="oo-due" name="dueOn" type="date" class="form-control">
+        </div>
+        <% if (S.links.objectives.length) { %>
+        <div class="form-group hz-oneone-wide">
+            <label for="oo-obj"><%= __('growth:oo_link_objective') %></label>
+            <select id="oo-obj" name="idpObjectiveId" class="form-control">
+                <option value=""><%= __('growth:oo_link_none') %></option>
+                <% S.links.objectives.forEach(function (o) { %><option value="<%= o.id %>"><%= String(o.text || '').slice(0, 90) %></option><% }); %>
+            </select>
+        </div>
+        <% } %>
+        <% if (S.links.goals.length) { %>
+        <div class="form-group hz-oneone-wide">
+            <label for="oo-goal"><%= __('growth:oo_link_goal') %></label>
+            <select id="oo-goal" name="goalId" class="form-control">
+                <option value=""><%= __('growth:oo_link_none') %></option>
+                <% S.links.goals.forEach(function (g) { %><option value="<%= g.id %>"><%= g.title %></option><% }); %>
+            </select>
+        </div>
+        <% } %>
+        <div class="hz-oneone-wide"><button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('growth:oo_add_action') %></button></div>
+    </form>
+
+    <form method="post" action="/one-on-one/meetings/<%= next.id %>/complete" class="hz-oneone-complete" data-confirm="<%= __('growth:oo_complete_confirm') %>">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i> <%= __('growth:oo_complete') %></button>
+        <span class="text-muted"><%= __('growth:oo_complete_hint') %></span>
+    </form>
+    <% } %>
+    <% } %>
+</section>
+<% } %>
+
+<% if (S.openActions.length) { %>
+<section class="card hz-oneone-section" aria-labelledby="oo-open-h">
+    <h2 id="oo-open-h"><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('growth:oo_open_actions') %></h2>
+    <%- include('./_actions', { list: S.openActions, W: W }) %>
+</section>
+<% } %>
+
+<section class="card hz-oneone-section" aria-labelledby="oo-hist-h">
+    <h2 id="oo-hist-h"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> <%= __('growth:oo_history') %></h2>
+    <% if (!S.history.length) { %>
+        <%- include('../../partials/empty-state', { icon: 'fa-people-arrows', title: __('growth:oo_history_none'), text: __('growth:oo_history_none_text') }) %>
+    <% } else { %>
+    <% S.history.forEach(function (m) { %>
+    <details class="hz-oneone-past">
+        <summary><strong><%= when(m) %></strong><% if (m.withName) { %> · <%= __('growth:oo_with', { name: m.withName }) %><% } %></summary>
+        <% if (m.agenda.length) { %>
+        <h3><%= __('growth:oo_agenda') %></h3>
+        <ul><% m.agenda.forEach(function (t) { %><li><%= t.body %> <span class="text-muted">— <%= t.author %></span></li><% }); %></ul>
+        <% } %>
+        <% if (m.shared.length) { %>
+        <h3><%= __('growth:oo_shared_notes') %></h3>
+        <% m.shared.forEach(function (n) { %><div class="hz-oneone-note-block"><strong><%= n.author %></strong><p><%= n.body %></p></div><% }); %>
+        <% } %>
+        <% if (m.mine) { %>
+        <h3><i class="fas fa-lock" aria-hidden="true"></i> <%= __('growth:oo_private_notes') %></h3>
+        <div class="hz-oneone-note-block"><p><%= m.mine.body %></p></div>
+        <% } %>
+        <% if (m.actions.length) { %>
+        <h3><%= __('growth:oo_actions') %></h3>
+        <%- include('./_actions', { list: m.actions, W: W }) %>
+        <% } %>
+        <% if (!m.agenda.length && !m.shared.length && !m.mine && !m.actions.length) { %><p class="text-muted"><%= __('growth:oo_nothing_recorded') %></p><% } %>
+    </details>
+    <% }); %>
+    <% } %>
+</section>

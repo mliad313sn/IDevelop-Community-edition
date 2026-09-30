@@ -89,6 +89,7 @@
            account: _isEmp,
            saReviews: gTeam, supDash: gTeam && _isMgr, gap: gTeam, coaching: gTeam && _m('development'),
            idpManage: gTeam && _m('development'), pip: gTeam && _m('development'), disputes: gTeam,
+           f360Console: gTeam && _m('development'),
            nineBox: gTalent, talentActions: gTalent, careerPath: gTalent, orgChart: gTalent,
            lifecycle: gTalent && _m('mobility'),
            continuity: gTalent && _m('talent') && canCont, keyPerson: gTalent && _m('talent') && canCont,
@@ -138,6 +139,9 @@
            supDash: _at('/supervisor/dashboard') || _at('/supervisor/reviews'),
            gap: _at('/supervisor/gap-analysis'), coaching: _at('/coaching'),
            idpManage: _at('/v2/idp/manage') || _at('/v2/idp/new'), pip: _at('/v2/pip'),
+           f360Console: _at('/feedback-360/manage') || _at('/feedback-360/rounds'),
+           f360: _at('/feedback-360') && !_at('/feedback-360/manage') && !_at('/feedback-360/rounds'),
+           oneOnOne: _at('/one-on-one'),
            disputes: _at('/v2/slf/disputes'),
            nineBox: _at('/talent/nine-box'), talentActions: _at('/talent/actions'),
            careerPath: _at('/talent/career-path'), orgChart: _at('/org-chart'),
@@ -338,8 +342,8 @@
                 </div>
             </div>
             <% } %>
-            <% if (_any('coaching', 'idpManage', 'pip', 'cancellations')) {
-                const _o = _open([['coaching', 'coaching'], ['idpManage', 'idpManage'], ['pip', 'pip'], ['cancellations', 'cancellations']]); %>
+            <% if (_any('coaching', 'idpManage', 'pip', 'f360Console', 'cancellations')) {
+                const _o = _open([['coaching', 'coaching'], ['idpManage', 'idpManage'], ['pip', 'pip'], ['f360Console', 'f360Console'], ['cancellations', 'cancellations']]); %>
             <div class="sidebar-entry sidebar-hub<%= _o ? ' is-open' : '' %>" data-entry-key="plans">
                 <button type="button" class="sidebar-link sidebar-hub-toggle" aria-expanded="<%= _o ? 'true' : 'false' %>" aria-controls="sbsub-plans" title="<%= __('chrome:nav_plans_hub_title') %>">
                     <i class="fas fa-hand-holding-heart" aria-hidden="true"></i>
@@ -363,6 +367,12 @@
                     <a href="/v2/pip" class="sidebar-link sidebar-sublink <%= _on(A.pip) %>" title="<%= __('chrome:nav_pip_title') %>">
                         <i class="fas fa-user-clock" aria-hidden="true"></i>
                         <span class="sidebar-link-text"><%= __('chrome:nav_pip') %></span>
+                    </a>
+                    <% } %>
+                    <% if (S.f360Console) { %>
+                    <a href="/feedback-360/manage" class="sidebar-link sidebar-sublink <%= _on(A.f360Console) %>" title="<%= __('talentx:f360_nav_console_title') %>">
+                        <i class="fas fa-users-viewfinder" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('talentx:f360_nav_console') %></span>
                     </a>
                     <% } %>
                     <% if (S.cancellations) { %>
@@ -750,8 +760,9 @@
             <% } %>
 
             <% { const _okr = _m('engagement'), _myCo = _m('development'), _grow = _m('mobility') || _m('engagement');
-                 const _hasSub = _okr || _myCo || _grow;
-                 const _o = (_okr && A.okr) || (_myCo && A.myCoaching) || (_grow && A.growth); %>
+                 const _oo = _m('engagement'), _f360 = _m('development');
+                 const _hasSub = _okr || _myCo || _grow || _oo || _f360;
+                 const _o = (_okr && A.okr) || (_myCo && A.myCoaching) || (_grow && A.growth) || (_oo && A.oneOnOne) || (_f360 && A.f360); %>
             <%# « Mon plan de développement »: the person's OWN plans (PAP, PDI) and
                 everything that feeds them — objectives, coaching, opportunities. %>
             <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="my_plan">
@@ -771,6 +782,18 @@
                     <a href="/employee/okr" class="sidebar-link sidebar-sublink <%= _on(A.okr) %>" title="<%= __('chrome:nav_my_okr_title') %>">
                         <i class="fas fa-bullseye" aria-hidden="true"></i>
                         <span class="sidebar-link-text"><%= __('chrome:nav_my_okr') %></span>
+                    </a>
+                    <% } %>
+                    <% if (_oo) { %>
+                    <a href="/one-on-one" class="sidebar-link sidebar-sublink <%= _on(A.oneOnOne) %>" title="<%= __('growth:oo_nav_title') %>">
+                        <i class="fas fa-comment-dots" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('growth:oo_nav') %></span>
+                    </a>
+                    <% } %>
+                    <% if (_f360) { %>
+                    <a href="/feedback-360" class="sidebar-link sidebar-sublink <%= _on(A.f360) %>" title="<%= __('talentx:f360_nav_title') %>">
+                        <i class="fas fa-street-view" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('talentx:f360_nav') %></span>
                     </a>
                     <% } %>
                     <% if (_myCo) { %>

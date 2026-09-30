@@ -341,6 +341,27 @@ const GovernanceService = {
     },
 
     /**
+     * The person's direct manager as a PERSON (an employee id), or null: the
+     * live supervisor, else the live employee manager, else the employee linked
+     * to the admin account named manager. A covering admin with no person
+     * behind it is not a manager a one-to-one or a 360° rating can be held with.
+     */
+    async directManagerPersonId(employeeId) {
+        const r = await this.resolveReviewer(employeeId);
+        if (r.kind === 'supervisor' || (r.kind === 'manager' && r.type === 'employee'))
+            return Number(r.id);
+        if (r.kind === 'manager' && r.type === 'admin') {
+            const row = await db.get(
+                `SELECT e.id FROM admins a JOIN employees e ON e.id = a.linked_employee_id
+                  WHERE a.id = ? AND e.is_active = true AND e.cancelled_at IS NULL`,
+                [r.id]
+            );
+            return row && Number(row.id) !== Number(employeeId) ? Number(row.id) : null;
+        }
+        return null;
+    },
+
+    /**
      * Employees this ADMIN is responsible for reviewing directly — i.e. inside
      * their scope AND with no supervisor and no manager of their own. These are
      * the people whose reviews would otherwise reach nobody.

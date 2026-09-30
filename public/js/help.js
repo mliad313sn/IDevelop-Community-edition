@@ -3360,6 +3360,111 @@ document.addEventListener('DOMContentLoaded', () => {
                 "Des objectifs clairs et des échanges réguliers transforment l'effort en progrès reconnu."
             ),
         },
+        '/one-on-one': {
+            title: L('One-to-ones', 'Entretiens individuels'),
+            why: L(
+                '<strong>Process:</strong> The space you share with your manager: a joint agenda for the next meeting, shared and private notes, and the actions you agree on.',
+                '<strong>Processus :</strong> l’espace que vous partagez avec votre responsable : un ordre du jour commun pour le prochain entretien, des notes partagées et privées, et les actions convenues.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        '<strong>Add your topics</strong> before the meeting — the other person is notified.',
+                        '<strong>Ajoutez vos sujets</strong> avant l’entretien — l’autre personne est prévenue.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Write shared notes</strong> for both of you, and <strong>private notes</strong> that only you can read.',
+                        '<strong>Écrivez des notes partagées</strong> pour vous deux, et des <strong>notes privées</strong> que vous seul(e) pouvez lire.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Agree actions</strong> with an owner and a due date, linked to a development objective or a goal if useful, then <strong>mark the meeting as held</strong>.',
+                        '<strong>Convenez d’actions</strong> avec un responsable et une échéance, liées si utile à un objectif de développement ou à un objectif (OKR), puis <strong>marquez l’entretien comme tenu</strong>.'
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'Private notes are never visible to anyone else — not the other person, not HR, not an administrator.',
+                    'Les notes privées ne sont visibles de personne d’autre — ni de l’autre personne, ni des RH, ni d’un administrateur.'
+                ),
+            ],
+            value: L(
+                'Regular, prepared conversations turn into agreed actions that are followed up.',
+                'Des échanges réguliers et préparés deviennent des actions convenues et suivies.'
+            ),
+        },
+        '/feedback-360': {
+            title: L('My 360° feedback', 'Mon feedback 360°'),
+            why: L(
+                '<strong>Process:</strong> How your manager, colleagues, direct reports and others see your skills and behaviours — next to your own view — and the questionnaires others have asked you to fill in.',
+                '<strong>Processus :</strong> le regard de votre responsable, de vos collègues, de vos collaborateurs et d’autres personnes sur vos compétences et comportements — à côté du vôtre — et les questionnaires qu’on vous demande de remplir.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        '<strong>Choose your raters</strong> when a round is launched for you; your manager approves the list.',
+                        '<strong>Choisissez vos évaluateurs</strong> quand un tour est lancé pour vous ; votre responsable valide la liste.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Answer</strong> the questionnaires waiting for you: a level from 0 to 4, or “not observed” — never counted as 0.',
+                        '<strong>Répondez</strong> aux questionnaires qui vous attendent : un niveau de 0 à 4, ou « non observé » — jamais compté comme 0.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Read your report</strong> once it is released, and add what you want to work on to your development plan.',
+                        '<strong>Lisez votre rapport</strong> une fois communiqué, et ajoutez à votre plan de développement ce que vous voulez travailler.'
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'Answers from peers, direct reports and others are only shown grouped, from a minimum number of answers; nobody sees who answered what.',
+                    'Les réponses des collègues, collaborateurs et autres ne sont montrées que regroupées, à partir d’un nombre minimum de réponses ; personne ne voit qui a répondu quoi.'
+                ),
+            ],
+            value: L(
+                'Seeing the gap between how you see yourself and how others see you points to what is worth developing.',
+                'Voir l’écart entre votre regard et celui des autres montre ce qui vaut la peine d’être développé.'
+            ),
+        },
+        '/feedback-360/manage': {
+            title: L('360° feedback console', 'Console feedback 360°'),
+            why: L(
+                '<strong>Process:</strong> Launch a 360° round for one person or a campaign for several, approve their raters, follow who has answered and release the reports.',
+                '<strong>Processus :</strong> lancez un tour 360° pour une personne ou une campagne pour plusieurs, validez leurs évaluateurs, suivez qui a répondu et communiquez les rapports.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        '<strong>Launch</strong> with a deadline, a minimum number of raters per group and an anonymity threshold (3 or more).',
+                        '<strong>Lancez</strong> avec une échéance, un nombre minimum d’évaluateurs par groupe et un seuil d’anonymat (3 ou plus).'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Remind</strong> the raters who have not answered; the round closes by itself after the deadline.',
+                        '<strong>Relancez</strong> les évaluateurs qui n’ont pas répondu ; le tour se clôt tout seul après l’échéance.'
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'You see who has answered, never what they answered: a response is stored without the rater’s identity.',
+                    'Vous voyez qui a répondu, jamais ce qu’il a répondu : une réponse est enregistrée sans l’identité de l’évaluateur.'
+                ),
+            ],
+            value: L(
+                'Multi-rater feedback at scale, without putting anyone’s anonymity at risk.',
+                'Le feedback multi-évaluateurs à grande échelle, sans mettre en jeu l’anonymat de quiconque.'
+            ),
+        },
         '/employee/my-progress': {
             title: L('My Progress', 'Ma progression'),
             why: L(

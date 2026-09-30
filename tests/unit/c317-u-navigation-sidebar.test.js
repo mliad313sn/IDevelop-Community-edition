@@ -310,6 +310,24 @@ const ALLOWED_ADDITIONS = {
     superadmin: ['/safety-gate', '/admin/modules'],
 };
 
+// Destinations added by optional modules AFTER the BEFORE sets were captured,
+// visible only while their module is on (the `v2=true` configs):
+//  - « Mon feedback 360° » (/feedback-360, development) and « Mes entretiens
+//    1:1 » (/one-on-one, engagement): the person's OWN space, for the two
+//    accounts that have a « mine » section;
+//  - the 360° console (/feedback-360/manage, development) in the team plans hub,
+//    for every account that sees that hub (managers and admins — the route is
+//    requireManagerOrAdmin and lists only rounds inside the caller's scope).
+const MODULE_ADDITIONS = {
+    employee: ['/feedback-360', '/one-on-one'],
+    manager: ['/feedback-360', '/one-on-one', '/feedback-360/manage'],
+    localadmin_ops: ['/feedback-360/manage'],
+    localadmin_people: ['/feedback-360/manage'],
+    localadmin_none: ['/feedback-360/manage'],
+    viewer: ['/feedback-360/manage'],
+    superadmin: ['/feedback-360/manage'],
+};
+
 // Optional modules (config/modules.js). The BEFORE sets were captured with the
 // old `v2Features` local: `v2=true` is now "every module on" (what V2_FEATURES=1
 // still forces), and `v2=false` is a FRESH install at adoption stage 1
@@ -382,6 +400,7 @@ describe('UX-03 — the rail is cut by task and keeps every gate', () => {
         const allowed = new Set([
             ...before,
             ...(ALLOWED_ADDITIONS[role] || []),
+            ...(v2 ? MODULE_ADDITIONS[role] || [] : []),
             ...(v2 ? [] : CORE_NOW),
         ]);
         // (b) nothing a role could not reach before becomes visible
@@ -389,6 +408,18 @@ describe('UX-03 — the rail is cut by task and keeps every gate', () => {
         // (c) every destination visible before is still reachable in the rail
         expect([...before].filter((h) => !got.has(h))).toEqual([]);
     });
+
+    test.each(Object.keys(MODULE_ADDITIONS))(
+        '%s: the 360° / one-to-one entries follow their modules',
+        (role) => {
+            const on = hrefs(navOf(render(SIDEBAR, locals(role, { v2: true, lc: false }))));
+            const off = hrefs(navOf(render(SIDEBAR, locals(role, { v2: false, lc: false }))));
+            for (const h of MODULE_ADDITIONS[role]) {
+                expect(`${h}:${on.has(h)}`).toBe(`${h}:true`);
+                expect(`${h}:${off.has(h)}`).toBe(`${h}:false`);
+            }
+        }
+    );
 
     test('/safety-gate: admins with a compliance grant and SuperAdmins only', () => {
         const sees = (role) =>

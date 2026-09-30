@@ -1,0 +1,99 @@
+<%# 360° console — launch a round (one person or a campaign) and follow the
+    rounds of the people in the caller's reporting line or HR scope. %>
+<%
+  const RST = {
+      open: __('talentx:f360_round_open'),
+      closed: __('talentx:f360_round_closed'),
+      cancelled: __('talentx:f360_round_cancelled'),
+  };
+  const KIND = {
+      individual: __('talentx:f360_kind_individual'),
+      campaign: __('talentx:f360_kind_campaign'),
+  };
+%>
+<div class="page-header">
+    <h1><i class="fas fa-sliders" aria-hidden="true"></i> <%= __('talentx:f360_console_title') %></h1>
+    <p><%= __('talentx:f360_console_intro') %></p>
+    <p><a class="btn btn-secondary btn-sm" href="/feedback-360"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('talentx:f360_back_mine') %></a></p>
+</div>
+
+<section class="card hz-360-section" aria-labelledby="f360-launch-h">
+    <h2 id="f360-launch-h"><i class="fas fa-rocket" aria-hidden="true"></i> <%= __('talentx:f360_launch_title') %></h2>
+    <% if (!candidates.length) { %>
+        <%- include('../../partials/empty-state', { icon: 'fa-user-slash', title: __('talentx:f360_launch_nobody'), text: __('talentx:f360_launch_nobody_text') }) %>
+    <% } else { %>
+    <p class="text-muted"><%= __('talentx:f360_launch_intro') %></p>
+    <form method="post" action="/feedback-360/manage/rounds" class="hz-360-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="hz-360-grid">
+            <div class="form-group">
+                <label for="f360-title"><%= __('talentx:f360_f_title') %></label>
+                <input id="f360-title" name="title" class="form-control" required maxlength="200">
+            </div>
+            <div class="form-group">
+                <label for="f360-deadline"><%= __('talentx:f360_f_deadline') %></label>
+                <input id="f360-deadline" name="deadline" type="date" class="form-control" required value="<%= defaults.deadline %>">
+            </div>
+            <div class="form-group">
+                <label for="f360-min"><%= __('talentx:f360_f_min_raters') %></label>
+                <input id="f360-min" name="minRaters" type="number" min="1" max="20" class="form-control" value="<%= defaults.minRaters %>">
+                <small class="text-muted"><%= __('talentx:f360_f_min_raters_hint') %></small>
+            </div>
+            <div class="form-group">
+                <label for="f360-threshold"><%= __('talentx:f360_f_threshold') %></label>
+                <input id="f360-threshold" name="threshold" type="number" min="3" max="20" class="form-control" value="<%= defaults.threshold %>">
+                <small class="text-muted"><%= __('talentx:f360_f_threshold_hint') %></small>
+            </div>
+            <div class="form-group">
+                <label for="f360-release"><%= __('talentx:f360_f_release') %></label>
+                <select id="f360-release" name="releaseMode" class="form-control">
+                    <option value="manager"><%= __('talentx:f360_release_manager') %></option>
+                    <option value="on_close"><%= __('talentx:f360_release_on_close') %></option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="f360-people"><%= __('talentx:f360_f_people') %></label>
+            <select id="f360-people" name="employeeIds" class="form-control hz-360-people" multiple required size="8">
+                <% candidates.forEach(function (c) { %>
+                <option value="<%= c.id %>"><%= (c.lastName || '') + ' ' + (c.firstName || '') %><% if (c.employeeNumber) { %> (<%= c.employeeNumber %>)<% } %></option>
+                <% }); %>
+            </select>
+            <small class="text-muted"><%= __('talentx:f360_f_people_hint') %></small>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-rocket" aria-hidden="true"></i> <%= __('talentx:f360_launch_btn') %></button>
+    </form>
+    <% } %>
+</section>
+
+<section class="card hz-360-section" aria-labelledby="f360-rounds-h">
+    <h2 id="f360-rounds-h"><i class="fas fa-list" aria-hidden="true"></i> <%= __('talentx:f360_rounds_title') %></h2>
+    <% if (!rounds.length) { %>
+        <%- include('../../partials/empty-state', { icon: 'fa-users-viewfinder', title: __('talentx:f360_rounds_none'), text: __('talentx:f360_rounds_none_text') }) %>
+    <% } else { %>
+    <div class="table-responsive"><table class="table table-cards">
+        <thead><tr>
+            <th><%= __('talentx:f360_th_round') %></th>
+            <th><%= __('talentx:f360_th_kind') %></th>
+            <th><%= __('talentx:f360_th_status') %></th>
+            <th><%= __('talentx:f360_th_deadline') %></th>
+            <th class="num"><%= __('talentx:f360_th_subjects') %></th>
+            <th class="num"><%= __('talentx:f360_th_responses') %></th>
+            <th><span class="sr-only"><%= __('talentx:f360_th_action') %></span></th>
+        </tr></thead>
+        <tbody>
+        <% rounds.forEach(function (r) { %>
+            <tr>
+                <td data-label="<%= __('talentx:f360_th_round') %>"><%= r.title %></td>
+                <td data-label="<%= __('talentx:f360_th_kind') %>"><%= KIND[r.kind] || r.kind %></td>
+                <td data-label="<%= __('talentx:f360_th_status') %>"><span class="badge <%= r.status === 'open' ? 'badge-info' : 'badge-secondary' %>"><%= RST[r.status] || r.status %></span></td>
+                <td data-label="<%= __('talentx:f360_th_deadline') %>"><%= fmtDate(r.deadline) %></td>
+                <td class="num" data-label="<%= __('talentx:f360_th_subjects') %>"><%= r.subjects %></td>
+                <td class="num" data-label="<%= __('talentx:f360_th_responses') %>"><%= __('talentx:f360_n_of_total', { n: r.responded, total: r.raters }) %></td>
+                <td class="cell-actions"><a class="btn btn-secondary btn-sm" href="/feedback-360/rounds/<%= r.id %>"><%= __('talentx:f360_open') %></a></td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+    <% } %>
+</section>

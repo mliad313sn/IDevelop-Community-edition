@@ -562,5 +562,7 @@
   "palette_ocean": "Océan",
   "theme_system": "Comme l'appareil",
   "nav_modules": "Modules",
-  "nav_modules_title": "Choisir les modules optionnels activés (étape d’adoption)"
+  "nav_modules_title": "Choisir les modules optionnels activés (étape d’adoption)",
+  "notif_family_feedback360": "Feedback 360°",
+  "notif_family_oneonone": "Entretiens individuels"
 }
