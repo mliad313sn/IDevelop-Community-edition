@@ -221,7 +221,7 @@ class LifecycleService {
         employeeId,
         before,
         after,
-        { actorRef = null, reason = null } = {}
+        { actorRef = null, reason = null, source = 'employee_form' } = {}
     ) {
         const FIELDS = ['siteId', 'departmentId', 'serviceId', 'roleId'];
         const changed = FIELDS.filter((f) => String(before[f] ?? '') !== String(after[f] ?? ''));
@@ -252,7 +252,7 @@ class LifecycleService {
                 from,
                 to,
                 changed,
-                source: 'employee_form',
+                source: source || 'employee_form',
                 fromRoleId: from.roleId,
                 toRoleId: to.roleId,
             },
