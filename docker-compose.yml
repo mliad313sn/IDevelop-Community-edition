@@ -33,7 +33,7 @@ x-hardening: &hardening
 services:
   db:
     <<: *hardening
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     # Run directly as the image's postgres user (uid 70 on Alpine): the entrypoint
     # then needs no CHOWN/SETUID capability. A fresh named volume inherits the
     # image's ownership of the data directory.
