@@ -76,7 +76,7 @@
     "i18next": "^23.16.8",
     "i18next-fs-backend": "^2.6.6",
     "i18next-http-middleware": "^3.9.7",
-    "ioredis": "^5.4.1",
+    "ioredis": "^6.0.0",
     "jose": "^6.2.12",
     "multer": "^2.4.0",
     "node-mocks-http": "^1.17.2",
