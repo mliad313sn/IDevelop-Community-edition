@@ -1,0 +1,682 @@
+{
+  "id": "healthcare-care",
+  "name": "Healthcare & care skills pack",
+  "title": {
+    "en": "Healthcare & care",
+    "fr": "Santé et soins"
+  },
+  "description": {
+    "en": "Skills for hospitals, clinics, care homes and home care services: patient safety, infection prevention, clinical care and coordination, person-centred care, regulation and digital health records. It describes workplace skills and is not a clinical licensing standard.",
+    "fr": "Compétences pour les hôpitaux, cliniques, établissements médico-sociaux et services à domicile : sécurité des patients, prévention des infections, soins et coordination, soins centrés sur la personne, réglementation et dossier patient informatisé. Il décrit des compétences professionnelles et ne remplace pas un référentiel d'exercice réglementé."
+  },
+  "sector": "healthcare",
+  "licence": "CC0-1.0",
+  "version": "1.0.0",
+  "note": "Original content written for IDevelop Community Edition and released under CC0 1.0 (public domain dedication). Edit, extend or delete it freely from Domains & Skills. Skills without their own level anchors use the per-category proficiency descriptors shipped with the schema.",
+  "pillars": [
+    {
+      "name": "Patient Safety & Quality",
+      "nameFr": "Sécurité des patients et qualité",
+      "description": "Preventing avoidable harm and improving the quality of care.",
+      "descriptionFr": "Prévenir les dommages évitables et améliorer la qualité des soins.",
+      "category": "Safety",
+      "subDomains": [
+        {
+          "name": "Safe care",
+          "nameFr": "Soins sécurisés",
+          "definition": "Apply the safety barriers that protect patients from avoidable harm.",
+          "definitionFr": "Appliquer les barrières de sécurité qui protègent les patients des dommages évitables.",
+          "skills": [
+            {
+              "name": "Patient identification",
+              "nameFr": "Identitovigilance",
+              "category": "Safety",
+              "en": "Checks the identity of the patient with at least two identifiers before every act, sample, transfer or record entry.",
+              "fr": "Vérifie l'identité du patient avec au moins deux identifiants avant chaque soin, prélèvement, transfert ou saisie dans le dossier.",
+              "levels": [
+                {
+                  "level": 0,
+                  "en": "Does not yet know the patient identification rules.",
+                  "fr": "Ne connaît pas encore les règles d'identitovigilance."
+                },
+                {
+                  "level": 1,
+                  "en": "Asks the patient to state their identity and checks the wristband before a simple act.",
+                  "fr": "Demande au patient de décliner son identité et vérifie le bracelet avant un soin simple."
+                },
+                {
+                  "level": 2,
+                  "en": "Checks identity with two identifiers at every step, including labels and records, and reports any mismatch.",
+                  "fr": "Vérifie l’identité avec deux identifiants à chaque étape, étiquettes et dossier compris, et signale toute discordance."
+                },
+                {
+                  "level": 3,
+                  "en": "Handles difficult cases (unconscious patient, homonyms, duplicates) and corrects identity errors through the proper channel.",
+                  "fr": "Gère les cas difficiles (patient inconscient, homonymes, doublons) et fait corriger les erreurs d'identité par le circuit prévu."
+                },
+                {
+                  "level": 4,
+                  "en": "Leads identification audits, trains teams and improves the procedures of the unit.",
+                  "fr": "Pilote les audits d'identitovigilance, forme les équipes et améliore les procédures du service."
+                }
+              ]
+            },
+            {
+              "name": "Medication safety",
+              "nameFr": "Sécurité du circuit du médicament",
+              "category": "Safety",
+              "en": "Prepares, gives and records medicines applying the right patient, drug, dose, route and time, and reports errors.",
+              "fr": "Prépare, administre et trace les médicaments en respectant le bon patient, le bon médicament, la bonne dose, la bonne voie et le bon moment, et déclare les erreurs.",
+              "levels": [
+                {
+                  "level": 0,
+                  "en": "Does not yet take part in the medication process.",
+                  "fr": "Ne participe pas encore au circuit du médicament."
+                },
+                {
+                  "level": 1,
+                  "en": "Knows the checks required and helps a patient take medicines only within the limits of the role.",
+                  "fr": "Connaît les vérifications requises et aide à la prise des médicaments uniquement dans les limites de sa fonction."
+                },
+                {
+                  "level": 2,
+                  "en": "Gives medicines under supervision, applying every check and recording each dose.",
+                  "fr": "Administre les médicaments sous supervision en appliquant chaque vérification et en tracant chaque prise."
+                },
+                {
+                  "level": 3,
+                  "en": "Manages the medication round alone, including high-risk medicines, and spots interactions or errors.",
+                  "fr": "Gère seul le tour de médicaments, y compris les médicaments à haut risque, et repère interactions et erreurs."
+                },
+                {
+                  "level": 4,
+                  "en": "Analyses medication incidents, trains colleagues and improves the medication process with the pharmacy.",
+                  "fr": "Analyse les incidents médicamenteux, forme les collègues et améliore le circuit avec la pharmacie."
+                }
+              ]
+            },
+            {
+              "name": "Falls and pressure injury prevention",
+              "nameFr": "Prévention des chutes et des escarres",
+              "category": "Safety",
+              "en": "Assesses the risk of falls and pressure injuries and applies the prevention plan.",
+              "fr": "Évalue le risque de chute et d'escarre et applique le plan de prévention."
+            },
+            {
+              "name": "Adverse event reporting",
+              "nameFr": "Déclaration des événements indésirables",
+              "category": "Safety",
+              "en": "Reports adverse events and near misses promptly, factually and without blame.",
+              "fr": "Déclare les événements indésirables et presque-accidents rapidement, factuellement et sans recherche de coupable."
+            },
+            {
+              "name": "Clinical risk assessment",
+              "nameFr": "Évaluation des risques cliniques",
+              "category": "Safety",
+              "en": "Identifies risks in care processes and ranks them to decide on prevention actions.",
+              "fr": "Identifie les risques dans les processus de soins et les hiérarchise pour décider des actions de prévention."
+            }
+          ]
+        },
+        {
+          "name": "Infection prevention and hygiene",
+          "nameFr": "Prévention des infections et hygiène",
+          "definition": "Prevent healthcare-associated infections.",
+          "definitionFr": "Prévenir les infections associées aux soins.",
+          "skills": [
+            {
+              "name": "Hand hygiene",
+              "nameFr": "Hygiène des mains",
+              "category": "Safety",
+              "en": "Cleans hands at the right moments with the right technique and product.",
+              "fr": "Réalise l’hygiène des mains aux bons moments, avec la bonne technique et le bon produit.",
+              "levels": [
+                {
+                  "level": 0,
+                  "en": "Does not yet know when and how to clean hands at work.",
+                  "fr": "Ne sait pas encore quand et comment réaliser l'hygiène des mains au travail."
+                },
+                {
+                  "level": 1,
+                  "en": "Knows the key moments and the rub technique; needs reminders.",
+                  "fr": "Connaît les moments clés et la technique de friction ; a besoin de rappels."
+                },
+                {
+                  "level": 2,
+                  "en": "Applies hand hygiene at every required moment without reminder, with bare forearms and no jewellery.",
+                  "fr": "Applique l'hygiène des mains à chaque moment requis sans rappel, avant-bras dégagés et sans bijoux."
+                },
+                {
+                  "level": 3,
+                  "en": "Is a role model, prompts colleagues and patients, and takes part in compliance observations.",
+                  "fr": "Montre l'exemple, rappelle les règles aux collègues et patients et participe aux observations de conformité."
+                },
+                {
+                  "level": 4,
+                  "en": "Leads observation audits, analyses results and runs improvement campaigns.",
+                  "fr": "Pilote les audits d'observation, analyse les résultats et conduit des campagnes d'amélioration."
+                }
+              ]
+            },
+            {
+              "name": "Standard and additional precautions",
+              "nameFr": "Précautions standard et complémentaires",
+              "category": "Safety",
+              "en": "Applies standard precautions for every patient and contact, droplet or airborne precautions when required.",
+              "fr": "Applique les précautions standard pour tout patient et les précautions contact, gouttelettes ou air lorsqu'elles sont prescrites."
+            },
+            {
+              "name": "Sterile technique",
+              "nameFr": "Technique aseptique",
+              "category": "Safety",
+              "en": "Performs invasive procedures and dressings without contaminating the sterile field.",
+              "fr": "Réalise les gestes invasifs et les pansements sans contaminer le champ stérile."
+            },
+            {
+              "name": "Healthcare waste management",
+              "nameFr": "Gestion des déchets d’activités de soins",
+              "category": "Compliance",
+              "en": "Sorts, packages and disposes of infectious, sharp and chemical waste in the right stream.",
+              "fr": "Trie, conditionne et élimine les déchets infectieux, piquants-coupants et chimiques dans la bonne filière."
+            }
+          ]
+        },
+        {
+          "name": "Quality improvement",
+          "nameFr": "Amélioration de la qualité",
+          "definition": "Measure practice against standards and improve it.",
+          "definitionFr": "Mesurer les pratiques au regard des standards et les améliorer.",
+          "skills": [
+            {
+              "name": "Clinical audit",
+              "nameFr": "Audit clinique",
+              "category": "Technical",
+              "en": "Compares actual practice with agreed standards, shares results and follows the action plan.",
+              "fr": "Compare les pratiques réelles aux standards convenus, partage les résultats et suit le plan d'action."
+            },
+            {
+              "name": "Care protocols compliance",
+              "nameFr": "Respect des protocoles de soins",
+              "category": "Compliance",
+              "en": "Follows the protocols and procedures in force and signals when they no longer fit practice.",
+              "fr": "Suit les protocoles et procédures en vigueur et signale lorsqu'ils ne correspondent plus à la pratique."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Clinical Care & Coordination",
+      "nameFr": "Soins et coordination",
+      "description": "Delivering care and organising the patient journey.",
+      "descriptionFr": "Réaliser les soins et organiser le parcours du patient.",
+      "category": "Technical",
+      "subDomains": [
+        {
+          "name": "Clinical practice",
+          "nameFr": "Pratique clinique",
+          "definition": "Observe, assess and act on the condition of the patient.",
+          "definitionFr": "Observer, évaluer l'état du patient et agir en conséquence.",
+          "skills": [
+            {
+              "name": "Vital signs monitoring",
+              "nameFr": "Surveillance des paramètres vitaux",
+              "category": "Technical",
+              "en": "Measures and records vital signs accurately and recognises abnormal values.",
+              "fr": "Mesure et consigne les paramètres vitaux avec exactitude et repère les valeurs anormales."
+            },
+            {
+              "name": "Clinical observation and escalation",
+              "nameFr": "Observation clinique et alerte",
+              "category": "Safety",
+              "en": "Recognises deterioration early using an early warning score and alerts the right person without delay.",
+              "fr": "Repère tôt une dégradation à l'aide d'un score d'alerte précoce et prévient sans délai la bonne personne."
+            },
+            {
+              "name": "Basic life support",
+              "nameFr": "Gestes d’urgence et réanimation de base",
+              "category": "Safety",
+              "en": "Recognises cardiac arrest, calls for help, starts chest compressions and uses a defibrillator.",
+              "fr": "Reconnaît un arrêt cardiaque, donne l'alerte, commence le massage cardiaque et utilise un défibrillateur."
+            },
+            {
+              "name": "Pain assessment",
+              "nameFr": "Évaluation de la douleur",
+              "category": "Technical",
+              "en": "Assesses pain with a suitable scale, including for patients who cannot express it, and checks relief.",
+              "fr": "Évalue la douleur avec une échelle adaptée, y compris chez les patients non communicants, et vérifie le soulagement."
+            },
+            {
+              "name": "Wound care",
+              "nameFr": "Soins des plaies",
+              "category": "Technical",
+              "en": "Assesses wounds, chooses the dressing according to the protocol and monitors healing.",
+              "fr": "Évalue les plaies, choisit le pansement selon le protocole et surveille la cicatrisation."
+            }
+          ]
+        },
+        {
+          "name": "Care coordination",
+          "nameFr": "Coordination des parcours",
+          "definition": "Plan care and keep information flowing between professionals.",
+          "definitionFr": "Planifier les soins et assurer la circulation de l'information entre professionnels.",
+          "skills": [
+            {
+              "name": "Care planning",
+              "nameFr": "Planification des soins",
+              "category": "Technical",
+              "en": "Builds and updates an individual care plan with goals, actions and review dates.",
+              "fr": "Élabore et met à jour un projet de soins individualisé avec objectifs, actions et dates de réévaluation."
+            },
+            {
+              "name": "Clinical handover",
+              "nameFr": "Transmissions ciblées",
+              "category": "Safety",
+              "en": "Hands over patients using a structured method so that nothing critical is lost between shifts or services.",
+              "fr": "Transmet les informations patients selon une méthode structurée afin que rien d'essentiel ne se perde entre équipes ou services."
+            },
+            {
+              "name": "Discharge planning",
+              "nameFr": "Préparation de la sortie",
+              "category": "Technical",
+              "en": "Prepares the return home or transfer early: follow-up care, equipment, prescriptions and information to the next provider.",
+              "fr": "Prépare tôt le retour à domicile ou le transfert : suite des soins, matériel, ordonnances et informations au relais."
+            },
+            {
+              "name": "Multidisciplinary teamwork",
+              "nameFr": "Travail en équipe pluriprofessionnelle",
+              "category": "Behavioral",
+              "en": "Works with doctors, nurses, therapists and social workers around shared goals for the patient.",
+              "fr": "Travaille avec médecins, infirmiers, rééducateurs et travailleurs sociaux autour d’objectifs partagés pour le patient."
+            }
+          ]
+        },
+        {
+          "name": "Unit management",
+          "nameFr": "Encadrement d'unité",
+          "definition": "Organise staff, beds and flows in a care unit.",
+          "definitionFr": "Organiser le personnel, les lits et les flux d'une unité de soins.",
+          "skills": [
+            {
+              "name": "Care team leadership",
+              "nameFr": "Animation d'équipe soignante",
+              "category": "Behavioral",
+              "en": "Leads the care team, supports staff after difficult events and keeps a safe, respectful climate.",
+              "fr": "Anime l'équipe soignante, soutient le personnel après des événements difficiles et maintient un climat sûr et respectueux."
+            },
+            {
+              "name": "Staff rostering",
+              "nameFr": "Organisation des plannings",
+              "category": "Technical",
+              "en": "Builds rosters that match skills to patient needs while respecting working time rules.",
+              "fr": "Construit des plannings qui adaptent les compétences aux besoins des patients dans le respect des règles de temps de travail."
+            },
+            {
+              "name": "Bed and flow management",
+              "nameFr": "Gestion des lits et des flux",
+              "category": "Technical",
+              "en": "Anticipates admissions and discharges and works with other units to avoid bottlenecks.",
+              "fr": "Anticipe les entrées et sorties et travaille avec les autres services pour éviter les engorgements."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Person-centred Care",
+      "nameFr": "Soins centrés sur la personne",
+      "description": "Caring with respect for the person, their choices and their relatives.",
+      "descriptionFr": "Soigner dans le respect de la personne, de ses choix et de ses proches.",
+      "category": "Behavioral",
+      "subDomains": [
+        {
+          "name": "Communication with patients",
+          "nameFr": "Communication avec les patients",
+          "definition": "Inform, listen to and involve patients and their families.",
+          "definitionFr": "Informer, écouter et impliquer les patients et leur entourage.",
+          "skills": [
+            {
+              "name": "Therapeutic communication",
+              "nameFr": "Communication thérapeutique",
+              "category": "Behavioral",
+              "en": "Listens actively, adapts language and uses communication to reassure and support the patient.",
+              "fr": "Écoute activement, adapte son langage et utilise la communication pour rassurer et soutenir le patient."
+            },
+            {
+              "name": "Patient education",
+              "nameFr": "Éducation thérapeutique du patient",
+              "category": "Behavioral",
+              "en": "Helps patients understand their condition and treatment and manage them day to day.",
+              "fr": "Aide les patients à comprendre leur maladie et leur traitement et à les gérer au quotidien."
+            },
+            {
+              "name": "Informed consent",
+              "nameFr": "Consentement éclairé",
+              "category": "Compliance",
+              "en": "Makes sure the patient has received clear information and agrees before care, and respects refusal.",
+              "fr": "S'assure que le patient a reçu une information claire et consent avant un soin, et respecte un refus."
+            },
+            {
+              "name": "Supporting families and carers",
+              "nameFr": "Accompagnement des proches aidants",
+              "category": "Behavioral",
+              "en": "Informs and supports relatives and informal carers within the limits of confidentiality.",
+              "fr": "Informe et soutient les proches et aidants dans les limites du secret professionnel."
+            }
+          ]
+        },
+        {
+          "name": "Dignity and rights",
+          "nameFr": "Dignité et droits",
+          "definition": "Protect the dignity, rights and safety of every person cared for.",
+          "definitionFr": "Protéger la dignité, les droits et la sécurité de chaque personne soignée.",
+          "skills": [
+            {
+              "name": "Respect for dignity and privacy",
+              "nameFr": "Respect de la dignité et de l'intimité",
+              "category": "Behavioral",
+              "en": "Protects privacy during care, uses respectful language and respects personal choices and habits.",
+              "fr": "Préserve l'intimité pendant les soins, emploie un langage respectueux et respecte les choix et habitudes de la personne."
+            },
+            {
+              "name": "Safeguarding vulnerable people",
+              "nameFr": "Protection des personnes vulnérables",
+              "category": "Compliance",
+              "en": "Recognises signs of abuse or neglect and reports them through the safeguarding procedure.",
+              "fr": "Repère les signes de maltraitance ou de négligence et les signale selon la procédure prévue."
+            },
+            {
+              "name": "End-of-life care",
+              "nameFr": "Accompagnement de fin de vie",
+              "category": "Behavioral",
+              "en": "Provides comfort care and supports the person and relatives at the end of life, respecting advance wishes.",
+              "fr": "Assure les soins de confort et accompagne la personne et ses proches en fin de vie, dans le respect des directives anticipées."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Health Regulation & Digital Health",
+      "nameFr": "Réglementation et santé numérique",
+      "description": "Practising within the rules and using digital tools safely.",
+      "descriptionFr": "Exercer dans le cadre des règles et utiliser les outils numériques en sécurité.",
+      "category": "Compliance",
+      "subDomains": [
+        {
+          "name": "Regulatory compliance",
+          "nameFr": "Conformité réglementaire",
+          "definition": "Work within professional and legal limits and be ready for external review.",
+          "definitionFr": "Travailler dans les limites professionnelles et légales et être prêt pour l'évaluation externe.",
+          "skills": [
+            {
+              "name": "Professional scope of practice",
+              "nameFr": "Champ de compétences professionnelles",
+              "category": "Compliance",
+              "en": "Knows which acts the role may perform, delegates only what is allowed and refuses what is outside it.",
+              "fr": "Connaît les actes autorisés pour sa fonction, ne délègue que ce qui est permis et refuse ce qui en sort."
+            },
+            {
+              "name": "Health data confidentiality",
+              "nameFr": "Secret professionnel et confidentialité des données de santé",
+              "category": "Compliance",
+              "en": "Keeps health information confidential and shares it only with those involved in care who need it.",
+              "fr": "Préserve la confidentialité des informations de santé et ne les partage qu'avec les intervenants qui en ont besoin."
+            },
+            {
+              "name": "Accreditation readiness",
+              "nameFr": "Préparation à la certification des établissements",
+              "category": "Compliance",
+              "en": "Knows the quality criteria assessed by the external review and can show evidence of practice.",
+              "fr": "Connaît les critères qualité évalués par la certification externe et sait présenter les preuves de sa pratique."
+            }
+          ]
+        },
+        {
+          "name": "Digital health",
+          "nameFr": "Santé numérique",
+          "definition": "Record, share and protect health information with digital tools.",
+          "definitionFr": "Consigner, partager et protéger l'information de santé avec les outils numériques.",
+          "skills": [
+            {
+              "name": "Electronic health record documentation",
+              "nameFr": "Documentation dans le dossier patient informatisé",
+              "category": "Technical",
+              "en": "Records care, observations and decisions in the electronic record accurately, promptly and in the right place.",
+              "fr": "Consigne soins, observations et décisions dans le dossier patient informatisé avec exactitude, sans délai et au bon endroit.",
+              "levels": [
+                {
+                  "level": 0,
+                  "en": "Does not yet use the electronic health record.",
+                  "fr": "N’utilise pas encore le dossier patient informatisé."
+                },
+                {
+                  "level": 1,
+                  "en": "Logs in with personal credentials and reads the information needed for care.",
+                  "fr": "Se connecte avec ses identifiants personnels et consulte les informations nécessaires aux soins."
+                },
+                {
+                  "level": 2,
+                  "en": "Records own care and observations in real time in the right sections, without copy-paste of other entries.",
+                  "fr": "Consigne en temps réel ses soins et observations dans les bonnes rubriques, sans copier-coller d'autres saisies."
+                },
+                {
+                  "level": 3,
+                  "en": "Uses the record to plan care and hand over, checks the completeness of the file and corrects errors properly.",
+                  "fr": "Utilise le dossier pour planifier les soins et les transmissions, vérifie la complétude du dossier et corrige les erreurs selon les règles."
+                },
+                {
+                  "level": 4,
+                  "en": "Acts as key user: trains colleagues, audits record quality and feeds improvements back to the software team.",
+                  "fr": "Agit comme référent : forme les collègues, audite la qualité des dossiers et fait remonter les améliorations à l'équipe logicielle."
+                }
+              ]
+            },
+            {
+              "name": "Telehealth",
+              "nameFr": "Télésanté",
+              "category": "Technical",
+              "en": "Runs remote consultations or monitoring sessions with the right tools, consent and documentation.",
+              "fr": "Réalise des téléconsultations ou télésuivis avec les bons outils, le consentement et la traçabilité requis."
+            },
+            {
+              "name": "Health information security",
+              "nameFr": "Sécurité des systèmes d'information de santé",
+              "category": "Compliance",
+              "en": "Locks sessions, never shares credentials and reports suspicious messages or access to health data.",
+              "fr": "Verrouille ses sessions, ne partage jamais ses identifiants et signale les messages ou accès suspects aux données de santé."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "roleFamilies": [
+    {
+      "name": "Nursing",
+      "nameFr": "Soins infirmiers",
+      "description": "Registered nurses and specialist nurses.",
+      "descriptionFr": "Infirmiers et infirmiers spécialisés."
+    },
+    {
+      "name": "Care Support",
+      "nameFr": "Aide aux soins",
+      "description": "Healthcare assistants and home care workers.",
+      "descriptionFr": "Aides-soignants et intervenants à domicile."
+    },
+    {
+      "name": "Care Management",
+      "nameFr": "Encadrement des soins",
+      "description": "Unit managers, coordinators and quality roles.",
+      "descriptionFr": "Cadres d'unité, coordinateurs et fonctions qualité."
+    },
+    {
+      "name": "Health Administration",
+      "nameFr": "Administration de santé",
+      "description": "Medical secretaries and patient administration.",
+      "descriptionFr": "Secrétaires médicaux et gestion administrative des patients."
+    }
+  ],
+  "familySkills": {
+    "Nursing": [
+      "Medication safety",
+      "Patient identification",
+      "Hand hygiene",
+      "Vital signs monitoring",
+      "Clinical observation and escalation",
+      "Clinical handover",
+      "Electronic health record documentation",
+      "Care planning",
+      "Pain assessment",
+      "Standard and additional precautions",
+      "Clinical audit",
+      "Sterile technique",
+      "Healthcare waste management",
+      "Patient education"
+    ],
+    "Care Support": [
+      "Hand hygiene",
+      "Patient identification",
+      "Falls and pressure injury prevention",
+      "Respect for dignity and privacy",
+      "Basic life support",
+      "Vital signs monitoring",
+      "Clinical handover",
+      "Safeguarding vulnerable people",
+      "Supporting families and carers",
+      "Adverse event reporting"
+    ],
+    "Care Management": [
+      "Care team leadership",
+      "Adverse event reporting",
+      "Clinical risk assessment",
+      "Staff rostering",
+      "Bed and flow management",
+      "Accreditation readiness",
+      "Clinical audit",
+      "Care planning",
+      "Discharge planning",
+      "Multidisciplinary teamwork",
+      "Supporting families and carers",
+      "Electronic health record documentation",
+      "Telehealth",
+      "Care protocols compliance"
+    ],
+    "Health Administration": [
+      "Electronic health record documentation",
+      "Health data confidentiality",
+      "Patient identification",
+      "Therapeutic communication",
+      "Health information security"
+    ]
+  },
+  "roles": [
+    {
+      "name": "Registered Nurse",
+      "nameFr": "Infirmier diplômé",
+      "family": "Nursing",
+      "requirements": [
+        ["Medication safety", 3, true],
+        ["Patient identification", 3, true],
+        ["Hand hygiene", 4, true],
+        ["Vital signs monitoring", 3, true],
+        ["Clinical observation and escalation", 3, true],
+        ["Clinical handover", 3, true],
+        ["Electronic health record documentation", 3, false],
+        ["Care planning", 3, false],
+        ["Pain assessment", 3, false]
+      ]
+    },
+    {
+      "name": "Infection Prevention Nurse",
+      "nameFr": "Infirmier hygiéniste",
+      "family": "Nursing",
+      "requirements": [
+        ["Standard and additional precautions", 4, true],
+        ["Hand hygiene", 4, true],
+        ["Clinical audit", 3, true],
+        ["Sterile technique", 3, false],
+        ["Healthcare waste management", 3, false],
+        ["Patient education", 2, false]
+      ]
+    },
+    {
+      "name": "Healthcare Assistant",
+      "nameFr": "Aide-soignant",
+      "family": "Care Support",
+      "requirements": [
+        ["Hand hygiene", 3, true],
+        ["Patient identification", 2, true],
+        ["Falls and pressure injury prevention", 3, true],
+        ["Respect for dignity and privacy", 3, true],
+        ["Basic life support", 2, true],
+        ["Vital signs monitoring", 2, false],
+        ["Clinical handover", 2, false]
+      ]
+    },
+    {
+      "name": "Home Care Worker",
+      "nameFr": "Intervenant à domicile",
+      "family": "Care Support",
+      "requirements": [
+        ["Respect for dignity and privacy", 3, true],
+        ["Safeguarding vulnerable people", 3, true],
+        ["Falls and pressure injury prevention", 3, true],
+        ["Hand hygiene", 3, true],
+        ["Supporting families and carers", 2, false],
+        ["Adverse event reporting", 2, false]
+      ]
+    },
+    {
+      "name": "Ward Manager",
+      "nameFr": "Cadre de santé de proximité",
+      "family": "Care Management",
+      "requirements": [
+        ["Care team leadership", 3, true],
+        ["Adverse event reporting", 3, true],
+        ["Clinical risk assessment", 3, true],
+        ["Staff rostering", 3, false],
+        ["Bed and flow management", 3, false],
+        ["Accreditation readiness", 3, false],
+        ["Clinical audit", 2, false]
+      ]
+    },
+    {
+      "name": "Care Coordinator",
+      "nameFr": "Coordinateur de parcours de soins",
+      "family": "Care Management",
+      "requirements": [
+        ["Care planning", 3, true],
+        ["Discharge planning", 3, true],
+        ["Multidisciplinary teamwork", 3, false],
+        ["Supporting families and carers", 3, false],
+        ["Electronic health record documentation", 3, false],
+        ["Telehealth", 2, false]
+      ]
+    },
+    {
+      "name": "Quality and Risk Manager (Healthcare)",
+      "nameFr": "Responsable qualité et gestion des risques (santé)",
+      "family": "Care Management",
+      "requirements": [
+        ["Adverse event reporting", 4, true],
+        ["Accreditation readiness", 4, true],
+        ["Clinical risk assessment", 3, true],
+        ["Clinical audit", 3, true],
+        ["Care protocols compliance", 3, false]
+      ]
+    },
+    {
+      "name": "Medical Secretary",
+      "nameFr": "Secrétaire médical",
+      "family": "Health Administration",
+      "requirements": [
+        ["Electronic health record documentation", 3, true],
+        ["Health data confidentiality", 3, true],
+        ["Patient identification", 3, true],
+        ["Therapeutic communication", 2, false],
+        ["Health information security", 2, false]
+      ]
+    }
+  ]
+}
