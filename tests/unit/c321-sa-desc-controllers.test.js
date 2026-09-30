@@ -155,7 +155,8 @@ describe('proposals are admin-only', () => {
         );
         const flat = src.replace(/\s+/g, ' ');
         const routes = flat.split('router.').filter((s) => /^(get|post)\( ?'\/framework\//.test(s));
-        expect(routes.length).toBe(8);
+        // 8 quality routes + 7 skills-library routes (/framework/library/...).
+        expect(routes.length).toBe(15);
         routes.forEach((r) =>
             expect(r).toMatch(/requirePermission\('(view|manage)_domains_skills'\)|_sqManage/)
         );
