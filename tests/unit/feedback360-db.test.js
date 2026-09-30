@@ -297,6 +297,9 @@ describe('360° feedback — against the real schema (rolled back)', () => {
                 [f.M]
             );
             expect(note.n).toBeGreaterThan(0);
+            // …and it is on their to-do list, as the subject's nomination no longer is.
+            expect((await svc.pendingCounts(f.u.M)).approve).toBe(1);
+            expect((await svc.pendingCounts(f.u.S)).nominate).toBe(0);
 
             // The subject cannot approve their own list; a colleague cannot either.
             expect(await status(svc.approve(f.u.S, sid, {}))).toBe(403);
@@ -314,6 +317,7 @@ describe('360° feedback — against the real schema (rolled back)', () => {
             expect(out.invited).toBe(5);
             st = await db.get('SELECT status FROM feedback360_subjects WHERE id = ?', [sid]);
             expect(st.status).toBe('collecting');
+            expect(await svc.pendingCounts(f.u.P1)).toEqual({ answer: 1, nominate: 0, approve: 0 });
             const rows = await db.all(
                 'SELECT rater_employee_id, status, proposed_by FROM feedback360_nominations WHERE subject_id = ?',
                 [sid]

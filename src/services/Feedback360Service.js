@@ -498,20 +498,24 @@ class Feedback360Service {
         try {
             const personId = await GovernanceService.actingPersonId(user);
             if (personId == null) return { answer: 0, nominate: 0, approve: 0 };
+            // One parameter, the person's own id (the to-do list is keyed on it alone).
             const row = await db.get(
-                `SELECT
+                `WITH me AS (SELECT ?::bigint AS id)
+                 SELECT
                    (SELECT COUNT(*) FROM feedback360_nominations n
                       JOIN feedback360_subjects s ON s.id = n.subject_id
                       JOIN feedback360_rounds r ON r.id = s.round_id
-                     WHERE n.rater_employee_id = ? AND n.status = 'approved' AND n.responded = false
-                       AND s.status = 'collecting' AND r.status = 'open')::int AS answer,
+                     WHERE n.rater_employee_id = (SELECT id FROM me) AND n.status = 'approved'
+                       AND n.responded = false AND s.status = 'collecting' AND r.status = 'open')::int AS answer,
                    (SELECT COUNT(*) FROM feedback360_subjects s
                       JOIN feedback360_rounds r ON r.id = s.round_id
-                     WHERE s.employee_id = ? AND s.status = 'nominating' AND r.status = 'open')::int AS nominate,
+                     WHERE s.employee_id = (SELECT id FROM me) AND s.status = 'nominating'
+                       AND r.status = 'open')::int AS nominate,
                    (SELECT COUNT(*) FROM feedback360_subjects s
                       JOIN feedback360_rounds r ON r.id = s.round_id
-                     WHERE s.manager_employee_id = ? AND s.status = 'awaiting_approval' AND r.status = 'open')::int AS approve`,
-                [personId, personId, personId]
+                     WHERE s.manager_employee_id = (SELECT id FROM me) AND s.status = 'awaiting_approval'
+                       AND r.status = 'open')::int AS approve`,
+                [personId]
             );
             return {
                 answer: Number((row && row.answer) || 0),
