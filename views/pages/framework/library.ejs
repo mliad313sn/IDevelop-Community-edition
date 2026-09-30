@@ -121,7 +121,7 @@
                         <form method="POST" action="/framework/library/packs/<%= p.id %>/dry-run" class="hz-library-actions">
                             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                             <label for="libLang<%= p.id %>" class="sr-only"><%= __('framework:lib_names_label') %></label>
-                            <select id="libLang<%= p.id %>" name="lang">
+                            <select id="libLang<%= p.id %>" name="lang" class="form-control form-control-sm">
                                 <option value="fr"<%= uiLang === 'fr' ? ' selected' : '' %>><%= __('framework:lib_names_fr') %></option>
                                 <option value="en"<%= uiLang === 'en' ? ' selected' : '' %>><%= __('framework:lib_names_en') %></option>
                             </select>
@@ -228,7 +228,7 @@
             </div>
             <div class="filter-group">
                 <label for="libEscoLang"><%= __('framework:lib_names_label') %></label>
-                <select id="libEscoLang" name="lang">
+                <select id="libEscoLang" name="lang" class="form-control form-control-sm">
                     <option value="fr"<%= esco.nameLang === 'fr' ? ' selected' : '' %>><%= __('framework:lib_names_fr') %></option>
                     <option value="en"<%= esco.nameLang === 'en' ? ' selected' : '' %>><%= __('framework:lib_names_en') %></option>
                 </select>
