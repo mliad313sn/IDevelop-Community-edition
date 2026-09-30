@@ -68,7 +68,12 @@ key-person and retention risk, workforce planning signals.
 succession plans and coverage floors, individual development plans, coaching
 plans, performance improvement plans, internal mobility postings with rule-based
 matching, a team recognition feed, pulse and eNPS surveys with an anonymity
-floor, and basic goals and check-ins.
+floor, **360° multi-rater feedback** (rounds or campaigns on the role skills and
+behaviour statements, manager-approved raters, anonymous groups shown only from 3
+answers, blind spots and hidden strengths, one click to the development plan), a
+**shared one-to-one space** (joint agenda, shared and private notes, action items
+linked to development objectives or goals, meeting history), and basic goals —
+shown read-only beside a self-assessment under review.
 
 **Governance & security** — fine-grained RBAC with geographic/organisational
 scopes, access reviews and a tamper-evident (hash-chained) audit trail, MFA
@@ -102,9 +107,12 @@ installable PWA, Windows installer, Docker image.
 Being clear about the limits saves everyone time. Today IDevelop CE does **not**
 offer:
 
-- **360° / multi-rater feedback** — only free-form feedback notes;
-- **rich OKRs and shared 1:1 meetings** — goals and check-ins are basic, and not
-  linked to review forms;
+- **advanced 360° feedback** — 360° rounds exist (role skills, behaviour
+  statements, anonymity floor, link to the development plan), but there is no
+  questionnaire builder, no organisation-wide norms and no PDF report yet;
+- **rich OKRs** — goals are basic: the OKR cascade (company → team → person) is
+  still basic and goals are not scored in review forms (they are shown there as
+  context). Shared 1:1 meetings exist; there is no calendar integration;
 - **packaged HRIS connectors** — use Excel/CSV import or SCIM;
 - **an interactive Slack or Teams app** — notifications are one-way;
 - **a full offline mode or a store-published mobile app** — it is an installable

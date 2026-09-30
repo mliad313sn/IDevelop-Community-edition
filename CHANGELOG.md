@@ -6,6 +6,24 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **360° feedback** (development module, `/feedback-360`): an HR admin or a
+  manager launches a round for one person or a campaign; the subject nominates
+  peers, direct reports and others, the manager approves; raters rate the role
+  skills 0–4 or "not observed" (never counted as 0), behaviour statements and
+  keep / start / stop comments. Anonymous groups are shown only aggregated from
+  3 answers, merged into "others" or hidden below it; responses are stored
+  without rater identity. The report (self vs manager vs others, required level,
+  blind spots, hidden strengths, shuffled comments) is released by the manager
+  and feeds the development plan in one click. Reminders and closing at the
+  deadline run on the job scheduler. **Shared one-to-one space** (engagement
+  module, `/one-on-one`): joint agenda with notification of the other party,
+  shared and author-only private notes, action items with owner, due date and a
+  link to an IDP objective or a goal, meeting history feeding the "My team"
+  roster. The self-assessment review console shows the person's current goals
+  as read-only context. Migration `161_feedback_360.sql`.
+
 ### Changed
 
 - The talent suite is no longer gated by the boot-time `V2_FEATURES=1`: optional
