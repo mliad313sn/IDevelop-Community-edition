@@ -23,9 +23,10 @@
 process.env.DATABASE_URL =
     process.env.DATABASE_URL || 'postgres://test:test@127.0.0.1:5432/dept_brief_links_test';
 process.env.NODE_ENV = 'test';
-// Most of the brief's destinations are /v2/* — without the flag the check would
-// be vacuous (and would "pass" by declaring half the routes missing).
-process.env.V2_FEATURES = '1';
+// Most of the brief's destinations are /v2/*. Those routers used to need
+// V2_FEATURES=1; they are now always mounted (behind their module switch), so
+// the flag is deliberately NOT set: the destinations must exist by default.
+delete process.env.V2_FEATURES;
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'dept-brief-links-test-secret';
 process.env.API_KEY = process.env.API_KEY || 'dept-brief-links-test-api-key';
 

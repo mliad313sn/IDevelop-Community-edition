@@ -100,7 +100,7 @@ describe('UI', () => {
         user: { userType: 'admin', role: 'superadmin', username: 'sa' },
         can: () => true,
         wsVisible: () => true,
-        v2Features: false,
+        appModules: {},
         featureLocalContent: false,
         sqlConsoleEnabled: enabled,
         currentPath: '/nowhere',

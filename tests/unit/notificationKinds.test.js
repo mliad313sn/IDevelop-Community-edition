@@ -22,9 +22,11 @@
 process.env.DATABASE_URL =
     process.env.DATABASE_URL || 'postgres://test:test@127.0.0.1:5432/notification_kinds_test';
 process.env.NODE_ENV = 'test';
-// The /v2/* routers are mounted only under this flag, and most notification
-// deep links live there — without it the mount check would be vacuous.
-process.env.V2_FEATURES = '1';
+// Most notification deep links live under /v2/*. Those routers used to be
+// mounted only under V2_FEATURES=1; they are now ALWAYS mounted (behind their
+// module switch, Administration → Modules), so the flag is deliberately NOT
+// set here: the check proves the links resolve on a default install too.
+delete process.env.V2_FEATURES;
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'notification-kinds-test-secret';
 process.env.API_KEY = process.env.API_KEY || 'notification-kinds-test-api-key';
 
@@ -71,7 +73,7 @@ describe('notification kinds', () => {
         expect(mounted.size).toBeGreaterThan(100);
         expect(mounted.has('/notifications')).toBe(true);
         expect(mounted.has('/dashboard')).toBe(true);
-        // V2_FEATURES actually took effect.
+        // the /v2/* routers are mounted without V2_FEATURES.
         expect([...mounted].some((p) => p.startsWith('/v2/'))).toBe(true);
     });
 

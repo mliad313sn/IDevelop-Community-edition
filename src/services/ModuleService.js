@@ -20,7 +20,12 @@
 const AppSettingsModel = require('../models/AppSettingsModel');
 const M = require('../config/modules');
 
-const truthy = (v) => AppSettingsModel.toBool(v);
+/** Same parse as AppSettingsModel.toBool: only true/1/'true'/'1'/'on'/'yes' are ON
+ *  (never truthiness — the string 'false' must read OFF). */
+function truthy(v) {
+    if (typeof v === 'string') return ['true', '1', 'on', 'yes'].includes(v.trim().toLowerCase());
+    return v === true || v === 1;
+}
 
 /** True when the legacy environment flag forces every module on. */
 function legacyForced() {
@@ -148,7 +153,9 @@ class ModuleService {
      */
     requireModule(...keys) {
         const { notFoundHandler } = require('../middleware/errorHandler');
-        return async (req, res, next) => {
+        // Named, and tagged with its modules, so the route tree can be audited
+        // (tests: no core route ever carries a moduleGuard).
+        const moduleGuard = async (req, res, next) => {
             try {
                 const s = await this.resolve();
                 if (keys.some((k) => s.modules[k])) return next();
@@ -157,12 +164,14 @@ class ModuleService {
             }
             return notFoundHandler(req, res);
         };
+        moduleGuard.modules = keys;
+        return moduleGuard;
     }
 
     /** Guard for the /v2/cap router: each sub-path belongs to one module. */
     capGuard() {
         const { notFoundHandler } = require('../middleware/errorHandler');
-        return async (req, res, next) => {
+        const moduleGuard = async (req, res, next) => {
             let s;
             try {
                 s = await this.resolve();
@@ -179,6 +188,9 @@ class ModuleService {
             if (!hit || s.modules[hit[1]]) return next();
             return notFoundHandler(req, res);
         };
+        moduleGuard.modules = M.CAP_HUB_MODULES;
+        moduleGuard.capPaths = M.CAP_PATHS;
+        return moduleGuard;
     }
 
     /**

@@ -11,7 +11,9 @@
  *  - an uploaded SVG logo is served under a sandboxing CSP.
  */
 process.env.ACTIVITY_TRAIL = '0';
-process.env.V2_FEATURES = '1'; // i18n on, as in production
+// i18n no longer depends on V2_FEATURES (it is always on), so the flag is not
+// set: the headers are checked on a default install.
+delete process.env.V2_FEATURES;
 require('dotenv').config();
 
 jest.mock('../../src/config/sessionStore', () => require('../helpers/c318/sessionStoreMock'));

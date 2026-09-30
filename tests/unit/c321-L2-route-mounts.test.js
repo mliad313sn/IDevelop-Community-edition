@@ -13,7 +13,9 @@
  */
 process.env.DATABASE_URL =
     process.env.DATABASE_URL || 'postgres://placeholder:placeholder@localhost:5432/placeholder';
-process.env.V2_FEATURES = '1';
+// No V2_FEATURES: the optional routers are always mounted now (each behind its
+// module switch), so the real tree must carry them on a default install.
+delete process.env.V2_FEATURES;
 
 const { listRoutes } = require('../helpers/c318/buildApp');
 
