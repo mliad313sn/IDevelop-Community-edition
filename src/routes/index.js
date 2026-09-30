@@ -1710,6 +1710,52 @@ router.post('/framework/proposals/:id', _sqManage, SkillQualityController.update
 router.post('/framework/proposals/:id/approve', _sqManage, SkillQualityController.approve);
 router.post('/framework/proposals/:id/reject', _sqManage, SkillQualityController.reject);
 
+// Skills library: sector packs and the ESCO import (dry run → confirm). Writes
+// the framework, so every route — the page included — needs manage_domains_skills
+// (a SuperAdmin holds it implicitly).
+const FrameworkLibraryController = require('../controllers/FrameworkLibraryController');
+const _libUpload = require('multer')({
+    storage: require('multer').memoryStorage(),
+    limits: {
+        fileSize: (Number(process.env.ESCO_UPLOAD_MAX_MB) || 30) * 1024 * 1024,
+        files: 5,
+    },
+    fileFilter: (req, file, cb) => cb(null, /\.(csv|zip)$/i.test(file.originalname || '')),
+});
+// multer rejects an oversized upload with an error; answer it as JSON like the
+// rest of the upload endpoint instead of the generic error page.
+const _libUploadMw = (req, res, next) =>
+    _libUpload.array('files', 5)(req, res, (err) => {
+        if (!err) return next();
+        return res.status(400).json({
+            ok: false,
+            code: 'upload_refused',
+            message: req.t ? req.t('framework:lib_esco_err_upload') : 'Upload refused',
+        });
+    });
+router.get('/framework/library', _sqManage, FrameworkLibraryController.page);
+router.post(
+    '/framework/library/packs/:id/dry-run',
+    _sqManage,
+    FrameworkLibraryController.packDryRun
+);
+router.post(
+    '/framework/library/packs/:id/commit',
+    _sqManage,
+    FrameworkLibraryController.packCommit
+);
+// Multipart: the CSRF token travels in the x-csrf-token header (sent by the page
+// script framework-library.js) — the global CSRF check still runs and fails closed.
+router.post(
+    '/framework/library/esco/upload',
+    _sqManage,
+    _libUploadMw,
+    FrameworkLibraryController.escoUpload
+);
+router.post('/framework/library/esco/dry-run', _sqManage, FrameworkLibraryController.escoDryRun);
+router.post('/framework/library/esco/commit', _sqManage, FrameworkLibraryController.escoCommit);
+router.post('/framework/library/esco/discard', _sqManage, FrameworkLibraryController.escoDiscard);
+
 // Roles (delegatable: manage_roles)
 router.get('/roles', requirePermission('view_roles'), RoleController.index);
 router.get('/roles/:id', requirePermission('view_roles'), RoleController.show);

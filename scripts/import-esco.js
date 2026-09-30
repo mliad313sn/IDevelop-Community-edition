@@ -255,6 +255,7 @@ function convertEsco({ skills = [], groups = [], relations = [], skillsFr = [] }
         const pKey = pg ? pg.uri : OTHER_PILLAR;
         if (!pillars.has(pKey)) {
             pillars.set(pKey, {
+                uri: pg ? pg.uri : null,
                 name: pg ? pg.label : OTHER_PILLAR,
                 description: pg
                     ? pg.description
@@ -268,6 +269,7 @@ function convertEsco({ skills = [], groups = [], relations = [], skillsFr = [] }
         const sKey = sg ? sg.uri : '__general__';
         if (!pillar.subDomains.has(sKey)) {
             pillar.subDomains.set(sKey, {
+                uri: sg ? sg.uri : null,
                 name: sg ? sg.label : pg ? pg.label : OTHER_SUBDOMAIN,
                 definition: sg ? sg.description : pg ? pg.description : null,
                 skills: [],
@@ -299,6 +301,7 @@ function convertEsco({ skills = [], groups = [], relations = [], skillsFr = [] }
             const cats = subDomains.flatMap((sd) => sd.skills.map((k) => k.category));
             const behavioural = cats.filter((c) => c === 'Behavioral').length;
             return {
+                uri: p.uri,
                 name: p.name,
                 description: p.description || null,
                 category: behavioural * 2 > cats.length ? 'Behavioral' : 'Technical',
@@ -413,4 +416,12 @@ if (require.main === module) {
     }
 }
 
-module.exports = { parseCsv, parseCsvObjects, convertEsco, parseArgs, findCsv, ESCO_ATTRIBUTION };
+module.exports = {
+    parseCsv,
+    parseCsvObjects,
+    convertEsco,
+    parseArgs,
+    findCsv,
+    ESCO_ATTRIBUTION,
+    OTHER_PILLAR,
+};

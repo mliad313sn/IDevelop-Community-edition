@@ -1,0 +1,860 @@
+{
+  "id": "mining-heavy-industry",
+  "name": "Mining & heavy industry skills pack",
+  "title": {
+    "en": "Mining & heavy industry",
+    "fr": "Mines et industrie lourde"
+  },
+  "description": {
+    "en": "Safety-critical field skills for open-pit and underground mines, processing plants and heavy industrial sites: HSE, permit-to-work, equipment operation, maintenance, geology and processing basics, front-line supervision, emergency response and local workforce development.",
+    "fr": "Compétences de terrain critiques pour la sécurité dans les mines à ciel ouvert et souterraines, les usines de traitement et les sites industriels lourds : HSE, permis de travail, conduite d'engins, maintenance, bases de géologie et de traitement, encadrement de proximité, intervention d'urgence et développement de la main-d'œuvre locale."
+  },
+  "sector": "mining",
+  "licence": "CC0-1.0",
+  "version": "1.0.0",
+  "note": "Original content written for IDevelop Community Edition and released under CC0 1.0 (public domain dedication). Edit, extend or delete it freely from Domains & Skills. Skills without their own level anchors use the per-category proficiency descriptors shipped with the schema.",
+  "pillars": [
+    {
+      "name": "Health, Safety & Environment",
+      "nameFr": "Santé, sécurité et environnement",
+      "description": "Keeping people safe, controlling hazards and protecting the environment.",
+      "descriptionFr": "Protéger les personnes, maîtriser les dangers et préserver l'environnement.",
+      "category": "Safety",
+      "subDomains": [
+        {
+          "name": "Hazard control",
+          "nameFr": "Maîtrise des dangers",
+          "definition": "Identify, assess and control the hazards of high-risk work before it starts.",
+          "definitionFr": "Identifier, évaluer et maîtriser les dangers des travaux à haut risque avant leur démarrage.",
+          "skills": [
+            {
+              "name": "Permit-to-work",
+              "nameFr": "Permis de travail",
+              "category": "Safety",
+              "en": "Requests, issues, applies and closes work permits so that high-risk work only starts once hazards are controlled.",
+              "fr": "Demande, délivre, applique et clôture les permis de travail afin qu'aucun travail à haut risque ne démarre avant la maîtrise des dangers.",
+              "levels": [
+                {
+                  "level": 0,
+                  "en": "Does not yet know how the permit-to-work system operates on site.",
+                  "fr": "Ne connaît pas encore le fonctionnement du système de permis de travail sur le site."
+                },
+                {
+                  "level": 1,
+                  "en": "Knows which tasks need a permit and never starts one without it; works under a permit held by someone else.",
+                  "fr": "Sait quelles tâches exigent un permis et n'en commence jamais une sans lui ; travaille sous un permis détenu par un autre."
+                },
+                {
+                  "level": 2,
+                  "en": "Reads and signs onto a permit, checks the listed controls are in place and stops work when conditions change.",
+                  "fr": "Lit et signe le permis, vérifie que les mesures prévues sont en place et arrête le travail lorsque les conditions changent."
+                },
+                {
+                  "level": 3,
+                  "en": "Prepares permits, defines the controls with the area authority and hands over or closes permits correctly.",
+                  "fr": "Prépare les permis, définit les mesures avec le responsable de zone et transmet ou clôture les permis correctement."
+                },
+                {
+                  "level": 4,
+                  "en": "Acts as issuing authority, audits permits in the field and improves the permit system from findings.",
+                  "fr": "Agit comme autorité de délivrance, audite les permis sur le terrain et améliore le système à partir des constats."
+                }
+              ]
+            },
+            {
+              "name": "Lockout-tagout (energy isolation)",
+              "nameFr": "Consignation des énergies",
+              "category": "Safety",
+              "en": "Isolates, locks, tags and verifies zero energy on equipment before any intervention.",
+              "fr": "Isole, verrouille, étiquette et vérifie l'absence d'énergie sur un équipement avant toute intervention.",
+              "levels": [
+                {
+                  "level": 0,
+                  "en": "Does not yet know the isolation procedure.",
+                  "fr": "Ne connaît pas encore la procédure d'isolement."
+                },
+                {
+                  "level": 1,
+                  "en": "Recognises a locked-out point and never removes or bypasses a lock or tag.",
+                  "fr": "Reconnaît un point consigné et ne retire ni ne contourne jamais un cadenas ou une étiquette."
+                },
+                {
+                  "level": 2,
+                  "en": "Applies a personal lock on a group isolation and verifies zero energy before touching the equipment.",
+                  "fr": "Pose son cadenas personnel sur une consignation collective et vérifie l'absence d'énergie avant d'intervenir."
+                },
+                {
+                  "level": 3,
+                  "en": "Plans and performs isolations for all energy types, including stored and residual energy, and restores safely.",
+                  "fr": "Planifie et réalise les consignations pour toutes les énergies, y compris stockées et résiduelles, et déconsigne en sécurité."
+                },
+                {
+                  "level": 4,
+                  "en": "Writes isolation procedures for complex equipment, trains others and investigates isolation failures.",
+                  "fr": "Rédige les procédures de consignation des équipements complexes, forme les autres et analyse les défaillances d'isolement."
+                }
+              ]
+            },
+            {
+              "name": "Job hazard analysis",
+              "nameFr": "Analyse des risques au poste",
+              "category": "Safety",
+              "en": "Breaks a task into steps, identifies the hazards of each step and agrees the controls with the crew.",
+              "fr": "Décompose une tâche en étapes, identifie les dangers de chacune et convient des mesures de maîtrise avec l'équipe."
+            },
+            {
+              "name": "Working at height",
+              "nameFr": "Travail en hauteur",
+              "category": "Safety",
+              "en": "Works at height using the right access equipment, fall protection and rescue plan.",
+              "fr": "Travaille en hauteur avec les moyens d'accès, la protection antichute et le plan de secours adaptés."
+            },
+            {
+              "name": "Confined space entry",
+              "nameFr": "Entrée en espace confiné",
+              "category": "Safety",
+              "en": "Enters or supervises entry into confined spaces with atmosphere testing, standby person and rescue arrangements.",
+              "fr": "Entre ou surveille l'entrée en espace confiné avec mesure d'atmosphère, surveillant extérieur et dispositif de secours."
+            },
+            {
+              "name": "Hot work control",
+              "nameFr": "Maîtrise des travaux par point chaud",
+              "category": "Safety",
+              "en": "Controls fire risk during welding, cutting and grinding through fire watch, gas testing and clearing of combustibles.",
+              "fr": "Maîtrise le risque d'incendie lors du soudage, du découpage et du meulage : surveillance incendie, détection de gaz et évacuation des combustibles."
+            }
+          ]
+        },
+        {
+          "name": "Mine and plant safety",
+          "nameFr": "Sécurité mine et usine",
+          "definition": "Control the hazards specific to mining and heavy industrial sites.",
+          "definitionFr": "Maîtriser les dangers propres aux mines et aux sites industriels lourds.",
+          "skills": [
+            {
+              "name": "Ground control awareness",
+              "nameFr": "Vigilance sur la tenue des terrains",
+              "category": "Safety",
+              "en": "Recognises signs of unstable ground, walls or benches and reports them before work continues.",
+              "fr": "Reconnaît les signes d'instabilité des terrains, des parois ou des gradins et les signale avant la poursuite du travail."
+            },
+            {
+              "name": "Mobile equipment interaction",
+              "nameFr": "Coactivité engins-piétons",
+              "category": "Safety",
+              "en": "Applies the rules that separate people and light vehicles from heavy mobile equipment: positive communication, exclusion zones and right of way.",
+              "fr": "Applique les règles qui séparent les piétons et véhicules légers des engins lourds : communication positive, zones d’exclusion et priorités de passage."
+            },
+            {
+              "name": "Dust, noise and exposure control",
+              "nameFr": "Maîtrise de l'exposition aux poussières et au bruit",
+              "category": "Safety",
+              "en": "Uses controls and protective equipment against dust, silica, noise and vibration, and takes part in exposure monitoring.",
+              "fr": "Utilise les protections collectives et individuelles contre les poussières, la silice, le bruit et les vibrations, et participe à la mesure des expositions."
+            },
+            {
+              "name": "Hazardous substances handling",
+              "nameFr": "Manipulation des produits dangereux",
+              "category": "Safety",
+              "en": "Stores, handles and disposes of reagents, fuels and chemicals according to their safety data sheets.",
+              "fr": "Stocke, manipule et élimine les réactifs, carburants et produits chimiques selon leurs fiches de données de sécurité."
+            },
+            {
+              "name": "Fatigue and fitness for work",
+              "nameFr": "Fatigue et aptitude au travail",
+              "category": "Safety",
+              "en": "Arrives fit for work, recognises fatigue or impairment in self and others and speaks up before an incident happens.",
+              "fr": "Se présente apte au travail, reconnaît la fatigue ou l'altération chez soi et chez les autres et le signale avant qu'un incident ne survienne."
+            }
+          ]
+        },
+        {
+          "name": "Emergency preparedness",
+          "nameFr": "Préparation aux urgences",
+          "definition": "Be ready to act when something goes wrong, and learn from every event.",
+          "definitionFr": "Être prêt à agir quand un événement survient, et tirer les enseignements de chacun.",
+          "skills": [
+            {
+              "name": "Mine emergency response",
+              "nameFr": "Intervention d'urgence en mine",
+              "category": "Safety",
+              "en": "Knows and applies the site emergency plan: raising the alarm, refuge and evacuation, muster and first response.",
+              "fr": "Connaît et applique le plan d'urgence du site : donner l'alerte, refuge et évacuation, rassemblement et premiers gestes.",
+              "levels": [
+                {
+                  "level": 0,
+                  "en": "Does not yet know the site emergency arrangements.",
+                  "fr": "Ne connaît pas encore l'organisation des secours du site."
+                },
+                {
+                  "level": 1,
+                  "en": "Knows the alarm signals, escape routes and muster point for the work area.",
+                  "fr": "Connaît les signaux d'alarme, les itinéraires d'évacuation et le point de rassemblement de sa zone."
+                },
+                {
+                  "level": 2,
+                  "en": "Raises the alarm correctly, uses self-rescue equipment and refuge chambers, and takes part in drills.",
+                  "fr": "Donne l'alerte correctement, utilise les équipements d'auto-sauvetage et les refuges, et participe aux exercices."
+                },
+                {
+                  "level": 3,
+                  "en": "Leads the crew response in the first minutes, accounts for people and hands over to the emergency team.",
+                  "fr": "Dirige la réaction de l'équipe dans les premières minutes, compte les personnes et passe le relais à l'équipe de secours."
+                },
+                {
+                  "level": 4,
+                  "en": "Member or leader of the rescue team; designs drills and improves the emergency plan after exercises and events.",
+                  "fr": "Membre ou chef de l'équipe de sauvetage ; conçoit les exercices et améliore le plan d'urgence après exercices et événements."
+                }
+              ]
+            },
+            {
+              "name": "First aid at work",
+              "nameFr": "Premiers secours au travail",
+              "category": "Safety",
+              "en": "Gives first aid to an injured or ill colleague until professional help arrives.",
+              "fr": "Porte les premiers secours à un collègue blessé ou malade jusqu'à l'arrivée des secours spécialisés."
+            },
+            {
+              "name": "Fire prevention and fighting",
+              "nameFr": "Prévention et lutte contre l'incendie",
+              "category": "Safety",
+              "en": "Prevents fires on equipment and in workshops and uses the right extinguishing means on a starting fire.",
+              "fr": "Prévient les incendies sur les engins et dans les ateliers et utilise le bon moyen d'extinction sur un début de feu."
+            },
+            {
+              "name": "Incident investigation",
+              "nameFr": "Enquête après incident",
+              "category": "Safety",
+              "en": "Collects facts after an incident, finds the root causes and proposes actions that prevent recurrence.",
+              "fr": "Recueille les faits après un incident, identifie les causes profondes et propose des actions qui évitent la récidive."
+            }
+          ]
+        },
+        {
+          "name": "Environment and community",
+          "nameFr": "Environnement et communautés",
+          "definition": "Limit the environmental footprint of operations and keep the trust of neighbouring communities.",
+          "definitionFr": "Limiter l'empreinte environnementale des opérations et conserver la confiance des communautés voisines.",
+          "skills": [
+            {
+              "name": "Environmental monitoring",
+              "nameFr": "Surveillance environnementale",
+              "category": "Compliance",
+              "en": "Samples and records air, water, soil and noise data against permit limits and reports exceedances.",
+              "fr": "Prélève et enregistre les données d'air, d'eau, de sol et de bruit au regard des limites autorisées et signale les dépassements."
+            },
+            {
+              "name": "Water and tailings management",
+              "nameFr": "Gestion de l'eau et des résidus",
+              "category": "Technical",
+              "en": "Operates and inspects water circuits, ponds and tailings facilities to prevent spills and structural failures.",
+              "fr": "Exploite et inspecte les circuits d’eau, les bassins et les parcs à résidus pour prévenir les déversements et les ruptures."
+            },
+            {
+              "name": "Mine closure and rehabilitation",
+              "nameFr": "Fermeture et réhabilitation de site",
+              "category": "Technical",
+              "en": "Plans and carries out progressive rehabilitation, revegetation and closure commitments.",
+              "fr": "Planifie et réalise la réhabilitation progressive, la revégétalisation et les engagements de fermeture."
+            },
+            {
+              "name": "Community relations",
+              "nameFr": "Relations avec les communautés",
+              "category": "Behavioral",
+              "en": "Listens to neighbouring communities, handles their grievances respectfully and keeps commitments made to them.",
+              "fr": "Écoute les communautés voisines, traite leurs doléances avec respect et tient les engagements pris envers elles."
+            }
+          ]
+        },
+        {
+          "name": "Regulatory compliance",
+          "nameFr": "Conformité réglementaire",
+          "definition": "Meet the legal obligations of mining and industrial operations at all times.",
+          "definitionFr": "Respecter en permanence les obligations légales des opérations minières et industrielles.",
+          "skills": [
+            {
+              "name": "Mining regulations compliance",
+              "nameFr": "Conformité à la réglementation minière",
+              "category": "Compliance",
+              "en": "Knows the mining and industrial safety rules that apply to the job and works within them.",
+              "fr": "Connaît les règles de sécurité minière et industrielle applicables à son poste et les respecte."
+            },
+            {
+              "name": "Statutory inspections readiness",
+              "nameFr": "Préparation aux inspections réglementaires",
+              "category": "Compliance",
+              "en": "Keeps registers, certificates and inspection records up to date and ready for the authorities.",
+              "fr": "Tient à jour les registres, certificats et rapports de vérification, prêts pour les autorités."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Operations & Equipment",
+      "nameFr": "Exploitation et équipements",
+      "description": "Operating and maintaining heavy equipment and running production.",
+      "descriptionFr": "Conduire et entretenir les équipements lourds et piloter la production.",
+      "category": "Technical",
+      "subDomains": [
+        {
+          "name": "Equipment operation",
+          "nameFr": "Conduite d'engins",
+          "definition": "Operate mobile and fixed equipment safely and productively.",
+          "definitionFr": "Conduire les engins mobiles et les équipements fixes en sécurité et avec efficacité.",
+          "skills": [
+            {
+              "name": "Haul truck operation",
+              "nameFr": "Conduite de tombereau",
+              "category": "Technical",
+              "en": "Drives a haul truck on the haul road network, loads, dumps and follows traffic rules in all conditions.",
+              "fr": "Conduit un tombereau sur les pistes, se fait charger, déverse et respecte les règles de circulation en toutes conditions."
+            },
+            {
+              "name": "Excavator and loader operation",
+              "nameFr": "Conduite de pelle et de chargeuse",
+              "category": "Technical",
+              "en": "Operates an excavator or loader to dig, load and clean up efficiently without damaging equipment.",
+              "fr": "Conduit une pelle ou une chargeuse pour excaver, charger et nettoyer efficacement sans endommager l'engin."
+            },
+            {
+              "name": "Drilling operations",
+              "nameFr": "Foration",
+              "category": "Technical",
+              "en": "Sets up and operates a drill rig to the drill plan: position, depth, angle and hole quality.",
+              "fr": "Installe et conduit une foreuse selon le plan de foration : implantation, profondeur, inclinaison et qualité des trous."
+            },
+            {
+              "name": "Blasting and explosives handling",
+              "nameFr": "Tir de mines et manipulation des explosifs",
+              "category": "Safety",
+              "en": "Transports, stores, charges and fires explosives under licence, and secures the blast area.",
+              "fr": "Transporte, stocke, charge et met à feu les explosifs dans le cadre de son habilitation, et sécurise la zone de tir."
+            },
+            {
+              "name": "Crane and lifting operations",
+              "nameFr": "Levage et manutention par grue",
+              "category": "Safety",
+              "en": "Plans and carries out lifts: load assessment, rigging, signalling and exclusion zones.",
+              "fr": "Prépare et réalise les levages : évaluation de la charge, élingage, guidage et zones d'exclusion."
+            },
+            {
+              "name": "Pre-start equipment inspection",
+              "nameFr": "Contrôle avant démarrage des engins",
+              "category": "Safety",
+              "en": "Carries out and records the pre-start check, and tags out any equipment unfit for use.",
+              "fr": "Réalise et enregistre le contrôle avant démarrage, et interdit l'utilisation de tout engin non conforme."
+            }
+          ]
+        },
+        {
+          "name": "Maintenance",
+          "nameFr": "Maintenance",
+          "definition": "Keep equipment reliable through planned and corrective maintenance.",
+          "definitionFr": "Garantir la fiabilité des équipements par la maintenance planifiée et corrective.",
+          "skills": [
+            {
+              "name": "Preventive maintenance",
+              "nameFr": "Maintenance préventive",
+              "category": "Technical",
+              "en": "Carries out scheduled inspections, lubrication and component changes to the maintenance plan.",
+              "fr": "Réalise les inspections, graissages et remplacements de composants prévus au plan de maintenance."
+            },
+            {
+              "name": "Mechanical fault diagnosis",
+              "nameFr": "Diagnostic des pannes mécaniques",
+              "category": "Technical",
+              "en": "Finds the cause of a mechanical failure using symptoms, manuals and test equipment.",
+              "fr": "Trouve la cause d'une panne mécanique à partir des symptômes, de la documentation et des appareils de mesure."
+            },
+            {
+              "name": "Hydraulic systems",
+              "nameFr": "Systèmes hydrauliques",
+              "category": "Technical",
+              "en": "Maintains and repairs hydraulic circuits safely, including stored pressure release.",
+              "fr": "Entretient et répare les circuits hydrauliques en sécurité, y compris la libération des pressions résiduelles."
+            },
+            {
+              "name": "Industrial electrical systems",
+              "nameFr": "Électricité industrielle",
+              "category": "Technical",
+              "en": "Installs, tests and repairs low- and medium-voltage equipment within the limits of the electrical authorisation held.",
+              "fr": "Installe, contrôle et répare les équipements basse et moyenne tension dans les limites de l'habilitation électrique détenue."
+            },
+            {
+              "name": "Instrumentation and control",
+              "nameFr": "Instrumentation et régulation",
+              "category": "Technical",
+              "en": "Calibrates sensors, maintains control loops and fault-finds on automated systems.",
+              "fr": "Étalonne les capteurs, entretient les boucles de régulation et dépanne les systèmes automatisés."
+            },
+            {
+              "name": "Welding and fabrication",
+              "nameFr": "Soudage et chaudronnerie",
+              "category": "Technical",
+              "en": "Repairs and fabricates steel parts by welding and cutting to the required quality.",
+              "fr": "Répare et fabrique des pièces métalliques par soudage et découpage à la qualité exigée."
+            },
+            {
+              "name": "Maintenance planning",
+              "nameFr": "Planification de la maintenance",
+              "category": "Technical",
+              "en": "Turns work requests into planned jobs with parts, tools, people and shutdown windows.",
+              "fr": "Transforme les demandes d'intervention en travaux planifiés : pièces, outillage, personnel et fenêtres d'arrêt."
+            },
+            {
+              "name": "Condition monitoring",
+              "nameFr": "Surveillance de l'état des équipements",
+              "category": "Technical",
+              "en": "Uses oil analysis, vibration, thermography and inspections to predict failures before they happen.",
+              "fr": "Utilise l'analyse d'huile, les vibrations, la thermographie et les inspections pour anticiper les défaillances."
+            }
+          ]
+        },
+        {
+          "name": "Production control",
+          "nameFr": "Pilotage de la production",
+          "definition": "Plan, follow and correct production during the shift and over the mine life.",
+          "definitionFr": "Planifier, suivre et corriger la production pendant le poste et sur la durée de vie de la mine.",
+          "skills": [
+            {
+              "name": "Shift production reporting",
+              "nameFr": "Reporting de production par poste",
+              "category": "Technical",
+              "en": "Records tonnages, delays and equipment hours accurately at the end of each shift.",
+              "fr": "Enregistre avec exactitude les tonnages, les arrêts et les heures des engins à la fin de chaque poste."
+            },
+            {
+              "name": "Short-interval control",
+              "nameFr": "Pilotage à intervalles courts",
+              "category": "Technical",
+              "en": "Checks progress against plan several times a shift and corrects deviations quickly.",
+              "fr": "Compare plusieurs fois par poste le réalisé au prévu et corrige rapidement les écarts."
+            },
+            {
+              "name": "Mine planning basics",
+              "nameFr": "Bases de la planification minière",
+              "category": "Technical",
+              "en": "Understands how the mine plan sets sequence, pit or stope design and production targets.",
+              "fr": "Comprend comment le plan minier fixe la séquence, la conception des fosses ou chantiers et les objectifs de production."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Geoscience & Processing",
+      "nameFr": "Géosciences et traitement",
+      "description": "Understanding the orebody and turning ore into saleable product.",
+      "descriptionFr": "Connaître le gisement et transformer le minerai en produit vendable.",
+      "category": "Technical",
+      "subDomains": [
+        {
+          "name": "Geology",
+          "nameFr": "Géologie",
+          "definition": "Describe, sample and measure the orebody to guide mining.",
+          "definitionFr": "Décrire, échantillonner et mesurer le gisement pour guider l'exploitation.",
+          "skills": [
+            {
+              "name": "Geological mapping and logging",
+              "nameFr": "Cartographie et description géologique",
+              "category": "Technical",
+              "en": "Maps faces and benches and logs drill core or chips consistently.",
+              "fr": "Cartographie les fronts et gradins et décrit les carottes ou cuttings de manière homogène."
+            },
+            {
+              "name": "Sampling and assaying",
+              "nameFr": "Échantillonnage et analyses",
+              "category": "Technical",
+              "en": "Collects representative samples, keeps the chain of custody and reads assay results.",
+              "fr": "Prélève des échantillons représentatifs, assure leur traçabilité et interprète les résultats d’analyse."
+            },
+            {
+              "name": "Grade control",
+              "nameFr": "Contrôle des teneurs",
+              "category": "Technical",
+              "en": "Defines ore and waste boundaries in the pit and follows dig lines to limit dilution and loss.",
+              "fr": "Délimite le minerai et le stérile en fosse et suit les limites de chargement pour limiter dilution et pertes."
+            },
+            {
+              "name": "Surveying",
+              "nameFr": "Topographie",
+              "category": "Technical",
+              "en": "Sets out and measures positions, volumes and as-built surfaces with survey instruments.",
+              "fr": "Implante et mesure positions, volumes et levés de récolement avec les instruments topographiques."
+            }
+          ]
+        },
+        {
+          "name": "Mineral processing",
+          "nameFr": "Traitement du minerai",
+          "definition": "Run the plant that turns ore into concentrate or metal.",
+          "definitionFr": "Conduire l'usine qui transforme le minerai en concentré ou en métal.",
+          "skills": [
+            {
+              "name": "Crushing and grinding",
+              "nameFr": "Concassage et broyage",
+              "category": "Technical",
+              "en": "Operates crushers and mills to reach the target size and throughput.",
+              "fr": "Conduit les concasseurs et broyeurs pour atteindre la granulométrie et le débit visés."
+            },
+            {
+              "name": "Separation and concentration",
+              "nameFr": "Séparation et concentration",
+              "category": "Technical",
+              "en": "Runs flotation, gravity, magnetic or leaching circuits and adjusts them to recovery targets.",
+              "fr": "Conduit les circuits de flottation, gravimétrie, séparation magnétique ou lixiviation et les ajuste aux objectifs de récupération."
+            },
+            {
+              "name": "Process plant control",
+              "nameFr": "Conduite d'usine de traitement",
+              "category": "Technical",
+              "en": "Monitors the plant from the control room or the floor and reacts to alarms and upsets.",
+              "fr": "Surveille l’usine depuis la salle de contrôle ou sur le terrain et réagit aux alarmes et aux perturbations."
+            },
+            {
+              "name": "Metallurgical accounting",
+              "nameFr": "Bilan métallurgique",
+              "category": "Technical",
+              "en": "Balances tonnages, grades and recoveries across the plant and explains the gaps.",
+              "fr": "Équilibre tonnages, teneurs et récupérations sur l'ensemble de l'usine et explique les écarts."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Supervision & Workforce",
+      "nameFr": "Encadrement et main-d'œuvre",
+      "description": "Leading crews in the field and building a skilled local workforce.",
+      "descriptionFr": "Diriger les équipes de terrain et constituer une main-d'œuvre locale qualifiée.",
+      "category": "Behavioral",
+      "subDomains": [
+        {
+          "name": "Front-line supervision",
+          "nameFr": "Encadrement de proximité",
+          "definition": "Lead a crew safely through the shift.",
+          "definitionFr": "Mener une équipe en sécurité tout au long du poste.",
+          "skills": [
+            {
+              "name": "Shift handover",
+              "nameFr": "Passation de consignes",
+              "category": "Behavioral",
+              "en": "Passes on the state of work, hazards, permits and equipment to the next shift, in person and in writing.",
+              "fr": "Transmet à l'équipe suivante l'état des travaux, les dangers, les permis et l'état des engins, oralement et par écrit."
+            },
+            {
+              "name": "Toolbox talks",
+              "nameFr": "Causeries sécurité",
+              "category": "Behavioral",
+              "en": "Runs short, practical pre-shift safety briefings that involve the crew.",
+              "fr": "Anime des causeries sécurité courtes et concrètes en début de poste en faisant participer l'équipe."
+            },
+            {
+              "name": "Crew leadership",
+              "nameFr": "Animation d'équipe de terrain",
+              "category": "Behavioral",
+              "en": "Allocates tasks, sets expectations and keeps the crew focused, safe and productive.",
+              "fr": "Répartit les tâches, fixe les attentes et maintient l'équipe concentrée, en sécurité et productive."
+            },
+            {
+              "name": "Safety leadership",
+              "nameFr": "Leadership en sécurité",
+              "category": "Behavioral",
+              "en": "Visibly puts safety first, recognises safe behaviour and intervenes on unsafe acts every time.",
+              "fr": "Place visiblement la sécurité en premier, reconnaît les comportements sûrs et intervient à chaque acte dangereux."
+            }
+          ]
+        },
+        {
+          "name": "Workforce development and local content",
+          "nameFr": "Développement des compétences et contenu local",
+          "definition": "Train people on the job and grow local and national talent into skilled and leadership roles.",
+          "definitionFr": "Former au poste de travail et faire progresser les talents locaux et nationaux vers les postes qualifiés et d'encadrement.",
+          "skills": [
+            {
+              "name": "On-the-job training delivery",
+              "nameFr": "Formation au poste de travail",
+              "category": "Behavioral",
+              "en": "Demonstrates, coaches and observes a trainee until the task is performed safely and to standard.",
+              "fr": "Montre, accompagne et observe un apprenant jusqu’à ce que la tâche soit réalisée en sécurité et selon les règles."
+            },
+            {
+              "name": "Workplace competency assessment",
+              "nameFr": "Évaluation des compétences au poste",
+              "category": "Compliance",
+              "en": "Assesses a worker against a written standard with observation and questioning, and records the evidence.",
+              "fr": "Évalue un opérateur au regard d'un référentiel écrit par observation et questionnement, et consigne les preuves."
+            },
+            {
+              "name": "Local workforce development",
+              "nameFr": "Développement de la main-d'œuvre locale",
+              "category": "Behavioral",
+              "en": "Identifies local candidates, plans their training pathways and tracks their progress into skilled roles.",
+              "fr": "Repère les candidats locaux, planifie leurs parcours de formation et suit leur progression vers les postes qualifiés."
+            },
+            {
+              "name": "Nationalisation succession planning",
+              "nameFr": "Planification de la relève nationale",
+              "category": "Compliance",
+              "en": "Pairs expatriate or external post holders with national successors and follows a dated handover plan.",
+              "fr": "Associe chaque titulaire expatrié ou externe à un successeur national et suit un plan de transfert daté."
+            },
+            {
+              "name": "Local procurement and supplier development",
+              "nameFr": "Achats locaux et développement des fournisseurs",
+              "category": "Compliance",
+              "en": "Increases the share of goods and services bought locally and helps local suppliers meet site standards.",
+              "fr": "Augmente la part des biens et services achetés localement et aide les fournisseurs locaux à atteindre les exigences du site."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "roleFamilies": [
+    {
+      "name": "Mine Operations",
+      "nameFr": "Exploitation minière",
+      "description": "Equipment operators, drillers and production supervisors.",
+      "descriptionFr": "Conducteurs d'engins, foreurs et superviseurs de production."
+    },
+    {
+      "name": "Maintenance",
+      "nameFr": "Maintenance",
+      "description": "Mechanical, electrical and instrumentation maintenance.",
+      "descriptionFr": "Maintenance mécanique, électrique et instrumentation."
+    },
+    {
+      "name": "Processing",
+      "nameFr": "Traitement",
+      "description": "Process plant operators and metallurgists.",
+      "descriptionFr": "Opérateurs d'usine de traitement et métallurgistes."
+    },
+    {
+      "name": "Technical Services",
+      "nameFr": "Services techniques",
+      "description": "Geology, survey and mine planning.",
+      "descriptionFr": "Géologie, topographie et planification minière."
+    },
+    {
+      "name": "Health, Safety & Environment",
+      "nameFr": "Santé, sécurité et environnement",
+      "description": "HSE specialists.",
+      "descriptionFr": "Spécialistes HSE."
+    },
+    {
+      "name": "Workforce Development",
+      "nameFr": "Développement des compétences",
+      "description": "Training, assessment and local content roles.",
+      "descriptionFr": "Fonctions formation, évaluation et contenu local."
+    }
+  ],
+  "familySkills": {
+    "Mine Operations": [
+      "Haul truck operation",
+      "Pre-start equipment inspection",
+      "Mobile equipment interaction",
+      "Fatigue and fitness for work",
+      "Mine emergency response",
+      "Dust, noise and exposure control",
+      "Shift handover",
+      "Drilling operations",
+      "Blasting and explosives handling",
+      "Permit-to-work",
+      "Ground control awareness",
+      "Job hazard analysis",
+      "Geological mapping and logging",
+      "Crew leadership",
+      "Safety leadership",
+      "Toolbox talks",
+      "Short-interval control",
+      "Incident investigation"
+    ],
+    "Maintenance": [
+      "Preventive maintenance",
+      "Mechanical fault diagnosis",
+      "Lockout-tagout (energy isolation)",
+      "Permit-to-work",
+      "Hydraulic systems",
+      "Welding and fabrication",
+      "Condition monitoring",
+      "Industrial electrical systems",
+      "Instrumentation and control",
+      "Working at height",
+      "Maintenance planning",
+      "Shift production reporting"
+    ],
+    "Processing": [
+      "Process plant control",
+      "Hazardous substances handling",
+      "Lockout-tagout (energy isolation)",
+      "Confined space entry",
+      "Crushing and grinding",
+      "Separation and concentration",
+      "Shift production reporting"
+    ],
+    "Technical Services": [
+      "Geological mapping and logging",
+      "Sampling and assaying",
+      "Grade control",
+      "Ground control awareness",
+      "Surveying",
+      "Mine planning basics"
+    ],
+    "Health, Safety & Environment": [
+      "Job hazard analysis",
+      "Incident investigation",
+      "Mining regulations compliance",
+      "Statutory inspections readiness",
+      "Mine emergency response",
+      "Environmental monitoring",
+      "Toolbox talks"
+    ],
+    "Workforce Development": [
+      "On-the-job training delivery",
+      "Workplace competency assessment",
+      "Local workforce development",
+      "Nationalisation succession planning",
+      "Local procurement and supplier development",
+      "Community relations"
+    ]
+  },
+  "roles": [
+    {
+      "name": "Haul Truck Operator",
+      "nameFr": "Conducteur de tombereau",
+      "family": "Mine Operations",
+      "requirements": [
+        ["Haul truck operation", 3, true],
+        ["Pre-start equipment inspection", 3, true],
+        ["Mobile equipment interaction", 3, true],
+        ["Fatigue and fitness for work", 2, true],
+        ["Mine emergency response", 2, true],
+        ["Dust, noise and exposure control", 2, false],
+        ["Shift handover", 2, false]
+      ]
+    },
+    {
+      "name": "Drill and Blast Technician",
+      "nameFr": "Technicien forage et minage",
+      "family": "Mine Operations",
+      "requirements": [
+        ["Drilling operations", 3, true],
+        ["Blasting and explosives handling", 4, true],
+        ["Permit-to-work", 3, true],
+        ["Ground control awareness", 3, true],
+        ["Job hazard analysis", 3, true],
+        ["Geological mapping and logging", 1, false]
+      ]
+    },
+    {
+      "name": "Shift Supervisor (Mining)",
+      "nameFr": "Superviseur de poste (mine)",
+      "family": "Mine Operations",
+      "requirements": [
+        ["Crew leadership", 3, true],
+        ["Safety leadership", 3, true],
+        ["Shift handover", 3, true],
+        ["Permit-to-work", 3, true],
+        ["Mine emergency response", 3, true],
+        ["Toolbox talks", 3, false],
+        ["Short-interval control", 3, false],
+        ["Incident investigation", 2, true]
+      ]
+    },
+    {
+      "name": "Mechanical Maintenance Technician",
+      "nameFr": "Technicien de maintenance mécanique",
+      "family": "Maintenance",
+      "requirements": [
+        ["Preventive maintenance", 3, true],
+        ["Mechanical fault diagnosis", 3, true],
+        ["Lockout-tagout (energy isolation)", 4, true],
+        ["Permit-to-work", 3, true],
+        ["Hydraulic systems", 3, false],
+        ["Welding and fabrication", 2, false],
+        ["Condition monitoring", 2, false]
+      ]
+    },
+    {
+      "name": "Electrical and Instrumentation Technician",
+      "nameFr": "Technicien électricité et instrumentation",
+      "family": "Maintenance",
+      "requirements": [
+        ["Industrial electrical systems", 3, true],
+        ["Instrumentation and control", 3, true],
+        ["Lockout-tagout (energy isolation)", 4, true],
+        ["Permit-to-work", 3, true],
+        ["Working at height", 2, true],
+        ["Mechanical fault diagnosis", 2, false]
+      ]
+    },
+    {
+      "name": "Maintenance Planner",
+      "nameFr": "Planificateur de maintenance",
+      "family": "Maintenance",
+      "requirements": [
+        ["Maintenance planning", 4, true],
+        ["Preventive maintenance", 3, false],
+        ["Condition monitoring", 3, false],
+        ["Shift production reporting", 2, false]
+      ]
+    },
+    {
+      "name": "Process Plant Operator",
+      "nameFr": "Opérateur d'usine de traitement",
+      "family": "Processing",
+      "requirements": [
+        ["Process plant control", 3, true],
+        ["Hazardous substances handling", 3, true],
+        ["Lockout-tagout (energy isolation)", 3, true],
+        ["Confined space entry", 2, true],
+        ["Crushing and grinding", 3, false],
+        ["Separation and concentration", 2, false],
+        ["Shift production reporting", 2, false]
+      ]
+    },
+    {
+      "name": "Mine Geologist",
+      "nameFr": "Géologue de mine",
+      "family": "Technical Services",
+      "requirements": [
+        ["Geological mapping and logging", 4, true],
+        ["Sampling and assaying", 3, true],
+        ["Grade control", 3, true],
+        ["Ground control awareness", 2, true],
+        ["Surveying", 2, false],
+        ["Mine planning basics", 2, false]
+      ]
+    },
+    {
+      "name": "HSE Advisor (Mining)",
+      "nameFr": "Conseiller HSE (mine)",
+      "family": "Health, Safety & Environment",
+      "requirements": [
+        ["Job hazard analysis", 4, true],
+        ["Incident investigation", 3, true],
+        ["Mining regulations compliance", 3, true],
+        ["Statutory inspections readiness", 3, true],
+        ["Mine emergency response", 3, true],
+        ["Environmental monitoring", 2, false],
+        ["Toolbox talks", 3, false]
+      ]
+    },
+    {
+      "name": "Training and Local Content Coordinator",
+      "nameFr": "Coordinateur formation et contenu local",
+      "family": "Workforce Development",
+      "requirements": [
+        ["On-the-job training delivery", 3, true],
+        ["Workplace competency assessment", 3, true],
+        ["Local workforce development", 3, true],
+        ["Nationalisation succession planning", 3, true],
+        ["Local procurement and supplier development", 2, false],
+        ["Community relations", 2, false]
+      ]
+    }
+  ]
+}

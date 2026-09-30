@@ -1463,3 +1463,78 @@ html {
         height: calc(100dvh - 96px);
     }
 }
+
+/* ── Skills library (/framework/library): sector packs and ESCO import ── */
+:root .hz-library-card {
+    padding: 1rem 1.1rem;
+    margin-bottom: 1rem;
+}
+:root .hz-library-card h2 {
+    margin-top: 0;
+}
+:root .hz-library-callout {
+    padding: 0.9rem 1.1rem;
+    margin-bottom: 1rem;
+}
+:root .hz-library-callout p {
+    margin: 0 0 0.4rem;
+}
+:root .hz-library-callout p:last-child {
+    margin-bottom: 0;
+}
+:root .hz-library-tabs {
+    margin-bottom: 1rem;
+}
+:root .hz-library-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+}
+:root .hz-library-report .hz-library-actions {
+    margin-top: 1rem;
+}
+:root .hz-library-note {
+    font-size: 0.85rem;
+    margin: 0.6rem 0 0;
+}
+:root .hz-library-warn {
+    color: var(--warning, var(--text-secondary));
+}
+:root .hz-library-names,
+:root .hz-library-pillar {
+    margin: 0.5rem 0;
+}
+:root .hz-library-names summary,
+:root .hz-library-pillar summary {
+    cursor: pointer;
+}
+:root .hz-library-names ul {
+    columns: 2 260px;
+    margin: 0.4rem 0;
+}
+:root .hz-library-sub {
+    font-size: 1rem;
+    margin: 0.8rem 0 0.3rem;
+}
+:root .hz-library-skills,
+:root .hz-library-reqs,
+:root .hz-library-subgroups,
+:root .hz-library-history {
+    margin: 0;
+    padding-left: 1.1rem;
+}
+:root .hz-library-skills li,
+:root .hz-library-history li {
+    margin-bottom: 0.35rem;
+}
+:root .hz-library-subgroups {
+    list-style: none;
+    padding-left: 0;
+    text-align: left;
+}
+:root .hz-library-groups td,
+:root .hz-library-packs td {
+    vertical-align: top;
+}

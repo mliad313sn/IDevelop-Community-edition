@@ -1,0 +1,661 @@
+{
+  "id": "public-sector-administration",
+  "name": "Public sector & administration skills pack",
+  "title": {
+    "en": "Public sector & administration",
+    "fr": "Secteur public et administration"
+  },
+  "description": {
+    "en": "Skills for ministries, agencies and local authorities: regulation, integrity, public procurement and finance, citizen service, digital government, data protection and public management.",
+    "fr": "Compétences pour les ministères, agences et collectivités : réglementation, intégrité, commande publique et finances, service aux usagers, administration numérique, protection des données et management public."
+  },
+  "sector": "public",
+  "licence": "CC0-1.0",
+  "version": "1.0.0",
+  "note": "Original content written for IDevelop Community Edition and released under CC0 1.0 (public domain dedication). Edit, extend or delete it freely from Domains & Skills. Skills without their own level anchors use the per-category proficiency descriptors shipped with the schema.",
+  "pillars": [
+    {
+      "name": "Public Governance & Regulation",
+      "nameFr": "Gouvernance publique et réglementation",
+      "description": "Working within the law, making good rules and being accountable.",
+      "descriptionFr": "Agir dans le cadre du droit, produire de bonnes règles et rendre compte.",
+      "category": "Compliance",
+      "subDomains": [
+        {
+          "name": "Legal and regulatory framework",
+          "nameFr": "Cadre juridique et réglementaire",
+          "definition": "Apply, draft and enforce the rules the administration is responsible for.",
+          "definitionFr": "Appliquer, rédiger et faire respecter les règles dont l'administration a la charge.",
+          "skills": [
+            {
+              "name": "Administrative law basics",
+              "nameFr": "Bases du droit administratif",
+              "category": "Compliance",
+              "en": "Applies the principles of administrative law: legality, competence, procedure, reasons for decisions and remedies.",
+              "fr": "Applique les principes du droit administratif : légalité, compétence, procédure, motivation des décisions et voies de recours."
+            },
+            {
+              "name": "Drafting regulatory texts",
+              "nameFr": "Rédaction de textes réglementaires",
+              "category": "Technical",
+              "en": "Drafts clear, legally sound decrees, orders, circulars and decisions.",
+              "fr": "Rédige des décrets, arrêtés, circulaires et décisions clairs et juridiquement solides."
+            },
+            {
+              "name": "Regulatory impact assessment",
+              "nameFr": "Analyse d’impact de la réglementation",
+              "category": "Technical",
+              "en": "Estimates the costs, benefits and side effects of a proposed rule for citizens, businesses and the administration.",
+              "fr": "Estime les coûts, bénéfices et effets indirects d'une règle envisagée pour les usagers, les entreprises et l'administration."
+            },
+            {
+              "name": "Inspection and enforcement",
+              "nameFr": "Contrôle et application de la réglementation",
+              "category": "Compliance",
+              "en": "Plans and carries out inspections, records findings and applies proportionate enforcement measures.",
+              "fr": "Programme et réalise les contrôles, consigne les constats et applique des mesures de police proportionnées."
+            }
+          ]
+        },
+        {
+          "name": "Integrity and accountability",
+          "nameFr": "Intégrité et redevabilité",
+          "definition": "Act impartially, protect public resources and keep a reliable record.",
+          "definitionFr": "Agir avec impartialité, protéger les ressources publiques et conserver une trace fiable.",
+          "skills": [
+            {
+              "name": "Public ethics and conflicts of interest",
+              "nameFr": "Déontologie et prévention des conflits d’intérêts",
+              "category": "Compliance",
+              "en": "Acts with impartiality and probity, declares interests and gifts, and withdraws from decisions where impartiality could be doubted.",
+              "fr": "Agit avec impartialité et probité, déclare ses intérêts et cadeaux, et se déporte des décisions où son impartialité pourrait être mise en doute.",
+              "levels": [
+                {
+                  "level": 0,
+                  "en": "Does not yet know the ethics rules that apply to public servants.",
+                  "fr": "Ne connaît pas encore les règles déontologiques applicables aux agents publics."
+                },
+                {
+                  "level": 1,
+                  "en": "Knows the core duties (impartiality, discretion, probity) and asks before accepting a gift or invitation.",
+                  "fr": "Connaît les obligations essentielles (impartialité, discrétion, probité) et demande avant d’accepter un cadeau ou une invitation."
+                },
+                {
+                  "level": 2,
+                  "en": "Recognises a potential conflict of interest in daily work, declares it and steps aside from the file.",
+                  "fr": "Repère un conflit d’intérêts potentiel dans son travail, le déclare et se retire du dossier."
+                },
+                {
+                  "level": 3,
+                  "en": "Advises colleagues on ethics questions and builds conflict checks into the processes of the unit.",
+                  "fr": "Conseille ses collègues sur les questions déontologiques et intègre les vérifications de conflits dans les processus du service."
+                },
+                {
+                  "level": 4,
+                  "en": "Acts as ethics referent, handles difficult cases and shapes the integrity policy of the organisation.",
+                  "fr": "Agit comme référent déontologue, traite les cas difficiles et façonne la politique d'intégrité de l'organisation."
+                }
+              ]
+            },
+            {
+              "name": "Access to administrative documents",
+              "nameFr": "Accès aux documents administratifs",
+              "category": "Compliance",
+              "en": "Handles requests for public documents within the legal time limits, applying the right exemptions.",
+              "fr": "Traite les demandes de communication de documents dans les délais légaux en appliquant les exceptions prévues."
+            },
+            {
+              "name": "Internal control and audit",
+              "nameFr": "Contrôle interne et audit",
+              "category": "Compliance",
+              "en": "Maps risks in a process, puts proportionate controls in place and follows up audit recommendations.",
+              "fr": "Cartographie les risques d'un processus, met en place des contrôles proportionnés et suit les recommandations d'audit."
+            },
+            {
+              "name": "Records management and archiving",
+              "nameFr": "Gestion des documents et archivage",
+              "category": "Compliance",
+              "en": "Files, keeps and disposes of records according to retention schedules and archive rules.",
+              "fr": "Classe, conserve et élimine les documents selon les durées de conservation et les règles d’archivage."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Public Procurement & Finance",
+      "nameFr": "Commande publique et finances",
+      "description": "Buying and spending public money lawfully and efficiently.",
+      "descriptionFr": "Acheter et dépenser l’argent public de façon régulière et efficiente.",
+      "category": "Technical",
+      "subDomains": [
+        {
+          "name": "Public procurement",
+          "nameFr": "Commande publique",
+          "definition": "Run the procurement cycle from need to contract closure.",
+          "definitionFr": "Conduire le cycle d'achat, du besoin à la clôture du marché.",
+          "skills": [
+            {
+              "name": "Procurement planning",
+              "nameFr": "Programmation des achats",
+              "category": "Technical",
+              "en": "Defines needs, estimates value and chooses the appropriate procurement procedure and calendar.",
+              "fr": "Définit les besoins, estime les montants et choisit la procédure de passation et le calendrier adaptés."
+            },
+            {
+              "name": "Tender documents drafting",
+              "nameFr": "Rédaction des pièces de marché",
+              "category": "Technical",
+              "en": "Writes specifications, selection and award criteria that are clear, fair and open to competition.",
+              "fr": "Rédige des cahiers des charges et des critères de sélection et d'attribution clairs, équitables et ouverts à la concurrence."
+            },
+            {
+              "name": "Bid evaluation",
+              "nameFr": "Analyse des offres",
+              "category": "Compliance",
+              "en": "Evaluates bids against the published criteria, documents scores and justifies the award decision.",
+              "fr": "Analyse les offres selon les critères publiés, documente la notation et motive la décision d'attribution."
+            },
+            {
+              "name": "Contract management",
+              "nameFr": "Exécution et suivi des marchés",
+              "category": "Technical",
+              "en": "Follows delivery, quality, payments, amendments and penalties until contract closure.",
+              "fr": "Suit la livraison, la qualité, les paiements, les avenants et les pénalités jusqu'à la clôture du marché."
+            },
+            {
+              "name": "Procurement rules compliance",
+              "nameFr": "Respect des règles de la commande publique",
+              "category": "Compliance",
+              "en": "Applies thresholds, publicity, equal treatment and transparency rules at every step of the purchase.",
+              "fr": "Applique les seuils, la publicité, l'égalité de traitement et la transparence à chaque étape de l'achat.",
+              "levels": [
+                {
+                  "level": 0,
+                  "en": "Does not yet know the public procurement rules.",
+                  "fr": "Ne connaît pas encore les règles de la commande publique."
+                },
+                {
+                  "level": 1,
+                  "en": "Knows that public purchases follow rules and thresholds and asks the procurement team before committing spend.",
+                  "fr": "Sait que les achats publics obéissent à des règles et des seuils et consulte le service achats avant tout engagement."
+                },
+                {
+                  "level": 2,
+                  "en": "Runs simple procedures under supervision, applying thresholds and publicity rules correctly.",
+                  "fr": "Conduit des procédures simples sous supervision en appliquant correctement les seuils et les règles de publicité."
+                },
+                {
+                  "level": 3,
+                  "en": "Runs formal tenders alone, secures the file against challenge and advises buyers in other units.",
+                  "fr": "Conduit seul des procédures formalisées, sécurise le dossier contre les recours et conseille les acheteurs des autres services."
+                },
+                {
+                  "level": 4,
+                  "en": "Designs the procurement control framework, handles disputes and trains the network of buyers.",
+                  "fr": "Conçoit le dispositif de contrôle des achats, traite les contentieux et forme le réseau des acheteurs."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Public finance",
+          "nameFr": "Finances publiques",
+          "definition": "Prepare, execute and account for the public budget.",
+          "definitionFr": "Préparer, exécuter et rendre compte du budget public.",
+          "skills": [
+            {
+              "name": "Budget preparation and execution",
+              "nameFr": "Préparation et exécution budgétaire",
+              "category": "Technical",
+              "en": "Prepares budget requests, commits and follows expenditure within appropriations.",
+              "fr": "Prépare les demandes budgétaires, engage et suit les dépenses dans la limite des crédits."
+            },
+            {
+              "name": "Public accounting basics",
+              "nameFr": "Bases de la comptabilité publique",
+              "category": "Technical",
+              "en": "Applies the separation between authorising officer and accountant and the stages of public expenditure.",
+              "fr": "Applique la séparation entre ordonnateur et comptable et les étapes de la dépense publique."
+            },
+            {
+              "name": "Grants and subsidies management",
+              "nameFr": "Gestion des subventions",
+              "category": "Technical",
+              "en": "Instructs grant applications, drafts agreements and checks the use of funds.",
+              "fr": "Instruit les demandes de subvention, rédige les conventions et contrôle l'emploi des fonds."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Citizen Service",
+      "nameFr": "Service aux usagers",
+      "description": "Serving citizens and businesses well, in person and online.",
+      "descriptionFr": "Bien servir les usagers et les entreprises, au guichet comme en ligne.",
+      "category": "Behavioral",
+      "subDomains": [
+        {
+          "name": "Front-line service",
+          "nameFr": "Accueil et relation usagers",
+          "definition": "Welcome, inform and help users, including when they disagree with a decision.",
+          "definitionFr": "Accueillir, informer et aider les usagers, y compris lorsqu'ils contestent une décision.",
+          "skills": [
+            {
+              "name": "Citizen reception and guidance",
+              "nameFr": "Accueil et orientation des usagers",
+              "category": "Behavioral",
+              "en": "Welcomes users courteously, understands their request and directs them to the right service or procedure.",
+              "fr": "Accueille les usagers avec courtoisie, comprend leur demande et les oriente vers le bon service ou la bonne démarche."
+            },
+            {
+              "name": "Handling complaints and appeals",
+              "nameFr": "Traitement des réclamations et recours",
+              "category": "Behavioral",
+              "en": "Receives complaints calmly, investigates them fairly and gives a reasoned answer within the set time.",
+              "fr": "Reçoit les réclamations avec calme, les instruit équitablement et apporte une réponse motivée dans les délais."
+            },
+            {
+              "name": "Plain language",
+              "nameFr": "Langage clair",
+              "category": "Behavioral",
+              "en": "Writes letters, forms and web pages that users understand the first time.",
+              "fr": "Rédige des courriers, formulaires et pages web que les usagers comprennent du premier coup."
+            },
+            {
+              "name": "Service accessibility and inclusion",
+              "nameFr": "Accessibilité et inclusion des services",
+              "category": "Behavioral",
+              "en": "Adapts the service for people with disabilities, low literacy or limited digital access.",
+              "fr": "Adapte le service aux personnes en situation de handicap, en difficulté avec l'écrit ou éloignées du numérique."
+            }
+          ]
+        },
+        {
+          "name": "Service design",
+          "nameFr": "Conception des services publics",
+          "definition": "Design and improve procedures around the needs of users.",
+          "definitionFr": "Concevoir et améliorer les démarches à partir des besoins des usagers.",
+          "skills": [
+            {
+              "name": "User research for public services",
+              "nameFr": "Connaissance des usagers",
+              "category": "Technical",
+              "en": "Observes and interviews users to understand their journey and pain points.",
+              "fr": "Observe et interroge les usagers pour comprendre leur parcours et leurs difficultés."
+            },
+            {
+              "name": "Process simplification",
+              "nameFr": "Simplification des démarches",
+              "category": "Technical",
+              "en": "Removes unnecessary steps, documents and delays from administrative procedures.",
+              "fr": "Supprime les étapes, pièces justificatives et délais inutiles des démarches administratives."
+            },
+            {
+              "name": "Service quality measurement",
+              "nameFr": "Mesure de la qualité de service",
+              "category": "Technical",
+              "en": "Defines and follows service standards, waiting times and user satisfaction.",
+              "fr": "Définit et suit les engagements de service, les délais d'attente et la satisfaction des usagers."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Digital Government & Data",
+      "nameFr": "Administration numérique et données",
+      "description": "Delivering services online and using data responsibly.",
+      "descriptionFr": "Offrir les services en ligne et utiliser les données de façon responsable.",
+      "category": "Technical",
+      "subDomains": [
+        {
+          "name": "Digital services",
+          "nameFr": "Services numériques",
+          "definition": "Run and improve online services safely.",
+          "definitionFr": "Exploiter et améliorer les services en ligne en sécurité.",
+          "skills": [
+            {
+              "name": "Online service management",
+              "nameFr": "Pilotage des démarches en ligne",
+              "category": "Technical",
+              "en": "Runs an online procedure day to day: content, processing of requests, statistics and user support.",
+              "fr": "Pilote au quotidien une démarche en ligne : contenus, traitement des demandes, statistiques et assistance aux usagers."
+            },
+            {
+              "name": "Digital accessibility",
+              "nameFr": "Accessibilité numérique",
+              "category": "Technical",
+              "en": "Checks that websites and documents can be used by everyone, including with assistive technologies.",
+              "fr": "Vérifie que les sites et documents sont utilisables par tous, y compris avec des technologies d'assistance."
+            },
+            {
+              "name": "IT project ownership",
+              "nameFr": "Maîtrise d’ouvrage des projets numériques",
+              "category": "Technical",
+              "en": "Expresses business needs, prioritises features, accepts deliveries and drives adoption of a new system.",
+              "fr": "Exprime les besoins métier, priorise les fonctionnalités, recette les livraisons et accompagne l'adoption d'un nouveau système."
+            },
+            {
+              "name": "Cybersecurity awareness",
+              "nameFr": "Sensibilisation à la cybersécurité",
+              "category": "Compliance",
+              "en": "Protects accounts, devices and information and reports suspicious messages or incidents.",
+              "fr": "Protège ses comptes, ses équipements et les informations, et signale les messages ou incidents suspects."
+            }
+          ]
+        },
+        {
+          "name": "Data and privacy",
+          "nameFr": "Données et vie privée",
+          "definition": "Protect personal data, open public data and use evidence in decisions.",
+          "definitionFr": "Protéger les données personnelles, ouvrir les données publiques et fonder les décisions sur des éléments probants.",
+          "skills": [
+            {
+              "name": "Data protection compliance",
+              "nameFr": "Conformité en protection des données",
+              "category": "Compliance",
+              "en": "Processes personal data lawfully: purpose, minimisation, security, retention and the rights of the people concerned.",
+              "fr": "Traite les données personnelles de façon licite : finalité, minimisation, sécurité, durée de conservation et droits des personnes.",
+              "levels": [
+                {
+                  "level": 0,
+                  "en": "Does not yet know the personal data protection rules.",
+                  "fr": "Ne connaît pas encore les règles de protection des données personnelles."
+                },
+                {
+                  "level": 1,
+                  "en": "Knows what personal data is and only accesses the data needed for the task.",
+                  "fr": "Sait ce qu'est une donnée personnelle et n'accède qu'aux données nécessaires à sa mission."
+                },
+                {
+                  "level": 2,
+                  "en": "Applies the rules in daily work: secure sharing, retention, answering a simple access request with support.",
+                  "fr": "Applique les règles au quotidien : partage sécurisé, durées de conservation, réponse à une demande d’accès simple avec appui."
+                },
+                {
+                  "level": 3,
+                  "en": "Keeps the record of processing for a service, runs impact assessments and handles data breaches.",
+                  "fr": "Tient le registre des traitements d'un service, conduit les analyses d'impact et gère les violations de données."
+                },
+                {
+                  "level": 4,
+                  "en": "Advises management as data protection lead, audits processing and represents the organisation to the regulator.",
+                  "fr": "Conseille la direction en tant que référent protection des données, audite les traitements et représente l'organisation auprès de l'autorité de contrôle."
+                }
+              ]
+            },
+            {
+              "name": "Open data publication",
+              "nameFr": "Publication de données ouvertes",
+              "category": "Technical",
+              "en": "Prepares, documents and publishes public datasets in reusable formats, without personal data.",
+              "fr": "Prépare, documente et publie des jeux de données publics dans des formats réutilisables, sans données personnelles."
+            },
+            {
+              "name": "Data-informed policy making",
+              "nameFr": "Décision publique éclairée par les données",
+              "category": "Technical",
+              "en": "Uses indicators, studies and evaluations to prepare and adjust public decisions.",
+              "fr": "Utilise indicateurs, études et évaluations pour préparer et ajuster les décisions publiques."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Public Management",
+      "nameFr": "Management public",
+      "description": "Leading public teams, projects and change.",
+      "descriptionFr": "Diriger les équipes, les projets et le changement dans le service public.",
+      "category": "Behavioral",
+      "subDomains": [
+        {
+          "name": "Programme and project management",
+          "nameFr": "Gestion de programmes et de projets",
+          "definition": "Deliver public projects and assess what policies achieve.",
+          "definitionFr": "Conduire les projets publics et évaluer les effets des politiques.",
+          "skills": [
+            {
+              "name": "Public project management",
+              "nameFr": "Conduite de projets publics",
+              "category": "Technical",
+              "en": "Plans and steers a public project: scope, schedule, budget, risks, governance and reporting to elected officials or senior management.",
+              "fr": "Planifie et pilote un projet public : périmètre, calendrier, budget, risques, gouvernance et compte rendu aux élus ou à la direction."
+            },
+            {
+              "name": "Policy evaluation",
+              "nameFr": "Évaluation des politiques publiques",
+              "category": "Technical",
+              "en": "Designs and runs evaluations that measure the results and effects of a public policy.",
+              "fr": "Conçoit et conduit des évaluations qui mesurent les résultats et les effets d'une politique publique."
+            },
+            {
+              "name": "Inter-agency coordination",
+              "nameFr": "Coordination interservices",
+              "category": "Behavioral",
+              "en": "Brings several departments or agencies together around a shared file and keeps them aligned.",
+              "fr": "Réunit plusieurs services ou organismes autour d’un dossier commun et assure leur cohérence."
+            }
+          ]
+        },
+        {
+          "name": "Leading public teams",
+          "nameFr": "Encadrement d’équipes publiques",
+          "definition": "Manage public servants and lead change with stakeholders.",
+          "definitionFr": "Manager les agents publics et conduire le changement avec les parties prenantes.",
+          "skills": [
+            {
+              "name": "Managing public servants",
+              "nameFr": "Management des agents publics",
+              "category": "Behavioral",
+              "en": "Organises the work of a team within public employment rules: objectives, appraisals, working time and training.",
+              "fr": "Organise le travail d'une équipe dans le cadre du statut : objectifs, entretiens professionnels, temps de travail et formation."
+            },
+            {
+              "name": "Change management in administration",
+              "nameFr": "Conduite du changement",
+              "category": "Behavioral",
+              "en": "Explains the reasons for change, involves staff and unions, and supports teams through reorganisations.",
+              "fr": "Explique les raisons du changement, associe les agents et leurs représentants, et accompagne les équipes lors des réorganisations."
+            },
+            {
+              "name": "Stakeholder consultation",
+              "nameFr": "Concertation avec les parties prenantes",
+              "category": "Behavioral",
+              "en": "Organises consultations with citizens, businesses and partners and takes their input into account.",
+              "fr": "Organise la concertation avec les usagers, entreprises et partenaires et tient compte de leurs contributions."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "roleFamilies": [
+    {
+      "name": "Administration & Legal",
+      "nameFr": "Administration et affaires juridiques",
+      "description": "Regulation, legal and inspection roles.",
+      "descriptionFr": "Fonctions réglementaires, juridiques et de contrôle."
+    },
+    {
+      "name": "Procurement & Finance",
+      "nameFr": "Achats et finances",
+      "description": "Public buyers, budget and finance officers.",
+      "descriptionFr": "Acheteurs publics, gestionnaires budgétaires et financiers."
+    },
+    {
+      "name": "Citizen Services",
+      "nameFr": "Services aux usagers",
+      "description": "Front-line and user-facing roles.",
+      "descriptionFr": "Fonctions d’accueil et de relation avec les usagers."
+    },
+    {
+      "name": "Digital Government",
+      "nameFr": "Administration numérique",
+      "description": "Digital service, data and privacy roles.",
+      "descriptionFr": "Fonctions services numériques, données et vie privée."
+    },
+    {
+      "name": "Management",
+      "nameFr": "Encadrement",
+      "description": "People leaders and project leaders.",
+      "descriptionFr": "Responsables d'équipe et chefs de projet."
+    }
+  ],
+  "familySkills": {
+    "Procurement & Finance": [
+      "Procurement rules compliance",
+      "Tender documents drafting",
+      "Bid evaluation",
+      "Public ethics and conflicts of interest",
+      "Procurement planning",
+      "Contract management",
+      "Budget preparation and execution",
+      "Public accounting basics",
+      "Grants and subsidies management",
+      "Internal control and audit"
+    ],
+    "Administration & Legal": [
+      "Administrative law basics",
+      "Drafting regulatory texts",
+      "Regulatory impact assessment",
+      "Plain language",
+      "Stakeholder consultation",
+      "Inspection and enforcement",
+      "Public ethics and conflicts of interest",
+      "Records management and archiving"
+    ],
+    "Citizen Services": [
+      "Citizen reception and guidance",
+      "Handling complaints and appeals",
+      "Data protection compliance",
+      "Plain language",
+      "Service accessibility and inclusion",
+      "Online service management"
+    ],
+    "Digital Government": [
+      "Online service management",
+      "IT project ownership",
+      "Digital accessibility",
+      "Data protection compliance",
+      "User research for public services",
+      "Cybersecurity awareness",
+      "Records management and archiving",
+      "Access to administrative documents",
+      "Internal control and audit"
+    ],
+    "Management": [
+      "Managing public servants",
+      "Public ethics and conflicts of interest",
+      "Change management in administration",
+      "Public project management",
+      "Inter-agency coordination",
+      "Budget preparation and execution"
+    ]
+  },
+  "roles": [
+    {
+      "name": "Public Procurement Officer",
+      "nameFr": "Chargé des marchés publics",
+      "family": "Procurement & Finance",
+      "requirements": [
+        ["Procurement rules compliance", 4, true],
+        ["Tender documents drafting", 3, true],
+        ["Bid evaluation", 3, true],
+        ["Public ethics and conflicts of interest", 3, true],
+        ["Procurement planning", 3, false],
+        ["Contract management", 3, false]
+      ]
+    },
+    {
+      "name": "Budget and Finance Officer",
+      "nameFr": "Gestionnaire budgétaire et financier",
+      "family": "Procurement & Finance",
+      "requirements": [
+        ["Budget preparation and execution", 3, true],
+        ["Public accounting basics", 3, true],
+        ["Grants and subsidies management", 2, false],
+        ["Internal control and audit", 2, false],
+        ["Procurement rules compliance", 2, false]
+      ]
+    },
+    {
+      "name": "Policy and Regulatory Officer",
+      "nameFr": "Chargé d’études réglementaires",
+      "family": "Administration & Legal",
+      "requirements": [
+        ["Administrative law basics", 3, true],
+        ["Drafting regulatory texts", 3, true],
+        ["Regulatory impact assessment", 3, false],
+        ["Plain language", 3, false],
+        ["Stakeholder consultation", 2, false]
+      ]
+    },
+    {
+      "name": "Inspector",
+      "nameFr": "Inspecteur",
+      "family": "Administration & Legal",
+      "requirements": [
+        ["Inspection and enforcement", 3, true],
+        ["Administrative law basics", 3, true],
+        ["Public ethics and conflicts of interest", 3, true],
+        ["Records management and archiving", 2, false],
+        ["Plain language", 2, false]
+      ]
+    },
+    {
+      "name": "Citizen Service Agent",
+      "nameFr": "Agent d’accueil des usagers",
+      "family": "Citizen Services",
+      "requirements": [
+        ["Citizen reception and guidance", 3, true],
+        ["Handling complaints and appeals", 2, true],
+        ["Data protection compliance", 2, true],
+        ["Plain language", 3, false],
+        ["Service accessibility and inclusion", 2, false],
+        ["Online service management", 1, false]
+      ]
+    },
+    {
+      "name": "Digital Service Owner",
+      "nameFr": "Responsable de service numérique",
+      "family": "Digital Government",
+      "requirements": [
+        ["Online service management", 3, true],
+        ["IT project ownership", 3, true],
+        ["Digital accessibility", 3, true],
+        ["Data protection compliance", 3, true],
+        ["User research for public services", 3, false],
+        ["Cybersecurity awareness", 2, false]
+      ]
+    },
+    {
+      "name": "Data Protection Officer",
+      "nameFr": "Délégué à la protection des données",
+      "family": "Digital Government",
+      "requirements": [
+        ["Data protection compliance", 4, true],
+        ["Cybersecurity awareness", 3, true],
+        ["Records management and archiving", 3, false],
+        ["Access to administrative documents", 3, false],
+        ["Internal control and audit", 2, false]
+      ]
+    },
+    {
+      "name": "Head of Unit",
+      "nameFr": "Chef de service",
+      "family": "Management",
+      "requirements": [
+        ["Managing public servants", 3, true],
+        ["Public ethics and conflicts of interest", 3, true],
+        ["Change management in administration", 3, false],
+        ["Public project management", 3, false],
+        ["Inter-agency coordination", 3, false],
+        ["Budget preparation and execution", 2, false]
+      ]
+    }
+  ]
+}

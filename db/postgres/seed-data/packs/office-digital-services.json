@@ -1,0 +1,628 @@
+{
+  "id": "office-digital-services",
+  "name": "Office & digital services skills pack",
+  "title": {
+    "en": "Office & digital services",
+    "fr": "Bureau et services numériques"
+  },
+  "description": {
+    "en": "Generic skills for office, back-office and digital service teams in any sector: digital workplace tools, security hygiene, data and AI use, customer and business administration, ways of working and IT support.",
+    "fr": "Compétences génériques pour les équipes de bureau, de back-office et de services numériques de tout secteur : outils de travail numériques, hygiène de sécurité, usage des données et de l'IA, relation client et gestion administrative, méthodes de travail et support informatique."
+  },
+  "sector": "office",
+  "licence": "CC0-1.0",
+  "version": "1.0.0",
+  "note": "Original content written for IDevelop Community Edition and released under CC0 1.0 (public domain dedication). Edit, extend or delete it freely from Domains & Skills. Skills without their own level anchors use the per-category proficiency descriptors shipped with the schema.",
+  "pillars": [
+    {
+      "name": "Digital Workplace",
+      "nameFr": "Environnement de travail numérique",
+      "description": "Using office and collaboration tools productively and safely.",
+      "descriptionFr": "Utiliser les outils bureautiques et collaboratifs avec efficacité et en sécurité.",
+      "category": "Technical",
+      "subDomains": [
+        {
+          "name": "Productivity tools",
+          "nameFr": "Outils bureautiques",
+          "definition": "Produce documents, spreadsheets and presentations efficiently.",
+          "definitionFr": "Produire efficacement documents, tableaux et présentations.",
+          "skills": [
+            {
+              "name": "Word processing",
+              "nameFr": "Traitement de texte",
+              "category": "Technical",
+              "en": "Produces well-structured documents using styles, tables, templates and review features.",
+              "fr": "Produit des documents bien structurés à l’aide des styles, tableaux, modèles et fonctions de révision."
+            },
+            {
+              "name": "Spreadsheets and formulas",
+              "nameFr": "Tableurs et formules",
+              "category": "Technical",
+              "en": "Builds reliable spreadsheets with formulas, lookups, pivot tables and charts.",
+              "fr": "Construit des tableaux fiables avec formules, recherches, tableaux croisés dynamiques et graphiques."
+            },
+            {
+              "name": "Presentation design",
+              "nameFr": "Conception de présentations",
+              "category": "Technical",
+              "en": "Creates clear slides that support a message, with readable layouts and visuals.",
+              "fr": "Crée des diapositives claires au service d’un message, avec une mise en page et des visuels lisibles."
+            },
+            {
+              "name": "Email and calendar management",
+              "nameFr": "Gestion de la messagerie et de l'agenda",
+              "category": "Technical",
+              "en": "Keeps the inbox and calendar under control using rules, folders, shared calendars and delegation.",
+              "fr": "Maîtrise sa messagerie et son agenda grâce aux règles, dossiers, agendas partagés et délégations."
+            }
+          ]
+        },
+        {
+          "name": "Collaboration and document management",
+          "nameFr": "Collaboration et gestion documentaire",
+          "definition": "Work together on shared content and automate routine steps.",
+          "definitionFr": "Travailler ensemble sur des contenus partagés et automatiser les tâches répétitives.",
+          "skills": [
+            {
+              "name": "Shared document management",
+              "nameFr": "Gestion documentaire partagée",
+              "category": "Technical",
+              "en": "Stores, names, versions and shares documents in shared spaces with the right permissions.",
+              "fr": "Range, nomme, versionne et partage les documents dans les espaces partagés avec les bons droits."
+            },
+            {
+              "name": "Online meeting tools",
+              "nameFr": "Outils de réunion en ligne",
+              "category": "Technical",
+              "en": "Sets up and runs online meetings with screen sharing, chat, recording and breakout rooms.",
+              "fr": "Organise et anime des réunions en ligne avec partage d’écran, messagerie, enregistrement et sous-groupes."
+            },
+            {
+              "name": "Workflow automation",
+              "nameFr": "Automatisation des tâches",
+              "category": "Technical",
+              "en": "Automates repetitive steps with forms, rules and no-code workflow tools.",
+              "fr": "Automatise les tâches répétitives avec des formulaires, des règles et des outils sans code."
+            }
+          ]
+        },
+        {
+          "name": "Security and privacy",
+          "nameFr": "Sécurité et confidentialité",
+          "definition": "Protect accounts, devices and information in daily work.",
+          "definitionFr": "Protéger comptes, équipements et informations dans le travail quotidien.",
+          "skills": [
+            {
+              "name": "Phishing and fraud awareness",
+              "nameFr": "Vigilance face à l'hameçonnage et à la fraude",
+              "category": "Compliance",
+              "en": "Spots phishing, fake invoices and impersonation attempts and reports them before acting.",
+              "fr": "Repère l'hameçonnage, les fausses factures et les usurpations d'identité et les signale avant d'agir.",
+              "levels": [
+                {
+                  "level": 0,
+                  "en": "Does not yet recognise common phishing or fraud attempts.",
+                  "fr": "Ne reconnaît pas encore les tentatives courantes d'hameçonnage ou de fraude."
+                },
+                {
+                  "level": 1,
+                  "en": "Knows the usual warning signs and does not click unknown links or attachments.",
+                  "fr": "Connaît les signaux d'alerte habituels et ne clique pas sur les liens ou pièces jointes inconnus."
+                },
+                {
+                  "level": 2,
+                  "en": "Checks the sender and the request through another channel before any payment or data change, and reports suspicious messages.",
+                  "fr": "Vérifie l'expéditeur et la demande par un autre canal avant tout paiement ou changement de données, et signale les messages suspects."
+                },
+                {
+                  "level": 3,
+                  "en": "Spots targeted attempts (fake executive, supplier bank change) and helps colleagues handle them.",
+                  "fr": "Repère les tentatives ciblées (faux dirigeant, changement de RIB fournisseur) et aide ses collègues à les traiter."
+                },
+                {
+                  "level": 4,
+                  "en": "Runs awareness sessions or simulations and improves verification procedures.",
+                  "fr": "Anime des sensibilisations ou des simulations et améliore les procédures de vérification."
+                }
+              ]
+            },
+            {
+              "name": "Password and access hygiene",
+              "nameFr": "Hygiène des mots de passe et des accès",
+              "category": "Compliance",
+              "en": "Uses strong unique passwords, a password manager and multi-factor authentication, and never shares access.",
+              "fr": "Utilise des mots de passe robustes et uniques, un gestionnaire de mots de passe et l’authentification multifacteur, et ne partage jamais ses accès."
+            },
+            {
+              "name": "Data protection in daily work",
+              "nameFr": "Protection des données au quotidien",
+              "category": "Compliance",
+              "en": "Handles personal and confidential data with care: minimum access, secure sharing, clean desk and correct disposal.",
+              "fr": "Manipule les données personnelles et confidentielles avec soin : accès minimal, partage sécurisé, bureau rangé et destruction appropriée."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Data & AI",
+      "nameFr": "Données et IA",
+      "description": "Turning data into information and using AI tools responsibly.",
+      "descriptionFr": "Transformer les données en information et utiliser les outils d'IA de façon responsable.",
+      "category": "Technical",
+      "subDomains": [
+        {
+          "name": "Data handling",
+          "nameFr": "Traitement des données",
+          "definition": "Prepare, query and present data.",
+          "definitionFr": "Préparer, interroger et présenter les données.",
+          "skills": [
+            {
+              "name": "Data cleaning and preparation",
+              "nameFr": "Nettoyage et préparation des données",
+              "category": "Technical",
+              "en": "Finds and fixes duplicates, gaps and inconsistent formats before data is used.",
+              "fr": "Repère et corrige doublons, manques et formats incohérents avant l’utilisation des données."
+            },
+            {
+              "name": "Data visualisation",
+              "nameFr": "Visualisation des données",
+              "category": "Technical",
+              "en": "Chooses the right chart and layout so that data answers the question at a glance.",
+              "fr": "Choisit le graphique et la mise en forme adaptés pour que les données répondent à la question en un coup d’œil."
+            },
+            {
+              "name": "Business intelligence tools",
+              "nameFr": "Outils d'informatique décisionnelle",
+              "category": "Technical",
+              "en": "Builds and maintains dashboards and reports in a business intelligence tool.",
+              "fr": "Construit et maintient des tableaux de bord et rapports dans un outil d'informatique décisionnelle."
+            },
+            {
+              "name": "Basic SQL querying",
+              "nameFr": "Requêtes SQL de base",
+              "category": "Technical",
+              "en": "Writes simple SQL queries to select, filter, join and aggregate data.",
+              "fr": "Écrit des requêtes SQL simples pour sélectionner, filtrer, joindre et agréger des données."
+            }
+          ]
+        },
+        {
+          "name": "AI and automation",
+          "nameFr": "IA et automatisation",
+          "definition": "Use generative AI tools productively and within the rules.",
+          "definitionFr": "Utiliser les outils d'IA générative avec efficacité et dans le respect des règles.",
+          "skills": [
+            {
+              "name": "Responsible use of generative AI",
+              "nameFr": "Usage responsable de l'IA générative",
+              "category": "Compliance",
+              "en": "Uses approved AI tools, never enters confidential data they are not cleared for, and checks every output before use.",
+              "fr": "Utilise les outils d'IA autorisés, n'y saisit jamais de données confidentielles non autorisées et vérifie chaque résultat avant usage.",
+              "levels": [
+                {
+                  "level": 0,
+                  "en": "Does not yet use generative AI tools at work.",
+                  "fr": "N'utilise pas encore d'outils d'IA générative au travail."
+                },
+                {
+                  "level": 1,
+                  "en": "Knows which tools are allowed and what data must never be entered.",
+                  "fr": "Sait quels outils sont autorisés et quelles données ne doivent jamais y être saisies."
+                },
+                {
+                  "level": 2,
+                  "en": "Uses AI for drafting and summarising, checks facts and sources, and says when content was AI-assisted.",
+                  "fr": "Utilise l'IA pour rédiger et résumer, vérifie les faits et les sources, et signale quand un contenu a été produit avec l'IA."
+                },
+                {
+                  "level": 3,
+                  "en": "Builds reliable AI-assisted workflows for the team and spots bias, errors and confidentiality risks.",
+                  "fr": "Construit des usages fiables de l'IA pour l'équipe et repère biais, erreurs et risques de confidentialité."
+                },
+                {
+                  "level": 4,
+                  "en": "Shapes team rules for AI use, evaluates new tools and trains colleagues.",
+                  "fr": "Définit les règles d'usage de l'IA de l'équipe, évalue les nouveaux outils et forme les collègues."
+                }
+              ]
+            },
+            {
+              "name": "Prompt writing",
+              "nameFr": "Rédaction de requêtes pour l'IA",
+              "category": "Technical",
+              "en": "Writes clear instructions with context, examples and constraints to get useful AI output.",
+              "fr": "Rédige des consignes claires avec contexte, exemples et contraintes pour obtenir des résultats utiles de l'IA."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Customer & Business Administration",
+      "nameFr": "Relation client et gestion administrative",
+      "description": "Serving customers and running the administrative side of the business.",
+      "descriptionFr": "Servir les clients et assurer la gestion administrative de l'activité.",
+      "category": "Behavioral",
+      "subDomains": [
+        {
+          "name": "Customer service",
+          "nameFr": "Service client",
+          "definition": "Understand and resolve customer requests.",
+          "definitionFr": "Comprendre et résoudre les demandes des clients.",
+          "skills": [
+            {
+              "name": "Customer needs analysis",
+              "nameFr": "Analyse des besoins clients",
+              "category": "Behavioral",
+              "en": "Asks the right questions to understand what the customer really needs.",
+              "fr": "Pose les bonnes questions pour comprendre le besoin réel du client."
+            },
+            {
+              "name": "Service desk handling",
+              "nameFr": "Traitement des demandes au support",
+              "category": "Behavioral",
+              "en": "Logs, prioritises and resolves requests or escalates them within service levels.",
+              "fr": "Enregistre, priorise et résout les demandes ou les escalade dans le respect des niveaux de service."
+            },
+            {
+              "name": "Customer satisfaction follow-up",
+              "nameFr": "Suivi de la satisfaction client",
+              "category": "Behavioral",
+              "en": "Measures satisfaction, follows up on complaints and turns feedback into improvements.",
+              "fr": "Mesure la satisfaction, assure le suivi des réclamations et transforme les retours en améliorations."
+            }
+          ]
+        },
+        {
+          "name": "Business administration",
+          "nameFr": "Gestion administrative",
+          "definition": "Keep invoicing, purchasing and contracts in order.",
+          "definitionFr": "Tenir à jour la facturation, les achats et les contrats.",
+          "skills": [
+            {
+              "name": "Invoicing and payment follow-up",
+              "nameFr": "Facturation et suivi des paiements",
+              "category": "Technical",
+              "en": "Issues accurate invoices, follows payments and chases overdue amounts politely and firmly.",
+              "fr": "Émet des factures exactes, suit les paiements et relance les impayés avec courtoisie et fermeté."
+            },
+            {
+              "name": "Purchasing and supplier follow-up",
+              "nameFr": "Achats et suivi fournisseurs",
+              "category": "Technical",
+              "en": "Raises purchase orders, compares quotes and follows deliveries and supplier invoices.",
+              "fr": "Émet les bons de commande, compare les devis et suit les livraisons et factures fournisseurs."
+            },
+            {
+              "name": "Contract administration",
+              "nameFr": "Administration des contrats",
+              "category": "Compliance",
+              "en": "Keeps contracts filed, tracks renewal and notice dates and checks obligations are met.",
+              "fr": "Archive les contrats, suit les dates de renouvellement et de préavis et vérifie le respect des obligations."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ways of Working",
+      "nameFr": "Méthodes de travail",
+      "description": "Organising work and working well with others.",
+      "descriptionFr": "Organiser son travail et bien travailler avec les autres.",
+      "category": "Behavioral",
+      "subDomains": [
+        {
+          "name": "Organisation and delivery",
+          "nameFr": "Organisation et réalisation",
+          "definition": "Plan and deliver work reliably, on site or remotely.",
+          "definitionFr": "Planifier et réaliser son travail de façon fiable, sur site ou à distance.",
+          "skills": [
+            {
+              "name": "Time and priority management",
+              "nameFr": "Gestion du temps et des priorités",
+              "category": "Behavioral",
+              "en": "Plans the week, sorts urgent from important and delivers on commitments.",
+              "fr": "Planifie sa semaine, distingue l'urgent de l'important et tient ses engagements."
+            },
+            {
+              "name": "Agile ways of working",
+              "nameFr": "Méthodes agiles",
+              "category": "Behavioral",
+              "en": "Works in short iterations with a visible backlog, stand-ups and retrospectives.",
+              "fr": "Travaille par itérations courtes avec un carnet de tâches visible, des points quotidiens et des rétrospectives."
+            },
+            {
+              "name": "Process documentation",
+              "nameFr": "Documentation des processus",
+              "category": "Technical",
+              "en": "Describes a process step by step so that someone else can run it.",
+              "fr": "Décrit un processus étape par étape pour qu'une autre personne puisse le réaliser."
+            },
+            {
+              "name": "Remote and hybrid work",
+              "nameFr": "Travail à distance et hybride",
+              "category": "Behavioral",
+              "en": "Stays reachable, organised and connected with the team when working away from the office.",
+              "fr": "Reste joignable, organisé et en lien avec l'équipe lorsqu'il travaille hors du bureau."
+            }
+          ]
+        },
+        {
+          "name": "Interpersonal effectiveness",
+          "nameFr": "Efficacité relationnelle",
+          "definition": "Write, meet, negotiate and learn effectively with others.",
+          "definitionFr": "Rédiger, se réunir, négocier et apprendre efficacement avec les autres.",
+          "skills": [
+            {
+              "name": "Business writing",
+              "nameFr": "Rédaction professionnelle",
+              "category": "Behavioral",
+              "en": "Writes concise emails, reports and minutes that lead to a clear decision or action.",
+              "fr": "Rédige des courriels, rapports et comptes rendus concis qui débouchent sur une décision ou une action claire."
+            },
+            {
+              "name": "Meeting facilitation",
+              "nameFr": "Animation de réunions",
+              "category": "Behavioral",
+              "en": "Prepares an agenda, keeps discussion on track, involves everyone and closes with decisions and owners.",
+              "fr": "Prépare l'ordre du jour, recentre les échanges, fait participer chacun et conclut par des décisions et des responsables."
+            },
+            {
+              "name": "Negotiation",
+              "nameFr": "Négociation",
+              "category": "Behavioral",
+              "en": "Prepares positions, looks for mutual gains and reaches workable agreements.",
+              "fr": "Prépare ses positions, recherche des gains mutuels et aboutit à des accords applicables."
+            },
+            {
+              "name": "Intercultural communication",
+              "nameFr": "Communication interculturelle",
+              "category": "Behavioral",
+              "en": "Adapts style to colleagues and customers from other cultures and languages.",
+              "fr": "S'adapte aux collègues et clients d'autres cultures et langues."
+            },
+            {
+              "name": "Learning agility",
+              "nameFr": "Agilité d'apprentissage",
+              "category": "Behavioral",
+              "en": "Learns new tools and methods quickly and applies them to real work.",
+              "fr": "Apprend rapidement de nouveaux outils et méthodes et les applique au travail réel."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IT Services",
+      "nameFr": "Services informatiques",
+      "description": "Supporting users and running everyday IT services.",
+      "descriptionFr": "Accompagner les utilisateurs et exploiter les services informatiques courants.",
+      "category": "Technical",
+      "subDomains": [
+        {
+          "name": "IT support and operations",
+          "nameFr": "Support et exploitation informatiques",
+          "definition": "Keep users productive and services running.",
+          "definitionFr": "Garder les utilisateurs productifs et les services disponibles.",
+          "skills": [
+            {
+              "name": "End-user IT support",
+              "nameFr": "Support informatique aux utilisateurs",
+              "category": "Technical",
+              "en": "Diagnoses and fixes workstation, account and software problems for users.",
+              "fr": "Diagnostique et résout les problèmes de poste, de compte et de logiciel des utilisateurs."
+            },
+            {
+              "name": "IT service management",
+              "nameFr": "Gestion des services informatiques",
+              "category": "Technical",
+              "en": "Applies incident, request, change and problem processes with a ticketing tool.",
+              "fr": "Applique les processus d'incident, de demande, de changement et de problème avec un outil de tickets."
+            },
+            {
+              "name": "Cloud services administration",
+              "nameFr": "Administration des services cloud",
+              "category": "Technical",
+              "en": "Administers accounts, licences, storage and security settings of cloud workplace services.",
+              "fr": "Administre comptes, licences, stockage et paramètres de sécurité des services cloud de bureau."
+            },
+            {
+              "name": "Web content management",
+              "nameFr": "Gestion de contenus web",
+              "category": "Technical",
+              "en": "Publishes and updates web or intranet content with a content management system.",
+              "fr": "Publie et met à jour des contenus web ou intranet avec un système de gestion de contenus."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "roleFamilies": [
+    {
+      "name": "Administrative Support",
+      "nameFr": "Assistanat et support administratif",
+      "description": "Office, executive and accounts assistants.",
+      "descriptionFr": "Assistants administratifs, de direction et comptables."
+    },
+    {
+      "name": "Customer Service",
+      "nameFr": "Service client",
+      "description": "Customer-facing service roles.",
+      "descriptionFr": "Fonctions de relation et de service client."
+    },
+    {
+      "name": "Technology & Data",
+      "nameFr": "Technologies et données",
+      "description": "Digital, IT and data roles.",
+      "descriptionFr": "Fonctions numériques, informatiques et données."
+    },
+    {
+      "name": "Business Analysis & Projects",
+      "nameFr": "Analyse métier et projets",
+      "description": "Business analysts and project coordinators.",
+      "descriptionFr": "Analystes métier et coordinateurs de projets."
+    }
+  ],
+  "familySkills": {
+    "Administrative Support": [
+      "Email and calendar management",
+      "Business writing",
+      "Phishing and fraud awareness",
+      "Word processing",
+      "Spreadsheets and formulas",
+      "Shared document management",
+      "Invoicing and payment follow-up",
+      "Time and priority management",
+      "Data protection in daily work",
+      "Meeting facilitation",
+      "Presentation design",
+      "Purchasing and supplier follow-up",
+      "Contract administration"
+    ],
+    "Customer Service": [
+      "Customer needs analysis",
+      "Service desk handling",
+      "Data protection in daily work",
+      "Phishing and fraud awareness",
+      "Customer satisfaction follow-up",
+      "Business writing"
+    ],
+    "Technology & Data": [
+      "Spreadsheets and formulas",
+      "Data cleaning and preparation",
+      "Data visualisation",
+      "Business intelligence tools",
+      "Basic SQL querying",
+      "Responsible use of generative AI",
+      "End-user IT support",
+      "Password and access hygiene",
+      "Phishing and fraud awareness",
+      "IT service management",
+      "Service desk handling",
+      "Cloud services administration"
+    ],
+    "Business Analysis & Projects": [
+      "Process documentation",
+      "Customer needs analysis",
+      "Data cleaning and preparation",
+      "Data visualisation",
+      "Agile ways of working",
+      "Meeting facilitation",
+      "Business intelligence tools",
+      "Time and priority management",
+      "Online meeting tools",
+      "Workflow automation",
+      "Responsible use of generative AI"
+    ]
+  },
+  "roles": [
+    {
+      "name": "Office Administrator",
+      "nameFr": "Assistant administratif",
+      "family": "Administrative Support",
+      "requirements": [
+        ["Email and calendar management", 3, true],
+        ["Business writing", 3, true],
+        ["Phishing and fraud awareness", 2, true],
+        ["Word processing", 3, false],
+        ["Spreadsheets and formulas", 2, false],
+        ["Shared document management", 3, false],
+        ["Invoicing and payment follow-up", 2, false],
+        ["Time and priority management", 3, false]
+      ]
+    },
+    {
+      "name": "Executive Assistant",
+      "nameFr": "Assistant de direction",
+      "family": "Administrative Support",
+      "requirements": [
+        ["Email and calendar management", 4, true],
+        ["Business writing", 4, true],
+        ["Time and priority management", 4, true],
+        ["Data protection in daily work", 3, true],
+        ["Meeting facilitation", 3, false],
+        ["Presentation design", 3, false]
+      ]
+    },
+    {
+      "name": "Accounts Assistant",
+      "nameFr": "Assistant comptable",
+      "family": "Administrative Support",
+      "requirements": [
+        ["Invoicing and payment follow-up", 3, true],
+        ["Spreadsheets and formulas", 3, true],
+        ["Phishing and fraud awareness", 3, true],
+        ["Purchasing and supplier follow-up", 2, false],
+        ["Contract administration", 2, false]
+      ]
+    },
+    {
+      "name": "Customer Service Advisor",
+      "nameFr": "Conseiller clientèle",
+      "family": "Customer Service",
+      "requirements": [
+        ["Customer needs analysis", 3, true],
+        ["Service desk handling", 3, true],
+        ["Data protection in daily work", 2, true],
+        ["Phishing and fraud awareness", 2, true],
+        ["Customer satisfaction follow-up", 2, false],
+        ["Business writing", 2, false]
+      ]
+    },
+    {
+      "name": "Reporting Analyst",
+      "nameFr": "Analyste reporting",
+      "family": "Technology & Data",
+      "requirements": [
+        ["Spreadsheets and formulas", 4, true],
+        ["Data cleaning and preparation", 3, true],
+        ["Data visualisation", 3, true],
+        ["Business intelligence tools", 3, false],
+        ["Basic SQL querying", 2, false],
+        ["Responsible use of generative AI", 2, false]
+      ]
+    },
+    {
+      "name": "IT Support Technician",
+      "nameFr": "Technicien support informatique",
+      "family": "Technology & Data",
+      "requirements": [
+        ["End-user IT support", 3, true],
+        ["Password and access hygiene", 4, true],
+        ["Phishing and fraud awareness", 3, true],
+        ["IT service management", 3, false],
+        ["Service desk handling", 3, false],
+        ["Cloud services administration", 2, false]
+      ]
+    },
+    {
+      "name": "Business Analyst",
+      "nameFr": "Analyste métier",
+      "family": "Business Analysis & Projects",
+      "requirements": [
+        ["Process documentation", 3, true],
+        ["Customer needs analysis", 3, true],
+        ["Data cleaning and preparation", 3, false],
+        ["Data visualisation", 3, false],
+        ["Agile ways of working", 3, false],
+        ["Meeting facilitation", 3, false],
+        ["Business intelligence tools", 2, false]
+      ]
+    },
+    {
+      "name": "Digital Project Coordinator",
+      "nameFr": "Coordinateur de projets numériques",
+      "family": "Business Analysis & Projects",
+      "requirements": [
+        ["Agile ways of working", 3, true],
+        ["Time and priority management", 3, true],
+        ["Online meeting tools", 3, false],
+        ["Process documentation", 3, false],
+        ["Workflow automation", 2, false],
+        ["Responsible use of generative AI", 2, false]
+      ]
+    }
+  ]
+}
