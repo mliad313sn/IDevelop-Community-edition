@@ -7,6 +7,9 @@
  * PROVISIONING (POST) enqueues an onboarding request for admin placement rather than
  * creating a fully-placed employee outright — so an IdP can push new joiners while
  * the site/department/service/role placement stays governed. Maps SCIM Users ↔ employees.
+ * When hris.scimAutoPlace is on, the enterprise extension (department, manager,
+ * employeeNumber) and title go through the HRIS mapping rules and a user whose
+ * values ALL map is placed directly (HrisSyncService.scimPlace).
  */
 const express = require('express');
 const router = express.Router();
@@ -400,6 +403,23 @@ router.post(
                 scimType: 'uniqueness',
                 detail: 'A user with this userName already exists.',
             });
+        }
+        // Direct placement through the HRIS mapping rules (hris.scimAutoPlace):
+        // department → site / service, title → role, manager → an active
+        // employee. Only an unrestricted (SuperAdmin-owned) key may place
+        // somebody, since the placement is org-wide. Anything that does not map
+        // falls back to the onboarding queue below, unchanged.
+        if (canSeePending(req)) {
+            const HrisSyncService = require('../services/HrisSyncService');
+            const actorRef = req.user ? `${req.user.userType || 'admin'}:${req.user.id}` : null;
+            const placed = await HrisSyncService.scimPlace(b, { actorRef });
+            if (placed && placed.placed) {
+                const e = await db.get(
+                    'SELECT id, employee_number, first_name, last_name, email, is_active FROM employees WHERE id = ?',
+                    [placed.employeeId]
+                );
+                return res.status(201).json(toScim(e, `${req.protocol}://${req.get('host')}`));
+            }
         }
         const r = await OnboardingService.createFromSso({
             provider: 'scim',

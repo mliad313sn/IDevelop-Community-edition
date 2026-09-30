@@ -312,4 +312,76 @@ suite('HRIS sync on the real schema (rolled back)', () => {
             expect(log.severity).toBe('warn');
         });
     });
+
+    test('SCIM placement: every value maps → placed; one does not → not placed (queue)', async () => {
+        if (!ready) return;
+        await inRolledBackTx(async () => {
+            const org = await seedOrg();
+            const AppSettings = require('../../src/models/AppSettingsModel');
+            await AppSettings.setValue(
+                'hris.scimAutoPlace',
+                'true',
+                'boolean',
+                'test',
+                'onboarding'
+            );
+            await Hris.addMapping('department', 'Extraction', org.deptId, { actorRef: ACTOR });
+            await Hris.addMapping('role', 'Soudeur', org.welder, { actorRef: ACTOR });
+            const boss = await db.get(
+                `INSERT INTO employees (employee_number, first_name, last_name, site_id, department_id, service_id, role_id)
+                 VALUES ('HXE-BOSS', 'Bea', 'Boss', ?, ?, ?, ?) RETURNING id`,
+                [org.siteId, org.deptId, org.svcId, org.lead]
+            );
+            const EXT = 'urn:ietf:params:scim:schemas:extension:enterprise:2.0:User';
+            const user = (over = {}) => ({
+                userName: 'awa.scim@hris.test',
+                externalId: 'entra-awa',
+                name: { givenName: 'Awa', familyName: 'Scim' },
+                title: 'Soudeur',
+                [EXT]: {
+                    employeeNumber: 'HXE-SCIM',
+                    department: 'Extraction',
+                    manager: { value: String(boss.id) },
+                },
+                ...over,
+            });
+
+            const miss = await Hris.scimPlace(user({ title: 'Astronaut' }), { actorRef: ACTOR });
+            expect(miss).toEqual({ placed: false, reasons: ['unmapped_role'] });
+            const badMgr = await Hris.scimPlace(
+                user({ [EXT]: { department: 'Extraction', manager: { value: '999999999' } } }),
+                { actorRef: ACTOR }
+            );
+            expect(badMgr.placed).toBe(false);
+            expect(badMgr.reasons).toContain('unmapped_manager');
+
+            const ok = await Hris.scimPlace(user(), { actorRef: ACTOR });
+            expect(ok.placed).toBe(true);
+            const e = await db.get(
+                `SELECT employee_number, service_id, role_id, supervisor_id FROM employees WHERE id = ?`,
+                [ok.employeeId]
+            );
+            expect(e.employeeNumber).toBe('HXE-SCIM');
+            expect(Number(e.serviceId)).toBe(org.svcId); // the department's only service
+            expect(Number(e.roleId)).toBe(org.welder);
+            expect(Number(e.supervisorId)).toBe(Number(boss.id));
+            const link = await db.get(
+                `SELECT employee_id FROM hris_links WHERE provider = 'scim' AND external_id = 'entra-awa'`
+            );
+            expect(Number(link.employeeId)).toBe(ok.employeeId);
+
+            // Switched off → never placed.
+            await AppSettings.setValue(
+                'hris.scimAutoPlace',
+                'false',
+                'boolean',
+                'test',
+                'onboarding'
+            );
+            expect(await Hris.scimPlace(user({ userName: 'other@hris.test' }))).toEqual({
+                placed: false,
+                reasons: ['disabled'],
+            });
+        });
+    });
 });
