@@ -33,7 +33,8 @@ class ModulesController {
         const { before, after } = await ModuleService.save({
             stage,
             toggles,
-            localContent: body.mod_localContent,
+            // an unticked checkbox is absent from the body: absent means OFF
+            localContent: body.mod_localContent || 'false',
             actorId: req.user && req.user.id,
         });
 

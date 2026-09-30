@@ -456,6 +456,22 @@ describe('setup step and audit', () => {
         expect(entry.details).toMatch(/switched on: development, talent, mobility/);
     });
 
+    test('an unticked local-content box switches the module OFF (absent from the form)', async () => {
+        await ModuleService.save({ stage: '1', localContent: 'true' });
+        expect((await ModuleService.resolve()).modules.localContent).toBe(true);
+        const Ctl = require('../../src/controllers/ModulesController');
+        const req = {
+            body: { stage: '1' },
+            user: { id: 1, userType: 'admin', role: 'superadmin' },
+            ip: '127.0.0.1',
+            get: () => 'jest',
+            flash: () => {},
+        };
+        await Ctl.save(req, { redirect: jest.fn() });
+        expect((await ModuleService.resolve()).modules.localContent).toBe(false);
+        expect(mockLog.log.mock.calls[0][0].details).toMatch(/switched off: localContent/);
+    });
+
     test('the impact preview names the menus that appear and disappear', () => {
         const imp = ModuleService.impact(
             ModuleService.presetFor('1'),

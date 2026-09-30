@@ -46,8 +46,9 @@
                 </td>
                 <td class="cell-actions" style="white-space:nowrap">
                     <a class="btn btn-sm" href="/employees/<%= analysis.employeeId %>" title="<%= __('chrome:ga_develop_title') %>"><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('chrome:ga_develop') %></a>
-                    <a class="btn btn-sm" href="/coaching/plans" title="<%= __('chrome:ga_coach_title') %>"><i class="fas fa-people-arrows" aria-hidden="true"></i> <%= __('chrome:ga_coach') %></a>
-                    <a class="btn btn-sm btn-secondary" href="/v2/idp/new?employeeId=<%= analysis.employeeId %>" title="<%= __('chrome:ga_dev_plan_title') %>"><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('chrome:ga_dev_plan') %></a>
+                    <%# optional module (Administration → Modules): no link to a page that answers 404 %>
+                    <% if (typeof appModules === 'undefined' || !appModules || appModules.development) { %><a class="btn btn-sm" href="/coaching/plans" title="<%= __('chrome:ga_coach_title') %>"><i class="fas fa-people-arrows" aria-hidden="true"></i> <%= __('chrome:ga_coach') %></a><% } %>
+                    <% if (typeof appModules === 'undefined' || !appModules || appModules.development) { %><a class="btn btn-sm btn-secondary" href="/v2/idp/new?employeeId=<%= analysis.employeeId %>" title="<%= __('chrome:ga_dev_plan_title') %>"><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('chrome:ga_dev_plan') %></a><% } %>
                 </td>
             </tr>
             <% }); %>

@@ -181,7 +181,8 @@
               </td>
               <td class="actions">
                 <a class="btn btn-sm btn-secondary" href="/qualified?skillId=<%= r.skillId %>&minLevel=<%= r.requiredLevel %>"><%= __('exec:kp_find_others') %></a>
-                <a class="btn btn-sm btn-primary" href="/v2/continuity"><%= __('exec:kp_open_plan') %></a>
+                <%# optional module (Administration → Modules): no link to a page that answers 404 %>
+                <% if (typeof appModules === 'undefined' || !appModules || appModules.talent) { %><a class="btn btn-sm btn-primary" href="/v2/continuity"><%= __('exec:kp_open_plan') %></a><% } %>
               </td>
             </tr>
           <% }); %>

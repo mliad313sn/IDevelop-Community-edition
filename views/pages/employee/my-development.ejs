@@ -338,10 +338,12 @@ const toSign = idps.filter(function (p) { return p.canSign; });
         <% } else { %>
             <p class="text-muted"><%= __('employee:dev_coaching_none') %></p>
         <% } %>
+        <% if (typeof appModules === 'undefined' || !appModules || appModules.development) { %>
         <a class="btn btn-secondary" href="/employee/my-coaching">
             <i class="fas fa-arrow-right" aria-hidden="true"></i>
             <%= __('employee:dev_coaching_link') %>
         </a>
+        <% } %>
     </div>
 
 <% } %>
