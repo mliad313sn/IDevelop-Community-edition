@@ -78,6 +78,10 @@ const requireNumericParam =
 const DepartmentModel = require('../models/DepartmentModel');
 const ServiceModel = require('../models/ServiceModel');
 const RBACService = require('../services/RBACService');
+const ModuleService = require('../services/ModuleService');
+// Module switch guard (Administration → Modules): the app's normal 404 while
+// none of the named modules is on. Read per request (TTL-cached settings).
+const _mod = (...keys) => ModuleService.requireModule(...keys);
 
 // Validators (moved here to avoid circular dependencies)
 const {
@@ -256,7 +260,8 @@ router.get('/about', requireAuth, async (req, res) => {
         nodeVersion: process.version,
         platform: `${process.platform} ${process.arch}`,
         environment: process.env.NODE_ENV || 'development',
-        v2Features: process.env.V2_FEATURES === '1',
+        adoptionStage: res.locals.adoptionStage,
+        modulesLegacy: res.locals.modulesLegacy,
         ssoEnabled: process.env.SSO_ENABLED === '1',
         jobsMode: process.env.REDIS_URL ? 'BullMQ (Redis)' : 'in-process scheduler',
         appPort: process.env.PORT || '3000',
@@ -359,7 +364,7 @@ router.get('/api/powerbi/goals', requireApiKey, ReportController.powerbIGoals);
 router.post(
     '/integrations/lms/:provider/webhook',
     require('../utils/asyncHandler')(async (req, res) => {
-        if (process.env.V2_FEATURES !== '1') return res.status(404).json({ ok: false });
+        if (!(await ModuleService.isOn('development'))) return res.status(404).json({ ok: false });
         const LmsService = require('../services/LmsService');
         const provider = String(req.params.provider || '').toLowerCase();
         // Secret only via header — never from the JSON body (request bodies are
@@ -443,7 +448,13 @@ router.use('/exec', requireManagerOrAdmin, rbacMiddleware, require('./exec'));
 
 router.get('/employee/dashboard', requireEmployeeOrManager, EmployeePortalController.dashboard);
 // My OKRs & 1-on-1s — the signed-in person's own goals and check-in sessions.
-router.get('/employee/okr', requireEmployeeOrManager, EmployeePortalController.myOkr);
+// OKRs & 1:1s — engagement module (Administration → Modules).
+router.get(
+    '/employee/okr',
+    _mod('engagement'),
+    requireEmployeeOrManager,
+    EmployeePortalController.myOkr
+);
 // « Mon développement » — the signed-in person's OWN PIP(s), IDP(s) and a
 // pointer to their coaching. No :id and no query-string employee id: the
 // controller keys every query on req.user.id. /v2/pip is manager/admin-only, so
@@ -642,7 +653,7 @@ router.post(
 
 // ---- Learner-facing LMS ("Mes formations") ---------------------------------
 // Mounted here, NOT inside the V2 block: /v2/lms is the admin console (manager
-// or configure_lms, and only when V2_FEATURES=1). The learner's own list must
+// or configure_lms, and only while the development module is on). The learner's own list must
 // exist whenever an assignment notification can be sent, which is always.
 try {
     router.use('/employee', require('./v2-lms').learnerRouter);
@@ -652,6 +663,8 @@ try {
 }
 
 // ---- Phase 3: Coaching & Mentoring plans -----------------------------------
+// Part of the development module (Administration → Modules).
+router.use(['/coaching/plans', '/employee/my-coaching', '/api/coaching'], _mod('development'));
 router.get('/coaching/plans', requireManagerOrAdmin, CoachingPlanController.consolePage);
 router.get('/employee/my-coaching', requireEmployeeOrManager, CoachingPlanController.myPage);
 router.get('/api/coaching/queue', requireManagerOrAdmin, CoachingPlanController.queue);
@@ -704,6 +717,7 @@ router.use('/api/companion', require('./companion'));
 // features that were built but had no employee UI.
 router.get(
     '/employee/opportunities',
+    _mod('mobility', 'engagement'),
     requireAuth,
     asyncHandler(EmployeeGrowthController.page.bind(EmployeeGrowthController))
 );
@@ -865,8 +879,14 @@ router.get(
     SupervisorReviewController.viewGapAnalysis
 );
 
-// ---- V2 phase routers (gated; only mounted when V2_FEATURES=1) ----
-if (process.env.V2_FEATURES === '1') {
+// ---- V2 phase routers ----
+// Always mounted. The optional ones sit behind their module switch
+// (Administration → Modules, ModuleService.requireModule): while a module is
+// off its pages answer the app's normal 404, and switching it on needs no
+// restart. /v2/uam (MFA, maker-checker) and /v2/slf (self-assessment cycles,
+// disputes) are CORE and never gated. V2_FEATURES=1 still forces every module
+// on (legacy installs).
+{
     try {
         router.use('/v2/uam', require('./v2-uam'));
     } catch (e) {
@@ -878,7 +898,7 @@ if (process.env.V2_FEATURES === '1') {
         mountFailed('v2-slf', e);
     }
     try {
-        router.use('/v2/idp', require('./v2-idp'));
+        router.use('/v2/idp', _mod('development'), require('./v2-idp'));
     } catch (e) {
         mountFailed('v2-idp', e);
     }
@@ -886,30 +906,35 @@ if (process.env.V2_FEATURES === '1') {
         // 3.23.17: complete / archive a plan, move an objective (IDP lifecycle).
         // Its own block: a failure here no longer takes v2-idp down with it (or
         // the other way round), and it is logged.
-        router.use('/v2/idp', require('./v2-idp-lifecycle'));
+        router.use('/v2/idp', _mod('development'), require('./v2-idp-lifecycle'));
     } catch (e) {
         mountFailed('v2-idp-lifecycle', e);
     }
     try {
         // Confidential talent/bias data — managers/admins only.
-        router.use('/v2/talent', requireManagerOrAdmin, require('./v2-talent'));
+        router.use('/v2/talent', _mod('talent'), requireManagerOrAdmin, require('./v2-talent'));
     } catch (e) {
         mountFailed('v2-talent', e);
     }
     try {
-        router.use('/v2/coaching', require('./v2-coaching'));
+        router.use('/v2/coaching', _mod('development'), require('./v2-coaching'));
     } catch (e) {
         mountFailed('v2-coaching', e);
     }
     try {
         // Performance-improvement plans — managers/admins only.
-        router.use('/v2/pip', requireManagerOrAdmin, require('./v2-pip'));
+        router.use('/v2/pip', _mod('development'), requireManagerOrAdmin, require('./v2-pip'));
     } catch (e) {
         mountFailed('v2-pip', e);
     }
     try {
         // Lifecycle/HR events — managers/admins only.
-        router.use('/v2/lifecycle', requireManagerOrAdmin, require('./v2-lifecycle'));
+        router.use(
+            '/v2/lifecycle',
+            _mod('mobility'),
+            requireManagerOrAdmin,
+            require('./v2-lifecycle')
+        );
     } catch (e) {
         mountFailed('v2-lifecycle', e);
     }
@@ -917,6 +942,7 @@ if (process.env.V2_FEATURES === '1') {
         // People continuity — managers always; local admins need a continuity grant.
         router.use(
             '/v2/continuity',
+            _mod('talent'),
             requireManagerOrAnyPermission(
                 'view_continuity',
                 'manage_succession',
@@ -930,14 +956,21 @@ if (process.env.V2_FEATURES === '1') {
     }
     try {
         // LMS Integration Hub — managers always; local admins need configure_lms.
-        router.use('/v2/lms', requireManagerOrAnyPermission('configure_lms'), require('./v2-lms'));
+        router.use(
+            '/v2/lms',
+            _mod('development'),
+            requireManagerOrAnyPermission('configure_lms'),
+            require('./v2-lms')
+        );
     } catch (e) {
         mountFailed('v2-lms', e);
     }
     try {
         // Capability expansion: calibration, goal cascade, mobility, surveys,
         // recognition, DEI, skills graph, outbound webhooks, GDPR DSR.
-        router.use('/v2/cap', require('./v2-capability'));
+        // Each sub-path belongs to one module (config/modules.js CAP_PATHS);
+        // GDPR DSR, webhooks and the skills graph are core.
+        router.use('/v2/cap', ModuleService.capGuard(), require('./v2-capability'));
     } catch (e) {
         mountFailed('v2-capability', e);
     }
@@ -1128,6 +1161,9 @@ const _cycRead = requireManagerOrAnyPermission('manage_cycles');
 const _cycWrite = requirePermission('manage_cycles');
 const _cycLifecycle = CycleController.constructor.requireLifecycle;
 const _cycNudge = CycleController.constructor.requireNudge;
+// The campaign console is the campaigns module (on in every adoption stage;
+// only a custom choice switches it off).
+router.use('/cycles', _mod('campaigns'));
 router.get('/cycles', _cycRead, _ahCYC(CycleController.index.bind(CycleController)));
 router.get('/cycles/new', _cycLifecycle, _ahCYC(CycleController.newForm.bind(CycleController)));
 router.post('/cycles', _cycLifecycle, _ahCYC(CycleController.create.bind(CycleController)));

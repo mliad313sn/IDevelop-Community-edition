@@ -115,10 +115,16 @@ class ComplianceRegisterService {
             licence = null;
         }
         const localContent = truthy(await this._setting('featureLocalContent', false));
+        // Development & talent modules (Administration → Modules): the row reads
+        // ON while any of them is switched on (V2_FEATURES=1 forces them all on).
+        const mods = await this._safe(() => require('./ModuleService').flags(), {});
         return {
             items: [
                 { key: 'core', enabled: true },
-                { key: 'v2', enabled: process.env.V2_FEATURES === '1' },
+                {
+                    key: 'v2',
+                    enabled: Boolean(mods.development || mods.talent || mods.mobility),
+                },
                 { key: 'local_content', enabled: localContent },
             ],
             licence,
@@ -187,7 +193,11 @@ class ComplianceRegisterService {
             managers,
             talentDeciders: await holders(TALENT_SLUGS),
             riskViewers: await holders(RISK_SLUGS),
-            riskModuleMounted: process.env.V2_FEATURES === '1',
+            // Continuity / risk of loss is the talent module.
+            riskModuleMounted: await this._safe(
+                () => require('./ModuleService').isOn('talent'),
+                false
+            ),
         };
     }
 

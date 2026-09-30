@@ -124,6 +124,17 @@ const CATALOG = {
     smtpVerifiedBy: { readOnly: true },
     smtpLastFailure: { readOnly: true },
     setupDismissed: { type: 'boolean' },
+    // ---- Optional modules and adoption stage (Administration → Modules) ----
+    // Written by ModuleService.save (category 'adoption', which the generic
+    // settings table does not list). Rows are absent on a fresh install: the
+    // stage then reads as 1, or 3 when the legacy V2_FEATURES=1 is set.
+    'adoption.stage': { enum: ['1', '2', '3', 'custom'] },
+    'modules.campaigns': { type: 'boolean' },
+    'modules.development': { type: 'boolean' },
+    'modules.talent': { type: 'boolean' },
+    'modules.mobility': { type: 'boolean' },
+    'modules.engagement': { type: 'boolean' },
+    'modules.ai': { type: 'boolean' },
 };
 
 const RE = {

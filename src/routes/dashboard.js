@@ -120,22 +120,36 @@ router.get(
     })
 );
 
-// ---- V2 dashboard widgets (Phase 6) — only mounted when V2_FEATURES=1 ----
-if (process.env.V2_FEATURES === '1') {
+// ---- V2 dashboard widgets (Phase 6) — always mounted; each answers 404 while
+// its module is off (Administration → Modules; V2_FEATURES=1 forces them on).
+{
     const DashboardV2Controller = require('../controllers/DashboardV2Controller');
     const ah = require('../utils/asyncHandler');
-    router.get('/api/dashboard/v2/bias-monitor', ...guard, ah(DashboardV2Controller.biasMonitor));
+    const mod = (k) => require('../services/ModuleService').requireModule(k);
+    router.get(
+        '/api/dashboard/v2/bias-monitor',
+        mod('talent'),
+        ...guard,
+        ah(DashboardV2Controller.biasMonitor)
+    );
     router.get(
         '/api/dashboard/v2/cycle-countdown',
+        mod('campaigns'),
         ...guard,
         ah(DashboardV2Controller.cycleCountdown)
     );
     router.get(
         '/api/dashboard/v2/action-effectiveness',
+        mod('talent'),
         ...guard,
         ah(DashboardV2Controller.actionEffectiveness)
     );
-    router.get('/api/dashboard/v2/pip-overview', ...guard, ah(DashboardV2Controller.pipOverview));
+    router.get(
+        '/api/dashboard/v2/pip-overview',
+        mod('development'),
+        ...guard,
+        ah(DashboardV2Controller.pipOverview)
+    );
 }
 
 module.exports = router;

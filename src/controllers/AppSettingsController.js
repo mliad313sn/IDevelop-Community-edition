@@ -246,8 +246,13 @@ class AppSettingsController {
                     },
                     {
                         name: 'V2_FEATURES',
-                        value: e.V2_FEATURES || T('env_v_all_on', '(all on)'),
-                        note: T('env_note_V2_FEATURES', 'V2 module gating'),
+                        value:
+                            e.V2_FEATURES ||
+                            T('env_v_v2_unset', '(unset: modules follow the adoption stage)'),
+                        note: T(
+                            'env_note_V2_FEATURES',
+                            'Legacy: 1 forces every optional module on'
+                        ),
                     },
                     {
                         name: 'DISABLE_INPROC_JOBS',
