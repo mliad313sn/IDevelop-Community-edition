@@ -115,6 +115,10 @@ const KEEP = new Set([
     'notification_preferences',
     'webhook_subscriptions',
     'lms_integrations',
+    // HRIS sync (migration 160): the connector settings and the value mappings
+    // are configuration; the links and the run log follow the people.
+    'hris_connectors',
+    'hris_value_mappings',
     'lms_courses',
     'course_skill_map',
     'digest_subscriptions',
@@ -177,6 +181,8 @@ const WIPE = new Set([
     'idp_plan_events',
     'idp_signoffs',
     'job_runs',
+    'hris_links',
+    'hris_sync_runs',
     'kpi_snapshots',
     // SAML replay protection (migration 145): short-lived operational state.
     'saml_request_cache',

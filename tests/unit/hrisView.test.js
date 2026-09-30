@@ -83,6 +83,7 @@ function locals(lang, missing, over = {}) {
     return {
         __: translator(lang, missing),
         csrfToken: 'tok',
+        colon: lang === 'fr' ? ' :' : ':',
         fmtDateTime: (d) => String(d),
         provider: 'personio',
         providers: ['csv', 'personio', 'lucca'],

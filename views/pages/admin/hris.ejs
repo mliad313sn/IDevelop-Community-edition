@@ -343,7 +343,7 @@ const enabledProvider = providers.find(function (p) { return connectors[p].enabl
                 <td data-label="<%= __('admin:hris_th_person') %>"><a href="/employees/<%= m.employeeId %>"><%= m.name %></a><div class="text-muted" style="font-size:.8rem"><%= m.externalId %></div></td>
                 <td data-label="<%= __('admin:hris_th_changes') %>">
                   <ul style="margin:0;padding-left:1rem">
-                    <% Object.keys(m.changes || {}).forEach(function (f) { %><li><%= FIELD[f] || f %> : <%= unitName(f, m.changes[f].from) %> → <%= unitName(f, m.changes[f].to) %></li><% }); %>
+                    <% Object.keys(m.changes || {}).forEach(function (f) { %><li><%= FIELD[f] || f %><%= colon %> <%= unitName(f, m.changes[f].from) %> → <%= unitName(f, m.changes[f].to) %></li><% }); %>
                     <% if (m.managerPendingExternalId) { %><li><%= FIELD.manager %> → <%= m.managerPendingExternalId %></li><% } %>
                     <% Object.keys(m.profile || {}).forEach(function (f) { %><li><%= FIELD[f] || f %> → <%= m.profile[f] %></li><% }); %>
                   </ul>
