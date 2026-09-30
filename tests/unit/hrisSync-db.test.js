@@ -313,6 +313,83 @@ suite('HRIS sync on the real schema (rolled back)', () => {
         });
     });
 
+    test('scheduled job: nothing without a connector; plan + notify; apply only when ticked', async () => {
+        if (!ready) return;
+        const os = require('os');
+        const JobRun = require('../../src/services/JobRunService');
+        const alert = jest.spyOn(JobRun, 'alert').mockResolvedValue(1);
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hris-job-'));
+        try {
+            await inRolledBackTx(async () => {
+                await db.run('UPDATE hris_connectors SET enabled = false');
+                const tick = require('../../src/jobs/hris-sync').tick;
+                expect(await tick()).toEqual({ skipped: 'no_connector' });
+
+                await seedOrg();
+                fs.writeFileSync(path.join(dir, 'export.csv'), csv(BOSS, J1));
+                await Hris.saveConnector(
+                    'csv',
+                    {
+                        enabled: true,
+                        scheduleHour: 0,
+                        leaverGuardPct: 50,
+                        config: { folder_path: dir },
+                    },
+                    { actorRef: ACTOR }
+                );
+                const at = new Date('2026-09-30T03:10:00');
+                const r = await tick({ now: at });
+                expect(r).toMatchObject({ done: true, provider: 'csv', status: 'planned' });
+                expect(alert).toHaveBeenCalledWith(
+                    'ops.hris_plan_ready',
+                    `hris-plan:${r.dryRun}`,
+                    expect.objectContaining({ link: `/admin/integrations/hris?run=${r.dryRun}` })
+                );
+                expect(
+                    await db.get(`SELECT id FROM employees WHERE employee_number = 'HXE-901'`)
+                ).toBeFalsy();
+                expect(await tick({ now: at })).toEqual({ skipped: 'already_today' });
+
+                // "Apply automatically" ticked → the next pass applies.
+                await Hris.saveConnector(
+                    'csv',
+                    {
+                        enabled: true,
+                        autoApply: true,
+                        scheduleHour: 0,
+                        leaverGuardPct: 50,
+                        config: { folder_path: dir },
+                    },
+                    { actorRef: ACTOR }
+                );
+                const r2 = await tick({ now: new Date('2026-10-01T03:10:00') });
+                expect(r2).toMatchObject({ status: 'applied' });
+                expect(
+                    await db.get(`SELECT id FROM employees WHERE employee_number = 'HXE-901'`)
+                ).toBeTruthy();
+                const run = await Hris.getRun(r2.apply);
+                expect(run).toMatchObject({
+                    trigger: 'schedule',
+                    actorRef: 'system:hris',
+                    status: 'applied',
+                });
+
+                // An empty export the next night: guard → alert, nothing applied.
+                fs.writeFileSync(path.join(dir, 'export.csv'), HEAD);
+                const r3 = await tick({ now: new Date('2026-10-02T03:10:00') });
+                expect(r3).toMatchObject({ status: 'aborted' });
+                expect(alert).toHaveBeenCalledWith(
+                    'ops.hris_sync_alert',
+                    `hris-abort:${r3.dryRun}`,
+                    expect.any(Object)
+                );
+            });
+        } finally {
+            alert.mockRestore();
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('SCIM placement: every value maps → placed; one does not → not placed (queue)', async () => {
         if (!ready) return;
         await inRolledBackTx(async () => {
