@@ -572,6 +572,10 @@ class HrisSyncService {
                     applyId,
                 ]
             );
+            // The dry run was NOT applied: say so, rather than leave it "applied".
+            await db.run(`UPDATE hris_sync_runs SET status = 'superseded' WHERE id = ?`, [
+                Number(runId),
+            ]);
             await audit(
                 'HRIS_SYNC_ABORTED',
                 `HRIS ${provider} apply #${applyId} aborted by the mass-leaver guard (${plan.guard.reason}: ${plan.guard.leavers}/${plan.guard.population} = ${plan.guard.pct}% > ${plan.guard.limitPct}%)`,

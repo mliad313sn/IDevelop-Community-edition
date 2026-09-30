@@ -310,6 +310,23 @@ suite('HRIS sync on the real schema (rolled back)', () => {
                 `SELECT severity FROM system_logs WHERE action = 'HRIS_SYNC_ABORTED' ORDER BY id DESC LIMIT 1`
             );
             expect(log.severity).toBe('warn');
+
+            // The guard is checked AGAIN at apply time: a plan reviewed under a
+            // 100% threshold, applied after it was lowered, is stopped.
+            const leave = await Hris.dryRun('csv', {
+                trigger: 'upload',
+                actorRef: ACTOR,
+                text: csv(BOSS),
+            });
+            expect(leave.status).toBe('planned');
+            await db.run(`UPDATE hris_connectors SET leaver_guard_pct = 1 WHERE provider = 'csv'`);
+            const stopped = await Hris.apply(leave.runId, { actorRef: ACTOR });
+            expect(stopped.status).toBe('aborted');
+            expect((await Hris.getRun(leave.runId)).status).toBe('superseded');
+            const annStill = await db.get(
+                `SELECT is_active FROM employees WHERE employee_number = 'HXE-901'`
+            );
+            expect(annStill.isActive).toBe(true);
         });
     });
 
