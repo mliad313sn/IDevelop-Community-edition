@@ -1554,6 +1554,10 @@ html {
 }
 :root .hz-360-note {
     display: flex;
+    /* .hz-callout stacks its children in a column elsewhere; this note is a
+       row, otherwise the paragraph's 16rem basis becomes its height. */
+    flex-direction: row;
+    text-align: left;
     flex-wrap: wrap;
     gap: 0.6rem;
     align-items: flex-start;
@@ -1563,6 +1567,11 @@ html {
 :root .hz-360-note > p {
     flex: 1 1 16rem;
     margin: 0;
+}
+:root .hz-360-note > i {
+    flex: none;
+    margin-top: 0.2rem;
+    color: var(--brand-text);
 }
 :root .hz-360-head {
     display: flex;
