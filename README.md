@@ -80,8 +80,12 @@ hold, retention policies, rate limiting, CSP with nonces.
 endpoints, not full coverage of the UI), signed outgoing webhooks that can post
 notifications to Slack or Microsoft Teams channels (one-way), SCIM user
 provisioning, LMS connectors (LTI 1.3, xAPI LRS, Cornerstone), Power BI feeds,
-SMTP notifications and digests. People data comes in through Excel/CSV import or
-SCIM: there are no packaged HRIS connectors (Workday, SAP, Personio…) yet.
+SMTP notifications and digests. People data comes in through Excel/CSV import,
+SCIM, or HRIS synchronisation: a CSV/TSV export dropped in a server folder (for
+example by your own SFTP) or uploaded, and Personio and Lucca connectors, with a
+dry run, value mappings and a mass-leaver guard (see
+[docs/HRIS-SYNC.md](docs/HRIS-SYNC.md)); Workday and SAP connectors are still on
+the roadmap.
 
 **Assistant and copilot** — an "Assistant" tab in the help panel for every user:
 how-to answers with a link to the right screen, personalised next steps, page and
@@ -105,7 +109,9 @@ offer:
 - **360° / multi-rater feedback** — only free-form feedback notes;
 - **rich OKRs and shared 1:1 meetings** — goals and check-ins are basic, and not
   linked to review forms;
-- **packaged HRIS connectors** — use Excel/CSV import or SCIM;
+- **Workday or SAP connectors** — HRIS sync covers a CSV/SFTP drop folder,
+  Personio and Lucca (the two API connectors are not yet validated against a live
+  tenant); Workday and SAP are on the roadmap;
 - **an interactive Slack or Teams app** — notifications are one-way;
 - **a full offline mode or a store-published mobile app** — it is an installable
   web app (PWA); only self-assessment drafts work offline;

@@ -6,6 +6,15 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- HRIS synchronisation (`/admin/integrations/hris`, SuperAdmin): a CSV/TSV drop
+  folder or upload, Personio and Lucca connectors (the two API connectors are
+  implemented from public API documentation, not yet validated against a live
+  tenant), value mappings, dry run then apply through the lifecycle, a
+  mass-leaver guard (10% by default), a nightly job and SCIM placement through the
+  same mappings. See `docs/HRIS-SYNC.md`; migration 160.
+
 ### Changed
 
 - The talent suite is no longer gated by the boot-time `V2_FEATURES=1`: optional
