@@ -1250,6 +1250,22 @@ class NotificationService {
                     en: 'Database backup missing or too old',
                 },
             },
+            'ops.hris_plan_ready': {
+                icon: 'fa-people-arrows',
+                link: '/admin/integrations/hris',
+                title: {
+                    fr: 'Synchronisation SIRH : un plan attend votre revue',
+                    en: 'HRIS sync: a plan is waiting for your review',
+                },
+            },
+            'ops.hris_sync_alert': {
+                icon: 'fa-triangle-exclamation',
+                link: '/admin/integrations/hris',
+                title: {
+                    fr: 'Synchronisation SIRH interrompue',
+                    en: 'HRIS sync stopped',
+                },
+            },
             'ops.smtp_failed': {
                 icon: 'fa-envelope-circle-check',
                 link: '/admin/health',
@@ -1402,6 +1418,8 @@ class NotificationService {
             // ops alerts: in-app now, in the daily digest e-mail when emailOnDigest.
             'ops.job_failed': 'digest',
             'ops.backup_stale': 'digest',
+            'ops.hris_plan_ready': 'digest',
+            'ops.hris_sync_alert': 'digest',
             'ops.smtp_failed': 'digest',
             'ops.license': 'digest',
             // 3.23.20 (C2f): security alerts to every SuperAdmin — sent now.
@@ -1977,6 +1995,14 @@ class NotificationService {
             'ops.backup_stale': {
                 fr: "Aucune sauvegarde de la base de données réussie depuis plus de 36 heures. Vérifiez l'emplacement et l'espace disque, puis lancez une sauvegarde depuis la page Santé de l'instance.",
                 en: 'No successful database backup for more than 36 hours. Check the location and the disk space, then run a backup from the instance health page.',
+            },
+            'ops.hris_plan_ready': {
+                fr: "La synchronisation SIRH de la nuit a préparé un plan (arrivées, mobilités, départs, valeurs non rapprochées). Rien n'a été appliqué : relisez-le puis appliquez-le depuis Intégrations → SIRH.",
+                en: 'The nightly HRIS sync prepared a plan (joiners, movers, leavers, unmapped values). Nothing was applied: review it, then apply it from Integrations → HRIS.',
+            },
+            'ops.hris_sync_alert': {
+                fr: "La synchronisation SIRH s'est arrêtée sans rien appliquer : l'export n'a pas pu être lu, ou il aurait désactivé plus de salariés que le seuil de sécurité ne l'autorise. Vérifiez l'export puis relancez un essai à blanc.",
+                en: 'The HRIS sync stopped without applying anything: the export could not be read, or it would have deactivated more employees than the safety threshold allows. Check the export, then run a new dry run.',
             },
             'ops.smtp_failed': {
                 fr: "L'envoi d'e-mails a échoué. Vérifiez la configuration SMTP dans les paramètres et relancez un e-mail de test.",

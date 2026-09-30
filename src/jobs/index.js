@@ -250,6 +250,16 @@ const TICKS = [
         keep: 50,
         fn: () => require('./sso-invites').tick(),
     },
+    // HRIS synchronisation: disabled until a connector is enabled; self-gated to
+    // one pass a day at the connector's hour. Dry run always, apply only when
+    // the admin chose "apply automatically". Minute :32 is free.
+    {
+        name: 'hris-sync.tick',
+        cron: '32 * * * *',
+        everyMin: 60,
+        keep: 30,
+        fn: () => require('./hris-sync').tick(),
+    },
     {
         name: 'telemetry-prune.tick',
         cron: '50 * * * *',
