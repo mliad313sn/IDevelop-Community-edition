@@ -4,28 +4,80 @@
 #
 #   cp .env.example .env        # then set SESSION_SECRET, APP_KEY, DB_PASSWORD
 #   docker compose up -d --build
-#   docker compose exec app npm run db:seed:starter -- --commit   # optional starter framework
+#   docker compose exec app node scripts/seed-starter-framework.js --commit   # optional starter framework
 #
 # The first boot creates the schema and prints the initial `admin` password in
 # the app logs (docker compose logs app); you must change it at first sign-in.
+# The image carries no npm CLI: run operator scripts as `node scripts/<name>.js`.
+#
+# Hardening (CIS Docker Benchmark 5.x, see docs/SECURITY-SUPPLY-CHAIN.md):
+#   - every service: read-only root filesystem, tmpfs for scratch paths,
+#     no-new-privileges, all Linux capabilities dropped, memory / CPU / PID limits;
+#   - PostgreSQL and Redis are NOT published to the host: they are reachable only
+#     on the compose network. To reach the database from the host for maintenance,
+#     add a docker-compose.override.yml with `ports: ['127.0.0.1:5432:5432']`.
+#   - all app state (uploads, logs, JSON backups, audit anchors, SQL-console restore
+#     points) lives in the `appdata` volume: back it up together with `pgdata`.
+#
+# Images are pinned by tag here; Dependabot (docker ecosystem) tracks them. For a
+# production deployment pin them by digest too (see the doc above).
+
+x-hardening: &hardening
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  restart: unless-stopped
+
 services:
   db:
+    <<: *hardening
     image: postgres:17-alpine
+    # Run directly as the image's postgres user (uid 70 on Alpine): the entrypoint
+    # then needs no CHOWN/SETUID capability. A fresh named volume inherits the
+    # image's ownership of the data directory.
+    user: '70:70'
     environment:
       POSTGRES_DB: idevelop
       POSTGRES_USER: idevelop
       POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    tmpfs:
+      - /var/run/postgresql:uid=70,gid=70,mode=0775,size=16m
+      - /tmp:uid=70,gid=70,mode=1777,size=64m
+    shm_size: 256m
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U idevelop -d idevelop']
       interval: 5s
       timeout: 3s
       retries: 20
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1g
+          pids: 200
+
   redis:
+    <<: *hardening
     image: redis:7-alpine
-    command: ['redis-server', '--save', '']
+    # redis user (uid 999 on Alpine); no persistence (`--save ''`), queues are
+    # rebuilt by the app. /data is the working directory only.
+    user: '999:999'
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    tmpfs:
+      - /data:uid=999,gid=999,mode=0700,size=64m
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256m
+          pids: 64
+
   app:
+    <<: *hardening
     build: .
     depends_on:
       db:
@@ -38,8 +90,23 @@ services:
       V2_FEATURES: '1'
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env (openssl rand -base64 32)}
       APP_KEY: ${APP_KEY:?set APP_KEY in .env (openssl rand -base64 32)}
+    volumes:
+      # uploads, logs, backups, audit anchors, restore points and upload staging
+      # (tmp is symlinked here so multer's rename() into uploads stays on one mount).
+      - appdata:/app/data
+    tmpfs:
+      - /tmp:uid=10001,gid=10001,mode=1777,size=64m
+      # data-import staging (ephemeral, removed after each import)
+      - /app/AI_Engine_Docs/tmp:uid=10001,gid=10001,mode=0700,size=128m
     ports:
       - '3000:3000'
-    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1g
+          pids: 256
+
 volumes:
   pgdata:
+  appdata:

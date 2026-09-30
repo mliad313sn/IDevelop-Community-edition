@@ -96,8 +96,8 @@ cp .env.example .env
 # edit .env: set SESSION_SECRET, APP_KEY and DB_PASSWORD (openssl rand -hex 32)
 docker compose up -d --build
 docker compose logs app | grep -A2 "FIRST-RUN SUPERADMIN"   # one-time admin password
-docker compose exec app npm run db:seed:starter -- --commit   # optional starter framework
-docker compose exec app npm run db:seed:demo-org -- --commit  # optional: 24 fictional people to explore
+docker compose exec app node scripts/seed-starter-framework.js --commit   # optional starter framework
+docker compose exec app node scripts/seed-demo-org.js --commit          # optional: 24 fictional people to explore
 ```
 
 Open <http://localhost:3000>, sign in as `admin` with the printed password,
