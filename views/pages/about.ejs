@@ -72,6 +72,32 @@
         </section>
         <% }); %>
     </div>
+    <%# Standards the controls map to (src/config/securityPosture.js FRAMEWORKS;
+        docs/ASVS-L2.md, docs/COMPLIANCE-MAPPING.md). A self-assessment, said so. %>
+    <% if (typeof securityAsvs !== 'undefined' && securityAsvs) { %>
+    <section class="about-fw-standards" aria-labelledby="sec-frameworks">
+        <h4 id="sec-frameworks"><i class="fas fa-scale-balanced" aria-hidden="true"></i> <%= __('admin:about_frameworks_title') %></h4>
+        <p class="about-fw-note"><%= __('admin:about_frameworks_lead') %></p>
+        <ul class="about-fw-list">
+            <% [
+                [__('admin:about_fw_asvs'), __('admin:about_fw_asvs_detail', { total: securityAsvs.total, pass: securityAsvs.pass, fixed: securityAsvs.fixed, partial: securityAsvs.partial, gap: securityAsvs.gap, na: securityAsvs.na, nv: securityAsvs.notVerified }), __('admin:about_fw_self_assessed')],
+                [__('admin:about_fw_top10'), __('admin:about_fw_top10_detail'), __('admin:about_fw_mapped')],
+                [__('admin:about_fw_cwe'), __('admin:about_fw_cwe_detail'), __('admin:about_fw_mapped')],
+                [__('admin:about_fw_iso'), __('admin:about_fw_iso_detail'), __('admin:about_fw_mapped')],
+                [__('admin:about_fw_soc2'), __('admin:about_fw_soc2_detail'), __('admin:about_fw_mapped')],
+                [__('admin:about_fw_gdpr'), __('admin:about_fw_gdpr_detail'), __('admin:about_fw_supports')],
+                [__('admin:about_fw_aiact'), __('admin:about_fw_aiact_detail'), __('admin:about_fw_supports')],
+                [__('admin:about_fw_ssdf'), __('admin:about_fw_ssdf_detail'), __('admin:about_fw_mapped')]
+            ].forEach(function (fw) { %>
+            <li>
+                <span class="about-fw-badge"><%= fw[2] %></span>
+                <div><strong><%= fw[0] %></strong><span><%= fw[1] %></span></div>
+            </li>
+            <% }); %>
+        </ul>
+        <p class="about-foot"><%= __('admin:about_fw_foot') %></p>
+    </section>
+    <% } %>
     <p class="about-foot"><%= __('admin:about_security_foot') %></p>
 </div>
 <% } %>
@@ -192,7 +218,15 @@
 .about-sec-proof { margin-top:4px; font-size:.78rem; }
 .about-sec-proof summary { cursor:pointer; color:var(--brand-text, var(--brand)); }
 .about-sec-proof code { font-size:.95em; word-break:break-all; }
+.about-fw-standards { margin-top:16px; background:var(--bg-subtle); border-radius:14px; padding:14px 16px; }
+.about-fw-standards h4 { margin:0 0 6px; font-size:.95rem; color:var(--text-primary); }
+.about-fw-standards h4 i { color:var(--brand-text, var(--brand)); margin-right:6px; }
+.about-fw-note { margin:0 0 10px; font-size:.84rem; color:var(--text-secondary); }
+.about-fw-list { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px 18px; }
+.about-fw-list li { display:flex; gap:10px; align-items:flex-start; font-size:.84rem; color:var(--text-secondary); }
+.about-fw-list li strong { display:block; color:var(--text-primary); }
+.about-fw-badge { flex:none; font-size:.7rem; font-weight:700; letter-spacing:.02em; padding:2px 8px; border-radius:999px; background:var(--bg-elevated); color:var(--text-primary); margin-top:2px; }
 @media (max-width:1100px){ .about-grid{grid-template-columns:repeat(2,1fr);} .about-fw-stats{grid-template-columns:repeat(4,1fr);} }
-@media (max-width:680px){ .about-sec-grid{grid-template-columns:1fr;} .about-grid{grid-template-columns:1fr 1fr;} .about-mods{columns:1;} .about-fw-stats{grid-template-columns:repeat(2,1fr);} }
+@media (max-width:680px){ .about-sec-grid{grid-template-columns:1fr;} .about-fw-list{grid-template-columns:1fr;} .about-grid{grid-template-columns:1fr 1fr;} .about-mods{columns:1;} .about-fw-stats{grid-template-columns:repeat(2,1fr);} }
 </style>
 <script nonce="<%= cspNonce %>"> document.getElementById('about-year').textContent = new Date().getFullYear(); </script>

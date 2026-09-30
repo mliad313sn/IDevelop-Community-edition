@@ -11,6 +11,7 @@
  *  - an uploaded SVG logo is served under a sandboxing CSP.
  */
 process.env.ACTIVITY_TRAIL = '0';
+process.env.V2_FEATURES = '1'; // i18n on, as in production
 require('dotenv').config();
 
 jest.mock('../../src/config/sessionStore', () => require('../helpers/c318/sessionStoreMock'));
@@ -49,7 +50,13 @@ let db;
 beforeAll(async () => {
     db = require('../../src/config/database');
     await db.connect();
+    try {
+        await require('../../src/config/i18n').init();
+    } catch (_) {
+        /* key passthrough */
+    }
     app = loadApp();
+    await new Promise((r) => setTimeout(r, 300)); // server.js's own i18n init
 });
 afterAll(async () => {
     try {
@@ -155,5 +162,27 @@ describe('uploaded SVG logo (ASVS 5.2.7, 12.5.2)', () => {
         expect(csp).toMatch(/sandbox/);
         expect(csp).not.toMatch(/script-src[^;]*unsafe-inline/);
         expect(csp).not.toMatch(/script-src-attr/);
+    });
+});
+
+describe('About → Security shows the frameworks (self-assessed)', () => {
+    test('the ASVS figures and every framework line render', async () => {
+        const { mintSession } = require('../helpers/c318/buildApp');
+        const store = require('../helpers/c318/sessionStoreMock').state.store;
+        const { ASVS_L2 } = require('../../src/config/securityPosture');
+        const row = await db.get(
+            'SELECT id FROM employees WHERE is_active = true ORDER BY id LIMIT 1'
+        );
+        const cookie = await mintSession(store, { id: row.id, userType: 'employee' }, 'asvs');
+        const res = await request(app).get('/about').set('Cookie', cookie);
+        expect(res.status).toBe(200);
+        expect(res.headers['cache-control']).toMatch(/no-store/);
+        const html = res.text;
+        expect(html).toContain('id="sec-frameworks"');
+        expect(html).toContain(String(ASVS_L2.pass));
+        expect(html).toContain(String(ASVS_L2.fixed));
+        for (const needle of ['ASVS', 'Top 10', 'CWE', '27001', 'SOC 2', 'AI Act', 'SSDF'])
+            expect([needle, html.includes(needle)]).toEqual([needle, true]);
+        expect(html).not.toMatch(/about_fw_/);
     });
 });

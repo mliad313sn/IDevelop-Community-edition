@@ -245,6 +245,7 @@ router.get('/about', requireAuth, async (req, res) => {
     res.render('pages/about', {
         security: posture.postureFor(req.language || (req.i18n && req.i18n.language) || 'fr'),
         securityTotals: posture.totals(),
+        securityAsvs: posture.ASVS_L2,
         securityLive,
         title: req.t ? req.t('chrome:pt_about') : 'About',
         appName: PRODUCT.fullName,
