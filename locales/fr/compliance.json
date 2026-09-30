@@ -313,5 +313,8 @@
   "mydata_rights_title": "Demander un export ou un effacement",
   "mydata_rights_body": "Vous pouvez obtenir une copie complète de vos données (droit d'accès et de portabilité) ou demander leur effacement. Adressez votre demande à votre service RH ou au délégué à la protection des données : un administrateur produit l'export ou réalise l'effacement, et chaque opération est tracée.",
   "mydata_rights_limits": "Certaines données peuvent être conservées lorsqu'une obligation légale l'impose (par exemple une suspension pour motif légal).",
-  "mydata_failed": "Vos données n'ont pas pu être lues pour le moment. Réessayez plus tard ; votre droit d'accès reste entier auprès des RH."
+  "mydata_failed": "Vos données n'ont pas pu être lues pour le moment. Réessayez plus tard ; votre droit d'accès reste entier auprès des RH.",
+  "cat_oneOnOneAgenda": "Ordre du jour des entretiens individuels",
+  "cat_oneOnOneNotes": "Notes des entretiens individuels (partagées, et vos notes privées)",
+  "cat_feedback360": "Tours de feedback 360° vous concernant"
 }

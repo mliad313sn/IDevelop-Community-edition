@@ -615,7 +615,7 @@ class Feedback360Service {
     // Nominations
     // ------------------------------------------------------------------
 
-    async _validateRaters(s, list, { allowManager = false } = {}) {
+    async _validateRaters(s, list) {
         const out = [];
         const seen = new Set();
         for (const item of list) {
@@ -624,7 +624,7 @@ class Feedback360Service {
             if (!id || !C.NOMINABLE_GROUPS.includes(group))
                 throw refuse(400, 'f360_bad_nomination');
             if (id === s.employeeId) throw refuse(400, 'f360_cannot_nominate_self');
-            if (!allowManager && s.managerEmployeeId != null && id === s.managerEmployeeId)
+            if (s.managerEmployeeId != null && id === s.managerEmployeeId)
                 throw refuse(400, 'f360_manager_already_rater');
             if (seen.has(id)) throw refuse(400, 'f360_duplicate_rater');
             seen.add(id);
