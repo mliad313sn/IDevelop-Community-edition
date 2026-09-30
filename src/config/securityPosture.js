@@ -16,10 +16,12 @@ const CATEGORIES = [
         controls: [
             {
                 id: 'passwords',
-                fr: 'Mots de passe hachés avec bcrypt, politique de complexité, changement imposé à la première connexion.',
-                en: 'Passwords hashed with bcrypt, a strength policy and a forced change at first sign-in.',
+                fr: 'Mots de passe hachés avec bcrypt ; 12 caractères minimum, sans règle de composition (NIST 800-63B) ; mots de passe courants ou divulgués refusés hors ligne ; jauge de robustesse ; changement imposé à la première connexion.',
+                en: 'Passwords hashed with bcrypt; 12 characters minimum, no composition rules (NIST 800-63B); common and breached passwords refused offline; a strength meter; a forced change at first sign-in.',
                 evidence: [
                     'src/utils/passwordValidator.js',
+                    'src/data/common-passwords.txt',
+                    'public/js/password-strength.js',
                     'src/middleware/forcePasswordChange.js',
                 ],
                 tests: ['passwordValidator.test.js', 'passwordResetEligibility.test.js'],
@@ -44,6 +46,13 @@ const CATEGORIES = [
                 en: 'httpOnly, SameSite and Secure (over HTTPS) session cookies, with idle and absolute timeouts.',
                 evidence: ['server.js', 'src/middleware/sessionActivity.js'],
                 tests: ['c319-real-session.test.js', 'sessionBucketsBothTypes.test.js'],
+            },
+            {
+                id: 'reauth',
+                fr: 'Actions sensibles (clé d’API, attribution du rôle de super-administrateur, changement de son mot de passe ou de son e-mail, désactivation de la double authentification) : connexion de moins de 15 minutes ou mot de passe actuel exigé.',
+                en: 'Sensitive actions (API key, SuperAdmin grant, changing one’s own password or e-mail, turning off two-factor) need a sign-in in the last 15 minutes or the current password.',
+                evidence: ['src/middleware/recentAuth.js', 'src/controllers/AuthController.js'],
+                tests: ['recentAuth.test.js', 'accountProfileAndAuthLocale.test.js'],
             },
             {
                 id: 'sso',
@@ -98,6 +107,20 @@ const CATEGORIES = [
                 tests: ['webSecurityBaseline.test.js'],
             },
             {
+                id: 'headers',
+                fr: 'En-têtes de sécurité : Permissions-Policy (caméra, micro, localisation, paiement, USB refusés), isolation COOP/CORP, aucun référent transmis, pas de bannière du framework ; pages dynamiques jamais mises en cache.',
+                en: 'Security headers: Permissions-Policy (camera, microphone, location, payment, USB denied), COOP/CORP isolation, no referrer sent, no framework banner; dynamic pages never cached.',
+                evidence: ['server.js'],
+                tests: ['asvsHeaders.test.js'],
+            },
+            {
+                id: 'api-content-type',
+                fr: 'Les API JSON (/api/v1, SCIM) refusent tout corps de requête qui n’est pas du JSON (415).',
+                en: 'JSON APIs (/api/v1, SCIM) refuse any request body that is not JSON (415).',
+                evidence: ['src/middleware/jsonContentType.js'],
+                tests: ['asvsHeaders.test.js'],
+            },
+            {
                 id: 'csrf',
                 fr: 'Jeton anti-CSRF sur chaque formulaire et appel qui modifie des données.',
                 en: 'Anti-CSRF token on every form and call that changes data.',
@@ -127,10 +150,10 @@ const CATEGORIES = [
             },
             {
                 id: 'uploads',
-                fr: 'Fichiers importés contrôlés : taille et nombre d’entrées plafonnés (anti « zip bomb »), cellules échappées à l’affichage.',
-                en: 'Uploaded files checked: size and entry count capped (zip-bomb protection), cell values escaped on display.',
-                evidence: ['src/utils/importGuards.js'],
-                tests: ['securityAudit20260929.test.js'],
+                fr: 'Fichiers importés contrôlés : taille et nombre d’entrées plafonnés (anti « zip bomb »), cellules échappées à l’affichage ; logo SVG servi sous une politique qui interdit tout script.',
+                en: 'Uploaded files checked: size and entry count capped (zip-bomb protection), cell values escaped on display; an SVG logo is served under a policy that forbids any script.',
+                evidence: ['src/utils/importGuards.js', 'src/routes/index.js'],
+                tests: ['securityAudit20260929.test.js', 'asvsHeaders.test.js'],
             },
             {
                 id: 'redirects',
@@ -166,6 +189,13 @@ const CATEGORIES = [
                 en: 'Append-only, hash-chained audit trail anchored daily: any tampering is detectable.',
                 evidence: ['src/middleware/activityTrail.js', 'src/jobs/audit-anchor.js'],
                 tests: ['c317-O-ops2-audit-anchor.test.js', 'c317-O-ops2-audit-owner.test.js'],
+            },
+            {
+                id: 'security-events',
+                fr: 'Événements de sécurité journalisés (connexions réussies et refusées, verrouillage, double authentification, droits, clés d’API, ré-authentification, refus d’accès) sans aucun secret dans les journaux.',
+                en: 'Security events logged (sign-in success and failure, lockout, two-factor, permissions, API keys, re-authentication, access denials) with no secret in the logs.',
+                evidence: ['src/services/LogService.js', 'src/middleware/logger.js'],
+                tests: ['asvsLogging.test.js'],
             },
             {
                 id: 'gdpr',
@@ -323,6 +353,75 @@ const CATEGORIES = [
     },
 ];
 
+/**
+ * OWASP ASVS 4.0.3 level 2 self-assessment, as counted in docs/ASVS-L2.md.
+ * tests/unit/asvsL2Document.test.js recounts the document's rows and fails
+ * when these figures (shown on About → Security) drift from it.
+ */
+const ASVS_L2 = {
+    version: '4.0.3',
+    level: 2,
+    total: 258,
+    pass: 167,
+    fixed: 10,
+    partial: 45,
+    gap: 2,
+    na: 29,
+    notVerified: 5,
+};
+
+/**
+ * Standards the product's controls are mapped to. `basis` is 'self-assessed'
+ * (requirement by requirement) or 'mapped' (controls mapped to the framework's
+ * items); none of them is a certification. The About page writes each line
+ * with its own literal translation key; `doc` is where the detail lives.
+ */
+const FRAMEWORKS = [
+    {
+        id: 'asvs',
+        name: 'OWASP ASVS 4.0.3 — Level 2',
+        basis: 'self-assessed',
+        doc: 'docs/ASVS-L2.md',
+    },
+    {
+        id: 'top10',
+        name: 'OWASP Top 10 (2021)',
+        basis: 'mapped',
+        doc: 'docs/COMPLIANCE-MAPPING.md',
+    },
+    { id: 'cwe', name: 'CWE Top 25 (2024)', basis: 'mapped', doc: 'docs/COMPLIANCE-MAPPING.md' },
+    {
+        id: 'iso27001',
+        name: 'ISO/IEC 27001:2022 Annex A',
+        basis: 'mapped',
+        doc: 'docs/COMPLIANCE-MAPPING.md',
+    },
+    {
+        id: 'soc2',
+        name: 'SOC 2 (CC6, CC7, CC8)',
+        basis: 'mapped',
+        doc: 'docs/COMPLIANCE-MAPPING.md',
+    },
+    {
+        id: 'gdpr',
+        name: 'GDPR (Articles 5, 15–17, 25, 30, 32, 35)',
+        basis: 'mapped',
+        doc: 'docs/COMPLIANCE-MAPPING.md',
+    },
+    {
+        id: 'aiact',
+        name: 'EU AI Act (Articles 13, 14)',
+        basis: 'mapped',
+        doc: 'docs/COMPLIANCE-MAPPING.md',
+    },
+    {
+        id: 'ssdf',
+        name: 'NIST SSDF (SP 800-218)',
+        basis: 'mapped',
+        doc: 'docs/COMPLIANCE-MAPPING.md',
+    },
+];
+
 /** Controls and categories in one language, for rendering. */
 function postureFor(lang) {
     const l = String(lang || 'fr').slice(0, 2) === 'en' ? 'en' : 'fr';
@@ -346,4 +445,4 @@ function totals() {
     return { categories: CATEGORIES.length, controls, suites: suites.size };
 }
 
-module.exports = { CATEGORIES, postureFor, totals };
+module.exports = { CATEGORIES, ASVS_L2, FRAMEWORKS, postureFor, totals };

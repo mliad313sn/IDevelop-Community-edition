@@ -396,5 +396,9 @@
   "sso_exc_not_found": "Employee not found.",
   "sso_enable_confirm_required": "SSO not switched on: first confirm that {{n}} account(s) with no SSO access will no longer be able to sign in.",
   "sso_golive_invalid": "Invalid go-live date (expected YYYY-MM-DD HH:MM). Nothing was saved.",
-  "onb_merge_default_required": "An existing account matches this request during the SSO migration: attach it to that account, or tick “Create a new account anyway”."
+  "onb_merge_default_required": "An existing account matches this request during the SSO migration: attach it to that account, or tick “Create a new account anyway”.",
+  "reauth_required": "This is a sensitive action: confirm your current password (your last sign-in was more than {{minutes}} minutes ago).",
+  "reauth_bad_password": "Current password incorrect: the action was not carried out.",
+  "reauth_sign_in_again": "This is a sensitive action: sign out, sign in again, then retry within {{minutes}} minutes.",
+  "reauth_locked": "Too many wrong passwords. Try again in {{minutes}} minutes."
 }

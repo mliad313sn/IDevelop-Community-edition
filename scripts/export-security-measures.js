@@ -7,7 +7,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { CATEGORIES, totals } = require('../src/config/securityPosture');
+const { CATEGORIES, ASVS_L2, FRAMEWORKS, totals } = require('../src/config/securityPosture');
 
 const OUT = path.join(__dirname, '..', 'docs', 'SECURITY-MEASURES.md');
 
@@ -42,6 +42,17 @@ function render() {
         }
         L.push('');
     }
+    const a = ASVS_L2;
+    L.push('## Standards and frameworks');
+    L.push('');
+    L.push(
+        `The controls are mapped to the standards below. **This is a self-assessment by the development team, not a certification.** OWASP ASVS ${a.version} level ${a.level} was verified requirement by requirement: ${a.total} requirements, **${a.pass} pass** and **${a.fixed} fixed** during the assessment, ${a.partial} partial, ${a.gap} open gaps, ${a.na} not applicable and ${a.notVerified} not verifiable from the code (\`docs/ASVS-L2.md\`). The other frameworks are mapped control by control in \`docs/COMPLIANCE-MAPPING.md\`, which also lists what the deploying organisation must still do.`
+    );
+    L.push('');
+    L.push('| Framework | Basis | Details |');
+    L.push('| --------- | ----- | ------- |');
+    for (const f of FRAMEWORKS) L.push(`| ${f.name} | ${f.basis} | \`${f.doc}\` |`);
+    L.push('');
     L.push('## Running the security tests');
     L.push('');
     L.push('```bash');

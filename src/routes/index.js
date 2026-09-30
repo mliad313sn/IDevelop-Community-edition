@@ -245,6 +245,7 @@ router.get('/about', requireAuth, async (req, res) => {
     res.render('pages/about', {
         security: posture.postureFor(req.language || (req.i18n && req.i18n.language) || 'fr'),
         securityTotals: posture.totals(),
+        securityAsvs: posture.ASVS_L2,
         securityLive,
         title: req.t ? req.t('chrome:pt_about') : 'About',
         appName: PRODUCT.fullName,
@@ -340,6 +341,8 @@ router.get('/onboarding/pending', OnboardingController.pending);
 
 // Power BI Integration API routes (Protected by API Key, bypasses session auth)
 const { requireApiKey } = require('../middleware/apiAuth');
+// ASVS 3.7.1: recent sign-in or current password for sensitive actions.
+const { requireRecentAuth } = require('../middleware/recentAuth');
 router.get('/api/powerbi/employees', requireApiKey, ReportController.powerbIEmployees);
 router.get('/api/powerbi/assessments', requireApiKey, ReportController.powerbIAssessments);
 router.get('/api/powerbi/readiness', requireApiKey, ReportController.powerbIReadiness);
@@ -1742,6 +1745,13 @@ const _serveBrandingAsset = (kind) => async (req, res) => {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         res.setHeader('ETag', etag);
         res.setHeader('X-Content-Type-Options', 'nosniff');
+        // ASVS 5.2.7 / 12.5.2: an uploaded SVG opened directly (not through
+        // <img>) must stay an inert picture. The upload filter is a blocklist;
+        // this policy is the allowlist: no script, no event handler, no fetch.
+        res.setHeader(
+            'Content-Security-Policy',
+            "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
+        );
         return res.end(buf);
     } catch (e) {
         return res.status(500).end();
@@ -1819,10 +1829,30 @@ router.get('/admins/create', requirePermission('manage_admins'), AdminController
 // used to fall through to the UPDATE handler and answer « Erreur lors de la mise à
 // jour de l'administrateur » for a create attempt; it is a 404 now.
 router.get('/admins/:id(\\d+)', requirePermission('manage_admins'), AdminController.show);
-router.post('/admins', requirePermission('manage_admins'), adminValidation, AdminController.create);
+// ASVS 3.7.1: granting SuperAdmin (a new SuperAdmin account, or promoting an
+// existing one) needs a recent sign-in or the granter's current password.
+const _grantsSuperadmin = async (req) => {
+    if (!req.body || req.body.role !== 'superadmin') return false;
+    if (!req.params.id) return true;
+    const target = await require('../models/AdminModel').findById(Number(req.params.id));
+    return !target || target.role !== 'superadmin';
+};
+const _superadminGrantReauth = requireRecentAuth({
+    when: _grantsSuperadmin,
+    action: 'SuperAdmin grant',
+    redirectTo: (req) => (req.params.id ? `/admins/${Number(req.params.id)}` : '/admins/create'),
+});
+router.post(
+    '/admins',
+    requirePermission('manage_admins'),
+    _superadminGrantReauth,
+    adminValidation,
+    AdminController.create
+);
 router.post(
     '/admins/:id(\\d+)',
     requirePermission('manage_admins'),
+    _superadminGrantReauth,
     adminUpdateValidation,
     AdminController.update
 );
@@ -1932,9 +1962,12 @@ const _akT = (req, key, fallback) => {
     const s = req && typeof req.t === 'function' ? req.t(`admin:${key}`) : null;
     return s && s !== key && s !== `admin:${key}` ? s : fallback;
 };
+// ASVS 3.7.1: minting a key needs a sign-in in the last 15 minutes or the
+// current password (src/middleware/recentAuth.js).
 router.post(
     '/admin/api-keys',
     requireSuperAdmin,
+    requireRecentAuth({ action: 'API key creation' }),
     _ah(async (req, res) => {
         const label = String(req.body.label || '').trim();
         if (!label)

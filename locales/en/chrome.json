@@ -107,7 +107,7 @@
   "current_password_label": "Current Password",
   "new_password_label": "New Password",
   "confirm_password_label": "Confirm New Password",
-  "password_requirements": "Must be at least 12 characters with uppercase, lowercase, number, and special character",
+  "password_requirements": "At least 12 characters. A passphrase of several unrelated words is strongest; common or breached passwords are refused.",
   "btn_change_password": "Change Password",
   "btn_cancel": "Cancel",
   "profile_title": "My profile",

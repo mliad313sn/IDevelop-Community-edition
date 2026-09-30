@@ -107,7 +107,7 @@
   "current_password_label": "Mot de passe actuel",
   "new_password_label": "Nouveau mot de passe",
   "confirm_password_label": "Confirmer le nouveau mot de passe",
-  "password_requirements": "Au moins 12 caractères, avec majuscule, minuscule, chiffre et caractère spécial",
+  "password_requirements": "Au moins 12 caractères. Une phrase de passe de plusieurs mots sans lien est la plus robuste ; les mots de passe courants ou déjà divulgués sont refusés.",
   "btn_change_password": "Changer le mot de passe",
   "btn_cancel": "Annuler",
   "profile_title": "Mon profil",

@@ -145,6 +145,9 @@ describe('Lot 0 F2 — messages are validation:* keys translated through req.t',
         expect(draft.passwordConfirm).toBeUndefined();
     });
 
+    // ASVS 4.0.3 §2.1.9 (NIST 800-63B): no character-class rule by default, so
+    // a short all-lowercase password now earns the length message only. The
+    // class messages still exist, and come back when an organisation opts in.
     test('weak password → each policy message once, in French', async () => {
         const req = mockReq({
             path: '/admins',
@@ -154,10 +157,32 @@ describe('Lot 0 F2 — messages are validation:* keys translated through req.t',
         await runChain(V.adminValidation, req, res);
         expect(req._flashes.error).toEqual([
             'Le mot de passe doit contenir au moins 12 caractères',
-            'Le mot de passe doit contenir au moins une majuscule',
-            'Le mot de passe doit contenir au moins un chiffre',
-            'Le mot de passe doit contenir au moins un caractère spécial',
         ]);
+    });
+
+    test('PASSWORD_REQUIRE_CHAR_CLASSES=1 → the class messages come back, in French', async () => {
+        process.env.PASSWORD_REQUIRE_CHAR_CLASSES = '1';
+        try {
+            const req = mockReq({
+                path: '/admins',
+                body: {
+                    username: 'u',
+                    password: 'short',
+                    passwordConfirm: 'short',
+                    role: 'viewer',
+                },
+            });
+            const res = mockRes();
+            await runChain(V.adminValidation, req, res);
+            expect(req._flashes.error).toEqual([
+                'Le mot de passe doit contenir au moins 12 caractères',
+                'Le mot de passe doit contenir au moins une majuscule',
+                'Le mot de passe doit contenir au moins un chiffre',
+                'Le mot de passe doit contenir au moins un caractère spécial',
+            ]);
+        } finally {
+            delete process.env.PASSWORD_REQUIRE_CHAR_CLASSES;
+        }
     });
 
     test('POST /organization/sites empty name → FR message, code kept, list page', async () => {

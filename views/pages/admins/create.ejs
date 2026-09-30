@@ -74,6 +74,15 @@
         </small>
     </div>
 
+    <% if (typeof granterIsSuper === 'undefined' || granterIsSuper) { %>
+    <%# ASVS 3.7.1: granting SuperAdmin needs a recent sign-in or the granter's own password. %>
+    <div class="form-group">
+        <label for="grantCurrentPassword"><%= __('admin:reauth_current_password') %></label>
+        <input type="password" name="currentPassword" id="grantCurrentPassword" autocomplete="current-password" maxlength="200" aria-describedby="grantReauthHint">
+        <small id="grantReauthHint" style="color:#888; display:block; margin-top:4px;"><%= __('admin:reauth_superadmin_hint', { minutes: 15 }) %></small>
+    </div>
+    <% } %>
+
     <div id="scopes-section" style="display:none;">
         <div class="form-group">
             <label><%= __('admin:scopes') %> <small style="color:#888;">— <%= __('admin:scopes_hint') %></small></label>

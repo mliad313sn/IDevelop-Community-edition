@@ -134,8 +134,45 @@ app.use(
         // HSTS is sent by tlsServer.hstsMiddleware below, on HTTPS responses only
         // (180 days) — helmet's default put a 1-year header on clear-HTTP answers too.
         strictTransportSecurity: false,
+        // ASVS 14.4 — pinned explicitly rather than left to helmet's defaults, so a
+        // library upgrade cannot silently relax them (tests/unit/asvsHeaders.test.js).
+        crossOriginOpenerPolicy: { policy: 'same-origin' },
+        crossOriginResourcePolicy: { policy: 'same-origin' },
+        referrerPolicy: { policy: 'no-referrer' },
+        xContentTypeOptions: true,
+        hidePoweredBy: true,
     })
 );
+// No framework fingerprint (ASVS 14.3.3), even if helmet is ever removed.
+app.disable('x-powered-by');
+// Browser features the product never uses are denied to every page, so an
+// injected script or a framed page cannot reach the camera, microphone,
+// location, payment or device APIs.
+const PERMISSIONS_POLICY = [
+    'accelerometer=()',
+    'autoplay=()',
+    'camera=()',
+    'display-capture=()',
+    'encrypted-media=()',
+    'fullscreen=(self)',
+    'geolocation=()',
+    'gyroscope=()',
+    'hid=()',
+    'magnetometer=()',
+    'microphone=()',
+    'midi=()',
+    'payment=()',
+    'picture-in-picture=()',
+    'publickey-credentials-get=()',
+    'screen-wake-lock=()',
+    'serial=()',
+    'usb=()',
+    'xr-spatial-tracking=()',
+].join(', ');
+app.use((req, res, next) => {
+    res.setHeader('Permissions-Policy', PERMISSIONS_POLICY);
+    next();
+});
 // 3.23.18 (S-05): Strict-Transport-Security on every HTTPS response (the built-in
 // TLS listener, or a TLS-terminating proxy when TRUST_PROXY makes req.secure true).
 const tlsServer = require('./src/utils/tlsServer');
@@ -182,6 +219,9 @@ app.use((req, res, next) =>
     req.path === '/admin/sso-migration/preview' ? next() : _jsonParser(req, res, next)
 );
 app.use(express.urlencoded({ extended: true, limit: process.env.FORM_BODY_LIMIT || '1mb' }));
+// JSON-only APIs answer 415 to a body that is not JSON (ASVS 13.1.5), before
+// any session, CSRF or route logic runs on an empty req.body.
+app.use(['/api/v1', '/scim/v2'], require('./src/middleware/jsonContentType').requireJsonBody);
 // Static assets: in production cache for 7 days (cache-busted via ?v=assetVersion,
 // so a deploy serves fresh files immediately and within-session navigations skip
 // the per-asset revalidation round-trip). In dev, no cache so edits show live.

@@ -29,6 +29,10 @@ Third-party components bundled in this repository
 - Chart.js (public/vendor/chart.umd.min.js)        MIT License, (c) Chart.js Contributors
 - Font Awesome Free 6 (public/vendor/fontawesome/)  Icons: CC BY 4.0; Fonts: SIL OFL 1.1;
                                                     Code: MIT License, (c) Fonticons, Inc.
+- Common-password list (src/data/common-passwords.txt) Original work of this
+                                                    project (generated from well-known
+                                                    password patterns, no third-party
+                                                    list copied); same licence as the code.
 Their licences are unaffected by this one and must be preserved. Do not edit
 vendored files. npm dependencies are installed from the public registry under
 their own licences (see package.json / package-lock.json).

@@ -396,5 +396,9 @@
   "sso_exc_not_found": "Collaborateur introuvable.",
   "sso_enable_confirm_required": "SSO non activé : confirmez d’abord que {{n}} compte(s) sans accès SSO ne pourront plus se connecter.",
   "sso_golive_invalid": "Date de mise en service invalide (format attendu : AAAA-MM-JJ HH:MM). Aucun réglage enregistré.",
-  "onb_merge_default_required": "Un compte existant correspond à cette demande pendant la migration SSO : rattachez-la à ce compte, ou cochez « Créer quand même un nouveau compte »."
+  "onb_merge_default_required": "Un compte existant correspond à cette demande pendant la migration SSO : rattachez-la à ce compte, ou cochez « Créer quand même un nouveau compte ».",
+  "reauth_required": "Pour cette action sensible, confirmez votre mot de passe actuel (dernière connexion il y a plus de {{minutes}} minutes).",
+  "reauth_bad_password": "Mot de passe actuel incorrect : l’action n’a pas été effectuée.",
+  "reauth_sign_in_again": "Pour cette action sensible, déconnectez-vous puis reconnectez-vous, et recommencez dans les {{minutes}} minutes.",
+  "reauth_locked": "Trop de mots de passe incorrects. Réessayez dans {{minutes}} minutes."
 }
