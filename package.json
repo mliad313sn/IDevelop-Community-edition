@@ -93,7 +93,7 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "@commitlint/cli": "^19.0.0",
+    "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^19.0.0",
     "@cyclonedx/cyclonedx-npm": "6.0.1",
     "@playwright/test": "^1.58.2",
