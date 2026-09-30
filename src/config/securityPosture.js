@@ -184,6 +184,22 @@ const CATEGORIES = [
                 tests: ['securityControls.test.js', 'installerSecretChannel.test.js'],
             },
             {
+                id: 'hris-sync',
+                fr: 'Synchronisation SIRH (CSV déposé, Personio, Lucca) : identifiants chiffrés au repos et jamais réaffichés, modifiables seulement après une connexion récente ou le mot de passe actuel ; appels sortants limités aux adresses https publiques (adresses internes refusées, connexion épinglée, sans redirection, avec délai d’expiration) ; essai à blanc avant toute application ; au-delà de 10 % de départs en une exécution (seuil réglable), rien n’est appliqué et les super-administrateurs sont alertés ; chaque exécution et chaque action sont journalisées.',
+                en: 'HRIS synchronisation (dropped CSV, Personio, Lucca): credentials encrypted at rest and never shown again, changeable only after a recent sign-in or with the current password; outbound calls limited to public https addresses (internal addresses refused, connection pinned, no redirect, with a timeout); a dry run before anything is applied; above 10% leavers in one run (configurable), nothing is applied and the super-administrators are alerted; every run and every action is logged.',
+                evidence: [
+                    'src/services/HrisSyncService.js',
+                    'src/integrations/hris/http.js',
+                    'src/integrations/hris/planner.js',
+                ],
+                tests: [
+                    'hrisConnectors.test.js',
+                    'hrisPlanner.test.js',
+                    'hrisSync-db.test.js',
+                    'hrisRoutesAndScim.test.js',
+                ],
+            },
+            {
                 id: 'audit',
                 fr: 'Journal d’audit en ajout seul, chaîné par hachage et ancré chaque jour : toute altération est détectable.',
                 en: 'Append-only, hash-chained audit trail anchored daily: any tampering is detectable.',
