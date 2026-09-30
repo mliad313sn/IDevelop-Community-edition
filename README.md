@@ -150,6 +150,31 @@ licensed under **CC BY 4.0**: if you import it, you must credit it where your
 users can see it (for example in your internal documentation or the framework
 description). See [NOTICE](NOTICE) for the attribution text.
 
+#### From the browser: the skills library
+
+Administrators who manage the skills framework (SuperAdmins, or anyone holding
+_Manage domains & skills_) can do the same without a shell. Open
+**Skills framework → Skills library** (`/framework/library`):
+
+- **Sector packs**: four ready-made, CC0 frameworks written for this project,
+  each with bilingual names and descriptions, level anchors for key skills, role
+  families and sample roles with required levels and critical flags: mining &
+  heavy industry (55 skills), public sector (36), healthcare & care (36) and
+  office & digital services (35). Preview a pack, choose French or English
+  names, run the dry run, then confirm. The files live in
+  `db/postgres/seed-data/packs/` and also load from the command line:
+  `npm run db:seed:starter -- --file db/postgres/seed-data/packs/healthcare-care.json --lang fr`.
+- **Import ESCO**: upload `skills_en.csv`, `skillGroups_en.csv` and
+  `broaderRelationsSkillPillar_en.csv` (plus `skills_fr.csv` if you have it),
+  as separate files or as one `.zip`. Tick the ESCO skill groups you need,
+  set the cap for this import (500 skills by default), run the dry run, then
+  confirm. The ESCO CC BY 4.0 attribution is shown on the screen and written to
+  the audit log of every import.
+
+Every import is idempotent: items are matched by their English or French name,
+existing ones are reused and never overwritten, so loading a pack twice creates
+nothing.
+
 ## Configuration
 
 All configuration is environment-based; [`.env.example`](.env.example) documents

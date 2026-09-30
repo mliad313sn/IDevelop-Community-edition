@@ -38,6 +38,11 @@ First public release of **IDevelop Community Edition**.
 - Generic, CC0-licensed starter capability framework (6 pillars, 12 sub-domains,
   34 bilingual skills, 5 role families, 6 sample roles) and
   `npm run db:seed:starter`.
+- Skills library (`/framework/library`): four CC0 sector packs (mining & heavy
+  industry, public sector, healthcare & care, office & digital services) and an
+  in-browser ESCO import (CSV files or one zip, group selection with a
+  per-import cap), both with a dry run before confirming, idempotent loading
+  through `FrameworkPackService` and an audit row per import.
 - Language-neutral contracts in `docs/contracts/` (OpenAPI, chart identity,
   product identity) with `npm run contracts:export` and a drift test.
 - Documentation for external contributors: `README.md`,
