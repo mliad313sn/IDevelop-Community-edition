@@ -19,6 +19,8 @@
 /SECURITY.md                                @mliad313sn/security-reviewers
 /docs/SECURITY-SUPPLY-CHAIN.md              @mliad313sn/security-reviewers
 /docs/SECURITY-MEASURES.md                  @mliad313sn/security-reviewers
+/src/config/securityPosture.js              @mliad313sn/security-reviewers
+/scripts/security-check.js                  @mliad313sn/security-reviewers
 
 # Authentication, sessions, authorisation
 /src/middleware/auth.js                     @mliad313sn/security-reviewers
