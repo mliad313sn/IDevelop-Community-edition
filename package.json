@@ -35,7 +35,11 @@
     "import:esco": "node scripts/import-esco.js",
     "contracts:export": "node scripts/export-contracts.js",
     "db:seed:demo-org": "node scripts/seed-demo-org.js",
-    "security:doc": "node scripts/export-security-measures.js"
+    "security:doc": "node scripts/export-security-measures.js",
+    "security:check": "node scripts/security-check.js",
+    "security:audit": "npm audit --omit=dev --audit-level=high",
+    "security:sbom": "cyclonedx-npm --omit dev --spec-version 1.6 --output-format JSON --output-reproducible --mc-type application --output-file sbom.cdx.json",
+    "security:secrets": "node scripts/security-check.js --secrets"
   },
   "keywords": [
     "skills-matrix",
@@ -91,6 +95,7 @@
   "devDependencies": {
     "@commitlint/cli": "^19.0.0",
     "@commitlint/config-conventional": "^19.0.0",
+    "@cyclonedx/cyclonedx-npm": "6.0.1",
     "@playwright/test": "^1.58.2",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",

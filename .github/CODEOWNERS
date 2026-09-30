@@ -1,0 +1,50 @@
+# Code owners for security-sensitive paths (OpenSSF Scorecard: Code-Review /
+# Branch-Protection; NIST SSDF PO.2 roles, PW.7 review). With "Require review
+# from Code Owners" enabled on the main branch protection rule, a change to any
+# path below needs an approval from the security reviewers.
+#
+# PLACEHOLDER: @mliad313sn/security-reviewers does not exist yet. Before the
+# public release, create the team (or replace it with named maintainers) and
+# give it write access, otherwise GitHub reports these rules as invalid.
+# Later rules win: keep the most specific paths at the bottom.
+
+# Supply chain: CI, dependency policy, container, secret scanning
+/.github/                                   @mliad313sn/security-reviewers
+/package.json                               @mliad313sn/security-reviewers
+/package-lock.json                          @mliad313sn/security-reviewers
+/Dockerfile                                 @mliad313sn/security-reviewers
+/.dockerignore                              @mliad313sn/security-reviewers
+/docker-compose.yml                         @mliad313sn/security-reviewers
+/.gitleaks.toml                             @mliad313sn/security-reviewers
+/SECURITY.md                                @mliad313sn/security-reviewers
+/docs/SECURITY-SUPPLY-CHAIN.md              @mliad313sn/security-reviewers
+/docs/SECURITY-MEASURES.md                  @mliad313sn/security-reviewers
+
+# Authentication, sessions, authorisation
+/src/middleware/auth.js                     @mliad313sn/security-reviewers
+/src/middleware/apiAuth.js                  @mliad313sn/security-reviewers
+/src/middleware/authPolicy.js               @mliad313sn/security-reviewers
+/src/middleware/rbac.js                     @mliad313sn/security-reviewers
+/src/middleware/mfaEnforcement.js           @mliad313sn/security-reviewers
+/src/middleware/forcePasswordChange.js      @mliad313sn/security-reviewers
+/src/middleware/rateLimiter.js              @mliad313sn/security-reviewers
+/src/middleware/sqlConsoleEnabled.js        @mliad313sn/security-reviewers
+/src/config/permissions.js                  @mliad313sn/security-reviewers
+/src/config/accessProfiles.js               @mliad313sn/security-reviewers
+/src/config/sessionStore.js                 @mliad313sn/security-reviewers
+/src/config/sso.js                          @mliad313sn/security-reviewers
+/src/services/*Auth*.js                     @mliad313sn/security-reviewers
+/src/services/*Sso*.js                      @mliad313sn/security-reviewers
+/src/services/Saml*.js                      @mliad313sn/security-reviewers
+/src/services/MfaService.js                 @mliad313sn/security-reviewers
+/src/services/PasswordResetService.js       @mliad313sn/security-reviewers
+/src/services/SessionService.js             @mliad313sn/security-reviewers
+/src/services/ApiKeyService.js              @mliad313sn/security-reviewers
+/src/services/SqlConsoleService.js          @mliad313sn/security-reviewers
+
+# Key management and privileged operator tooling
+/scripts/rotate-app-key.js                  @mliad313sn/security-reviewers
+/scripts/set-admin-password.js              @mliad313sn/security-reviewers
+/scripts/reset-superadmin-mfa.js            @mliad313sn/security-reviewers
+/scripts/reset-for-golive.js                @mliad313sn/security-reviewers
+/installer/                                 @mliad313sn/security-reviewers

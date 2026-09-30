@@ -12,21 +12,44 @@ on:
         type: boolean
         default: false
 
+# Least privilege (OpenSSF Scorecard Token-Permissions): the token can only read
+# the repository; no job here needs more. Third-party actions are pinned to a
+# full commit SHA (Scorecard Pinned-Dependencies); Dependabot keeps them fresh.
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
     name: lint + format + icons
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run lint
       - run: npm run format:check
       - run: npm run lint:icons
+
+  audit:
+    name: npm audit (production deps, high+) + registry signatures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 22, cache: npm }
+      # Gate: a known high/critical advisory in a production dependency fails the build.
+      - run: npm audit --omit=dev --audit-level=high
+      # Provenance: every installed package must carry a valid npm registry
+      # signature (and provenance attestation where the publisher provides one).
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm audit signatures
 
   unit:
     name: jest (PostgreSQL ${{ matrix.pg }})
@@ -53,8 +76,9 @@ jobs:
       DATABASE_URL: postgres://idevelop:idevelop@localhost:5432/idevelop_test
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: 22, cache: npm }
       - run: npm ci
       # The product's own migrator: base schema + every pending migration,
@@ -68,7 +92,7 @@ jobs:
       - run: npm test -- --ci --coverage
       - name: upload coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-pg${{ matrix.pg }}
           path: coverage/
@@ -100,8 +124,9 @@ jobs:
       E2E_MGR_USER: ${{ secrets.E2E_MGR_USER }}
       E2E_MGR_PASS: ${{ secrets.E2E_MGR_PASS }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run db:migrate:all
@@ -111,7 +136,7 @@ jobs:
         env:
           CI: '1'
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report
           path: playwright-report/
@@ -121,9 +146,9 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npx commitlint --from=${{ github.event.pull_request.base.sha }} --to=${{ github.event.pull_request.head.sha }} --verbose

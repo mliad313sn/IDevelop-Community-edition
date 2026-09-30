@@ -68,5 +68,9 @@ accounts-before.json
 
 # Operator-supplied packaging denylist (never committed: it names what it protects)
 installer/denylist.txt
+
+# Supply-chain scan outputs (npm run security:*, CI); published as build artifacts
+sbom*.json
+*.sarif
 *.sql.gz
 data/*.sql

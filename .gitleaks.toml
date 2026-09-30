@@ -1,0 +1,42 @@
+# gitleaks configuration: the default rule set plus a narrow allow-list for
+# values that are deliberately fake. Every entry names the exact literal (or a
+# tightly-scoped pattern) and the reason; never allow-list a whole directory.
+# Run locally: npm run security:secrets   (CI: .github/workflows/secret-scan.yml)
+
+title = "IDevelop Community Edition"
+
+[extend]
+useDefault = true
+
+# Unit-test fixtures: fake credentials the tests assert against.
+[[allowlists]]
+description = "unit-test fixture credentials (not real secrets)"
+regexTarget = "match"
+regexes = [
+  '''sk_live_opaqueapikey''',       # tests/unit/ssoConfig.test.js: opaque-key vs JWT detection
+  '''legacy-env-key-0123456789''',  # tests/unit/c321-L2-apikey-feed-scope.test.js: legacy env key
+]
+
+# Sample console output in the deployment manual (a one-time password that the
+# product forces the operator to change at first sign-in; illustrative only).
+[[allowlists]]
+description = "illustrative first-run password in installer/MANUAL-DEPLOY.md"
+paths = ['''^installer/MANUAL-DEPLOY\.md$''']
+regexTarget = "match"
+regexes = ['''password\s*:\s*d5ekGa8-Usi4I_OHIdr_qElS''']
+
+# generic-api-key false positives: script file names in the packaging lists and
+# i18n message keys (identifiers, not secrets).
+[[allowlists]]
+description = "script file names listed in installer/Build-Package.ps1"
+condition = "AND"
+paths = ['''^installer/Build-Package\.ps1$''']
+regexTarget = "secret"
+regexes = ['''^[A-Za-z0-9_.-]+\.(js|ps1)$''']
+
+[[allowlists]]
+description = "i18n message keys in locales/*.json"
+condition = "AND"
+paths = ['''^locales/[a-z-]+/[a-z0-9_-]+\.json$''']
+regexTarget = "secret"
+regexes = ['''^[a-z][a-z0-9_]*$''']

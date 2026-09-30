@@ -1,0 +1,43 @@
+# Blocks pull requests that add a vulnerable dependency or one whose licence
+# cannot be combined with this AGPL-3.0-or-later project.
+# OpenSSF Scorecard: Vulnerabilities / Dependency-Update-Tool (complements Dependabot).
+# NIST SSDF: PW.4 (reuse well-secured software), RV.1 (identify vulnerabilities).
+name: dependency-review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: dependency review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # posts the summary comment when the check fails
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          fail-on-scopes: runtime, development
+          comment-summary-in-pr: on-failure
+          show-patched-versions: true
+          # Licence policy: an ALLOW-list of licences that may be combined with
+          # AGPL-3.0-or-later (the action's deny-licenses input is deprecated).
+          # Anything else fails, in particular: GPL-2.0-only, LGPL-2.0-only,
+          # SSPL-1.0, BUSL-1.1, Elastic-2.0, Commons Clause, CC-BY-NC-*, PolyForm-*,
+          # EPL-1.0, CDDL-1.0/1.1, MPL-1.1, OpenSSL, BSD-4-Clause, JSON and
+          # proprietary / unknown licences. Review exceptions in the PR and add them
+          # to allow-dependencies-licenses (by package URL), never to this list.
+          allow-licenses: >-
+            MIT, MIT-0, X11, ISC, 0BSD, BSD-2-Clause, BSD-3-Clause, Apache-2.0,
+            BlueOak-1.0.0, Unlicense, CC0-1.0, CC-BY-3.0, CC-BY-4.0, Zlib, Python-2.0,
+            BSL-1.0, Artistic-2.0, MPL-2.0, WTFPL, Unicode-DFS-2016, Unicode-3.0,
+            LGPL-2.1-or-later, LGPL-3.0-only, LGPL-3.0-or-later,
+            GPL-2.0-or-later, GPL-3.0-only, GPL-3.0-or-later,
+            AGPL-3.0-only, AGPL-3.0-or-later

@@ -1,0 +1,131 @@
+# Supply-chain gates: Trivy vulnerability / secret / misconfiguration scans of
+# the repository and of the production container image, a CycloneDX SBOM, and
+# (on main) signed SLSA build provenance for the release artefacts.
+# NIST SSDF: PS.2/PS.3 (integrity + provenance of releases), PW.4, RV.1.
+# CIS Docker Benchmark 4.4 (scan and rebuild images). SLSA Build L2 (hosted
+# build, signed provenance via GitHub artefact attestations).
+name: supply-chain
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '7 6 * * 1' # weekly: new CVEs against unchanged code
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TRIVY_VERSION: v0.70.0
+  IMAGE: idevelop-ce:ci-${{ github.sha }}
+
+jobs:
+  trivy-fs:
+    name: trivy (repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      # Fails on CRITICAL/HIGH findings that have a fix available. Scans the
+      # lockfile (dependencies), the tree (secrets) and Dockerfile/compose (IaC).
+      - name: trivy fs
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          skip-dirs: node_modules,tests/fixtures
+          format: sarif
+          output: trivy-fs.sarif
+          limit-severities-for-sarif: true
+          exit-code: '1'
+      - name: upload SARIF
+        if: always() && hashFiles('trivy-fs.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+  trivy-image:
+    name: trivy (container image)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: build image (not pushed)
+        run: docker build --pull -t "$IMAGE" .
+      - name: image hardening assertions
+        run: |
+          test "$(docker image inspect -f '{{.Config.User}}' "$IMAGE")" = "app:app"
+          docker image inspect -f '{{json .Config.Healthcheck}}' "$IMAGE" | grep -q readyz
+      - name: trivy image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}
+          scanners: vuln,secret
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-image.sarif
+          limit-severities-for-sarif: true
+          exit-code: '1'
+      - name: upload SARIF
+        if: always() && hashFiles('trivy-image.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+  sbom:
+    name: SBOM (CycloneDX) + provenance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Sigstore signing of the provenance (push to main only)
+      attestations: write # store the attestation (push to main only)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 22, cache: npm }
+      # --ignore-scripts: nothing from the registry executes on the runner.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: CycloneDX SBOM (production dependencies)
+        run: npm run security:sbom
+      - name: source archive
+        run: git archive --format=tar.gz --prefix=idevelop-ce/ -o idevelop-ce-src.tar.gz HEAD
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-cyclonedx
+          path: |
+            sbom.cdx.json
+            idevelop-ce-src.tar.gz
+          if-no-files-found: error
+          retention-days: 90
+      # SLSA Build L2: provenance generated and signed by the hosted build
+      # platform, verifiable with `gh attestation verify <file> -R <owner>/<repo>`.
+      - name: build provenance
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            sbom.cdx.json
+            idevelop-ce-src.tar.gz

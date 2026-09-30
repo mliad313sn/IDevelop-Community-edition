@@ -1,0 +1,56 @@
+# Automated dependency updates (OpenSSF Scorecard: Dependency-Update-Tool;
+# NIST SSDF RV.1 / PW.4). Weekly; minor and patch bumps are grouped into one PR
+# per ecosystem, majors arrive one per PR so each breaking change is reviewed.
+# Security updates (Dependabot alerts) are raised immediately regardless.
+# Commit prefixes satisfy commitlint.config.js (types build/ci, scopes deps/docker).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: build(deps)
+      prefix-development: build(deps)
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci(deps)
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: build(docker)
+    groups:
+      docker-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: build(docker)
+    groups:
+      compose-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
