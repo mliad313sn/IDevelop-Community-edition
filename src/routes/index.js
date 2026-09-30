@@ -442,6 +442,8 @@ router.use('/', dashboardRoutes);
 // Executive decision surfaces — key-person risk, exposure by site, board pack.
 // Same guard chain as the dashboard (manager/admin + RBAC scope); the
 // key-person routes add a continuity-grant check of their own inside.
+// Key-person risk belongs to the talent module (continuity): 404 while it is off.
+router.use(['/exec/key-person', '/exec/api/key-person'], _mod('talent'));
 router.use('/exec', requireManagerOrAdmin, rbacMiddleware, require('./exec'));
 
 // Employee Portal Routes (require employee authentication)

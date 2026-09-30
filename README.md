@@ -181,8 +181,18 @@ description). See [NOTICE](NOTICE) for the attribution text.
 
 ## Configuration
 
-All configuration is environment-based; [`.env.example`](.env.example) documents
-every variable. The essentials:
+Deployment settings are environment variables; [`.env.example`](.env.example)
+documents every one. **Optional modules** are chosen in the app, under
+_Administration → Modules_, by adoption stage:
+
+1. **Framework & assessment** (default on a fresh install): framework, roles,
+   campaigns, self-assessments, reviews, disputes, readiness, gaps, reports.
+2. **+ Talent & development**: development plans, coaching, improvement plans,
+   calibration, succession, mobility.
+3. **+ Engagement & AI**: surveys, recognition, goals and check-ins, the AI
+   copilot (still off until configured, with its EU-only guardrails).
+
+Modules can also be switched one by one, without a restart. The essentials:
 
 | Variable                                  | Purpose                                                                                                                       |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -190,7 +200,7 @@ every variable. The essentials:
 | `SESSION_SECRET`                          | Session signing secret — **required and checked for strength in production**                                                  |
 | `APP_KEY`                                 | At-rest encryption key for stored secrets (MFA seeds, SSO/LMS/SMTP credentials); rotate only with `scripts/rotate-app-key.js` |
 | `REDIS_URL`                               | Optional: BullMQ workers and shared rate-limit store for multi-instance deployments                                           |
-| `V2_FEATURES=1`                           | Enables the extended talent suite (campaigns, IDP, coaching, PIP, lifecycle) under `/v2/*`                                    |
+| `V2_FEATURES=1`                           | Legacy: forces every optional module on. Otherwise modules are switched in the app (_Administration → Modules_)               |
 | `SQL_CONSOLE_ENABLED=1`                   | Switches on the super-admin SQL console (off by default — separation of duties; routes answer 404 while off)                  |
 | `APP_BASE_URL`, `TRUSTED_HOSTS`           | Public URL used in e-mails and host-header allow-list                                                                         |
 | `SMTP_*`                                  | Outgoing mail (can also be set in _Settings → Email_)                                                                         |
@@ -219,7 +229,7 @@ triggers, retention, branding, optional modules) is configured at run time in
 server.js                 HTTP bootstrap: security middleware, sessions, i18n, routers, jobs
 src/
   config/                 product identity, app config, permissions, SSO, i18n
-  routes/                 route tables (index + feature routers under /v2/*)
+  routes/                 route tables (index + feature routers under /v2/*, always mounted; optional ones behind their module switch)
   controllers/            HTTP adapters: parse request → call services → render/JSON
   services/               business logic (framework-agnostic, the bulk of the code)
   models/                 data access objects (SQL)

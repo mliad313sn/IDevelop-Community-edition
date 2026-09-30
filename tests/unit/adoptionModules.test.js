@@ -508,3 +508,18 @@ describe('i18n', () => {
         }
     });
 });
+
+describe('key-person risk follows the talent module', () => {
+    test('both key-person routes sit behind the talent module guard', () => {
+        const src = require('fs').readFileSync(
+            require('path').join(__dirname, '../../src/routes/index.js'),
+            'utf8'
+        );
+        expect(src).toMatch(
+            /router\.use\(\['\/exec\/key-person', '\/exec\/api\/key-person'\], _mod\('talent'\)\)/
+        );
+        expect(src.indexOf("_mod('talent'))")).toBeLessThan(
+            src.indexOf("router.use('/exec', requireManagerOrAdmin")
+        );
+    });
+});
