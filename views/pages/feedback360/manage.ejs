@@ -17,6 +17,7 @@
     <p><a class="btn btn-secondary btn-sm" href="/feedback-360"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('talentx:f360_back_mine') %></a></p>
 </div>
 
+<% if (canLaunch) { %>
 <section class="card hz-360-section" aria-labelledby="f360-launch-h">
     <h2 id="f360-launch-h"><i class="fas fa-rocket" aria-hidden="true"></i> <%= __('talentx:f360_launch_title') %></h2>
     <% if (!candidates.length) { %>
@@ -65,6 +66,7 @@
     </form>
     <% } %>
 </section>
+<% } %>
 
 <section class="card hz-360-section" aria-labelledby="f360-rounds-h">
     <h2 id="f360-rounds-h"><i class="fas fa-list" aria-hidden="true"></i> <%= __('talentx:f360_rounds_title') %></h2>

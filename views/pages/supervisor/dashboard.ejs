@@ -22,6 +22,8 @@
 <%
   var _team = (typeof team !== 'undefined') ? team : null;
   var _chip = { to_review: 'badge-warning', changes_requested: 'badge-danger', in_progress: 'badge-info', completed: 'badge-success', not_started: 'badge-secondary' };
+  // The shared one-to-one space (engagement module) opens from the roster row.
+  var _oo = typeof appModules !== 'undefined' && appModules && appModules.engagement === true;
 %>
 <section class="card mgr-team" aria-labelledby="mgr-team-h">
     <h2 id="mgr-team-h"><i class="fas fa-users" aria-hidden="true"></i> <%= __('talentx:team_title') %></h2>
@@ -54,7 +56,7 @@
                     <br><span class="text-muted mgr-team-sub"><%= r.totalRequired > 0 ? __('talentx:team_measured_of', { n: r.assessedRequired, total: r.totalRequired }) : __('talentx:team_no_requirement') %></span>
                 </td>
                 <td class="num"><% if (r.readinessPercent === null || r.readinessPercent === undefined) { %><span class="text-muted">—</span><% } else { %><%= r.criticalGaps %><% } %></td>
-                <td><% if (!_team.oneOnOneMeasured) { %><span class="text-muted"><%= __('talentx:team_not_measured') %></span><% } else if (r.lastOneOnOne) { %><%= fmtDate(r.lastOneOnOne) %><% } else { %><span class="text-muted"><%= __('talentx:team_never_1on1') %></span><% } %></td>
+                <td><% if (!_team.oneOnOneMeasured) { %><span class="text-muted"><%= __('talentx:team_not_measured') %></span><% } else if (r.lastOneOnOne) { %><%= fmtDate(r.lastOneOnOne) %><% } else { %><span class="text-muted"><%= __('talentx:team_never_1on1') %></span><% } %><% if (_oo) { %> <a class="mgr-team-1on1" href="/one-on-one/<%= Number(r.employeeId) %>"><%= __('talentx:team_1on1_open') %></a><% } %></td>
                 <td><a class="btn btn-sm btn-secondary" href="<%= r.next.href %>"><%= __('talentx:team_next_' + r.next.key, { n: r.pendingReview }) %></a></td>
             </tr>
         <% }); %>

@@ -95,6 +95,8 @@ router.get(
             title: req.t('talentx:f360_console_title'),
             rounds,
             candidates,
+            // A read-only viewer follows the rounds of its scope; it never launches one.
+            canLaunch: !require('../services/RBACService').isViewer(req.user),
             defaults: {
                 deadline: d,
                 minRaters: C.DEFAULT_MIN_RATERS,
