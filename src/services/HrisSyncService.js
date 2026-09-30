@@ -328,24 +328,26 @@ class HrisSyncService {
     // ------------------------------------------------------------------
 
     static async loadContext(provider, options = {}) {
-        const [sites, departments, services, roles, mappings, employees, links] = await Promise.all(
-            [
-                db.all('SELECT id, name, code, is_active FROM sites'),
-                db.all('SELECT id, site_id, name, code, is_active FROM departments'),
-                db.all('SELECT id, department_id, name, code, is_active FROM services'),
-                db.all('SELECT id, name, is_active FROM roles'),
-                db.all(
-                    'SELECT kind, external_value, external_key, target_id FROM hris_value_mappings'
-                ),
-                db.all(
-                    `SELECT id, employee_number, first_name, last_name, email, site_id, department_id,
-                        service_id, role_id, supervisor_id, is_active, cancelled_at, erased_at
-                   FROM employees`
-                ),
-                db.all('SELECT external_id, employee_id FROM hris_links WHERE provider = ?', [
-                    provider,
-                ]),
-            ]
+        // Sequential on purpose: inside a transaction every query shares ONE client.
+        const sites = await db.all('SELECT id, name, code, is_active FROM sites');
+        const departments = await db.all(
+            'SELECT id, site_id, name, code, is_active FROM departments'
+        );
+        const services = await db.all(
+            'SELECT id, department_id, name, code, is_active FROM services'
+        );
+        const roles = await db.all('SELECT id, name, is_active FROM roles');
+        const mappings = await db.all(
+            'SELECT kind, external_value, external_key, target_id FROM hris_value_mappings'
+        );
+        const employees = await db.all(
+            `SELECT id, employee_number, first_name, last_name, email, site_id, department_id,
+                    service_id, role_id, supervisor_id, is_active, cancelled_at, erased_at
+               FROM employees`
+        );
+        const links = await db.all(
+            'SELECT external_id, employee_id FROM hris_links WHERE provider = ?',
+            [provider]
         );
         return planner.buildContext({
             provider,
