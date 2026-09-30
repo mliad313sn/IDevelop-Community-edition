@@ -1,0 +1,292 @@
+<%#
+  Skills library (/framework/library): sector packs and the ESCO import, both
+  through dry run → confirm. manage_domains_skills only (enforced on the routes).
+  Every text goes through the escaping output tag.
+-%>
+<%
+  var sectorLabels = {
+      mining: __('framework:lib_sector_mining'),
+      public: __('framework:lib_sector_public'),
+      healthcare: __('framework:lib_sector_healthcare'),
+      office: __('framework:lib_sector_office')
+  };
+  var categoryLabels = {
+      Technical: __('framework:lib_cat_technical'),
+      Behavioral: __('framework:lib_cat_behavioral'),
+      Safety: __('framework:lib_cat_safety'),
+      Compliance: __('framework:lib_cat_compliance')
+  };
+  var pick = function (o) { return o ? (o[uiLang] || o.en || o.fr || '') : ''; };
+-%>
+<div class="page-header">
+    <h1><i class="fas fa-book-open" aria-hidden="true"></i> <%= __('framework:lib_title') %></h1>
+    <p class="text-muted"><%= __('framework:lib_intro') %></p>
+    <p><a href="/domains-skills"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('framework:lib_back') %></a></p>
+</div>
+
+<nav class="tabs hz-library-tabs" aria-label="<%= __('framework:lib_tabs_label') %>">
+    <a class="tab <%= tab === 'packs' ? 'active' : '' %>" href="/framework/library?tab=packs" <%- tab === 'packs' ? 'aria-current="page"' : '' %>><i class="fas fa-boxes-stacked" aria-hidden="true"></i> <%= __('framework:lib_tab_packs') %></a>
+    <a class="tab <%= tab === 'esco' ? 'active' : '' %>" href="/framework/library?tab=esco" <%- tab === 'esco' ? 'aria-current="page"' : '' %>><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('framework:lib_tab_esco') %></a>
+</nav>
+
+<% if (report) { %>
+<section class="card hz-library-card hz-library-report" aria-labelledby="libReportTitle">
+    <h2 id="libReportTitle"><i class="fas fa-flask" aria-hidden="true"></i> <%= __('framework:lib_report_title') %></h2>
+    <p><%= __('framework:lib_report_intro', { title: report.title }) %></p>
+    <% if (report.kind === 'esco') { %>
+    <p><%= __('framework:lib_report_esco_selected', { n: report.selected, cap: report.limit }) %></p>
+    <% if (report.truncated) { %><p class="hz-library-warn"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('framework:lib_report_esco_truncated', { n: report.truncated }) %></p><% } %>
+    <% } %>
+    <div class="table-wrapper"><table class="table table-cards">
+        <thead><tr>
+            <th scope="col"><%= __('framework:lib_col_what') %></th>
+            <th scope="col"><%= __('framework:lib_col_new') %></th>
+            <th scope="col"><%= __('framework:lib_col_existing') %></th>
+        </tr></thead>
+        <tbody>
+        <% kinds.forEach(function (k) { var s = report.stats[k]; if (!s) return; %>
+            <tr>
+                <th scope="row"><%= kindLabels[k] %></th>
+                <td data-label="<%= __('framework:lib_col_new') %>"><strong><%= s.created %></strong></td>
+                <td data-label="<%= __('framework:lib_col_existing') %>"><%= s.existing %></td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+    <% ['pillars', 'sub-domains', 'skills', 'role families', 'roles'].forEach(function (k) {
+         var list = report.created[k] || [];
+         var had = report.existing[k] || [];
+         if (list.length) { %>
+    <details class="hz-library-names">
+        <summary><%= __('framework:lib_report_new_list', { what: kindLabels[k], n: report.stats[k].created }) %></summary>
+        <ul><% list.forEach(function (n) { %><li><%= n %></li><% }); %></ul>
+        <% if (report.stats[k].created > list.length) { %><p class="text-muted"><%= __('framework:lib_report_more', { n: report.stats[k].created - list.length }) %></p><% } %>
+    </details>
+    <% } if (had.length) { %>
+    <details class="hz-library-names">
+        <summary><%= __('framework:lib_report_existing_list', { what: kindLabels[k], n: report.stats[k].existing }) %></summary>
+        <ul><% had.forEach(function (n) { %><li><%= n %></li><% }); %></ul>
+        <% if (report.stats[k].existing > had.length) { %><p class="text-muted"><%= __('framework:lib_report_more', { n: report.stats[k].existing - had.length }) %></p><% } %>
+    </details>
+    <% } }); %>
+    <% if (!report.totalNew) { %>
+    <div class="card hz-callout hz-library-callout" role="status"><i class="fas fa-circle-check" aria-hidden="true"></i> <%= __('framework:lib_report_nothing_new') %></div>
+    <% } %>
+    <div class="hz-library-actions">
+        <form method="POST" action="<%= report.kind === 'esco' ? '/framework/library/esco/commit' : '/framework/library/packs/' + report.id + '/commit' %>">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="confirm" value="1">
+            <input type="hidden" name="lang" value="<%= report.lang %>">
+            <button type="submit" class="btn btn-primary"<%= report.totalNew ? '' : ' disabled' %>><i class="fas fa-check" aria-hidden="true"></i> <%= __('framework:lib_confirm') %></button>
+        </form>
+        <a class="btn btn-secondary" href="/framework/library?tab=<%= report.kind === 'esco' ? 'esco' : 'packs' %>"><%= __('framework:lib_cancel') %></a>
+    </div>
+</section>
+<% } %>
+
+<% if (tab === 'packs') { %>
+<div class="card hz-callout hz-library-callout">
+    <p><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('framework:lib_packs_intro') %></p>
+</div>
+
+<% if (!packs.length) { %>
+    <%- include('../../partials/empty-state', { icon: 'fa-boxes-stacked', title: __('framework:lib_packs_empty_title'), text: __('framework:lib_packs_empty_text') }) %>
+<% } else { %>
+<section class="card hz-library-card" aria-labelledby="libPacksTitle">
+    <h2 id="libPacksTitle"><%= __('framework:lib_packs_title') %></h2>
+    <div class="table-wrapper"><table class="table table-cards hz-library-packs">
+        <thead><tr>
+            <th scope="col"><%= __('framework:lib_col_pack') %></th>
+            <th scope="col"><%= __('framework:lib_col_skills') %></th>
+            <th scope="col"><%= __('framework:lib_col_structure') %></th>
+            <th scope="col"><%= __('framework:lib_col_roles') %></th>
+            <th scope="col"><%= __('framework:lib_col_licence') %></th>
+            <th scope="col"><%= __('framework:lib_col_actions') %></th>
+        </tr></thead>
+        <tbody>
+        <% packs.forEach(function (p) { %>
+            <tr>
+                <th scope="row">
+                    <strong><%= pick(p.title) %></strong>
+                    <% if (p.sector && sectorLabels[p.sector]) { %><span class="badge"><%= sectorLabels[p.sector] %></span><% } %><br>
+                    <small class="text-muted"><%= pick(p.description) %></small>
+                </th>
+                <td data-label="<%= __('framework:lib_col_skills') %>"><strong><%= p.counts.skills %></strong><% if (p.counts.anchors) { %><br><small class="text-muted"><%= __('framework:lib_anchored', { n: p.counts.anchors }) %></small><% } %></td>
+                <td data-label="<%= __('framework:lib_col_structure') %>"><%= __('framework:lib_structure', { pillars: p.counts.pillars, subs: p.counts.subDomains }) %></td>
+                <td data-label="<%= __('framework:lib_col_roles') %>"><%= __('framework:lib_roles_count', { roles: p.counts.roles, families: p.counts.roleFamilies }) %></td>
+                <td data-label="<%= __('framework:lib_col_licence') %>"><%= p.licence || '' %> · v<%= p.version %></td>
+                <td data-label="<%= __('framework:lib_col_actions') %>">
+                    <div class="hz-library-actions">
+                        <a class="btn btn-secondary btn-sm" href="/framework/library?tab=packs&amp;pack=<%= p.id %>#libPreview"><i class="fas fa-eye" aria-hidden="true"></i> <%= __('framework:lib_preview') %></a>
+                        <form method="POST" action="/framework/library/packs/<%= p.id %>/dry-run" class="hz-library-actions">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <label for="libLang<%= p.id %>" class="sr-only"><%= __('framework:lib_names_label') %></label>
+                            <select id="libLang<%= p.id %>" name="lang">
+                                <option value="fr"<%= uiLang === 'fr' ? ' selected' : '' %>><%= __('framework:lib_names_fr') %></option>
+                                <option value="en"<%= uiLang === 'en' ? ' selected' : '' %>><%= __('framework:lib_names_en') %></option>
+                            </select>
+                            <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-flask" aria-hidden="true"></i> <%= __('framework:lib_load') %></button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+    <p class="text-muted hz-library-note"><%= __('framework:lib_packs_note') %></p>
+</section>
+<% } %>
+
+<% if (preview) { %>
+<section class="card hz-library-card" id="libPreview" aria-labelledby="libPreviewTitle">
+    <h2 id="libPreviewTitle"><%= __('framework:lib_preview_title', { title: preview.title }) %></h2>
+    <% preview.tree.pillars.forEach(function (p) { %>
+    <details class="hz-library-pillar">
+        <summary><strong><%= p.name %></strong> <span class="text-muted">· <%= __('framework:lib_skill_count', { n: p.subDomains.reduce(function (a, sd) { return a + sd.skills.length; }, 0) }) %></span></summary>
+        <% if (p.description) { %><p class="text-muted"><%= p.description %></p><% } %>
+        <% p.subDomains.forEach(function (sd) { %>
+        <h3 class="hz-library-sub"><%= sd.name %></h3>
+        <ul class="hz-library-skills">
+            <% sd.skills.forEach(function (sk) { %>
+            <li><strong><%= sk.name %></strong> <span class="badge"><%= categoryLabels[sk.category] || sk.category %></span><% if (sk.anchors) { %> <span class="badge"><%= __('framework:lib_has_anchors') %></span><% } %><% if (sk.description) { %><br><small class="text-muted"><%= sk.description %></small><% } %></li>
+            <% }); %>
+        </ul>
+        <% }); %>
+    </details>
+    <% }); %>
+    <% if (preview.tree.roles.length) { %>
+    <h3 class="hz-library-sub"><%= __('framework:lib_preview_roles') %></h3>
+    <div class="table-wrapper"><table class="table table-cards">
+        <thead><tr>
+            <th scope="col"><%= __('framework:lib_col_role') %></th>
+            <th scope="col"><%= __('framework:lib_col_family') %></th>
+            <th scope="col"><%= __('framework:lib_col_requirements') %></th>
+        </tr></thead>
+        <tbody>
+        <% preview.tree.roles.forEach(function (r) { %>
+            <tr>
+                <th scope="row"><%= r.name %></th>
+                <td data-label="<%= __('framework:lib_col_family') %>"><%= r.family || '' %></td>
+                <td data-label="<%= __('framework:lib_col_requirements') %>">
+                    <ul class="hz-library-reqs">
+                    <% r.requirements.forEach(function (q) { %>
+                        <li><%= q.skill %> — <%= __('framework:lib_level', { n: q.level }) %><% if (q.critical) { %> <span class="badge"><%= __('framework:lib_critical') %></span><% } %></li>
+                    <% }); %>
+                    </ul>
+                </td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+    <% } %>
+</section>
+<% } %>
+<% } %>
+
+<% if (tab === 'esco') { %>
+<div class="card hz-callout hz-library-callout">
+    <p><i class="fas fa-scale-balanced" aria-hidden="true"></i> <strong><%= __('framework:lib_esco_attribution_title') %></strong></p>
+    <p><%= escoAttribution %></p>
+    <p><a href="<%= escoUrl %>" rel="noopener noreferrer" target="_blank"><%= escoUrl %></a> · <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener noreferrer" target="_blank">CC BY 4.0</a></p>
+    <p class="text-muted"><%= __('framework:lib_esco_attribution_note') %></p>
+</div>
+
+<% if (!esco) { %>
+<section class="card hz-library-card" aria-labelledby="libEscoUploadTitle">
+    <h2 id="libEscoUploadTitle"><%= __('framework:lib_esco_upload_title') %></h2>
+    <p><%= __('framework:lib_esco_upload_intro') %></p>
+    <ul>
+        <li><code>skills_en.csv</code> — <%= __('framework:lib_esco_file_skills') %></li>
+        <li><code>skillGroups_en.csv</code> — <%= __('framework:lib_esco_file_groups') %></li>
+        <li><code>broaderRelationsSkillPillar_en.csv</code> — <%= __('framework:lib_esco_file_relations') %></li>
+        <li><code>skills_fr.csv</code> — <%= __('framework:lib_esco_file_fr') %></li>
+    </ul>
+    <form id="libEscoUpload" action="/framework/library/esco/upload" method="POST" enctype="multipart/form-data" class="filter-bar" data-csrf="<%= csrfToken %>">
+        <div class="filter-group">
+            <label for="libEscoFiles"><%= __('framework:lib_esco_files_label') %></label>
+            <input type="file" id="libEscoFiles" name="files" accept=".csv,.zip" multiple required>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-upload" aria-hidden="true"></i> <%= __('framework:lib_esco_upload') %></button>
+        <span id="libEscoStatus" role="status" aria-live="polite"></span>
+    </form>
+    <p class="text-muted hz-library-note"><%= __('framework:lib_esco_upload_hint') %></p>
+</section>
+<% } else { %>
+<section class="card hz-library-card" aria-labelledby="libEscoGroupsTitle">
+    <h2 id="libEscoGroupsTitle"><%= __('framework:lib_esco_groups_title') %></h2>
+    <p><%= __('framework:lib_esco_loaded', { skills: esco.skills, groups: esco.groups.length, files: esco.files.join(', ') }) %></p>
+    <% if (!esco.hasFrench) { %><p class="text-muted"><%= __('framework:lib_esco_no_french') %></p><% } %>
+    <% if (!esco.groups.length) { %>
+        <%- include('../../partials/empty-state', { icon: 'fa-folder-open', title: __('framework:lib_esco_no_groups_title'), text: __('framework:lib_esco_no_groups_text') }) %>
+    <% } else { %>
+    <form method="POST" action="/framework/library/esco/dry-run" id="libEscoGroups">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label for="libEscoLimit"><%= __('framework:lib_esco_limit_label') %></label>
+                <input type="number" id="libEscoLimit" name="limit" min="1" max="<%= escoMaxLimit %>" value="<%= esco.limit %>">
+            </div>
+            <div class="filter-group">
+                <label for="libEscoLang"><%= __('framework:lib_names_label') %></label>
+                <select id="libEscoLang" name="lang">
+                    <option value="fr"<%= esco.nameLang === 'fr' ? ' selected' : '' %>><%= __('framework:lib_names_fr') %></option>
+                    <option value="en"<%= esco.nameLang === 'en' ? ' selected' : '' %>><%= __('framework:lib_names_en') %></option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-flask" aria-hidden="true"></i> <%= __('framework:lib_load') %></button>
+            <span id="libEscoCount" role="status" aria-live="polite"></span>
+        </div>
+        <div class="table-wrapper"><table class="table table-cards hz-library-groups">
+            <thead><tr>
+                <th scope="col"><%= __('framework:lib_col_group') %></th>
+                <th scope="col"><%= __('framework:lib_col_subgroups') %></th>
+            </tr></thead>
+            <tbody>
+            <% esco.groups.forEach(function (g, gi) { var allOn = g.subDomains.every(function (sd) { return esco.selected.indexOf(sd.key) !== -1; }); %>
+                <tr>
+                    <th scope="row">
+                        <label><input type="checkbox" data-pillar-all="p<%= gi %>"<%= allOn ? ' checked' : '' %>> <strong><%= g.name %></strong></label>
+                        <br><small class="text-muted"><%= __('framework:lib_skill_count', { n: g.count }) %></small>
+                    </th>
+                    <td data-label="<%= __('framework:lib_col_subgroups') %>">
+                        <ul class="hz-library-subgroups">
+                        <% g.subDomains.forEach(function (sd) { %>
+                            <li><label><input type="checkbox" name="groups" value="<%= sd.key %>" data-pillar="p<%= gi %>" data-count="<%= sd.count %>"<%= esco.selected.indexOf(sd.key) !== -1 ? ' checked' : '' %>> <%= sd.name %> <span class="text-muted">(<%= sd.count %>)</span></label></li>
+                        <% }); %>
+                        </ul>
+                    </td>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table></div>
+    </form>
+    <% } %>
+    <form method="POST" action="/framework/library/esco/discard" class="hz-library-actions">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-trash-can" aria-hidden="true"></i> <%= __('framework:lib_esco_discard') %></button>
+    </form>
+</section>
+<% } %>
+<% } %>
+
+<section class="card hz-library-card" aria-labelledby="libHistoryTitle">
+    <h2 id="libHistoryTitle"><%= __('framework:lib_history_title') %></h2>
+    <% if (!history.length) { %>
+    <p class="text-muted"><%= __('framework:lib_history_empty') %></p>
+    <% } else { %>
+    <ul class="hz-library-history">
+        <% history.forEach(function (h) { %>
+        <li><strong><%= typeof fmtDateTime === 'function' ? fmtDateTime(h.createdAt || h.created_at) : '' %></strong> — <%= h.action === 'FRAMEWORK_ESCO_IMPORTED' ? __('framework:lib_history_esco') : __('framework:lib_history_pack') %><br><small class="text-muted"><%= h.details %></small></li>
+        <% }); %>
+    </ul>
+    <% } %>
+</section>
+
+<script type="application/json" id="libI18n"><%- include('../../partials/json-script', { v: {
+    sending: __('framework:lib_esco_sending'),
+    failed: __('framework:lib_err_generic'),
+    noFile: __('framework:lib_esco_err_no_file'),
+    count: __('framework:lib_esco_count', { n: '%n%', cap: '%cap%' }),
+    countOver: __('framework:lib_esco_count_over', { n: '%n%', cap: '%cap%' })
+} }) %></script>
+<script src="/js/framework-library.js?v=<%= assetVersion %>"></script>

@@ -65,15 +65,12 @@ function zipRefusal(msg) {
 }
 
 /**
- * Throw (400, expose) when the buffer is not a sane ZIP or inflates beyond the
- * limits. Returns { entries, totalBytes } when it is safe.
- * @param {Buffer} buf
- * @param {{maxEntries?:number, maxTotalBytes?:number}} [limits]
+ * Walk the central directory of a ZIP buffer and return its entries
+ * ({ name, method, csize, usize, dataStart }) without inflating anything.
+ * Throws the 400 refusal on anything malformed, ZIP64, or too many entries.
  */
-function assertSafeXlsxBuffer(buf, limits = {}) {
-    const maxEntries = limits.maxEntries || XLSX_LIMITS.maxEntries;
-    const maxTotal = limits.maxTotalBytes || XLSX_LIMITS.maxTotalBytes;
-    if (!Buffer.isBuffer(buf) || buf.length < 22) throw zipRefusal('not a ZIP archive');
+function zipDirectory(buf, maxEntries, refusal = zipRefusal) {
+    if (!Buffer.isBuffer(buf) || buf.length < 22) throw refusal('not a ZIP archive');
     // End of central directory: the last 0x06054b50 within the trailing 64 KiB + 22.
     let eocd = -1;
     for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) {
@@ -82,16 +79,16 @@ function assertSafeXlsxBuffer(buf, limits = {}) {
             break;
         }
     }
-    if (eocd < 0) throw zipRefusal('not a ZIP archive');
+    if (eocd < 0) throw refusal('not a ZIP archive');
     const count = buf.readUInt16LE(eocd + 10);
     const cdOffset = buf.readUInt32LE(eocd + 16);
-    if (count === 0xffff || cdOffset === 0xffffffff) throw zipRefusal('ZIP64 is not supported');
-    if (count > maxEntries) throw zipRefusal(`too many entries (${count})`);
+    if (count === 0xffff || cdOffset === 0xffffffff) throw refusal('ZIP64 is not supported');
+    if (count > maxEntries) throw refusal(`too many entries (${count})`);
+    const entries = [];
     let p = cdOffset;
-    let total = 0;
     for (let n = 0; n < count; n++) {
         if (p + 46 > buf.length || buf.readUInt32LE(p) !== 0x02014b50)
-            throw zipRefusal('corrupt central directory');
+            throw refusal('corrupt central directory');
         const method = buf.readUInt16LE(p + 10);
         const csize = buf.readUInt32LE(p + 20);
         const usize = buf.readUInt32LE(p + 24);
@@ -100,34 +97,96 @@ function assertSafeXlsxBuffer(buf, limits = {}) {
         const commentLen = buf.readUInt16LE(p + 32);
         const local = buf.readUInt32LE(p + 42);
         if (csize === 0xffffffff || usize === 0xffffffff || local === 0xffffffff)
-            throw zipRefusal('ZIP64 is not supported');
+            throw refusal('ZIP64 is not supported');
         if (local + 30 > buf.length || buf.readUInt32LE(local) !== 0x04034b50)
-            throw zipRefusal('corrupt local header');
+            throw refusal('corrupt local header');
         const dataStart = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
-        if (dataStart + csize > buf.length) throw zipRefusal('truncated entry');
-        const remaining = maxTotal - total;
-        if (usize > remaining) throw zipRefusal('uncompressed size exceeds the limit');
-        let out = 0;
-        if (method === 0) {
-            out = csize;
-        } else if (method === 8) {
-            try {
-                out = zlib.inflateRawSync(buf.subarray(dataStart, dataStart + csize), {
-                    maxOutputLength: Math.max(1, remaining),
-                }).length;
-            } catch (e) {
-                if (e && (e.code === 'ERR_BUFFER_TOO_LARGE' || e instanceof RangeError))
-                    throw zipRefusal('uncompressed size exceeds the limit');
-                throw zipRefusal('corrupt compressed entry');
-            }
-        } else {
-            throw zipRefusal(`unsupported compression method ${method}`);
-        }
-        total += out;
-        if (total > maxTotal) throw zipRefusal('uncompressed size exceeds the limit');
+        if (dataStart + csize > buf.length) throw refusal('truncated entry');
+        const name = buf.toString('utf8', p + 46, Math.min(buf.length, p + 46 + nameLen));
+        entries.push({ name, method, csize, usize, dataStart });
         p += 46 + nameLen + extraLen + commentLen;
     }
-    return { entries: count, totalBytes: total };
+    return entries;
+}
+
+/** Inflate one entry with a hard output cap; returns the Buffer. */
+function inflateEntry(buf, e, cap, refusal = zipRefusal) {
+    if (e.usize > cap) throw refusal('uncompressed size exceeds the limit');
+    const raw = buf.subarray(e.dataStart, e.dataStart + e.csize);
+    if (e.method === 0) {
+        if (raw.length > cap) throw refusal('uncompressed size exceeds the limit');
+        return raw;
+    }
+    if (e.method !== 8) throw refusal(`unsupported compression method ${e.method}`);
+    try {
+        return zlib.inflateRawSync(raw, { maxOutputLength: Math.max(1, cap) });
+    } catch (err) {
+        if (err && (err.code === 'ERR_BUFFER_TOO_LARGE' || err instanceof RangeError))
+            throw refusal('uncompressed size exceeds the limit');
+        throw refusal('corrupt compressed entry');
+    }
+}
+
+/**
+ * Throw (400, expose) when the buffer is not a sane ZIP or inflates beyond the
+ * limits. Returns { entries, totalBytes } when it is safe.
+ * @param {Buffer} buf
+ * @param {{maxEntries?:number, maxTotalBytes?:number}} [limits]
+ */
+function assertSafeXlsxBuffer(buf, limits = {}) {
+    const maxEntries = limits.maxEntries || XLSX_LIMITS.maxEntries;
+    const maxTotal = limits.maxTotalBytes || XLSX_LIMITS.maxTotalBytes;
+    const entries = zipDirectory(buf, maxEntries);
+    let total = 0;
+    for (const e of entries) {
+        total += inflateEntry(buf, e, maxTotal - total).length;
+        if (total > maxTotal) throw zipRefusal('uncompressed size exceeds the limit');
+    }
+    return { entries: entries.length, totalBytes: total };
+}
+
+// ---------------------------------------------------------------------------
+// Reading chosen files out of an uploaded ZIP (ESCO CSV package on the skills
+// library screen). Same guard, applied to what is actually extracted: only the
+// entries the caller asks for are inflated, each with a hard output cap, and
+// their total is capped too. No new dependency: zlib only.
+// ---------------------------------------------------------------------------
+const ZIP_READ_LIMITS = Object.freeze({
+    maxEntries: Number(process.env.ZIP_MAX_ENTRIES) || 5000,
+    maxTotalBytes: Number(process.env.ZIP_MAX_UNCOMPRESSED_BYTES) || 200 * 1024 * 1024,
+});
+
+function archiveRefusal(msg) {
+    const e = new Error(`Refused archive: ${msg}`);
+    e.status = 400;
+    e.expose = true;
+    e.code = 'zip_unsafe';
+    return e;
+}
+
+/**
+ * Extract the entries whose base name `wanted(baseName)` accepts. Returns a
+ * Map baseName -> Buffer (first match wins; directories and "__MACOSX" copies
+ * are ignored). Throws the 400 refusal on an unsafe or oversized archive.
+ * @param {Buffer} buf
+ * @param {(baseName:string)=>boolean} wanted
+ * @param {{maxEntries?:number, maxTotalBytes?:number}} [limits]
+ */
+function readZipEntries(buf, wanted, limits = {}) {
+    const maxEntries = limits.maxEntries || ZIP_READ_LIMITS.maxEntries;
+    const maxTotal = limits.maxTotalBytes || ZIP_READ_LIMITS.maxTotalBytes;
+    const out = new Map();
+    let total = 0;
+    for (const e of zipDirectory(buf, maxEntries, archiveRefusal)) {
+        if (!e.name || e.name.endsWith('/') || /(^|\/)__MACOSX\//.test(e.name)) continue;
+        const base = e.name.split(/[\\/]/).pop();
+        if (!base || out.has(base) || !wanted(base)) continue;
+        const data = inflateEntry(buf, e, maxTotal - total, archiveRefusal);
+        total += data.length;
+        if (total > maxTotal) throw archiveRefusal('uncompressed size exceeds the limit');
+        out.set(base, data);
+    }
+    return out;
 }
 
 /** File-path flavour, for the multer temp file every import reads. */
@@ -139,5 +198,7 @@ module.exports = {
     isNonDataRow,
     assertSafeXlsxBuffer,
     assertSafeXlsxFile,
+    readZipEntries,
     XLSX_LIMITS,
+    ZIP_READ_LIMITS,
 };
