@@ -562,5 +562,7 @@
   "palette_ocean": "Ocean",
   "theme_system": "Match device",
   "nav_modules": "Modules",
-  "nav_modules_title": "Choose which optional modules are switched on (adoption stage)"
+  "nav_modules_title": "Choose which optional modules are switched on (adoption stage)",
+  "notif_family_feedback360": "360° feedback",
+  "notif_family_oneonone": "One-to-ones"
 }

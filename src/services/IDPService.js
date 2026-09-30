@@ -515,6 +515,105 @@ class IDPService {
         return { idpId, objectives: gaps.length };
     }
 
+    /**
+     * "Add to my development plan" from a 360° report: one objective per chosen
+     * skill, appended to the person's OPEN plan (draft or active), or to a new
+     * draft plan when they have none. The subject acts on their own behalf here
+     * — it is their plan and their feedback — so this does not go through
+     * planAuthority (which governs what a MANAGER may do to someone's plan). The
+     * caller (Feedback360Service.addToIdp) has already checked that the report
+     * is the subject's own and released.
+     *
+     * A skill that already has an open objective on that plan is skipped, so a
+     * second click adds nothing. Each addition is journalled (idp_plan_events).
+     *
+     * @param {object} args
+     * @param {number} args.employeeId  the plan's owner
+     * @param {Array<{skillId:number, skillName:string, required:number|null, others:number|null}>} args.items
+     * @param {string} [args.locale]
+     * @param {object} [args.user]     the actor, for the journal
+     * @returns {Promise<{idpId:number, created:boolean, added:number, skipped:number}>}
+     */
+    static async addObjectivesFromFeedback({ employeeId, items = [], locale = 'fr', user = null }) {
+        const eid = Number(employeeId);
+        if (!eid) throw new Error('employeeId required');
+        const en = String(locale || 'fr')
+            .toLowerCase()
+            .startsWith('en');
+        const due = dueIso(DEFAULT_DUE_DAYS);
+        const dueTxt = dueLabel(due, en ? 'en' : 'fr');
+        const text = (it) => {
+            const lvl = it.required === null || it.required === undefined ? null : it.required;
+            if (en) {
+                return lvl === null
+                    ? `By ${dueTxt}, strengthen ${it.skillName}, as pointed out by my 360° feedback.`
+                    : `By ${dueTxt}, work towards level ${lvl} in ${it.skillName}, as pointed out by my 360° feedback.`;
+            }
+            return lvl === null
+                ? `D'ici le ${dueTxt}, renforcer ${it.skillName}, point relevé par mon feedback 360°.`
+                : `D'ici le ${dueTxt}, progresser vers le niveau ${lvl} en ${it.skillName}, point relevé par mon feedback 360°.`;
+        };
+        let idpId = null;
+        let created = false;
+        let added = 0;
+        let skipped = 0;
+        await db.runTransaction(async () => {
+            let plan = await db.get(
+                `SELECT id FROM idp_plans WHERE employee_id = ? AND status IN ('draft','active')
+                  ORDER BY created_at DESC LIMIT 1`,
+                [eid]
+            );
+            if (!plan) {
+                plan = await db.get(
+                    `INSERT INTO idp_plans (employee_id, status, priority) VALUES (?, 'draft', 'medium')
+                     ON CONFLICT (employee_id) WHERE status IN ('draft','active') DO NOTHING RETURNING id`,
+                    [eid]
+                );
+                if (plan) created = true;
+                else
+                    plan = await db.get(
+                        `SELECT id FROM idp_plans WHERE employee_id = ? AND status IN ('draft','active')
+                          ORDER BY created_at DESC LIMIT 1`,
+                        [eid]
+                    );
+            }
+            idpId = Number(plan.id);
+            for (const it of items) {
+                const sid = Number(it && it.skillId);
+                if (!sid) {
+                    skipped++;
+                    continue;
+                }
+                const exists = await db.get(
+                    `SELECT 1 AS ok FROM idp_objectives
+                      WHERE idp_id = ? AND skill_id = ? AND state IN ('pending','in_progress') LIMIT 1`,
+                    [idpId, sid]
+                );
+                if (exists) {
+                    skipped++;
+                    continue;
+                }
+                const obj = await db.get(
+                    `INSERT INTO idp_objectives (idp_id, skill_id, smart_text, due_on, priority, state)
+                     VALUES (?, ?, ?, ?, 'medium', 'pending') RETURNING id`,
+                    [idpId, sid, text(it), due]
+                );
+                await IDPService._planEvent(
+                    idpId,
+                    obj.id,
+                    'objective_added',
+                    null,
+                    'pending',
+                    user,
+                    null,
+                    { source: 'feedback360' }
+                );
+                added++;
+            }
+        });
+        return { idpId, created, added, skipped };
+    }
+
     // =====================================================================
     //  PLAN LIFECYCLE (3.23.17, F3).
     //

@@ -102,8 +102,8 @@ were reviewed, disputes that were closed and development actions that started.
 
 | Item                                                                                        | Seats         | Size      |
 | ------------------------------------------------------------------------------------------- | ------------- | --------- |
-| 360 / multi-rater feedback on the survey anonymity machinery (small-cell floor)             | HR, benchmark | 2–4 weeks |
-| Shared 1:1 space (both sides add topics, outcomes linked to IDP objectives)                 | Users, HR     | 2 weeks   |
+| 360 feedback: **delivered** (3-answer floor, IDP link). Next: builder, norms, PDF           | HR, benchmark | 2 weeks   |
+| Shared 1:1 space: **delivered** (agenda, private notes, actions). Next: calendar            | Users, HR     | 1 week    |
 | HRIS connector layer (`src/integrations/hris/`), SCIM placement rules, SFTP delta imports   | HR, benchmark | 3–6 weeks |
 | Board-ready quarterly talent review pack                                                    | HR            | 1 week    |
 | Phased-adoption presets (Stage 1: framework + assessment, Stage 2: + talent, Stage 3: + AI) | HR            | 1 week    |

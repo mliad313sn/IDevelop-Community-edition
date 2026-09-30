@@ -455,6 +455,18 @@ async function collectMyActions(user, translate) {
                     icon: 'fa-award',
                 });
         }
+        // 360° feedback (development module): questionnaires to fill in, raters
+        // to choose, nominations to approve — for the PERSON behind any account.
+        if (await require('../services/ModuleService').isOn('development')) {
+            const f = await require('../services/Feedback360Service').pendingCounts(user);
+            const f360 = [
+                [f.answer, t('ac_f360_answer', '360° questionnaires to fill in'), 'fa-comments'],
+                [f.nominate, t('ac_f360_nominate', '360° raters to choose'), 'fa-street-view'],
+                [f.approve, t('ac_f360_approve', '360° raters to approve'), 'fa-user-check'],
+            ];
+            for (const [count, label, icon] of f360)
+                if (count) items.push({ label, count, href: '/feedback-360', icon });
+        }
     } catch (e) {
         /* never block the bell */
     }

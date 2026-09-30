@@ -1,0 +1,178 @@
+<%# The 360° report. Everything on this page comes from Feedback360Report:
+    anonymous groups only as aggregates at or above the floor, merged into
+    "others" or hidden below it; "not observed" never counted as 0; comments
+    without names, shuffled. No rater identity reaches this template. %>
+<%
+  const R = report;
+  const GR = {
+      self: __('talentx:f360_group_self'),
+      manager: __('talentx:f360_group_manager'),
+      peer: __('talentx:f360_group_peer'),
+      direct_report: __('talentx:f360_group_direct_report'),
+      other: __('talentx:f360_group_other'),
+  };
+  const CM = {
+      keep: __('talentx:f360_c_keep'),
+      start: __('talentx:f360_c_start'),
+      stop: __('talentx:f360_c_stop'),
+  };
+  const NA = __('talentx:f360_not_observed');
+  const FEW = __('talentx:f360_too_few');
+  const cell = (c) => {
+      if (!c) return '—';
+      if (c.state === 'rated') return Number(c.value).toFixed(1);
+      if (c.state === 'not_observed') return NA;
+      if (c.state === 'too_few_observed') return FEW;
+      return '—';
+  };
+  const FLAG = {
+      blind_spot: __('talentx:f360_flag_blind_spot'),
+      hidden_strength: __('talentx:f360_flag_hidden_strength'),
+  };
+  const groupLine = (g) => {
+      if (g.state === 'shown') return __('talentx:f360_grp_shown', { n: g.responses });
+      if (g.state === 'merged') return __('talentx:f360_grp_merged');
+      if (g.state === 'hidden') return __('talentx:f360_grp_hidden', { n: R.threshold });
+      return __('talentx:f360_grp_empty');
+  };
+  const isSubject = R.viewer && R.viewer.isSubject;
+  // Pre-tick for the IDP: blind spots, and skills the others see below the required level.
+  const suggest = (k) => k.flag === 'blind_spot' || (k.required !== null && k.othersView !== null && k.othersView < k.required);
+%>
+<div class="page-header">
+    <h1><i class="fas fa-users-viewfinder" aria-hidden="true"></i> <%= isSubject ? __('talentx:f360_report_title') : __('talentx:f360_report_title_of', { name: R.subject.name }) %></h1>
+    <p><%= R.round.title %><% if (R.round.closedAt) { %> · <%= __('talentx:f360_closed_on', { date: fmtDate(R.round.closedAt) }) %><% } %></p>
+    <p><a class="btn btn-secondary btn-sm" href="<%= isSubject ? '/feedback-360' : '/feedback-360/subjects/' + R.subject.id %>"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('talentx:f360_back') %></a></p>
+</div>
+
+<% if (!isSubject && !R.released) { %>
+<div class="hz-callout card hz-360-note">
+    <i class="fas fa-eye-slash" aria-hidden="true"></i>
+    <p><%= __('talentx:f360_not_released_yet') %></p>
+    <% if (view.canRelease) { %>
+    <form method="post" action="/feedback-360/subjects/<%= R.subject.id %>/release">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-primary btn-sm"><%= __('talentx:f360_release_btn') %></button>
+    </form>
+    <% } %>
+</div>
+<% } %>
+
+<div class="hz-callout card hz-360-note">
+    <i class="fas fa-user-shield" aria-hidden="true"></i>
+    <p><%= __('talentx:f360_report_rules', { n: R.threshold }) %></p>
+</div>
+
+<section class="card hz-360-section" aria-labelledby="f360-groups-h">
+    <h2 id="f360-groups-h"><%= __('talentx:f360_groups_title') %></h2>
+    <ul class="hz-360-groups">
+        <% R.groups.forEach(function (g) { %>
+        <li class="hz-360-g-<%= g.state %>">
+            <strong><%= GR[g.key] %><% if (g.key === 'manager' && R.subject.managerName && g.state === 'shown') { %> (<%= R.subject.managerName %>)<% } %></strong>
+            <span><%= groupLine(g) %></span>
+        </li>
+        <% }); %>
+    </ul>
+</section>
+
+<section class="card hz-360-section" aria-labelledby="f360-skills-h">
+    <h2 id="f360-skills-h"><%= __('talentx:f360_skills_title') %></h2>
+    <% if (!R.skills.length) { %>
+        <%- include('../../partials/empty-state', { icon: 'fa-list-check', title: __('talentx:f360_no_skills'), text: __('talentx:f360_no_skills_text') }) %>
+    <% } else { %>
+    <div class="table-responsive"><table class="table table-cards hz-360-table">
+        <thead><tr>
+            <th><%= __('talentx:f360_th_skill') %></th>
+            <th class="num"><%= __('talentx:f360_th_required') %></th>
+            <th class="num"><%= __('talentx:f360_group_self') %></th>
+            <th class="num"><%= __('talentx:f360_group_manager') %></th>
+            <th class="num"><%= __('talentx:f360_th_others') %></th>
+            <th><%= __('talentx:f360_th_gap') %></th>
+        </tr></thead>
+        <tbody>
+        <% R.skills.forEach(function (k) { %>
+            <tr>
+                <td data-label="<%= __('talentx:f360_th_skill') %>"><%= k.label %></td>
+                <td class="num" data-label="<%= __('talentx:f360_th_required') %>"><%= k.required === null ? '—' : k.required %></td>
+                <td class="num" data-label="<%= __('talentx:f360_group_self') %>"><%= cell(k.self) %></td>
+                <td class="num" data-label="<%= __('talentx:f360_group_manager') %>"><%= cell(k.manager) %></td>
+                <td class="num" data-label="<%= __('talentx:f360_th_others') %>"><%= cell(k.others) %></td>
+                <td data-label="<%= __('talentx:f360_th_gap') %>"><% if (k.flag) { %><span class="badge <%= k.flag === 'blind_spot' ? 'badge-warning' : 'badge-success' %>"><%= FLAG[k.flag] %></span><% } else { %>—<% } %></td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+    <% } %>
+</section>
+
+<section class="card hz-360-section" aria-labelledby="f360-beh-h">
+    <h2 id="f360-beh-h"><%= __('talentx:f360_behaviours_title') %></h2>
+    <div class="table-responsive"><table class="table table-cards hz-360-table">
+        <thead><tr>
+            <th><%= __('talentx:f360_th_statement') %></th>
+            <th class="num"><%= __('talentx:f360_group_self') %></th>
+            <th class="num"><%= __('talentx:f360_group_manager') %></th>
+            <th class="num"><%= __('talentx:f360_th_others') %></th>
+            <th><%= __('talentx:f360_th_gap') %></th>
+        </tr></thead>
+        <tbody>
+        <% R.behaviours.forEach(function (k) { %>
+            <tr>
+                <td data-label="<%= __('talentx:f360_th_statement') %>"><%= k.label %></td>
+                <td class="num" data-label="<%= __('talentx:f360_group_self') %>"><%= cell(k.self) %></td>
+                <td class="num" data-label="<%= __('talentx:f360_group_manager') %>"><%= cell(k.manager) %></td>
+                <td class="num" data-label="<%= __('talentx:f360_th_others') %>"><%= cell(k.others) %></td>
+                <td data-label="<%= __('talentx:f360_th_gap') %>"><% if (k.flag) { %><span class="badge <%= k.flag === 'blind_spot' ? 'badge-warning' : 'badge-success' %>"><%= FLAG[k.flag] %></span><% } else { %>—<% } %></td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+</section>
+
+<div class="hz-360-split">
+    <section class="card hz-360-section" aria-labelledby="f360-blind-h">
+        <h2 id="f360-blind-h"><i class="fas fa-eye-low-vision" aria-hidden="true"></i> <%= __('talentx:f360_blind_spots') %></h2>
+        <p class="text-muted"><%= __('talentx:f360_blind_spots_hint') %></p>
+        <% if (!R.blindSpots.length) { %><p class="text-muted"><%= __('talentx:f360_none_found') %></p><% } else { %>
+        <ul><% R.blindSpots.forEach(function (b) { %><li><%= b.label %> <span class="text-muted">(+<%= Number(b.gap).toFixed(1) %>)</span></li><% }); %></ul>
+        <% } %>
+    </section>
+    <section class="card hz-360-section" aria-labelledby="f360-hidden-h">
+        <h2 id="f360-hidden-h"><i class="fas fa-gem" aria-hidden="true"></i> <%= __('talentx:f360_hidden_strengths') %></h2>
+        <p class="text-muted"><%= __('talentx:f360_hidden_strengths_hint') %></p>
+        <% if (!R.hiddenStrengths.length) { %><p class="text-muted"><%= __('talentx:f360_none_found') %></p><% } else { %>
+        <ul><% R.hiddenStrengths.forEach(function (b) { %><li><%= b.label %> <span class="text-muted">(<%= Number(b.gap).toFixed(1) %>)</span></li><% }); %></ul>
+        <% } %>
+    </section>
+</div>
+
+<section class="card hz-360-section" aria-labelledby="f360-comments-h">
+    <h2 id="f360-comments-h"><i class="fas fa-comments" aria-hidden="true"></i> <%= __('talentx:f360_comments_title') %></h2>
+    <p class="text-muted"><%= __('talentx:f360_comments_hint') %></p>
+    <div class="hz-360-comments">
+        <% ['keep', 'start', 'stop'].forEach(function (k) { %>
+        <div>
+            <h3><%= CM[k] %></h3>
+            <% if (!R.comments[k].length) { %><p class="text-muted"><%= __('talentx:f360_no_comments') %></p><% } else { %>
+            <ul><% R.comments[k].forEach(function (c) { %><li><%= c %></li><% }); %></ul>
+            <% } %>
+        </div>
+        <% }); %>
+    </div>
+</section>
+
+<% if (isSubject && R.skills.length) { %>
+<section class="card hz-360-section" aria-labelledby="f360-idp-h">
+    <h2 id="f360-idp-h"><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('talentx:f360_idp_title') %></h2>
+    <p class="text-muted"><%= __('talentx:f360_idp_hint') %></p>
+    <form method="post" action="/feedback-360/subjects/<%= R.subject.id %>/idp">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <ul class="hz-360-pick">
+            <% R.skills.forEach(function (k) { %>
+            <li><label><input type="checkbox" name="skillIds" value="<%= k.skillId %>"<%= suggest(k) ? ' checked' : '' %>> <%= k.label %></label></li>
+            <% }); %>
+        </ul>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('talentx:f360_idp_btn') %></button>
+    </form>
+</section>
+<% } %>

@@ -427,6 +427,44 @@ const ENTRIES = [
         },
     },
     {
+        id: 'one_on_one',
+        roles: EMP,
+        module: 'engagement',
+        link: '/one-on-one',
+        title: { fr: 'Mes entretiens 1:1', en: 'My one-to-ones' },
+        ask: {
+            fr: 'Comment préparer mon entretien individuel ?',
+            en: 'How do I prepare my one-to-one?',
+        },
+        keywords: {
+            fr: ['1:1', 'entretien individuel', 'ordre du jour', 'tete a tete', 'point individuel'],
+            en: ['1:1', 'one-to-one', 'one on one', 'agenda', 'meeting notes'],
+        },
+        answer: {
+            fr: 'L’espace 1:1 est partagé avec votre responsable : chacun ajoute ses sujets avant l’entretien (l’autre est prévenu), vous prenez des notes partagées et des notes privées que vous seul pouvez lire, et vous convenez d’actions avec un responsable et une échéance. Votre responsable l’ouvre depuis « Mon équipe ».',
+            en: 'The 1:1 space is shared with your manager: each of you adds topics before the meeting (the other is notified), you keep shared notes and private notes only you can read, and you agree actions with an owner and a due date. Your manager opens it from “My team”.',
+        },
+    },
+    {
+        id: 'feedback_360',
+        roles: EMP,
+        module: 'development',
+        link: '/feedback-360',
+        title: { fr: 'Mon feedback 360°', en: 'My 360° feedback' },
+        ask: {
+            fr: 'Comment fonctionne le feedback 360° ?',
+            en: 'How does 360° feedback work?',
+        },
+        keywords: {
+            fr: ['360', 'feedback 360', 'multi evaluateurs', 'evaluateurs', 'questionnaire 360'],
+            en: ['360', '360 feedback', 'multi-rater', 'raters', '360 questionnaire'],
+        },
+        answer: {
+            fr: 'Quand un tour 360° est lancé pour vous, vous proposez vos évaluateurs (collègues, collaborateurs, autres) et votre responsable valide la liste. Les réponses des autres ne sont montrées que regroupées, à partir de 3 réponses ; « non observé » n’est jamais compté comme 0. Une fois le rapport communiqué, vous pouvez ajouter des objectifs à votre plan de développement.',
+            en: 'When a 360° round is launched for you, you propose your raters (peers, direct reports, others) and your manager approves the list. Others’ answers are only shown grouped, from 3 answers; “not observed” is never counted as 0. Once the report is released, you can add objectives to your development plan.',
+        },
+    },
+    {
         id: 'dispute_rating',
         roles: EMP,
         link: '/employee/assessment-status',
@@ -618,6 +656,30 @@ const ENTRIES = [
         answer: {
             fr: 'Depuis les PDI, créez un plan pour une personne de votre périmètre : objectifs rattachés à ses écarts mesurés, actions (formation, coaching, mise en situation) et échéances. Activez-le ; la personne suit et met à jour ses actions.',
             en: 'From IDPs, create a plan for someone in your span: objectives tied to their measured gaps, actions (training, coaching, on-the-job) and due dates. Activate it; the person follows and updates their actions.',
+        },
+    },
+    {
+        id: 'feedback_360_console',
+        roles: MGR_ADM,
+        module: 'development',
+        link: '/feedback-360/manage',
+        title: { fr: 'Console feedback 360°', en: '360° feedback console' },
+        ask: {
+            fr: 'Comment lancer un feedback 360° pour mon équipe ?',
+            en: 'How do I launch 360° feedback for my team?',
+        },
+        keywords: {
+            fr: [
+                'lancer un 360',
+                'campagne 360',
+                'feedback 360 equipe',
+                'relancer les evaluateurs',
+            ],
+            en: ['launch a 360', '360 campaign', 'team 360 feedback', 'remind raters'],
+        },
+        answer: {
+            fr: 'Depuis la console 360°, lancez un tour pour une personne ou une campagne pour plusieurs : échéance, nombre minimum d’évaluateurs par groupe et seuil d’anonymat (3 au moins). Validez les évaluateurs proposés, relancez ceux qui n’ont pas répondu — vous voyez qui a répondu, jamais ce qu’il a répondu — puis communiquez le rapport après la clôture.',
+            en: 'From the 360° console, launch a round for one person or a campaign for several: deadline, minimum raters per group and anonymity threshold (3 or more). Approve the proposed raters, remind those who have not answered — you see who answered, never what — then release the report after the round closes.',
         },
     },
     {

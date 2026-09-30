@@ -133,6 +133,8 @@ function saCell(v) { return (v === null || v === undefined || v === '') ? '—' 
 .sa-emp-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
 .sa-badge{padding:2px 9px;border-radius:999px;color:#fff;font-size:.76rem;white-space:nowrap}
 .sa-detail{display:none;padding:0}
+.sa-goals{padding:.6rem 1rem;margin:.5rem 0;border:1px solid var(--border-subtle,#e2e8f0);border-radius:10px;font-size:.9rem}
+.sa-goals-list{margin:.3rem 0 0;padding-left:1.1rem}
 .sa-detail.open{display:block}
 .sa-detail table{width:100%;border-collapse:collapse;font-size:13.5px}
 .sa-detail th,.sa-detail td{padding:7px 12px;border-bottom:1px solid var(--border-subtle);text-align:left;vertical-align:middle}
@@ -166,6 +168,41 @@ function saCell(v) { return (v === null || v === undefined || v === '') ? '—' 
 <link rel="stylesheet" href="/css/sa-skill-help.css?v=<%= assetVersion %>">
 <script src="/js/sa-skill-help.js?v=<%= assetVersion %>"></script>
 <script nonce="<%= cspNonce %>">
+// The person's current goals, shown as CONTEXT beside their ratings (read-only;
+// the review logic does not read them). Engagement module only.
+const SA_GOALS = {
+  on: <%- JSON.stringify(typeof appModules !== 'undefined' && !!appModules && appModules.engagement === true) %>,
+  title: <%- JSON.stringify(__('talentx:rvx_goals_title')) %>,
+  none: <%- JSON.stringify(__('talentx:rvx_goals_none')) %>,
+  failed: <%- JSON.stringify(__('talentx:rvx_goals_failed')) %>,
+  progress: <%- JSON.stringify(__('talentx:rvx_goals_progress', { cur: '{cur}', target: '{target}' })) %>,
+  loaded: {},
+  load(empId){
+    if (!this.on || this.loaded[empId]) return;
+    const box = document.getElementById('sa-goals-' + empId);
+    if (!box) return;
+    this.loaded[empId] = true;
+    fetch('/api/v1/employees/' + Number(empId) + '/goals', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(j => {
+        const goals = ((j && j.data) || []).filter(g => g.status === 'active' || g.status === 'at_risk');
+        const objectives = goals.filter(g => g.kind === 'objective');
+        const krs = goals.filter(g => g.kind === 'key_result');
+        let html = '<strong>' + escapeHtml(this.title) + '</strong>';
+        if (!objectives.length) { box.innerHTML = html + ' <span class="text-muted">' + escapeHtml(this.none) + '</span>'; return; }
+        html += '<ul class="sa-goals-list">' + objectives.map(o => {
+          const kids = krs.filter(k => Number(k.parentId) === Number(o.id));
+          return '<li>' + escapeHtml(o.title) + (kids.length ? '<ul>' + kids.map(k => {
+            const tgt = Number(k.targetValue);
+            const txt = tgt > 0 ? String(this.progress).replace('{cur}', Number(k.currentValue) || 0).replace('{target}', tgt) : String(Number(k.currentValue) || 0);
+            return '<li>' + escapeHtml(k.title) + ' <span class="text-muted">' + escapeHtml(txt + (k.metricUnit ? ' ' + k.metricUnit : '')) + '</span></li>';
+          }).join('') + '</ul>' : '') + '</li>';
+        }).join('') + '</ul>';
+        box.innerHTML = html;
+      })
+      .catch(() => { box.innerHTML = '<span class="text-muted">' + escapeHtml(this.failed) + '</span>'; });
+  }
+};
 const SA_T = {
   approve: <%- JSON.stringify(__('talentx:approve')) %>,
   rateLbl: <%- JSON.stringify(__('talentx:sar_rate_lbl')) %>,
@@ -470,7 +507,7 @@ const SA = {
     document.getElementById('sa-thread-input').value='';
     await this.openThread(this.current); await this.load();
   },
-  toggle(empId){ const d=document.getElementById('sa-detail-'+empId); if(!d) return; const open=d.classList.toggle('open'); const b=document.getElementById('sa-toggle-'+empId); if(b) b.setAttribute('aria-expanded', open?'true':'false'); },
+  toggle(empId){ const d=document.getElementById('sa-detail-'+empId); if(!d) return; const open=d.classList.toggle('open'); const b=document.getElementById('sa-toggle-'+empId); if(b) b.setAttribute('aria-expanded', open?'true':'false'); if (open) SA_GOALS.load(empId); },
   // ---- campaign filter + "waiting for the employee" tab ------------
   cycleId: '',
   cycles: [],
@@ -564,7 +601,7 @@ const SA = {
           '<div><div class="sa-emp-name">'+escapeHtml(e.firstName+' '+e.lastName)+'</div><div class="sa-emp-sub">'+SA_T.skillsPending.replace('{total}', e.total).replace('{pending}', e.pending)+'</div></div>'+
           '<div class="sa-emp-counts">'+counts+'</div>'+
           '<div class="sa-emp-actions"><button class="sa-toggle" id="sa-toggle-'+e.employeeId+'" aria-expanded="false" aria-controls="sa-detail-'+e.employeeId+'" onclick="SA.toggle('+e.employeeId+')">'+SA_T.details+'</button>'+approveBtn+'</div></div>'+
-          '<div class="sa-detail" id="sa-detail-'+e.employeeId+'"><div class="table-wrapper"><table><thead><tr>'+
+          '<div class="sa-detail" id="sa-detail-'+e.employeeId+'">'+(SA_GOALS.on ? '<div class="sa-goals" id="sa-goals-'+e.employeeId+'"></div>' : '')+'<div class="table-wrapper"><table><thead><tr>'+
             '<th>'+SA_T.skill+'</th>'+
             '<th class="sa-num">'+SA_T.rvxRequired+'</th>'+
             '<th class="sa-num">'+SA_T.rvxSelf+'</th>'+

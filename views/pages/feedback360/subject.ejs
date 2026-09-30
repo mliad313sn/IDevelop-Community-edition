@@ -1,0 +1,237 @@
+<%# Raters of one 360° subject.
+    - The SUBJECT proposes peers, direct reports and others, then submits.
+      Once approved they see only a count per group — never who answered.
+    - The MANAGER / HR in scope / launcher approve, decline or add raters and
+      see who has answered (to remind them), never what they answered. %>
+<%
+  const s = view.subject;
+  const role = view.role;
+  const staff = role.isManager || role.isHr || role.isLauncher;
+  const ST = {
+      nominating: __('talentx:f360_st_nominating'),
+      awaiting_approval: __('talentx:f360_st_awaiting_approval'),
+      collecting: __('talentx:f360_st_collecting'),
+      closed: __('talentx:f360_st_closed'),
+  };
+  const GR = {
+      self: __('talentx:f360_group_self'),
+      manager: __('talentx:f360_group_manager'),
+      peer: __('talentx:f360_group_peer'),
+      direct_report: __('talentx:f360_group_direct_report'),
+      other: __('talentx:f360_group_other'),
+  };
+  const NST = {
+      proposed: __('talentx:f360_nom_proposed'),
+      approved: __('talentx:f360_nom_approved'),
+      declined: __('talentx:f360_nom_declined'),
+  };
+  const editable = view.canNominate || view.canApprove;
+%>
+<div class="page-header">
+    <h1><i class="fas fa-users-viewfinder" aria-hidden="true"></i> <%= role.isSubject ? __('talentx:f360_subject_title') : __('talentx:f360_subject_title_of', { name: s.name }) %></h1>
+    <p><%= s.round.title %> · <%= __('talentx:f360_deadline_on', { date: fmtDate(s.round.deadline) }) %> · <span class="badge badge-secondary"><%= ST[s.status] || s.status %></span></p>
+    <p>
+        <a class="btn btn-secondary btn-sm" href="<%= staff ? '/feedback-360/rounds/' + s.roundId : '/feedback-360' %>"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('talentx:f360_back') %></a>
+        <% if (view.reportVisible) { %>
+        <a class="btn btn-primary btn-sm" href="/feedback-360/subjects/<%= s.id %>/report"><%= role.isSubject ? __('talentx:f360_read_my_report') : __('talentx:f360_read_report') %></a>
+        <% } %>
+    </p>
+</div>
+
+<% if (role.isSubject) { %>
+<div class="hz-callout card hz-360-note">
+    <i class="fas fa-circle-info" aria-hidden="true"></i>
+    <p><%= __('talentx:f360_nominate_help', { min: s.round.minRaters, n: s.round.threshold }) %></p>
+</div>
+<% } %>
+
+<% if (view.canRelease) { %>
+<div class="hz-callout card hz-360-note">
+    <i class="fas fa-envelope-open-text" aria-hidden="true"></i>
+    <p><%= __('talentx:f360_release_help') %></p>
+    <form method="post" action="/feedback-360/subjects/<%= s.id %>/release">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-primary btn-sm"><%= __('talentx:f360_release_btn') %></button>
+    </form>
+</div>
+<% } %>
+
+<section class="card hz-360-section" aria-labelledby="f360-counts-h">
+    <h2 id="f360-counts-h"><%= __('talentx:f360_counts_title') %></h2>
+    <ul class="hz-360-counts">
+        <% ['self', 'manager', 'peer', 'direct_report', 'other'].forEach(function (g) { %>
+        <li><span><%= GR[g] %></span> <strong><%= view.counts[g] %></strong></li>
+        <% }); %>
+    </ul>
+    <% if (!s.managerEmployeeId) { %><p class="text-muted"><%= __('talentx:f360_no_manager') %></p><% } %>
+</section>
+
+<section class="card hz-360-section" aria-labelledby="f360-noms-h">
+    <h2 id="f360-noms-h"><%= role.isSubject ? __('talentx:f360_my_proposals') : __('talentx:f360_raters_title') %></h2>
+    <div class="table-responsive"><table class="table table-cards" id="f360-noms">
+        <thead><tr>
+            <th><%= __('talentx:f360_th_rater') %></th>
+            <th><%= __('talentx:f360_th_group') %></th>
+            <th><%= __('talentx:f360_th_nomination') %></th>
+            <% if (staff) { %><th><%= __('talentx:f360_th_answered') %></th><% } %>
+            <% if (editable) { %><th><span class="sr-only"><%= __('talentx:f360_th_action') %></span></th><% } %>
+        </tr></thead>
+        <tbody>
+        <% if (!view.nominations.length) { %>
+            <tr class="empty-row"><td colspan="5" class="text-muted"><%= __('talentx:f360_no_raters_yet') %></td></tr>
+        <% } %>
+        <% view.nominations.forEach(function (n) { %>
+            <tr data-nom="<%= n.id %>" data-emp="<%= n.employeeId %>" data-group="<%= n.group %>">
+                <td data-label="<%= __('talentx:f360_th_rater') %>"><%= n.name %></td>
+                <td data-label="<%= __('talentx:f360_th_group') %>"><%= GR[n.group] || n.group %></td>
+                <td data-label="<%= __('talentx:f360_th_nomination') %>"><%= n.status ? (NST[n.status] || n.status) : '—' %></td>
+                <% if (staff) { %>
+                <td data-label="<%= __('talentx:f360_th_answered') %>"><% if (n.status !== 'approved') { %>—<% } else if (n.responded) { %><span class="badge badge-success"><%= __('talentx:f360_answered_yes') %></span><% } else { %><span class="badge badge-warning"><%= __('talentx:f360_answered_no') %></span><% } %></td>
+                <% } %>
+                <% if (editable) { %>
+                <td class="cell-actions">
+                    <% if (view.canApprove && n.group !== 'self' && n.group !== 'manager' && !n.responded) { %>
+                    <label class="sr-only" for="f360-dec-<%= n.id %>"><%= __('talentx:f360_decision') %></label>
+                    <select id="f360-dec-<%= n.id %>" class="form-control form-control-sm" data-decision="<%= n.id %>">
+                        <option value="approved"<%= n.status !== 'declined' ? ' selected' : '' %>><%= __('talentx:f360_nom_approved') %></option>
+                        <option value="declined"<%= n.status === 'declined' ? ' selected' : '' %>><%= __('talentx:f360_nom_declined') %></option>
+                    </select>
+                    <% } else if (view.canNominate) { %>
+                    <button type="button" class="btn btn-secondary btn-sm" data-remove="<%= n.employeeId %>"><%= __('talentx:f360_remove') %></button>
+                    <% } %>
+                </td>
+                <% } %>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+
+    <% if (editable) { %>
+    <div class="hz-360-add">
+        <h3><%= __('talentx:f360_add_rater') %></h3>
+        <div class="hz-360-grid">
+            <div class="form-group">
+                <label for="f360-search"><%= __('talentx:f360_search_label') %></label>
+                <input id="f360-search" class="form-control" autocomplete="off" placeholder="<%= __('talentx:f360_search_ph') %>">
+                <ul class="hz-360-results" id="f360-results" role="listbox" aria-label="<%= __('talentx:f360_search_label') %>"></ul>
+            </div>
+            <div class="form-group">
+                <label for="f360-group"><%= __('talentx:f360_th_group') %></label>
+                <select id="f360-group" class="form-control">
+                    <% groups.forEach(function (g) { %><option value="<%= g %>"><%= GR[g] %></option><% }); %>
+                </select>
+            </div>
+        </div>
+        <p class="text-muted hz-360-hint" id="f360-picked" aria-live="polite"></p>
+        <button type="button" class="btn btn-secondary btn-sm" id="f360-add"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('talentx:f360_add_btn') %></button>
+    </div>
+    <div class="hz-360-actions">
+        <% if (view.canNominate) { %>
+        <button type="button" class="btn btn-secondary" id="f360-save"><%= __('talentx:f360_save_draft') %></button>
+        <button type="button" class="btn btn-primary" id="f360-submit"><%= __('talentx:f360_submit_noms') %></button>
+        <% } else { %>
+        <button type="button" class="btn btn-primary" id="f360-approve"><%= __('talentx:f360_approve_btn') %></button>
+        <% } %>
+        <span class="text-muted" id="f360-msg" role="status" aria-live="polite"></span>
+    </div>
+    <% } else if (role.isSubject) { %>
+        <p class="text-muted"><%= s.status === 'awaiting_approval' ? __('talentx:f360_waiting_approval') : __('talentx:f360_list_locked') %></p>
+    <% } %>
+</section>
+
+<% if (editable) { %>
+<script nonce="<%= cspNonce %>">
+(function () {
+    var SID = <%- JSON.stringify(Number(s.id)) %>;
+    var MODE = <%- JSON.stringify(view.canNominate ? 'nominate' : 'approve') %>;
+    var CSRF = <%- JSON.stringify(csrfToken) %>;
+    var T = <%- include('../../partials/json-script', { v: {
+        groups: GR, picked: __('talentx:f360_picked'), pickFirst: __('talentx:f360_pick_first'),
+        saved: __('talentx:f360_saved'), failed: __('talentx:f360_failed'), remove: __('talentx:f360_remove'),
+        added: __('talentx:f360_added_pending'), none: __('talentx:f360_search_none')
+    } }) %>;
+    var table = document.querySelector('#f360-noms tbody');
+    var additions = [];
+    var picked = null;
+    function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    function msg(t) { document.getElementById('f360-msg').textContent = t || ''; }
+    function post(url, body) {
+        return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'x-csrf-token': CSRF }, body: JSON.stringify(body) })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); });
+    }
+    var search = document.getElementById('f360-search');
+    var results = document.getElementById('f360-results');
+    var timer = null;
+    search.addEventListener('input', function () {
+        clearTimeout(timer);
+        var q = search.value.trim();
+        if (q.length < 2) { results.innerHTML = ''; return; }
+        timer = setTimeout(function () {
+            fetch('/feedback-360/people?q=' + encodeURIComponent(q), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                .then(function (r) { return r.ok ? r.json() : { data: [] }; })
+                .then(function (j) {
+                    var list = (j && j.data) || [];
+                    results.innerHTML = list.length ? list.map(function (p) {
+                        return '<li><button type="button" class="btn btn-link btn-sm" data-pick="' + Number(p.id) + '" data-name="' + esc(p.name) + '">' + esc(p.name) + '</button></li>';
+                    }).join('') : '<li class="text-muted">' + esc(T.none) + '</li>';
+                });
+        }, 250);
+    });
+    results.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-pick]');
+        if (!b) return;
+        picked = { employeeId: Number(b.getAttribute('data-pick')), name: b.getAttribute('data-name') };
+        document.getElementById('f360-picked').textContent = T.picked + ' ' + picked.name;
+        results.innerHTML = '';
+    });
+    function currentRows() {
+        return Array.prototype.map.call(table.querySelectorAll('tr[data-emp]'), function (tr) {
+            return { employeeId: Number(tr.getAttribute('data-emp')), group: tr.getAttribute('data-group'), nom: tr.getAttribute('data-nom') };
+        });
+    }
+    document.getElementById('f360-add').addEventListener('click', function () {
+        if (!picked) { msg(T.pickFirst); return; }
+        var group = document.getElementById('f360-group').value;
+        var empty = table.querySelector('tr.empty-row');
+        if (empty) empty.remove();
+        var tr = document.createElement('tr');
+        tr.setAttribute('data-emp', String(picked.employeeId));
+        tr.setAttribute('data-group', group);
+        tr.innerHTML = '<td>' + esc(picked.name) + '</td><td>' + esc(T.groups[group] || group) + '</td><td>' + esc(T.added) + '</td>' +
+            (MODE === 'approve' ? '<td>—</td>' : '') +
+            '<td class="cell-actions"><button type="button" class="btn btn-secondary btn-sm" data-remove="' + picked.employeeId + '">' + esc(T.remove) + '</button></td>';
+        table.appendChild(tr);
+        additions.push({ employeeId: picked.employeeId, group: group });
+        picked = null; search.value = ''; document.getElementById('f360-picked').textContent = '';
+    });
+    table.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-remove]');
+        if (!b) return;
+        var id = Number(b.getAttribute('data-remove'));
+        additions = additions.filter(function (a) { return a.employeeId !== id; });
+        var tr = b.closest('tr'); if (tr) tr.remove();
+    });
+    function sendNominations(submit) {
+        var raters = currentRows().map(function (r) { return { employeeId: r.employeeId, group: r.group }; });
+        post('/feedback-360/subjects/' + SID + '/nominations', { raters: raters, submit: submit }).then(function (r) {
+            if (!r.ok) { msg((r.body && r.body.error) || T.failed); return; }
+            if (submit) window.location.reload(); else msg(T.saved);
+        }).catch(function () { msg(T.failed); });
+    }
+    var save = document.getElementById('f360-save');
+    if (save) save.addEventListener('click', function () { sendNominations(false); });
+    var submitBtn = document.getElementById('f360-submit');
+    if (submitBtn) submitBtn.addEventListener('click', function () { sendNominations(true); });
+    var approve = document.getElementById('f360-approve');
+    if (approve) approve.addEventListener('click', function () {
+        var decisions = Array.prototype.map.call(document.querySelectorAll('[data-decision]'), function (sel) {
+            return { nominationId: Number(sel.getAttribute('data-decision')), status: sel.value };
+        });
+        post('/feedback-360/subjects/' + SID + '/approve', { decisions: decisions, additions: additions }).then(function (r) {
+            if (!r.ok) { msg((r.body && r.body.error) || T.failed); return; }
+            window.location.reload();
+        }).catch(function () { msg(T.failed); });
+    });
+})();
+</script>
+<% } %>

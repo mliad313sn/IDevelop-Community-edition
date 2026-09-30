@@ -501,6 +501,8 @@ describe('knowledge-base integrity', () => {
             'v2-continuity.js': ['/v2/continuity'],
             'v2-lms.js': ['/v2/lms'],
             'v2-capability.js': ['/v2/cap'],
+            'feedback360.js': ['/feedback-360'],
+            'one-on-one.js': ['/one-on-one'],
         };
         const pats = [];
         for (const [f, [prefix]] of Object.entries(files)) {

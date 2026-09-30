@@ -693,6 +693,20 @@ router.post('/api/coaching/:id/validate', requireAuth, CoachingPlanController.va
 router.post('/api/coaching/:id/cancel', requireAuth, CoachingPlanController.cancel);
 router.post('/api/coaching/actions/:actionId', requireAuth, CoachingPlanController.actionUpdate);
 
+// ---- 360° feedback (development) and the shared one-to-one space (engagement) ----
+// Each behind its module switch (Administration → Modules): the app's 404 while
+// off. Authority is enforced in Feedback360Service / OneOnOneService.
+try {
+    router.use('/feedback-360', _mod('development'), require('./feedback360'));
+} catch (e) {
+    mountFailed('feedback360', e);
+}
+try {
+    router.use('/one-on-one', _mod('engagement'), require('./one-on-one'));
+} catch (e) {
+    mountFailed('one-on-one', e);
+}
+
 // ---- Phase 4: 9-Box Talent Management (manager-driven, confidential) --------
 // Confidential: managers/admins only — regular employees may never reach these.
 // Consolidated HR oversight hub: PIPs + IDPs + coaching + calibration/bias in one view.

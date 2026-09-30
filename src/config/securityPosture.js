@@ -239,6 +239,22 @@ const CATEGORIES = [
                 ],
             },
             {
+                id: 'feedback-privacy',
+                fr: 'Feedback 360° anonyme : une réponse est enregistrée sans identité ni horodatage de l’évaluateur ; les groupes de collègues, collaborateurs et autres ne sont montrés que regroupés à partir de 3 réponses (un groupe de 2 n’est jamais montré) ; commentaires sans nom et mélangés. Notes privées des entretiens individuels lisibles par leur seul auteur, administrateurs compris.',
+                en: 'Anonymous 360° feedback: a response is stored with no rater identity or timestamp; peer, direct-report and other groups are only shown aggregated from 3 answers (a group of 2 is never shown); comments without names, shuffled. One-to-one private notes readable by their author only, administrators included.',
+                evidence: [
+                    'src/services/Feedback360Report.js',
+                    'src/services/Feedback360Service.js',
+                    'src/services/OneOnOneService.js',
+                    'db/postgres/161_feedback_360.sql',
+                ],
+                tests: [
+                    'feedback360Report.test.js',
+                    'feedback360-db.test.js',
+                    'oneOnOne-db.test.js',
+                ],
+            },
+            {
                 id: 'transparency',
                 fr: 'Registre pour les représentants du personnel et page « Ce qui est enregistré sur moi » pour chaque salarié.',
                 en: 'Register for employee representatives and a "What is recorded about me" page for every employee.',

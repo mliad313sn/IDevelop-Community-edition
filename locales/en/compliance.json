@@ -313,5 +313,8 @@
   "mydata_rights_title": "Request an export or erasure",
   "mydata_rights_body": "You can obtain a full copy of your data (right of access and portability) or ask for it to be erased. Send your request to your HR department or to the data protection officer: an administrator produces the export or carries out the erasure, and every operation is recorded.",
   "mydata_rights_limits": "Some data may be kept where the law requires it (for example a legal hold).",
-  "mydata_failed": "Your data could not be read just now. Please try again later; your right of access through HR is unaffected."
+  "mydata_failed": "Your data could not be read just now. Please try again later; your right of access through HR is unaffected.",
+  "cat_oneOnOneAgenda": "One-to-one agenda topics",
+  "cat_oneOnOneNotes": "One-to-one notes (shared, and your private notes)",
+  "cat_feedback360": "360° feedback rounds about you"
 }

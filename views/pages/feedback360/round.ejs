@@ -1,0 +1,90 @@
+<%# One 360° round, for its launcher, the subjects' managers and HR in scope:
+    each subject, their raters and WHO has answered (to remind the others) —
+    never what anyone answered. %>
+<%
+  const r = view.round;
+  const ST = {
+      nominating: __('talentx:f360_st_nominating'),
+      awaiting_approval: __('talentx:f360_st_awaiting_approval'),
+      collecting: __('talentx:f360_st_collecting'),
+      closed: __('talentx:f360_st_closed'),
+  };
+  const GR = {
+      self: __('talentx:f360_group_self'),
+      manager: __('talentx:f360_group_manager'),
+      peer: __('talentx:f360_group_peer'),
+      direct_report: __('talentx:f360_group_direct_report'),
+      other: __('talentx:f360_group_other'),
+  };
+  const NST = {
+      proposed: __('talentx:f360_nom_proposed'),
+      approved: __('talentx:f360_nom_approved'),
+      declined: __('talentx:f360_nom_declined'),
+  };
+%>
+<div class="page-header">
+    <h1><i class="fas fa-users-viewfinder" aria-hidden="true"></i> <%= r.title %></h1>
+    <p>
+        <%= r.status === 'open' ? __('talentx:f360_round_open') : __('talentx:f360_round_closed') %>
+        · <%= __('talentx:f360_deadline_on', { date: fmtDate(r.deadline) }) %>
+        · <%= r.releaseMode === 'on_close' ? __('talentx:f360_release_on_close') : __('talentx:f360_release_manager') %>
+        · <%= __('talentx:f360_threshold_is', { n: r.threshold }) %>
+    </p>
+    <p><a class="btn btn-secondary btn-sm" href="/feedback-360/manage"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('talentx:f360_back_console') %></a></p>
+</div>
+
+<% if (r.status === 'open') { %>
+<div class="card hz-360-actions">
+    <form method="post" action="/feedback-360/rounds/<%= r.id %>/remind">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-bell" aria-hidden="true"></i> <%= __('talentx:f360_remind_btn') %></button>
+    </form>
+    <% if (view.canClose) { %>
+    <form method="post" action="/feedback-360/rounds/<%= r.id %>/close" data-confirm="<%= __('talentx:f360_close_confirm') %>">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-flag-checkered" aria-hidden="true"></i> <%= __('talentx:f360_close_btn') %></button>
+    </form>
+    <% } %>
+    <p class="text-muted hz-360-hint"><%= __('talentx:f360_status_hint') %></p>
+</div>
+<% } %>
+
+<% view.subjects.forEach(function (v) { const s = v.subject; %>
+<section class="card hz-360-section" aria-labelledby="f360-s-<%= s.id %>">
+    <div class="hz-360-head">
+        <h2 id="f360-s-<%= s.id %>"><%= s.name %></h2>
+        <span class="badge badge-secondary"><%= ST[s.status] || s.status %></span>
+    </div>
+    <p class="text-muted">
+        <%= s.managerName ? __('talentx:f360_manager_is', { name: s.managerName }) : __('talentx:f360_no_manager') %>
+    </p>
+    <% if (!v.nominations.length) { %>
+        <p class="text-muted"><%= __('talentx:f360_no_raters_yet') %></p>
+    <% } else { %>
+    <div class="table-responsive"><table class="table table-cards">
+        <thead><tr>
+            <th><%= __('talentx:f360_th_rater') %></th>
+            <th><%= __('talentx:f360_th_group') %></th>
+            <th><%= __('talentx:f360_th_nomination') %></th>
+            <th><%= __('talentx:f360_th_answered') %></th>
+        </tr></thead>
+        <tbody>
+        <% v.nominations.forEach(function (n) { %>
+            <tr>
+                <td data-label="<%= __('talentx:f360_th_rater') %>"><%= n.name %></td>
+                <td data-label="<%= __('talentx:f360_th_group') %>"><%= GR[n.group] || n.group %></td>
+                <td data-label="<%= __('talentx:f360_th_nomination') %>"><%= NST[n.status] || n.status %></td>
+                <td data-label="<%= __('talentx:f360_th_answered') %>"><% if (n.status !== 'approved') { %>—<% } else if (n.responded) { %><span class="badge badge-success"><%= __('talentx:f360_answered_yes') %></span><% } else { %><span class="badge badge-warning"><%= __('talentx:f360_answered_no') %></span><% } %></td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+    <% } %>
+    <div class="hz-360-actions">
+        <a class="btn btn-secondary btn-sm" href="/feedback-360/subjects/<%= s.id %>"><%= __('talentx:f360_manage_raters') %></a>
+        <% if (v.reportVisible) { %>
+        <a class="btn btn-primary btn-sm" href="/feedback-360/subjects/<%= s.id %>/report"><%= __('talentx:f360_read_report') %></a>
+        <% } %>
+    </div>
+</section>
+<% }); %>

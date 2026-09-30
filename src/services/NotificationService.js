@@ -607,6 +607,13 @@ class NotificationService {
             'idp.activated': 'Your Individual Development Plan is now active',
             'coaching.created': 'A coaching plan was created',
             'coaching.validated': 'A coaching plan was completed',
+            'feedback360.nominate': 'Choose who gives you 360° feedback',
+            'feedback360.approve': '360° feedback nominations to approve',
+            'feedback360.invited': 'You are asked for 360° feedback',
+            'feedback360.reminder': 'A 360° feedback questionnaire is waiting for you',
+            'feedback360.closed': 'A 360° feedback report is ready to release',
+            'feedback360.released': 'Your 360° feedback report is available',
+            'oneonone.topic_added': 'A topic was added to your next one-to-one',
             'ninebox.submitted': 'A 9-box placement was submitted for review',
             'ninebox.approved': 'A 9-box placement was approved',
             'dispute.opened': 'A rating dispute was opened',
@@ -858,6 +865,62 @@ class NotificationService {
                 title: {
                     fr: 'Un plan de coaching a été complété',
                     en: 'A coaching plan was completed',
+                },
+            },
+            'feedback360.nominate': {
+                icon: 'fa-users-viewfinder',
+                link: '/feedback-360',
+                title: {
+                    fr: 'Choisissez qui vous donne un feedback 360°',
+                    en: 'Choose who gives you 360° feedback',
+                },
+            },
+            'feedback360.approve': {
+                icon: 'fa-users-viewfinder',
+                link: '/feedback-360',
+                title: {
+                    fr: 'Des propositions d’évaluateurs 360° attendent votre accord',
+                    en: '360° feedback nominations await your approval',
+                },
+            },
+            'feedback360.invited': {
+                icon: 'fa-comments',
+                link: '/feedback-360',
+                title: {
+                    fr: 'On vous demande un feedback 360°',
+                    en: 'You are asked for 360° feedback',
+                },
+            },
+            'feedback360.reminder': {
+                icon: 'fa-comments',
+                link: '/feedback-360',
+                title: {
+                    fr: 'Un questionnaire 360° vous attend',
+                    en: 'A 360° feedback questionnaire is waiting for you',
+                },
+            },
+            'feedback360.closed': {
+                icon: 'fa-users-viewfinder',
+                link: '/feedback-360',
+                title: {
+                    fr: 'Un rapport 360° est prêt à être communiqué',
+                    en: 'A 360° feedback report is ready to release',
+                },
+            },
+            'feedback360.released': {
+                icon: 'fa-users-viewfinder',
+                link: '/feedback-360',
+                title: {
+                    fr: 'Votre rapport 360° est disponible',
+                    en: 'Your 360° feedback report is available',
+                },
+            },
+            'oneonone.topic_added': {
+                icon: 'fa-people-arrows',
+                link: '/one-on-one',
+                title: {
+                    fr: 'Un sujet a été ajouté à votre prochain entretien individuel',
+                    en: 'A topic was added to your next one-to-one',
                 },
             },
             'dispute.opened': {
@@ -1365,6 +1428,13 @@ class NotificationService {
             'idp.signoff_needed': 'digest',
             'coaching.created': 'digest',
             'coaching.validated': 'digest',
+            'feedback360.nominate': 'digest',
+            'feedback360.approve': 'digest',
+            'feedback360.invited': 'digest',
+            'feedback360.reminder': 'digest',
+            'feedback360.closed': 'digest',
+            'feedback360.released': 'digest',
+            'oneonone.topic_added': 'digest',
             'recognition.received': 'digest',
             'continuity.successor_ready': 'digest',
             'onboarding.submitted': 'digest',
@@ -1807,6 +1877,34 @@ class NotificationService {
             'coaching.validated': {
                 fr: 'Un plan de coaching a été mené à son terme et validé.',
                 en: 'A coaching plan has been completed and validated.',
+            },
+            'feedback360.nominate': {
+                fr: 'Un feedback 360° est lancé pour vous. Proposez les collègues, collaborateurs et autres personnes qui vous répondront.',
+                en: 'A 360° feedback round has been launched for you. Propose the colleagues, direct reports and others who will answer.',
+            },
+            'feedback360.approve': {
+                fr: 'Un membre de votre équipe a proposé ses évaluateurs 360°. Validez ou ajustez la liste.',
+                en: 'A member of your team has proposed their 360° raters. Approve or adjust the list.',
+            },
+            'feedback360.invited': {
+                fr: 'Un collègue vous demande un feedback 360°. Vos réponses sont regroupées avec celles des autres et restent anonymes.',
+                en: 'A colleague asks you for 360° feedback. Your answers are grouped with others and stay anonymous.',
+            },
+            'feedback360.reminder': {
+                fr: 'Un questionnaire de feedback 360° attend encore votre réponse.',
+                en: 'A 360° feedback questionnaire is still waiting for your answer.',
+            },
+            'feedback360.closed': {
+                fr: 'Un tour de feedback 360° est clos. Consultez le rapport et communiquez-le à la personne concernée.',
+                en: 'A 360° feedback round has closed. Read the report and release it to the person.',
+            },
+            'feedback360.released': {
+                fr: 'Votre rapport de feedback 360° est disponible.',
+                en: 'Your 360° feedback report is available.',
+            },
+            'oneonone.topic_added': {
+                fr: 'Un sujet a été ajouté à l’ordre du jour de votre prochain entretien individuel.',
+                en: 'A topic has been added to the agenda of your next one-to-one.',
             },
             'talent.plan_due': {
                 fr: "Des plans de développement ou de performance de votre équipe arrivent à échéance ou n'ont pas démarré.",

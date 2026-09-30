@@ -1,0 +1,93 @@
+<%# The 360° questionnaire. Works without JavaScript (a plain form).
+    "Not observed" is its own answer — never a 0. %>
+<%
+  const LVL = [
+      __('talentx:f360_lvl_0'), __('talentx:f360_lvl_1'), __('talentx:f360_lvl_2'),
+      __('talentx:f360_lvl_3'), __('talentx:f360_lvl_4'),
+  ];
+  const FREQ = [
+      __('talentx:f360_freq_0'), __('talentx:f360_freq_1'), __('talentx:f360_freq_2'),
+      __('talentx:f360_freq_3'), __('talentx:f360_freq_4'),
+  ];
+  const CM = {
+      keep: __('talentx:f360_c_keep'),
+      start: __('talentx:f360_c_start'),
+      stop: __('talentx:f360_c_stop'),
+  };
+  const CMH = {
+      keep: __('talentx:f360_c_keep_hint'),
+      start: __('talentx:f360_c_start_hint'),
+      stop: __('talentx:f360_c_stop_hint'),
+  };
+  const isSelf = q.group === 'self';
+%>
+<div class="page-header">
+    <h1><i class="fas fa-pen-to-square" aria-hidden="true"></i> <%= isSelf ? __('talentx:f360_answer_title_self') : __('talentx:f360_answer_title_about', { name: q.subjectName }) %></h1>
+    <p><%= q.round.title %> · <%= __('talentx:f360_deadline_on', { date: fmtDate(q.round.deadline) }) %></p>
+    <p><a class="btn btn-secondary btn-sm" href="/feedback-360"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('talentx:f360_back') %></a></p>
+</div>
+
+<% if (q.responded) { %>
+    <%- include('../../partials/empty-state', { icon: 'fa-circle-check', title: __('talentx:f360_already_answered_title'), text: __('talentx:f360_already_answered_text') }) %>
+<% } else if (!q.open) { %>
+    <%- include('../../partials/empty-state', { icon: 'fa-lock', title: __('talentx:f360_not_open_title'), text: __('talentx:f360_not_open_text') }) %>
+<% } else { %>
+<div class="hz-callout card hz-360-note">
+    <i class="fas fa-user-shield" aria-hidden="true"></i>
+    <p><%= isSelf ? __('talentx:f360_answer_self_note') : (q.group === 'manager' ? __('talentx:f360_answer_manager_note') : __('talentx:f360_answer_anon_note')) %></p>
+</div>
+
+<form method="post" action="/feedback-360/answer/<%= q.nominationId %>" class="hz-360-form">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <% if (q.skills.length) { %>
+    <section class="card hz-360-section">
+        <h2><%= __('talentx:f360_q_skills') %></h2>
+        <p class="text-muted"><%= __('talentx:f360_q_skills_hint') %></p>
+        <% q.skills.forEach(function (it) { %>
+        <fieldset class="hz-360-item">
+            <legend><%= it.label %></legend>
+            <div class="hz-360-scale">
+                <% LVL.forEach(function (lbl, i) { %>
+                <label><input type="radio" name="r__skill__<%= it.key %>" value="<%= i %>"> <span><%= lbl %></span></label>
+                <% }); %>
+                <label class="hz-360-na"><input type="radio" name="r__skill__<%= it.key %>" value="na" checked> <span><%= __('talentx:f360_not_observed') %></span></label>
+            </div>
+        </fieldset>
+        <% }); %>
+    </section>
+    <% } %>
+
+    <section class="card hz-360-section">
+        <h2><%= __('talentx:f360_q_behaviours') %></h2>
+        <p class="text-muted"><%= __('talentx:f360_q_behaviours_hint') %></p>
+        <% q.behaviours.forEach(function (it) { %>
+        <fieldset class="hz-360-item">
+            <legend><%= it.label %></legend>
+            <div class="hz-360-scale">
+                <% FREQ.forEach(function (lbl, i) { %>
+                <label><input type="radio" name="r__behaviour__<%= it.key %>" value="<%= i %>"> <span><%= lbl %></span></label>
+                <% }); %>
+                <label class="hz-360-na"><input type="radio" name="r__behaviour__<%= it.key %>" value="na" checked> <span><%= __('talentx:f360_not_observed') %></span></label>
+            </div>
+        </fieldset>
+        <% }); %>
+    </section>
+
+    <section class="card hz-360-section">
+        <h2><%= __('talentx:f360_q_comments') %></h2>
+        <p class="text-muted"><%= __('talentx:f360_q_comments_hint') %></p>
+        <% q.comments.forEach(function (k) { %>
+        <div class="form-group">
+            <label for="f360-c-<%= k %>"><%= CM[k] %></label>
+            <textarea id="f360-c-<%= k %>" name="c__<%= k %>" class="form-control" rows="3" maxlength="2000" placeholder="<%= CMH[k] %>"></textarea>
+        </div>
+        <% }); %>
+    </section>
+
+    <div class="hz-360-actions">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('talentx:f360_submit_answer') %></button>
+        <span class="text-muted"><%= __('talentx:f360_submit_final') %></span>
+    </div>
+</form>
+<% } %>
