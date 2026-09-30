@@ -1349,6 +1349,20 @@ router.post(
 );
 // ---- ----------------------------------------------------------
 
+// Optional modules & adoption stage (superadmin) — the switches that replace
+// the old boot-time V2_FEATURES gate. Audit-logged; no restart needed.
+const ModulesController = require('../controllers/ModulesController');
+router.get(
+    '/admin/modules',
+    requireSuperAdminPage,
+    _ahAR(ModulesController.page.bind(ModulesController))
+);
+router.post(
+    '/admin/modules',
+    requireSuperAdmin,
+    _ahAR(ModulesController.save.bind(ModulesController))
+);
+
 // Appliance license & entitlement (superadmin)
 const LicenseController = require('../controllers/LicenseController');
 router.get(

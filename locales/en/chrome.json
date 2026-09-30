@@ -560,5 +560,7 @@
   "palette_meadow": "Meadow",
   "palette_sunrise": "Sunrise",
   "palette_ocean": "Ocean",
-  "theme_system": "Match device"
+  "theme_system": "Match device",
+  "nav_modules": "Modules",
+  "nav_modules_title": "Choose which optional modules are switched on (adoption stage)"
 }

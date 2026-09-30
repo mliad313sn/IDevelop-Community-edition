@@ -742,7 +742,7 @@ app.use(async (req, res, next) => {
     {
         const ModuleService = require('./src/services/ModuleService');
         const _ms = await ModuleService.resolve();
-        res.locals.modules = _ms.modules;
+        res.locals.appModules = _ms.modules;
         res.locals.adoptionStage = _ms.stage;
         res.locals.modulesLegacy = _ms.legacy;
     }
@@ -783,7 +783,9 @@ app.use(async (req, res, next) => {
     }
     // Local-content module: its flag comes from the same resolution as the
     // other modules (strict boolean parse — a '0' stored as a string is OFF).
-    res.locals.featureLocalContent = Boolean(res.locals.modules && res.locals.modules.localContent);
+    res.locals.featureLocalContent = Boolean(
+        res.locals.appModules && res.locals.appModules.localContent
+    );
     // AI companion (help panel « Assistant » tab) — default ON; only an explicit
     // off value hides it. Rendered pages only need it for signed-in users.
     res.locals.companionEnabled = true;

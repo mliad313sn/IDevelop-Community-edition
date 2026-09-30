@@ -115,7 +115,10 @@
     <div class="about-card card"><div class="about-k"><%= __('admin:about_k_database') %></div><div class="about-v about-v-sm"><%= db.engine %><% if (db.name) { %> · <code><%= db.name %></code><% } %></div></div>
     <div class="about-card card"><div class="about-k"><%= __('admin:about_k_migrations') %></div><div class="about-v"><%= db.migrations != null ? db.migrations : '—' %><% if (db.latestMigration) { %> <span class="about-sub"><%= __('admin:about_latest') %> <%= db.latestMigration %></span><% } %></div></div>
     <div class="about-card card"><div class="about-k"><%= __('admin:about_k_jobs') %></div><div class="about-v about-v-sm"><%= jobsMode %></div></div>
-    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_v2') %></div><div class="about-v"><%= v2Features ? __('admin:about_enabled') : __('admin:about_disabled') %></div></div>
+    <%# Adoption stage (Administration → Modules); V2_FEATURES=1 (legacy) forces every module on. %>
+    <% const _stg = typeof adoptionStage !== 'undefined' ? String(adoptionStage) : '1';
+       const _stgLabel = _stg === '3' ? __('admin:mod_stage3_title') : _stg === '2' ? __('admin:mod_stage2_title') : _stg === 'custom' ? __('admin:mod_custom_title') : __('admin:mod_stage1_title'); %>
+    <div class="about-card card"><div class="about-k"><%= __('admin:about_k_stage') %></div><div class="about-v about-v-sm"><%= _stgLabel %><% if (typeof modulesLegacy !== 'undefined' && modulesLegacy) { %> <span class="about-sub"><%= __('admin:about_stage_legacy') %></span><% } %><% if (typeof user !== 'undefined' && user && user.role === 'superadmin') { %> <span class="about-sub"><a href="/admin/modules"><%= __('admin:mod_link') %></a></span><% } %></div></div>
     <div class="about-card card"><div class="about-k"><%= __('admin:about_k_sso') %></div><div class="about-v"><%= ssoEnabled ? __('admin:about_enabled') : __('admin:about_disabled') %></div></div>
     <%# upgrade readiness and capacity, measured, not inferred. %>
     <% if (ops) { %>

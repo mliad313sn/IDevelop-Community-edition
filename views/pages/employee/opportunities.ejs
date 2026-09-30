@@ -4,6 +4,11 @@
 
 <input type="hidden" id="egCsrf" value="<%= csrfToken %>">
 
+<%# Mobility (opportunities, aspirations, closest roles) and engagement (surveys,
+    recognition) are optional modules (Administration → Modules): a section
+    whose module is off is not rendered, its endpoints answer 404. %>
+<% const _gm = (k) => typeof appModules === 'undefined' || !appModules || appModules[k] === true; %>
+<% if (_gm('mobility')) { %>
 <!-- ─────────────────────────  Opportunités internes  ───────────────────────── -->
 <div class="report-section">
     <h2><i class="fas fa-briefcase" aria-hidden="true"></i> <%= __('growth:opportunities') %></h2>
@@ -171,6 +176,9 @@
     <% } %>
 </div>
 
+<% } %>
+
+<% if (_gm('engagement')) { %>
 <!-- ─────────────────────────  Enquêtes ouvertes  ───────────────────────── -->
 <div class="report-section">
     <h2><i class="fas fa-clipboard-question" aria-hidden="true"></i> <%= __('growth:surveys') %></h2>
@@ -253,6 +261,7 @@
         <% } %>
     </div>
 </div>
+<% } %>
 
 <style>
 .eg-gap,.eg-thank{margin-top:18px;padding-top:14px;border-top:1px solid var(--border,#e2e8f0)}

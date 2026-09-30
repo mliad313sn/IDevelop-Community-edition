@@ -43,12 +43,16 @@ function presetFor(stage) {
 
 /** The state before any database read: what the environment alone implies. */
 function envDefaults() {
-    const stage = legacyForced() ? M.LEGACY_STAGE : M.DEFAULT_STAGE;
+    const legacy = legacyForced();
+    const configured = { ...presetFor(M.DEFAULT_STAGE), localContent: false };
+    const modules = { ...configured };
+    if (legacy) for (const k of M.STAGED_MODULES) modules[k] = true;
     return {
-        stage,
+        stage: legacy ? M.LEGACY_STAGE : M.DEFAULT_STAGE,
         stored: false,
-        legacy: legacyForced(),
-        modules: { ...presetFor(stage), localContent: false },
+        legacy,
+        modules,
+        configured,
     };
 }
 
@@ -82,22 +86,26 @@ class ModuleService {
             const raw = await AppSettingsModel.getValue(M.STAGE_KEY, null);
             const storedStage = normStage(raw);
             const legacy = legacyForced();
-            const stage = storedStage || (legacy ? M.LEGACY_STAGE : M.DEFAULT_STAGE);
-            let modules;
-            if (stage === 'custom') {
+            // `configured`: what the database says — what applies once the
+            // legacy variable is gone. `modules`: what applies now.
+            const configuredStage = storedStage || M.DEFAULT_STAGE;
+            let configured;
+            if (configuredStage === 'custom') {
                 const base = presetFor(M.DEFAULT_STAGE);
-                modules = {};
+                configured = {};
                 for (const k of M.STAGED_MODULES) {
                     const v = await AppSettingsModel.getValue(M.SETTING_KEYS[k], null);
-                    modules[k] = v == null ? base[k] : truthy(v);
+                    configured[k] = v == null ? base[k] : truthy(v);
                 }
             } else {
-                modules = presetFor(stage);
+                configured = presetFor(configuredStage);
             }
-            if (legacy) for (const k of M.STAGED_MODULES) modules[k] = true;
             const lc = await AppSettingsModel.getValue(M.SETTING_KEYS.localContent, false);
-            modules.localContent = truthy(lc);
-            state = { stage, stored: Boolean(storedStage), legacy, modules };
+            configured.localContent = truthy(lc);
+            const modules = { ...configured };
+            if (legacy) for (const k of M.STAGED_MODULES) modules[k] = true;
+            const stage = storedStage || (legacy ? M.LEGACY_STAGE : M.DEFAULT_STAGE);
+            state = { stage, stored: Boolean(storedStage), legacy, modules, configured };
         } catch (_) {
             state = envDefaults();
         }
@@ -122,11 +130,15 @@ class ModuleService {
      */
     isOnSync(key) {
         if (legacyForced() && M.STAGED_MODULES.includes(key)) return true;
-        return Boolean(_snapshot.modules[key]);
+        return Boolean(_snapshot.configured[key]);
     }
 
     snapshot() {
-        return { ..._snapshot, modules: { ..._snapshot.modules } };
+        return {
+            ..._snapshot,
+            modules: { ..._snapshot.modules },
+            configured: { ..._snapshot.configured },
+        };
     }
 
     /**

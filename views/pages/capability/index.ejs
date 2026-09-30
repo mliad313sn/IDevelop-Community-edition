@@ -4,7 +4,11 @@
   <p class="text-muted"><%= __('talentx:cap_suite_intro') %></p>
 </div>
 
+<%# Each card belongs to an optional module (Administration → Modules); a card
+    whose module is off is not rendered (its endpoints answer 404). %>
+<% const _cm = (k) => typeof appModules === 'undefined' || !appModules || appModules[k] === true; %>
 <!-- ===================== AI COPILOT ===================== -->
+<% if (_cm('ai')) { %>
 <div class="card" style="padding:1rem;margin-bottom:1rem">
   <h3 style="margin-top:0"><i class="fas fa-robot" aria-hidden="true"></i> <%= __('talentx:cap_copilot') %> <span class="text-muted" style="font-size:.7em">— <%= __('talentx:cap_copilot_scoped') %></span></h3>
   <p class="text-muted" style="font-size:.72em;margin:.1rem 0 .6rem"><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('talentx:cap_copilot_onprem') %></p>
@@ -24,7 +28,10 @@
   <div id="cop-a" style="margin-top:.6rem;font-size:.92em;white-space:pre-wrap"></div>
 </div>
 
+<% } %>
+
 <!-- ===================== CALIBRATION ===================== -->
+<% if (_cm('talent')) { %>
 <div class="card" style="padding:1rem;margin-bottom:1rem">
   <h3 style="margin-top:0"><%= __('talentx:cap_calibration') %></h3>
   <p class="text-muted" style="margin:.2rem 0"><%= __('talentx:cap_calibration_intro') %></p>
@@ -36,7 +43,10 @@
     </tbody></table>
 </div>
 
+<% } %>
+
 <!-- ===================== GOAL CASCADING ===================== -->
+<% if (_cm('engagement')) { %>
 <div class="card" style="padding:1rem;margin-bottom:1rem">
   <h3 style="margin-top:0"><%= __('talentx:cap_objectives') %></h3>
   <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
@@ -50,7 +60,10 @@
     <% if(!(objectives||[]).length){ %><tr><td colspan="3"><em><%= __('talentx:cap_none') %></em></td></tr><% } %></tbody></table>
 </div>
 
+<% } %>
+
 <!-- ===================== MOBILITY ===================== -->
+<% if (_cm('mobility')) { %>
 <div class="card" style="padding:1rem;margin-bottom:1rem">
   <h3 style="margin-top:0"><%= __('talentx:cap_mobility') %></h3>
   <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
@@ -72,7 +85,10 @@
   <div id="opp-applicants" style="margin-top:.6rem"></div>
 </div>
 
+<% } %>
+
 <!-- ===================== SURVEYS ===================== -->
+<% if (_cm('engagement')) { %>
 <div class="card" style="padding:1rem;margin-bottom:1rem">
   <h3 style="margin-top:0"><%= __('talentx:cap_surveys') %></h3>
   <button class="btn btn-primary btn-sm" onclick="CAP.newSurvey()"><%= __('talentx:cap_new_survey') %></button>
@@ -111,7 +127,10 @@
   <div id="survey-results" class="text-muted" style="font-size:.85em;margin-top:.4rem"></div>
 </div>
 
+<% } %>
+
 <!-- ===================== RECOGNITION ===================== -->
+<% if (_cm('engagement')) { %>
 <div class="card" style="padding:1rem;margin-bottom:1rem">
   <h3 style="margin-top:0"><%= __('talentx:cap_recognition') %></h3>
   <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
@@ -126,7 +145,10 @@
   </ul>
 </div>
 
+<% } %>
+
 <!-- ===================== DEI ===================== -->
+<% if (_cm('talent')) { %>
 <div class="card" style="padding:1rem">
   <h3 style="margin-top:0"><%= __('talentx:cap_dei') %> <span class="text-muted" style="font-size:.7em"><%= __('talentx:cap_dei_suppressed') %></span></h3>
   <div style="display:flex;gap:.5rem;align-items:flex-end">
@@ -137,6 +159,8 @@
   </div>
   <div id="dei-out" style="margin-top:.5rem;font-size:.88em"></div>
 </div>
+
+<% } %>
 
 <%# UNE SEULE discipline de reseau pour toute l application :
     public/js/sa-console-net.js. Une reponse REDIRIGEE, non-JSON, 401/440 est

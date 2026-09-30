@@ -1,0 +1,178 @@
+<%#
+  Administration → Modules: the adoption stage (1, 2, 3) or one switch per
+  optional module (custom). ModulesController renders it; ModuleService saves.
+  Every label is a literal key (no computed keys), so the locale tests see them.
+%>
+<%
+  const _st = state || { stage: '1', modules: {}, configured: {}, legacy: false, stored: false };
+  const _cfg = _st.configured || _st.modules || {};
+  const NAME = {
+      campaigns: __('admin:mod_name_campaigns'),
+      development: __('admin:mod_name_development'),
+      talent: __('admin:mod_name_talent'),
+      mobility: __('admin:mod_name_mobility'),
+      engagement: __('admin:mod_name_engagement'),
+      ai: __('admin:mod_name_ai'),
+      localContent: __('admin:mod_name_localContent'),
+  };
+  const MENU = {
+      'chrome:section_campaigns': __('chrome:section_campaigns'),
+      'chrome:nav_coaching': __('chrome:nav_coaching'),
+      'chrome:nav_dev_plans': __('chrome:nav_dev_plans'),
+      'chrome:nav_pip': __('chrome:nav_pip'),
+      'chrome:nav_lms_hub': __('chrome:nav_lms_hub'),
+      'chrome:nav_my_coaching': __('chrome:nav_my_coaching'),
+      'chrome:nav_continuity': __('chrome:nav_continuity'),
+      'exec:kp_title': __('exec:kp_title'),
+      'chrome:nav_talent_suite': __('chrome:nav_talent_suite'),
+      'chrome:nav_lifecycle': __('chrome:nav_lifecycle'),
+      'chrome:nav_my_growth': __('chrome:nav_my_growth'),
+      'chrome:nav_my_okr': __('chrome:nav_my_okr'),
+      'chrome:nav_local_content': __('chrome:nav_local_content'),
+  };
+  const STAGES = [
+      { id: '1', title: __('admin:mod_stage1_title'), gets: __('admin:mod_stage1_gets'), who: __('admin:mod_stage1_who'), icon: 'fa-seedling' },
+      { id: '2', title: __('admin:mod_stage2_title'), gets: __('admin:mod_stage2_gets'), who: __('admin:mod_stage2_who'), icon: 'fa-people-arrows' },
+      { id: '3', title: __('admin:mod_stage3_title'), gets: __('admin:mod_stage3_gets'), who: __('admin:mod_stage3_who'), icon: 'fa-comments' },
+  ];
+  const _selected = _st.stored || _st.legacy ? _st.stage : '1';
+%>
+<style>
+  .mod-stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+  .mod-card { position: relative; display: block; cursor: pointer; padding: 1.1rem 1.2rem; border: 2px solid var(--border, #2a3148); border-radius: 12px; background: var(--bg-card, transparent); }
+  .mod-card:hover { border-color: var(--primary, #7C6CFF); }
+  .mod-card input[type="radio"] { position: absolute; top: 1rem; right: 1rem; width: 1.1rem; height: 1.1rem; }
+  .mod-card.is-selected { border-color: var(--primary, #7C6CFF); box-shadow: 0 0 0 3px rgba(124, 108, 255, .18); }
+  .mod-card h2 { font-size: 1.05rem; margin: 0 1.6rem .6rem 0; }
+  .mod-card h3 { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin: .7rem 0 .2rem; }
+  .mod-card p { margin: 0; font-size: .9rem; color: var(--text-secondary); }
+  .mod-card ul { margin: .5rem 0 0; padding-left: 1.1rem; font-size: .85rem; }
+  .mod-switches { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: .5rem 1.2rem; margin-top: .8rem; }
+  .mod-switch { display: flex; gap: .55rem; align-items: center; font-weight: 600; }
+  .mod-switch input { width: 1.05rem; height: 1.05rem; }
+  .mod-impact ul { margin: .3rem 0 .6rem; padding-left: 1.1rem; }
+  .mod-impact .mod-appear { color: var(--emerald, #2DD4A0); }
+  .mod-impact .mod-disappear { color: var(--danger, #c8514b); }
+  .mod-custom-fieldset[disabled] { opacity: .55; }
+</style>
+
+<div class="page-header">
+    <h1><i class="fas fa-toggle-on" aria-hidden="true"></i> <%= __('admin:mod_title') %></h1>
+    <p class="text-muted"><%= __('admin:mod_intro') %></p>
+</div>
+
+<% if (_st.legacy) { %>
+<div class="card hz-callout" role="status" style="padding:14px 18px;margin-bottom:1rem;">
+    <i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:mod_legacy_notice') %>
+</div>
+<% } %>
+
+<form method="POST" action="/admin/modules" id="modForm" data-confirm="<%= __('admin:mod_confirm') %>">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <fieldset style="border:0;padding:0;margin:0;">
+        <legend class="sr-only"><%= __('admin:mod_stage_legend') %></legend>
+        <div class="mod-stages">
+            <% STAGES.forEach(function (s) { const _on = _selected === s.id; %>
+            <label class="mod-card<%= _on ? ' is-selected' : '' %>" data-stage-card="<%= s.id %>">
+                <input type="radio" name="stage" value="<%= s.id %>" <%= _on ? 'checked' : '' %>>
+                <h2><i class="fas <%= s.icon %>" aria-hidden="true"></i> <%= s.title %></h2>
+                <h3><%= __('admin:mod_gets') %></h3>
+                <p><%= s.gets %></p>
+                <h3><%= __('admin:mod_who') %></h3>
+                <p><%= s.who %></p>
+                <ul>
+                    <% (presets[s.id] || []).forEach(function (k) { %><li><%= NAME[k] %></li><% }); %>
+                </ul>
+            </label>
+            <% }); %>
+        </div>
+
+        <label class="mod-card<%= _selected === 'custom' ? ' is-selected' : '' %>" data-stage-card="custom" style="margin-bottom:1rem;">
+            <input type="radio" name="stage" value="custom" <%= _selected === 'custom' ? 'checked' : '' %>>
+            <h2><i class="fas fa-sliders" aria-hidden="true"></i> <%= __('admin:mod_custom_title') %></h2>
+            <p><%= __('admin:mod_custom_gets') %></p>
+        </label>
+    </fieldset>
+
+    <fieldset class="card mod-custom-fieldset" id="modCustom" style="padding:1rem 1.2rem;margin-bottom:1rem;" <%= _selected === 'custom' ? '' : 'disabled' %>>
+        <legend style="font-weight:700;padding:0 .3rem;"><%= __('admin:mod_custom_legend') %></legend>
+        <div class="mod-switches">
+            <% stagedModules.forEach(function (k) { %>
+            <label class="mod-switch">
+                <input type="checkbox" name="mod_<%= k %>" value="1" data-mod="<%= k %>" <%= _cfg[k] ? 'checked' : '' %>>
+                <%= NAME[k] %>
+            </label>
+            <% }); %>
+        </div>
+    </fieldset>
+
+    <div class="card" style="padding:1rem 1.2rem;margin-bottom:1rem;">
+        <label class="mod-switch">
+            <input type="checkbox" name="mod_localContent" value="1" data-mod="localContent" <%= _cfg.localContent ? 'checked' : '' %>>
+            <%= NAME.localContent %>
+        </label>
+        <p class="text-muted" style="font-size:.82rem;margin:.3rem 0 0;"><%= __('admin:mod_localcontent_hint') %></p>
+    </div>
+
+    <div class="card mod-impact" style="padding:1rem 1.2rem;margin-bottom:1rem;" aria-live="polite">
+        <h2 style="font-size:1rem;margin:0 0 .4rem;"><i class="fas fa-eye" aria-hidden="true"></i> <%= __('admin:mod_impact_title') %></h2>
+        <div id="modImpact"><p class="text-muted" style="margin:0;"><%= __('admin:mod_impact_none') %></p></div>
+    </div>
+
+    <p class="text-muted" style="font-size:.85rem;max-width:820px;"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:mod_core_note') %></p>
+
+    <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('admin:mod_save') %></button>
+</form>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  var PRESETS = <%- include('../../partials/json-script', { v: presets }) %>;
+  var MENUS = <%- include('../../partials/json-script', { v: moduleMenus }) %>;
+  var LABEL = <%- include('../../partials/json-script', { v: MENU }) %>;
+  var STAGED = <%- include('../../partials/json-script', { v: stagedModules }) %>;
+  var CURRENT = <%- include('../../partials/json-script', { v: _st.modules }) %>;
+  var T = <%- include('../../partials/json-script', { v: { appear: __('admin:mod_impact_appear'), disappear: __('admin:mod_impact_disappear'), none: __('admin:mod_impact_none'), legacy: __('admin:mod_impact_legacy') } }) %>;
+  var LEGACY = <%- include('../../partials/json-script', { v: !!_st.legacy }) %>;
+  var form = document.getElementById('modForm');
+  var custom = document.getElementById('modCustom');
+  var box = document.getElementById('modImpact');
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function stage() { var r = form.querySelector('input[name="stage"]:checked'); return r ? r.value : '1'; }
+  function wanted() {
+    var st = stage(), out = {};
+    STAGED.forEach(function (k) {
+      if (st === 'custom') { var cb = form.querySelector('input[data-mod="' + k + '"]'); out[k] = !!(cb && cb.checked); }
+      else out[k] = (PRESETS[st] || []).indexOf(k) > -1;
+    });
+    var lc = form.querySelector('input[data-mod="localContent"]');
+    out.localContent = !!(lc && lc.checked);
+    return out;
+  }
+  function menus(mods) {
+    var set = {};
+    Object.keys(MENUS).forEach(function (k) { if (mods[k]) MENUS[k].forEach(function (m) { set[m] = true; }); });
+    return set;
+  }
+  function render() {
+    var st = stage();
+    custom.disabled = st !== 'custom';
+    Array.prototype.forEach.call(form.querySelectorAll('[data-stage-card]'), function (c) {
+      c.classList.toggle('is-selected', c.getAttribute('data-stage-card') === st);
+    });
+    var after = wanted();
+    if (LEGACY) STAGED.forEach(function (k) { after[k] = true; });
+    var a = menus(after), b = menus(CURRENT);
+    var appear = Object.keys(a).filter(function (m) { return !b[m]; });
+    var gone = Object.keys(b).filter(function (m) { return !a[m]; });
+    var html = '';
+    if (appear.length) html += '<strong>' + esc(T.appear) + '</strong><ul class="mod-appear">' + appear.map(function (m) { return '<li>' + esc(LABEL[m] || m) + '</li>'; }).join('') + '</ul>';
+    if (gone.length) html += '<strong>' + esc(T.disappear) + '</strong><ul class="mod-disappear">' + gone.map(function (m) { return '<li>' + esc(LABEL[m] || m) + '</li>'; }).join('') + '</ul>';
+    if (!html) html = '<p class="text-muted" style="margin:0;">' + esc(T.none) + '</p>';
+    if (LEGACY) html += '<p class="text-muted" style="margin:.4rem 0 0;font-size:.85rem;">' + esc(T.legacy) + '</p>';
+    box.innerHTML = html;
+  }
+  form.addEventListener('change', render);
+  render();
+})();
+</script>

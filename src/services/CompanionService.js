@@ -29,8 +29,10 @@
  *
  * ROLE FILTERING: an entry (and therefore its link) is offered only when the
  * asker's account type is listed on it and, for an administrator, when they hold
- * one of its permissions (SuperAdmin-only entries need a SuperAdmin). V2-only
- * screens are offered only when V2_FEATURES=1.
+ * one of its permissions (SuperAdmin-only entries need a SuperAdmin). A screen
+ * that belongs to an optional module (entry.module) is offered only while that
+ * module is switched on (Administration → Modules) — the assistant never links
+ * to a disabled module.
  *
  * OPTIONAL LLM MODE: when the copilot's language model is configured AND allowed
  * (CopilotService.llmUsable — respects copilot.eu_only_providers), a knowledge
@@ -121,15 +123,18 @@ function roleOf(user) {
     return null;
 }
 
-function v2On() {
-    return process.env.V2_FEATURES === '1';
+/** Is the entry's optional module (any of them, when a list) switched on? */
+function moduleOn(entry) {
+    if (!entry.module) return true;
+    const ModuleService = require('./ModuleService');
+    return [].concat(entry.module).some((k) => ModuleService.isOnSync(k));
 }
 
 /** May this user be pointed at this knowledge entry (and its link)? */
 function canSee(user, entry) {
     const role = roleOf(user);
     if (!role || !entry || !entry.roles.includes(role)) return false;
-    if (entry.v2 && !v2On()) return false;
+    if (!moduleOn(entry)) return false;
     if (role === 'admin') {
         if (entry.superadmin && !RBACService.isSuperAdmin(user)) return false;
         const perms = entry.perm ? [].concat(entry.perm) : [];
@@ -506,6 +511,8 @@ class CompanionService {
         const disclaimer = translate(Copilot.AI_DISCLAIMER.key, Copilot.AI_DISCLAIMER.en);
         const q = String(question || '').slice(0, MAX_QUESTION);
         const role = roleOf(user);
+        // Fresh module state before any link is chosen (TTL-cached settings).
+        await require('./ModuleService').resolve();
         const { intent, entry, concept } = this.detectIntent(user, q);
 
         let out = { answer: '', links: [], source: 'kb', disclaimer: null };
@@ -557,6 +564,16 @@ class CompanionService {
                 // re-checked here so a routing change can never widen it).
                 if (role !== 'manager' && role !== 'admin') {
                     out.answer = tr(lang, 'data_denied');
+                    break;
+                }
+                // The data copilot is the AI module: while it is switched off the
+                // assistant says so instead of calling it.
+                if (!require('./ModuleService').isOnSync('ai')) {
+                    out.answer = tr(lang, 'data_ai_off');
+                    out.links = ['dashboard', 'reports']
+                        .map(entryById)
+                        .filter((e) => canSee(user, e))
+                        .map((e) => linkOf(e, lang));
                     break;
                 }
                 try {

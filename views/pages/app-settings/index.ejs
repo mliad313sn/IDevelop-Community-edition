@@ -3,6 +3,8 @@
     <div class="page-actions">
         <% if (user && user.role === 'superadmin') { %>
             <a href="/app-settings/sso" class="btn btn-secondary"><i class="fas fa-right-to-bracket" aria-hidden="true"></i> <%= __('admin:sso_link') %></a>
+            <%# Optional modules and the adoption stage live on their own screen. %>
+            <a href="/admin/modules" class="btn btn-secondary"><i class="fas fa-toggle-on" aria-hidden="true"></i> <%= __('admin:mod_link') %></a>
         <% } %>
         <% if (typeof can !== 'function' || can('manage_app_settings')) { %>
         <%# the shared confirmation dialog, not the browser's native confirm. %>

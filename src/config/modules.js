@@ -168,8 +168,8 @@ const MODULE_MENUS = Object.freeze({
         'chrome:nav_my_coaching',
     ],
     talent: ['chrome:nav_continuity', 'exec:kp_title', 'chrome:nav_talent_suite'],
-    mobility: ['chrome:nav_lifecycle', 'chrome:nav_my_growth'],
-    engagement: ['chrome:nav_my_okr', 'chrome:nav_my_growth'],
+    mobility: ['chrome:nav_lifecycle', 'chrome:nav_my_growth', 'chrome:nav_talent_suite'],
+    engagement: ['chrome:nav_my_okr', 'chrome:nav_my_growth', 'chrome:nav_talent_suite'],
     ai: ['chrome:nav_talent_suite'],
     localContent: ['chrome:nav_local_content'],
 });

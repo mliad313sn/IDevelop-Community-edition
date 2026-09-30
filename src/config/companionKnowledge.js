@@ -16,7 +16,9 @@
  *   perm      admin only: permission slug(s) — ANY of them grants it (a SuperAdmin
  *             holds every permission); ignored for employees/managers
  *   superadmin  admin only: SuperAdmin accounts only
- *   v2        the screen exists only when V2_FEATURES=1 (the sidebar hides it otherwise)
+ *   module    optional module(s) the screen belongs to (src/config/modules.js): the
+ *             entry is offered only while one of them is switched on
+ *             (Administration → Modules); the sidebar hides the screen otherwise
  *   link      the screen the answer points to — a real route (tested)
  *   title     {fr,en} — the button label
  *   ask       {fr,en} — a canonical question, used as a suggestion chip (tested to
@@ -90,7 +92,6 @@ const ENTRIES = [
     {
         id: 'mfa',
         roles: ALL,
-        v2: true,
         link: '/v2/uam/mfa/manage',
         title: { fr: 'Double authentification', en: 'Two-factor authentication' },
         ask: {
@@ -362,6 +363,7 @@ const ENTRIES = [
     {
         id: 'my_coaching',
         roles: EMP,
+        module: 'development',
         link: '/employee/my-coaching',
         title: { fr: 'Mon coaching', en: 'My coaching' },
         ask: { fr: 'Où suivre mon coaching ?', en: 'Where do I follow my coaching?' },
@@ -377,6 +379,7 @@ const ENTRIES = [
     {
         id: 'opportunities',
         roles: EMP,
+        module: ['mobility', 'engagement'],
         link: '/employee/opportunities',
         title: { fr: 'Mon évolution', en: 'My opportunities' },
         ask: {
@@ -410,6 +413,7 @@ const ENTRIES = [
     {
         id: 'okr',
         roles: EMP,
+        module: 'engagement',
         link: '/employee/okr',
         title: { fr: 'Mes objectifs', en: 'My goals' },
         ask: { fr: 'Où suivre mes objectifs ?', en: 'Where do I track my goals?' },
@@ -467,7 +471,6 @@ const ENTRIES = [
     {
         id: 'disputes_queue',
         roles: MGR_ADM,
-        v2: true,
         link: '/v2/slf/disputes',
         title: { fr: 'Contestations à traiter', en: 'Disputes to resolve' },
         ask: {
@@ -585,6 +588,7 @@ const ENTRIES = [
     {
         id: 'coaching_plans',
         roles: MGR_ADM,
+        module: 'development',
         link: '/coaching/plans',
         title: { fr: 'Plans de coaching', en: 'Coaching plans' },
         ask: { fr: 'Comment créer un plan de coaching ?', en: 'How do I create a coaching plan?' },
@@ -600,7 +604,7 @@ const ENTRIES = [
     {
         id: 'idp_manage',
         roles: MGR_ADM,
-        v2: true,
+        module: 'development',
         link: '/v2/idp/manage',
         title: { fr: 'Plans de développement (PDI)', en: 'Development plans (IDP)' },
         ask: {
@@ -619,7 +623,7 @@ const ENTRIES = [
     {
         id: 'pip',
         roles: MGR_ADM,
-        v2: true,
+        module: 'development',
         link: '/v2/pip',
         title: { fr: 'Plans d’amélioration (PIP)', en: 'Improvement plans (PIP)' },
         ask: { fr: 'Comment ouvrir un PIP ?', en: 'How do I open a PIP?' },
@@ -687,7 +691,7 @@ const ENTRIES = [
         id: 'continuity',
         roles: MGR_ADM,
         perm: ['view_continuity', 'manage_succession', 'view_retention_risk', 'manage_handover'],
-        v2: true,
+        module: 'talent',
         link: '/v2/continuity',
         title: { fr: 'Continuité & succession', en: 'Continuity & succession' },
         ask: {
@@ -721,6 +725,7 @@ const ENTRIES = [
         id: 'key_person',
         roles: MGR_ADM,
         perm: ['view_continuity', 'manage_succession', 'view_retention_risk', 'manage_handover'],
+        module: 'talent',
         link: '/exec/key-person',
         title: { fr: 'Risque personne-clé', en: 'Key-person risk' },
         ask: {
@@ -842,6 +847,7 @@ const ENTRIES = [
         id: 'campaigns',
         roles: ADM,
         perm: ['manage_cycles'],
+        module: 'campaigns',
         link: '/cycles',
         title: { fr: 'Campagnes d’évaluation', en: 'Assessment campaigns' },
         ask: {
