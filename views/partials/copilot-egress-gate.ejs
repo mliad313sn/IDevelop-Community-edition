@@ -1,0 +1,86 @@
+<%#
+  Copilot egress gate (CopilotService.connectionGate): why the AI provider is
+  off, the private-host allow-list, and the recorded transfer basis an
+  EXTERNAL provider needs (CopilotEgressController, SuperAdmin only).
+  Locals: copilotPolicy (CopilotService.policyStatus()), isSuperAdmin, csrfToken.
+  No script, no inline handler (CSP).
+%>
+<% const _cp = (typeof copilotPolicy !== 'undefined' && copilotPolicy) ? copilotPolicy : null; %>
+<% const _cpSa = typeof isSuperAdmin !== 'undefined' && isSuperAdmin; %>
+<% const _cpAt = function (v) { try { return typeof fmtDateTime === 'function' ? fmtDateTime(v) : v; } catch (_) { return v; } }; %>
+<% if (_cp && _cp.configured) { %>
+<section id="copilot-egress" class="card hz-sec-panel" aria-labelledby="copilot-egress-title">
+    <h3 id="copilot-egress-title"><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('admin:cpg_title') %></h3>
+    <% if (!_cp.allowed) { %>
+        <div class="hz-callout hz-sec-warn" role="status" data-copilot-blocked="<%= _cp.blockedCode || '' %>">
+            <p><strong><%= __('admin:cpg_disabled') %></strong></p>
+            <p><%= __('admin:cpg_reason_' + _cp.blockedCode, { defaultValue: _cp.blockedCode || '' }) %></p>
+        </div>
+    <% } else { %>
+        <p class="hz-sec-ok"><i class="fas fa-circle-check" aria-hidden="true"></i> <%= _cp.external ? __('admin:cpg_enabled_external') : __('admin:cpg_enabled_local') %></p>
+    <% } %>
+
+    <dl class="hz-sec-dl">
+        <dt><%= __('admin:cpg_rec_provider') %></dt>
+        <dd><code><%= _cp.provider %></code><% if (_cp.host) { %> · <code><%= _cp.host %></code><% } %></dd>
+        <dt><%= __('admin:cpg_private_hosts') %></dt>
+        <dd>
+            <% const _cpHosts = (_cp.allowedPrivateHosts || []).concat(_cp.trustedHosts || []); %>
+            <% if (_cpHosts.length) { %>
+                <% _cpHosts.forEach(function (h) { %><code class="hz-sec-chip"><%= h %></code> <% }); %>
+            <% } else { %>
+                <%= __('admin:cpg_private_hosts_none') %>
+            <% } %>
+            <br><small class="text-muted"><%= __('admin:cpg_private_hosts_hint') %></small>
+        </dd>
+        <% if (_cp.record) { %>
+            <dt><%= __('admin:cpg_rec_basis') %></dt>
+            <dd><%= __('admin:cpg_basis_' + _cp.record.basis, { defaultValue: _cp.record.basis }) %> — <%= _cp.record.basisText %></dd>
+            <dt><%= __('admin:cpg_rec_region') %></dt>
+            <dd><%= _cp.record.region %></dd>
+            <dt><%= __('admin:cpg_rec_by') %></dt>
+            <dd><%= (_cp.record.recordedBy && _cp.record.recordedBy.username) || '—' %> · <%= _cp.record.recordedAt ? _cpAt(_cp.record.recordedAt) : '—' %></dd>
+        <% } else if (_cp.external || _cp.needsTransferBasis) { %>
+            <dt><%= __('admin:cpg_rec_basis') %></dt>
+            <dd><%= __('admin:cpg_no_record') %></dd>
+        <% } %>
+    </dl>
+
+    <% if (_cp.record && _cpSa) { %>
+    <form method="POST" action="/app-settings/copilot/transfer-basis/revoke" class="hz-sec-inline">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-ban" aria-hidden="true"></i> <%= __('admin:cpg_revoke') %></button>
+    </form>
+    <% } %>
+
+    <% if (_cp.needsTransferBasis && _cpSa) { %>
+    <form method="POST" action="/app-settings/copilot/transfer-basis" class="hz-sec-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <p class="text-muted hz-sec-form__wide"><strong><%= __('admin:cpg_form_intro') %></strong> <code><%= _cp.provider %></code><% if (_cp.host) { %> · <code><%= _cp.host %></code><% } %></p>
+        <div class="form-group">
+            <label for="cpgBasis" class="required"><%= __('admin:cpg_basis') %></label>
+            <select id="cpgBasis" name="basis" class="form-control" required>
+                <% (_cp.bases || []).forEach(function (b) { %>
+                    <option value="<%= b %>"><%= __('admin:cpg_basis_' + b, { defaultValue: b }) %></option>
+                <% }) %>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="cpgRegion" class="required"><%= __('admin:cpg_region') %></label>
+            <input id="cpgRegion" name="region" class="form-control" maxlength="200" required>
+        </div>
+        <div class="form-group hz-sec-form__wide">
+            <label for="cpgBasisText" class="required"><%= __('admin:cpg_basis_text') %></label>
+            <textarea id="cpgBasisText" name="basisText" class="form-control" rows="2" minlength="20" maxlength="2000" required></textarea>
+        </div>
+        <label class="hz-sec-check hz-sec-form__wide">
+            <input id="cpgDpa" name="dpaAcknowledged" type="checkbox" value="true" required>
+            <span><%= __('admin:cpg_dpa_ack_text') %></span>
+        </label>
+        <div>
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-check" aria-hidden="true"></i> <%= __('admin:cpg_record') %></button>
+        </div>
+    </form>
+    <% } %>
+</section>
+<% } %>

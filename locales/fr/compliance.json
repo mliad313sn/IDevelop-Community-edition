@@ -412,5 +412,6 @@
   "cat_lmsCompletions": "Formations suivies",
   "cat_plannedAbsences": "Absences prévues",
   "cat_notifications": "Notifications reçues",
-  "cat_hrisLinks": "Identifiant dans le système RH"
+  "cat_hrisLinks": "Identifiant dans le système RH",
+  "av_engine_on": "Les justificatifs déposés sont analysés par {{engine}}."
 }

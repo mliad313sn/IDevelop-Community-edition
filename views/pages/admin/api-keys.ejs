@@ -48,14 +48,21 @@
   </div>
 </div>
 
+<% if ((keys || []).some(function (k) { return k.allowQueryKey && !k.revokedAt && !k.expired; })) { %>
+<%# Deprecation notice while any live key still accepts ?apiKey= (migration 163). %>
+<div class="card hz-callout hz-sec-warn" role="status" data-apikey-query-deprecation>
+  <p><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%- __('admin:apik_query_deprecation') %></p>
+</div>
+<% } %>
+
 <div class="card" style="padding:0;margin-bottom:1rem">
   <div style="padding:.75rem 1rem;border-bottom:1px solid rgba(148,163,184,.2)"><h3 style="margin:0"><%= __('admin:apik_issued_h3') %></h3></div>
 <div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#keys-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
   <table class="table" id="keys-table">
-    <thead><tr><th><%= __('admin:apik_th_label') %></th><th><%= __('admin:apik_th_profile') %></th><th><%= __('admin:apik_th_scope') %></th><th><%= __('admin:apik_th_created') %></th><th><%= __('admin:apik_th_last_used') %></th><th><%= __('admin:apik_th_expires') %></th><th><%= __('admin:apik_th_status') %></th><th><span class="sr-only"><%= __('admin:apik_th_actions') %></span></th></tr></thead>
+    <thead><tr><th><%= __('admin:apik_th_label') %></th><th><%= __('admin:apik_th_profile') %></th><th><%= __('admin:apik_th_scope') %></th><th><%= __('admin:apik_th_created') %></th><th><%= __('admin:apik_th_last_used') %></th><th><%= __('admin:apik_th_expires') %></th><th><%= __('admin:apik_th_status') %></th><th><%= __('admin:apik_th_query') %></th><th><span class="sr-only"><%= __('admin:apik_th_actions') %></span></th></tr></thead>
     <tbody>
       <% if (!keys || !keys.length) { %>
-        <tr><td colspan="8"><em><%= __('admin:apik_empty') %></em></td></tr>
+        <tr><td colspan="9"><em><%= __('admin:apik_empty') %></em></td></tr>
       <% } else { keys.forEach(function(k){ %>
         <tr>
           <td><%= k.label %></td>
@@ -68,6 +75,14 @@
             <% if (k.revokedAt) { %><span class="badge" style="background:#64748b;color:#fff"><%= enumLabel('api_key_status', 'revoked') %></span>
             <% } else if (k.expired) { %><span class="badge badge-danger"><%= enumLabel('api_key_status', 'expired') %></span>
             <% } else { %><span class="badge badge-success"><%= enumLabel('api_key_status', 'active') %></span><% } %>
+          </td>
+          <%# May this key ride in ?apiKey= (legacy Power BI)? Header only by default. %>
+          <td class="hz-apikey-query">
+            <% if (k.allowQueryKey) { %><span class="badge badge-warning" title="<%= __('admin:apik_query_on_hint') %>"><%= __('admin:apik_query_on') %></span>
+            <% } else { %><span class="badge badge-secondary"><%= __('admin:apik_query_off') %></span><% } %>
+            <% if (!k.revokedAt) { %>
+              <button type="button" class="btn btn-sm btn-secondary" data-apikey-query-toggle data-on-click="AK.setQuery" data-args="<%= JSON.stringify([Number(k.id), !k.allowQueryKey]) %>"><%= k.allowQueryKey ? __('admin:apik_query_block_btn') : __('admin:apik_query_allow_btn') %></button>
+            <% } %>
           </td>
           <td><% if (!k.revokedAt) { %><button type="button" class="btn btn-sm btn-danger" data-on-click="AK.revoke" data-args="<%= JSON.stringify([Number(k.id)]) %>"><%= __('admin:apik_revoke') %></button><% } %></td>
         </tr>
@@ -85,6 +100,13 @@
     <li><code>/api/powerbi/readiness</code> — <%= __('admin:apik_feed_readiness') %></li>
     <li><code>/api/powerbi/organization</code> — <%= __('admin:apik_feed_organization') %></li>
   </ul>
+  <%# The header form for Power Query: the key never goes in the URL. %>
+  <p class="text-muted" style="margin:.8rem 0 .3rem;font-size:.88em"><%= __('admin:apik_powerquery_header_intro') %></p>
+  <pre class="hz-code-block">let
+    Source = Json.Document(Web.Contents("https://&lt;server&gt;/api/powerbi/employees",
+        [Headers = [#"X-API-Key" = "&lt;<%= __('admin:apik_powerquery_key_ph') %>&gt;"]]))
+in
+    Source</pre>
 </div>
 
 <%# UNE SEULE discipline de reseau pour toute l application :
@@ -115,7 +137,9 @@ const AK_I18N = {
   created: <%- JSON.stringify(__('admin:apik_created_toast')) %>,
   revoked: <%- JSON.stringify(__('admin:apik_revoked_toast')) %>,
   revokeConfirm: <%- JSON.stringify(__('admin:apik_revoke_confirm')) %>,
-  revokeTitle: <%- JSON.stringify(__('admin:apik_revoke_title')) %>
+  revokeTitle: <%- JSON.stringify(__('admin:apik_revoke_title')) %>,
+  queryAllowConfirm: <%- JSON.stringify(__('admin:apik_query_allow_confirm')) %>,
+  queryToast: <%- JSON.stringify(__('admin:apik_query_saved_toast')) %>
 };
 // data-on-click (public/js/csp-actions.js) resolves AK.<method> on window.
 window.AK = {
@@ -153,6 +177,17 @@ window.AK = {
     if (!ok) return;
     await this.api('POST','/admin/api-keys/'+id+'/revoke',{});
     if (window.toast) window.toast(AK_I18N.revoked, 'success');
+    setTimeout(function(){ location.reload(); }, 600);
+  },
+  // Allow / refuse ?apiKey= for one key (legacy Power BI). Allowing re-opens a
+  // leak path, so it asks first; refusing does not.
+  async setQuery(id, allowed){
+    if (allowed) {
+      const ok = await confirmDialog(AK_I18N.queryAllowConfirm, { danger: true });
+      if (!ok) return;
+    }
+    await this.api('POST','/api/v1/admin/api-keys/'+Number(id)+'/query-string',{ allowed: allowed === true });
+    if (window.toast) window.toast(AK_I18N.queryToast, 'success');
     setTimeout(function(){ location.reload(); }, 600);
   }
 };

@@ -96,8 +96,20 @@ class ComplianceController {
               )
             : [];
 
+        // Which antivirus scans the evidence files (alert when none). Only for the
+        // people who upload or configure; a failure never blocks the page.
+        let malwareScan = null;
+        if (canRecord || canConfigure) {
+            try {
+                malwareScan = await require('../services/MalwareScanService').status();
+            } catch (_) {
+                malwareScan = null;
+            }
+        }
+
         res.render('pages/compliance/index', {
             title: req.t ? req.t('chrome:pt_operational_compliance') : 'Operational Compliance',
+            malwareScan,
             counts,
             expiring,
             lapsed,

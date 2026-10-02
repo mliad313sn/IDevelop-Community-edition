@@ -301,10 +301,27 @@
         true for a manager (their own reports) and for any delegate holding
         manage_compliance; the route enforces the same and the controller
         scope-checks the target employee. %>
+    <%# Antivirus on the evidence files (MalwareScanService.status): the engine in
+        use, or an alert when none scans them. Uploaders and configurers only. %>
+    <% if (typeof malwareScan !== 'undefined' && malwareScan) { %>
+    <div class="card hz-callout <%= malwareScan.alert ? 'hz-sec-warn' : 'hz-sec-note' %>" role="status" data-compliance-av="<%= malwareScan.engine || 'none' %>">
+        <p>
+            <i class="fas fa-shield-virus" aria-hidden="true"></i>
+            <% if (malwareScan.alert) { %>
+                <%= __('compliance:av_no_scanner_alert') %>
+            <% } else { %>
+                <%= __('compliance:av_engine_on', { engine: malwareScan.engine === 'clamd' ? __('admin:health_av_engine_clamd') : malwareScan.engine === 'defender' ? __('admin:health_av_engine_defender') : malwareScan.engine }) %>
+            <% } %>
+            <%= malwareScan.requireMalwareScan ? __('admin:health_av_required_on') : __('admin:health_av_required_off') %>.
+        </p>
+    </div>
+    <% } %>
     <% if (canRecord) { %>
     <div class="card" style="padding:1.1rem 1.25rem;margin-top:1rem;">
         <h3 style="margin:0 0 .8rem;font-size:1rem;"><%= __('compliance:record_title') %></h3>
-        <form method="POST" action="/compliance/certifications" enctype="multipart/form-data" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+        <%# Native multipart form: multer parses the body after the CSRF check, so the
+            token rides on the action (?_csrf=, multipart only; redacted in logs). %>
+        <form method="POST" action="/compliance/certifications?_csrf=<%= encodeURIComponent(csrfToken) %>" enctype="multipart/form-data" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <div class="form-group" style="margin:0;min-width:240px;">
                 <label for="cert-employee"><%= __('compliance:th_employee') %></label>

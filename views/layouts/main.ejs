@@ -51,6 +51,20 @@
                         <div class="content-wrapper">
                             <%- include('../partials/breadcrumbs') %>
                                 <%- include('../partials/flash') %>
+                                    <%# Two-factor grace countdown: set by middleware/mfaEnforcement only
+                                        while an unenrolled account is inside its upgrade grace period. The
+                                        same sentence also arrives once per session as a warning flash: the
+                                        banner is skipped on that page so it is not said twice. %>
+                                    <% if (typeof mfaGrace !== 'undefined' && mfaGrace && mfaGrace.daysLeft) {
+                                        const _mgText = __('auth:mfa_grace_notice', { count: mfaGrace.daysLeft, date: mfaGrace.date });
+                                        const _mgFlashed = typeof warnings !== 'undefined' && Array.isArray(warnings) && warnings.indexOf(_mgText) !== -1; %>
+                                        <% if (!_mgFlashed) { %>
+                                        <div class="card hz-callout hz-mfa-grace" role="status" id="mfa-grace-banner">
+                                            <p><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= _mgText %></p>
+                                            <a href="/v2/uam/mfa/setup" class="btn btn-sm btn-primary"><%= __('auth:mfa_grace_cta') %></a>
+                                        </div>
+                                        <% } %>
+                                    <% } %>
                                     <%# — appliance-licence warning strip. It wraps EVERY authenticated
                                         page, so it is written defensively: `entitlement` is null for employees and
                                         whenever the status lookup failed (server.js), every property is read through

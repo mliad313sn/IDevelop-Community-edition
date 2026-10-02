@@ -606,6 +606,21 @@ class CopilotService {
         } catch {
             host = null;
         }
+        // The private-host allow-list, shown beside a `private_host` refusal.
+        let allowedPrivateHosts = [];
+        let trustedHosts = [];
+        try {
+            const AppSettingsModel = require('../models/AppSettingsModel');
+            allowedPrivateHosts = this._hostList(
+                await AppSettingsModel.getValue('copilotAllowedPrivateHosts', '')
+            );
+            trustedHosts = this._hostList(
+                await AppSettingsModel.getValue('copilotTrustedHosts', '')
+            );
+        } catch (_) {
+            allowedPrivateHosts = [];
+            trustedHosts = [];
+        }
         return {
             provider: cfg.provider,
             host,
@@ -616,6 +631,8 @@ class CopilotService {
             needsTransferBasis: gate.code === 'transfer_basis_missing',
             record,
             bases: CopilotService.TRANSFER_BASES,
+            allowedPrivateHosts,
+            trustedHosts,
         };
     }
 

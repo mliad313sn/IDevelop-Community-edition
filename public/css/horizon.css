@@ -1838,3 +1838,126 @@ html {
 :root .hz-sso-change > p:only-child {
     margin: 0;
 }
+
+/* ── Security notices and panels (SMTP relay, copilot egress, API keys,
+      MFA grace, locked settings, antivirus status) ──────────────────── */
+:root .hz-sec-panel {
+    padding: 1rem 1.25rem;
+    margin: 1rem 0;
+}
+:root .hz-sec-panel h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+}
+:root .hz-callout.hz-sec-warn,
+:root .hz-callout.hz-sec-note,
+:root .hz-callout.hz-mfa-grace {
+    display: block;
+    text-align: left;
+    padding: 0.75rem 1rem;
+    margin: 0 0 1rem;
+    border-radius: var(--radius-md, 10px);
+}
+:root .hz-callout.hz-sec-warn {
+    border-color: var(--warning, #d4900a);
+    background: var(--warning-bg, rgba(212, 144, 10, 0.1));
+}
+:root .hz-callout.hz-sec-warn p,
+:root .hz-callout.hz-sec-note p,
+:root .hz-callout.hz-mfa-grace p {
+    margin: 0.2rem 0;
+}
+:root .hz-sec-warn .fa-triangle-exclamation {
+    color: var(--warning, #d4900a);
+}
+:root .hz-sec-ok {
+    margin: 0.4rem 0 0.8rem;
+    color: var(--text-secondary);
+}
+:root .hz-sec-dl {
+    display: grid;
+    grid-template-columns: minmax(8rem, max-content) 1fr;
+    gap: 0.3rem 1rem;
+    margin: 0.6rem 0;
+    font-size: 0.9rem;
+}
+:root .hz-sec-dl dt {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+:root .hz-sec-dl dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+:root .hz-sec-chip {
+    display: inline-block;
+    margin: 0 0.25rem 0.25rem 0;
+}
+:root .hz-sec-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    gap: 0.6rem 1rem;
+    align-items: end;
+    margin-top: 0.75rem;
+}
+:root .hz-sec-form .form-group {
+    margin: 0;
+}
+:root .hz-sec-form .hz-sec-form__wide {
+    grid-column: 1 / -1;
+}
+:root .hz-sec-check {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    font-size: 0.9rem;
+}
+:root .hz-sec-check input {
+    margin-top: 0.2rem;
+}
+:root .hz-sec-inline {
+    display: inline;
+}
+:root .hz-callout.hz-mfa-grace {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.6rem 1rem;
+    align-items: center;
+    border-color: var(--warning, #d4900a);
+}
+:root .hz-mfa-grace p {
+    flex: 1 1 18rem;
+}
+:root .hz-mfa-grace .btn {
+    margin: 0;
+}
+:root .hz-locked-badge {
+    white-space: nowrap;
+    cursor: help;
+}
+:root .hz-apikey-query {
+    white-space: nowrap;
+}
+:root .hz-apikey-query .btn {
+    margin-left: 0.35rem;
+}
+:root .hz-code-block {
+    margin: 0;
+    padding: 0.6rem 0.8rem;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8em;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+    :root .hz-sec-dl {
+        grid-template-columns: 1fr;
+    }
+    :root .hz-apikey-query {
+        white-space: normal;
+    }
+}
