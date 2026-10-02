@@ -227,7 +227,7 @@ async function main() {
     }
     if (!keys.oldAppKey)
         console.warn(
-            'WARN: current APP_KEY is empty: MFA/secretBox used the SESSION_SECRET fallback; rotating to a real APP_KEY.'
+            'WARN: no current APP_KEY was set, so encrypted values used the SESSION_SECRET fallback. Rotating to a real APP_KEY.'
         );
 
     await db.connect();
