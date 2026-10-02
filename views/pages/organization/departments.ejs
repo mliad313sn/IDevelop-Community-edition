@@ -10,7 +10,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
 <div class="page-header">
     <h1><%= __('admin:departments') %></h1>
     <% if (canManage) { %>
-    <button class="btn btn-primary" onclick="document.getElementById('createModal').style.display='block'"><%= __('admin:create_department') %></button>
+    <button class="btn btn-primary" data-on-click="orgSetModalDisplay" data-args='["createModal","block"]'><%= __('admin:create_department') %></button>
     <% } %>
 </div>
 
@@ -37,7 +37,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
             <td><%= dept.description || '-' %></td>
             <% if (canManage) { %>
             <td>
-                <button class="btn btn-sm" onclick="editDepartment(<%= JSON.stringify(dept).replace(/"/g, '&quot;') %>)"><%= __('admin:edit') %></button>
+                <button class="btn btn-sm" data-on-click="editDepartment" data-args="<%= JSON.stringify([dept]) %>"><%= __('admin:edit') %></button>
                 <%- include('./_unit-actions', { kind: 'department', unit: dept, from: 'page' }) %>
             </td>
             <% } %>
@@ -52,7 +52,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
 <!-- Create Modal -->
 <div id="createModal" class="modal" style="display:none;">
     <div class="modal-content">
-        <span class="close" onclick="document.getElementById('createModal').style.display='none'">&times;</span>
+        <span class="close" data-on-click="orgSetModalDisplay" data-args='["createModal","none"]'>&times;</span>
         <h2><%= __('admin:create_department') %></h2>
         <form action="/organization/departments" method="POST">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
@@ -78,7 +78,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
                 <textarea id="dept-f1-description" name="description"><%= dc('description') %></textarea>
             </div>
             <button type="submit" class="btn btn-primary"><%= __('admin:create') %></button>
-            <button type="button" class="btn btn-secondary" onclick="document.getElementById('createModal').style.display='none'"><%= __('admin:cancel') %></button>
+            <button type="button" class="btn btn-secondary" data-on-click="orgSetModalDisplay" data-args='["createModal","none"]'><%= __('admin:cancel') %></button>
         </form>
     </div>
 </div>
@@ -86,7 +86,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
 <!-- Edit Modal -->
 <div id="editModal" class="modal" style="display:none;">
     <div class="modal-content">
-        <span class="close" onclick="document.getElementById('editModal').style.display='none'">&times;</span>
+        <span class="close" data-on-click="orgSetModalDisplay" data-args='["editModal","none"]'>&times;</span>
         <h2><%= __('admin:edit_department') %></h2>
         <form id="editForm" method="POST">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
@@ -112,7 +112,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
                 <textarea name="description" id="editDescription"></textarea>
             </div>
             <button type="submit" class="btn btn-primary"><%= __('admin:update') %></button>
-            <button type="button" class="btn btn-secondary" onclick="document.getElementById('editModal').style.display='none'"><%= __('admin:cancel') %></button>
+            <button type="button" class="btn btn-secondary" data-on-click="orgSetModalDisplay" data-args='["editModal","none"]'><%= __('admin:cancel') %></button>
         </form>
     </div>
 </div>
@@ -136,6 +136,11 @@ document.addEventListener('submit', function (e) {
         if (ok) HTMLFormElement.prototype.submit.call(form);
     });
 }, true);
+
+// CSP: the modal open/close controls use data-on-click (csp-actions.js).
+function orgSetModalDisplay(id, value) {
+    document.getElementById(id).style.display = value;
+}
 
 function editDepartment(dept) {
     document.getElementById('editSiteId').value = dept.siteId || '';

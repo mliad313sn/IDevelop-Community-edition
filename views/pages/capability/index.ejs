@@ -13,16 +13,16 @@
   <h3 style="margin-top:0"><i class="fas fa-robot" aria-hidden="true"></i> <%= __('talentx:cap_copilot') %> <span class="text-muted" style="font-size:.7em">— <%= __('talentx:cap_copilot_scoped') %></span></h3>
   <p class="text-muted" style="font-size:.72em;margin:.1rem 0 .6rem"><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('talentx:cap_copilot_onprem') %></p>
   <div style="display:flex;gap:.5rem;align-items:flex-end">
-    <div style="flex:1"><label for="cop-q"><%= __('talentx:cap_ask_label') %></label><br><input id="cop-q" class="form-control" placeholder="<%= __('talentx:cap_ask_ph') %>" onkeydown="if(event.key==='Enter')CAP.ask()"></div>
-    <button class="btn btn-primary" onclick="CAP.ask()"><%= __('talentx:cap_ask_btn') %></button>
+    <div style="flex:1"><label for="cop-q"><%= __('talentx:cap_ask_label') %></label><br><input id="cop-q" class="form-control" placeholder="<%= __('talentx:cap_ask_ph') %>" data-on-keydown="CAP.askOnEnter" data-args='["$event"]'></div>
+    <button class="btn btn-primary" data-on-click="CAP.ask" data-args='[]'><%= __('talentx:cap_ask_btn') %></button>
   </div>
   <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem">
-    <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('Who is at flight risk?')"><%= __('talentx:cap_q_flight') %></button>
-    <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('Who needs development first?')"><%= __('talentx:cap_q_dev') %></button>
-    <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('Readiness by site')"><%= __('talentx:cap_q_readiness_site') %></button>
-    <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('What are our top skill gaps?')"><%= __('talentx:cap_q_gaps') %></button>
-    <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('How many people are not assessed yet?')"><%= __('talentx:cap_q_coverage') %></button>
-    <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.quickAsk('Open PIPs?')"><%= __('talentx:cap_q_pips') %></button>
+    <button type="button" class="btn btn-sm btn-secondary" data-on-click="CAP.quickAsk" data-args='["Who is at flight risk?"]'><%= __('talentx:cap_q_flight') %></button>
+    <button type="button" class="btn btn-sm btn-secondary" data-on-click="CAP.quickAsk" data-args='["Who needs development first?"]'><%= __('talentx:cap_q_dev') %></button>
+    <button type="button" class="btn btn-sm btn-secondary" data-on-click="CAP.quickAsk" data-args='["Readiness by site"]'><%= __('talentx:cap_q_readiness_site') %></button>
+    <button type="button" class="btn btn-sm btn-secondary" data-on-click="CAP.quickAsk" data-args='["What are our top skill gaps?"]'><%= __('talentx:cap_q_gaps') %></button>
+    <button type="button" class="btn btn-sm btn-secondary" data-on-click="CAP.quickAsk" data-args='["How many people are not assessed yet?"]'><%= __('talentx:cap_q_coverage') %></button>
+    <button type="button" class="btn btn-sm btn-secondary" data-on-click="CAP.quickAsk" data-args='["Open PIPs?"]'><%= __('talentx:cap_q_pips') %></button>
   </div>
   <p class="text-muted" style="font-size:.72em;margin:.5rem 0 0" data-ai-disclaimer><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('talentx:cap_ai_disclaimer') %></p>
   <div id="cop-a" style="margin-top:.6rem;font-size:.92em;white-space:pre-wrap"></div>
@@ -35,7 +35,7 @@
 <div class="card" style="padding:1rem;margin-bottom:1rem">
   <h3 style="margin-top:0"><%= __('talentx:cap_calibration') %></h3>
   <p class="text-muted" style="margin:.2rem 0"><%= __('talentx:cap_calibration_intro') %></p>
-  <button class="btn btn-primary btn-sm" onclick="CAP.newCalibration()"><%= __('talentx:cap_new_session') %></button>
+  <button class="btn btn-primary btn-sm" data-on-click="CAP.newCalibration" data-args='[]'><%= __('talentx:cap_new_session') %></button>
   <table class="table" id="cap-cal-table" style="margin-top:.6rem"><thead><tr><th><%= __('talentx:cap_col_scope') %></th><th><%= __('talentx:status') %></th><th><%= __('talentx:cap_col_adjustments') %></th><th><%= __('talentx:cap_col_created') %></th></tr></thead>
     <tbody>
       <% (calibrations||[]).forEach(function(c){ %><tr><td><%= enumLabel(c.scopeType) %></td><td><span class="badge"><%= enumLabel(c.status) %></span></td><td><%= c.adjustments %></td><td><%= fmtDate(c.createdAt) %></td></tr><% }); %>
@@ -53,7 +53,7 @@
     <div><label for="obj-level"><%= __('talentx:cap_level') %></label><br><select id="obj-level" class="form-control"><option value="company"><%= __('talentx:cap_lvl_company') %></option><option value="site"><%= __('talentx:cap_lvl_site') %></option><option value="department"><%= __('talentx:cap_lvl_department') %></option><option value="team"><%= __('talentx:cap_lvl_team') %></option></select></div>
     <div style="flex:1;min-width:240px"><label for="obj-title"><%= __('talentx:cap_title') %></label><br><input id="obj-title" class="form-control" placeholder="<%= __('talentx:cap_obj_title_ph') %>"></div>
     <div><label for="obj-period"><%= __('talentx:cap_period') %></label><br><input id="obj-period" class="form-control" placeholder="<%= __('talentx:cap_period_ph') %>" style="width:110px"></div>
-    <button class="btn btn-primary" onclick="CAP.newObjective()"><%= __('talentx:cap_add_objective') %></button>
+    <button class="btn btn-primary" data-on-click="CAP.newObjective" data-args='[]'><%= __('talentx:cap_add_objective') %></button>
   </div>
   <table class="table" id="cap-goal-table" style="margin-top:.6rem"><thead><tr><th><%= __('talentx:cap_level') %></th><th><%= __('talentx:cap_title') %></th><th><%= __('talentx:cap_col_aligned') %></th></tr></thead>
     <tbody><% (objectives||[]).forEach(function(o){ %><tr><td><%= enumLabel(o.level) %></td><td><%= o.title %></td><td><%= o.alignedGoals %></td></tr><% }); %>
@@ -70,16 +70,16 @@
     <div><label for="opp-kind"><%= __('talentx:cap_kind') %></label><br><select id="opp-kind" class="form-control"><option value="gig"><%= __('talentx:cap_kind_gig') %></option><option value="project"><%= __('talentx:cap_kind_project') %></option><option value="mentorship"><%= __('talentx:cap_kind_mentorship') %></option><option value="role"><%= __('talentx:cap_kind_role') %></option></select></div>
     <div style="flex:1;min-width:220px"><label for="opp-title"><%= __('talentx:cap_title') %></label><br><input id="opp-title" class="form-control" placeholder="<%= __('talentx:cap_opp_title_ph') %>"></div>
     <div><label for="opp-closes"><%= __('talentx:cap_closes_on') %></label><br><input id="opp-closes" type="date" class="form-control"></div>
-    <button class="btn btn-primary" onclick="CAP.newOpportunity()"><%= __('talentx:cap_post_opp') %></button>
+    <button class="btn btn-primary" data-on-click="CAP.newOpportunity" data-args='[]'><%= __('talentx:cap_post_opp') %></button>
   </div>
   <table class="table" id="cap-opp-table" style="margin-top:.6rem"><thead><tr><th><%= __('talentx:cap_kind') %></th><th><%= __('talentx:cap_title') %></th><th><%= __('talentx:cap_closes_on') %></th><th><%= __('talentx:cap_col_applicants') %></th><th></th></tr></thead>
     <tbody><% (opportunities||[]).forEach(function(o){ %><tr><td><%= enumLabel(o.kind) %></td><td><%= o.title %></td>
       <td><% if (o.closesOn) { %><%= fmtDate(o.closesOn) %><% if (o.expired) { %> <span class="badge badge-warning"><%= __('talentx:cap_expired') %></span><% } %><% } else { %>—<% } %></td>
       <td><%= o.applicants %></td>
-      <td style="white-space:nowrap"><button class="btn btn-sm btn-secondary" onclick="CAP.applicants(<%= o.id %>)"><%= __('talentx:cap_applicants_btn') %></button>
-        <button class="btn btn-sm btn-secondary" onclick="CAP.match(<%= o.id %>)"><%= __('talentx:cap_match_candidates') %></button>
-        <% if (o.canClose) { %><button class="btn btn-sm btn-success" onclick="CAP.oppState(<%= o.id %>,'filled')"><%= __('talentx:cap_fill_opp') %></button>
-        <button class="btn btn-sm btn-secondary" onclick="CAP.oppState(<%= o.id %>,'closed')"><%= __('talentx:cap_close_opp') %></button><% } %></td></tr><% }); %>
+      <td style="white-space:nowrap"><button class="btn btn-sm btn-secondary" data-on-click="CAP.applicants" data-args="<%= JSON.stringify([o.id]) %>"><%= __('talentx:cap_applicants_btn') %></button>
+        <button class="btn btn-sm btn-secondary" data-on-click="CAP.match" data-args="<%= JSON.stringify([o.id]) %>"><%= __('talentx:cap_match_candidates') %></button>
+        <% if (o.canClose) { %><button class="btn btn-sm btn-success" data-on-click="CAP.oppState" data-args="<%= JSON.stringify([o.id, 'filled']) %>"><%= __('talentx:cap_fill_opp') %></button>
+        <button class="btn btn-sm btn-secondary" data-on-click="CAP.oppState" data-args="<%= JSON.stringify([o.id, 'closed']) %>"><%= __('talentx:cap_close_opp') %></button><% } %></td></tr><% }); %>
     <% if(!(opportunities||[]).length){ %><tr><td colspan="5"><em><%= __('talentx:cap_no_opps') %></em></td></tr><% } %></tbody></table>
   <div id="opp-match" class="text-muted" style="font-size:.85em;margin-top:.4rem"></div>
   <div id="opp-applicants" style="margin-top:.6rem"></div>
@@ -91,12 +91,12 @@
 <% if (_cm('engagement')) { %>
 <div class="card" style="padding:1rem;margin-bottom:1rem">
   <h3 style="margin-top:0"><%= __('talentx:cap_surveys') %></h3>
-  <button class="btn btn-primary btn-sm" onclick="CAP.newSurvey()"><%= __('talentx:cap_new_survey') %></button>
+  <button class="btn btn-primary btn-sm" data-on-click="CAP.newSurvey" data-args='[]'><%= __('talentx:cap_new_survey') %></button>
   <!-- Minimal question editor. The builder used to create every survey with the
        same three hard-coded ENGLISH questions and an anonymity threshold of 4. -->
   <div id="svy-builder" hidden style="border:1px solid var(--border-color,#334155);border-radius:8px;padding:.8rem;margin-top:.6rem">
     <% if ((typeof surveyTemplates !== 'undefined' ? surveyTemplates : []).length) { %>
-    <div style="margin-bottom:.5rem"><label for="svy-template"><%= __('talentx:cap_svy_template') %></label><br><select id="svy-template" class="form-control" style="max-width:420px" onchange="CAP.applyTemplate(this.value)">
+    <div style="margin-bottom:.5rem"><label for="svy-template"><%= __('talentx:cap_svy_template') %></label><br><select id="svy-template" class="form-control" style="max-width:420px" data-on-change="CAP.applyTemplate" data-args='["$value"]'>
       <option value=""><%= __('talentx:cap_svy_template_none') %></option>
       <% surveyTemplates.forEach(function(t){ %><option value="<%= t.id %>"><%= t.title %></option><% }); %>
     </select>
@@ -113,16 +113,16 @@
     <p class="text-muted" style="font-size:.8em;margin:.3rem 0"><%= __('talentx:cap_survey_min_hint') %></p>
     <div id="svy-questions"></div>
     <div style="display:flex;gap:.5rem;margin-top:.5rem">
-      <button type="button" class="btn btn-sm btn-secondary" onclick="CAP.addQuestion()">+ <%= __('talentx:cap_add_question') %></button>
-      <button type="button" class="btn btn-sm btn-primary" onclick="CAP.createSurvey()"><%= __('talentx:cap_create_survey') %></button>
-      <button type="button" class="btn btn-sm btn-link" onclick="document.getElementById('svy-builder').hidden=true"><%= __('talentx:cap_cancel') %></button>
+      <button type="button" class="btn btn-sm btn-secondary" data-on-click="CAP.addQuestion" data-args='[]'>+ <%= __('talentx:cap_add_question') %></button>
+      <button type="button" class="btn btn-sm btn-primary" data-on-click="CAP.createSurvey" data-args='[]'><%= __('talentx:cap_create_survey') %></button>
+      <button type="button" class="btn btn-sm btn-link" data-on-click="CAP.cancelSurvey" data-args='[]'><%= __('talentx:cap_cancel') %></button>
     </div>
   </div>
   <table class="table" id="cap-svy-table" style="margin-top:.6rem"><thead><tr><th><%= __('talentx:cap_title') %></th><th><%= __('talentx:cap_kind') %></th><th><%= __('talentx:state') %></th><th><%= __('talentx:cap_col_respondents') %></th><th></th></tr></thead>
     <tbody><% (surveys||[]).forEach(function(s){ %><tr><td><%= s.title %></td><td><%= __('talentx:cap_svy_kind_' + (['pulse','engagement','enps','onboarding','exit'].indexOf(s.kind) > -1 ? s.kind : 'pulse')) %></td><td><span class="badge"><%= enumLabel(s.state) %></span></td><td><%= s.respondents %></td>
-      <td style="white-space:nowrap"><% if(s.state==='draft'){ %><button class="btn btn-sm btn-success" onclick="CAP.surveyOpen(<%= s.id %>)"><%= __('talentx:open') %></button><% } %>
-        <% if(s.state==='open'){ %><button class="btn btn-sm btn-secondary" onclick="CAP.surveyClose(<%= s.id %>)"><%= __('talentx:cap_close_survey') %></button><% } %>
-        <button class="btn btn-sm btn-secondary" onclick="CAP.surveyResults(<%= s.id %>)"><%= __('talentx:cap_results') %></button></td></tr><% }); %>
+      <td style="white-space:nowrap"><% if(s.state==='draft'){ %><button class="btn btn-sm btn-success" data-on-click="CAP.surveyOpen" data-args="<%= JSON.stringify([s.id]) %>"><%= __('talentx:open') %></button><% } %>
+        <% if(s.state==='open'){ %><button class="btn btn-sm btn-secondary" data-on-click="CAP.surveyClose" data-args="<%= JSON.stringify([s.id]) %>"><%= __('talentx:cap_close_survey') %></button><% } %>
+        <button class="btn btn-sm btn-secondary" data-on-click="CAP.surveyResults" data-args="<%= JSON.stringify([s.id]) %>"><%= __('talentx:cap_results') %></button></td></tr><% }); %>
     <% if(!(surveys||[]).length){ %><tr><td colspan="5"><em><%= __('talentx:cap_no_surveys') %></em></td></tr><% } %></tbody></table>
   <div id="survey-results" class="text-muted" style="font-size:.85em;margin-top:.4rem"></div>
 </div>
@@ -137,7 +137,7 @@
     <div><label for="rec-to"><%= __('talentx:cap_rec_to') %></label><br><input id="rec-to" class="form-control" style="width:140px"></div>
     <div><label for="rec-tag"><%= __('talentx:cap_value') %></label><br><input id="rec-tag" class="form-control" placeholder="<%= __('talentx:cap_value_ph') %>" style="width:140px"></div>
     <div style="flex:1;min-width:200px"><label for="rec-msg"><%= __('talentx:cap_message') %></label><br><input id="rec-msg" class="form-control" placeholder="<%= __('talentx:cap_rec_msg_ph') %>"></div>
-    <button class="btn btn-primary" onclick="CAP.give()"><%= __('talentx:cap_recognize') %></button>
+    <button class="btn btn-primary" data-on-click="CAP.give" data-args='[]'><%= __('talentx:cap_recognize') %></button>
   </div>
   <ul style="margin:.6rem 0 0;font-size:.9em">
     <% (recognitions||[]).forEach(function(r){ %><li><strong><%= (r.toFirst||'')+' '+(r.toLast||'') %></strong> — <%= r.message %> <% if(r.valueTag){ %><span class="badge"><%= r.valueTag %></span><% } %></li><% }); %>
@@ -153,9 +153,9 @@
   <h3 style="margin-top:0"><%= __('talentx:cap_dei') %> <span class="text-muted" style="font-size:.7em"><%= __('talentx:cap_dei_suppressed') %></span></h3>
   <div style="display:flex;gap:.5rem;align-items:flex-end">
     <div><label for="dei-dim"><%= __('talentx:cap_dimension') %></label><br><select id="dei-dim" class="form-control"><option value="gender"><%= __('talentx:cap_dim_gender') %></option><option value="ethnicity"><%= __('talentx:cap_dim_ethnicity') %></option><option value="age_band"><%= __('talentx:cap_dim_age_band') %></option><option value="nationality"><%= __('talentx:cap_dim_nationality') %></option></select></div>
-    <button class="btn btn-secondary" onclick="CAP.dei()"><%= __('talentx:cap_representation') %></button>
-    <button class="btn btn-secondary" onclick="CAP.deiNineBox()"><%= __('talentx:cap_ninebox_group') %></button>
-    <button class="btn btn-secondary" onclick="CAP.deiPip()"><%= __('talentx:cap_pip_rate_group') %></button>
+    <button class="btn btn-secondary" data-on-click="CAP.dei" data-args='[]'><%= __('talentx:cap_representation') %></button>
+    <button class="btn btn-secondary" data-on-click="CAP.deiNineBox" data-args='[]'><%= __('talentx:cap_ninebox_group') %></button>
+    <button class="btn btn-secondary" data-on-click="CAP.deiPip" data-args='[]'><%= __('talentx:cap_pip_rate_group') %></button>
   </div>
   <div id="dei-out" style="margin-top:.5rem;font-size:.88em"></div>
 </div>
@@ -248,6 +248,8 @@ const CAP = {
     // sans code stable.
     }catch(e){ out.textContent=(e&&e.code&&e.message)?e.message:CAP_T.askError; } },
   quickAsk(q){ document.getElementById('cop-q').value=q; this.ask(); },
+  askOnEnter(ev){ if(ev && ev.key==='Enter') this.ask(); },
+  cancelSurvey(){ document.getElementById('svy-builder').hidden=true; },
   async newCalibration(){ await this.api('POST','/v2/cap/calibration',{scopeType:'org'}); location.reload(); },
   async newObjective(){ const t=document.getElementById('obj-title').value.trim(); if(!t){alert(CAP_T.needTitle);return;} await this.api('POST','/v2/cap/objective',{level:document.getElementById('obj-level').value,title:t,period:document.getElementById('obj-period').value||null}); location.reload(); },
   async newOpportunity(){ const t=document.getElementById('opp-title').value.trim(); if(!t){alert(CAP_T.needTitle);return;} await this.api('POST','/v2/cap/opportunity',{kind:document.getElementById('opp-kind').value,title:t,skillsSought:[],closesOn:document.getElementById('opp-closes').value||null}); location.reload(); },
@@ -342,4 +344,10 @@ const CAP = {
   async deiNineBox(){ const j=await this.api('GET','/v2/cap/dei/ninebox?dim='+encodeURIComponent(document.getElementById('dei-dim').value)); document.getElementById('dei-out').innerHTML='<strong>'+capEsc(CAP_T.nineboxGroup)+':</strong> '+(j.data.length?j.data.map(d=>d.suppressed?(capEsc(d.grp)+'/'+capEsc(d.box)+': '+capEsc(CAP_T.suppressed)):(capEsc(d.grp)+'/'+capEsc(d.box)+': '+capEsc(d.n))).join(' · '):capEsc(CAP_T.noDemo)); },
   async deiPip(){ const j=await this.api('GET','/v2/cap/dei/piprate?dim='+encodeURIComponent(document.getElementById('dei-dim').value)); document.getElementById('dei-out').innerHTML='<strong>'+capEsc(CAP_T.pipRate)+':</strong> '+(j.data.length?j.data.map(d=>d.suppressed?(capEsc(d.grp)+': '+capEsc(CAP_T.suppressed)):(capEsc(d.grp)+': '+capEsc(d.pipRatePct)+'%')).join(' · '):capEsc(CAP_T.noDemo)); }
 };
+// CSP: controls call CAP through data-on-* (public/js/csp-actions.js), which
+// resolves names on window and invokes with `this` = the clicked element. A top-level
+// `const` is not a window property, and the methods rely on `this` being CAP — so bind
+// every method and publish the object.
+Object.keys(CAP).forEach(function(k){ if (typeof CAP[k] === 'function') CAP[k] = CAP[k].bind(CAP); });
+window.CAP = CAP;
 </script>

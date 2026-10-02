@@ -23,9 +23,9 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
 </div>
 
 <div class="sl-tabs" role="tablist" aria-label="<%= __('syslogs:views_label') %>">
-    <button class="btn btn-primary" id="sl-tab-entries-btn" role="tab" aria-selected="true" aria-controls="sl-tab-entries" onclick="SL.tab('entries')"><i class="fas fa-list" aria-hidden="true"></i> <%= __('syslogs:tab_entries') %></button>
-    <button class="btn btn-secondary" id="sl-tab-issues-btn" role="tab" aria-selected="false" aria-controls="sl-tab-issues" onclick="SL.tab('issues')"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('syslogs:tab_issues') %></button>
-    <button class="btn btn-secondary" id="sl-tab-analytics-btn" role="tab" aria-selected="false" aria-controls="sl-tab-analytics" onclick="SL.tab('analytics')"><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('syslogs:tab_analytics') %></button>
+    <button class="btn btn-primary" id="sl-tab-entries-btn" role="tab" aria-selected="true" aria-controls="sl-tab-entries" data-on-click="SL.tab" data-args='["entries"]'><i class="fas fa-list" aria-hidden="true"></i> <%= __('syslogs:tab_entries') %></button>
+    <button class="btn btn-secondary" id="sl-tab-issues-btn" role="tab" aria-selected="false" aria-controls="sl-tab-issues" data-on-click="SL.tab" data-args='["issues"]'><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('syslogs:tab_issues') %></button>
+    <button class="btn btn-secondary" id="sl-tab-analytics-btn" role="tab" aria-selected="false" aria-controls="sl-tab-analytics" data-on-click="SL.tab" data-args='["analytics"]'><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('syslogs:tab_analytics') %></button>
 </div>
 
 <div id="sl-tab-entries" role="tabpanel" aria-labelledby="sl-tab-entries-btn">
@@ -103,7 +103,7 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
             <td class="<%= log.latencyMs != null && log.latencyMs >= 1500 ? 'sl-slow' : '' %>"><%= log.latencyMs != null ? log.latencyMs + 'ms' : '—' %></td>
             <td class="log-details" title="<%= det %>"><%= det || '—' %></td>
             <td><%= log.ipAddress || '—' %></td>
-            <td><% if (log.requestId) { %><button type="button" class="sl-reqlink" title="<%= __('syslogs:view_trail_title') %>" data-request-id="<%= log.requestId %>" onclick="SL.openTrail(this.dataset.requestId)"><i class="fas fa-link" aria-hidden="true"></i></button><% } else { %>—<% } %></td>
+            <td><% if (log.requestId) { %><button type="button" class="sl-reqlink" title="<%= __('syslogs:view_trail_title') %>" data-request-id="<%= log.requestId %>" data-on-click="SL.openTrail" data-args="<%= JSON.stringify([String(log.requestId)]) %>"><i class="fas fa-link" aria-hidden="true"></i></button><% } else { %>—<% } %></td>
         </tr>
         <% }); %>
     </tbody>
@@ -130,7 +130,7 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
 <div id="sl-tab-issues" style="display:none" role="tabpanel" aria-labelledby="sl-tab-issues-btn">
     <div class="sl-controls">
         <label for="sl-idays"><%= __('syslogs:window') %></label>
-        <select id="sl-idays" onchange="SL.loadIssues(true)">
+        <select id="sl-idays" data-on-change="SL.loadIssues" data-args='[true]'>
             <option value="1"><%= __('syslogs:last_24h') %></option>
             <option value="7" selected><%= __('syslogs:last_7d') %></option>
             <option value="30"><%= __('syslogs:last_30d') %></option>
@@ -153,11 +153,11 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
 </div>
 
 <!-- Request trail modal -->
-<div id="sl-trail" class="sl-trail-overlay" style="display:none" onclick="if(event.target===this)SL.closeTrail()">
+<div id="sl-trail" class="sl-trail-overlay" style="display:none" data-on-click="SL.overlayClick" data-args='["$event","$el"]'>
     <div class="sl-trail-card" role="dialog" aria-modal="true" aria-label="<%= __('syslogs:trail_title') %>">
         <div class="sl-trail-head">
             <strong><%= __('syslogs:trail_title') %> <code id="sl-trail-id"></code></strong>
-            <button class="btn btn-sm btn-secondary" onclick="SL.closeTrail()"><%= __('syslogs:close') %></button>
+            <button class="btn btn-sm btn-secondary" data-on-click="SL.closeTrail" data-args='[]'><%= __('syslogs:close') %></button>
         </div>
         <div id="sl-trail-body" class="sl-trail-body"><%= __('syslogs:js_loading') %></div>
     </div>
@@ -166,7 +166,7 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
 <div id="sl-tab-analytics" style="display:none" role="tabpanel" aria-labelledby="sl-tab-analytics-btn">
     <div class="sl-controls">
         <label for="sl-days"><%= __('syslogs:window') %></label>
-        <select id="sl-days" onchange="SL.loadAnalytics(true)">
+        <select id="sl-days" data-on-change="SL.loadAnalytics" data-args='[true]'>
             <option value="7"><%= __('syslogs:last_7d') %></option>
             <option value="30" selected><%= __('syslogs:last_30d') %></option>
             <option value="90"><%= __('syslogs:last_90d') %></option>
@@ -243,7 +243,7 @@ const SL = {
       document.getElementById('sl-i-lockouts').innerHTML=rows(d.lockouts,x=>
         '<tr><td>'+this.esc(x.who)+'</td><td class="sl-n">'+x.fails+' '+this.esc(this.t.fails)+'</td></tr>');
       document.getElementById('sl-i-recent').innerHTML=rows(d.recentSlow,x=>
-        '<tr><td>'+this.esc(x.at)+'</td><td>'+this.esc(x.kind)+'</td><td>'+this.esc(x.route||'')+'</td><td class="sl-n">'+(x.latencyMs!=null?x.latencyMs+'ms':'')+(x.pgCode?' '+this.esc(x.pgCode):'')+'</td><td>'+(x.requestId?'<button type="button" class="sl-reqlink" data-request-id="'+this.esc(x.requestId)+'" onclick="SL.openTrail(this.dataset.requestId)"><i class="fas fa-link"></i></button>':'')+'</td></tr>');
+        '<tr><td>'+this.esc(x.at)+'</td><td>'+this.esc(x.kind)+'</td><td>'+this.esc(x.route||'')+'</td><td class="sl-n">'+(x.latencyMs!=null?x.latencyMs+'ms':'')+(x.pgCode?' '+this.esc(x.pgCode):'')+'</td><td>'+(x.requestId?'<button type="button" class="sl-reqlink" data-request-id="'+this.esc(x.requestId)+'" data-on-click="SL.openTrail" data-args="'+this.esc(JSON.stringify([String(x.requestId)]))+'"><i class="fas fa-link"></i></button>':'')+'</td></tr>');
       this.issuesLoaded=true; st.textContent='';
     }catch(e){ st.textContent=this.t.error+e.message; }
   },
@@ -264,6 +264,8 @@ const SL = {
     }catch(e){ body.textContent=this.t.error+e.message; }
   },
   closeTrail(){ document.getElementById('sl-trail').style.display='none'; },
+  // A click on the dimmed backdrop itself (not the card) closes the trail.
+  overlayClick(ev, overlay){ if(ev && ev.target===overlay) this.closeTrail(); },
   axis(){ const c=getComputedStyle(document.documentElement).getPropertyValue('--text-secondary')||'#94a3b8';
     return {ticks:{color:c},grid:{color:'rgba(148,163,184,.15)'}}; },
   bar(id,labels,data,color){ if(this.charts[id])this.charts[id].destroy();
@@ -304,6 +306,11 @@ const SL = {
     }catch(e){ st.textContent=this.t.error+e.message; }
   }
 };
+// CSP: controls are wired by csp-actions.js (data-on-click: SL.<method>), which
+// needs SL on window and calls with this = the element — the methods use this.*,
+// so each is bound to SL, exactly as the old inline SL.x() calls.
+Object.keys(SL).forEach(function(k){ if(typeof SL[k]==='function') SL[k]=SL[k].bind(SL); });
+window.SL = SL;
 </script>
 
 <style>

@@ -525,7 +525,7 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
   <div style="display:flex;gap:.5rem;margin:.5rem 0 1rem;flex-wrap:wrap;">
     <input id="okr-new-title" type="text" placeholder="<%= __('admin:new_objective_placeholder') %>" style="flex:1;min-width:240px;padding:6px 8px;">
     <input id="okr-new-period" type="text" placeholder="<%= __('admin:period_placeholder') %>" style="width:170px;padding:6px 8px;">
-    <button class="btn btn-primary" onclick="okrAddObjective()">＋ <%= __('admin:add_objective') %></button>
+    <button class="btn btn-primary" data-on-click="okrAddObjective" data-args='[]'>＋ <%= __('admin:add_objective') %></button>
   </div>
   <div id="okr-list"><div class="text-muted"><%= __('admin:loading') %></div></div>
 </section>
@@ -540,10 +540,10 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
   var OBJECTIVES = null; // org objectives for the align control (null = not offered to this viewer)
   // UX-12 (3.23.21): white text on these fills is >= 4.5:1 (the former fills were 2.4-4.0:1).
   function badge(s){ var m={active:'#1f5f99',at_risk:'#8a4b00',done:'#1e6b3a',cancelled:'#5f6368'}; return '<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;color:#fff;background:'+(m[s]||'#4a5563')+'">'+e(GST[s]||s)+'</span>'; }
-  function statusSelect(g){ return '<select id="gst-'+g.id+'" aria-label="'+e(OKR_T.status+' — '+(g.title||''))+'" style="padding:2px 4px;font-size:.8rem" onchange="okrSetStatus('+g.id+',this.value)">'
+  function statusSelect(g){ return '<select id="gst-'+g.id+'" aria-label="'+e(OKR_T.status+' — '+(g.title||''))+'" style="padding:2px 4px;font-size:.8rem" data-on-change="okrSetStatus" data-args="'+e(JSON.stringify([g.id,'$value']))+'">'
     + ['active','at_risk','done','cancelled'].map(function(s){ return '<option value="'+s+'"'+(s===g.status?' selected':'')+'>'+e(GST[s]||s)+'</option>'; }).join('') + '</select>'; }
   function alignSelect(o){ if(!OBJECTIVES||!OBJECTIVES.length) return '';
-    return ' <select aria-label="'+e(OKR_T.align)+'" style="padding:2px 4px;font-size:.8rem" onchange="okrAlign('+o.id+',this)"><option value="">'+e(OKR_T.alignPh)+'</option>'
+    return ' <select aria-label="'+e(OKR_T.align)+'" style="padding:2px 4px;font-size:.8rem" data-on-change="okrAlign" data-args="'+e(JSON.stringify([o.id,'$el']))+'"><option value="">'+e(OKR_T.alignPh)+'</option>'
       + OBJECTIVES.map(function(x){ return '<option value="'+Number(x.id)+'">'+e(x.title)+(x.period?(' ('+e(x.period)+')'):'')+'</option>'; }).join('') + '</select>'; }
   function bar(pct){ pct=Math.max(0,Math.min(100,Math.round(pct||0))); return '<div style="height:10px;border-radius:5px;background:#e6edf3;overflow:hidden;margin-top:4px"><div style="height:100%;width:'+pct+'%;background:#2f80c4"></div></div>'; }
   function api(path, opts){ return fetch(base+path, Object.assign({headers:{'Content-Type':'application/json'}}, opts||{})).then(function(r){ return r.json().then(function(j){ return {ok:r.ok,status:r.status,body:j}; }); }); }
@@ -565,7 +565,7 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
             + '<div style="font-size:.85rem">'+e(k.title)+' '+badge(k.status)+' '+statusSelect(k)+' <span class="text-muted">'+e(k.currentValue)+'/'+e(k.targetValue==null?'—':k.targetValue)+(k.metricUnit?(' '+e(k.metricUnit)):'')+'</span></div>'
             + bar(pct)
             + '<div style="margin-top:3px"><input type="number" id="kr-val-'+k.id+'" value="'+e(k.currentValue)+'" aria-label="'+e(k.title)+'" style="width:80px;padding:3px 6px"> '
-            + '<button class="btn btn-secondary btn-sm" aria-label="'+e(<%- JSON.stringify(__('admin:update')) %>+' — '+k.title)+'" onclick="okrSaveProgress('+k.id+')">'+<%- JSON.stringify(__('admin:update')) %>+'</button></div></div>';
+            + '<button class="btn btn-secondary btn-sm" aria-label="'+e(<%- JSON.stringify(__('admin:update')) %>+' — '+k.title)+'" data-on-click="okrSaveProgress" data-args="'+e(JSON.stringify([k.id]))+'">'+<%- JSON.stringify(__('admin:update')) %>+'</button></div></div>';
         }).join('');
         return '<div class="dev-item" style="border:1px solid #d6dee6;border-radius:6px;padding:.6rem;margin-bottom:.6rem">'
           + '<div class="dev-t" style="font-weight:600">'+e(o.title)+' '+badge(o.status)+' '+statusSelect(o)+(o.period?(' <span class="text-muted">'+e(o.period)+'</span>'):'')+alignSelect(o)+'</div>'
@@ -574,7 +574,7 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
           + '<div style="margin-top:.4rem;margin-left:1rem;display:flex;gap:.4rem;flex-wrap:wrap">'
           + '<input type="text" id="kr-new-'+o.id+'" placeholder="'+<%- JSON.stringify(__('admin:new_key_result_placeholder')) %>+'" style="flex:1;min-width:180px;padding:4px 6px">'
           + '<input type="number" id="kr-tgt-'+o.id+'" placeholder="'+<%- JSON.stringify(__('admin:target_placeholder')) %>+'" style="width:90px;padding:4px 6px">'
-          + '<button class="btn btn-secondary btn-sm" onclick="okrAddKR('+o.id+')">＋ '+<%- JSON.stringify(__('admin:key_result')) %>+'</button></div>'
+          + '<button class="btn btn-secondary btn-sm" data-on-click="okrAddKR" data-args="'+e(JSON.stringify([o.id]))+'">＋ '+<%- JSON.stringify(__('admin:key_result')) %>+'</button></div>'
           + '</div>';
       }).join('');
     }).catch(function(){ document.getElementById('okr-list').innerHTML='<div class="text-muted">'+<%- JSON.stringify(__('admin:error_loading_goals')) %>+'</div>'; });
@@ -631,7 +631,7 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
     <input id="ci-new-title" type="text" placeholder="<%= __('admin:topic_placeholder') %>" style="flex:1;min-width:200px;padding:6px 8px;">
     <input id="ci-new-when" type="date" style="padding:6px 8px;">
     <select id="ci-new-sentiment" style="padding:6px 8px;"><option value=""><%= __('admin:mood_dash') %></option><option value="1"><span aria-hidden="true">😟</span> 1</option><option value="2"><span aria-hidden="true">🙁</span> 2</option><option value="3"><span aria-hidden="true">😐</span> 3</option><option value="4"><span aria-hidden="true">🙂</span> 4</option><option value="5"><span aria-hidden="true">😀</span> 5</option></select>
-    <button class="btn btn-primary" onclick="ciAdd()">＋ <%= __('admin:add_checkin') %></button>
+    <button class="btn btn-primary" data-on-click="ciAdd" data-args='[]'>＋ <%= __('admin:add_checkin') %></button>
   </div>
   <div id="ci-list"><div class="text-muted"><%= __('admin:loading') %></div></div>
 </section>
@@ -655,7 +655,7 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
       var items = (res.ok && res.body.data)||[];
       return items.map(function(it){
         return '<div style="margin:.2rem 0 .2rem 1rem;font-size:.85rem;display:flex;align-items:center;gap:.4rem">'
-          + (it.isAction ? '<input type="checkbox" '+(it.done?'checked':'')+' onchange="ciToggle('+it.id+',this.checked)">' : '<span class="text-muted">•</span>')
+          + (it.isAction ? '<input type="checkbox" '+(it.done?'checked':'')+' data-on-change="ciToggle" data-args="'+e(JSON.stringify([it.id,'$checked']))+'">' : '<span class="text-muted">•</span>')
           + '<span style="'+(it.done?'text-decoration:line-through;opacity:.6':'')+'">'+e(it.body)+(it.isAction?' <span class="text-muted" style="font-size:9px">'+<%- JSON.stringify(__('admin:action_tag')) %>+'</span>':'')+'</span></div>';
       }).join('');
     });
@@ -678,8 +678,8 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
           + '<div style="margin-top:.4rem;margin-left:1rem;display:flex;gap:.4rem;flex-wrap:wrap">'
           + '<input type="text" id="ci-item-'+c.id+'" placeholder="'+<%- JSON.stringify(__('admin:talking_point_placeholder')) %>+'" style="flex:1;min-width:180px;padding:4px 6px">'
           + '<label style="font-size:.8rem;display:flex;align-items:center;gap:3px"><input type="checkbox" id="ci-itemact-'+c.id+'"> '+<%- JSON.stringify(__('admin:action_tag')) %>+'</label>'
-          + '<button class="btn btn-secondary btn-sm" onclick="ciAddItem('+c.id+')">＋ '+<%- JSON.stringify(__('admin:item_label')) %>+'</button>'
-          + (c.status!=='completed'?(' <button class="btn btn-secondary btn-sm" onclick="ciComplete('+c.id+')">'+<%- JSON.stringify(__('admin:mark_complete')) %>+'</button>'):'')
+          + '<button class="btn btn-secondary btn-sm" data-on-click="ciAddItem" data-args="'+e(JSON.stringify([c.id]))+'">＋ '+<%- JSON.stringify(__('admin:item_label')) %>+'</button>'
+          + (c.status!=='completed'?(' <button class="btn btn-secondary btn-sm" data-on-click="ciComplete" data-args="'+e(JSON.stringify([c.id]))+'">'+<%- JSON.stringify(__('admin:mark_complete')) %>+'</button>'):'')
           + '</div></div>';
       }).join('');
       rows.forEach(function(c){ renderItems(c).then(function(html){ var el=document.querySelector('.ci-items[data-for="'+c.id+'"]'); if(el) el.innerHTML=html; }); });

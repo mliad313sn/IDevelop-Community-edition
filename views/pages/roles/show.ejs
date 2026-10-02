@@ -15,7 +15,7 @@ const LEVEL_LABELS = [
     <h1><%= __('admin:role') %>: <%= role.name %>
     </h1>
     <div class="page-actions">
-        <button class="btn btn-secondary" onclick='editRole(<%= JSON.stringify(role) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit_role') %></button>
+        <button class="btn btn-secondary" data-on-click="editRole" data-args="<%= JSON.stringify([role]) %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit_role') %></button>
         <%# Styled confirmation (ui-feedback data-confirm) — never the native confirm. %>
         <form action="/roles/<%= role.id %>/duplicate" method="POST" style="display:inline;"
             data-confirm="<%= __('admin:duplicate_role_confirm', { name: role.name }) %>">
@@ -82,7 +82,7 @@ const LEVEL_LABELS = [
 <div class="dashboard-section">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: .75rem;">
         <h2><%= __('admin:skill_requirements') %></h2>
-        <button class="btn btn-primary" onclick="showModal('addRequirementModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:add_requirement') %></button>
+        <button class="btn btn-primary" data-on-click="showModal" data-args='["addRequirementModal"]'><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:add_requirement') %></button>
     </div>
 
     <% if (requirements.length===0) { %>
@@ -90,7 +90,7 @@ const LEVEL_LABELS = [
             <div class="empty-state-icon"><i class="fas fa-bullseye" aria-hidden="true"></i></div>
             <h3><%= __('admin:no_requirements') %></h3>
             <p><%= __('admin:no_requirements_hint') %></p>
-            <button class="btn btn-primary" onclick="showModal('addRequirementModal')"><%= __('admin:add_first_requirement') %></button>
+            <button class="btn btn-primary" data-on-click="showModal" data-args='["addRequirementModal"]'><%= __('admin:add_first_requirement') %></button>
         </div>
         <% } else { %>
             <p style="opacity:.85; margin-top:0;"><%= __('admin:org_req_bulk_help') %></p>
@@ -213,14 +213,14 @@ const LEVEL_LABELS = [
             <div class="modal-content">
                 <div class="modal-header">
                     <h2><%= __('admin:add_skill_requirement') %></h2>
-                    <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('addRequirementModal')">&times;</button>
+                    <button type="button" class="close" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["addRequirementModal"]'>&times;</button>
                 </div>
                 <div class="modal-body">
                     <form id="addRequirementForm">
                         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                         <div class="form-group">
                             <label class="required"><%= __('admin:domain') %></label>
-                            <select id="requirementDomainFilter" onchange="filterSkillsByDomain()"
+                            <select id="requirementDomainFilter" data-on-change="filterSkillsByDomain" data-args='[]'
                                 style="width: 100%; padding: 0.75rem 1rem; border: 2px solid var(--border); border-radius: 6px; font-size: 1rem;">
                                 <option value=""><%= __('admin:all_domains') %></option>
                                 <% const domains=[...new Set(allSkills.map(s=> s.domainName))].sort();
@@ -265,7 +265,7 @@ const LEVEL_LABELS = [
                         <div class="modal-footer">
                             <button type="submit" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:add_requirement') %></button>
                             <button type="button" class="btn btn-secondary"
-                                onclick="hideModal('addRequirementModal')"><%= __('admin:cancel') %></button>
+                                data-on-click="hideModal" data-args='["addRequirementModal"]'><%= __('admin:cancel') %></button>
                         </div>
                     </form>
                 </div>
@@ -277,7 +277,7 @@ const LEVEL_LABELS = [
             <div class="modal-content">
                 <div class="modal-header">
                     <h2><%= __('admin:edit_role') %></h2>
-                    <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editRoleModal')">&times;</button>
+                    <button type="button" class="close" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["editRoleModal"]'>&times;</button>
                 </div>
                 <div class="modal-body">
                     <form id="editRoleForm" method="POST">
@@ -293,7 +293,7 @@ const LEVEL_LABELS = [
                         <div class="modal-footer">
                             <button type="submit" class="btn btn-primary"><%= __('admin:update') %></button>
                             <button type="button" class="btn btn-secondary"
-                                onclick="hideModal('editRoleModal')"><%= __('admin:cancel') %></button>
+                                data-on-click="hideModal" data-args='["editRoleModal"]'><%= __('admin:cancel') %></button>
                         </div>
                     </form>
                 </div>

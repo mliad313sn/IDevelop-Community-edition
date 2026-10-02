@@ -2,7 +2,8 @@
 /**
  * Web security baseline of server.js, pinned so that the About page's
  * "Web application protection" claims stay true:
- *  - a fresh CSP nonce per request, and no 'unsafe-inline' for scripts;
+ *  - a fresh CSP nonce per request, no 'unsafe-inline' for scripts, and no inline
+ *    event handler (script-src-attr 'none', SA-14);
  *  - objects blocked, base-uri and form-action locked, anti-clickjacking;
  *  - httpOnly, SameSite session cookies with a bounded lifetime;
  *  - bounded request bodies;
@@ -26,6 +27,9 @@ describe('Content Security Policy', () => {
         const s = directive('scriptSrc');
         expect(s).toMatch(/'nonce-\$\{res\.locals\.cspNonce\}'/);
         expect(s).not.toMatch(/unsafe-inline|unsafe-eval/);
+    });
+    test("inline event handlers never run: script-src-attr is 'none' (SA-14)", () => {
+        expect(directive('scriptSrcAttr')).toMatch(/^\s*"'none'"\s*$/);
     });
     test('objects blocked, base-uri, form-action and framing locked to self', () => {
         expect(directive('objectSrc')).toMatch(/'none'/);

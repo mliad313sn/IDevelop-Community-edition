@@ -3124,6 +3124,7 @@
   "ssof_yes": "Oui",
   "ssof_optional": "Facultative (recommandée pour la migration SSO)",
   "ssof_base_warn": "L’adresse publique de l’application n’est pas en https : Entra refusera ces URL. Renseignez « appBaseUrl » (Paramètres → E-mail) avec l’adresse https que vos utilisateurs ouvrent.",
+  "ssof_callback_mismatch": "L’URL de retour SAML configurée ({{configured}}) n’est pas l’adresse normale ({{expected}}). Elle est acceptée pour l’instant, mais enregistrez {{expected}} ici et comme URL de retour dans votre fournisseur d’identité, puis vérifiez que l’adresse de base (Paramètres → E-mail) est la racine du site, sans « /login ».",
   "ssof_step_import": "Importer les métadonnées de votre fournisseur",
   "ssof_step_import_help": "Collez l’URL des métadonnées de fédération d’application (Entra : bloc « Certificats SAML ») ou le fichier XML. L’URL de connexion, l’émetteur et tous les certificats de signature sont repris automatiquement.",
   "ssof_md_url": "URL des métadonnées (https)",

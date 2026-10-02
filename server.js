@@ -89,10 +89,12 @@ app.use((req, res, next) => {
     next();
 });
 
-// Content-Security-Policy. script-src is nonce-based (no 'unsafe-inline'); the
-// remaining 'unsafe-inline' on script-src-attr (onclick=) and style-src
-// (inline style=) reflect pervasive inline handlers/styles in the EJS views and
-// are a separate, lower-risk migration. Plugins/objects blocked, base-uri locked,
+// Content-Security-Policy. script-src is nonce-based (no 'unsafe-inline') and
+// script-src-attr is 'none': no inline event handler (onclick= …) may run. The
+// views declare their controls as data-on-<event> attributes, dispatched by the
+// delegated listeners in public/js/csp-actions.js (SA-14;
+// tests/unit/noInlineHandlers.test.js keeps it that way). style-src still allows
+// 'unsafe-inline' for inline style= attributes, a separate, lower-risk migration. Plugins/objects blocked, base-uri locked,
 // anti-clickjacking frame-ancestors, restricted form-action. upgrade-insecure-
 // requests is removed because the app is commonly served over plain HTTP internally.
 // Data sovereignty (3.23.17): Font Awesome is self-hosted under /vendor, and
@@ -119,7 +121,8 @@ app.use(
                 // Chart.js and Font Awesome are self-hosted under /vendor; Google
                 // Fonts are allowed only when ENABLE_EXTERNAL_FONTS=1.
                 scriptSrc: ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
-                scriptSrcAttr: ["'unsafe-inline'"], // onclick= handlers used throughout the UI (separate refactor)
+                // No inline event handler attribute runs (SA-14): see public/js/csp-actions.js.
+                scriptSrcAttr: ["'none'"],
                 styleSrc: ["'self'", "'unsafe-inline'", ...CDN_STYLE],
                 fontSrc: ["'self'", ...CDN_FONT, 'data:'],
                 imgSrc: ["'self'", 'data:'],

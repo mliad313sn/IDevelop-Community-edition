@@ -32,17 +32,17 @@
     <div><label for="ak-expires"><%= __('admin:apik_expires') %></label><br><input id="ak-expires" type="date" class="form-control"></div>
     <%# ASVS 3.7.1: needed only when the last sign-in is older than the re-authentication window. %>
     <div><label for="ak-current-password"><%= __('admin:reauth_current_password') %></label><br><input id="ak-current-password" type="password" class="form-control" autocomplete="current-password" maxlength="200" aria-describedby="ak-reauth-hint"></div>
-    <button class="btn btn-primary" onclick="AK.create()"><%= __('admin:apik_create_btn') %></button>
+    <button type="button" class="btn btn-primary" data-on-click="AK.create" data-args="[]"><%= __('admin:apik_create_btn') %></button>
   </div>
   <small id="ak-reauth-hint" class="text-muted" style="display:block;margin-top:.4rem"><%= __('admin:reauth_hint', { minutes: 15 }) %></small>
   <div id="ak-new" style="display:none;margin-top:1rem;padding:.75rem 1rem;border:1px solid #fde68a;background:#fffbeb;border-radius:8px">
     <strong><%= __('admin:apik_copy_now') %></strong>
     <div style="display:flex;gap:.5rem;align-items:center;margin-top:.4rem">
       <code id="ak-raw" style="flex:1;word-break:break-all;background:#0f172a;color:#e2e8f0;padding:.5rem .75rem;border-radius:6px;font-size:.85em"></code>
-      <button class="btn btn-sm btn-secondary" onclick="AK.copy()"><%= __('admin:apik_copy') %></button>
+      <button type="button" class="btn btn-sm btn-secondary" data-on-click="AK.copy" data-args="[]"><%= __('admin:apik_copy') %></button>
       <%# the raw key stays on screen until the admin says so — the
           30-second auto-reload could wipe it before it was copied. %>
-      <button class="btn btn-sm btn-primary" id="ak-done" onclick="AK.done()"><i class="fas fa-check" aria-hidden="true"></i> <%= __('admin:ops_apikey_copied_btn') %></button>
+      <button class="btn btn-sm btn-primary" id="ak-done" data-on-click="AK.done" data-args="[]"><i class="fas fa-check" aria-hidden="true"></i> <%= __('admin:ops_apikey_copied_btn') %></button>
     </div>
     <div class="text-muted" style="font-size:.82em;margin-top:.4rem"><%- __('admin:apik_use_header') %></div>
   </div>
@@ -69,7 +69,7 @@
             <% } else if (k.expired) { %><span class="badge badge-danger"><%= enumLabel('api_key_status', 'expired') %></span>
             <% } else { %><span class="badge badge-success"><%= enumLabel('api_key_status', 'active') %></span><% } %>
           </td>
-          <td><% if (!k.revokedAt) { %><button class="btn btn-sm btn-danger" onclick="AK.revoke(<%= k.id %>)"><%= __('admin:apik_revoke') %></button><% } %></td>
+          <td><% if (!k.revokedAt) { %><button type="button" class="btn btn-sm btn-danger" data-on-click="AK.revoke" data-args="<%= JSON.stringify([Number(k.id)]) %>"><%= __('admin:apik_revoke') %></button><% } %></td>
         </tr>
       <% }); } %>
     </tbody>
@@ -117,7 +117,8 @@ const AK_I18N = {
   revokeConfirm: <%- JSON.stringify(__('admin:apik_revoke_confirm')) %>,
   revokeTitle: <%- JSON.stringify(__('admin:apik_revoke_title')) %>
 };
-const AK = {
+// data-on-click (public/js/csp-actions.js) resolves AK.<method> on window.
+window.AK = {
   // L assistant reseau ne se recopie plus ici : il vit dans
   // public/js/sa-console-net.js (SAConsoleNet.call). L ancien corps avalait
   // `r.json` en `{}` ; sur une session expiree le serveur repondait

@@ -116,11 +116,11 @@ function saCell(v) { return (v === null || v === undefined || v === '') ? '—' 
 
 <!-- Thread drawer -->
 <div id="sa-thread" class="card" style="display:none;margin-top:1rem;padding:1rem;">
-  <h3><%= __('talentx:sar_discussion') %> <button class="btn btn-sm" onclick="document.getElementById('sa-thread').style.display='none'"><%= __('talentx:sar_close') %></button></h3>
+  <h3><%= __('talentx:sar_discussion') %> <button class="btn btn-sm" data-on-click="SA.closeThread" data-args='[]'><%= __('talentx:sar_close') %></button></h3>
   <div id="sa-thread-body"></div>
   <div style="margin-top:.5rem;display:flex;gap:.5rem;">
     <input id="sa-thread-input" class="form-control" placeholder="<%= __('talentx:sar_add_comment_ph') %>" style="flex:1;">
-    <button class="btn btn-secondary" onclick="SA.comment()"><%= __('talentx:sar_comment') %></button>
+    <button class="btn btn-secondary" data-on-click="SA.comment" data-args='[]'><%= __('talentx:sar_comment') %></button>
   </div>
 </div>
 
@@ -425,9 +425,9 @@ const SA = {
   rowActions(it){
     const id = it.id, st = it.workflowState, A = [];
     if (this.ACT_STATES.includes(st)) { A.push(this.rateSelect(it)); A.push(b(id,SA_T.approve,'approve','btn-success')); A.push(b(id,SA_T.requestChanges,'request-changes','btn-warning')); A.push(b(id,SA_T.reject,'reject','btn-danger')); }
-    A.push('<button class="btn btn-sm" onclick="SA.openThread('+id+')">'+SA_T.discuss+' ('+(it.commentCount||0)+')</button>');
+    A.push('<button class="btn btn-sm" data-on-click="SA.openThread" data-args="'+escapeHtml(JSON.stringify([id]))+'">'+SA_T.discuss+' ('+(it.commentCount||0)+')</button>');
     return A.join(' ');
-    function b(id,label,action,cls){ return '<button class="btn btn-sm '+cls+'" data-action="'+action+'" onclick="SA.act('+id+',this.dataset.action)">'+label+'</button>'; }
+    function b(id,label,action,cls){ return '<button class="btn btn-sm '+cls+'" data-action="'+action+'" data-on-click="SA.act" data-args="'+escapeHtml(JSON.stringify([id, action]))+'">'+label+'</button>'; }
   },
   async act(id, action){
     let body = {};
@@ -507,6 +507,7 @@ const SA = {
     document.getElementById('sa-thread-input').value='';
     await this.openThread(this.current); await this.load();
   },
+  closeThread(){ document.getElementById('sa-thread').style.display='none'; },
   toggle(empId){ const d=document.getElementById('sa-detail-'+empId); if(!d) return; const open=d.classList.toggle('open'); const b=document.getElementById('sa-toggle-'+empId); if(b) b.setAttribute('aria-expanded', open?'true':'false'); if (open) SA_GOALS.load(empId); },
   // ---- campaign filter + "waiting for the employee" tab ------------
   cycleId: '',
@@ -596,11 +597,11 @@ const SA = {
       wrap.innerHTML = list.map(e=>{
         const counts = (e.cycles || []).map(c => this.cycleChip(c)).join(' ') + ' ' + Object.keys(e.counts).map(s=>this.badge(s, e.counts[s])).join(' ');
         const rows = e.items.map((it, i)=>this.row(it, i)).join('');
-        const approveBtn = e.pending>0 ? '<button class="btn btn-success btn-sm" onclick="SA.approveAll('+e.employeeId+','+e.pending+')"><i class="fas fa-check-double" aria-hidden="true"></i> '+SA_T.approveAll+' ('+e.pending+')</button>' : '<span class="sa-badge" style="background:#0f8a3c">'+SA_T.allDone+'</span>';
+        const approveBtn = e.pending>0 ? '<button class="btn btn-success btn-sm" data-on-click="SA.approveAll" data-args="'+escapeHtml(JSON.stringify([e.employeeId, e.pending]))+'"><i class="fas fa-check-double" aria-hidden="true"></i> '+SA_T.approveAll+' ('+e.pending+')</button>' : '<span class="sa-badge" style="background:#0f8a3c">'+SA_T.allDone+'</span>';
         return '<div class="sa-emp"><div class="sa-emp-head">'+
           '<div><div class="sa-emp-name">'+escapeHtml(e.firstName+' '+e.lastName)+'</div><div class="sa-emp-sub">'+SA_T.skillsPending.replace('{total}', e.total).replace('{pending}', e.pending)+'</div></div>'+
           '<div class="sa-emp-counts">'+counts+'</div>'+
-          '<div class="sa-emp-actions"><button class="sa-toggle" id="sa-toggle-'+e.employeeId+'" aria-expanded="false" aria-controls="sa-detail-'+e.employeeId+'" onclick="SA.toggle('+e.employeeId+')">'+SA_T.details+'</button>'+approveBtn+'</div></div>'+
+          '<div class="sa-emp-actions"><button class="sa-toggle" id="sa-toggle-'+e.employeeId+'" aria-expanded="false" aria-controls="sa-detail-'+e.employeeId+'" data-on-click="SA.toggle" data-args="'+escapeHtml(JSON.stringify([e.employeeId]))+'">'+SA_T.details+'</button>'+approveBtn+'</div></div>'+
           '<div class="sa-detail" id="sa-detail-'+e.employeeId+'">'+(SA_GOALS.on ? '<div class="sa-goals" id="sa-goals-'+e.employeeId+'"></div>' : '')+'<div class="table-wrapper"><table><thead><tr>'+
             '<th>'+SA_T.skill+'</th>'+
             '<th class="sa-num">'+SA_T.rvxRequired+'</th>'+
@@ -647,7 +648,12 @@ function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<
 function ask(msg){ return window.promptDialog(msg); }
 // « Demander des modifications » : four ready-made reasons plus free text.
 function askChanges(){ return window.promptDialog(SA_T.askComment, '', { title: SA_T.rcTitle, multiline: true, required: true, choices: SA_T.rcReasons, choicePlaceholder: SA_T.rcPick, placeholder: SA_T.rcFreePh }); }
-// Les boutons appellent SA.act/SA.approveAll par onclick : l'erreur déjà
+// CSP : les boutons sont câblés par csp-actions.js (data-on-click: SA.<method>),
+// qui exige SA sur window ; les méthodes lisent this.*, donc chacune est liée à SA,
+// comme l'ancien appel en ligne SA.x().
+Object.keys(SA).forEach(function(k){ if(typeof SA[k]==='function') SA[k]=SA[k].bind(SA); });
+window.SA = SA;
+// Les boutons appellent SA.act()/SA.approveAll() via data-on-click : l'erreur déjà
 // montrée à l'utilisateur ressortait ensuite en « Uncaught (in promise) ». Un
 // refus se dit UNE fois, dans l'interface, pas deux fois dont une dans la console.
 window.addEventListener('unhandledrejection', function(ev){

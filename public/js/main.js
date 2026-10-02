@@ -439,6 +439,12 @@ document.addEventListener('DOMContentLoaded', function () {
         btn.setAttribute('aria-expanded', String(open));
         if (open) hzSyncMenu();
     });
+    // A mouse press on a choice must not move focus out of the widget first: the
+    // labels are not focusable, so the button's focusout (relatedTarget null)
+    // closed the menu before the click could pick the swatch or the mode.
+    menu.addEventListener('mousedown', function (e) {
+        if (e.target.closest('label')) e.preventDefault();
+    });
     menu.addEventListener('change', function (e) {
         if (e.target.name === 'hz-mode') setThemeMode(e.target.value);
         if (e.target.name === 'hz-palette') setPalette(e.target.value);

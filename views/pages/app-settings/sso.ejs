@@ -187,6 +187,12 @@
   <% if (!publicBase || !/^https:\/\//i.test(publicBase)) { %>
     <p class="help-text ssof-warn"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('admin:ssof_base_warn') %></p>
   <% } %>
+  <% if (typeof callbackMismatch !== 'undefined' && callbackMismatch) { %>
+    <div class="alert alert-warning" role="status" data-sso-callback-mismatch>
+      <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+      <%= __('admin:ssof_callback_mismatch', { configured: callbackMismatch.configured, expected: callbackMismatch.expected }) %>
+    </div>
+  <% } %>
 
   <h3 class="ssof-step"><span>2</span> <%= __('admin:ssof_step_import') %></h3>
   <p class="help-text"><%= __('admin:ssof_step_import_help') %></p>

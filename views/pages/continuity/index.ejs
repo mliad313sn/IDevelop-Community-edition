@@ -57,7 +57,7 @@
             <tr>
               <td><%= r.roleName %></td>
               <td><%= r.occupantCount || 0 %></td>
-              <td><button type="button" class="btn btn-sm btn-primary" onclick="CONT.scoreRole(<%= r.roleId %>)"><%= __('talentx:succ_score_now') %></button></td>
+              <td><button type="button" class="btn btn-sm btn-primary" data-on-click="CONT.scoreRole" data-args="<%= JSON.stringify([r.roleId]) %>"><%= __('talentx:succ_score_now') %></button></td>
             </tr>
           <% }); %>
         </tbody>
@@ -81,10 +81,10 @@
               <td><% if (!g.planId) { %><span class="badge badge-danger"><%= __('talentx:succ_no_plan_badge') %></span><% } else { %><span class="badge badge-danger"><%= __('talentx:succ_bench_empty_badge') %></span><% } %></td>
               <td style="white-space:nowrap">
                 <% if (!g.planId) { %>
-                  <button type="button" class="btn btn-sm btn-primary" onclick="CONT.openPlanFor(<%= g.roleId %>)"><%= __('talentx:succ_open_plan') %></button>
+                  <button type="button" class="btn btn-sm btn-primary" data-on-click="CONT.openPlanFor" data-args="<%= JSON.stringify([g.roleId]) %>"><%= __('talentx:succ_open_plan') %></button>
                 <% } else { %>
-                  <button type="button" class="btn btn-sm btn-secondary" onclick="CONT.jumpToPlan(<%= g.planId %>)"><%= __('talentx:succ_open_plan') %></button>
-                  <button type="button" class="btn btn-sm btn-success" onclick="CONT.seed(<%= g.planId %>)"><%= __('talentx:succ_build_bench') %></button>
+                  <button type="button" class="btn btn-sm btn-secondary" data-on-click="CONT.jumpToPlan" data-args="<%= JSON.stringify([g.planId]) %>"><%= __('talentx:succ_open_plan') %></button>
+                  <button type="button" class="btn btn-sm btn-success" data-on-click="CONT.seed" data-args="<%= JSON.stringify([g.planId]) %>"><%= __('talentx:succ_build_bench') %></button>
                 <% } %>
               </td>
             </tr>
@@ -117,8 +117,8 @@
               </td>
               <td><% if (p.lastReviewedYmd) { %><%= sDate(p.lastReviewedYmd) %><% } else { %><span class="text-muted"><%= __('talentx:succ_never_reviewed') %></span><% } %></td>
               <td style="white-space:nowrap">
-                <button type="button" class="btn btn-sm btn-secondary" onclick="CONT.jumpToPlan(<%= p.id %>)"><%= __('talentx:succ_open_plan') %></button>
-                <button type="button" class="btn btn-sm btn-primary" onclick="CONT.review(<%= p.id %>)"><%= __('talentx:succ_review_now') %></button>
+                <button type="button" class="btn btn-sm btn-secondary" data-on-click="CONT.jumpToPlan" data-args="<%= JSON.stringify([p.id]) %>"><%= __('talentx:succ_open_plan') %></button>
+                <button type="button" class="btn btn-sm btn-primary" data-on-click="CONT.review" data-args="<%= JSON.stringify([p.id]) %>"><%= __('talentx:succ_review_now') %></button>
               </td>
             </tr>
           <% }); %>
@@ -172,7 +172,7 @@
     <div><label for="crit-ttf"><%= __('talentx:ct_ttf') %></label><br><input id="crit-ttf" type="number" min="0" class="form-control" style="width:120px"></div>
     <div style="flex:1;min-width:200px"><label for="crit-impact"><%= __('talentx:ct_business_impact') %></label><br><input id="crit-impact" class="form-control" placeholder="<%= __('talentx:ct_business_impact_ph') %>"></div>
     <div style="flex:1;min-width:200px"><label for="crit-rationale"><%= __('talentx:ct_rationale') %></label><br><input id="crit-rationale" class="form-control" placeholder="<%= __('talentx:ct_rationale_ph') %>"></div>
-    <button class="btn btn-primary" onclick="CONT.designate()"><%= __('talentx:ct_designate') %></button>
+    <button class="btn btn-primary" data-on-click="CONT.designate" data-args='[]'><%= __('talentx:ct_designate') %></button>
   </div>
 </div>
 
@@ -192,7 +192,7 @@
         <% (employees||[]).forEach(function(e){ %><option value="<%= e.id %>"><%= e.name %></option><% }); %>
       </select>
     </div>
-    <button class="btn btn-primary" onclick="CONT.openPlan()"><%= __('talentx:ct_open_plan') %></button>
+    <button class="btn btn-primary" data-on-click="CONT.openPlan" data-args='[]'><%= __('talentx:ct_open_plan') %></button>
   </div>
 </div>
 
@@ -216,10 +216,10 @@
             <% } else { %><span class="text-muted">—</span><% } %>
           </td>
           <td style="white-space:nowrap">
-            <button class="btn btn-sm btn-secondary" onclick="CONT.toggle(<%= p.id %>)"><%= __('talentx:open') %></button>
-            <button class="btn btn-sm btn-success" onclick="CONT.seed(<%= p.id %>)" title="<%= __('talentx:ct_seed_title') %>"><%= __('talentx:ct_seed_bench') %></button>
-            <button class="btn btn-sm btn-primary" onclick="CONT.review(<%= p.id %>)"><%= __('talentx:succ_review_now') %></button>
-            <button class="btn btn-sm btn-danger" onclick="CONT.archive(<%= p.id %>)"><%= __('talentx:nb_archive') %></button>
+            <button class="btn btn-sm btn-secondary" data-on-click="CONT.toggle" data-args="<%= JSON.stringify([p.id]) %>"><%= __('talentx:open') %></button>
+            <button class="btn btn-sm btn-success" data-on-click="CONT.seed" data-args="<%= JSON.stringify([p.id]) %>" title="<%= __('talentx:ct_seed_title') %>"><%= __('talentx:ct_seed_bench') %></button>
+            <button class="btn btn-sm btn-primary" data-on-click="CONT.review" data-args="<%= JSON.stringify([p.id]) %>"><%= __('talentx:succ_review_now') %></button>
+            <button class="btn btn-sm btn-danger" data-on-click="CONT.archive" data-args="<%= JSON.stringify([p.id]) %>"><%= __('talentx:nb_archive') %></button>
           </td>
         </tr>
         <tr class="plan-detail" id="detail-<%= p.id %>" style="display:none"><td colspan="6"><div class="detail-body"><em><%= __('talentx:loading') %></em></div></td></tr>
@@ -232,7 +232,7 @@
 <div class="card" style="padding:0;margin-bottom:1rem">
   <div style="padding:.75rem 1rem;border-bottom:1px solid rgba(148,163,184,.2);display:flex;justify-content:space-between;align-items:center">
     <h3 style="margin:0"><%= __('talentx:ct_handover') %></h3>
-    <button class="btn btn-sm btn-secondary" onclick="CONT.loadHandover()"><%= __('talentx:refresh') %></button>
+    <button class="btn btn-sm btn-secondary" data-on-click="CONT.loadHandover" data-args='[]'><%= __('talentx:refresh') %></button>
   </div>
   <div style="padding:.75rem 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;border-bottom:1px solid rgba(148,163,184,.15)">
     <div><label for="ho-out"><%= __('talentx:ct_outgoing') %> *</label><br>
@@ -244,7 +244,7 @@
         <% (employees||[]).forEach(function(e){ %><option value="<%= e.id %>"><%= e.name %></option><% }); %>
       </select></div>
     <div><label for="ho-due"><%= __('talentx:ct_due') %></label><br><input id="ho-due" type="date" class="form-control"></div>
-    <button class="btn btn-primary" onclick="CONT.createHandover()"><%= __('talentx:ct_start_handover') %></button>
+    <button class="btn btn-primary" data-on-click="CONT.createHandover" data-args='[]'><%= __('talentx:ct_start_handover') %></button>
     <span class="text-muted" style="font-size:.82em"><%= __('talentx:ct_auto_create') %></span>
   </div>
   <table class="table" id="ho-table">
@@ -257,7 +257,7 @@
 <div class="card" style="padding:0">
   <div style="padding:.75rem 1rem;border-bottom:1px solid rgba(148,163,184,.2);display:flex;justify-content:space-between;align-items:center">
     <h3 style="margin:0"><%= __('talentx:ct_risk_of_loss') %></h3>
-    <button class="btn btn-sm btn-secondary" onclick="CONT.loadRetention()"><%= __('talentx:refresh') %></button>
+    <button class="btn btn-sm btn-secondary" data-on-click="CONT.loadRetention" data-args='[]'><%= __('talentx:refresh') %></button>
   </div>
   <table class="table" id="ret-table">
     <thead><tr><th><%= __('talentx:employee') %></th><th><%= __('talentx:ct_flight_risk') %></th><th><%= __('talentx:ct_impact') %></th><th><%= __('talentx:ct_score') %></th><th><%= __('talentx:ct_source') %></th><th><%= __('talentx:actions') %></th></tr></thead>
@@ -310,6 +310,9 @@ SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
 // Escape before injecting, exactly as public/js/dashboard.js does.
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+// CSP: no inline handlers — rows built below wire their controls through
+// public/js/csp-actions.js (data-on-click / data-on-change + a JSON data-args list).
+const ctOn = (type, fn, args) => ' data-on-' + type + '="' + fn + '" data-args="' + esc(JSON.stringify(args || [])) + '"';
 // An unmeasured verdict prints as a dash, never as the word "null" and never
 // as a band class (`risk-null`) that quietly styles it like a real rating.
 const band = (v) => v == null
@@ -474,17 +477,17 @@ const CONT = {
       const gaps=(_short.length?_short.map(function(g){return g.skillName;}).join(', '):'—');
       const gapsNote=_unmeas?CT_T.gapsUnmeasured.replace('{n}',_unmeas):'';
       h+='<tr><td>'+esc(s.firstName||'')+' '+esc(s.lastName||'')+'</td>'
-        +'<td><select class="form-control" onchange="CONT.band('+s.id+',this.value)">'
+        +'<td><select class="form-control"'+ctOn('change','CONT.band',[s.id,'$value'])+'>'
         +Object.keys(bands).map(function(b){return '<option value="'+b+'"'+(s.readinessBand===b?' selected':'')+'>'+bands[b]+'</option>';}).join('')
         +'</select></td><td>'+esc(s.source)+'</td><td style="max-width:240px;font-size:.85em">'+esc(gaps)
         +(gapsNote?'<div style="color:#94a3b8;font-size:.92em;margin-top:.15rem" title="'+esc(CT_T.notMeasuredTitle)+'">'+esc(gapsNote)+'</div>':'')+'</td>'
-        +'<td><button class="btn btn-sm btn-danger" onclick="CONT.removeSucc('+s.id+')">'+CT_T.remove+'</button></td></tr>';
+        +'<td><button class="btn btn-sm btn-danger"'+ctOn('click','CONT.removeSucc',[s.id])+'>'+CT_T.remove+'</button></td></tr>';
     });
     h+='</tbody></table>';
     h+='<div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap"><div><label for="add-succ-'+plan.id+'">'+CT_T.addSuccessor+'</label><br><select id="add-succ-'+plan.id+'" class="form-control"><option value="">'+CT_T.select+'</option>'
       +(window.__contEmployees||[]).map(function(e){return '<option value="'+esc(e.id)+'">'+esc(e.name)+'</option>';}).join('')
-      +'</select></div><button class="btn btn-sm btn-primary" onclick="CONT.addSucc('+plan.id+')">'+CT_T.add+'</button>'
-      +'<button class="btn btn-sm btn-secondary" onclick="CONT.cover('+plan.id+')">'+CT_T.setCover+'</button></div></div>';
+      +'</select></div><button class="btn btn-sm btn-primary"'+ctOn('click','CONT.addSucc',[plan.id])+'>'+CT_T.add+'</button>'
+      +'<button class="btn btn-sm btn-secondary"'+ctOn('click','CONT.cover',[plan.id])+'>'+CT_T.setCover+'</button></div></div>';
     return h;
   },
   async band(id,band){ await this.api('/v2/continuity/successor/'+id+'/band',{band}); },
@@ -502,8 +505,8 @@ const CONT = {
         +'<td>'+band(r.impactOfLoss)+'</td>'
         +'<td>'+(r.computedScore!=null?r.computedScore:'—')+'</td>'
         +'<td>'+(r.manualOverride?CT_T.manual:CT_T.computed)+'</td>'
-        +'<td style="white-space:nowrap"><button class="btn btn-sm btn-secondary" onclick="CONT.recompute('+r.employeeId+')">'+CT_T.recompute+'</button> '
-        +'<button class="btn btn-sm btn-primary" onclick="CONT.override('+r.employeeId+')">'+CT_T.override+'</button></td></tr>';
+        +'<td style="white-space:nowrap"><button class="btn btn-sm btn-secondary"'+ctOn('click','CONT.recompute',[r.employeeId])+'>'+CT_T.recompute+'</button> '
+        +'<button class="btn btn-sm btn-primary"'+ctOn('click','CONT.override',[r.employeeId])+'>'+CT_T.override+'</button></td></tr>';
     }).join('');}
   },
   async createHandover(){
@@ -523,7 +526,7 @@ const CONT = {
         +'<td><span class="badge">'+esc(h.status)+'</span></td>'
         +'<td>'+h.doneCount+'/'+h.itemCount+' ('+prog+'%)</td>'
         +'<td>'+ctDate(h.dueDate)+'</td>'
-        +'<td><button class="btn btn-sm btn-secondary" onclick="CONT.openHandover('+h.id+')">'+CT_T.open+'</button></td></tr>'
+        +'<td><button class="btn btn-sm btn-secondary"'+ctOn('click','CONT.openHandover',[h.id])+'>'+CT_T.open+'</button></td></tr>'
         +'<tr id="ho-detail-'+h.id+'" style="display:none"><td colspan="6"><div class="ho-body"><em>'+CT_T.loading+'</em></div></td></tr>';
     }).join('');
   },
@@ -537,11 +540,11 @@ const CONT = {
     const stLabels={open:CT_T.stOpen,in_progress:CT_T.stInProgress,completed:CT_T.stCompleted};
     (p.items||[]).forEach(function(it){
       h+='<tr><td><strong>'+esc(it.title)+'</strong>'+(it.detail?'<div style="color:#94a3b8;font-size:.82em">'+esc(it.detail)+'</div>':'')+'</td><td>'+esc(it.kind)+'</td>'
-        +'<td><select class="form-control" onchange="CONT.itemStatus('+it.id+',this.value)">'
+        +'<td><select class="form-control"'+ctOn('change','CONT.itemStatus',[it.id,'$value'])+'>'
         +['open','in_progress','completed'].map(function(s){return '<option value="'+s+'"'+(it.status===s?' selected':'')+'>'+(stLabels[s]||s)+'</option>';}).join('')
         +'</select></td></tr>';
     });
-    h+='</tbody></table><div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap"><div><label for="ho-it-'+id+'">'+CT_T.addItem+'</label><br><input id="ho-it-'+id+'" class="form-control" placeholder="'+CT_T.itemPh+'"></div><button class="btn btn-sm btn-primary" onclick="CONT.addHandoverItem('+id+')">'+CT_T.add+'</button></div>';
+    h+='</tbody></table><div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap"><div><label for="ho-it-'+id+'">'+CT_T.addItem+'</label><br><input id="ho-it-'+id+'" class="form-control" placeholder="'+CT_T.itemPh+'"></div><button class="btn btn-sm btn-primary"'+ctOn('click','CONT.addHandoverItem',[id])+'>'+CT_T.add+'</button></div>';
     row.querySelector('.ho-body').innerHTML=h;
   },
   async itemStatus(itemId,status){ await this.api('/v2/continuity/handover/item/'+itemId+'/status',{status}); this.loadHandover(); },
@@ -549,6 +552,11 @@ const CONT = {
   async recompute(empId){ await this.api('/v2/continuity/retention/'+empId+'/recompute',{}); this.loadRetention(); },
   async override(empId){ const fr=await window.promptDialog(CT_T.promptFlight,''); if(!fr)return; const il=(await window.promptDialog(CT_T.promptImpact,''))||undefined; await this.api('/v2/continuity/retention/'+empId+'/override',{flightRisk:fr,impactOfLoss:il}); this.loadRetention(); }
 };
+// csp-actions.js resolves handlers on window and calls them with `this` = the
+// clicked element; a top-level const is not a window property, and the methods
+// above rely on `this` being CONT — so publish a bound copy of each.
+Object.keys(CONT).forEach(function(k){ if(typeof CONT[k]==='function') CONT[k]=CONT[k].bind(CONT); });
+window.CONT = CONT;
 window.__contEmployees = <%- include('../../partials/json-script', { v: (employees||[]).map(function(e){return {id:e.id,name:e.name};}) }) %>;
 // Auto-load the flight-risk + handover tables so leaders see them without a hidden
 // click; the Refresh buttons remain for a manual re-fetch.

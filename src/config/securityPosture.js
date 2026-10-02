@@ -101,10 +101,10 @@ const CATEGORIES = [
         controls: [
             {
                 id: 'csp',
-                fr: 'Politique de sécurité du contenu avec un nonce par requête, en-têtes Helmet, HSTS en HTTPS, anti-clickjacking.',
-                en: 'Content Security Policy with a per-request nonce, Helmet headers, HSTS over HTTPS, clickjacking protection.',
-                evidence: ['server.js', 'src/utils/tlsServer.js'],
-                tests: ['webSecurityBaseline.test.js'],
+                fr: 'Politique de sécurité du contenu avec un nonce par requête ; aucun gestionnaire d’événement en ligne (onclick…) ne peut s’exécuter (script-src-attr none) ; en-têtes Helmet, HSTS en HTTPS, anti-clickjacking.',
+                en: 'Content Security Policy with a per-request nonce; no inline event handler (onclick…) can run (script-src-attr none); Helmet headers, HSTS over HTTPS, clickjacking protection.',
+                evidence: ['server.js', 'src/utils/tlsServer.js', 'public/js/csp-actions.js'],
+                tests: ['webSecurityBaseline.test.js', 'noInlineHandlers.test.js'],
             },
             {
                 id: 'headers',
@@ -395,8 +395,8 @@ const ASVS_L2 = {
     level: 2,
     total: 258,
     pass: 167,
-    fixed: 10,
-    partial: 45,
+    fixed: 12,
+    partial: 43,
     gap: 2,
     na: 29,
     notVerified: 5,

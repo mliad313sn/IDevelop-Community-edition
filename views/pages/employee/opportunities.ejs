@@ -30,9 +30,9 @@
                     <span class="badge <%= o.applicationStatus === 'accepted' ? 'eg-applied' : 'eg-declined' %>"><%= __('growth:app_st_' + o.applicationStatus) %></span>
                 <% } else if (o.applied) { %>
                     <span class="badge eg-applied"><i class="fas fa-check" aria-hidden="true"></i> <%= __('growth:applied') %></span>
-                    <button class="btn btn-sm btn-link eg-withdraw" onclick="EG.withdraw(<%= o.id %>, this)"><%= __('growth:withdraw') %></button>
+                    <button class="btn btn-sm btn-link eg-withdraw" data-on-click="EG.withdraw" data-args="<%= JSON.stringify([o.id, '$el']) %>"><%= __('growth:withdraw') %></button>
                 <% } else { %>
-                    <button class="btn btn-sm btn-primary" onclick="EG.apply(<%= o.id %>, this)"><i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('growth:apply') %></button>
+                    <button class="btn btn-sm btn-primary" data-on-click="EG.apply" data-args="<%= JSON.stringify([o.id, '$el']) %>"><i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('growth:apply') %></button>
                 <% } %>
             </div>
         </div>
@@ -67,7 +67,7 @@
 <div class="report-section" id="my-aspirations">
     <h2><i class="fas fa-bullseye" aria-hidden="true"></i> <%= __('growth:aspirations') %></h2>
     <p class="text-muted"><%= __('growth:aspirations_hint') %></p>
-    <form id="egAspForm" class="eg-form" onsubmit="return EG.saveAspirations(event)">
+    <form id="egAspForm" class="eg-form" data-on-submit="EG.saveAspirations" data-args='["$event"]' data-no-loading="1">
         <div class="form-group">
             <label for="egTargetRole"><%= __('growth:target_role') %></label>
             <select id="egTargetRole" class="form-control">
@@ -195,7 +195,7 @@
             <% if (s.answered) { %>
                 <span class="badge eg-applied"><i class="fas fa-check" aria-hidden="true"></i> <%= __('growth:already_answered') %></span>
             <% } else { %>
-                <button class="btn btn-sm btn-secondary" onclick="EG.respond(<%= s.id %>, this)"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('growth:respond') %></button>
+                <button class="btn btn-sm btn-secondary" data-on-click="EG.respond" data-args="<%= JSON.stringify([s.id, '$el']) %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('growth:respond') %></button>
             <% } %>
         </li>
         <div class="eg-survey-form" id="eg-survey-<%= s.id %>" hidden></div>
@@ -514,6 +514,11 @@ const EG = {
     } catch(e){ this.notify(e.message, 'error'); }
   }
 };
+// CSP: controls are wired by csp-actions.js (data-on-click / data-on-submit
+// EG.<method>), which resolves EG on window; the methods use this.*, so each is
+// bound to EG, as the old inline EG.x() calls were.
+Object.keys(EG).forEach(function(k){ if(typeof EG[k]==='function') EG[k]=EG[k].bind(EG); });
+window.EG = EG;
 (function(){
   const thankForm = document.getElementById('egThankForm');
   if (thankForm) thankForm.addEventListener('submit', function(ev){ EG.thank(ev); });

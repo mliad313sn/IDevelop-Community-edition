@@ -36,8 +36,8 @@
                   languages) and answers « — » for an absent value. %>
               <td><%= fmtDate(t.createdAt) %></td>
               <td style="white-space:nowrap">
-                <button class="btn btn-sm btn-primary" onclick="PIP.openFromTask(<%= t.id %>)"><%= __('pip:tasks_open_plan') %></button>
-                <button class="btn btn-sm btn-secondary" onclick="PIP.dismissTask(<%= t.id %>)"><%= __('pip:tasks_no_plan') %></button>
+                <button class="btn btn-sm btn-primary" data-on-click="PIP.openFromTask" data-args="<%= JSON.stringify([t.id]) %>"><%= __('pip:tasks_open_plan') %></button>
+                <button class="btn btn-sm btn-secondary" data-on-click="PIP.dismissTask" data-args="<%= JSON.stringify([t.id]) %>"><%= __('pip:tasks_no_plan') %></button>
               </td>
             </tr>
           <% }); %>
@@ -68,7 +68,7 @@
     <div style="flex:1;min-width:260px"><label for="pip-checkpoints"><%= __('pip:checkpoints') %></label><textarea id="pip-checkpoints" class="form-control" rows="2" placeholder="<%= __('pip:checkpoints_ph') %>"></textarea></div>
     <div style="flex:1;min-width:260px"><label for="pip-support"><%= __('pip:support') %></label><textarea id="pip-support" class="form-control" rows="2" placeholder="<%= __('pip:support_ph') %>"></textarea></div>
     <div style="flex-basis:100%;height:0"></div>
-    <button class="btn btn-primary" onclick="PIP.propose()"><%= __('pip:propose_btn') %></button>
+    <button class="btn btn-primary" data-on-click="PIP.propose" data-args='[]'><%= __('pip:propose_btn') %></button>
   </div>
 </div>
 
@@ -91,11 +91,11 @@
           <td style="max-width:320px"><%= p.summary || '' %></td>
           <td style="white-space:nowrap">
             <% if (p.state === 'proposed' || p.state === 'approved') { %>
-              <button class="btn btn-sm btn-success" onclick="PIP.activate(<%= p.id %>)"><%= __('pip:activate') %></button>
+              <button class="btn btn-sm btn-success" data-on-click="PIP.activate" data-args="<%= JSON.stringify([p.id]) %>"><%= __('pip:activate') %></button>
             <% } %>
             <% if (p.state === 'active') { %>
-              <button class="btn btn-sm btn-primary" onclick="PIP.close(<%= p.id %>, true)"><%= __('pip:close_ok') %></button>
-              <button class="btn btn-sm btn-danger" onclick="PIP.close(<%= p.id %>, false)"><%= __('pip:close_ko') %></button>
+              <button class="btn btn-sm btn-primary" data-on-click="PIP.close" data-args="<%= JSON.stringify([p.id, true]) %>"><%= __('pip:close_ok') %></button>
+              <button class="btn btn-sm btn-danger" data-on-click="PIP.close" data-args="<%= JSON.stringify([p.id, false]) %>"><%= __('pip:close_ko') %></button>
             <% } %>
             <%
               /* Rulebook rule 8: the owner closes their own plan, alone. Withdrawing
@@ -103,7 +103,7 @@
                  "clôturé — non atteint" being written on someone's record. */
             %>
             <% if (['proposed','approved','active'].includes(p.state)) { %>
-              <button class="btn btn-sm" onclick="PIP.withdraw(<%= p.id %>)"><%= __('pip:withdraw') %></button>
+              <button class="btn btn-sm" data-on-click="PIP.withdraw" data-args="<%= JSON.stringify([p.id]) %>"><%= __('pip:withdraw') %></button>
             <% } %>
           </td>
         </tr>
@@ -207,4 +207,9 @@ const PIP = {
     location.reload();
   }
 };
+// CSP: the buttons above use data-on-click (public/js/csp-actions.js), which
+// resolves handlers on window and calls them with `this` = the element. PIP is a
+// top-level const (not on window) and its methods use `this`: publish bound copies.
+Object.keys(PIP).forEach(function(k){ if(typeof PIP[k]==='function') PIP[k]=PIP[k].bind(PIP); });
+window.PIP = PIP;
 </script>
