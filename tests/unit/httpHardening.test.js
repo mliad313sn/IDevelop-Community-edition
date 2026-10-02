@@ -302,7 +302,7 @@ describe('headers', () => {
         for (const p of ['/page', '/api/v1/x']) {
             const r = await request(app).get(p);
             const pp = r.headers['permissions-policy'];
-            for (const f of ['camera', 'microphone', 'geolocation', 'payment', 'usb', 'bluetooth'])
+            for (const f of ['camera', 'microphone', 'geolocation', 'payment', 'usb'])
                 expect(pp).toMatch(new RegExp(`(^|, )${f}=\\(\\)`));
         }
     });

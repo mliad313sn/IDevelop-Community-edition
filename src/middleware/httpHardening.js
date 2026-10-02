@@ -56,10 +56,11 @@ function isMultipart(ct) {
 // injected script or a framed page cannot reach the camera, microphone,
 // location, payment or device APIs (ASVS 14.4, tests/unit/asvsHeaders.test.js).
 // ---------------------------------------------------------------------------
+// (`bluetooth` is left out: Chromium does not recognise it and logs a console
+// warning on every page; Web Bluetooth needs a user gesture and a picker anyway.)
 const PERMISSIONS_POLICY = [
     'accelerometer=()',
     'autoplay=()',
-    'bluetooth=()',
     'browsing-topics=()',
     'camera=()',
     'display-capture=()',
