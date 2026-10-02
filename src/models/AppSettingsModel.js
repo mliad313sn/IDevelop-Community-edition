@@ -72,6 +72,12 @@ const CATALOG = {
     maxLoginAttempts: { min: 1, max: 100, integer: true },
     loginLockoutMinutes: { min: 1, max: 10080, integer: true },
     mfaRequiredForPrivileged: { type: 'boolean' },
+    // Migration 162: managers with a local password, and the upgrade grace
+    // periods. mfaGraceStartedAt is written once by the migration.
+    mfaRequiredForManagers: { type: 'boolean' },
+    mfaGraceAdminDays: { min: 0, max: 365, integer: true },
+    mfaGraceManagerDays: { min: 0, max: 365, integer: true },
+    mfaGraceStartedAt: { readOnly: true },
     // 3.23.19 (S6, migration 152): extra multi-factor acr values, comma list; blank = built-ins only.
     'sso.mfaAcrValues': { optional: true },
     // 3.23.20 (C3, migration 153): help contact (free text) + invitation batch size.
@@ -503,7 +509,10 @@ class AppSettingsModel {
             },
             {
                 key: 'sessionTimeout',
-                value: String(Number(process.env.SESSION_MAX_HOURS) || 24),
+                // 12 h by default (ASVS 3.3.2). Seeded only when absent: an
+                // upgraded install keeps its row (migration 162 moves only the
+                // untouched old default).
+                value: String(Number(process.env.SESSION_MAX_HOURS) || 12),
                 type: 'number',
                 description:
                     'Absolute session lifetime in hours — a session older than this is signed out even while active (applies to new requests immediately; SESSION_MAX_HOURS is the fallback)',
@@ -969,10 +978,48 @@ class AppSettingsModel {
             },
             {
                 key: 'sessionIdleMinutes',
-                value: String(Number(process.env.SESSION_IDLE_MINUTES) || 60),
+                // 30 min by default (ASVS 3.3.2).
+                value: String(Number(process.env.SESSION_IDLE_MINUTES) || 30),
                 type: 'number',
                 description:
                     'Sign users out after this many minutes of inactivity (applies to admins and employees; takes effect immediately)',
+                category: 'security',
+            },
+            // Two-factor policy. Same rows as migration 162 (insert-if-absent, so
+            // the migration's values always win). The grace start
+            // (mfaGraceStartedAt) is deliberately NOT seeded here: it is the
+            // migration's own first-run marker, and an empty row written before
+            // the migration would cancel the upgrade grace period.
+            {
+                key: 'mfaRequiredForPrivileged',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    'Require two-factor authentication for every administrator role (HR-wide viewers included). Upgrades: grace period of mfaGraceAdminDays from the upgrade, then enrolment is forced.',
+                category: 'security',
+            },
+            {
+                key: 'mfaRequiredForManagers',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    "Require two-factor authentication for managers who sign in with a local password (managers signing in through SSO use their organisation's MFA). Upgrades: grace period of mfaGraceManagerDays.",
+                category: 'security',
+            },
+            {
+                key: 'mfaGraceAdminDays',
+                value: '14',
+                type: 'number',
+                description:
+                    'Upgrade grace period (days) before two-factor enrolment is forced for administrators.',
+                category: 'security',
+            },
+            {
+                key: 'mfaGraceManagerDays',
+                value: '30',
+                type: 'number',
+                description:
+                    'Upgrade grace period (days) before two-factor enrolment is forced for managers with a local password.',
                 category: 'security',
             },
             {

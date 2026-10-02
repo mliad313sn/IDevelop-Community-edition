@@ -11,17 +11,20 @@
  * login time) so the user can review/manage their active sessions.
  *
  * Tunable from App Settings ('sessionIdleMinutes', category security, applies
- * immediately) with the SESSION_IDLE_MINUTES env var / 60 as fallback. getValue
+ * immediately) with the SESSION_IDLE_MINUTES env var / 30 as fallback. getValue
  * is TTL-cached, so the per-request read costs no extra query.
  */
 
-const ENV_IDLE_MINUTES = Number(process.env.SESSION_IDLE_MINUTES) || 60;
+// Secure defaults (ASVS 3.3.2): 30 min idle, 12 h absolute. The App Settings
+// (sessionIdleMinutes / sessionTimeout) win when set; migration 162 moves only
+// UNTOUCHED old defaults (60 / 24) on an upgrade.
+const ENV_IDLE_MINUTES = Number(process.env.SESSION_IDLE_MINUTES) || 30;
 // Absolute session lifetime. rolling:true slides the cookie maxAge forward on every
 // response, so a continuously-used session would otherwise never expire. This is the
 // hard ceiling (matches SESSION_MAX_HOURS used for the cookie maxAge), enforced
 // independently of the sliding idle window — a session older than this is destroyed
 // even if the user is active. Set SESSION_MAX_HOURS=0 to disable the absolute cap.
-const ABSOLUTE_MAX_MS = Number(process.env.SESSION_MAX_HOURS || 24) * 60 * 60 * 1000;
+const ABSOLUTE_MAX_MS = Number(process.env.SESSION_MAX_HOURS || 12) * 60 * 60 * 1000;
 const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'app.sid';
 
 // Never gate static assets / probes / the auth screens themselves on idle logout.

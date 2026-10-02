@@ -378,7 +378,9 @@ app.use(
             secure: cookieSecure,
             httpOnly: true,
             sameSite: 'lax', // CSRF hardening for cookie-based session
-            maxAge: Number(process.env.SESSION_MAX_HOURS || 24) * 60 * 60 * 1000,
+            // Absolute ceiling: 12 h by default (ASVS 3.3.2); the sessionTimeout App
+            // Setting is enforced per request by sessionActivity.
+            maxAge: Number(process.env.SESSION_MAX_HOURS || 12) * 60 * 60 * 1000,
         },
     })
 );
@@ -407,7 +409,7 @@ app.use((req, res, next) => {
 
 // Idle-timeout: sign out a session that has been INACTIVE beyond the threshold
 // (sensitive HR data). Absolute cap stays on the cookie maxAge above; this adds a
-// sliding inactivity window. Configurable via SESSION_IDLE_MINUTES (default 60).
+// sliding inactivity window. Configurable via SESSION_IDLE_MINUTES (default 30).
 app.use(require('./src/middleware/sessionActivity'));
 
 // Multi-provider SSO transport (gated by the master switch; no-ops when off).
@@ -720,74 +722,10 @@ app.post('/login', loginRateLimiter);
 // see src/middleware/forcePasswordChange.js.
 app.use(require('./src/middleware/forcePasswordChange').forcePasswordChange);
 
-// MFA policy: when the 'mfaRequiredForPrivileged' app setting is on,
-// privileged admin roles must enrol in two-factor auth — until they do,
-// pages funnel to the MFA setup (the MFA pages, change-password and logout
-// stay reachable). Same UX pattern as the forced password change above.
-// The flag and per-admin enrolment are briefly cached to avoid per-request
-// DB reads; negative enrolment is NOT cached so finishing setup unblocks
-// immediately.
-const mfaPolicyCache = { flag: null, at: 0 }; // enrolment cache lives in MfaService
-app.use(async (req, res, next) => {
-    try {
-        const u = req.user;
-        if (!u || u.userType !== 'admin') return next();
-        const MfaService = require('./src/services/MfaService');
-        if (!MfaService.isPrivileged(u.role)) return next();
-        if (
-            req.path.startsWith('/v2/uam/mfa') ||
-            req.path === '/change-password' ||
-            req.path === '/logout'
-        ) {
-            return next();
-        }
-
-        const now = Date.now();
-        if (mfaPolicyCache.flag === null || now - mfaPolicyCache.at > 30_000) {
-            const AppSettingsModel = require('./src/models/AppSettingsModel');
-            mfaPolicyCache.flag = await AppSettingsModel.getValue(
-                'mfaRequiredForPrivileged',
-                false
-            );
-            mfaPolicyCache.at = now;
-        }
-        if (!mfaPolicyCache.flag) return next();
-
-        // The cache is held by MfaService so that MfaService.disable can clear it;
-        // when it lived here, turning MFA off left this gate waving the admin
-        // through for the rest of the 5-minute window.
-        if (MfaService.hasFreshEnrolment('admin', u.id, 5 * 60_000)) return next();
-        const active = await MfaService.isActive({ userType: 'admin', userId: u.id });
-        if (active) {
-            MfaService.rememberEnrolment('admin', u.id, now);
-            return next();
-        }
-
-        if (req.path.startsWith('/api/')) {
-            return res.status(403).json({
-                error: 'Two-factor authentication setup required',
-                mfaSetupRequired: true,
-            });
-        }
-        // QA P2-16 (residu) — ce bandeau est la SEULE phrase que l'administrateur
-        // puisse lire : le bloc ci-dessus l'entonne vers la page MFA et ne laisse
-        // passer que celle-la, /change-password et /logout. Il partait en anglais
-        // fige, en session francaise, vers une page desormais traduite. La cle
-        // existe dans les deux langues depuis longtemps ; le repli anglais reste
-        // pour le cas ou le traducteur ne serait pas monte sur cette requete.
-        req.flash(
-            'error',
-            req.t
-                ? req.t('flash:mfa_enrollment_required')
-                : 'Your administrator requires two-factor authentication. Please set it up to continue.'
-        );
-        return res.redirect('/v2/uam/mfa/manage');
-    } catch (e) {
-        // The policy gate must never take the app down.
-        console.error('MFA policy check error:', e.message);
-        return next();
-    }
-});
+// The privileged-MFA policy (every admin role, and managers who sign in with a
+// password, with an upgrade grace period, FAILING CLOSED) is enforced by
+// src/middleware/mfaEnforcement.js below. The inline gate that stood here
+// (privileged roles only, no grace, failed OPEN on any error) was removed.
 
 // ---------------------------------------------------------------------------
 // Global security audit — a backstop that captures in system_logs:
@@ -869,14 +807,16 @@ app.use((req, res, next) => {
     next();
 });
 
-// Policy enforcement: when `mfaRequiredForPrivileged` is on, a privileged account
-// with no confirmed MFA is forced to the setup screen before any other page. Mounted
-// after auth/session + flash and before the app routes. Fails open on any error.
+// Policy enforcement: every admin role (`mfaRequiredForPrivileged`) and every
+// manager signed in with a password (`mfaRequiredForManagers`) with no confirmed
+// MFA is forced to the setup screen before any other page, after the upgrade
+// grace period (migration 162). Mounted after auth/session + flash and before
+// the app routes. Fails CLOSED.
 const { enforceMfaEnrollment } = require('./src/middleware/mfaEnforcement');
 app.use(enforceMfaEnrollment);
 
 // Per-USER auth policy (migration 55): an account whose auth_policy is
-// 'mfa_required' is forced to MFA setup regardless of role. Fails open.
+// 'mfa_required' is forced to MFA setup regardless of role. Fails CLOSED.
 const { enforceUserAuthPolicy } = require('./src/middleware/authPolicy');
 app.use(enforceUserAuthPolicy);
 
