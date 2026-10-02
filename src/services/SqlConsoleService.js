@@ -650,8 +650,15 @@ class SqlConsoleService {
         const PROTECTED = [
             ...(protectedNames && protectedNames.length ? protectedNames : this.PROTECTED_TABLES),
         ];
+        // Names are matched literally: a relation defined in the script may carry
+        // `$` or `.` (legal in identifiers), which as regex syntax would make the
+        // guard miss it — e.g. `v$` read as « v, end of input ». Boundaries are
+        // identifier characters rather than \b, which never sits next to a `$`.
+        const reEscape = (t) => String(t).replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
         const refsProtected = (txt) =>
-            PROTECTED.find((t) => new RegExp('\\b(public\\.)?' + t + '\\b').test(txt));
+            PROTECTED.find((t) =>
+                new RegExp('(?<![\\w$])(public\\.)?' + reEscape(t) + '(?![\\w$])').test(txt)
+            );
         // CREATE [OR REPLACE] [TEMP|UNLOGGED] [MATERIALIZED] VIEW|TABLE <name> [AS …]
         const DEFINES =
             /^create\s+(?:or\s+replace\s+)?(?:temp(?:orary)?\s+|unlogged\s+|global\s+|local\s+)*(?:materialized\s+|recursive\s+)*(view|table)\s+(?:if\s+not\s+exists\s+)?([a-z0-9_$."]+)/;
