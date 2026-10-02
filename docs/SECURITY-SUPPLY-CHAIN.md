@@ -75,9 +75,15 @@ import staging folder were writable while the code tree was not.
 
 ## Known gaps and items "to pin"
 
-- **Compose images** `postgres:17-alpine` and `redis:7-alpine` are pinned by tag,
+- **Compose images** `postgres:17-alpine` and `redis:8-alpine` are pinned by tag,
   not digest (Dependabot `docker-compose` tracks them). For production, pin them
   by digest as the Dockerfile does.
+- **Redis licence**: Redis 8 is distributed under RSALv2, SSPLv1 or AGPLv3 at
+  the user's option (Redis 7.4, which `redis:7-alpine` resolved to, offered only
+  RSALv2/SSPLv1). The compose stack uses it under AGPLv3, the project's own
+  licence; the app only connects to it over the network. Operators who want a
+  permissive licence can swap in Valkey (BSD-3-Clause), which speaks the same
+  protocol.
 - **tini** is installed with `apk add` at the version current in the pinned
   Alpine release (not version-locked separately).
 - **Restart policy** is `unless-stopped` rather than CIS 5.14's `on-failure:5`,

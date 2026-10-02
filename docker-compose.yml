@@ -62,7 +62,11 @@ services:
 
   redis:
     <<: *hardening
-    image: redis:7-alpine
+    image: redis:8-alpine
+    # Licence: Redis 8 is offered under RSALv2, SSPLv1 or AGPLv3 at the user's
+    # option (7.4, which redis:7-alpine resolved to, was RSALv2/SSPLv1 only); this
+    # stack uses it under AGPLv3, the project's own licence. The app talks to it
+    # over the network only. Valkey is a BSD-licensed drop-in if that is preferred.
     # redis user (uid 999 on Alpine); no persistence (`--save ''`), queues are
     # rebuilt by the app. /data is the working directory only.
     user: '999:999'
