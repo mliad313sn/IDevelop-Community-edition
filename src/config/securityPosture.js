@@ -363,13 +363,19 @@ const CATEGORIES = [
             },
             {
                 id: 'sql-console',
-                fr: 'Console SQL désactivée sauf activation explicite par l’exploitant (séparation des tâches).',
-                en: 'SQL console off unless the operator explicitly enables it (separation of duties).',
+                fr: 'Console SQL désactivée sauf activation explicite par l’exploitant (séparation des tâches) ; elle ne lit ni ne modifie jamais les secrets (sessions, seconds facteurs, jetons, empreintes, identifiants SIRH, réglages secrets) : refus audité, puis rôle de lecture sans droit sur les colonnes secrètes.',
+                en: 'SQL console off unless the operator explicitly enables it (separation of duties); it never reads or changes secrets (sessions, second factors, tokens, hashes, HRIS credentials, secret settings): audited refusal, then a read role with no right on secret columns.',
                 evidence: [
                     'src/middleware/sqlConsoleEnabled.js',
                     'src/services/SqlConsoleService.js',
+                    'db/postgres/167_console_reader_role.sql',
                 ],
-                tests: ['sqlConsoleSeparationOfDuties.test.js', 'sqlConsoleTamperGuard.test.js'],
+                tests: [
+                    'sqlConsoleSeparationOfDuties.test.js',
+                    'sqlConsoleTamperGuard.test.js',
+                    'sqlConsoleSecretGuard-db.test.js',
+                    'migration167ConsoleReaderRole-db.test.js',
+                ],
             },
             {
                 id: 'backups',

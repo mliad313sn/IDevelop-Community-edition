@@ -323,5 +323,7 @@
   "sqlc_revert_failed_detail": "Échec du rétablissement :",
   "sqlc_unknown_error": "erreur inconnue",
   "sqlc_preserve_partial": "ligne(s) d’audit rattachée(s), mais {{n}} n’ont PAS pu l’être ({{detail}}) — les collaborateurs, compétences ou revues qu’elles décrivent n’existent plus après le retour arrière. Elles n’ont <strong>pas été supprimées</strong> : elles sont conservées dans le schéma <code>{{schema}}</code>, et cela est consigné dans le journal d’audit. Le prochain retour arrière est bloqué tant que ce schéma n’est pas réconcilié.",
-  "sqlc_preserve_ok": "Piste d’audit en écriture seule préservée : {{n}} ligne(s) rattachée(s) après la restauration, aucune perdue."
+  "sqlc_preserve_ok": "Piste d’audit en écriture seule préservée : {{n}} ligne(s) rattachée(s) après la restauration, aucune perdue.",
+  "sqlc_column_privilege": "Refusé : cette table contient des colonnes secrètes (empreintes de mot de passe, jetons…). Remplacez « * » par la liste des colonnes dont vous avez besoin.",
+  "sqlc_secret_refused": "Refusé : cette requête lit ou modifie des données secrètes (sessions, seconds facteurs, jetons, empreintes de mot de passe, clés d’API, secrets SSO, identifiants SIRH ou réglages secrets). La console SQL n’y donne jamais accès ; ces éléments se gèrent depuis leurs propres pages. Le refus est consigné dans le journal d’audit."
 }

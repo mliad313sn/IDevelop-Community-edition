@@ -140,6 +140,23 @@ project uses [Semantic Versioning](https://semver.org/).
   provider and host (`/app-settings/copilot/transfer-basis`, audited,
   withdrawable). A blocked call answers with the built-in engine and sends
   nothing. `COPILOT_BLOCK_PRIVATE_HOSTS` is no longer read.
+- **SQL console secret guard.** The SuperAdmin SQL console refuses, read and
+  write, every statement that reaches sessions, second factors, reset tokens,
+  password and API-key hashes, LMS, webhook and safety-gate secrets, HRIS
+  connector credentials and secret settings. The script is tokenised the way
+  PostgreSQL reads it (comments, quoted and qualified names, views, routine
+  and `DO` bodies, computed dynamic SQL), and the doors to the same data are
+  closed (server files, large objects, `dblink`, `*_to_xml`, `SET ROLE`,
+  role and extension management). Each refusal is audited
+  (`SQL_CONSOLE_SECRET_REFUSED`); a top-level `SELECT *` that is allowed has
+  its secret cells masked.
+- **Migration 167: `sqlconsole_reader` role.** Pure reads from the console
+  run under a read-only role that has no privilege on the secret tables or
+  columns (column-level grants, including `hris_connectors.credentials`). Once
+  it exists, `SELECT *` on a table with a secret column is refused by
+  PostgreSQL and the console asks for a column list. Without CREATEROLE the
+  migration logs a notice and the application guard still applies. A later
+  migration that adds tables must repeat its grant block (CONTRIBUTING.md).
 - HTTP hardening moved into `src/middleware/httpHardening.js`, with tests:
     - JSON detection is anchored on the MIME essence, so
       `text/plain; x=application/json` no longer skips the CSRF check;

@@ -143,6 +143,7 @@ These were read in the source and, where noted, exercised by the existing tests.
 **SQL console**
 
 - Returns 404 unless `SQL_CONSOLE_ENABLED=1`, then SuperAdmin only (`src/middleware/sqlConsoleEnabled.js`).
+- Never reads or writes secrets: sessions, second factors, tokens, password and API-key hashes, stored secrets and HRIS connector credentials are refused before anything runs, and the refusal is audited (`SqlConsoleService._secretAccessViolation`). Pure reads run under the `sqlconsole_reader` role, which has no privilege on secret tables or columns (`db/postgres/167_console_reader_role.sql`).
 
 **Files**
 

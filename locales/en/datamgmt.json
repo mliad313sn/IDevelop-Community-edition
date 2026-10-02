@@ -323,5 +323,7 @@
   "sqlc_revert_failed_detail": "Revert failed:",
   "sqlc_unknown_error": "unknown error",
   "sqlc_preserve_partial": "audit row(s) re-attached, but {{n}} could NOT be ({{detail}}) — the employees, skills or reviews they describe no longer exist after the revert. They were <strong>not deleted</strong>: they are kept in schema <code>{{schema}}</code>, and this is recorded in the audit log. The next revert is blocked until that schema is reconciled.",
-  "sqlc_preserve_ok": "Append-only audit trail preserved: {{n}} row(s) re-attached after the restore, none lost."
+  "sqlc_preserve_ok": "Append-only audit trail preserved: {{n}} row(s) re-attached after the restore, none lost.",
+  "sqlc_column_privilege": "Refused: this table has secret columns (password hashes, tokens…). Replace “*” with the list of columns you need.",
+  "sqlc_secret_refused": "Refused: this query reads or changes secret data (sessions, second factors, tokens, password hashes, API keys, SSO secrets, HRIS credentials or secret settings). The SQL console never gives access to them; they are managed from their own pages. The refusal is recorded in the audit log."
 }
