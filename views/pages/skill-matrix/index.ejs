@@ -1,9 +1,9 @@
 <div class="page-header">
     <h1><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('dash:skill_matrix') %></h1>
     <div class="page-actions">
-        <button class="btn btn-secondary" onclick="toggleQuickEdit()" id="quickEditToggle" aria-pressed="false"><i class="fas fa-bolt" aria-hidden="true"></i> <%= __('dash:quick_edit_off') %></button>
-        <button class="btn btn-secondary" onclick="toggleCompactView()" id="viewToggle"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('dash:compact_view') %></button>
-        <button class="btn btn-secondary" onclick="exportMatrix()"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('dash:export_csv') %></button>
+        <button class="btn btn-secondary" data-on-click="toggleQuickEdit" data-args='[]' id="quickEditToggle" aria-pressed="false"><i class="fas fa-bolt" aria-hidden="true"></i> <%= __('dash:quick_edit_off') %></button>
+        <button class="btn btn-secondary" data-on-click="toggleCompactView" data-args='[]' id="viewToggle"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('dash:compact_view') %></button>
+        <button class="btn btn-secondary" data-on-click="exportMatrix" data-args='[]'><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('dash:export_csv') %></button>
     </div>
 </div>
 
@@ -35,7 +35,7 @@ td.skill-cell { position: relative; }
     <div class="matrix-filters">
         <div class="filter-group">
             <label><%= __('dash:site_colon') %></label>
-            <select id="filterSite" onchange="smServerFilter()">
+            <select id="filterSite" data-on-change="smServerFilter" data-args='[]'>
                 <%# %><% if (sites.length !== 1) { %><option value=""><%= __('dash:all_sites') %></option><% } %>
                 <% sites.forEach(function(site) { %>
                     <option value="<%= site.name %>" <%= (typeof filters !== 'undefined' && filters.site === site.name) ? 'selected' : '' %>>
@@ -46,7 +46,7 @@ td.skill-cell { position: relative; }
         </div>
         <div class="filter-group">
             <label><%= __('dash:department_colon') %></label>
-            <select id="filterDepartment" onchange="smServerFilter()">
+            <select id="filterDepartment" data-on-change="smServerFilter" data-args='[]'>
                 <option value=""><%= __('dash:all_departments') %></option>
                 <% departments.forEach(function(dept) { %>
                     <option value="<%= dept.name %>" <%= (typeof filters !== 'undefined' && filters.department === dept.name) ? 'selected' : '' %>>
@@ -57,7 +57,7 @@ td.skill-cell { position: relative; }
         </div>
         <div class="filter-group">
             <label><%= __('dash:service_colon') %></label>
-            <select id="filterService" onchange="smServerFilter()">
+            <select id="filterService" data-on-change="smServerFilter" data-args='[]'>
                 <option value=""><%= __('dash:all_services') %></option>
                 <% services.forEach(function(svc) { %>
                     <option value="<%= svc.name %>" <%= (typeof filters !== 'undefined' && filters.service === svc.name) ? 'selected' : '' %>>
@@ -68,7 +68,7 @@ td.skill-cell { position: relative; }
         </div>
         <div class="filter-group">
             <label><%= __('dash:role_colon') %></label>
-            <select id="filterRole" onchange="smServerFilter()">
+            <select id="filterRole" data-on-change="smServerFilter" data-args='[]'>
                 <option value=""><%= __('dash:all_roles') %></option>
                 <% roles.forEach(function(role) { %>
                     <option value="<%= role.name %>" <%= (typeof filters !== 'undefined' && filters.role === role.name) ? 'selected' : '' %>>
@@ -79,7 +79,7 @@ td.skill-cell { position: relative; }
         </div>
         <div class="filter-group">
             <label><%= __('dash:readiness_colon') %></label>
-            <select id="filterReadiness" onchange="applyFilters()">
+            <select id="filterReadiness" data-on-change="applyFilters" data-args='[]'>
                 <option value=""><%= __('dash:all') %></option>
                 <option value="ready"><%= __('dash:ready') %></option>
                 <option value="not-ready"><%= __('dash:not_ready') %></option>
@@ -270,11 +270,11 @@ td.skill-cell { position: relative; }
 <!-- Pagination (server-side: only a bounded slice is rendered to avoid lag) -->
 <% if (typeof pageInfo !== 'undefined') { %>
 <div class="matrix-pagination" style="display:flex;align-items:center;gap:.75rem;justify-content:center;margin:1rem 0;flex-wrap:wrap;">
-    <button class="btn btn-secondary btn-sm" onclick="smGoPage(<%= pageInfo.page - 1 %>)" <%= pageInfo.page <= 1 ? 'disabled' : '' %>><%= __('dash:prev') %></button>
+    <button class="btn btn-secondary btn-sm" data-on-click="smGoPage" data-args="<%= JSON.stringify([pageInfo.page - 1]) %>" <%= pageInfo.page <= 1 ? 'disabled' : '' %>><%= __('dash:prev') %></button>
     <span><%= __('dash:page') %> <strong><%= pageInfo.page %></strong> / <%= pageInfo.totalPages %> · <%= __('dash:showing_lc') %> <%= pageInfo.showing %> <%= __('dash:of_lc') %> <%= pageInfo.total %> <%= __('dash:employees_lc') %></span>
-    <button class="btn btn-secondary btn-sm" onclick="smGoPage(<%= pageInfo.page + 1 %>)" <%= pageInfo.page >= pageInfo.totalPages ? 'disabled' : '' %>><%= __('dash:next') %></button>
+    <button class="btn btn-secondary btn-sm" data-on-click="smGoPage" data-args="<%= JSON.stringify([pageInfo.page + 1]) %>" <%= pageInfo.page >= pageInfo.totalPages ? 'disabled' : '' %>><%= __('dash:next') %></button>
     <label style="margin-left:1rem;"><%= __('dash:per_page') %>
-        <select onchange="smSetPageSize(this.value)">
+        <select data-on-change="smSetPageSize" data-args='["$value"]'>
             <% [25, 50, 100, 200].forEach(function (sz) { %>
             <option value="<%= sz %>" <%= pageInfo.pageSize === sz ? 'selected' : '' %>><%= sz %></option>
             <% }); %>
@@ -304,7 +304,7 @@ td.skill-cell { position: relative; }
     <div class="modal-content">
         <div class="modal-header">
             <h2><%= __('dash:assess_skill') %></h2>
-            <button class="close" onclick="hideModal('assessmentModal')">&times;</button>
+            <button class="close" data-on-click="hideModal" data-args='["assessmentModal"]'>&times;</button>
         </div>
         <div class="modal-body">
             <div class="assessment-info">
@@ -313,8 +313,8 @@ td.skill-cell { position: relative; }
             </div>
 
             <div class="modal-tabs">
-                <button class="tab-btn active" onclick="switchModalTab('assess')"><%= __('dash:assess') %></button>
-                <button class="tab-btn" onclick="switchModalTab('history')"><%= __('dash:history') %></button>
+                <button class="tab-btn active" data-on-click="switchModalTab" data-args='["assess"]'><%= __('dash:assess') %></button>
+                <button class="tab-btn" data-on-click="switchModalTab" data-args='["history"]'><%= __('dash:history') %></button>
             </div>
 
             <div id="tab-assess" class="tab-content active">
@@ -326,23 +326,23 @@ td.skill-cell { position: relative; }
                     <div class="form-group">
                         <label class="required"><%= __('dash:skill_level') %></label>
                         <div class="level-selector">
-                            <button type="button" class="level-btn" data-level="0" onclick="selectLevel(0)">
+                            <button type="button" class="level-btn" data-level="0" data-on-click="selectLevel" data-args='[0]'>
                                 <div class="skill-level level-0">0</div>
                                 <span><%= __('dash:none') %></span>
                             </button>
-                            <button type="button" class="level-btn" data-level="1" onclick="selectLevel(1)">
+                            <button type="button" class="level-btn" data-level="1" data-on-click="selectLevel" data-args='[1]'>
                                 <div class="skill-level level-1">1</div>
                                 <span><%= __('dash:basic_awareness') %></span>
                             </button>
-                            <button type="button" class="level-btn" data-level="2" onclick="selectLevel(2)">
+                            <button type="button" class="level-btn" data-level="2" data-on-click="selectLevel" data-args='[2]'>
                                 <div class="skill-level level-2">2</div>
                                 <span><%= __('dash:guided') %></span>
                             </button>
-                            <button type="button" class="level-btn" data-level="3" onclick="selectLevel(3)">
+                            <button type="button" class="level-btn" data-level="3" data-on-click="selectLevel" data-args='[3]'>
                                 <div class="skill-level level-3">3</div>
                                 <span><%= __('dash:autonomous') %></span>
                             </button>
-                            <button type="button" class="level-btn" data-level="4" onclick="selectLevel(4)">
+                            <button type="button" class="level-btn" data-level="4" data-on-click="selectLevel" data-args='[4]'>
                                 <div class="skill-level level-4">4</div>
                                 <span><%= __('dash:expert') %></span>
                             </button>
@@ -365,7 +365,7 @@ td.skill-cell { position: relative; }
 
                     <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('dash:save_assessment') %></button>
                     <button type="button" class="btn btn-secondary"
-                        onclick="hideModal('assessmentModal')"><%= __('dash:cancel') %></button>
+                        data-on-click="hideModal" data-args='["assessmentModal"]'><%= __('dash:cancel') %></button>
                 </form>
             </div>
             <div id="tab-history" class="tab-content">

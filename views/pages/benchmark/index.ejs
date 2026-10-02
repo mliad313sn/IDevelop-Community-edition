@@ -7,14 +7,14 @@
 <form method="GET" action="/benchmark" class="benchmark-filter-bar">
     <div class="filter-group">
         <label for="bm-domain"><%= __('dash:pillar_domain') %></label>
-        <select id="bm-domain" name="domainName" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-domain" name="domainName" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_pillars') %></option>
             <% pillars.forEach(function(p){ %><option value="<%= p.name %>" <%= filters.domainName === p.name ? 'selected' : '' %>><%= p.name %></option><% }); %>
         </select>
     </div>
     <div class="filter-group">
         <label for="bm-sub"><%= __('dash:sub_domain') %></label>
-        <select id="bm-sub" name="subDomainId" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-sub" name="subDomainId" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_subdomains') %></option>
             <% var _bp = {}; subDomains.forEach(function(sd){ (_bp[sd.domainName]=_bp[sd.domainName]||[]).push(sd); }); Object.keys(_bp).forEach(function(pil){ %>
                 <optgroup label="<%= pil %>"><% _bp[pil].forEach(function(sd){ %><option value="<%= sd.id %>" <%= String(filters.subDomainId) === String(sd.id) ? 'selected' : '' %>><%= sd.name %></option><% }); %></optgroup>
@@ -23,28 +23,28 @@
     </div>
     <div class="filter-group">
         <label for="bm-rf"><%= __('dash:role_family') %></label>
-        <select id="bm-rf" name="roleFamilyId" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-rf" name="roleFamilyId" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_families') %></option>
             <% roleFamilies.forEach(function(rf){ %><option value="<%= rf.id %>" <%= String(filters.roleFamilyId) === String(rf.id) ? 'selected' : '' %>><%= rf.name %></option><% }); %>
         </select>
     </div>
     <div class="filter-group">
         <label for="bm-role"><%= __('dash:role') %></label>
-        <select id="bm-role" name="roleName" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-role" name="roleName" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_roles_lc') %></option>
             <% roles.forEach(function(r){ %><option value="<%= r.name %>" <%= filters.roleName === r.name ? 'selected' : '' %>><%= r.name %></option><% }); %>
         </select>
     </div>
     <div class="filter-group">
         <label for="bm-cat"><%= __('dash:category') %></label>
-        <select id="bm-cat" name="category" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-cat" name="category" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_types') %></option>
             <% ['Technical','Behavioral','Safety','Compliance'].forEach(function(c){ %><option value="<%= c %>" <%= filters.category === c ? 'selected' : '' %>><%= c %></option><% }); %>
         </select>
     </div>
     <div class="filter-group">
         <label for="bm-min"><%= __('dash:min_required') %></label>
-        <select id="bm-min" name="minLevel" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-min" name="minLevel" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:any_level') %></option>
             <% [1,2,3,4].forEach(function(n){ %><option value="<%= n %>" <%= String(filters.minLevel) === String(n) ? 'selected' : '' %>>&ge; <%= n %></option><% }); %>
         </select>
@@ -54,7 +54,7 @@
         <input id="bm-q" type="search" name="skillQuery" class="form-control form-control-sm" placeholder="<%= __('dash:skill_name_placeholder') %>" value="<%= filters.skillQuery || '' %>" style="min-width:150px;">
     </div>
     <div class="filter-group" style="align-self:flex-end;">
-        <label class="bm-check"><input type="checkbox" name="criticalOnly" value="true" <%= filters.criticalOnly ? 'checked' : '' %> onchange="this.form.submit()"> <%= __('dash:critical_only') %></label>
+        <label class="bm-check"><input type="checkbox" name="criticalOnly" value="true" <%= filters.criticalOnly ? 'checked' : '' %> data-submit-on-change> <%= __('dash:critical_only') %></label>
     </div>
     <div class="filter-group" style="align-self:flex-end;">
         <button type="submit" class="btn btn-sm btn-secondary"><%= __('dash:apply') %></button>
@@ -63,21 +63,21 @@
     <!-- Fit-table scope (org unit): narrows the "Benchmark Fit by Role" table + drill-through, not the matrix. -->
     <div class="filter-group bm-orgunit">
         <label for="bm-site"><%= __('dash:site') %> <span class="bm-scopehint"><%= __('dash:fit_hint') %></span></label>
-        <select id="bm-site" name="siteName" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-site" name="siteName" class="form-control form-control-sm" data-submit-on-change>
             <%# %><% if ((sites||[]).length !== 1) { %><option value=""><%= __('dash:all_sites_lc') %></option><% } %>
             <% (sites||[]).forEach(function(s){ %><option value="<%= s.name %>" <%= filters.siteName === s.name ? 'selected' : '' %>><%= s.name %></option><% }); %>
         </select>
     </div>
     <div class="filter-group bm-orgunit">
         <label for="bm-dept"><%= __('dash:department') %> <span class="bm-scopehint"><%= __('dash:fit_hint') %></span></label>
-        <select id="bm-dept" name="departmentName" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-dept" name="departmentName" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_departments_lc') %></option>
             <% (departments||[]).forEach(function(dp){ %><option value="<%= dp.name %>" <%= filters.departmentName === dp.name ? 'selected' : '' %>><%= dp.name %></option><% }); %>
         </select>
     </div>
     <div class="filter-group bm-orgunit">
         <label for="bm-svc"><%= __('dash:service') %> <span class="bm-scopehint"><%= __('dash:fit_hint') %></span></label>
-        <select id="bm-svc" name="serviceName" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-svc" name="serviceName" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_services_lc') %></option>
             <% (services||[]).forEach(function(sv){ %><option value="<%= sv.name %>" <%= filters.serviceName === sv.name ? 'selected' : '' %>><%= sv.name %></option><% }); %>
         </select>
@@ -143,7 +143,7 @@
         <p class="section-subtitle"><%= __('dash:bm_fit_sub') %></p>
     </div>
     <label class="bm-band-ctl"><%= __('dash:show') %>
-        <select id="bm-fit-band" class="form-control form-control-sm" onchange="bmFilterFitBand(this.value)">
+        <select id="bm-fit-band" class="form-control form-control-sm" data-on-change="bmFilterFitBand" data-args='["$value"]'>
             <option value="all"><%= __('dash:all_roles_lc') %></option>
             <option value="low"><%= __('dash:fit_lt_50') %></option>
             <option value="mid"><%= __('dash:fit_50_79') %></option>

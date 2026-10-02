@@ -77,7 +77,7 @@
     <% if (!mgrOnly) { %>
     <div class="form-group">
         <label for="siteId"><%= __('admin:emp_edit_site') %></label>
-        <select id="siteId" name="siteId" required onchange="loadDepartments(this.value)">
+        <select id="siteId" name="siteId" required data-on-change="loadDepartments" data-args='["$value"]'>
             <option value=""><%= __('admin:emp_edit_select_site') %></option>
             <% sites.forEach(function(site) { %>
             <option value="<%= site.id %>" <%= v('siteId', employee.siteId) === String(site.id) ? 'selected' : '' %>><%= site.name %></option>
@@ -87,7 +87,7 @@
     
     <div class="form-group">
         <label for="departmentId"><%= __('admin:emp_edit_dept') %></label>
-        <select id="departmentId" name="departmentId" required onchange="loadServices(this.value)">
+        <select id="departmentId" name="departmentId" required data-on-change="loadServices" data-args='["$value"]'>
             <option value=""><%= __('admin:emp_edit_select_dept') %></option>
         </select>
     </div>
@@ -192,7 +192,7 @@
         <label for="cred-password"><%= __('admin:emp_cred_password') %> <small class="text-muted"><%= __('admin:emp_cred_password_hint') %></small></label>
         <div style="display:flex;gap:6px">
             <input type="password" id="cred-password" class="form-control" autocomplete="new-password" style="flex:1" placeholder="<%= employee.username ? __('admin:emp_cred_ph_keep') : __('admin:emp_cred_ph_new') %>">
-            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('cred-password', this)" aria-pressed="false" title="<%= __('admin:emp_cred_show_hide') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
+            <button type="button" class="btn btn-secondary" data-on-click="togglePasswordVisibility" data-args='["cred-password","$el"]' aria-pressed="false" title="<%= __('admin:emp_cred_show_hide') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
         </div>
     </div>
     <label style="display:flex;align-items:center;gap:8px;font-size:.88rem;margin-bottom:.9rem">

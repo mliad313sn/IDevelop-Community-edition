@@ -287,8 +287,8 @@ window.RB = (function () {
         container.innerHTML = state.sections
             .map((sec, i) => {
                 const delay = (i * 0.08).toFixed(2);
-                // Section id rides on data-sec-id (read back via this.dataset), never
-                // inside a JS string in the onclick attribute.
+                // Section id rides in a JSON data-args attribute (csp-actions.js),
+                // never inside a JS string in an inline handler.
                 const sid = _esc(sec.id);
                 return (
                     '<div class="rb-section ' +
@@ -304,22 +304,34 @@ window.RB = (function () {
                     '<div class="rb-section-actions">' +
                     '<button title="Edit" data-sec-id="' +
                     sid +
-                    '" onclick="RB.editSection(this.dataset.secId)">✏️</button>' +
+                    '"' +
+                    _onClick('editSection', [String(sec.id)]) +
+                    '>✏️</button>' +
                     '<button title="Duplicate" data-sec-id="' +
                     sid +
-                    '" onclick="RB.duplicateSection(this.dataset.secId)">📋</button>' +
+                    '"' +
+                    _onClick('duplicateSection', [String(sec.id)]) +
+                    '>📋</button>' +
                     '<button title="Toggle width" data-sec-id="' +
                     sid +
-                    '" onclick="RB.toggleWidth(this.dataset.secId)">↔️</button>' +
+                    '"' +
+                    _onClick('toggleWidth', [String(sec.id)]) +
+                    '>↔️</button>' +
                     '<button title="Move up" data-sec-id="' +
                     sid +
-                    '" onclick="RB.moveSection(this.dataset.secId,-1)">▲</button>' +
+                    '"' +
+                    _onClick('moveSection', [String(sec.id), -1]) +
+                    '>▲</button>' +
                     '<button title="Move down" data-sec-id="' +
                     sid +
-                    '" onclick="RB.moveSection(this.dataset.secId,1)">▼</button>' +
+                    '"' +
+                    _onClick('moveSection', [String(sec.id), 1]) +
+                    '>▼</button>' +
                     '<button title="Remove" data-sec-id="' +
                     sid +
-                    '" onclick="RB.removeSection(this.dataset.secId)">🗑️</button>' +
+                    '"' +
+                    _onClick('removeSection', [String(sec.id)]) +
+                    '>🗑️</button>' +
                     '</div></div><div class="rb-section-body" id="body_' +
                     sid +
                     '"></div></div>'
@@ -437,7 +449,7 @@ window.RB = (function () {
     // The generated SQL carries free text (the section title in the "-- Section:"
     // comment, dimension/metric names from an imported template file). It is
     // HTML-escaped FIRST and only then decorated: highlighting raw text straight
-    // into innerHTML let a title such as <img src=x onerror=...> run as script.
+    // into innerHTML let a title such as an <img> with an error handler run as script.
     // Only & < > are escaped (text context): the quote-matching and number rules
     // below must still see ' and must not meet a numeric entity like &#39;.
     function _highlightSQL(sql) {
@@ -482,7 +494,9 @@ window.RB = (function () {
                 (s) =>
                     '<div class="rb-section-list-item" data-sec-id="' +
                     _esc(s.id) +
-                    '" onclick="RB.editSection(this.dataset.secId)">' +
+                    '"' +
+                    _onClick('editSection', [String(s.id)]) +
+                    '>' +
                     '<span class="rb-sec-icon">' +
                     (icons[s.config.chartType] || '📊') +
                     '</span>' +
@@ -607,15 +621,21 @@ window.RB = (function () {
                         _esc(s) +
                         ' <span class="remove" data-filter-type="sites" data-filter-value="' +
                         _esc(s) +
-                        '" onclick="RB.removeFilterTagEl(this)">×</span></span>'
+                        '"' +
+                        _onClick('removeFilterTagEl', ['$el']) +
+                        '>×</span></span>'
                 )
                 .join('');
         if (f.criticalOnly)
             tags +=
-                '<span class="rb-filter-tag">Critical Only <span class="remove" onclick="document.getElementById(\'filterCritical\').checked=false;RB.applyFilters()">×</span></span>';
+                '<span class="rb-filter-tag">Critical Only <span class="remove"' +
+                _onClick('clearFlagFilter', ['filterCritical']) +
+                '>×</span></span>';
         if (f.gapsOnly)
             tags +=
-                '<span class="rb-filter-tag">Gaps Only <span class="remove" onclick="document.getElementById(\'filterGaps\').checked=false;RB.applyFilters()">×</span></span>';
+                '<span class="rb-filter-tag">Gaps Only <span class="remove"' +
+                _onClick('clearFlagFilter', ['filterGaps']) +
+                '>×</span></span>';
         el.innerHTML = tags;
     }
 
@@ -625,6 +645,13 @@ window.RB = (function () {
     function removeFilterTagEl(el) {
         if (!el || !el.dataset) return;
         removeFilterTag(el.dataset.filterType, el.dataset.filterValue);
+    }
+
+    // "×" on the Critical-only / Gaps-only tags: untick the checkbox, re-filter.
+    function clearFlagFilter(checkboxId) {
+        const cb = document.getElementById(checkboxId);
+        if (cb) cb.checked = false;
+        applyFilters();
     }
 
     function removeFilterTag(type, value) {
@@ -723,9 +750,9 @@ window.RB = (function () {
         el.innerHTML = saved
             .map(
                 (t) =>
-                    '<div class="rb-template-card" onclick="RB.loadLocalTemplate(' +
-                    t.id +
-                    ')"><h5>' +
+                    '<div class="rb-template-card"' +
+                    _onClick('loadLocalTemplate', [t.id]) +
+                    '><h5>' +
                     _esc(t.name) +
                     '</h5><div class="rb-tpl-meta">' +
                     _esc(new Date(t.createdAt).toLocaleDateString(_locale())) +
@@ -1273,9 +1300,9 @@ window.RB = (function () {
         const el = document.getElementById('prebuiltTemplates');
         el.innerHTML = PREBUILT.map(
             (t, i) =>
-                '<div class="rb-template-card" onclick="RB.loadPrebuilt(' +
-                i +
-                ')"><h5>' +
+                '<div class="rb-template-card"' +
+                _onClick('loadPrebuilt', [i]) +
+                '><h5>' +
                 _esc(t.name) +
                 '</h5><div class="rb-tpl-desc">' +
                 _esc(t.desc) +
@@ -1331,6 +1358,14 @@ window.RB = (function () {
         return String(s == null ? '' : s).replace(
             /[&<>"']/g,
             (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+        );
+    }
+
+    // CSP — no inline on*= handlers: a click is declared as
+    // data-on-click="RB.<fn>" + JSON data-args, dispatched by csp-actions.js.
+    function _onClick(fn, args) {
+        return (
+            ' data-on-click="RB.' + fn + '" data-args="' + _esc(JSON.stringify(args || [])) + '"'
         );
     }
 
@@ -1462,6 +1497,7 @@ window.RB = (function () {
         checkNone,
         removeFilterTag,
         removeFilterTagEl,
+        clearFlagFilter,
         loadPrebuilt,
         loadLocalTemplate,
         state,

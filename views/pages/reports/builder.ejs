@@ -147,32 +147,32 @@
                     <div class="rb-form-group">
                         <label id="lblFilterSites"><%= __('admin:rb_sites') %></label>
                         <div class="rb-check-actions">
-                            <button type="button" onclick="RB.checkAll('filterSites')"><%= __('admin:rb_select_all') %></button>
-                            <button type="button" onclick="RB.checkNone('filterSites')"><%= __('admin:rb_none') %></button>
+                            <button type="button" data-on-click="RB.checkAll" data-args='["filterSites"]'><%= __('admin:rb_select_all') %></button>
+                            <button type="button" data-on-click="RB.checkNone" data-args='["filterSites"]'><%= __('admin:rb_none') %></button>
                         </div>
                         <div class="rb-checkbox-group" id="filterSites" role="group" aria-labelledby="lblFilterSites"></div>
                     </div>
                     <div class="rb-form-group">
                         <label id="lblFilterDepts"><%= __('admin:rb_departments') %></label>
                         <div class="rb-check-actions">
-                            <button type="button" onclick="RB.checkAll('filterDepts')"><%= __('admin:rb_select_all') %></button>
-                            <button type="button" onclick="RB.checkNone('filterDepts')"><%= __('admin:rb_none') %></button>
+                            <button type="button" data-on-click="RB.checkAll" data-args='["filterDepts"]'><%= __('admin:rb_select_all') %></button>
+                            <button type="button" data-on-click="RB.checkNone" data-args='["filterDepts"]'><%= __('admin:rb_none') %></button>
                         </div>
                         <div class="rb-checkbox-group" id="filterDepts" role="group" aria-labelledby="lblFilterDepts"></div>
                     </div>
                     <div class="rb-form-group">
                         <label id="lblFilterDomains"><%= __('admin:rb_domains') %></label>
                         <div class="rb-check-actions">
-                            <button type="button" onclick="RB.checkAll('filterDomains')"><%= __('admin:rb_select_all') %></button>
-                            <button type="button" onclick="RB.checkNone('filterDomains')"><%= __('admin:rb_none') %></button>
+                            <button type="button" data-on-click="RB.checkAll" data-args='["filterDomains"]'><%= __('admin:rb_select_all') %></button>
+                            <button type="button" data-on-click="RB.checkNone" data-args='["filterDomains"]'><%= __('admin:rb_none') %></button>
                         </div>
                         <div class="rb-checkbox-group" id="filterDomains" role="group" aria-labelledby="lblFilterDomains"></div>
                     </div>
                     <div class="rb-form-group">
                         <label id="lblFilterRoles"><%= __('admin:rb_roles') %></label>
                         <div class="rb-check-actions">
-                            <button type="button" onclick="RB.checkAll('filterRoles')"><%= __('admin:rb_select_all') %></button>
-                            <button type="button" onclick="RB.checkNone('filterRoles')"><%= __('admin:rb_none') %></button>
+                            <button type="button" data-on-click="RB.checkAll" data-args='["filterRoles"]'><%= __('admin:rb_select_all') %></button>
+                            <button type="button" data-on-click="RB.checkNone" data-args='["filterRoles"]'><%= __('admin:rb_none') %></button>
                         </div>
                         <div class="rb-checkbox-group" id="filterRoles" role="group" aria-labelledby="lblFilterRoles"></div>
                     </div>

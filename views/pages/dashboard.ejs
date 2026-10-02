@@ -495,7 +495,7 @@
         <div class="chart-box wide">
             <div class="box-header">
                 <h3><%= __('dash:high_priority_training_needs') %></h3>
-                <button class="btn-copy" onclick="Dashboard.copyToClipboard('training-priority-table')"><%= __('dash:copy_table') %></button>
+                <button class="btn-copy" data-on-click="Dashboard.copyToClipboard" data-args='["training-priority-table"]'><%= __('dash:copy_table') %></button>
             </div>
             <div class="table-responsive" id="training-priority-container">
                 <!-- Data Table -->
@@ -634,7 +634,7 @@
         <div class="chart-box wide">
             <div class="box-header">
                 <h3><%= __('dash:employee_list') %></h3>
-                <button class="btn-copy" onclick="Dashboard.copyToClipboard('employee-table')"><%= __('dash:copy_table') %></button>
+                <button class="btn-copy" data-on-click="Dashboard.copyToClipboard" data-args='["employee-table"]'><%= __('dash:copy_table') %></button>
             </div>
             <div class="table-responsive" id="employee-table-container">
                 <!-- Employee Table -->

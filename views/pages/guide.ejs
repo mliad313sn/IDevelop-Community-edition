@@ -43,7 +43,7 @@ var CLEAR_INTRO = {
       <a class="g-lang <%= _gl === 'en' ? 'on' : '' %>" href="/guide?glang=en" hreflang="en" lang="en"<%- _gl === 'en' ? ' aria-current="true"' : '' %>>English</a>
       <a class="g-lang <%= _gl === 'fr' ? 'on' : '' %>" href="/guide?glang=fr" hreflang="fr" lang="fr"<%- _gl === 'fr' ? ' aria-current="true"' : '' %>>Français</a>
       <a class="g-full" href="<%= _gl === 'en' ? '/user-guide.en.html' : '/user-guide.html' %>" target="_blank" title="<%= _gl === 'en' ? 'Full reference (all profiles)' : 'Référence complète (tous les profils)' %>"><i class="fas fa-book" aria-hidden="true"></i> <%- tg({en:'Full guide', fr:'Guide complet'}) %></a>
-      <button class="g-print" type="button" onclick="window.print()" title="<%= _gl === 'en' ? 'Print' : 'Imprimer' %>"><i class="fas fa-print" aria-hidden="true"></i></button>
+      <button class="g-print" type="button" data-on-click="guidePrint" title="<%= _gl === 'en' ? 'Print' : 'Imprimer' %>"><i class="fas fa-print" aria-hidden="true"></i></button>
     </span>
   </div>
 
@@ -234,6 +234,9 @@ var CLEAR_INTRO = {
 @media print{.g-bar,.g-toc,.g-search,.g-progress-wrap,.g-tour{display:none}.g-layout{grid-template-columns:1fr}}
 </style>
 <script nonce="<%= cspNonce %>">
+// Print button (CSP: wired by csp-actions.js — window.print must be
+// called on window, so it gets its own wrapper).
+function guidePrint(){ window.print(); }
 (function(){
   var guide = document.getElementById('guide');
   var cards = Array.prototype.slice.call(guide.querySelectorAll('.g-card'));

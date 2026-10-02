@@ -97,8 +97,8 @@
                                         <% const editPayload = Object.assign({}, isSecretKey(setting.settingKey)
                                               ? Object.assign({}, setting, { settingValue: '' })
                                               : setting, { rule: setting.rule || {} }); %>
-                                        <button class="btn btn-sm"
-                                            onclick='editSetting(<%= JSON.stringify(editPayload) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                        <button type="button" class="btn btn-sm"
+                                            data-on-click="editSetting" data-args="<%= JSON.stringify([editPayload]) %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
                                     </td>
                                 </tr>
                                 <% }); %>
@@ -194,8 +194,7 @@
                             <div class="form-group" style="margin:0;">
                                 <label for="brandAccentColor"><%= __('admin:brand_accent') %></label>
                                 <div style="display:flex;gap:8px;align-items:center;">
-                                    <input type="color" id="brandAccentPick" aria-label="<%= __('admin:brand_accent') %>" value="<%= _b.accentColor || '#7C6CFF' %>" style="width:44px;height:38px;padding:2px;border:1px solid var(--border-light);border-radius:8px;background:transparent;"
-                                        oninput="document.getElementById('brandAccentColor').value=this.value">
+                                    <input type="color" id="brandAccentPick" aria-label="<%= __('admin:brand_accent') %>" value="<%= _b.accentColor || '#7C6CFF' %>" style="width:44px;height:38px;padding:2px;border:1px solid var(--border-light);border-radius:8px;background:transparent;">
                                     <input type="text" id="brandAccentColor" name="brandAccentColor" value="<%= _b.accentColor || '' %>" placeholder="#7C6CFF" pattern="#?[0-9a-fA-F]{6}" class="form-control" style="max-width:120px;">
                                     <label style="font-size:.8rem;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" name="clearAccent" value="1"> <%= __('admin:brand_clear') %></label>
                                 </div>
@@ -360,7 +359,7 @@
                         <div class="modal-content">
                             <div class="modal-header">
                                 <h2><%= __('admin:edit_setting') %></h2>
-                                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editSettingModal')">&times;</button>
+                                <button type="button" class="close" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["editSettingModal"]'>&times;</button>
                             </div>
                             <div class="modal-body">
                                 <form id="editSettingForm" method="POST">
@@ -394,7 +393,7 @@
                                     <div class="modal-footer">
                                         <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('admin:save_changes') %></button>
                                         <button type="button" class="btn btn-secondary"
-                                            onclick="hideModal('editSettingModal')"><%= __('admin:cancel') %></button>
+                                            data-on-click="hideModal" data-args='["editSettingModal"]'><%= __('admin:cancel') %></button>
                                     </div>
                                 </form>
                             </div>

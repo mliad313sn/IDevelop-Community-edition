@@ -10,7 +10,7 @@
       <% items.forEach(function(p){ %>
         <tr>
           <td><%= ['coaching','mentoring'].includes(p.kind) ? __('employee:mc_kind_'+p.kind) : enumLabel(p.kind) %></td>
-          <td><a href="#" onclick="MC.open(<%= p.id %>);return false"><%= p.title %></a></td>
+          <td><a href="#" data-on-click="MC.openLink" data-args="<%= JSON.stringify([p.id]) %>"><%= p.title %></a></td>
           <td><%= p.contextLabel || '—' %></td>
           <td><%= p.targetDate ? new Date(p.targetDate).toLocaleDateString(typeof lang!=='undefined'?lang:'fr') : '-' %></td>
           <td><%= ['draft','active','completed','cancelled'].includes(p.state) ? __('employee:mc_st_'+p.state) : enumLabel(p.state) %></td>
@@ -78,11 +78,17 @@ const MC={
   badge(s){const c={draft:'#888',active:'#1b56b8',completed:'#0f8a3c',cancelled:'#b00020'}[s]||'#555';return '<span style=\"padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:'+c+'\">'+esc(this.lbl(this.I18N.st,s))+'</span>';},
   async setProgress(id){const v=await window.promptDialog(this.I18N.promptProgress);if(v===null)return;const n=Number(v);if(!isFinite(n)||n<0||n>100){(window.toast||window.alert)(this.I18N.progressRange||'Enter a number between 0 and 100.','error');return;}await this.api('/api/coaching/'+id+'/progress','POST',{progress:Math.round(n)});await this.load();},
   async open(id){const j=await this.api('/api/coaching/'+id);const p=j.plan;const d=document.getElementById('mc-detail');d.style.display='block';
-    d.innerHTML='<h3>'+esc(p.title)+' '+this.badge(p.state)+'</h3><p>'+esc(p.objective||'')+'</p><h4>'+esc(this.I18N.actionsHeader)+'</h4>'+(p.actions.length?p.actions.map(a=>'<div style="padding:.3rem 0;border-bottom:1px solid #eee;">'+esc(a.description)+' — <strong>'+esc(this.lbl(this.I18N.ast,a.status))+'</strong> '+(a.status!=='done'?'<button class="btn btn-sm" onclick="MC.actDone('+a.id+')">'+esc(this.I18N.markDone)+'</button>':'')+'</div>').join(''):'<em>'+esc(this.I18N.noActions)+'</em>');},
+    d.innerHTML='<h3>'+esc(p.title)+' '+this.badge(p.state)+'</h3><p>'+esc(p.objective||'')+'</p><h4>'+esc(this.I18N.actionsHeader)+'</h4>'+(p.actions.length?p.actions.map(a=>'<div style="padding:.3rem 0;border-bottom:1px solid #eee;">'+esc(a.description)+' — <strong>'+esc(this.lbl(this.I18N.ast,a.status))+'</strong> '+(a.status!=='done'?'<button class="btn btn-sm" data-on-click="MC.actDone" data-args="'+esc(JSON.stringify([a.id]))+'">'+esc(this.I18N.markDone)+'</button>':'')+'</div>').join(''):'<em>'+esc(this.I18N.noActions)+'</em>');},
+  // Title link: open the plan, keep the page where it is (returning false cancels the "#" navigation).
+  openLink(id){ this.open(id); return false; },
   async actDone(actionId){await this.api('/api/coaching/actions/'+actionId,'POST',{status:'done'});await this.load();},
   async load(){const j=await this.api('/api/coaching/mine');const tb=document.querySelector('#mc-table tbody');
-    tb.innerHTML=j.items.length?j.items.map(p=>'<tr><td>'+esc(this.lbl(this.I18N.kind,p.kind))+'</td><td><a href="#" onclick="MC.open('+p.id+');return false">'+esc(p.title)+'</a></td><td>'+(p.contextLabel?'<span style="background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:999px;font-size:.78rem">'+esc(p.contextLabel)+'</span>':'<span style="color:var(--text-muted)">—</span>')+'</td><td>'+this.fmtDate(p.targetDate)+'</td><td>'+this.badge(p.state)+'</td><td>'+p.progress+'%</td><td>'+(p.state==='active'?'<button class="btn btn-sm btn-secondary" onclick="MC.setProgress('+p.id+')">'+esc(this.I18N.setPct)+'</button>':'')+'</td></tr>').join(''):'<tr><td colspan="7"><em>'+esc(this.I18N.noPlans)+'</em></td></tr>';}
+    tb.innerHTML=j.items.length?j.items.map(p=>'<tr><td>'+esc(this.lbl(this.I18N.kind,p.kind))+'</td><td><a href="#" data-on-click="MC.openLink" data-args="'+esc(JSON.stringify([p.id]))+'">'+esc(p.title)+'</a></td><td>'+(p.contextLabel?'<span style="background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:999px;font-size:.78rem">'+esc(p.contextLabel)+'</span>':'<span style="color:var(--text-muted)">—</span>')+'</td><td>'+this.fmtDate(p.targetDate)+'</td><td>'+this.badge(p.state)+'</td><td>'+p.progress+'%</td><td>'+(p.state==='active'?'<button class="btn btn-sm btn-secondary" data-on-click="MC.setProgress" data-args="'+esc(JSON.stringify([p.id]))+'">'+esc(this.I18N.setPct)+'</button>':'')+'</td></tr>').join(''):'<tr><td colspan="7"><em>'+esc(this.I18N.noPlans)+'</em></td></tr>';}
 };
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+// CSP: links/buttons are wired by csp-actions.js (data-on-click: MC.<method>),
+// which calls with this = the element; the methods use this.*, so each is bound.
+Object.keys(MC).forEach(function(k){ if(typeof MC[k]==='function') MC[k]=MC[k].bind(MC); });
+window.MC = MC;
 MC.load();
 </script>
