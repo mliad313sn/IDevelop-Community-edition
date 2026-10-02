@@ -151,11 +151,21 @@ describe('F4 / F5 — metadata fetch', () => {
 
 describe('SCIM — reachable by a real identity provider', () => {
     test('an opaque Bearer token is accepted as an API key (JWTs stay for Entra)', () => {
+        // One resolver, presentedApiKey: header, then an OPAQUE bearer, then
+        // ?apiKey= (reported as 'query', honoured only for flagged keys, migration 163).
         const m = code('src/middleware/apiAuth.js');
-        expect(m).toMatch(
-            /const opaqueBearer = bearer && !sso\.looksLikeJwt\(bearer\) \? bearer : null;/
+        expect(m).toMatch(/function presentedApiKey/);
+        const { presentedApiKey } = require('../../src/middleware/apiAuth');
+        expect(presentedApiKey({ headers: { authorization: 'Bearer opaque-scim-token' } })).toEqual(
+            { key: 'opaque-scim-token', source: 'bearer' }
         );
-        expect(m).toMatch(/req\.headers\['x-api-key'\] \|\| opaqueBearer \|\| req\.query\.apiKey/);
+        expect(
+            presentedApiKey({ headers: { authorization: 'Bearer aaa.bbb.ccc' }, query: {} })
+        ).toBeNull();
+        expect(presentedApiKey({ headers: {}, query: { apiKey: 'k' } })).toEqual({
+            key: 'k',
+            source: 'query',
+        });
     });
     test('application/scim+json is JSON for the parser, the origin guard and the CSRF skip', () => {
         // The JSON media types and the predicate moved to

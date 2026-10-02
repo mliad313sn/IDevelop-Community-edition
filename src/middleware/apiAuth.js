@@ -123,6 +123,42 @@ function refuseScope(res, feed) {
     });
 }
 
+/**
+ * Where did the caller put the key? Headers first (`X-API-Key`, then an OPAQUE
+ * `Authorization: Bearer`); the `?apiKey=` query parameter is reported as
+ * source 'query' so every caller can refuse it unless the key carries the
+ * legacy flag (migration 163). JWT-shaped bearers are never returned here:
+ * they belong to the Entra branch.
+ * @returns {{key: string, source: 'header'|'bearer'|'query'}|null}
+ */
+function presentedApiKey(req) {
+    const h = (req && req.headers) || {};
+    const x = h['x-api-key'];
+    if (typeof x === 'string' && x) return { key: x, source: 'header' };
+    const bearer = String(h.authorization || '').replace(/^Bearer\s+/i, '');
+    if (bearer && bearer !== String(h.authorization || '') && !sso.looksLikeJwt(bearer))
+        return { key: bearer, source: 'bearer' };
+    const q = req && req.query ? req.query.apiKey : undefined;
+    if (typeof q === 'string' && q) return { key: q, source: 'query' };
+    return null;
+}
+
+/**
+ * May a key presented in the URL be honoured? Only a per-key legacy flag
+ * (api_keys.allow_query_key) opens it; the env shared key needs the explicit
+ * API_KEY_QUERY_STRING=1 opt-in. Headers are always fine.
+ */
+function queryKeyAllowed(source, principal) {
+    if (source !== 'query') return true;
+    if (principal === 'legacy.shared') return process.env.API_KEY_QUERY_STRING === '1';
+    return !!(principal && principal.allowQueryKey === true);
+}
+
+const QUERY_KEY_REFUSED = Object.freeze({
+    error: 'api_key_in_url_refused',
+    hint: 'send the key in the X-API-Key header (Power Query: Web.Contents(url, [Headers=[#"X-API-Key"="<key>"]]))',
+});
+
 const SYSTEM_PRINCIPAL = {
     id: 0,
     userType: 'admin',
@@ -142,8 +178,10 @@ const SYSTEM_PRINCIPAL = {
  *  2. The legacy shared env key (appConfig.apiKey) → full-org system principal,
  *     for backward compatibility with existing server-to-server feeds.
  *
- * Prefers the 'X-API-Key' header; the 'apiKey' query param is still accepted for
- * legacy Power BI feeds but discouraged (it leaks into access/proxy logs).
+ * Keys go in the 'X-API-Key' header (or an opaque Bearer). The 'apiKey' query
+ * parameter leaks into access/proxy logs, browser history and Referer headers:
+ * it is accepted only from a key that carries the legacy flag (migration 163),
+ * or for the env shared key with API_KEY_QUERY_STRING=1.
  */
 const requireApiKey = async (req, res, next) => {
     // SEC-2: the feed this request addresses; a key must carry one of ITS scopes.
@@ -177,8 +215,8 @@ const requireApiKey = async (req, res, next) => {
         // provisioning "Secret Token", Okta) send it as `Authorization: Bearer <key>`,
         // never as X-API-Key — every real IdP call was refused 401 here. JWT-shaped
         // bearers stay reserved for the Entra branch above.
-        const opaqueBearer = bearer && !sso.looksLikeJwt(bearer) ? bearer : null;
-        const apiKey = req.headers['x-api-key'] || opaqueBearer || req.query.apiKey;
+        const presented = presentedApiKey(req);
+        const apiKey = presented ? presented.key : null;
         if (!apiKey) {
             return res.status(401).json({
                 error: 'Authentication required. Please provide a valid API Key in the X-API-Key header, or an Entra bearer token.',
@@ -190,6 +228,9 @@ const requireApiKey = async (req, res, next) => {
         if (principal) {
             // Scope first: a key of another feed never becomes a principal here.
             if (!feedScopeAllowed(feed, principal.scope)) return refuseScope(res, feed);
+            // A key in the URL only when this key carries the legacy flag.
+            if (!queryKeyAllowed(presented.source, principal))
+                return res.status(401).json(QUERY_KEY_REFUSED);
             req._apiKey = { id: principal.id, scope: principal.scope, label: principal.label };
             if (principal.ownerAdminId != null) {
                 // Run as the owning admin → inherit exactly their RBAC clearance.
@@ -220,6 +261,8 @@ const requireApiKey = async (req, res, next) => {
         const legacy = legacySharedKey();
         if (legacy && safeEqual(apiKey, legacy)) {
             if (!feedScopeAllowed(feed, 'legacy.shared')) return refuseScope(res, feed);
+            if (!queryKeyAllowed(presented.source, 'legacy.shared'))
+                return res.status(401).json(QUERY_KEY_REFUSED);
             req._apiKey = { id: null, scope: 'legacy.shared', label: 'env' };
             req.user = { ...SYSTEM_PRINCIPAL };
             return next();
@@ -340,4 +383,7 @@ module.exports = {
     metricsAccessAllowed,
     requireMetricsAccess,
     isLoopbackUnforwarded,
+    presentedApiKey,
+    queryKeyAllowed,
+    QUERY_KEY_REFUSED,
 };

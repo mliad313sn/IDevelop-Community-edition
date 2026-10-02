@@ -108,6 +108,14 @@ project uses [Semantic Versioning](https://semver.org/).
   current password on `/change-password` or a wrong code at `/login/mfa`,
   `/v2/uam/mfa/verify` or `/v2/uam/mfa/disable` counts toward the lockout,
   and those checks are rate-limited per user.
+- **API keys go in headers** (`X-API-Key` or an opaque `Authorization:
+Bearer`). A key in the URL (`?apiKey=`) is refused with a 401 that shows the
+  header form, except for a key that carries the per-key compatibility flag
+  (migration 163: keys that existed at the upgrade keep it, new keys never get
+  it) or the env shared key with `API_KEY_QUERY_STRING=1`. A SuperAdmin
+  switches the flag per key (`POST /api/v1/admin/api-keys/:id/query-string`,
+  audited). In Power Query:
+  `Web.Contents(url, [Headers=[#"X-API-Key"="ak_…"]])`.
 - HTTP hardening moved into `src/middleware/httpHardening.js`, with tests:
     - JSON detection is anchored on the MIME essence, so
       `text/plain; x=application/json` no longer skips the CSRF check;

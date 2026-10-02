@@ -77,7 +77,15 @@ const apiAuth = async (req, res, next) => {
         });
     }
 
-    const key = req.headers['x-api-key'] || bearer || req.query.apiKey;
+    // Header first; `?apiKey=` only for a key with the legacy flag (migration 163).
+    const {
+        presentedApiKey,
+        queryKeyAllowed,
+        QUERY_KEY_REFUSED,
+        legacySharedKey,
+    } = require('../../middleware/apiAuth');
+    const presented = presentedApiKey(req);
+    const key = presented ? presented.key : null;
     if (key) {
         try {
             const principal = await ApiKeyService.validate(key);
@@ -87,6 +95,8 @@ const apiAuth = async (req, res, next) => {
                 const { feedScopeAllowed } = require('../../middleware/apiAuth');
                 if (!feedScopeAllowed('v1', principal.scope))
                     return res.status(403).json({ error: 'insufficient_scope' });
+                if (!queryKeyAllowed(presented.source, principal))
+                    return res.status(401).json(QUERY_KEY_REFUSED);
                 if (principal.ownerAdminId != null) {
                     // Per-profile key: run AS the owning admin so this read API
                     // (RBAC-scoped, like the EJS app) returns ONLY that profile's
@@ -117,8 +127,10 @@ const apiAuth = async (req, res, next) => {
         }
         // Never APP_KEY (S-02): the same guard as middleware/apiAuth. This
         // router used to compare against the raw configured key directly.
-        const legacy = require('../../middleware/apiAuth').legacySharedKey();
+        const legacy = legacySharedKey();
         if (legacy && _safeEqual(key, legacy)) {
+            if (!queryKeyAllowed(presented.source, 'legacy.shared'))
+                return res.status(401).json(QUERY_KEY_REFUSED);
             req.user = {
                 id: 0,
                 userType: 'admin',
@@ -654,6 +666,23 @@ router.post(
             data: k,
             note: 'Store this key now — it is shown only once and cannot be retrieved later.',
         });
+    })
+);
+
+// The per-key "allow ?apiKey= in the URL (legacy Power BI)" switch (migration
+// 163). Superadmin SESSION only, like the rest of key management; audited.
+router.post(
+    '/admin/api-keys/:id/query-string',
+    apiSuperadminSession,
+    asyncH(async (req, res) => {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad_id' });
+        const b = req.body || {};
+        if (typeof b.allowed !== 'boolean')
+            return res.status(400).json({ error: 'allowed (boolean) required' });
+        const n = await ApiKeyService.setQueryKeyAllowed(id, b.allowed, req);
+        if (!n) return res.status(404).json({ error: 'not_found' });
+        res.json({ ok: true, id, allowQueryKey: b.allowed });
     })
 );
 

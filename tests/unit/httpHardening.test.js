@@ -266,6 +266,29 @@ describe('makeValidatedApiCredential', () => {
             })
         ).toBe(true);
     });
+    test('a key in the URL stands in for Origin only when it carries the legacy flag', async () => {
+        const real = require('../../src/middleware/apiAuth');
+        const v = (principal) =>
+            H.makeValidatedApiCredential({
+                sso: () => ({ looksLikeJwt: () => false, isEntraBearerEnabled: () => false }),
+                apiKeys: () => ({ validate: async () => principal }),
+                apiAuth: () => ({
+                    presentedApiKey: real.presentedApiKey,
+                    queryKeyAllowed: real.queryKeyAllowed,
+                    legacySharedKey: () => null,
+                }),
+            });
+        const inUrl = { headers: {}, query: { apiKey: 'ak_x' } };
+        expect(await v({ id: 1, allowQueryKey: false })(inUrl)).toBe(false);
+        expect(await v({ id: 1, allowQueryKey: true })(inUrl)).toBe(true);
+        expect(
+            await v({ id: 1, allowQueryKey: false })({
+                headers: { 'x-api-key': 'ak_x' },
+                query: {},
+            })
+        ).toBe(true);
+    });
+
     test('a JWT bearer counts only when Entra bearer auth is enabled', async () => {
         const req = { headers: { authorization: 'Bearer eyJ.a.b' }, query: {} };
         expect(await mk(async () => null, null, false)(req)).toBe(false);

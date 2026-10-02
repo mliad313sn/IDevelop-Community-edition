@@ -37,7 +37,7 @@ function hashKey(raw) {
 async function validate(rawKey) {
     if (!rawKey || typeof rawKey !== 'string') return null;
     const row = await db.get(
-        `SELECT k.id, k.label, k.scope, k.owner_admin_id, k.expires_at
+        `SELECT k.id, k.label, k.scope, k.owner_admin_id, k.expires_at, k.allow_query_key
            FROM api_keys k
            LEFT JOIN admins a ON a.id = k.owner_admin_id
           WHERE k.key_hash = ? AND k.revoked_at IS NULL
@@ -54,6 +54,9 @@ async function validate(rawKey) {
         // The admin whose clearance this key inherits (null = full-org/system).
         ownerAdminId: row.ownerAdminId != null ? Number(row.ownerAdminId) : null,
         expiresAt: row.expiresAt || null,
+        // Migration 163: may this key ride in ?apiKey= (legacy Power BI)?
+        // Strictly true only: a missing column never opens it.
+        allowQueryKey: row.allowQueryKey === true,
     };
 }
 
@@ -137,11 +140,34 @@ async function revokeByOwner(adminId) {
     return Array.isArray(rows) ? rows.length : 0;
 }
 
+/**
+ * Switch the per-key "allow query-string (legacy Power BI)" flag. Audited
+ * either way. Returns the number of rows changed (0 = unknown key).
+ * @param {number} id
+ * @param {boolean} allowed
+ * @param {object} [req]
+ */
+async function setQueryKeyAllowed(id, allowed, req = null) {
+    const n = Number(id);
+    if (!Number.isInteger(n) || n <= 0) return 0;
+    const on = allowed === true;
+    const r = await db.run('UPDATE api_keys SET allow_query_key = ? WHERE id = ?', [on, n]);
+    const changes = r && r.changes ? r.changes : 0;
+    if (changes)
+        await audit(
+            on ? 'API_KEY_QUERY_STRING_ALLOWED' : 'API_KEY_QUERY_STRING_BLOCKED',
+            req,
+            n,
+            `API key #${n}: ?apiKey= in the URL ${on ? 'allowed (legacy Power BI)' : 'refused, header only'}`
+        );
+    return changes;
+}
+
 /** List keys (metadata only — never the hash or raw token). */
 async function list() {
     const rows = await db.all(
         `SELECT k.id, k.label, k.scope, k.created_by, k.created_at, k.last_used_at,
-                k.revoked_at, k.owner_admin_id, k.expires_at,
+                k.revoked_at, k.owner_admin_id, k.expires_at, k.allow_query_key,
                 o.username AS owner_username, o.role AS owner_role
            FROM api_keys k
            LEFT JOIN admins o ON o.id = k.owner_admin_id
@@ -160,9 +186,10 @@ async function list() {
         ownerUsername: r.ownerUsername || null,
         ownerRole: r.ownerRole || null,
         expiresAt: r.expiresAt || null,
+        allowQueryKey: r.allowQueryKey === true,
         expired: r.expiresAt ? new Date(r.expiresAt).getTime() <= now : false,
         active: !r.revokedAt && !(r.expiresAt && new Date(r.expiresAt).getTime() <= now),
     }));
 }
 
-module.exports = { hashKey, validate, generate, revoke, revokeByOwner, list };
+module.exports = { hashKey, validate, generate, revoke, revokeByOwner, list, setQueryKeyAllowed };

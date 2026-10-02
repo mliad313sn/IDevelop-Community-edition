@@ -140,8 +140,20 @@ function makeValidatedApiCredential(deps = {}) {
     return async function validatedApiCredential(req) {
         const h = req.headers || {};
         const bearer = String(h.authorization || '').replace(/^Bearer\s+/i, '');
-        const key = h['x-api-key'] || bearer || (req.query && req.query.apiKey);
-        if (!key || typeof key !== 'string') return false;
+        const apiAuth = getApiAuth();
+        // Header first; a key in the URL counts only with its legacy flag.
+        const presented = apiAuth.presentedApiKey
+            ? apiAuth.presentedApiKey(req)
+            : (() => {
+                  const k = h['x-api-key'] || bearer || (req.query && req.query.apiKey);
+                  return k
+                      ? { key: k, source: h['x-api-key'] || bearer ? 'header' : 'query' }
+                      : null;
+              })();
+        const allowed = (principal) =>
+            apiAuth.queryKeyAllowed ? apiAuth.queryKeyAllowed(presented.source, principal) : true;
+        const key = presented ? presented.key : null;
+        if (!bearer && !key) return false;
         try {
             const sso = getSso();
             if (
@@ -155,16 +167,18 @@ function makeValidatedApiCredential(deps = {}) {
         } catch (_) {
             /* SSO module optional */
         }
+        if (!key || typeof key !== 'string') return false;
         try {
-            if (await getApiKeys().validate(key)) return true;
+            const principal = await getApiKeys().validate(key);
+            if (principal) return allowed(principal);
         } catch (_) {
             /* fall through to the legacy key */
         }
         try {
             const a = Buffer.from(String(key));
-            const b = Buffer.from(String(getApiAuth().legacySharedKey() || ''));
+            const b = Buffer.from(String(apiAuth.legacySharedKey() || ''));
             if (a.length && b.length && a.length === b.length && crypto.timingSafeEqual(a, b))
-                return true;
+                return allowed('legacy.shared');
         } catch (_) {
             /* no legacy key */
         }

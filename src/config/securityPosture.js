@@ -102,13 +102,15 @@ const CATEGORIES = [
             },
             {
                 id: 'apikeys',
-                fr: 'Clés d’API par client, stockées sous forme de hachage, avec portée lecture ou écriture.',
-                en: 'Per-client API keys, stored hashed, with read or write scope.',
+                fr: 'Clés d’API par client, stockées sous forme de hachage, avec portée lecture ou écriture ; transmises dans un en-tête (une clé dans l’adresse est refusée, sauf exception clé par clé) ; limite de débit propre à chaque clé valide uniquement.',
+                en: 'Per-client API keys, stored hashed, with read or write scope; sent in a header (a key in the address is refused, except key by key); a rate-limit bucket of its own only for a key that validates.',
                 evidence: ['src/services/ApiKeyService.js', 'src/middleware/apiAuth.js'],
                 tests: [
                     'apiKeyService.test.js',
                     'apiWriteScope.test.js',
                     'apiKeyDeactivatedOwner.test.js',
+                    'apiKeyQueryString.test.js',
+                    'apiRateLimiterValidatedKeys.test.js',
                 ],
             },
         ],
