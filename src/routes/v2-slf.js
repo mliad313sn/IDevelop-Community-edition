@@ -4,6 +4,8 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+const { guardUpload, extensionFilter } = require('../middleware/uploadGuard');
 
 const {
     requireAuth,
@@ -168,34 +170,46 @@ router.get(
     })
 );
 
+// guardUpload: parser errors become 4xx, and the CONTENT must match the
+// extension (magic bytes; OOXML [Content_Types].xml; zip-bomb caps). ASVS 12.2.1.
 const upload = multer({
     dest: path.resolve('tmp'),
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-        const allowed = ['.pdf', '.jpg', '.jpeg', '.png', '.docx', '.xlsx'];
-        cb(null, allowed.includes(path.extname(file.originalname).toLowerCase()));
-    },
+    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+    fileFilter: extensionFilter(['.pdf', '.jpg', '.jpeg', '.png', '.docx', '.xlsx']),
+});
+const evidenceUpload = guardUpload(upload.single('file'), {
+    kinds: ['pdf', 'jpeg', 'png', 'docx', 'xlsx'],
 });
 
 // Upload evidence for a self-assessment row (max 3 enforced here).
 router.post(
     '/evidence/:selfAssessmentId',
     requireEmployee,
-    upload.single('file'),
+    evidenceUpload,
     ah(async (req, res) => {
+        if (!req.file)
+            return res.status(400).json({ ok: false, code: 'UPLOAD_NO_FILE', error: 'no file' });
+        // A refused request must not leave its temp file behind.
+        const discard = () => fs.unlink(req.file.path, () => {});
         const said = Number(req.params.selfAssessmentId);
         // Only the owning employee may attach evidence to their assessment row.
         const sa = await db.get(`SELECT employee_id FROM self_assessments WHERE id = ?`, [said]);
-        if (!sa) return res.status(404).json({ error: 'assessment not found' });
+        if (!sa) {
+            discard();
+            return res.status(404).json({ error: 'assessment not found' });
+        }
         if (Number(sa.employeeId) !== Number(req.user.id)) {
+            discard();
             return res.status(403).json({ error: 'not authorized for this assessment' });
         }
         const row = await db.get(
             `SELECT count(*) AS rows FROM assessment_evidence WHERE self_assessment_id = ?`,
             [said]
         );
-        if (row && row.rows >= 3)
+        if (row && row.rows >= 3) {
+            discard();
             return res.status(400).json({ error: 'max 3 evidences per skill' });
+        }
         const result = await EvidenceService.accept({
             file: req.file,
             selfAssessmentId: said,

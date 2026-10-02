@@ -316,5 +316,17 @@
   "mydata_failed": "Vos données n'ont pas pu être lues pour le moment. Réessayez plus tard ; votre droit d'accès reste entier auprès des RH.",
   "cat_oneOnOneAgenda": "Ordre du jour des entretiens individuels",
   "cat_oneOnOneNotes": "Notes des entretiens individuels (partagées, et vos notes privées)",
-  "cat_feedback360": "Tours de feedback 360° vous concernant"
+  "cat_feedback360": "Tours de feedback 360° vous concernant",
+  "upload_err_type_not_allowed": "Ce type de fichier n'est pas accepté ici.",
+  "upload_err_type_mismatch": "Le contenu du fichier ne correspond pas à son extension.",
+  "upload_err_malformed": "L'envoi est incomplet ou mal formé. Réessayez.",
+  "upload_err_too_large": "Le fichier est trop volumineux.",
+  "upload_err_zip_unsupported": "Ce format d'archive n'est pas pris en charge (archive chiffrée ou ZIP64).",
+  "upload_err_zip_entries": "Le fichier contient trop d'éléments internes pour être importé sans risque.",
+  "upload_err_zip_too_large": "Une fois décompressé, le fichier dépasse la taille importable sans risque. Découpez-le en plusieurs fichiers.",
+  "evidence_not_scanned_badge": "Non analysé",
+  "evidence_not_scanned_warning": "Ce fichier n'a pas été analysé par un antivirus. Il est téléchargé, jamais ouvert dans le navigateur : ouvrez-le avec prudence.",
+  "evidence_not_scanned_restricted": "Ce fichier n'a pas été analysé par un antivirus : seuls la personne qui l'a déposé, la ligne hiérarchique du titulaire et les RH peuvent le télécharger.",
+  "evidence_not_clean": "Justificatif indisponible : l'analyse antivirus est en attente, en échec ou a détecté une menace.",
+  "av_no_scanner_alert": "Aucun antivirus n'analyse les fichiers déposés (ni ClamAV ni Microsoft Defender). Les justificatifs sont acceptés comme « non analysés », avec un accès restreint."
 }

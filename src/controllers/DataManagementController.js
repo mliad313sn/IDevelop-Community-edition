@@ -31,33 +31,29 @@ try {
         fs.mkdirSync(tmpDir, { recursive: true });
     }
 
-    // Configure multer for file uploads
-    upload = multer({
+    // Configure multer for file uploads. The decision is made on the EXTENSION
+    // only (a browser-sent MIME type used to admit any name), and the content
+    // is then proven by guardUpload (magic bytes, OOXML [Content_Types].xml,
+    // zip-bomb caps) before any importer or ExcelJS reads it. ASVS 12.2.1.
+    const { guardUpload, extensionFilter } = require('../middleware/uploadGuard');
+    const rawUpload = multer({
         dest: tmpDir,
-        limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-        fileFilter: (req, file, cb) => {
-            const ext = path.extname(file.originalname).toLowerCase();
-            if (
-                file.mimetype === 'text/csv' ||
-                ext === '.csv' ||
-                file.mimetype === 'application/json' ||
-                ext === '.json' ||
-                file.mimetype === 'application/xml' ||
-                file.mimetype === 'text/xml' ||
-                ext === '.xml' ||
-                ext === '.yaml' ||
-                ext === '.yml' ||
-                file.mimetype === 'application/x-yaml' ||
-                file.mimetype === 'text/yaml' ||
-                ext === '.xlsx' ||
-                ext === '.xls'
-            ) {
-                cb(null, true);
-            } else {
-                cb(new Error('Only CSV, JSON, XML, YAML and Excel files are allowed'));
-            }
-        },
+        limits: { fileSize: 10 * 1024 * 1024, files: 1 }, // 10MB limit
+        fileFilter: extensionFilter([
+            '.csv',
+            '.txt',
+            '.json',
+            '.xml',
+            '.yaml',
+            '.yml',
+            '.xlsx',
+            '.xls',
+        ]),
     });
+    upload = {
+        single: (fieldName) =>
+            guardUpload(rawUpload.single(fieldName), { kinds: ['text', 'xlsx', 'xls'] }),
+    };
 } catch (error) {
     console.warn('Warning: multer module not found. Import functionality will be disabled.');
     console.warn('To enable imports, run: npm install multer@^1.4.5-lts.1');

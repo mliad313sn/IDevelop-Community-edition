@@ -316,5 +316,17 @@
   "mydata_failed": "Your data could not be read just now. Please try again later; your right of access through HR is unaffected.",
   "cat_oneOnOneAgenda": "One-to-one agenda topics",
   "cat_oneOnOneNotes": "One-to-one notes (shared, and your private notes)",
-  "cat_feedback360": "360° feedback rounds about you"
+  "cat_feedback360": "360° feedback rounds about you",
+  "upload_err_type_not_allowed": "This file type is not accepted here.",
+  "upload_err_type_mismatch": "The file content does not match its extension.",
+  "upload_err_malformed": "The upload was incomplete or malformed. Please try again.",
+  "upload_err_too_large": "The file is too large.",
+  "upload_err_zip_unsupported": "This archive format is not supported (encrypted or ZIP64 archive).",
+  "upload_err_zip_entries": "The file contains too many internal parts to be imported safely.",
+  "upload_err_zip_too_large": "Once decompressed, the file exceeds the size that can be imported safely. Split it into smaller files.",
+  "evidence_not_scanned_badge": "Not scanned",
+  "evidence_not_scanned_warning": "This file has not been virus-scanned. It is downloaded, never opened in the browser: open it with care.",
+  "evidence_not_scanned_restricted": "This file has not been virus-scanned: only the person who uploaded it, the holder's reporting line and HR can download it.",
+  "evidence_not_clean": "Evidence unavailable: the virus scan is pending, failed or detected a threat.",
+  "av_no_scanner_alert": "No antivirus is scanning uploaded files (neither ClamAV nor Microsoft Defender). Evidence is accepted as \"not scanned\", with restricted access."
 }

@@ -263,7 +263,7 @@ class ComplianceController {
         res.json({ success: true });
     }
 
-    /** Evidence download — clean files only (pending/quarantined/scan_error refused). */
+    /** Evidence download: clean files, or not-scanned files to a restricted audience. */
     async evidence(req, res) {
         const cert = await db.get('SELECT * FROM employee_certifications WHERE id = ?', [
             req.params.id,
@@ -272,9 +272,28 @@ class ComplianceController {
         const ids = await scopedEmployeeIds(req.user);
         if (ids !== null && !ids.includes(Number(cert.employeeId)))
             return res.status(403).send('Access denied');
-        if (cert.avStatus !== 'clean')
-            return res.status(409).send('Evidence not available (virus scan not clean)');
-        res.download(cert.fileUri, cert.originalName || 'evidence');
+        // clean -> served; not_scanned -> restricted (uploader, reporting line,
+        // manage_compliance); anything else refused. Always an attachment,
+        // never inline (MalwareScanService.sendStoredFile).
+        const a = await CertificationService.evidenceAccess(cert, req.user);
+        if (!a.allow)
+            return res
+                .status(a.status)
+                .send(
+                    req.t
+                        ? req.t(
+                              a.reason === 'not_scanned_restricted'
+                                  ? 'compliance:evidence_not_scanned_restricted'
+                                  : 'compliance:evidence_not_clean'
+                          )
+                        : 'Evidence not available'
+                );
+        return require('../services/MalwareScanService').sendStoredFile(
+            res,
+            cert.fileUri,
+            cert.originalName || 'evidence',
+            { mime: cert.mime, unscanned: a.unscanned }
+        );
     }
 
     /** Download the certifications bulk-import Excel template. */
