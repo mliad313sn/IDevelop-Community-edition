@@ -75,6 +75,40 @@ project uses [Semantic Versioning](https://semver.org/).
   legacy `repeat` option the jobs use), and commitlint 21 (needs Node ≥ 22.12,
   while the project supports 20.19+).
 
+### Security (uploads, privacy, erasure, installer)
+
+- **Upload content checks.** Every upload route, the HRIS CSV and the
+  skills-library ESCO upload (CSV or zip) included, now checks that the file's
+  content matches its extension (magic bytes, OOXML content types, macro parts
+  refused, zip caps) and answers a malformed upload with a 4xx instead of a 500.
+- **Malware scan chain** (migration 164): ClamAV over TCP or a socket, then the
+  Microsoft Defender command line, then "not scanned". On the Windows installer
+  every upload used to end in `scan_error` because only a Unix socket was tried.
+  A host without a scanner no longer blocks uploads: an unscanned file can be
+  downloaded only by its uploader, the reporting line and HR, as an attachment.
+  Old `scan_error` files are re-queued and rescanned every 15 minutes.
+  `REQUIRE_MALWARE_SCAN=1` holds unscanned files instead.
+- **Privacy** (migration 165): a versioned FR/EN privacy notice, published by a
+  SuperAdmin from the works-council register and acknowledged by every signed-in
+  person; a JSON download of one's data on "What is recorded about me"; an
+  objection to profiling that stops the retention-risk score, keeps the person
+  out of the key-person names and the copilot's rankings, and holds automatic
+  9-box actions for a human decision.
+- **Erasure** (migration 166): manual erasure is refused under legal hold unless
+  a reasoned override is approved by a second, different SuperAdmin. A
+  schema-driven registry classifies every employee column and every table (a
+  test fails on an unclassified one), uploaded files are deleted, and the export
+  gains certifications, aspirations, applications, planned absences,
+  notifications, HRIS links and training. Old unread notifications are pruned
+  and rejected sign-up applicants pseudonymised.
+- **Windows installer**: downloads pinned by SHA-256 and publisher signature;
+  PostgreSQL 17.11; the `pg_hba.conf` trust window needs
+  `-AllowPasswordRecovery` or a typed `TRUST` and is logged; passwords go to
+  `psql` through stdin; warnings for `trust` lines and an unsynchronised clock;
+  firewall rules tagged and reconciled; the service log folder restricted; the
+  package root is an allow-list, `.gitleaks.toml` and `.dockerignore` no longer
+  ship, and an `-IncludeData` package fails on any secret-table row.
+
 ## [1.0.0] — 2026-09-29
 
 First public release of **IDevelop Community Edition**.

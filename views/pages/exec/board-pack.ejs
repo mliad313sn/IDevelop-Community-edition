@@ -191,7 +191,7 @@
               <td><%= r.unitName %></td>
               <td class="num"><%= r.requiredLevel %></td>
               <td class="num"><%= r.requiredOf %></td>
-              <td><% r.holders.forEach(function (h, i) { %><% if (i) { %>, <% } %><%= h.name %><% if (h.roleName) { %> (<%= h.roleName %>)<% } %><% }); %></td>
+              <td><% r.holders.forEach(function (h, i) { %><% if (i) { %>, <% } %><% if (h.objection) { %><%= __('exec:kp_holder_objection') %><% } else { %><%= h.name %><% if (h.roleName) { %> (<%= h.roleName %>)<% } %><% } %><% }); %></td>
             </tr>
           <% }); %>
         </tbody>

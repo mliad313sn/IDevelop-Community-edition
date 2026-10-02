@@ -28,6 +28,52 @@ if (-not $IncludeData) { $SkipData = $true }
 
 $ErrorActionPreference = 'Stop'
 $here    = Split-Path -Parent $MyInvocation.MyCommand.Path   # ...\installer
+
+# ---------------------------------------------------------------------------
+# SECRET-ROW GUARD (-IncludeData only; the default package carries no data).
+# Rows in these tables are never product data: live sessions, reset tokens,
+# SAML caches, MFA secrets, API keys, SSO links, sign-in history and the
+# credentials of the integrations (LMS, webhooks, HRIS connectors). Their DATA
+# is excluded from the dump, and the dump is then READ to prove it: a row in
+# any of them fails the build in every mode. Wildcards use PowerShell -like.
+# ---------------------------------------------------------------------------
+$script:SecretTablePatterns = @('session', 'password_reset_tokens', 'password_history', 'saml_*',
+    'mfa_*', 'admin_mfa_enrol_codes', 'api_keys', 'user_identities', 'sso_*',
+    'webhook_subscriptions', 'lms_integrations', 'login_attempts', 'hris_connectors')
+
+function Test-TableLike([string]$Name, [string[]]$Patterns) {
+    foreach ($p in $Patterns) { if ($Name -like $p) { return $true } }
+    return $false
+}
+
+# Rows per table in a plain-SQL pg_dump: every 'COPY <schema>.<table> ... FROM stdin;'
+# block up to its '\.' terminator. Table names are returned unqualified and unquoted.
+function Get-DumpTableRowCounts([string]$DumpFile) {
+    $counts = @{}
+    $cur = $null
+    foreach ($line in [System.IO.File]::ReadLines($DumpFile)) {
+        if ($null -eq $cur) {
+            $m = [regex]::Match($line, '^COPY\s+(?:"?[A-Za-z0-9_]+"?\.)?"?([A-Za-z0-9_]+)"?\s*(?:\([^)]*\))?\s+FROM\s+stdin;')
+            if ($m.Success) { $cur = $m.Groups[1].Value; if (-not $counts.ContainsKey($cur)) { $counts[$cur] = 0 } }
+            continue
+        }
+        if ($line -eq '\.') { $cur = $null; continue }
+        $counts[$cur]++
+    }
+    return $counts
+}
+
+# The guard: every secret table that carries rows in the dump (empty = may ship).
+function Get-SecretRowViolations([hashtable]$Counts) {
+    $v = @()
+    foreach ($t in @($Counts.Keys | Sort-Object)) {
+        $n = [int]$Counts[$t]
+        if ($n -gt 0 -and (Test-TableLike $t $script:SecretTablePatterns)) {
+            $v += "$t ($n rows): secret/runtime table - never shipped"
+        }
+    }
+    return , $v
+}
 $appRoot = Split-Path -Parent $here                          # ...\IDevelop-V3 (the app)
 $version = (Get-Content (Join-Path $appRoot 'package.json') -Raw | ConvertFrom-Json).version
 if (-not $Stamp)  { $Stamp  = Get-Date -Format 'yyyyMMdd' }
@@ -122,7 +168,13 @@ $excludeDirs = @('node_modules', '.git', '.github', '.husky', '.claude', '.vscod
 # config, container recipes and developer batch helpers are not part of a
 # Windows on-premise deployment, and shipping them invites an operator to run
 # one. 'manage.bat' IS the product's own maintenance entry point and stays.
-$excludeFiles = @('.editorconfig', '.eslintrc.json', '.prettierrc', '.prettierignore',
+#
+# '.gitleaks.toml' (the CI secret-scan config) and '.dockerignore' (the container
+# recipe's ignore file) are repository tooling, never product. '.git' is listed
+# as a FILE too: in a git worktree it is a file pointing at the main repository,
+# and the directory exclusion above would not catch it.
+$excludeFiles = @('.editorconfig', '.git', '.gitleaks.toml', '.dockerignore', '.eslintrc.json',
+    '.prettierrc', '.prettierignore',
     '.gitattributes', '.gitignore', 'commitlint.config.js', 'playwright.config.js',
     'jest.config.js', 'Dockerfile', 'docker-compose.yml',
     'install_and_run.bat', 'restart_server.bat', 'Requirements_Document.html')
@@ -139,14 +191,34 @@ $excludeFiles = @('.editorconfig', '.eslintrc.json', '.prettierrc', '.prettierig
 # Shipping either is a data-integrity and privacy incident, so this is a hard
 # FAILURE rather than a silent skip: a new root script must be added here
 # deliberately, or moved into scripts\ where it belongs.
-$allowedRootJs = @('server.js', 'jest.config.js', 'playwright.config.js', 'commitlint.config.js')
-$strayRootJs = Get-ChildItem -LiteralPath $appRoot -File -Filter '*.js' |
-    Where-Object { $allowedRootJs -notcontains $_.Name }
-if ($strayRootJs) {
-    $names = ($strayRootJs | ForEach-Object { $_.Name }) -join ', '
-    throw ("Refusing to package: unexpected root-level script(s) [$names]. " +
-           "Move them to scripts\, delete them, or add them to `$allowedRootJs in Build-Package.ps1 " +
-           "if they are genuinely part of the product.")
+#
+# EVERY EXTENSION, and directories too. A .js-only check let any other stray
+# file through: a working copy of an account export (.json), a query result
+# (.csv / .sql), a scratch note (.txt), an archive (.zip) left at the root by a
+# working session would have shipped in the next package. The root is therefore
+# an ALLOW-list: each entry either ships ($shipRootFiles / $shipRootDirs) or is
+# excluded above ($excludeFiles / $excludeDirs); anything else FAILS the build.
+$shipRootFiles = @('server.js', 'package.json', 'package-lock.json', 'manage.bat', '.env.example',
+    'LICENSE', 'NOTICE', 'README.md', 'CHANGELOG.md', 'SECURITY.md', 'CONTRIBUTING.md',
+    'CODE_OF_CONDUCT.md')
+$shipRootDirs = @('db', 'locales', 'private', 'public', 'scripts', 'src', 'views', 'uploads')
+$strayRoot = @(Get-ChildItem -LiteralPath $appRoot -Force | Where-Object {
+        $n = $_.Name
+        if ($_.PSIsContainer) { ($shipRootDirs -notcontains $n) -and ($excludeDirs -notcontains $n) }
+        else { ($shipRootFiles -notcontains $n) -and ($excludeFiles -notcontains $n) -and ($n -ne '.env') }
+    } | ForEach-Object { $_.Name })
+if ($strayRoot.Count) {
+    throw ("Refusing to package: unexpected root-level entr" + $(if ($strayRoot.Count -eq 1) { 'y' } else { 'ies' }) +
+           " [" + ($strayRoot -join ', ') + "]. Move them out of the project root (scripts\ for a " +
+           "product script), delete them, or classify them in Build-Package.ps1 (`$shipRootFiles / " +
+           "`$shipRootDirs ship; `$excludeFiles / `$excludeDirs do not).")
+}
+# uploads\ ships EMPTY: whatever the build machine uploaded (evidence files of
+# development employees) is customer-class data.
+$devUploads = @(Get-ChildItem -LiteralPath (Join-Path $appRoot 'uploads') -Recurse -File -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne '.gitkeep' })
+if ($devUploads.Count) {
+    throw "Refusing to package: uploads\ holds $($devUploads.Count) file(s) from the build machine - they would ship. Move them out and rebuild."
 }
 
 Get-ChildItem -LiteralPath $appRoot -Force |
@@ -335,7 +407,15 @@ if ($SkipData) {
     # tripped the de-branding guard; the real defect was shipping sessions at all.
     $runtimeOnly = @('public.session', 'public.password_reset_tokens',
         'public.saml_request_cache', 'public.saml_assertion_seen')
-    $excludeData = $runtimeOnly | ForEach-Object { "--exclude-table-data=$_" }
+    # Every secret table's DATA too (the schema still ships). The list is read
+    # from the source database, so a table added later is caught by its name.
+    $allTables = @(& $psqlExe $dbUrl -At -v ON_ERROR_STOP=1 -c "SELECT schemaname || '.' || tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema') ORDER BY 1")
+    if ($LASTEXITCODE -ne 0 -or -not $allTables.Count) {
+        & $psqlExe $dbUrl -q -c $testGuardOff | Out-Null
+        throw "Could not list the tables of the source database - refusing to build a snapshot blind."
+    }
+    $secretData = @($allTables | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and (Test-TableLike (($_ -split '\.', 2)[-1]) $script:SecretTablePatterns) })
+    $excludeData = @(@($runtimeOnly) + @($secretData) | Select-Object -Unique) | ForEach-Object { "--exclude-table-data=$_" }
     $dumpExit = 1
     try {
         & $pgDump --no-owner --no-privileges @excludeData --file $dumpFile $dbUrl
@@ -346,6 +426,16 @@ if ($SkipData) {
     if ($dumpExit -ne 0) { throw "pg_dump failed (exit $dumpExit)" }
     $tables = (Select-String -LiteralPath $dumpFile -Pattern '^CREATE TABLE' -AllMatches).Count
     Write-Host "  [OK] Snapshot: $([math]::Round((Get-Item $dumpFile).Length/1MB,1)) MB, $tables tables" -ForegroundColor Gray
+
+    # SECRET-ROW GUARD - read what the dump ACTUALLY carries, not what pg_dump
+    # was asked for: rows in a secret table fail the build.
+    $rowCounts = Get-DumpTableRowCounts $dumpFile
+    $violations = Get-SecretRowViolations $rowCounts
+    if ($violations.Count) {
+        throw ("Refusing to package: the data snapshot carries secret rows it must never ship:`n  " +
+               ($violations -join "`n  "))
+    }
+    Write-Host "  [OK] Secret-row guard: no session, token, MFA, API-key, SSO or integration-credential row in the snapshot" -ForegroundColor Gray
 
     # 3a. DEMO-LOGIN GUARD - a fresh install restores this snapshot, so any
     #     ENABLED test/demo/probe account in it becomes a real, reachable login

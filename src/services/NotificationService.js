@@ -595,6 +595,8 @@ class NotificationService {
             // still sits in an inbox (notification #1, admin:1) and rendered as
             // its own slug.
             'certification.revoked': 'A certification was revoked',
+            'privacy.objection': 'Someone objected to automated profiling',
+            'privacy.trigger_paused': 'An automatic development action awaits your review',
             'review.due': 'A review is due',
             'review.completed': 'A supervisor review was completed',
             'mc.submitted': 'An action awaits your approval',
@@ -1386,6 +1388,24 @@ class NotificationService {
                     en: 'Super administrator password reset',
                 },
             },
+            // Objection to automated profiling (GDPR art. 21): reviewed on the
+            // works-council register page. The row names nobody.
+            'privacy.objection': {
+                icon: 'fa-hand',
+                link: '/compliance/register',
+                title: {
+                    fr: 'Une personne s’est opposée au profilage automatisé',
+                    en: 'Someone objected to automated profiling',
+                },
+            },
+            'privacy.trigger_paused': {
+                icon: 'fa-pause',
+                link: '/compliance/register',
+                title: {
+                    fr: 'Une action de développement automatique attend votre examen',
+                    en: 'An automatic development action awaits your review',
+                },
+            },
         };
     }
 
@@ -1500,6 +1520,10 @@ class NotificationService {
             // 3.23.20: the SSO migration invitation — in-app row written by
             // SsoInviteService (enqueue); its e-mail is composed and sent there.
             'sso.migration_invite': 'none',
+            // Profiling objections: in-app only. They name nobody, but an
+            // objection is itself personal data: it never leaves the app.
+            'privacy.objection': 'none',
+            'privacy.trigger_paused': 'none',
             // 'dept_brief' is DELIBERATELY ABSENT — do not add it.
             //
             // Like manager_digest, dept_digest and planning.digest, the department
@@ -1788,6 +1812,14 @@ class NotificationService {
             },
             // Compétence et motif restent dans l'application : la phrase dit ce qui
             // s'est passé, jamais quelle certification ni pourquoi.
+            'privacy.objection': {
+                fr: "Une personne s'est opposée au profilage automatisé. Examinez sa demande dans le registre.",
+                en: 'Someone objected to automated profiling. Review the request in the register.',
+            },
+            'privacy.trigger_paused': {
+                fr: "Une action de développement déclenchée automatiquement a été suspendue parce que la personne s'est opposée au profilage. Elle attend une décision humaine.",
+                en: 'An automatically triggered development action was paused because the person objected to profiling. It awaits a human decision.',
+            },
             'certification.revoked': {
                 fr: "Une de vos certifications a été retirée. Le motif et la marche à suivre sont consultables dans l'application.",
                 en: 'One of your certifications was revoked. The reason and what to do next are available in the app.',

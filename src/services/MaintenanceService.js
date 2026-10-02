@@ -1430,11 +1430,207 @@ const MaintenanceService = {
         return data;
     },
 
+    // -----------------------------------------------------------------------
+    // Erasure under LEGAL HOLD (migration 166): refused; a two-person override
+    // (a written reason + a SECOND, different SuperAdmin) is the only way.
+    // -----------------------------------------------------------------------
+
+    /** Pending override requests older than this lapse (never silently executed). */
+    OVERRIDE_TTL_DAYS: 7,
+
+    async _activeSuperAdminCount() {
+        const r = await db.get(
+            "SELECT COUNT(*)::int AS n FROM admins WHERE role::text = 'superadmin' AND is_active = true"
+        );
+        return r ? Number(r.n) : 0;
+    },
+
+    async _expireStaleOverrides() {
+        await db.run(
+            `UPDATE erasure_override_requests SET state = 'expired'
+              WHERE state = 'pending' AND requested_at < now() - (? || ' days')::interval`,
+            [this.OVERRIDE_TTL_DAYS]
+        );
+    },
+
+    /** A hold refusal the panel can show: code + holder + reason + whether an override is possible. */
+    _holdRefusal(hold, superadmins) {
+        const e = refuse(
+            superadmins < 2
+                ? 'maintenance_erase_legal_hold_single_superadmin'
+                : 'maintenance_erase_legal_hold'
+        );
+        e.status = 409;
+        e.hold = hold;
+        return e;
+    },
+
+    /** What the erase dialog needs to know before it offers "erase" or "request override". */
+    async dsrEraseStatus(user, { employeeId }) {
+        assertSuperAdmin(user);
+        const id = Number(employeeId);
+        if (!Number.isInteger(id) || id <= 0) throw refuse('maintenance_pick_employee');
+        const emp = await db.get('SELECT id, erased_at FROM employees WHERE id = ?', [id]);
+        if (!emp) throw refuse('maintenance_employee_not_found');
+        await this._expireStaleOverrides();
+        const hold = await require('./DSRService').legalHoldOf(id);
+        const superadmins = await this._activeSuperAdminCount();
+        const open = await db.get(
+            `SELECT id, requested_by_admin_id AS "requestedBy", reason, state, requested_at AS "requestedAt"
+               FROM erasure_override_requests WHERE employee_id = ? AND state IN ('pending', 'approved')
+              ORDER BY id DESC LIMIT 1`,
+            [id]
+        );
+        return {
+            employeeId: id,
+            erased: Boolean(emp.erasedAt),
+            hold,
+            superadmins,
+            overridePossible: Boolean(hold) && superadmins >= 2,
+            openOverride: open || null,
+            youRequested: Boolean(open && Number(open.requestedBy) === Number(user.id)),
+        };
+    },
+
+    /** Step 1: a SuperAdmin asks to erase a held person (reason + number retyped). */
+    async dsrOverrideRequest(user, { employeeId, reason, confirmNumber }, req = null) {
+        assertSuperAdmin(user);
+        const why = assertReason(reason);
+        const id = Number(employeeId);
+        if (!Number.isInteger(id) || id <= 0) throw refuse('maintenance_pick_employee');
+        const emp = await db.get(
+            'SELECT id, employee_number, erased_at FROM employees WHERE id = ?',
+            [id]
+        );
+        if (!emp) throw refuse('maintenance_employee_not_found');
+        if (emp.erasedAt) throw refuse('maintenance_already_erased');
+        if (String(confirmNumber || '').trim() !== String(emp.employeeNumber || '').trim())
+            throw refuse('maintenance_confirm_mismatch');
+        const hold = await require('./DSRService').legalHoldOf(id);
+        if (!hold) throw refuse('maintenance_override_no_hold');
+        // With ONE SuperAdmin there is nobody to approve: the override is
+        // impossible by construction, and the page says so.
+        if ((await this._activeSuperAdminCount()) < 2)
+            throw refuse('maintenance_override_single_superadmin');
+        await this._expireStaleOverrides();
+        const open = await db.get(
+            "SELECT id FROM erasure_override_requests WHERE employee_id = ? AND state IN ('pending', 'approved')",
+            [id]
+        );
+        if (open) throw refuse('maintenance_override_already_open');
+        const row = await db.get(
+            `INSERT INTO erasure_override_requests (employee_id, requested_by_admin_id, reason, hold_snapshot)
+             VALUES (?, ?, ?, ?::jsonb) RETURNING id`,
+            [id, user.id, why, JSON.stringify({ at: hold.at, by: hold.by, level: hold.level })]
+        );
+        const rid = Number(row && row.id);
+        await this._audit(
+            user,
+            req,
+            'MAINT_DSR_ERASE_OVERRIDE_REQUESTED',
+            'employee',
+            id,
+            `Erasure of subject #${id} under legal hold (${hold.level}) requested: override request #${rid}, awaiting a second SuperAdmin. Reason: ${why}`
+        );
+        return { ok: true, requestId: rid, employeeId: id, state: 'pending' };
+    },
+
+    /**
+     * Step 2: ANOTHER SuperAdmin approves (the erasure runs now) or refuses;
+     * the requester may only withdraw. Approving one's own request is refused.
+     */
+    async dsrOverrideDecide(user, { requestId, approve, note }, req = null) {
+        assertSuperAdmin(user);
+        const rid = Number(requestId);
+        if (!Number.isInteger(rid) || rid <= 0) throw refuse('maintenance_override_not_found');
+        await this._expireStaleOverrides();
+        const r = await db.get(
+            'SELECT id, employee_id, requested_by_admin_id, reason, state FROM erasure_override_requests WHERE id = ?',
+            [rid]
+        );
+        if (!r) throw refuse('maintenance_override_not_found');
+        if (r.state !== 'pending') throw refuse('maintenance_override_not_pending');
+        const id = Number(r.employeeId);
+        const mine = Number(r.requestedByAdminId) === Number(user.id);
+        const yes = approve === true || approve === 'true';
+        if (!yes) {
+            const state = mine ? 'withdrawn' : 'refused';
+            const why = mine ? String(note || '').trim() || null : assertReason(note);
+            await db.run(
+                `UPDATE erasure_override_requests SET state = ?, decided_by_admin_id = ?, decided_at = now(), decision_note = ?
+                  WHERE id = ? AND state = 'pending'`,
+                [state, user.id, why, rid]
+            );
+            await this._audit(
+                user,
+                req,
+                mine ? 'MAINT_DSR_ERASE_OVERRIDE_WITHDRAWN' : 'MAINT_DSR_ERASE_OVERRIDE_REFUSED',
+                'employee',
+                id,
+                `Override request #${rid} for subject #${id} ${state}` +
+                    (why ? `. Reason: ${why}` : '')
+            );
+            return { ok: true, requestId: rid, state };
+        }
+        if (mine) throw refuse('maintenance_override_same_person');
+        const decision = assertReason(note);
+        return db.runTransaction(async () => {
+            await this._tagActor(user);
+            const upd = await db.run(
+                `UPDATE erasure_override_requests SET state = 'approved', decided_by_admin_id = ?, decided_at = now(), decision_note = ?
+                  WHERE id = ? AND state = 'pending'`,
+                [user.id, decision, rid]
+            );
+            if (!upd || upd.changes !== 1) throw refuse('maintenance_override_not_pending');
+            const out = await require('./DSRService').erase(id, user.id, {
+                reason: `legal-hold override #${rid}: ${r.reason}`,
+                legalHoldOverride: rid,
+            });
+            await this._movement(
+                id,
+                'status',
+                'active',
+                'erased',
+                user,
+                `${OVERRIDE_NOTE} — legal-hold override #${rid}`
+            );
+            await this._audit(
+                user,
+                req,
+                'MAINT_DSR_ERASE_OVERRIDE_APPROVED',
+                'employee',
+                id,
+                `Override request #${rid} approved by a second SuperAdmin (requested by admin #${Number(r.requestedByAdminId)}); subject #${id} erased under legal hold. Reason: ${decision}`
+            );
+            return {
+                ok: true,
+                requestId: rid,
+                state: 'executed',
+                employeeId: id,
+                linkedAdminsErased: out.linkedAdminsErased || 0,
+            };
+        });
+    },
+
+    /** Open override requests (pending), for the panel. Ids only. */
+    async dsrOverrideList(user) {
+        assertSuperAdmin(user);
+        await this._expireStaleOverrides();
+        const rows = await db.all(
+            `SELECT id, employee_id AS "employeeId", requested_by_admin_id AS "requestedBy", reason,
+                    requested_at AS "requestedAt", state
+               FROM erasure_override_requests WHERE state = 'pending' ORDER BY requested_at`
+        );
+        for (const row of rows) row.mine = Number(row.requestedBy) === Number(user.id);
+        return rows;
+    },
+
     /**
      * Erase a subject (irreversible). Reason mandatory; the SuperAdmin must also
      * retype the employee number (double confirmation) — an erasure has no
      * "restore". DSRService.erase runs the leaver cascade first when the person
      * is still active, then pseudonymises the record AND any linked admin login.
+     * Refused under legal hold: the override above is the only way through.
      */
     async dsrErase(user, { employeeId, reason, confirmNumber }, req = null) {
         assertSuperAdmin(user);
@@ -1449,6 +1645,10 @@ const MaintenanceService = {
         if (emp.erasedAt) throw refuse('maintenance_already_erased');
         if (String(confirmNumber || '').trim() !== String(emp.employeeNumber || '').trim())
             throw refuse('maintenance_confirm_mismatch');
+        // Refused under legal hold (DSRService.erase refuses too: this answers
+        // with the panel's code, holder and reason).
+        const hold = await require('./DSRService').legalHoldOf(id);
+        if (hold) throw this._holdRefusal(hold, await this._activeSuperAdminCount());
         const out = await require('./DSRService').erase(id, user.id, { reason: why });
         await this._movement(id, 'status', 'active', 'erased', user, `${OVERRIDE_NOTE} — ${why}`);
         await this._audit(
@@ -1457,7 +1657,7 @@ const MaintenanceService = {
             'MAINT_DSR_ERASE',
             'employee',
             id,
-            `Subject #${id} (was ${emp.employeeNumber}) erased under right-to-erasure — ${why}` +
+            `Subject #${id} erased under right-to-erasure — ${why}` +
                 (out.linkedAdminsErased
                     ? `; ${out.linkedAdminsErased} linked admin account(s) pseudonymised`
                     : '')

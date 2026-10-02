@@ -102,8 +102,17 @@ Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyCon
     Where-Object { $_.CommandLine -like "*$($cfg.InstallDir)*" } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
-# 2. firewall
-Get-NetFirewallRule -DisplayName "IDevelop ($($cfg.AppPort))" -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
+# 2. firewall - EVERY rule this product created: the Group 'IDevelop' (tagged by
+#    current versions) plus the older untagged 'IDevelop (<port>)' and
+#    'IDevelop HTTPS (<port>)' rules - one per port ever used, not only the
+#    current AppPort (a fallback port or a disabled HTTPS port stayed open).
+$fwGone = @{}
+foreach ($r in @(Get-NetFirewallRule -Group 'IDevelop' -ErrorAction SilentlyContinue) +
+               @(Get-NetFirewallRule -DisplayName 'IDevelop*' -ErrorAction SilentlyContinue)) {
+    if (-not $r -or $fwGone.ContainsKey($r.Name)) { continue }
+    try { Remove-NetFirewallRule -Name $r.Name -ErrorAction Stop; $fwGone[$r.Name] = $true; Say "Removed firewall rule '$($r.DisplayName)'." 'Green' }
+    catch { Say "Could not remove firewall rule '$($r.DisplayName)': $($_.Exception.Message)" 'Yellow' }
+}
 
 # 2b. Windows integration: Apps & features entry + Start Menu folder.
 #     Removed BEFORE the files, so a failure mid-way never leaves an entry whose

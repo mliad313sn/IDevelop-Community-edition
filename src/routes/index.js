@@ -1122,10 +1122,15 @@ router.post(
 // upload is multipart, sent by public/js/hris-admin.js with the CSRF header.
 const HrisSyncController = require('../controllers/HrisSyncController');
 const _hris = (fn) => _ahAR(fn.bind(HrisSyncController));
+// Every multer mount in this file goes through guardUpload: parser errors
+// (truncated or malformed multipart) answer 4xx instead of 500, and the file
+// CONTENT must match its extension (magic bytes, OOXML [Content_Types].xml,
+// macro parts refused, zip-bomb caps). ASVS 12.2.1.
+const _ug = require('../middleware/uploadGuard');
 const _hrisUpload = require('multer')({
     storage: require('multer').memoryStorage(),
     limits: { fileSize: 25 * 1024 * 1024, files: 1 },
-    fileFilter: (req, file, cb) => cb(null, /\.(csv|tsv|txt)$/i.test(file.originalname || '')),
+    fileFilter: _ug.extensionFilter(['.csv', '.tsv', '.txt']),
 });
 const _hrisHasCredentials = (req) =>
     Boolean(
@@ -1161,15 +1166,7 @@ router.post(
 router.post(
     '/admin/integrations/hris/upload',
     requireSuperAdmin,
-    (req, res, next) =>
-        _hrisUpload.single('file')(req, res, (err) => {
-            if (!err) return next();
-            return res.status(400).json({
-                ok: false,
-                code: 'upload_refused',
-                error: req.t ? req.t('admin:hris_err_upload') : 'Upload refused',
-            });
-        }),
+    _ug.guardUpload(_hrisUpload.single('file'), { kinds: ['text'], json: true }),
     _hris(HrisSyncController.upload)
 );
 router.post(
@@ -1769,7 +1766,7 @@ const SkillQualityController = require('../controllers/SkillQualityController');
 const _sqUpload = require('multer')({
     storage: require('multer').memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024, files: 1 },
-    fileFilter: (req, file, cb) => cb(null, /\.xlsx$/i.test(file.originalname || '')),
+    fileFilter: _ug.extensionFilter(['.xlsx']),
 });
 const _sqManage = requirePermission('manage_domains_skills');
 router.get(
@@ -1787,7 +1784,7 @@ router.get(
 router.post(
     '/framework/quality/import',
     _sqManage,
-    _sqUpload.single('file'),
+    _ug.guardUpload(_sqUpload.single('file'), { kinds: ['xlsx'] }),
     SkillQualityController.importXlsx
 );
 router.post('/framework/quality/load-starter', _sqManage, SkillQualityController.loadStarter);
@@ -1806,19 +1803,16 @@ const _libUpload = require('multer')({
         fileSize: (Number(process.env.ESCO_UPLOAD_MAX_MB) || 30) * 1024 * 1024,
         files: 5,
     },
-    fileFilter: (req, file, cb) => cb(null, /\.(csv|zip)$/i.test(file.originalname || '')),
+    fileFilter: _ug.extensionFilter(['.csv', '.zip']),
 });
-// multer rejects an oversized upload with an error; answer it as JSON like the
-// rest of the upload endpoint instead of the generic error page.
-const _libUploadMw = (req, res, next) =>
-    _libUpload.array('files', 5)(req, res, (err) => {
-        if (!err) return next();
-        return res.status(400).json({
-            ok: false,
-            code: 'upload_refused',
-            message: req.t ? req.t('framework:lib_esco_err_upload') : 'Upload refused',
-        });
-    });
+// Refusals (oversize, wrong type, content not matching the extension, unsafe
+// archive) answer JSON like the rest of the upload endpoint. A .zip must be a
+// sane archive (not encrypted, not ZIP64, bounded entries); the importer then
+// extracts only the CSVs it needs through importGuards.readZipEntries (capped).
+const _libUploadMw = _ug.guardUpload(_libUpload.array('files', 5), {
+    kinds: ['text', 'zip'],
+    json: true,
+});
 router.get('/framework/library', _sqManage, FrameworkLibraryController.page);
 router.post(
     '/framework/library/packs/:id/dry-run',
@@ -1890,21 +1884,19 @@ router.post(
 // White-label branding (logo/favicon are small images → dedicated multer instance).
 const brandUpload = require('multer')({
     dest: require('path').join(__dirname, '../../tmp'),
-    fileFilter: (req, file, cb) => {
-        const ok = ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico'].includes(
-            require('path').extname(file.originalname).toLowerCase()
-        );
-        cb(ok ? null : new Error('Images only (PNG, JPG, WEBP, SVG, ICO)'), ok);
-    },
+    fileFilter: _ug.extensionFilter(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico']),
     limits: { fileSize: 512 * 1024 },
 });
 router.post(
     '/app-settings/branding',
     requirePermission('manage_app_settings'),
-    brandUpload.fields([
-        { name: 'logoFile', maxCount: 1 },
-        { name: 'faviconFile', maxCount: 1 },
-    ]),
+    _ug.guardUpload(
+        brandUpload.fields([
+            { name: 'logoFile', maxCount: 1 },
+            { name: 'faviconFile', maxCount: 1 },
+        ]),
+        { kinds: ['png', 'jpeg', 'webp', 'svg', 'ico'] }
+    ),
     AppSettingsController.updateBranding
 );
 router.post(
@@ -2097,22 +2089,20 @@ if (!fs.existsSync(tmpDir)) {
     fs.mkdirSync(tmpDir, { recursive: true });
 }
 
-// Configure multer for Excel file uploads
-const upload = multer({
+// Configure multer for Excel / JSON file uploads (guarded, see _ug above).
+const _rawUpload = multer({
     dest: tmpDir,
-    fileFilter: (req, file, cb) => {
-        const allowedExts = ['.xlsx', '.xls', '.json'];
-        const ext = path.extname(file.originalname).toLowerCase();
-        if (allowedExts.includes(ext)) {
-            cb(null, true);
-        } else {
-            cb(new Error('Invalid file type. Allowed types: Excel (.xlsx, .xls) and JSON (.json)'));
-        }
-    },
+    fileFilter: _ug.extensionFilter(['.xlsx', '.xls', '.json']),
     limits: {
         fileSize: 10 * 1024 * 1024, // 10MB limit
+        files: 1,
     },
 });
+// Same `upload.single(field)` shape the routes below use, guarded.
+const upload = {
+    single: (field) =>
+        _ug.guardUpload(_rawUpload.single(field), { kinds: ['xlsx', 'xls', 'text'] }),
+};
 
 // ---- API Keys & Power BI (per-profile, superadmin only) --------------------
 const ApiKeyService = require('../services/ApiKeyService');
@@ -2542,7 +2532,9 @@ router.get(
     DataManagementController.downloadAssessmentsJsonTemplate
 );
 
-// Import routes (with multer middleware if available)
+// Import routes (with multer middleware if available). The controller's
+// `upload.single` is already guarded (guardUpload: 4xx on parser errors, content
+// must match the extension, zip-bomb caps before any ExcelJS read).
 const uploadMiddleware = DataManagementController.upload
     ? DataManagementController.upload.single('file')
     : (req, res, next) => {
@@ -3118,14 +3110,17 @@ router.post(
 //                 org-wide safe-shift rules.
 // =====================================================================
 const ComplianceController = require('../controllers/ComplianceController');
-const _cmul = require('multer')({
+// A refused evidence type is a typed 400: it used to be dropped silently and
+// the certificate recorded WITHOUT its evidence, with nothing said.
+const _cmulRaw = require('multer')({
     dest: require('path').resolve('tmp'),
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-        const allowed = ['.pdf', '.jpg', '.jpeg', '.png', '.docx', '.xlsx'];
-        cb(null, allowed.includes(require('path').extname(file.originalname).toLowerCase()));
-    },
+    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+    fileFilter: _ug.extensionFilter(['.pdf', '.jpg', '.jpeg', '.png', '.docx', '.xlsx']),
 });
+const _cmul = {
+    single: (field) =>
+        _ug.guardUpload(_cmulRaw.single(field), { kinds: ['pdf', 'jpeg', 'png', 'docx', 'xlsx'] }),
+};
 const _cc = ComplianceController;
 router.get(
     '/compliance',
@@ -3138,6 +3133,36 @@ router.get('/compliance/register', requireSuperAdminPage, _m55(_cc.register.bind
 // « Ce qui est enregistré sur moi » — the signed-in person's own data only
 // (the controller keys on req.user.id; no :id, no query-string id).
 router.get('/employee/my-data', requireEmployeeOrManager, _m55(_cc.myData.bind(_cc)));
+// Privacy (GDPR art. 13/14, 15, 20 and 21; migration 165): the notice every
+// signed-in person acknowledges once a SuperAdmin has published it, the "my
+// data" download and the objection to profiling on the page above, and the
+// SuperAdmin's publishing and review actions on the register page.
+const PrivacyController = require('../controllers/PrivacyController');
+const _pv = (fn) => _m55(fn.bind(PrivacyController));
+router.get('/privacy/notice', requireAuth, _pv(PrivacyController.notice));
+router.post('/privacy/notice/acknowledge', requireAuth, _pv(PrivacyController.acknowledge));
+router.get('/employee/my-data/download', requireEmployeeOrManager, _pv(PrivacyController.download));
+router.post('/employee/my-data/objection', requireEmployeeOrManager, _pv(PrivacyController.object));
+router.post(
+    '/employee/my-data/objection/withdraw',
+    requireEmployeeOrManager,
+    _pv(PrivacyController.withdraw)
+);
+router.post(
+    '/compliance/register/privacy-notice',
+    requireSuperAdminPage,
+    _pv(PrivacyController.publish)
+);
+router.post(
+    '/compliance/privacy/objections/:id(\\d+)/review',
+    requireSuperAdminPage,
+    _pv(PrivacyController.markReviewed)
+);
+router.post(
+    '/compliance/privacy/triggers/:id(\\d+)/resolve',
+    requireSuperAdminPage,
+    _pv(PrivacyController.resolveTrigger)
+);
 router.get(
     '/api/compliance/certifications',
     requireManagerOrAnyPermission('view_compliance'),
@@ -3462,6 +3487,28 @@ router.post(
     '/admin/maintenance/dsr-erase',
     requireSuperAdmin,
     _m55(MaintenanceController.dsrErase.bind(MaintenanceController))
+);
+// Erasure under legal hold (migration 166): status, pending list, request,
+// decision. A second, different SuperAdmin must approve; the service re-checks.
+router.get(
+    '/admin/maintenance/dsr/:id(\\d+)/erase-status',
+    requireSuperAdmin,
+    _m55(MaintenanceController.dsrEraseStatus.bind(MaintenanceController))
+);
+router.get(
+    '/admin/maintenance/dsr-erase-overrides',
+    requireSuperAdmin,
+    _m55(MaintenanceController.dsrOverrideList.bind(MaintenanceController))
+);
+router.post(
+    '/admin/maintenance/dsr-erase-override',
+    requireSuperAdmin,
+    _m55(MaintenanceController.dsrOverrideRequest.bind(MaintenanceController))
+);
+router.post(
+    '/admin/maintenance/dsr-erase-override/:rid(\\d+)/decide',
+    requireSuperAdmin,
+    _m55(MaintenanceController.dsrOverrideDecide.bind(MaintenanceController))
 );
 // ---- end SECTION accounts ----------------------------------------------------------------
 

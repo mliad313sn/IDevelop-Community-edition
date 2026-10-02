@@ -1006,6 +1006,11 @@ app.use(enforceMfaEnrollment);
 const { enforceUserAuthPolicy } = require('./src/middleware/authPolicy');
 app.use(enforceUserAuthPolicy);
 
+// Privacy notice (GDPR art. 13/14): once a SuperAdmin has published a version,
+// every signed-in person acknowledges it before using the app. Inactive until
+// then; fails closed on a read error.
+app.use(require('./src/middleware/privacyNotice').privacyNotice);
+
 // Catch-all activity trail: every authenticated MUTATION gets a coarse DB
 // audit row (method/path/status/duration, joined by requestId to the file
 // logs and the detailed per-action audit). Reads stay in the winston files.

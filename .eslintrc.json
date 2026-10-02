@@ -19,7 +19,7 @@
     "n/no-process-exit": "off",
     "n/no-missing-require": "off",
     "security/detect-object-injection": "off",
-    "security/detect-non-literal-fs-filename": "off",
+    "security/detect-non-literal-fs-filename": "warn",
     // eslint-plugin-n 18 reports global fetch as experimental below Node 21.
     // It is enabled by default on the supported Node 20.19+ and the app already
     // relies on it (LMS connector, Copilot service, tests).
@@ -29,7 +29,10 @@
     {
       "files": ["tests/**/*.js", "**/*.test.js", "**/*.spec.js"],
       "env": { "jest": true },
-      "rules": { "n/no-unpublished-require": "off" }
+      "rules": {
+        "n/no-unpublished-require": "off",
+        "security/detect-non-literal-fs-filename": "off"
+      }
     },
     {
       // Browser code: Node's builtin-support table does not apply (eslint-plugin-n

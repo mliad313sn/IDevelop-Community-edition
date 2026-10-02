@@ -267,6 +267,17 @@ const TICKS = [
         keep: 30,
         fn: () => require('./hris-sync').tick(),
     },
+    // Re-scan uploads left 'pending' or held in 'scan_error' (scanner down at
+    // upload time) through the scanner chain; only such rows are touched, a
+    // verdict is never overwritten. A host with no scanner records 'not_scanned'.
+    {
+        name: 'malware-rescan.tick',
+        cron: '*/15 * * * *',
+        everyMin: 15,
+        keep: 50,
+        bootRun: true,
+        fn: () => require('../services/MalwareScanService').rescanQueued(),
+    },
     {
         name: 'telemetry-prune.tick',
         cron: '50 * * * *',

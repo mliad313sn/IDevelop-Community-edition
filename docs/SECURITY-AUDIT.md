@@ -148,6 +148,8 @@ These were read in the source and, where noted, exercised by the existing tests.
 
 - Upload type and 10 MB limits on all three multer instances.
 - Stored evidence gets random names outside `public/`, a ClamAV scan with quarantine, and downloads served only when the scan is clean and the file is in the caller's RBAC scope, as an attachment (`src/controllers/ComplianceController.js:266-277`).
+- Every multer mount goes through `uploadGuard` (`src/middleware/uploadGuard.js`): parser errors are 4xx, and the content must match the extension (magic bytes, OOXML content types, macro parts refused, zip caps through the single ZIP reader of `src/utils/importGuards.js`). This covers the HRIS CSV upload and the skills-library ESCO upload (CSV or zip).
+- The malware scan is a chain (`src/services/MalwareScanService.js`): clamd over TCP or a socket, then the Microsoft Defender command line (`execFile`, no shell), then `not_scanned`. The previous Unix-socket-only scan left every upload of a Windows install in `scan_error`. An unscanned file is restricted to the uploader, the reporting line and `manage_compliance`, always as an attachment; a rescan job retries pending files (migration 164).
 
 **CSV exports**
 
@@ -167,6 +169,18 @@ These were read in the source and, where noted, exercised by the existing tests.
 **`child_process`**
 
 - Only `execFile` with argument arrays: `pg_dump`, `pg_restore`, `icacls` (`src/jobs/db-backup.js`, `src/services/SqlConsoleService.js`), with no shell and no user-controlled executable.
+
+**Privacy and erasure**
+
+- A versioned privacy notice is acknowledged by every signed-in person once published; the gate fails closed (`src/middleware/privacyNotice.js`).
+- `/employee/my-data/download` exports the person's own data through `DSRService.export`, with the confidential talent categories withheld and named; rate-limited and audited (`src/services/PrivacyService.js`).
+- An objection to profiling stops the retention-risk score, keeps the person out of key-person names and the copilot's rankings, and holds automatic 9-box triggers for a human decision (migration 165).
+- Manual erasure is refused under legal hold; the only override is a reasoned request approved by a second, different SuperAdmin, re-verified by `DSRService` (migration 166).
+- `src/services/erasureRegistry.js` classifies every employee column and every table; `erasureRegistry-db.test.js` fails on an unclassified one.
+
+**Windows installer**
+
+- Downloads pinned by SHA-256 and Authenticode publisher; the `pg_hba.conf` trust window needs explicit consent and is logged; passwords go to `psql` through stdin; the package root is an allow-list and an `-IncludeData` dump fails on any secret-table row (`installerIntegrityAndTrust.test.js`).
 
 **New routes in this release**
 

@@ -73,6 +73,10 @@ welcome.
 - Never edit a migration that has shipped; add a new one.
 - Provide a `NNN_short_description_down.sql` when a rollback is meaningful.
 - The migrator runs each file in one transaction and records it in `schema_meta`.
+- A new table must be classified twice, or the tests fail: in
+  `scripts/reset-for-golive.js` (KEEP or WIPE) and in
+  `src/services/erasureRegistry.js` (each employee column with its erasure
+  treatment, or the table in `TABLES_WITHOUT_SUBJECT_COLUMN` with the reason).
 
 ## Translations
 

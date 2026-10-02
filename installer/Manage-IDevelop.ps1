@@ -36,7 +36,11 @@ param(
     [string]$RestorePoint,
     [string]$PgSuperPassword,
     [string]$Note,
-    [int]$Keep = 8
+    [int]$Keep = 8,
+    # Allow -SetPgPassword to open the temporary pg_hba.conf 'trust' window when
+    # the current postgres password is unknown (else: asked, or refused when
+    # unattended). Every use is logged to logs\pg-trust-window.log.
+    [switch]$AllowPasswordRecovery
 )
 
 $ErrorActionPreference = 'Stop'
@@ -199,7 +203,8 @@ function Protect-AppDataAcls([string]$DataRoot, [string]$InstallDir) {
     $targets += $DataRoot
     if ($InstallDir) {
         $targets += (Join-Path $InstallDir '.env')
-        foreach ($sub in @('logs', 'backups', 'uploads', 'data')) { $targets += (Join-Path $InstallDir $sub) }
+        # + service: the WinSW wrapper's stdout/stderr logs.
+        foreach ($sub in @('logs', 'backups', 'uploads', 'data', 'service')) { $targets += (Join-Path $InstallDir $sub) }
     }
     $who = if ($script:ServiceAclSid) { "SYSTEM + Administrators + the service account $($script:ServiceAclSid)" } else { 'SYSTEM + Administrators only' }
     $bad = 0
@@ -297,6 +302,61 @@ function Get-InstalledVersion {
     return 'unknown'
 }
 
+# --- Same helpers as Install-IDevelop.ps1 ---
+# SQL that carries a secret goes through psql's STANDARD INPUT (UTF-8 bytes,
+# '-f -'), never its command line. Returns @{ Code; Out }.
+function Format-NativeArg([string]$a) {
+    if ($a -ne '' -and $a -notmatch '[\s"]') { return $a }
+    return '"' + (($a -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"'
+}
+function Invoke-PsqlStdin([string]$Exe, [string[]]$ArgList, [string]$Sql) {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $Exe
+    $psi.Arguments = (@($ArgList) | ForEach-Object { Format-NativeArg "$_" }) -join ' '
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.EnvironmentVariables['PGCLIENTENCODING'] = 'UTF8'
+    # A UTF-8 console would put a BOM in front of the SQL: start the child under a
+    # BOM-less UTF-8 input encoding, then restore the console's own.
+    $prevIn = $null
+    try { $prevIn = [Console]::InputEncoding; [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { $prevIn = $null }
+    try { $p = [System.Diagnostics.Process]::Start($psi) }
+    finally { if ($prevIn) { try { [Console]::InputEncoding = $prevIn } catch {} } }
+    $errTask = $p.StandardError.ReadToEndAsync()
+    $outTask = $p.StandardOutput.ReadToEndAsync()
+    $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($Sql + "`n")
+    $p.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+    $p.StandardInput.BaseStream.Flush()
+    $p.StandardInput.Close()
+    $p.WaitForExit()
+    return [pscustomobject]@{ Code = $p.ExitCode; Out = (($outTask.Result + $errTask.Result).Trim()) }
+}
+# The temporary 'trust' window is never opened silently: -AllowPasswordRecovery,
+# or an operator typing TRUST at the console; unattended = refused.
+function Resolve-TrustWindowConsent([bool]$Allowed, [bool]$Interactive, [scriptblock]$Ask) {
+    if ($Allowed) { return [pscustomobject]@{ Granted = $true; Mode = 'switch' } }
+    if (-not $Interactive) { return [pscustomobject]@{ Granted = $false; Mode = 'unattended' } }
+    $ans = ''
+    try { $ans = "$(& $Ask)".Trim() } catch { $ans = '' }
+    if ($ans -ceq 'TRUST') { return [pscustomobject]@{ Granted = $true; Mode = 'interactive' } }
+    return [pscustomobject]@{ Granted = $false; Mode = 'declined' }
+}
+function Test-InteractiveSession {
+    try { return ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and $Host.Name -ne 'ServerRemoteHost') } catch { return $false }
+}
+function Write-TrustWindowAudit([string]$Event, [string]$Detail) {
+    $who = "$env:USERDOMAIN\$env:USERNAME"
+    try { $who = [Security.Principal.WindowsIdentity]::GetCurrent().Name } catch {}
+    Log "PG TRUST WINDOW - $Event - $Detail" 'WARN'
+    try {
+        New-Item -ItemType Directory -Force -Path $LogsDir | Out-Null
+        Add-Content -LiteralPath (Join-Path $LogsDir 'pg-trust-window.log') -Value ('{0} | {1} | {2} | {3} | {4}' -f (Get-Date -Format o), $env:COMPUTERNAME, $who, $Event, $Detail)
+    } catch {}
+}
+
 # --- Forgotten-password recovery: reset an unknown local postgres password to
 #     $targetPw via a temporary pg_hba.conf 'trust' (restored afterwards). ---
 function Wait-PgReady([int]$tries = 20) {
@@ -329,16 +389,18 @@ function Reset-PgSuperViaTrust([string]$targetPw) {
         Log "Auto-resetting the unknown 'postgres' password to the standard value (temporary trust on $hba)..." 'STEP'
         $bak = "$hba.idevelop-bak"; Copy-Item -LiteralPath $hba -Destination $bak -Force
         $orig = Get-Content -LiteralPath $hba -Raw
-        $trust = "# IDevelop installer - TEMPORARY trust (auto-removed)`r`nhost all all 127.0.0.1/32 trust`r`nhost all all ::1/128 trust`r`n# end temporary`r`n"
+        $trust = "# IDevelop installer - TEMPORARY trust (auto-removed)`r`nhost postgres postgres 127.0.0.1/32 trust`r`nhost postgres postgres ::1/128 trust`r`n# end temporary`r`n"
         Set-Content -LiteralPath $hba -Value ($trust + $orig) -Encoding ASCII
+        Write-TrustWindowAudit 'OPENED' "$hba (loopback, database/user postgres only)"
         Restart-Service -Name $svcName -Force -ErrorAction Stop; [void](Wait-PgReady 25)
         $env:PGPASSWORD = ''
         $lit = $targetPw -replace "'", "''"
-        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-        $altOut = & $psql -h 127.0.0.1 -p $cfg.PgPort -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER ROLE postgres WITH PASSWORD '$lit'" 2>&1
-        $altOk = ($LASTEXITCODE -eq 0); $ErrorActionPreference = $prev
+        # The new password goes through psql's stdin, never its command line.
+        $alt = Invoke-PsqlStdin $psql @('-h', '127.0.0.1', '-p', "$($cfg.PgPort)", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-f', '-') "ALTER ROLE postgres WITH PASSWORD '$lit'"
+        $altOk = ($alt.Code -eq 0); $altOut = $alt.Out
         Copy-Item -LiteralPath $bak -Destination $hba -Force; Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue; $bak = $null
         Restart-Service -Name $svcName -Force -ErrorAction SilentlyContinue; [void](Wait-PgReady 25)
+        Write-TrustWindowAudit 'CLOSED' "$hba restored (password reset $(if ($altOk) { 'succeeded' } else { 'FAILED' }))"
         if ($altOk) { Log 'postgres password reset to the standard appliance value; trust removed.' 'OK'; return $true }
         # Scrub the password out of any echoed psql error before it reaches the log/transcript.
         $altSafe = if ($altOut) { "$altOut" -replace [regex]::Escape($targetPw), '***' } else { $altOut }
@@ -736,6 +798,53 @@ function Test-RestoredDatabase($creds) {
 # ===========================================================================
 #  CHECK DB  - read-only reachability report (pre-flight)
 # ===========================================================================
+# --- Read-only security posture checks (same rules as the installer) ---
+# pg_hba.conf 'trust' entries outside the installer's own marked block.
+function Get-PgHbaTrustLines([string]$Text) {
+    $hits = @()
+    $inOurs = $false
+    $n = 0
+    foreach ($raw in ($Text -split "`r?`n")) {
+        $n++
+        $t = $raw.Trim()
+        if ($t -like '# IDevelop installer - TEMPORARY trust*') { $inOurs = $true; continue }
+        if ($inOurs) { if ($t -like '# end temporary*') { $inOurs = $false }; continue }
+        $body = ($t -replace '#.*$', '').Trim()
+        if (-not $body) { continue }
+        $tok = @($body -split '\s+')
+        $method = $null
+        if ($tok[0] -eq 'local') { if ($tok.Count -ge 4) { $method = $tok[3] } }
+        elseif ($tok[0] -like 'host*') {
+            if ($tok.Count -ge 6 -and $tok[4] -match '^[0-9a-fA-F:.]+$' -and $tok[3] -notmatch '/') { $method = $tok[5] }
+            elseif ($tok.Count -ge 5) { $method = $tok[4] }
+        }
+        if ($method -and $method.ToLowerInvariant() -eq 'trust') { $hits += [pscustomobject]@{ Line = $n; Text = $t } }
+    }
+    return , $hits
+}
+# Windows Time: TOTP (MFA), session expiry and audit timestamps depend on it.
+function ConvertFrom-W32tmStatus([string[]]$Lines, [string]$ServiceStatus, [string]$StartType) {
+    $src = ''
+    foreach ($l in @($Lines)) { if ("$l" -match '^\s*Source\s*:\s*(.+?)\s*$') { $src = $Matches[1]; break } }
+    $localClock = (-not $src) -or ($src -match '(?i)CMOS|Free-running|Horloge')
+    $running = ("$ServiceStatus" -eq 'Running')
+    return [pscustomobject]@{
+        Source = $src; ServiceStatus = "$ServiceStatus"; StartType = "$StartType"
+        Ok = ($running -and -not $localClock)
+    }
+}
+function Get-TimeSyncStatus {
+    $svc = Get-Service -Name 'W32Time' -ErrorAction SilentlyContinue
+    $st = if ($svc) { "$($svc.Status)" } else { 'Missing' }
+    $stt = if ($svc) { "$($svc.StartType)" } else { '' }
+    $lines = @()
+    if ($svc -and $svc.Status -eq 'Running') {
+        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try { $lines = @(& w32tm.exe /query /status 2>$null) } catch { $lines = @() } finally { $ErrorActionPreference = $prev }
+    }
+    return (ConvertFrom-W32tmStatus $lines $st $stt)
+}
+
 function Invoke-CheckDb {
     Log '=== Database connection check ===' 'STEP'
     if (-not $psql) { Log 'psql.exe NOT found - install the PostgreSQL client tools.' 'ERROR'; return 1 }
@@ -750,7 +859,37 @@ function Invoke-CheckDb {
         Log '                     (an install/restore will prompt you for the current password.)' 'WARN'
         $rc = 1
     }
+    # 1b. pg_hba.conf 'trust' entries - read-only, reported loudly. A finding is a
+    #     WARNING, not a failed check (exit code unchanged).
+    if ($conn) {
+        try {
+            $env:PGPASSWORD = $conn.pw
+            $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+            $hbaFile = (& $psql -h $cfg.PgHost -p $cfg.PgPort -U postgres -d postgres -t -A -c 'SHOW hba_file' 2>$null | Out-String).Trim()
+            $trustRows = @()
+            if ($hbaFile -and (Test-Path -LiteralPath $hbaFile)) {
+                $trustRows = @(Get-PgHbaTrustLines ([System.IO.File]::ReadAllText($hbaFile)) | ForEach-Object { "line $($_.Line): $($_.Text)" })
+            } else {
+                $q = "SELECT line_number || ': ' || type || ' ' || array_to_string(database, ',') || ' ' || array_to_string(user_name, ',') || ' ' || coalesce(address, '') FROM pg_hba_file_rules WHERE auth_method = 'trust'"
+                $trustRows = @(& $psql -h $cfg.PgHost -p $cfg.PgPort -U postgres -d postgres -t -A -c $q 2>$null | Where-Object { "$_".Trim() } | ForEach-Object { "line $_" })
+            }
+            $ErrorActionPreference = $prev
+            if ($trustRows.Count) {
+                Log "pg_hba.conf        : $($trustRows.Count) 'trust' entr$(if ($trustRows.Count -eq 1) { 'y' } else { 'ies' }) in $hbaFile - PASSWORDLESS login to PostgreSQL (and the HR database) from those addresses. Replace with scram-sha-256 and reload PostgreSQL:" 'WARN'
+                foreach ($l in $trustRows) { Log "                     $l" 'WARN' }
+            } else {
+                Log "pg_hba.conf        : no trust authentication entries ($hbaFile)." 'OK'
+            }
+        } catch { Log "pg_hba.conf        : check skipped ($($_.Exception.Message))." 'WARN' }
+    }
     $env:PGPASSWORD = ''
+    # 1c. Windows Time - report only.
+    try {
+        $ts = Get-TimeSyncStatus
+        $srcTxt = if ($ts.Source) { $ts.Source } else { 'none' }
+        if ($ts.Ok) { Log "time sync          : W32Time $($ts.ServiceStatus) ($($ts.StartType)), source '$srcTxt'." 'OK' }
+        else { Log "time sync          : NOT synchronised (W32Time $($ts.ServiceStatus), start type '$($ts.StartType)', source '$srcTxt') - MFA codes and session expiry depend on this clock. Fix: Set-Service W32Time -StartupType Automatic; Start-Service W32Time; w32tm /resync" 'WARN' }
+    } catch { Log "time sync          : check skipped ($($_.Exception.Message))." 'WARN' }
     # 2. app role + app database (from the install .env).
     $creds = Get-InstalledDbCreds
     if ($creds.pass) {
@@ -782,7 +921,18 @@ function Invoke-SetPgPassword {
     if (-not $conn) {
         # Unknown password: reset it to the standard via temporary trust auth
         # (forgotten-password recovery) rather than giving up.
-        Log 'Could not authenticate as postgres - the password is unknown; auto-resetting to the standard value.' 'WARN'
+        Log 'Could not authenticate as postgres - the password is unknown.' 'WARN'
+        $consent = Resolve-TrustWindowConsent $AllowPasswordRecovery.IsPresent (Test-InteractiveSession) {
+            Write-Host "  Setup can reset it to the standard appliance value by opening a temporary pg_hba.conf" -ForegroundColor Yellow
+            Write-Host "  'trust' window (~10 s, loopback only, database/user postgres only), restored right after." -ForegroundColor Yellow
+            Read-Host "  Type TRUST to allow it (anything else: do not touch pg_hba.conf)"
+        }
+        switch ($consent.Mode) {
+            'switch'      { Write-TrustWindowAudit 'CONSENT' 'operator passed -AllowPasswordRecovery' }
+            'interactive' { Write-TrustWindowAudit 'CONSENT' 'operator typed TRUST at the console' }
+            'declined'    { Write-TrustWindowAudit 'REFUSED' 'operator did not type TRUST'; Die 'postgres password NOT reset (the trust window was not allowed).' }
+            'unattended'  { Write-TrustWindowAudit 'REFUSED' 'unattended run without -AllowPasswordRecovery'; Die "postgres password unknown and this run is unattended: re-run with -AllowPasswordRecovery to allow the temporary pg_hba.conf 'trust' window, or supply the current password (SETUP_PG_SUPER_PASSWORD / -PgSuperPassword)." }
+        }
         if (Reset-PgSuperViaTrust $cfg.StandardPgSuperPassword) { return 0 }
         Die 'Could not reset the postgres password (see the log).'
     }
@@ -793,9 +943,9 @@ function Invoke-SetPgPassword {
     }
     $env:PGPASSWORD = $conn.pw
     $lit = $cfg.StandardPgSuperPassword -replace "'", "''"
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    & $psql -h $cfg.PgHost -p $cfg.PgPort -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER ROLE postgres WITH PASSWORD '$lit'" | Out-Null
-    $code = $LASTEXITCODE; $ErrorActionPreference = $prev
+    # stdin, not argv: a command line is readable by other processes.
+    $alt = Invoke-PsqlStdin $psql @('-h', $cfg.PgHost, '-p', "$($cfg.PgPort)", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-f', '-') "ALTER ROLE postgres WITH PASSWORD '$lit'"
+    $code = $alt.Code
     $env:PGPASSWORD = ''
     if ($code -eq 0) { Log 'postgres superuser password CHANGED to the standard appliance value.' 'OK'; return 0 }
     Die 'ALTER ROLE postgres failed - see the log.'
