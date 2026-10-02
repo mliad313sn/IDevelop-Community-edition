@@ -19,6 +19,7 @@ const DisputeServiceV2 = require('../services/DisputeServiceV2');
 const RBACService = require('../services/RBACService');
 const db = require('../config/database');
 const ah = require('../utils/asyncHandler');
+const { containedUploadPath } = require('../utils/uploadTempPath');
 
 // A dispute may only be resolved by someone who governs the disputed employee
 // (super admin → all; manager/local-admin → their span). Returns an Express
@@ -190,7 +191,10 @@ router.post(
         if (!req.file)
             return res.status(400).json({ ok: false, code: 'UPLOAD_NO_FILE', error: 'no file' });
         // A refused request must not leave its temp file behind.
-        const discard = () => fs.unlink(req.file.path, () => {});
+        const discard = () => {
+            const p = containedUploadPath(req.file.path);
+            if (p) fs.unlink(p, () => {});
+        };
         const said = Number(req.params.selfAssessmentId);
         // Only the owning employee may attach evidence to their assessment row.
         const sa = await db.get(`SELECT employee_id FROM self_assessments WHERE id = ?`, [said]);
