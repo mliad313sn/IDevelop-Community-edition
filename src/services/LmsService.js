@@ -154,7 +154,7 @@ class LmsService {
                 // Encrypted at rest like auth_config (S-10). secretBox.encrypt is
                 // a pass-through when no APP_KEY/SESSION_SECRET is set (dev), and
                 // verifyWebhookSecret still reads legacy clear values.
-                webhookSecret ? secretBox.encrypt(String(webhookSecret)) : null,
+                webhookSecret ? secretBox.encrypt(String(webhookSecret), 'lms') : null,
                 enabled === true || enabled === 'true',
             ]
         );
@@ -163,7 +163,7 @@ class LmsService {
         if (authConfig != null && authConfig !== '') {
             const obj = typeof authConfig === 'string' ? JSON.parse(authConfig) : authConfig;
             const stored = secretBox.isEnabled()
-                ? JSON.stringify({ _enc: secretBox.encrypt(JSON.stringify(obj)) })
+                ? JSON.stringify({ _enc: secretBox.encrypt(JSON.stringify(obj), 'lms') })
                 : JSON.stringify(obj);
             await db.run(
                 'UPDATE lms_integrations SET auth_config = ?, updated_at = now() WHERE provider = ?',
@@ -212,7 +212,7 @@ class LmsService {
         );
         if (!cfg || !cfg.enabled) return false;
         if (!cfg.webhookSecret) return false; // a secret MUST be configured — never an open POST
-        // Stored encrypted (enc:v1:…) since 3.23.17; a legacy clear value is
+        // Stored encrypted (secretBox, enc:v2 now, enc:v1 before); a legacy clear value is
         // returned unchanged by decrypt. A blob that cannot be decrypted
         // (rotated key, corruption) fails CLOSED.
         let expected;

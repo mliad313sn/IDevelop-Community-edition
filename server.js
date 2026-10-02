@@ -921,6 +921,11 @@ function nodeTooOldForEntraWarning(nodeVersion, cfg) {
 // Initialize database and start server
 async function startServer() {
     try {
+        // Production refuses to start without a strong APP_KEY: secrets at rest
+        // are never silently stored in clear text, and SESSION_SECRET is never
+        // an encryption key there (development is unaffected).
+        require('./src/utils/secretBox').assertConfigured();
+
         console.log('Initializing database...');
         await db.connect();
         console.log('✓ Database connected');
@@ -941,6 +946,12 @@ async function startServer() {
         console.log('Seeding default data...');
         await db.seed();
         console.log('✓ Database seeding completed');
+
+        // Snapshots taken before secrets were masked may still hold them: scrub
+        // once per boot, best-effort (never blocks start-up; idempotent).
+        require('./src/services/SnapshotService')
+            .scrubSecretsFromStoredSnapshots()
+            .catch(() => {});
 
         // Optional modules: an install started with the legacy V2_FEATURES=1 and
         // no recorded adoption stage is recorded at stage 3 (everything on), so

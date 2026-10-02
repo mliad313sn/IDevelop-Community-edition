@@ -1,6 +1,43 @@
 const PRODUCT = require('../config/product');
 const db = require('../config/database');
 const { TtlCache } = require('../utils/ttlCache');
+const secretBox = require('../utils/secretBox');
+
+/**
+ * SECRET SETTINGS. A setting whose key names a credential is encrypted at rest
+ * with secretBox (purpose 'app_settings') INSIDE this model: setValue() and
+ * update() encrypt, getValue() decrypts, so EmailService and CopilotService
+ * read plaintext without knowing. A legacy clear (or v1) value still reads and
+ * is re-encrypted to v2 lazily on read (best-effort) and on the next write.
+ * Listing methods (findAll / findByCategory) NEVER return the value, only
+ * SECRET_MASK when one is set, and a write of SECRET_MASK is refused as
+ * "unchanged", so a mask echoed back by a form or a restore can never
+ * overwrite the stored secret.
+ *
+ * Matched by the LAST dot-segment of the key: …password / …secret / …token /
+ * …apiKey / …privateKey / …passphrase / …pass (smtpPassword, copilotApiSecret,
+ * sso.entra.clientSecret…). SSO values arrive already encrypted by
+ * SsoSettingsService; an 'enc:' value is never encrypted twice.
+ */
+const SECRET_MASK = '••••••••';
+const SECRET_PURPOSE = 'app_settings';
+const { isSecretKey } = require('../utils/secretSettingKeys');
+/**
+ * Secrets this MODEL seals and opens. SSO keys are excluded: SsoSettingsService
+ * seals them itself and must SEE an undecryptable value as such (it then keeps
+ * the provider unconfigured instead of falling back to an older .env value),
+ * so they are stored and returned exactly as that service hands them over.
+ */
+function isManagedSecret(key, type) {
+    return isSecretKey(key, type) && !require('../utils/ssoSettingKeys').isSsoSettingKey(key);
+}
+/** Encrypt a secret value for storage ('' and already-encrypted values pass through). */
+function sealSecret(stringValue) {
+    const v = stringValue == null ? '' : String(stringValue);
+    if (v === '' || secretBox.isEncrypted(v)) return v;
+    return secretBox.encrypt(v, SECRET_PURPOSE);
+}
+const _undecryptableWarned = new Set();
 
 // Settings are read very frequently (e.g. EmailService reads ~5 keys per event,
 // ReadinessService reads the threshold per calculation) but change rarely, so
@@ -251,24 +288,87 @@ class AppSettingsModel {
     isReadOnly(key) {
         return Boolean(ruleFor(key).readOnly);
     }
+    get SECRET_MASK() {
+        return SECRET_MASK;
+    }
+    isSecretKey(key, type) {
+        return isSecretKey(key, type);
+    }
+
+    /**
+     * A settings row safe to hand to a view or an export: a secret's value is
+     * replaced by SECRET_MASK (set) or '' (not set), and `secretSet` says which.
+     */
+    maskRow(row) {
+        if (
+            !row ||
+            !(
+                isSecretKey(row.settingKey, row.settingType) ||
+                secretBox.isEncrypted(row.settingValue)
+            )
+        )
+            return row;
+        const set = row.settingValue != null && String(row.settingValue) !== '';
+        return { ...row, settingValue: set ? SECRET_MASK : '', isSecret: true, secretSet: set };
+    }
 
     async findAll() {
         // Attribution: who last changed each row, for the "Modifié le · par" column.
-        return await db.all(
+        const rows = await db.all(
             `SELECT s.*, a.username AS updatedByUsername
                FROM appSettings s LEFT JOIN admins a ON a.id = s.updatedBy
               ORDER BY s.category, s.settingKey`
         );
+        return (rows || []).map((r) => this.maskRow(r));
     }
 
+    /** RAW row (a secret is still sealed): internal use; never render it. */
     async findByKey(key) {
         return await db.get('SELECT * FROM appSettings WHERE settingKey = ?', [key]);
     }
 
     async findByCategory(category) {
-        return await db.all('SELECT * FROM appSettings WHERE category = ? ORDER BY settingKey', [
-            category,
-        ]);
+        const rows = await db.all(
+            'SELECT * FROM appSettings WHERE category = ? ORDER BY settingKey',
+            [category]
+        );
+        return (rows || []).map((r) => this.maskRow(r));
+    }
+
+    /**
+     * The plaintext of a stored secret value. Undecryptable (APP_KEY changed)
+     * gives null, warned once per key, never thrown into the caller.
+     */
+    _openSecret(key, raw) {
+        if (raw == null || raw === '') return raw;
+        try {
+            return secretBox.decrypt(String(raw));
+        } catch (e) {
+            if (!_undecryptableWarned.has(key)) {
+                _undecryptableWarned.add(key);
+                console.warn(
+                    `[security] app setting ${key} is stored encrypted but cannot be decrypted (${e.code || e.message}). ` +
+                        'Treated as unset until it is re-entered, or run scripts/rotate-app-key.js with the old key.'
+                );
+            }
+            return null;
+        }
+    }
+
+    /** Lazy re-encryption: a secret still stored clear or v1 is resealed as v2 (best-effort). */
+    async _upgradeSecretAtRest(setting, plain) {
+        try {
+            if (plain == null || plain === '' || !secretBox.isEnabled()) return;
+            if (!secretBox.needsUpgrade(setting.settingValue)) return;
+            const sealed = secretBox.encrypt(String(plain), SECRET_PURPOSE);
+            await db.run(
+                'UPDATE appSettings SET settingValue = ? WHERE settingKey = ? AND settingValue = ?',
+                [sealed, setting.settingKey, setting.settingValue]
+            );
+            settingsCache.bust();
+        } catch (_) {
+            /* best-effort: the next write re-encrypts anyway */
+        }
     }
 
     async getValue(key, defaultValue = null) {
@@ -279,6 +379,13 @@ class AppSettingsModel {
             settingsCache.set(key, setting || null); // null sentinel for "absent"
         }
         if (!setting) return defaultValue;
+
+        if (isManagedSecret(setting.settingKey || key, setting.settingType)) {
+            const plain = this._openSecret(key, setting.settingValue);
+            await this._upgradeSecretAtRest(setting, plain);
+            if (plain == null) return defaultValue;
+            setting = { ...setting, settingValue: plain };
+        }
 
         switch (setting.settingType) {
             case 'number': {
@@ -322,6 +429,13 @@ class AppSettingsModel {
         }
 
         const existing = await this.findByKey(key);
+        if (isSecretKey(key, type) && stringValue === SECRET_MASK) {
+            // The mask is what a listing shows, never a value: echoing it back
+            // (a form, an import, a restore) leaves the stored secret untouched.
+            if (existing) return;
+            stringValue = '';
+        }
+        if (isManagedSecret(key, type)) stringValue = sealSecret(stringValue);
         if (existing) {
             await db.run(
                 'UPDATE appSettings SET settingValue = ?, settingType = ?, description = ?, category = ?, updatedBy = ?, updatedAt = CURRENT_TIMESTAMP WHERE settingKey = ?',
@@ -337,7 +451,23 @@ class AppSettingsModel {
     }
 
     async update(data) {
-        const { id, settingValue, settingType, description, category, updatedBy } = data;
+        const { id, settingType, description, category, updatedBy } = data;
+        let { settingValue } = data;
+        // The key decides whether the value is a secret: taken from the ROW,
+        // never trusted from the caller alone.
+        let key = data.settingKey;
+        try {
+            const row = await db.get('SELECT settingKey FROM appSettings WHERE id = ?', [id]);
+            if (row && row.settingKey) key = row.settingKey;
+        } catch (_) {
+            /* fall back to the caller's key */
+        }
+        if (
+            isSecretKey(key, settingType) &&
+            String(settingValue == null ? '' : settingValue) === SECRET_MASK
+        )
+            return; // a mask is never a value (see setValue)
+        if (isManagedSecret(key, settingType)) settingValue = sealSecret(settingValue);
         await db.run(
             'UPDATE appSettings SET settingValue = ?, settingType = ?, description = ?, category = ?, updatedBy = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
             [settingValue, settingType, description, category, updatedBy, id]

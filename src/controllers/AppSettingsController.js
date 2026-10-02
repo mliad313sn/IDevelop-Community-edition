@@ -423,7 +423,11 @@ class AppSettingsController {
 
             // Secret fields are shown blank in the UI; an empty submission means
             // "leave unchanged" rather than "erase the stored secret".
-            const isSecretKey = /password|secret|pass$/i.test(currentSetting.settingKey);
+            // One definition of "secret" (AppSettingsModel): …token / …apiKey too.
+            const isSecretKey = AppSettingsModel.isSecretKey(
+                currentSetting.settingKey,
+                currentSetting.settingType
+            );
             if (isSecretKey && (settingValue === undefined || String(settingValue).trim() === '')) {
                 req.flash(
                     'success',
@@ -497,7 +501,10 @@ class AppSettingsController {
             }
 
             // Never echo a changed secret into the audit log.
-            const isSecret = /password|secret|pass$/i.test(currentSetting.settingKey);
+            const isSecret = AppSettingsModel.isSecretKey(
+                currentSetting.settingKey,
+                currentSetting.settingType
+            );
             const logDetail = isSecret
                 ? `Updated ${currentSetting.settingKey}`
                 : `Updated ${currentSetting.settingKey}: ${currentSetting.settingValue} → ${validatedValue}`;

@@ -186,10 +186,23 @@ const CATEGORIES = [
         controls: [
             {
                 id: 'encryption',
-                fr: 'Secrets stockés (MFA, SSO, LMS, SMTP) chiffrés en AES-256-GCM avec APP_KEY ; rotation outillée.',
-                en: 'Stored secrets (MFA, SSO, LMS, SMTP) encrypted with AES-256-GCM under APP_KEY; tooled key rotation.',
-                evidence: ['src/utils/secretBox.js', 'scripts/rotate-app-key.js'],
-                tests: ['securityControls.test.js', 'installerSecretChannel.test.js'],
+                fr: 'Secrets stockés (MFA, SSO, LMS, SMTP, fournisseur d’IA, webhooks, connecteurs SIRH) chiffrés en AES-256-GCM sous une clé dérivée d’APP_KEY, format versionné ; démarrage refusé en production sans APP_KEY robuste ; secrets jamais copiés dans les instantanés ; rotation outillée.',
+                en: 'Stored secrets (MFA, SSO, LMS, SMTP, AI provider, webhooks, HRIS connectors) encrypted with AES-256-GCM under a key derived from APP_KEY, in a versioned format; production refuses to start without a strong APP_KEY; secrets never copied into snapshots; tooled key rotation.',
+                evidence: [
+                    'src/utils/secretBox.js',
+                    'src/services/MfaService.js',
+                    'src/models/AppSettingsModel.js',
+                    'src/services/SnapshotService.js',
+                    'scripts/rotate-app-key.js',
+                ],
+                tests: [
+                    'securityControls.test.js',
+                    'installerSecretChannel.test.js',
+                    'secretBoxV2.test.js',
+                    'appSettingsSecrets.test.js',
+                    'snapshotSecrets.test.js',
+                    'rotateAppKey.test.js',
+                ],
             },
             {
                 id: 'hris-sync',
@@ -403,8 +416,8 @@ const ASVS_L2 = {
     level: 2,
     total: 258,
     pass: 167,
-    fixed: 11,
-    partial: 44,
+    fixed: 12,
+    partial: 43,
     gap: 2,
     na: 29,
     notVerified: 5,

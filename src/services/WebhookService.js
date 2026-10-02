@@ -187,7 +187,7 @@ class WebhookService {
         if (!FORMATS.includes(format)) throw new Error('format must be json, slack or teams');
         assertSafeWebhookUrl(url);
         // Encrypt the signing secret at rest (decrypted only to sign on emit).
-        const storedSecret = secret ? secretBox.encrypt(String(secret)) : null;
+        const storedSecret = secret ? secretBox.encrypt(String(secret), 'webhook') : null;
         return db.get(
             `INSERT INTO webhook_subscriptions (label, url, secret, events, format, created_by_admin_id)
              VALUES (?, ?, ?, ?, ?, ?) RETURNING id, label, url, events, format, enabled`,

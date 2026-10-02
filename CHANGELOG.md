@@ -71,6 +71,25 @@ project uses [Semantic Versioning](https://semver.org/).
   canonical one (same handler and checks; the origin guard and the CSRF skip
   accept it). The SSO settings page receives `callbackMismatch` to name the
   address to register instead.
+- **Secrets at rest (audit SA-18 closed). `APP_KEY` is now required in
+  production:** the service refuses to start when it is missing, shorter than
+  32 characters or a placeholder, and `SESSION_SECRET` is never used as an
+  encryption key there.
+    - secretBox v2: `enc:v2:<purpose>:…`, AES-256-GCM under HKDF-SHA256 of
+      `APP_KEY`, the purpose bound as additional data. Existing `enc:v1:` values
+      stay readable and are re-encrypted on their next write or by the rotation
+      script.
+    - MFA secrets v2 (HKDF over the whole `APP_KEY` instead of its first 32
+      characters); a v1 secret is re-encrypted after its next successful use.
+      Confirming an already-active MFA enrolment is refused, and the code used to
+      confirm is consumed.
+    - The SMTP password and the AI provider key are encrypted in `app_settings`
+      (lazily for existing values), shown only as a mask, never exported to JSON,
+      never imported from JSON and never copied into snapshots; snapshots taken
+      earlier are scrubbed once at start-up.
+    - `scripts/rotate-app-key.js` re-encrypts every store, v1 and v2: app
+      settings, LMS, webhooks, safety gate, HRIS connector credentials and MFA
+      secrets.
 - HTTP hardening moved into `src/middleware/httpHardening.js`, with tests:
     - JSON detection is anchored on the MIME essence, so
       `text/plain; x=application/json` no longer skips the CSRF check;

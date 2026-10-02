@@ -35,37 +35,158 @@ const PRIVILEGED_ROLES = new Set([
     'hr_bp',
 ]);
 
-const APP_KEY = (() => {
-    const k = process.env.APP_KEY || '';
-    if (k.length >= 32) return Buffer.from(k.slice(0, 32));
-    // Phase-2 dev fallback: derive from SESSION_SECRET to avoid hard crashes;
-    // production deployments MUST set APP_KEY (≥ 32 bytes).
-    return crypto
-        .createHash('sha256')
-        .update(process.env.SESSION_SECRET || 'dev-key')
-        .digest();
-})();
-
+// ---------------------------------------------------------------------------
+// MFA secret encryption.
+//
+// v1 (legacy): key = the first 32 CHARACTERS of APP_KEY (a hex string, so 128
+//   bits of key material used as a 256-bit key) or, when APP_KEY was shorter,
+//   SHA-256(SESSION_SECRET). Blob = [iv(12)|tag(16)|ct].
+// v2 (now):    key = HKDF-SHA256 over the WHOLE APP_KEY (salt/info below).
+//   Blob = ['MFA2'(4)|iv(12)|tag(16)|ct]. Every new secret is v2; a v1 blob is
+//   still decrypted and RE-ENCRYPTED to v2 the first time it is used
+//   successfully (scripts/rotate-app-key.js upgrades the rest).
+// Production (NODE_ENV=production) refuses MFA crypto without APP_KEY: no
+// SESSION_SECRET fallback there. Development keeps the SESSION_SECRET fallback.
+// Keys are resolved lazily (per call), so a missing key fails the MFA
+// operation, never the boot (server.js refuses the boot itself through
+// secretBox.assertConfigured), and tests can vary the environment.
+// HKDF_SALT and HKDF_INFO are cryptographic constants: they are frozen.
+// ---------------------------------------------------------------------------
 const IV_LEN = 12;
+const MAGIC_V2 = Buffer.from('MFA2', 'ascii');
+const HKDF_SALT = 'idevelop.mfa-secret.v2';
+const HKDF_INFO = 'mfa:totp-secret';
 
-function encrypt(plaintext) {
-    const iv = crypto.randomBytes(IV_LEN);
-    const cipher = crypto.createCipheriv('aes-256-gcm', APP_KEY, iv);
-    const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    return Buffer.concat([iv, tag, ct]); // [iv|tag|ct]
+function isProduction() {
+    return String(process.env.NODE_ENV || '').toLowerCase() === 'production';
 }
 
-function decrypt(blob) {
-    const iv = blob.slice(0, IV_LEN);
-    const tag = blob.slice(IV_LEN, IV_LEN + 16);
-    const ct = blob.slice(IV_LEN + 16);
+function noKeyError() {
+    const e = new Error(
+        'MfaService: APP_KEY is required in production to encrypt/decrypt two-factor secrets (SESSION_SECRET is never used as a key in production). Set APP_KEY in .env and restart.'
+    );
+    e.code = 'MFA_NO_APP_KEY';
+    return e;
+}
+
+/** The v2 key for a given keying material. */
+function v2KeyFrom(ikm) {
+    return Buffer.from(
+        crypto.hkdfSync('sha256', Buffer.from(String(ikm), 'utf8'), HKDF_SALT, HKDF_INFO, 32)
+    );
+}
+
+/** The v2 key: HKDF-SHA256 over the whole APP_KEY (dev: SESSION_SECRET fallback). */
+function currentKey() {
+    let ikm = String(process.env.APP_KEY || '');
+    if (!ikm) {
+        if (isProduction()) throw noKeyError();
+        ikm = process.env.SESSION_SECRET || 'dev-key';
+    }
+    return v2KeyFrom(ikm);
+}
+
+/** The v1 keys a legacy blob may have been written with, most likely first. */
+function legacyKeysFor(appKey, sessionSecret) {
+    const keys = [];
+    const k = String(appKey || '');
+    if (k.length >= 32) keys.push(Buffer.from(k.slice(0, 32)));
+    keys.push(
+        crypto
+            .createHash('sha256')
+            .update(sessionSecret || 'dev-key')
+            .digest()
+    );
+    return keys;
+}
+
+function gcmOpen(key, iv, tag, ct) {
     // Pin the tag length (see utils/secretBox): unpinned, Node would accept a
     // truncated tag and weaken forgery resistance on the stored MFA secret.
     if (tag.length !== 16) throw new Error('MfaService: bad auth tag length');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', APP_KEY, iv, { authTagLength: 16 });
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
+}
+
+function encryptWithKey(key, plaintext) {
+    const iv = crypto.randomBytes(IV_LEN);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return Buffer.concat([MAGIC_V2, iv, tag, ct]); // ['MFA2'|iv|tag|ct]
+}
+
+function encrypt(plaintext) {
+    return encryptWithKey(currentKey(), plaintext);
+}
+
+/**
+ * Decrypt a stored blob with explicit keys.
+ * @returns {{secret: string, legacy: boolean}} legacy = true when the blob was v1.
+ */
+function decryptWithKeys(blob, { v2Key, legacyKeys }) {
+    const buf = Buffer.isBuffer(blob) ? blob : Buffer.from(blob);
+    if (
+        v2Key &&
+        buf.length > MAGIC_V2.length + IV_LEN + 16 &&
+        buf.subarray(0, 4).equals(MAGIC_V2)
+    ) {
+        const o = MAGIC_V2.length;
+        try {
+            return {
+                secret: gcmOpen(
+                    v2Key,
+                    buf.subarray(o, o + IV_LEN),
+                    buf.subarray(o + IV_LEN, o + IV_LEN + 16),
+                    buf.subarray(o + IV_LEN + 16)
+                ),
+                legacy: false,
+            };
+        } catch (e) {
+            // A v1 blob whose random IV began with 'MFA2' (1 in 2^32): fall through.
+        }
+    }
+    const iv = buf.subarray(0, IV_LEN);
+    const tag = buf.subarray(IV_LEN, IV_LEN + 16);
+    const ct = buf.subarray(IV_LEN + 16);
+    let last = null;
+    for (const key of legacyKeys || []) {
+        try {
+            return { secret: gcmOpen(key, iv, tag, ct), legacy: true };
+        } catch (e) {
+            last = e;
+        }
+    }
+    throw last || new Error('MfaService: undecryptable secret');
+}
+
+/**
+ * @returns {{secret: string, legacy: boolean}} legacy = true when the blob was v1
+ *          (the caller re-encrypts it after a successful use).
+ */
+function decryptWithVersion(blob) {
+    if (isProduction() && !process.env.APP_KEY) throw noKeyError();
+    return decryptWithKeys(blob, {
+        v2Key: currentKey(),
+        legacyKeys: legacyKeysFor(process.env.APP_KEY, process.env.SESSION_SECRET),
+    });
+}
+
+function decrypt(blob) {
+    return decryptWithVersion(blob).secret;
+}
+
+/** Re-encrypt a v1 secret to v2 after a successful use (optimistic, best effort). */
+async function upgradeLegacy(userType, userId, oldBlob, secret) {
+    try {
+        await db.run(
+            `UPDATE mfa_secrets SET secret_enc = ? WHERE user_type = ? AND user_id = ? AND secret_enc = ?`,
+            [encrypt(secret), userType, userId, oldBlob]
+        );
+    } catch (_) {
+        /* the sign-in succeeded; the upgrade is retried at the next use */
+    }
 }
 
 function generateBase32Secret(bytes = 20) {
@@ -254,21 +375,43 @@ class MfaService {
         return { started: true, secret, otpauthUrl: otpauth };
     }
 
-    /** Confirms enrolment given a user-supplied 6-digit code. */
+    /**
+     * Confirms enrolment given a user-supplied 6-digit code.
+     *
+     * An ALREADY CONFIRMED secret is refused: a holder of the session could
+     * otherwise post any current code to /mfa/verify again and be handed a
+     * fresh set of backup codes, minting recovery codes from a borrowed session
+     * without the owner ever seeing them. The code used to confirm is CONSUMED
+     * (the same single-use ledger as at sign-in), and the confirmation itself
+     * is claimed atomically (`confirmed_at IS NULL`), so two concurrent posts
+     * cannot both succeed.
+     */
     static async verifyAndConfirm({ userType, userId, code }) {
         const row = await db.get(
-            `SELECT secret_enc FROM mfa_secrets WHERE user_type = ? AND user_id = ?`,
+            `SELECT secret_enc, confirmed_at FROM mfa_secrets WHERE user_type = ? AND user_id = ?`,
             [userType, userId]
         );
         if (!row) throw new Error('MFA not initialised');
+        if (row.confirmedAt) return false; // already active: never re-confirmed
         // The PG driver camelizes row keys: secret_enc → secretEnc.
-        const secret = decrypt(row.secretEnc);
-        const ok = totp().check(code, secret);
+        const { secret, legacy } = decryptWithVersion(row.secretEnc);
+        const ok = totp().check(String(code || '').trim(), secret);
         if (!ok) return false;
-        await db.run(
-            `UPDATE mfa_secrets SET confirmed_at = now() WHERE user_type = ? AND user_id = ?`,
+        const consumed = await db.get(
+            `INSERT INTO mfa_used_codes (user_type, user_id, code_hash)
+             VALUES (?, ?, ?)
+             ON CONFLICT (user_type, user_id, code_hash) DO NOTHING
+             RETURNING id`,
+            [userType, userId, hashCode(userId, code)]
+        );
+        if (!consumed) return false; // this code was already used
+        const claim = await db.run(
+            `UPDATE mfa_secrets SET confirmed_at = now()
+              WHERE user_type = ? AND user_id = ? AND confirmed_at IS NULL`,
             [userType, userId]
         );
+        if (!(claim && Number(claim.changes) === 1)) return false;
+        if (legacy) await upgradeLegacy(userType, userId, row.secretEnc, secret);
         return true;
     }
 
@@ -280,8 +423,9 @@ class MfaService {
             [userType, userId]
         );
         if (!row || !row.confirmedAt) return false;
-        const secret = decrypt(row.secretEnc);
+        const { secret, legacy } = decryptWithVersion(row.secretEnc);
         if (!totp().check(code, secret)) return false;
+        if (legacy) await upgradeLegacy(userType, userId, row.secretEnc, secret);
 
         // CONSUME the code. A TOTP code stayed valid for its whole window (and the
         // +/-1 step tolerance, so ~90 seconds), and nothing recorded that it had been
@@ -368,3 +512,14 @@ class MfaService {
 
 module.exports = MfaService;
 module.exports.PRIVILEGED_ROLES = PRIVILEGED_ROLES;
+// Exposed for tests and for scripts/rotate-app-key.js (never for routes).
+module.exports._crypto = {
+    encrypt,
+    decrypt,
+    decryptWithVersion,
+    decryptWithKeys,
+    encryptWithKey,
+    v2KeyFrom,
+    legacyKeysFor,
+    MAGIC_V2,
+};

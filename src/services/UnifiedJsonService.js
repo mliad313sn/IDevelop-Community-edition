@@ -347,7 +347,8 @@ class UnifiedJsonService {
         // key, etc.) in cleartext: a portable JSON backup gets emailed/shared/stored
         // off-box. Secret rows are omitted entirely, so a re-import leaves the target's
         // own secret untouched rather than wiping it to a blank.
-        const isSecret = (k) => /password|secret|pass$/i.test(k || '');
+        // One definition of "secret" (utils/secretSettingKeys): …token / …apiKey too.
+        const isSecret = (k) => require('../utils/secretSettingKeys').isSecretKey(k || '');
         const settings = await db.all('SELECT * FROM app_settings ORDER BY setting_key');
         result.appSettings = settings
             .filter((s) => !isSecret(s.settingKey))
@@ -1391,6 +1392,7 @@ class UnifiedJsonService {
             // 6. App settings (upsert by key)
             if (data.appSettings) {
                 const { isSsoSettingKey } = require('../utils/ssoSettingKeys');
+                const { isSecretKey } = require('../utils/secretSettingKeys');
                 for (const s of data.appSettings) {
                     if (!s.key) continue;
                     // 3.23.19: SSO settings are NEVER
@@ -1409,6 +1411,10 @@ class UnifiedJsonService {
                         results.appSettingsSkippedSso.push(String(s.key));
                         continue;
                     }
+                    // Secrets are never exported, so a file that carries one was
+                    // not made by this export: never written (it would land in
+                    // clear text, outside the model that encrypts it).
+                    if (isSecretKey(s.key, s.type)) continue;
                     if (existing) {
                         await db.run(
                             'UPDATE app_settings SET setting_value = ?, updated_at = now() WHERE setting_key = ?',
