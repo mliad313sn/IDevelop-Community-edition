@@ -10,6 +10,29 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const db = require('../config/database');
+// COMPLETENESS IS SCHEMA-DRIVEN: the registry lists every table / column that
+// holds data about an employee, with its treatment on erasure and export; the
+// test erasureRegistry-db.test.js introspects the real schema and fails when a
+// table or an employee column is missing from it.
+const {
+    SUBJECT_DATA_REGISTRY,
+    TABLES_WITHOUT_SUBJECT_COLUMN,
+    ERASED_MARKER,
+    registryWhere,
+    registrySet,
+} = require('./erasureRegistry');
+
+/** Is `p` inside `dir` (both resolved)? Refuses anything that escapes it. */
+function insideDir(dir, p) {
+    const root = path.resolve(dir);
+    const abs = path.resolve(root, String(p));
+    return abs !== root && abs.startsWith(root + path.sep);
+}
+
+/** The uploads folder the evidence and certificate services write to. */
+function uploadsDir() {
+    return process.env.UPLOADS_DIR || path.resolve('uploads');
+}
 
 /**
  * RÉTENTION (S-07 ; lois 2008-12 Sénégal, 2013-450 Côte d'Ivoire, 2013-015 Mali,
@@ -319,6 +342,62 @@ const REDACTED_ON_ERASURE = [
         erased: ['flight_risk', 'impact_of_loss', 'risk_factors', 'computed_score'],
         kept: [],
     },
+    // CERTIFICATIONS: the certificate number, the free text and the evidence
+    // file name go (the file itself is deleted after the erasure commits); the
+    // fact of the certification (skill, dates, state) stays as a safety record.
+    {
+        key: 'certifications',
+        table: 'employee_certifications',
+        erased: ['cert_number', 'revoked_reason', 'notes', 'original_name'],
+        kept: [
+            'id',
+            'skill_id',
+            'issued_on',
+            'expires_on',
+            'is_revoked',
+            'av_status',
+            'created_at',
+        ],
+    },
+    // CAREER ASPIRATIONS: what the person said they want. Deleted.
+    {
+        key: 'aspirations',
+        table: 'employee_aspirations',
+        deleted: true,
+        erased: ['target_role_id', 'interests', 'open_to_mobility', 'updated_at'],
+        kept: [],
+    },
+    // INTERNAL APPLICATIONS: the person's note and the decision note go; the
+    // application itself (which opening, state, dates) stays.
+    {
+        key: 'opportunityApplications',
+        table: 'opportunity_applications',
+        erased: ['note', 'decision_note'],
+        kept: ['id', 'opportunity_id', 'status', 'created_at', 'decided_at'],
+    },
+    // PLANNED ABSENCES: the note goes; the dates stay (cover planning).
+    {
+        key: 'plannedAbsences',
+        table: 'planned_absences',
+        erased: ['note'],
+        kept: ['id', 'starts_on', 'ends_on', 'kind'],
+    },
+    // THE PERSON'S OWN NOTIFICATIONS: deleted.
+    {
+        key: 'notifications',
+        table: 'notifications',
+        deleted: true,
+        erased: ['id', 'kind', 'payload', 'created_at', 'read_at'],
+        kept: [],
+    },
+    // HRIS LINKS: the person's identifier in the HR system. Deleted.
+    {
+        key: 'hrisLinks',
+        table: 'hris_links',
+        deleted: true,
+        erased: ['id', 'provider', 'external_id', 'last_seen_at', 'created_at'],
+        kept: [],
+    },
     // OBJECTION TO PROFILING (migration 165): the person's reasons and the
     // review stamp. The rows are deleted on erasure (see `erase`).
     {
@@ -448,6 +527,19 @@ const DISCLOSED_ABOUT_SUBJECT = [
         table: 'privacy_notice_acks',
         kept: ['version', 'locale', 'acknowledged_at'],
     },
+    // TRAINING: enrolments and completions (course, state, dates, score). No
+    // free text is exported; the raw provider payload is dropped by the
+    // registry on erasure.
+    {
+        key: 'lmsEnrollments',
+        table: 'lms_enrollments',
+        kept: ['id', 'course_id', 'status', 'created_at', 'due_at', 'completed_at'],
+    },
+    {
+        key: 'lmsCompletions',
+        table: 'lms_completions',
+        kept: ['id', 'provider', 'course_id', 'completed_at', 'score'],
+    },
 ];
 
 class DSRService {
@@ -458,6 +550,19 @@ class DSRService {
     /** Ce qui est écrit sur la personne et que l'export doit rendre aussi. */
     static get DISCLOSED_ABOUT_SUBJECT() {
         return DISCLOSED_ABOUT_SUBJECT;
+    }
+    /** Every table / column holding data about an employee (erasureRegistry). */
+    static get SUBJECT_DATA_REGISTRY() {
+        return SUBJECT_DATA_REGISTRY;
+    }
+    /** Every other table, and why it needs no per-subject treatment. */
+    static get TABLES_WITHOUT_SUBJECT_COLUMN() {
+        return TABLES_WITHOUT_SUBJECT_COLUMN;
+    }
+
+    async _tableExists(table) {
+        const row = await db.get('SELECT to_regclass(?) AS t', [`public.${table}`]);
+        return Boolean(row && row.t);
     }
 
     /** Full personal-data export for a subject (access / portability). */
@@ -674,6 +779,52 @@ class DSRService {
             'SELECT flight_risk, impact_of_loss, risk_factors, computed_score FROM retention_risk WHERE employee_id = ?',
             [employeeId]
         );
+        await q(
+            'certifications',
+            `SELECT id, skill_id, cert_number, issued_on, expires_on, is_revoked, revoked_reason, notes,
+                    original_name, av_status, created_at
+               FROM employee_certifications WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'aspirations',
+            'SELECT target_role_id, interests, open_to_mobility, updated_at FROM employee_aspirations WHERE employee_id = ?',
+            [employeeId]
+        );
+        await q(
+            'opportunityApplications',
+            `SELECT id, opportunity_id, note, status, created_at, decided_at, decision_note
+               FROM opportunity_applications WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'plannedAbsences',
+            'SELECT id, starts_on, ends_on, kind, note FROM planned_absences WHERE employee_id = ? ORDER BY starts_on',
+            [employeeId]
+        );
+        await q(
+            'notifications',
+            `SELECT id, kind, payload, created_at, read_at FROM notifications
+              WHERE user_id = ? AND user_type::text IN ('employee', 'manager') ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'hrisLinks',
+            'SELECT id, provider, external_id, last_seen_at, created_at FROM hris_links WHERE employee_id = ?',
+            [employeeId]
+        );
+        await q(
+            'lmsEnrollments',
+            `SELECT id, course_id, status, created_at, due_at, completed_at
+               FROM lms_enrollments WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'lmsCompletions',
+            `SELECT id, provider, course_id, completed_at, score
+               FROM lms_completions WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
         // PRIVACY (migration 165): the person's objections to profiling (open
         // and withdrawn), the notice versions they acknowledged and their own
         // self-service downloads. Who reviewed an objection is an id, not a name.
@@ -697,16 +848,103 @@ class DSRService {
      * special-category data, keeping the append-only audit chain intact (it
      * references ids, not names). Returns a summary. Irreversible.
      */
+    /**
+     * The legal hold in force on a subject, or null: on the person themselves
+     * (migration 157, set before departure) or on their open retention job.
+     */
+    async legalHoldOf(employeeId) {
+        const id = Number(employeeId);
+        const e = await db.get(
+            'SELECT legal_hold_at, legal_hold_by, legal_hold_reason FROM employees WHERE id = ?',
+            [id]
+        );
+        if (e && e.legalHoldAt)
+            return {
+                at: e.legalHoldAt,
+                by: e.legalHoldBy || null,
+                reason: e.legalHoldReason || null,
+                level: 'employee',
+            };
+        const j = await db.get(
+            `SELECT legal_hold_at, legal_hold_by, legal_hold_reason FROM pii_cleanup_jobs
+              WHERE employee_id = ? AND completed_at IS NULL AND legal_hold_at IS NOT NULL
+              ORDER BY legal_hold_at DESC LIMIT 1`,
+            [id]
+        );
+        if (j && j.legalHoldAt)
+            return {
+                at: j.legalHoldAt,
+                by: j.legalHoldBy || null,
+                reason: j.legalHoldReason || null,
+                level: 'retention_job',
+            };
+        return null;
+    }
+
+    /**
+     * An approved two-person override for THIS subject, or a refusal. Checked
+     * here, not trusted from the caller: approved, same employee, approver is a
+     * different admin than the requester (migration 166).
+     */
+    async _verifyOverride(employeeId, requestId) {
+        const r = await db.get(
+            `SELECT id, employee_id, state, requested_by_admin_id, decided_by_admin_id
+               FROM erasure_override_requests WHERE id = ?`,
+            [Number(requestId)]
+        );
+        const ok =
+            r &&
+            Number(r.employeeId) === Number(employeeId) &&
+            r.state === 'approved' &&
+            r.decidedByAdminId != null &&
+            Number(r.decidedByAdminId) !== Number(r.requestedByAdminId);
+        if (!ok) {
+            const err = new Error('erasure_override_invalid');
+            err.code = 'erasure_override_invalid';
+            err.status = 409;
+            err.expose = true;
+            err.userMessage =
+                'Erasure refused: the legal-hold override is not an approved two-person request for this employee.';
+            throw err;
+        }
+        return r;
+    }
+
     async erase(
         employeeId,
         actorAdminId = null,
-        { reason = null, method = 'dsr_erase', reapply = false } = {}
+        { reason = null, method = 'dsr_erase', reapply = false, legalHoldOverride = null } = {}
     ) {
         const emp = await db.get(
-            'SELECT id, is_active, email, employee_number FROM employees WHERE id = ?',
+            'SELECT id, is_active, email, employee_number, username FROM employees WHERE id = ?',
             [employeeId]
         );
         if (!emp) throw new Error(`Employee ${employeeId} not found`);
+        // LEGAL HOLD: no erasure while a hold is set (the held data may be
+        // evidence), whatever the entry point: the maintenance panel, the
+        // capability API, the retention purge. The one way through is an
+        // APPROVED two-person override (a written reason, and a second,
+        // different SuperAdmin), re-verified here. A re-application after a
+        // restore is not a new erasure: the person was erased before the hold
+        // the restored backup brought back, so it proceeds.
+        if (!reapply) {
+            const hold = await this.legalHoldOf(employeeId);
+            if (hold && legalHoldOverride == null) {
+                const err = new Error('erasure_legal_hold');
+                err.code = 'erasure_legal_hold';
+                err.status = 409;
+                err.expose = true;
+                err.hold = hold;
+                const on = hold.at ? new Date(hold.at).toISOString().slice(0, 10) : '?';
+                err.userMessage =
+                    `Erasure refused: legal hold set by ${hold.by || 'unknown'} on ${on}` +
+                    (hold.reason ? ` (reason: ${hold.reason})` : '') +
+                    '. Release the hold, or request a two-person override (Maintenance panel).';
+                throw err;
+            }
+            if (legalHoldOverride != null)
+                await this._verifyOverride(employeeId, legalHoldOverride);
+        }
         // Read BEFORE the pseudonymisation below: the SSO-migration history is
         // searched with the real identifiers.
         const origEmail = String(emp.email || '')
@@ -715,6 +953,11 @@ class DSRService {
         const origNumber = String(emp.employeeNumber ?? emp.employee_number ?? '')
             .trim()
             .toLowerCase();
+        const origUsername = String(emp.username || '')
+            .trim()
+            .toLowerCase();
+        // Paths of the person's uploaded files, deleted once the erasure commits.
+        const filesToDelete = [];
         const out = await db.runTransaction(async () => {
             const tag = `erased-${employeeId}`;
             // erasure is at least the LEAVER cascade. A subject
@@ -963,6 +1206,126 @@ class DSRService {
                            WHERE employee_id = ?`,
                 [employeeId]
             );
+            // ---- the categories added with the registry (export keys above) ----
+            const hrisIds = (
+                await db.all('SELECT external_id FROM hris_links WHERE employee_id = ?', [
+                    employeeId,
+                ])
+            )
+                .map((r) => String(r.externalId ?? r.external_id ?? '').trim())
+                .filter(Boolean);
+            for (const r of await db.all(
+                'SELECT file_uri, quarantine_uri FROM employee_certifications WHERE employee_id = ?',
+                [employeeId]
+            ))
+                for (const v of Object.values(r))
+                    if (v && v !== ERASED_MARKER) filesToDelete.push(String(v));
+            await db.run(
+                `UPDATE employee_certifications SET cert_number = NULL, notes = NULL,
+                        revoked_reason = CASE WHEN revoked_reason IS NULL THEN NULL ELSE '[erased]' END,
+                        original_name = CASE WHEN original_name IS NULL THEN NULL ELSE '[erased]' END,
+                        file_uri = CASE WHEN file_uri IS NULL THEN NULL ELSE '[erased]' END,
+                        quarantine_uri = NULL
+                  WHERE employee_id = ?`,
+                [employeeId]
+            );
+            await db.run('DELETE FROM employee_aspirations WHERE employee_id = ?', [employeeId]);
+            await db.run(
+                `UPDATE opportunity_applications SET note = NULL,
+                        decision_note = CASE WHEN decision_note IS NULL THEN NULL ELSE '[erased]' END
+                  WHERE employee_id = ?`,
+                [employeeId]
+            );
+            await db.run('UPDATE planned_absences SET note = NULL WHERE employee_id = ?', [
+                employeeId,
+            ]);
+            await db.run(
+                "DELETE FROM notifications WHERE user_id = ? AND user_type::text IN ('employee', 'manager')",
+                [employeeId]
+            );
+            await db.run('DELETE FROM hris_links WHERE employee_id = ?', [employeeId]);
+            // ---- EVERY OTHER REGISTERED COLUMN (erasureRegistry) -----------------
+            // Each 'erase' / 'delete' entry becomes one statement. A table absent
+            // from this schema is skipped; a statement that fails on a present
+            // table aborts the whole erasure (fail closed).
+            for (const entry of SUBJECT_DATA_REGISTRY) {
+                if (entry.treatment !== 'erase' && entry.treatment !== 'delete') continue;
+                if (!(await this._tableExists(entry.table))) continue;
+                const { sql, params } = registryWhere(entry, employeeId);
+                if (entry.files) {
+                    const rows = await db.all(
+                        `SELECT ${entry.files.join(', ')} FROM ${entry.table} WHERE ${sql}`,
+                        params
+                    );
+                    for (const r of rows)
+                        for (const v of Object.values(r))
+                            if (v && v !== ERASED_MARKER) filesToDelete.push(String(v));
+                }
+                if (entry.treatment === 'delete')
+                    await db.run(`DELETE FROM ${entry.table} WHERE ${sql}`, params);
+                else
+                    await db.run(
+                        `UPDATE ${entry.table} SET ${registrySet(entry)} WHERE ${sql}`,
+                        params
+                    );
+            }
+            // ---- the 'custom' registry entries ------------------------------------
+            // Notifications sent to OTHER people about the subject: the notice
+            // stays with its recipient, the name / address / free text go.
+            await db.run(
+                `UPDATE notifications
+                    SET payload = (payload - 'name' - 'employee' - 'employeeName' - 'email'
+                                   - 'comment' - 'reason' - 'gapReason' - 'title' - 'request'
+                                   - 'outcome') || '{"subjectErased": true}'::jsonb
+                  WHERE payload->>'employeeId' = ?::text
+                     OR (? <> '' AND lower(payload->>'email') = ?)`,
+                [String(employeeId), origEmail, origEmail]
+            );
+            // Sign-in history: the login name the person typed, and where from.
+            const logins = [origUsername, origEmail].filter(Boolean);
+            if (logins.length)
+                await db.run(
+                    `UPDATE login_attempts SET username = ?, ip_address = NULL
+                      WHERE lower(username::text) = ANY(?)`,
+                    [tag, logins]
+                );
+            // Sign-up applications: by the account they created, or by address.
+            await db.run(
+                `UPDATE onboarding_requests
+                    SET email = ('erased-onb-' || id || '@erased.local'), first_name = NULL, last_name = NULL,
+                        password_hash = NULL, external_id = NULL, decision_note = NULL
+                  WHERE created_employee_id = ? OR (? <> '' AND lower(email::text) = ?)`,
+                [employeeId, origEmail, origEmail]
+            );
+            // Other people's movement history names the subject when they were
+            // someone's manager or supervisor: relabel to the pseudonym.
+            await db.run(
+                `UPDATE employee_movements
+                    SET from_label = CASE WHEN from_id = ? THEN ? ELSE from_label END,
+                        to_label   = CASE WHEN to_id   = ? THEN ? ELSE to_label END
+                  WHERE kind IN ('manager', 'supervisor') AND (from_id = ? OR to_id = ?)`,
+                [
+                    employeeId,
+                    `Erased ${employeeId}`,
+                    employeeId,
+                    `Erased ${employeeId}`,
+                    employeeId,
+                    employeeId,
+                ]
+            );
+            // HRIS run logs: a stored plan / records line carrying the person's
+            // e-mail, employee number or HRIS id is dropped (the run stays).
+            const needles = [origEmail, origNumber, ...hrisIds.map((x) => x.toLowerCase())].filter(
+                (x) => x && x.length >= 3
+            );
+            for (const needle of needles)
+                await db.run(
+                    `UPDATE hris_sync_runs SET plan = NULL, records = NULL
+                      WHERE (plan IS NOT NULL OR records IS NOT NULL)
+                        AND (strpos(lower(COALESCE(plan::text, '')), ?) > 0
+                             OR strpos(lower(COALESCE(records::text, '')), ?) > 0)`,
+                    [needle, needle]
+                );
             // Terminate any live session for the erased subject so an open browser
             // can't keep an authenticated view onto the now-anonymized record. The
             // deserialize gate (is_active/is_account_active=false) is the backstop;
@@ -974,6 +1337,12 @@ class DSRService {
             } catch (_) {
                 /* best-effort; deserialize gate backstops it */
             }
+            // The override that allowed this erasure is now spent.
+            if (legalHoldOverride != null && !reapply)
+                await db.run(
+                    "UPDATE erasure_override_requests SET state = 'executed', executed_at = now() WHERE id = ? AND state = 'approved'",
+                    [Number(legalHoldOverride)]
+                );
             // THE TOMBSTONE (S-07): the erasure outlives any backup restored
             // later. No FK to employees, so a snapshot restore's wipe keeps it;
             // a re-application only stamps `last_reapplied_at`.
@@ -991,6 +1360,9 @@ class DSRService {
                         (linked.length
                             ? `; ${linked.length} linked admin account(s) pseudonymised and switched off`
                             : '') +
+                        (legalHoldOverride != null && !reapply
+                            ? `; legal hold overridden by two-person request #${Number(legalHoldOverride)}`
+                            : '') +
                         (reason ? ` — reason: ${reason}` : ''),
                     severity: 'warning',
                     category: 'maintenance',
@@ -1007,7 +1379,33 @@ class DSRService {
         });
         // Mirror outside the database, once the transaction has committed.
         if (!reapply) this._appendTombstoneFile('employee', employeeId, method);
+        // Uploaded evidence / certificates: the rows now say '[erased]', the
+        // files go too, only inside the uploads folder, never a path that
+        // escapes it.
+        out.filesDeleted = this._deleteUploadedFiles(filesToDelete);
         return out;
+    }
+
+    /** Delete files that resolve inside the uploads folder. Returns the count. */
+    _deleteUploadedFiles(paths, dir = uploadsDir()) {
+        let n = 0;
+        for (const p of paths) {
+            if (!insideDir(dir, p)) {
+                console.error(
+                    '[dsr] file outside the uploads folder NOT deleted:',
+                    path.basename(String(p))
+                );
+                continue;
+            }
+            try {
+                fs.unlinkSync(path.resolve(dir, p));
+                n += 1;
+            } catch (e) {
+                if (!e || e.code !== 'ENOENT')
+                    console.error('[dsr] evidence file not deleted:', e && e.message);
+            }
+        }
+        return n;
     }
 
     // ===================== Erasure tombstones (S-07) ==========================
@@ -1306,6 +1704,12 @@ class DSRService {
                         id,
                     ])
                     .catch(() => {});
+                // A hold set on the PERSON (not on the job) is a skip, not a failure.
+                if (e && e.code === 'erasure_legal_hold') {
+                    await this._ledger(runId, cat, id, effective, 'skipped_legal_hold', where);
+                    bump('skipped_legal_hold');
+                    continue;
+                }
                 await this._ledger(
                     runId,
                     cat,

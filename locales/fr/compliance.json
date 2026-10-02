@@ -404,5 +404,13 @@
   "privacy_reg_zone_blue": "Projet de plan de développement",
   "privacy_reg_decision_reason": "Motif de la décision",
   "privacy_reg_dismiss": "Écarter",
-  "privacy_reg_proceed": "Poursuivre"
+  "privacy_reg_proceed": "Poursuivre",
+  "cat_certifications": "Certifications et leurs justificatifs",
+  "cat_aspirations": "Souhaits d'évolution",
+  "cat_opportunityApplications": "Candidatures aux postes internes",
+  "cat_lmsEnrollments": "Inscriptions aux formations",
+  "cat_lmsCompletions": "Formations suivies",
+  "cat_plannedAbsences": "Absences prévues",
+  "cat_notifications": "Notifications reçues",
+  "cat_hrisLinks": "Identifiant dans le système RH"
 }

@@ -143,6 +143,9 @@ const KEEP = new Set([
     'privacy_notice_acks',
     'profiling_objections',
     'privacy_self_exports',
+    // Erasure under legal hold (migration 166): the two-person override
+    // requests are a legal register, kept like dsr_requests.
+    'erasure_override_requests',
 ]);
 
 // Tables to WIPE: assessment, talent, performance, workflow and operational data.

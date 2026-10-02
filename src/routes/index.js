@@ -3488,6 +3488,28 @@ router.post(
     requireSuperAdmin,
     _m55(MaintenanceController.dsrErase.bind(MaintenanceController))
 );
+// Erasure under legal hold (migration 166): status, pending list, request,
+// decision. A second, different SuperAdmin must approve; the service re-checks.
+router.get(
+    '/admin/maintenance/dsr/:id(\\d+)/erase-status',
+    requireSuperAdmin,
+    _m55(MaintenanceController.dsrEraseStatus.bind(MaintenanceController))
+);
+router.get(
+    '/admin/maintenance/dsr-erase-overrides',
+    requireSuperAdmin,
+    _m55(MaintenanceController.dsrOverrideList.bind(MaintenanceController))
+);
+router.post(
+    '/admin/maintenance/dsr-erase-override',
+    requireSuperAdmin,
+    _m55(MaintenanceController.dsrOverrideRequest.bind(MaintenanceController))
+);
+router.post(
+    '/admin/maintenance/dsr-erase-override/:rid(\\d+)/decide',
+    requireSuperAdmin,
+    _m55(MaintenanceController.dsrOverrideDecide.bind(MaintenanceController))
+);
 // ---- end SECTION accounts ----------------------------------------------------------------
 
 // ---- SECTION operations — Operations health & settings (2026-09-10) -----------------------

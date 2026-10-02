@@ -404,5 +404,13 @@
   "privacy_reg_zone_blue": "Draft development plan",
   "privacy_reg_decision_reason": "Reason for the decision",
   "privacy_reg_dismiss": "Dismiss",
-  "privacy_reg_proceed": "Proceed"
+  "privacy_reg_proceed": "Proceed",
+  "cat_certifications": "Certifications and their evidence",
+  "cat_aspirations": "Career aspirations",
+  "cat_opportunityApplications": "Applications to internal openings",
+  "cat_lmsEnrollments": "Training enrolments",
+  "cat_lmsCompletions": "Completed training",
+  "cat_plannedAbsences": "Planned absences",
+  "cat_notifications": "Notifications received",
+  "cat_hrisLinks": "Identifier in the HR system"
 }

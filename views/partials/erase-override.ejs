@@ -1,0 +1,45 @@
+<%#
+  Erasure under legal hold: the two-person override (migration 166).
+  A SuperAdmin requests the erasure of a person under legal hold with a written
+  reason and the retyped employee number; a SECOND, different SuperAdmin
+  approves (the erasure runs then) or refuses; the requester may withdraw.
+  Behaviour in public/js/erase-override.js (no inline handlers). Reuses the
+  panel's employee datalist (#mntEmpList).
+%>
+<section class="card mnt-card" id="mntEraseOverride"
+  data-i18n="<%= JSON.stringify({
+    err: __('admin:maint_generic_err'),
+    needReason: __('admin:maint_err_maintenance_reason_required'),
+    empty: __('admin:maint_eo_empty'),
+    row: __('admin:maint_eo_row'),
+    approve: __('admin:maint_eo_approve'),
+    refuse: __('admin:maint_eo_refuse'),
+    withdraw: __('admin:maint_eo_withdraw'),
+    note: __('admin:maint_eo_note'),
+    requested: __('admin:maint_eo_requested'),
+    done_executed: __('admin:maint_eo_done_executed'),
+    done_refused: __('admin:maint_eo_done_refused'),
+    done_withdrawn: __('admin:maint_eo_done_withdrawn')
+  }) %>">
+  <h2 class="mnt-h2"><i class="fas fa-scale-balanced" aria-hidden="true"></i> <%= __('admin:maint_eo_title') %></h2>
+  <p class="text-muted mnt-hint"><%= __('admin:maint_eo_hint') %></p>
+  <form id="mntEoForm" class="mnt-row" novalidate>
+    <label for="mntEoEmp" class="mnt-label"><%= __('admin:maint_employee_pick') %></label>
+    <input id="mntEoEmp" name="employeeId" list="mntEmpList" class="form-control mnt-input" placeholder="<%= __('admin:maint_employee_ph') %>" autocomplete="off" required>
+    <label for="mntEoNumber" class="mnt-label"><%= __('admin:maint_dsr_confirm_label') %></label>
+    <input id="mntEoNumber" name="confirmNumber" class="form-control mnt-input" autocomplete="off" required>
+    <label for="mntEoReason" class="mnt-label"><%= __('admin:maint_eo_reason') %></label>
+    <input id="mntEoReason" name="reason" class="form-control mnt-input" maxlength="1000" required>
+    <button type="submit" class="btn btn-warning"><%= __('admin:maint_eo_request') %></button>
+  </form>
+  <p id="mntEoMsg" class="mnt-hint" role="status" hidden></p>
+  <h3 class="mnt-h3"><%= __('admin:maint_eo_pending') %></h3>
+  <p class="text-muted mnt-hint"><%= __('admin:maint_eo_expiry') %></p>
+  <div id="mntEoList" aria-live="polite"></div>
+</section>
+<script src="/js/erase-override.js" nonce="<%= cspNonce %>" defer></script>
+<style>
+#mntEraseOverride .mnt-eo-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding: .5rem 0; border-top: 1px solid var(--border-color, #e5e7eb); }
+#mntEraseOverride .mnt-eo-row p { flex-basis: 100%; margin: 0; }
+#mntEraseOverride .mnt-eo-row .mnt-input { flex: 1; min-width: 14rem; }
+</style>
