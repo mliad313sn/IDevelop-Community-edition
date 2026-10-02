@@ -1,6 +1,8 @@
 /** @type {import('jest').Config} */
 module.exports = {
-    testEnvironment: 'node',
+    // The stock node environment plus __nativeRequire for ES-module dependencies
+    // (see tests/helpers/nativeEsmEnvironment.js).
+    testEnvironment: '<rootDir>/tests/helpers/nativeEsmEnvironment.js',
     roots: ['<rootDir>/tests/unit', '<rootDir>/src'],
     testMatch: ['**/?(*.)+(test|spec).js'],
     testPathIgnorePatterns: ['/node_modules/', '/tests/e2e/'],
