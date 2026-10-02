@@ -15,11 +15,27 @@ const crypto = require('crypto');
 const db = require('../config/database');
 
 // Accept the previous/next 30s step too (standard tolerance for clock skew
-// between the server and the user's phone).
-function totp() {
-    const { authenticator } = require('otplib');
-    authenticator.options = { window: 1 };
-    return authenticator;
+// between the server and the user's phone). otplib 13 replaced the v12
+// `authenticator.check(code, secret)` + `{ window: 1 }` with verifySync and an
+// epoch tolerance in seconds: 30s either side is exactly the previous, current
+// and next step, as before. Defaults are unchanged (SHA1, 6 digits, 30s,
+// base32 secret), so secrets stored under v12 keep verifying. v13 throws on a
+// malformed token or secret where v12 returned false, hence the catch. The
+// require stays outside it: a module that fails to load must surface as an
+// error, never read as "wrong code". (otplib 13 pulls ES-module plugins, loaded
+// with require(esm): Node >= 20.19, as package.json engines already demand.)
+const TOTP_TOLERANCE_SECONDS = 30;
+function totpCheck(code, secret) {
+    const { verifySync } = require('otplib');
+    try {
+        return verifySync({
+            secret,
+            token: String(code == null ? '' : code),
+            epochTolerance: TOTP_TOLERANCE_SECONDS,
+        }).valid;
+    } catch {
+        return false;
+    }
 }
 
 // Every admin account is privileged and must use MFA (admins authenticate with
@@ -263,7 +279,7 @@ class MfaService {
         if (!row) throw new Error('MFA not initialised');
         // The PG driver camelizes row keys: secret_enc → secretEnc.
         const secret = decrypt(row.secretEnc);
-        const ok = totp().check(code, secret);
+        const ok = totpCheck(code, secret);
         if (!ok) return false;
         await db.run(
             `UPDATE mfa_secrets SET confirmed_at = now() WHERE user_type = ? AND user_id = ?`,
@@ -281,7 +297,7 @@ class MfaService {
         );
         if (!row || !row.confirmedAt) return false;
         const secret = decrypt(row.secretEnc);
-        if (!totp().check(code, secret)) return false;
+        if (!totpCheck(code, secret)) return false;
 
         // CONSUME the code. A TOTP code stayed valid for its whole window (and the
         // +/-1 step tolerance, so ~90 seconds), and nothing recorded that it had been
