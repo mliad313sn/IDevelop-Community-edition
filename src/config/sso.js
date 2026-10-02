@@ -657,17 +657,15 @@ function registerOidc(passport) {
     const tokenURL = env('OIDC_TOKEN_URL');
     const userInfoURL = env('OIDC_USERINFO_URL');
     const callbackURL = env('OIDC_REDIRECT_URL');
-    if (
-        !(
-            issuer &&
-            clientID &&
-            clientSecret &&
-            authorizationURL &&
-            tokenURL &&
-            userInfoURL &&
-            callbackURL
-        )
-    ) {
+    if (!(
+        issuer &&
+        clientID &&
+        clientSecret &&
+        authorizationURL &&
+        tokenURL &&
+        userInfoURL &&
+        callbackURL
+    )) {
         return null;
     }
 

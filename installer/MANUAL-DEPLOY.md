@@ -12,12 +12,13 @@ Two things to know up front:
   **§8**. The app itself is just **Node.js + PostgreSQL**.
 
 Defaults used throughout (change to taste, keep them consistent):
-| Setting | Value |
-|---|---|
+
+| Setting     | Value                       |
+| ----------- | --------------------------- |
 | Install dir | `C:\Program Files\IDevelop` |
-| App port | `3000` |
-| Database | `idevelop` |
-| DB role | `idevelop_app` |
+| App port    | `3000`                      |
+| Database    | `idevelop`                  |
+| DB role     | `idevelop_app`              |
 
 ---
 
