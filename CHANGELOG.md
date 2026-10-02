@@ -90,6 +90,24 @@ project uses [Semantic Versioning](https://semver.org/).
     - `scripts/rotate-app-key.js` re-encrypts every store, v1 and v2: app
       settings, LMS, webhooks, safety gate, HRIS connector credentials and MFA
       secrets.
+- **Two-factor authentication is mandatory** for every administrator role and
+  for managers who sign in with a password (SSO sessions rely on the identity
+  provider's MFA), migration 162. An upgraded install gets a grace period
+  (14 days for administrators, 30 for managers) with a countdown at each
+  sign-in; a new install enforces it at once. The gate fails closed, and so
+  does the per-account `mfa_required` policy. SuperAdmins can switch the
+  policies off (`mfaRequiredForPrivileged`, `mfaRequiredForManagers`).
+- **Session defaults: 30 minutes idle, 12 hours absolute** (they were 60 min
+  and 24 h). An upgrade changes them only where the old default was never
+  changed.
+- Sign-in throttling: progressive delays per (address, identifier) and per
+  endpoint, a per-address ceiling high enough for a site behind one address
+  (`LOGIN_IP_CEILING`, default 100); administrator accounts are locked after
+  10 failures (`ADMIN_HARD_LOCK_AFTER`) and the SuperAdmins alerted; other
+  accounts are slowed, never refused, and the person is notified. A wrong
+  current password on `/change-password` or a wrong code at `/login/mfa`,
+  `/v2/uam/mfa/verify` or `/v2/uam/mfa/disable` counts toward the lockout,
+  and those checks are rate-limited per user.
 - HTTP hardening moved into `src/middleware/httpHardening.js`, with tests:
     - JSON detection is anchored on the MIME essence, so
       `text/plain; x=application/json` no longer skips the CSRF check;

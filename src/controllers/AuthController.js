@@ -502,6 +502,8 @@ class AuthController {
                         req.session.mfaPending = {
                             id: user.id,
                             userType: user.userType,
+                            // A wrong code counts toward THIS account's lockout.
+                            username: user.username || null,
                             at: Date.now(),
                         };
                         return req.session.save(() => res.redirect('/login/mfa'));
@@ -616,6 +618,16 @@ class AuthController {
                     'MFA_FAILED',
                     `Invalid MFA code for ${pending.userType} #${pending.id}`,
                     pending.userType === 'admin' ? pending.id : null
+                );
+                // A wrong second factor is a failed authentication of this
+                // account: it feeds the account lockout policy too.
+                await require('../middleware/rateLimiter').noteAuthenticatedFailure(
+                    {
+                        id: pending.id,
+                        userType: pending.userType === 'admin' ? 'admin' : 'employee',
+                        username: pending.username || null,
+                    },
+                    req.ip
                 );
                 // Throttle brute force of the 6-digit code: invalidate the pending
                 // sign-in after 5 wrong codes, forcing a full re-login.
@@ -1469,6 +1481,7 @@ class AuthController {
             const { currentPassword, newPassword, confirmPassword } = req.body;
 
             if (newPassword !== confirmPassword) {
+                req._reauthNotAGuess = true; // nothing was checked against the account
                 req.flash(
                     'error',
                     req.t ? req.t('flash:pw_new_mismatch') : 'New passwords do not match'
@@ -1482,6 +1495,7 @@ class AuthController {
                 // Employee/manager path enforces the same complexity policy.
                 const pw = passwordValidator.validate(newPassword);
                 if (!pw.valid) {
+                    req._reauthNotAGuess = true; // refused before the current password is read
                     // `flash:pw_policy` interpolated the validator's ENGLISH list into a
                     // French sentence ("Mot de passe : Password must be at least 12
                     // characters long"). Localize each rule instead.
@@ -1537,6 +1551,19 @@ class AuthController {
                           : '/dashboard';
                 res.redirect(home);
             } else {
+                // A wrong CURRENT password is a failed authentication of this
+                // account: it counts toward its lockout (the route's
+                // passwordReauthLimiter caps the rate per user). A new-password
+                // rule refusal is not a guess and must not burn the re-auth budget.
+                const wrongCurrent = /current password is incorrect/i.test(
+                    String(result.message || '')
+                );
+                if (!wrongCurrent) req._reauthNotAGuess = true;
+                if (wrongCurrent)
+                    await require('../middleware/rateLimiter').noteAuthenticatedFailure(
+                        req.user,
+                        req.ip
+                    );
                 // `result.message` is English service prose ("Current password is
                 // incorrect"). It never reaches the page verbatim.
                 req.flash('error', localizeAuthMessage(req, result.message));

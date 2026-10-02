@@ -67,7 +67,21 @@ async function values(q) {
     );
     return Object.fromEntries(r.rows.map((x) => [x.setting_key, x.setting_value]));
 }
-async function setState(q, { installedHoursAgo, rows }) {
+/**
+ * The migration tells a new install from an upgrade by the age of the oldest
+ * schema_meta row. Rather than rewriting that shared table (other DB suites
+ * run in parallel and a lock on every row deadlocks them), the age source is
+ * substituted in the SQL: same logic, a chosen install date.
+ */
+const AGE_SOURCE = /FROM schema_meta\s+WHERE applied_at IS NOT NULL/;
+function migrationInstalledAgo(hours) {
+    if (!AGE_SOURCE.test(MIG)) throw new Error('migration 162 no longer reads schema_meta');
+    return MIG.replace(
+        AGE_SOURCE,
+        `FROM (SELECT now() - interval '${Number(hours)} hours' AS applied_at) schema_meta WHERE applied_at IS NOT NULL`
+    );
+}
+async function setState(q, { rows }) {
     await q.query('DELETE FROM app_settings WHERE setting_key = ANY($1)', [KEYS]);
     for (const [k, v] of Object.entries(rows || {}))
         await q.query(
@@ -75,19 +89,14 @@ async function setState(q, { installedHoursAgo, rows }) {
              VALUES ($1, $2, $3, 'security')`,
             [k, v, /^mfaRequired/.test(k) ? 'boolean' : 'number']
         );
-    await q.query(
-        `UPDATE schema_meta SET applied_at = now() - ($1 * interval '1 hour')
-          WHERE applied_at IS NOT NULL`,
-        [installedHoursAgo]
-    );
 }
 
 suite('migration 162: authentication security defaults', () => {
     test('new install: MFA required, no grace start, 30 min / 12 h', async () => {
         if (!ready) return;
         await inRolledBackTx(async (q) => {
-            await setState(q, { installedHoursAgo: 0 });
-            await q.query(MIG);
+            await setState(q, {});
+            await q.query(migrationInstalledAgo(0));
             const v = await values(q);
             expect(v).toEqual({
                 mfaRequiredForPrivileged: 'true',
@@ -105,14 +114,13 @@ suite('migration 162: authentication security defaults', () => {
         if (!ready) return;
         await inRolledBackTx(async (q) => {
             await setState(q, {
-                installedHoursAgo: 24 * 90,
                 rows: {
                     mfaRequiredForPrivileged: 'false',
                     sessionIdleMinutes: '60', // the old default
                     sessionTimeout: '8', // an administrator's choice
                 },
             });
-            await q.query(MIG);
+            await q.query(migrationInstalledAgo(24 * 90));
             const v = await values(q);
             expect(v.mfaRequiredForPrivileged).toBe('true');
             expect(v.sessionIdleMinutes).toBe('30');
@@ -126,11 +134,9 @@ suite('migration 162: authentication security defaults', () => {
     test('a re-run changes nothing, even a value set after the first run', async () => {
         if (!ready) return;
         await inRolledBackTx(async (q) => {
-            await setState(q, {
-                installedHoursAgo: 24 * 90,
-                rows: { sessionTimeout: '24' },
-            });
-            await q.query(MIG);
+            await setState(q, { rows: { sessionTimeout: '24' } });
+            const upgrade = migrationInstalledAgo(24 * 90);
+            await q.query(upgrade);
             expect((await values(q)).sessionTimeout).toBe('12');
             await q.query(
                 "UPDATE app_settings SET setting_value = '24' WHERE setting_key = 'sessionTimeout'"
@@ -139,7 +145,7 @@ suite('migration 162: authentication security defaults', () => {
                 "UPDATE app_settings SET setting_value = 'false' WHERE setting_key = 'mfaRequiredForPrivileged'"
             );
             const before = await values(q);
-            await q.query(MIG);
+            await q.query(upgrade);
             expect(await values(q)).toEqual(before);
         });
     });

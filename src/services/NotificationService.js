@@ -1386,6 +1386,23 @@ class NotificationService {
                     en: 'Super administrator password reset',
                 },
             },
+            // ---- Lockout model (progressive throttling, admin hard lock).
+            'security.admin_account_locked': {
+                icon: 'fa-lock',
+                link: '/admins',
+                title: {
+                    fr: 'Compte administrateur verrouillé après des échecs de connexion',
+                    en: 'Administrator account locked after failed sign-ins',
+                },
+            },
+            'security.account_soft_locked': {
+                icon: 'fa-user-lock',
+                link: '/account',
+                title: {
+                    fr: 'Connexions ralenties sur votre compte',
+                    en: 'Sign-ins slowed on your account',
+                },
+            },
         };
     }
 
@@ -1497,6 +1514,10 @@ class NotificationService {
             'security.superadmin_sso_refused': 'immediate',
             'security.superadmin_mfa_changed': 'immediate',
             'security.superadmin_password_reset': 'immediate',
+            // Lockout: the SuperAdmins now; the person, now too (someone is
+            // trying their account; still user-controllable by category).
+            'security.admin_account_locked': 'immediate',
+            'security.account_soft_locked': 'immediate',
             // 3.23.20: the SSO migration invitation — in-app row written by
             // SsoInviteService (enqueue); its e-mail is composed and sent there.
             'sso.migration_invite': 'none',
@@ -2126,6 +2147,15 @@ class NotificationService {
             'security.superadmin_password_reset': {
                 fr: "Le mot de passe d'un compte super administrateur a été réinitialisé. La double authentification reste exigée. Si ce n'était pas prévu, vérifiez le journal de sécurité.",
                 en: "A super administrator account's password was reset. Two-factor authentication is still required. If this was not expected, check the security log.",
+            },
+            // ---- Lockout ----
+            'security.admin_account_locked': {
+                fr: "Un compte administrateur a été verrouillé après une série d'échecs de connexion. Si ce n'était pas la personne elle-même, vérifiez le journal de sécurité ; un super administrateur peut le déverrouiller.",
+                en: 'An administrator account was locked after a series of failed sign-ins. If it was not the person themselves, check the security log; a super administrator can unlock it.',
+            },
+            'security.account_soft_locked': {
+                fr: "Plusieurs tentatives de connexion ont échoué sur votre compte : les connexions sont ralenties pour un moment. Votre mot de passe reste valable. Si ce n'était pas vous, prévenez votre administrateur.",
+                en: 'Several sign-in attempts on your account failed: sign-ins are slowed for a while. Your password still works. If it was not you, tell your administrator.',
             },
         };
     }

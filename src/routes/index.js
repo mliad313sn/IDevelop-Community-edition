@@ -1034,7 +1034,11 @@ router.get('/lang/:lng', (req, res) => {
 
 // Change Password
 router.get('/change-password', AuthController.showChangePassword);
-router.post('/change-password', AuthController.changePassword);
+// The current-password check is rate-limited per signed-in user (only REFUSED
+// posts count) and each wrong current password counts toward the account's
+// lockout policy (AuthController.changePassword -> noteAuthenticatedFailure).
+const { passwordReauthLimiter } = require('../middleware/rateLimiter');
+router.post('/change-password', passwordReauthLimiter, AuthController.changePassword);
 
 // Session monitoring is an ADMIN capability: admins review their own device
 // list at /account/sessions, and SuperAdmins get the platform-wide monitor
