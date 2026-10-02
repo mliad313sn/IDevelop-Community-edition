@@ -75,6 +75,37 @@ project uses [Semantic Versioning](https://semver.org/).
   legacy `repeat` option the jobs use), and commitlint 21 (needs Node ≥ 22.12,
   while the project supports 20.19+).
 
+### Security (CSRF on uploads, SSO notices, security panels)
+
+- **CSRF on multipart uploads (audit SA-15, fixed).** The data-management and
+  full-system imports, the skill-matrix workbook and the certificate evidence
+  form were exempt from the CSRF token check because multer parses the body
+  after it. Nothing is exempt now: the token travels in the `x-csrf-token`
+  header (every same-origin `fetch` mutation gets it from `public/js/main.js`)
+  or, for a native multipart form, as `?_csrf=` on its action (read for
+  multipart requests only, redacted in the request log). A missing or wrong
+  token is refused with 403. `/api/v1` keeps its key model. A test enumerates
+  every upload mount (21 routes, HRIS CSV and ESCO upload included) from the
+  live routers.
+- **SSO invitations**: neutral wording ("your {{provider}} account"; the
+  Windows/Outlook sentence only for a Microsoft account; "your company account"
+  when the provider has no name); the reminder prefix in both halves of the
+  subject; the in-app notice opens `/account/sso-change`, the same explanation
+  as the e-mail for the signed-in person only, with the go-live date or the
+  provider as its subtitle. A printed notice is due for everyone who never
+  received the e-mail (no address or e-mail off).
+- **Security panels** that the earlier ports left without a view: the
+  unencrypted SMTP relay warning (settings page and dashboard) and its
+  SuperAdmin form; the copilot egress gate (why the AI provider is off, the
+  allowed private hosts, the recorded transfer basis and its form); a locked
+  badge and notice on security-class settings for local admins; the MFA grace
+  banner; the per-key `?apiKey=` toggle with a deprecation notice; the
+  antivirus status on the Health and Compliance pages.
+- **New App Settings**: `requireMalwareScan` (`auto` by default: required once a
+  scanner is detected), `privacySelfExportPerHour` (5),
+  `unreadNotificationRetentionDays` (blank follows the read window) and
+  `onboardingRejectedRetentionDays` (180). All are SuperAdmin-only.
+
 ### Security (uploads, privacy, erasure, installer)
 
 - **Upload content checks.** Every upload route, the HRIS CSV and the

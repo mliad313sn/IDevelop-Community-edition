@@ -143,10 +143,14 @@ const CATEGORIES = [
             },
             {
                 id: 'csrf',
-                fr: 'Jeton anti-CSRF sur chaque formulaire et appel qui modifie des données ; contrôle de l’origine sur toute requête qui modifie des données (une origine « null » est refusée).',
-                en: 'Anti-CSRF token on every form and call that changes data; an origin check on every state-changing request (a "null" origin is refused).',
-                evidence: ['server.js', 'src/middleware/httpHardening.js'],
-                tests: ['webSecurityBaseline.test.js', 'httpHardening.test.js'],
+                fr: 'Jeton anti-CSRF sur chaque formulaire et appel qui modifie des données, dépôts de fichiers compris (le jeton voyage dans un en-tête, ou dans l’adresse d’un formulaire de dépôt classique ; aucun dépôt n’en est dispensé) ; contrôle de l’origine sur toute requête qui modifie des données (une origine « null » est refusée).',
+                en: 'Anti-CSRF token on every form and call that changes data, file uploads included (the token travels in a header, or in the address of a plain upload form; no upload is exempt); an origin check on every state-changing request (a "null" origin is refused).',
+                evidence: ['server.js', 'src/middleware/httpHardening.js', 'public/js/main.js'],
+                tests: [
+                    'webSecurityBaseline.test.js',
+                    'httpHardening.test.js',
+                    'csrfMultipart.test.js',
+                ],
             },
             {
                 id: 'xss',
@@ -467,8 +471,8 @@ const CATEGORIES = [
             },
             {
                 id: 'upload-malware-scan',
-                fr: 'Analyse antivirus des justificatifs déposés : ClamAV (réseau ou socket), sinon Microsoft Defender, sinon fichier marqué « non analysé » sans bloquer l’application ; un fichier non analysé n’est téléchargeable que par son déposant, la ligne hiérarchique et les RH, toujours en pièce jointe ; nouvelle analyse planifiée.',
-                en: 'Antivirus scan of uploaded evidence: ClamAV (network or socket), else Microsoft Defender, else the file is marked "not scanned" without blocking the application; an unscanned file is downloadable only by its uploader, the reporting line and HR, always as an attachment; scheduled rescan.',
+                fr: 'Analyse antivirus des justificatifs déposés : ClamAV (réseau ou socket), sinon Microsoft Defender, sinon fichier marqué « non analysé » sans bloquer l’application ; un fichier non analysé n’est téléchargeable que par son déposant, la ligne hiérarchique et les RH, toujours en pièce jointe ; nouvelle analyse planifiée ; le réglage « analyse exigée » (automatique dès qu’un antivirus est détecté) retient tout fichier non analysé ; l’antivirus en service est affiché sur les pages Santé et Conformité.',
+                en: 'Antivirus scan of uploaded evidence: ClamAV (network or socket), else Microsoft Defender, else the file is marked "not scanned" without blocking the application; an unscanned file is downloadable only by its uploader, the reporting line and HR, always as an attachment; scheduled rescan; the "scan required" setting (automatic once a scanner is detected) holds any unscanned file; the scanner in use is shown on the Health and Compliance pages.',
                 evidence: [
                     'src/services/MalwareScanService.js',
                     'db/postgres/164_malware_scan_chain.sql',
@@ -508,8 +512,8 @@ const ASVS_L2 = {
     version: '4.0.3',
     level: 2,
     total: 258,
-    pass: 167,
-    fixed: 17,
+    pass: 166,
+    fixed: 18,
     partial: 38,
     gap: 2,
     na: 29,
