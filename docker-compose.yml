@@ -33,6 +33,10 @@ x-hardening: &hardening
 services:
   db:
     <<: *hardening
+    # Stays on 17: a major bump does not upgrade an existing pgdata volume, and
+    # the 18 image moved its data path (mount /var/lib/postgresql instead). CI
+    # proves 18; README "Moving the compose database to PostgreSQL 18" has the
+    # dump/restore path.
     image: postgres:17-alpine
     # Run directly as the image's postgres user (uid 70 on Alpine): the entrypoint
     # then needs no CHOWN/SETUID capability. A fresh named volume inherits the

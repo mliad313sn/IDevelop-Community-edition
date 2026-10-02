@@ -39,7 +39,7 @@ psql "$DATABASE_URL" -f db/postgres/seed-test.sql
 npm test
 ```
 
-CI runs the same steps on PostgreSQL 16 and 17 and must be green before merge.
+CI runs the same steps on PostgreSQL 16, 17 and 18 and must be green before merge.
 
 ### Integration fixtures
 

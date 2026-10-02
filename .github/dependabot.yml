@@ -50,6 +50,13 @@ updates:
       day: monday
     commit-message:
       prefix: build(docker)
+    ignore:
+      # PostgreSQL 18: a major tag bump does not upgrade an existing pgdata
+      # volume (18 refuses a 17 data directory) and the 18 image moved its data
+      # path. CI proves 18; the compose move is a deliberate dump/restore, see
+      # README "Moving the compose database to PostgreSQL 18". Lift when done.
+      - dependency-name: postgres
+        versions: ['>=18']
     groups:
       compose-minor-patch:
         applies-to: version-updates

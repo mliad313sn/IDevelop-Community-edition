@@ -352,8 +352,8 @@ const CATEGORIES = [
             },
             {
                 id: 'ci',
-                fr: 'Intégration continue sur PostgreSQL 16 et 17 : lint, format et suite de tests complète à chaque modification.',
-                en: 'Continuous integration on PostgreSQL 16 and 17: lint, format and the full test suite on every change.',
+                fr: 'Intégration continue sur PostgreSQL 16, 17 et 18 : lint, format et suite de tests complète à chaque modification.',
+                en: 'Continuous integration on PostgreSQL 16, 17 and 18: lint, format and the full test suite on every change.',
                 evidence: ['.github/workflows/ci.yml'],
                 tests: [],
             },
