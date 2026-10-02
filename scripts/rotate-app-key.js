@@ -212,10 +212,11 @@ function tally(v) {
     const n = Number(v);
     return Number.isSafeInteger(n) && n >= 0 ? n : 0;
 }
-/** A fresh plain object of counts: { mfa: {done, skipped}, stores: {name: {done, skipped}} }. */
-function rotationCounts(mfa, box) {
+/** A fresh plain object of counts: { factors: {done, skipped}, stores: {name: {done, skipped}} }. */
+function rotationCounts(factorTally, box) {
+    const t = factorTally;
     const counts = {
-        mfa: { done: tally(mfa && mfa.done), skipped: tally(mfa && mfa.skipped) },
+        factors: { done: tally(t && t.done), skipped: tally(t && t.skipped) },
         stores: {},
     };
     for (const name of COUNTED_STORES) {
@@ -225,7 +226,7 @@ function rotationCounts(mfa, box) {
     return counts;
 }
 function summary(counts) {
-    const parts = [`${counts.mfa.done} MFA secret(s) (${counts.mfa.skipped} skipped)`];
+    const parts = [`${counts.factors.done} MFA secret(s) (${counts.factors.skipped} skipped)`];
     for (const name of COUNTED_STORES) {
         const c = counts.stores[name];
         if (c) parts.push(`${c.done} ${name} (${c.skipped} skipped)`);
@@ -262,22 +263,22 @@ async function main() {
         );
 
     await db.connect();
-    let mfa = { done: 0, skipped: 0 };
+    let factorTally = { done: 0, skipped: 0 };
     let box = {};
     try {
         await db.runTransaction(async () => {
-            mfa = await rotateMfa(db, keys);
+            factorTally = await rotateMfa(db, keys);
             box = await rotateSecretBoxStores(db, keys);
             if (!COMMIT) {
                 throw new Error('__DRYRUN_ROLLBACK__');
             }
         });
-        console.log(`\n✓ COMMITTED. Re-encrypted ${summary(rotationCounts(mfa, box))}.`);
+        console.log(`\n✓ COMMITTED. Re-encrypted ${summary(rotationCounts(factorTally, box))}.`);
         console.log('  NEXT: set APP_KEY to the new value in .env and restart the service.');
     } catch (e) {
         if (e.message === '__DRYRUN_ROLLBACK__') {
             console.log(
-                `\n✓ DRY RUN OK (rolled back). Would re-encrypt ${summary(rotationCounts(mfa, box))}.`
+                `\n✓ DRY RUN OK (rolled back). Would re-encrypt ${summary(rotationCounts(factorTally, box))}.`
             );
             console.log('  Re-run with --commit to apply, then set APP_KEY in .env and restart.');
         } else {

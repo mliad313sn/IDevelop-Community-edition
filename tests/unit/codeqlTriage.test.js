@@ -268,7 +268,7 @@ describe('js/clear-text-logging: the key-rotation summary', () => {
             }
         );
         expect(counts).toEqual({
-            mfa: { done: 2, skipped: 0 },
+            factors: { done: 2, skipped: 0 },
             stores: {
                 appSettings: { done: 1, skipped: 0 },
                 hrisConnectors: { done: 4, skipped: 0 },
