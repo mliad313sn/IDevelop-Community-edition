@@ -32,6 +32,7 @@ const {
     loginRateLimiter,
     apiRateLimiter,
     checkAccountLockout,
+    globalRateLimitOptions,
 } = require('./src/middleware/rateLimiter');
 const routes = require('./src/routes/index');
 const appConfig = require('./src/config/app');
@@ -394,6 +395,14 @@ app.use(flash());
 // Passport initialization
 app.use(passport.initialize());
 app.use(passport.session());
+
+// App-wide backstop rate limit (CWE-770; CodeQL js/missing-rate-limiting):
+// every route below — pages, exports, downloads, admin writes, /api/v1 — runs
+// behind it. Per signed-in account (req.user is known from here on), per
+// address when anonymous; generous ceilings that only a scripted flood reaches.
+// Static assets and the health probes are served above and never count. The
+// targeted limiters (sign-in, reset, API keys, re-auth) still apply on top.
+app.use(require('express-rate-limit')(globalRateLimitOptions()));
 
 // SECURITY — never let a cache store a per-user, authenticated response. Every
 // dynamic response here also carries the rolling `Set-Cookie` session id (session

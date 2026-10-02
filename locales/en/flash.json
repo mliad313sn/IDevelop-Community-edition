@@ -357,6 +357,7 @@
   "adm_account_locked_until": "Account temporarily locked after too many failed attempts. Please try again after {{time}}.",
   "adm_account_locked": "Account temporarily locked after too many failed attempts. Please try again in {{minutes}} minutes.",
   "adm_ip_blocked": "Too many failed login attempts from your network. Please try again later.",
+  "too_many_requests": "Too many requests. Please slow down and try again shortly.",
   "admin_target_out_of_scope": "This administrator has authority over people outside your scope: you cannot act on their account.",
   "adm_revoke_revoked": "Admin access revoked for {{username}}: {{perms}} capability(ies) and {{scopes}} scope(s) kept and flagged revoked, restorable on reactivation.",
   "adm_revoke_reason_required": "A written reason is required to revoke admin access.",

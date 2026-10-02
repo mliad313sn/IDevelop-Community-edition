@@ -493,7 +493,10 @@ const _otherThrottles = new Map();
  */
 function loginRateLimiter(req, res, next) {
     const p = String(req.originalUrl || req.url || req.path || '').split('?')[0];
-    let t = _throttles[p];
+    // The request path picks the throttle: only an OWN entry of the table counts
+    // (`/__proto__`, `/constructor`, `/toString` must not resolve to an inherited
+    // member and be called as a middleware).
+    let t = Object.hasOwn(_throttles, p) ? _throttles[p] : null;
     if (!t) {
         t = _otherThrottles.get(p);
         if (!t) {
@@ -508,6 +511,7 @@ function loginRateLimiter(req, res, next) {
             if (_otherThrottles.size < 100) _otherThrottles.set(p, t);
         }
     }
+    if (typeof t !== 'function') return next(new Error('rate-limit: no throttle'));
     return Promise.resolve(t(req, res, next)).catch((e) => {
         console.error('[rate-limit] throttle error:', e && e.message);
         next();
@@ -654,6 +658,65 @@ const writeActionLimiter = rateLimit({
 });
 
 /**
+ * App-wide backstop limiter (CodeQL js/missing-rate-limiting; CWE-770).
+ *
+ * The targeted limiters above guard the credential surfaces (sign-in, reset,
+ * signup, re-authentication) and the API. Everything else (every page, export,
+ * download and admin write) had no ceiling at all: one session could replay an
+ * expensive report or export in a tight loop. This is a GENEROUS ceiling that a
+ * person clicking through the app, or a page firing its XHRs, never reaches; it
+ * only stops a scripted flood.
+ *
+ *   - a signed-in person is counted per ACCOUNT (colleagues behind one NAT are
+ *     not penalised for each other): GLOBAL_RATE_LIMIT per minute (default 600);
+ *   - an anonymous request is counted per address (IPv6 /56):
+ *     GLOBAL_IP_RATE_LIMIT per minute (default 1200, a whole site signing in).
+ *
+ * server.js mounts it with `app.use` after the session/passport middleware (so
+ * req.user is known) and before every route; static assets and the health
+ * probes are served above it and never count. Only the OPTIONS live here:
+ * server.js builds the limiter with express-rate-limit itself, so the mounted
+ * middleware is the library's own (no wrapper).
+ */
+const GLOBAL_RATE_WINDOW_MS = 60 * 1000;
+function globalRateLimitOptions(env = process.env) {
+    const perUser = parseInt(env.GLOBAL_RATE_LIMIT) || 600;
+    const perIp = parseInt(env.GLOBAL_IP_RATE_LIMIT) || 1200;
+    const signedIn = (req) => !!(req.user && req.user.id != null);
+    return {
+        windowMs: GLOBAL_RATE_WINDOW_MS,
+        limit: (req) => (signedIn(req) ? perUser : perIp),
+        store: makeStore('global'),
+        // The API keeps the headers its own (per-key) limiter sets.
+        standardHeaders: false,
+        legacyHeaders: false,
+        keyGenerator: (req) =>
+            signedIn(req)
+                ? `u:${req.user.userType === 'admin' ? 'admin' : 'person'}:${req.user.id}`
+                : `ip:${ipKeyGenerator(String(req.ip || ''))}`,
+        handler: (req, res) => {
+            const who = signedIn(req) ? `${req.user.userType || 'u'}:${req.user.id}` : 'anonymous';
+            secAudit(
+                req,
+                'GLOBAL_RATE_LIMITED',
+                `${who} exceeded the app-wide request ceiling (${signedIn(req) ? perUser : perIp}/min)`
+            );
+            res.set('Retry-After', String(Math.ceil(GLOBAL_RATE_WINDOW_MS / 1000)));
+            const msg = say(
+                req,
+                'flash:too_many_requests',
+                { defaultValue: 'Too many requests. Please slow down and try again shortly.' },
+                'Too many requests. Please slow down and try again shortly.'
+            );
+            const p = String(req.path || '');
+            if (p.startsWith('/api/') || p.startsWith('/scim/') || !req.accepts('html'))
+                return res.status(429).json({ error: msg });
+            return res.status(429).type('text/plain').send(msg);
+        },
+    };
+}
+
+/**
  * 3.23.18 — POST /account (« Mon profil ») re-authentication limiter.
  *
  * Changing one's own e-mail requires the current password (it is the address the
@@ -780,15 +843,16 @@ const mfaReauthLimiter = makeReauthLimiter('mfa-reauth', (req) =>
  */
 async function noteAuthenticatedFailure(user, ip) {
     try {
-        if (!user) return;
-        let name = user.username || null;
-        if (!name && user.id != null) {
-            const row =
-                user.userType === 'admin'
-                    ? await db.get('SELECT username FROM admins WHERE id = ?', [user.id])
-                    : await db.get('SELECT username FROM employees WHERE id = ?', [user.id]);
-            name = row && row.username;
-        }
+        // The account is named by its ID, resolved here from the database. A
+        // `username` carried on the object (a session's mfaPending, req.user) is
+        // NOT believed: whatever string it holds must never decide which lockout
+        // bucket a failure lands in, nor whether it is recorded at all.
+        if (!user || user.id == null) return;
+        const row =
+            user.userType === 'admin'
+                ? await db.get('SELECT username FROM admins WHERE id = ?', [user.id])
+                : await db.get('SELECT username FROM employees WHERE id = ?', [user.id]);
+        const name = row && row.username;
         if (name) await recordLoginAttempt(name, ip, false);
     } catch (_) {
         /* the refusal itself stands; the tally is best effort */
@@ -1171,6 +1235,18 @@ const recordLoginAttempt = async (username, ipAddress, successful) => {
  *    still works, each attempt is only slowed; an admin can clear it).
  * Fires on the crossing only (== threshold), never once per failure.
  */
+/**
+ * A sign-in identifier as it may appear in a log line: CR, LF, the Unicode line
+ * and paragraph separators and every other control character become a space,
+ * so a crafted identifier cannot forge a second log entry (CWE-117). Capped.
+ */
+function logSafe(v) {
+    return String(v == null ? '' : v)
+        .replace(/[\r\n\u2028\u2029]/g, ' ')
+        .replace(/[\u0000-\u001F\u007F]/g, ' ') // eslint-disable-line no-control-regex
+        .slice(0, 200);
+}
+
 async function afterFailure(account, ipAddress) {
     if (!account || !account.key || (account.kind !== 'admin' && account.kind !== 'employee'))
         return;
@@ -1181,13 +1257,13 @@ async function afterFailure(account, ipAddress) {
         ) || 0;
     if (account.kind === 'admin' && n === ADMIN_HARD_LOCK_AFTER) {
         console.error(
-            `[CRITICAL] admin account "${account.key}" hard-locked after ${n} failed sign-in attempts (${policy.lockoutMinutes} min window)`
+            `[CRITICAL] admin account "${logSafe(account.key)}" hard-locked after ${n} failed sign-in attempts (${policy.lockoutMinutes} min window)`
         );
         LogService.log({
             adminId: account.id,
             action: 'ADMIN_ACCOUNT_HARD_LOCKED',
             entityType: 'auth',
-            details: `Admin account "${account.key}" hard-locked after ${n} failed attempts in ${policy.lockoutMinutes}m (last from ${ipAddress || '?'}) — an admin unlock clears it`,
+            details: `Admin account "${logSafe(account.key)}" hard-locked after ${n} failed attempts in ${policy.lockoutMinutes}m (last from ${ipAddress || '?'}) — an admin unlock clears it`,
             ipAddress,
         });
         require('../services/SuperadminAlertService')
@@ -1205,7 +1281,7 @@ async function afterFailure(account, ipAddress) {
             entityType: 'employee',
             entityId: account.id,
             actorRef: `employee:${account.id}`,
-            details: `Account "${account.key}" soft-locked after ${n} failed attempts (sign-ins slowed, never refused; an admin unlock clears it)`,
+            details: `Account "${logSafe(account.key)}" soft-locked after ${n} failed attempts (sign-ins slowed, never refused; an admin unlock clears it)`,
             ipAddress,
         });
         try {
@@ -1227,6 +1303,7 @@ module.exports = {
     signupRateLimiter,
     apiRateLimiter,
     writeActionLimiter,
+    globalRateLimitOptions,
     accountReauthLimiter,
     passwordReauthLimiter,
     mfaReauthLimiter,
@@ -1247,6 +1324,7 @@ module.exports = {
     lockoutPolicy,
     lockStateFor,
     progressiveDelayMs,
+    logSafe,
     noteEnforcedFailure,
     enforcedFailureCount,
     enforcedIpFailureCount,
