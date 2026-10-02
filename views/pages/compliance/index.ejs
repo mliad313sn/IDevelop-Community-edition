@@ -462,7 +462,7 @@
         fd.append('_csrf', '<%= csrfToken %>');
         resEl.style.color = 'var(--text-muted,#6b7280)';
         resEl.textContent = dryRun ? 'Validating…' : 'Importing…';
-        fetch('/data-management/import/certifications', { method: 'POST', body: fd })
+        fetch('/data-management/import/certifications', { method: 'POST', body: fd, headers: { 'x-csrf-token': '<%= csrfToken %>' } })
             .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
             .then(function (o) {
                 if (!o.ok || o.j.error) { resEl.style.color = '#b91c1c'; resEl.textContent = o.j.error || 'Import failed'; commitBtn.disabled = true; return; }

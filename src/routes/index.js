@@ -3236,9 +3236,9 @@ router.post(
     requirePermission('manage_compliance'),
     _m55(_cc.setPolicy.bind(_cc))
 );
-// Multipart (evidence file) — CSRF-exempted in server.js like the other
-// multer routes (multer parses the body AFTER the CSRF middleware), and
-// permission-gated + scope-checked inside the controller.
+// Multipart (evidence file): a native form, so the CSRF token travels as
+// ?_csrf= on the action (main.js adds it at submit; multer parses the body after
+// the global check). Permission-gated + scope-checked inside the controller.
 router.post(
     '/compliance/certifications',
     requireManagerOrAnyPermission('manage_compliance'),
@@ -3366,8 +3366,8 @@ router.post(
     requireNumericParam('id'),
     _m55(EmployeeController.unlock.bind(EmployeeController))
 );
-// Bulk certification import — lives under the data-management namespace so the
-// existing multipart CSRF exemption prefix (/data-management/import/) applies.
+// Bulk certification import, under the data-management namespace. The page
+// sends the CSRF token in the x-csrf-token header (multipart, audit SA-15).
 // dryRun=1 in the form body = preview (nothing written).
 router.get(
     '/data-management/templates/certifications',

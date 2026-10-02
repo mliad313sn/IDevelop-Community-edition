@@ -146,7 +146,9 @@ function guardUpload(multerMiddleware, { kinds, zipLimits, json = false } = {}) 
         throw new Error('guardUpload: multer middleware required');
     if (!Array.isArray(kinds) || !kinds.length)
         throw new Error('guardUpload: kinds allow-list required');
-    return function guardedUpload(req, res, next) {
+    // Marked so a test can enumerate every upload mount from the live router
+    // stacks (tests/unit/csrfMultipart.test.js proves each one is CSRF-checked).
+    const guardedUpload = function guardedUpload(req, res, next) {
         multerMiddleware(req, res, async (err) => {
             if (err) {
                 removeTemp(allFiles(req));
@@ -171,6 +173,8 @@ function guardUpload(multerMiddleware, { kinds, zipLimits, json = false } = {}) 
             return next();
         });
     };
+    Object.defineProperty(guardedUpload, 'uploadGuard', { value: Object.freeze([...kinds]) });
+    return guardedUpload;
 }
 
 module.exports = { guardUpload, typeNotAllowed, extensionFilter, MESSAGES };

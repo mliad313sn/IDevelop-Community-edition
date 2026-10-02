@@ -759,6 +759,9 @@
 </style>
 
 <script nonce="<%= cspNonce %>">
+    // Multipart uploads: multer parses the body after the server's CSRF check, so
+    // the token travels in the x-csrf-token header (audit SA-15).
+    const CSRF_HEADERS = { 'x-csrf-token': '<%= csrfToken %>' };
     // Localized strings injected from the datamgmt namespace (server-side).
     const I18N = {
         confirmRestoreFull: <%- JSON.stringify(__('datamgmt:js_confirm_restore_full')) %>,
@@ -962,7 +965,7 @@
         fd.append('file', fileInput.files[0]);
         panel.style.display = 'none';
         showLoading(I18N.analyzingWorkbook);
-        fetch('/data-management/skill-matrix-workbook/preview', { method: 'POST', body: fd })
+        fetch('/data-management/skill-matrix-workbook/preview', { method: 'POST', body: fd, headers: CSRF_HEADERS })
             .then(res => res.json())
             .then(data => {
                 hideLoading();
@@ -1016,6 +1019,7 @@
 
         fetch(url, {
             method: 'POST',
+            headers: CSRF_HEADERS,
             body: formData
         })
             .then(res => res.json())
@@ -1136,7 +1140,7 @@
         fd.append('jsonFile', fileInput.files[0]);
         panel.style.display = 'none';
         showLoading(I18N.analyzingFile);
-        fetch('/admin/data/preview-json', { method: 'POST', body: fd })
+        fetch('/admin/data/preview-json', { method: 'POST', body: fd, headers: CSRF_HEADERS })
             .then(res => res.json())
             .then(data => {
                 hideLoading();

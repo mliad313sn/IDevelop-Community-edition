@@ -530,17 +530,19 @@ app.use(
 // CSRF protection — session-based synchroniser token via `csrf-sync` (the maintained
 // successor to the now-deprecated `csurf`; same session model as the old
 // `csurf({cookie:false})`). The token is minted per session in the res.locals
-// middleware below (`generateToken`) and read from `_csrf` (form) or `x-csrf-token`
-// (AJAX). Validation here runs only on state-changing methods.
+// middleware below (`generateToken`) and read from `_csrf` (form), `x-csrf-token`
+// (fetch/XHR) or, for a multipart request only, `?_csrf=` on the action: multer
+// parses a multipart body after this check (httpHardening.csrfTokenFromRequest).
+// Validation here runs only on state-changing methods.
 const { generateToken: csrfGenerate, csrfSynchronisedProtection } = csrfSync({
-    getTokenFromRequest: (req) => (req.body && req.body._csrf) || req.headers['x-csrf-token'],
+    getTokenFromRequest: httpHardening.csrfTokenFromRequest,
 });
 app.set('csrfGenerate', csrfGenerate); // reused by the res.locals token minter
 app.use((req, res, next) => {
     // Skip CSRF for API routes, JSON requests (same-origin-guarded above), login
-    // POST, SSO callbacks (state/assertion-protected), and the multipart upload
-    // routes still listed in httpHardening.CSRF_EXEMPT_UPLOADS (multer parses the
-    // body after this middleware; audit SA-15).
+    // POST and SSO callbacks (state/assertion-protected). No multipart upload is
+    // exempt any more (audit SA-15): every upload presents the token in the
+    // x-csrf-token header or, from a native form, as ?_csrf= on the action.
     if (httpHardening.csrfSkip(req)) return next();
     // csrfSynchronisedProtection is a no-op for safe methods (GET/HEAD/OPTIONS) and
     // rejects unsafe methods whose token doesn't match the session's. Any error it

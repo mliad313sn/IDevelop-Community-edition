@@ -11,6 +11,7 @@
  *   isSsoCallbackPath         IdP callback paths (cross-site by design)
  *   makeValidatedApiCredential  a key or bearer that actually VALIDATES
  *   originGuard               same-origin guard; `Origin: null` never passes a mutation
+ *   csrfTokenFromRequest      body `_csrf`, `x-csrf-token`, or `?_csrf=` (multipart only)
  *   csrfSkip                  requests the synchroniser-token check does not apply to
  *   csrfFailureLogFields      never the session id, only a short hash prefix
  *   sessionCookieName         `__Host-app.sid` when always Secure, `app.sid` otherwise
@@ -275,34 +276,47 @@ function originGuard({ trustProxy, validatedCredential, secLog }) {
 }
 
 // ---------------------------------------------------------------------------
-// CSRF skip list.
+// CSRF token source and skip list.
 // ---------------------------------------------------------------------------
 /**
- * Multipart upload routes still exempt from the token check: multer parses the
- * body AFTER the check, so `_csrf` is not visible yet. They rely on the origin
- * guard above plus `SameSite=Lax` (audit SA-15, open until the client side
- * sends the token on every multipart request). Prefix-match, never substring,
- * so a future route that merely CONTAINS a fragment cannot inherit it.
+ * Where the synchroniser token is read from:
+ *   1. `_csrf` in a parsed body (url-encoded forms);
+ *   2. the `x-csrf-token` header (fetch/XHR, including every multipart upload
+ *      the page scripts send; public/js/main.js adds it to each same-origin
+ *      mutation that lacks it);
+ *   3. `?_csrf=` on the URL, for a multipart request ONLY. multer parses a
+ *      multipart body after this check, so a native multipart <form> has no
+ *      other way to present the token (main.js appends it to the action at
+ *      submit time). The query form is refused for every other content type,
+ *      and request logs redact `_csrf` (middleware/logger.js).
+ * The token is per session and is never a credential by itself.
  */
-const CSRF_EXEMPT_UPLOADS = Object.freeze([
-    '/data-management/import/',
-    '/data-management/skill-matrix-workbook/import',
-    '/data-management/skill-matrix-workbook/preview',
-    '/admin/data/',
-]);
-const CSRF_EXEMPT_UPLOAD_EXACT = Object.freeze(['/compliance/certifications']);
+function csrfTokenFromRequest(req) {
+    if (req.body && typeof req.body._csrf === 'string' && req.body._csrf) return req.body._csrf;
+    const h = req.headers && req.headers['x-csrf-token'];
+    if (typeof h === 'string' && h) return h;
+    if (
+        isMultipart(req.headers && req.headers['content-type']) &&
+        req.query &&
+        typeof req.query._csrf === 'string' &&
+        req.query._csrf
+    )
+        return req.query._csrf;
+    return undefined;
+}
 
-/** Requests the CSRF synchroniser-token check does not apply to. */
+/**
+ * Requests the CSRF synchroniser-token check does not apply to. No multipart
+ * upload is on this list any more (audit SA-15): the data-management imports,
+ * the full-system imports, the skill-matrix workbook and the certification
+ * evidence form all present the token in the header or as `?_csrf=`.
+ * `/api/v1` keeps its own model: an API key or bearer, never the cookie.
+ */
 function csrfSkip(req) {
     const p = req.path || '';
     if (p.startsWith('/api/')) return true; // key/bearer or session JSON, origin-guarded
     if (p === '/login' && req.method === 'POST') return true;
     if (isSsoCallbackPath(p) && req.method === 'POST') return true;
-    if (
-        req.method === 'POST' &&
-        (CSRF_EXEMPT_UPLOADS.some((x) => p.startsWith(x)) || CSRF_EXEMPT_UPLOAD_EXACT.includes(p))
-    )
-        return true;
     // JSON bodies cannot be sent cross-site without CORS; the origin guard
     // refuses a JSON mutation that has neither a matching Origin nor a key.
     if (isJsonType(req.headers && req.headers['content-type'])) return true;
@@ -468,8 +482,7 @@ module.exports = {
     isSsoCallbackPath,
     makeValidatedApiCredential,
     originGuard,
-    CSRF_EXEMPT_UPLOADS,
-    CSRF_EXEMPT_UPLOAD_EXACT,
+    csrfTokenFromRequest,
     csrfSkip,
     csrfFailureLogFields,
     LEGACY_COOKIE,

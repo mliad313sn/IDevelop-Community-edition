@@ -52,7 +52,7 @@ describe('isJsonType is anchored on the MIME essence', () => {
 });
 
 // The same token source server.js gives csrf-sync.
-const tokenFromRequest = (req) => (req.body && req.body._csrf) || req.headers['x-csrf-token'];
+const tokenFromRequest = H.csrfTokenFromRequest;
 
 function buildApp({ credentialOk = false } = {}) {
     const app = express();
@@ -125,13 +125,13 @@ describe('CSRF skip list', () => {
             })
         ).toBe(true);
     });
-    test('the multipart imports listed for SA-15 are still exempt, by prefix only', () => {
-        const post = (p) => H.csrfSkip({ path: p, method: 'POST', headers: {} });
-        expect(post('/data-management/import/employees')).toBe(true);
-        expect(post('/admin/data/import')).toBe(true);
-        expect(post('/compliance/certifications')).toBe(true);
-        expect(post('/compliance/certifications/extra')).toBe(false);
-        expect(post('/x/data-management/import/')).toBe(false);
+    test('no multipart import is exempt any more (SA-15 fixed)', () => {
+        const mp = { 'content-type': 'multipart/form-data; boundary=B' };
+        const post = (p) => H.csrfSkip({ path: p, method: 'POST', headers: mp });
+        expect(post('/data-management/import/employees')).toBe(false);
+        expect(post('/admin/data/import')).toBe(false);
+        expect(post('/compliance/certifications')).toBe(false);
+        expect(post('/data-management/skill-matrix-workbook/import')).toBe(false);
         expect(post('/form')).toBe(false);
     });
     test('SSO callback POSTs skip the token', () => {

@@ -1,3 +1,91 @@
+// CSRF token on every same-origin mutation (audit SA-15).
+// multer parses a multipart body AFTER the server's token check, so an upload
+// must carry the token outside the body:
+//   1. every same-origin fetch() with an unsafe method gets the `x-csrf-token`
+//      header from <meta name="csrf-token"> unless it already carries one;
+//   2. a native multipart POST <form> gets `?_csrf=` on its action at submit
+//      time (the server reads the query token for multipart requests only, and
+//      the request log redacts it).
+// The token never goes to another origin.
+(function () {
+    'use strict';
+    if (window.__csrfFetchWrapped) return;
+    window.__csrfFetchWrapped = true;
+    function csrfToken() {
+        var m = document.querySelector('meta[name="csrf-token"]');
+        return m ? m.getAttribute('content') || '' : '';
+    }
+    function sameOrigin(u) {
+        try {
+            return new URL(u, window.location.href).origin === window.location.origin;
+        } catch (e) {
+            return false;
+        }
+    }
+    var SAFE = { GET: 1, HEAD: 1, OPTIONS: 1 };
+    if (typeof window.fetch === 'function') {
+        var origFetch = window.fetch;
+        window.fetch = function (input, init) {
+            try {
+                var isReq = typeof Request !== 'undefined' && input instanceof Request;
+                var method = String(
+                    (init && init.method) || (isReq ? input.method : 'GET')
+                ).toUpperCase();
+                var url = isReq ? input.url : String(input);
+                var t = csrfToken();
+                if (t && !SAFE[method] && sameOrigin(url)) {
+                    var h = new Headers(
+                        (init && init.headers) || (isReq ? input.headers : undefined)
+                    );
+                    if (!h.has('x-csrf-token')) {
+                        h.set('x-csrf-token', t);
+                        init = Object.assign({}, init || {}, { headers: h });
+                    }
+                }
+            } catch (e) {
+                /* never break a request over the token */
+            }
+            return origFetch.call(this, input, init);
+        };
+    }
+    document.addEventListener(
+        'submit',
+        function (e) {
+            var f = e.target;
+            if (!f || f.nodeName !== 'FORM') return;
+            if (String(f.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+            if (String(f.enctype || '').toLowerCase() !== 'multipart/form-data') return;
+            var field = f.querySelector('input[name="_csrf"]');
+            var t = (field && field.value) || csrfToken();
+            if (!t) return;
+            try {
+                var u = new URL(
+                    f.getAttribute('action') || window.location.href,
+                    window.location.href
+                );
+                if (u.origin !== window.location.origin) return;
+                if (f.__csrfOrigAction === undefined) f.__csrfOrigAction = f.getAttribute('action');
+                u.searchParams.set('_csrf', t);
+                f.setAttribute('action', u.pathname + u.search + u.hash);
+            } catch (err) {
+                /* leave the form as it is */
+            }
+        },
+        true
+    );
+    // A form a script handles itself (fetch + preventDefault) never navigates: put
+    // its action back so the token does not linger in the URL. data-confirm forms
+    // keep it: they are re-submitted natively after the dialog (ui-feedback.js).
+    window.addEventListener('submit', function (e) {
+        var f = e.target;
+        if (!f || f.nodeName !== 'FORM' || f.__csrfOrigAction === undefined) return;
+        if (!e.defaultPrevented || f.hasAttribute('data-confirm')) return;
+        if (f.__csrfOrigAction === null) f.removeAttribute('action');
+        else f.setAttribute('action', f.__csrfOrigAction);
+        f.__csrfOrigAction = undefined;
+    });
+})();
+
 // Progressive a11y/responsive enhancements applied app-wide on load:
 //  1. Wrap any bare .table in a horizontally-scrollable container so wide
 //     tables don't overflow the viewport on phones/tablets.
