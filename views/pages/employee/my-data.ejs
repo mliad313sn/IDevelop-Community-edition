@@ -46,7 +46,7 @@
   <% var PV = (typeof privacy !== 'undefined' && privacy) ? privacy : {}; %>
   <% if (PV.isEmployee) { %>
   <p class="md-actions">
-    <a class="btn btn-primary" href="/employee/my-data/download" download><i class="fas fa-download" aria-hidden="true"></i> <%= __('compliance:privacy_download') %></a>
+    <a class="btn btn-primary" href="/employee/my-data/download"><i class="fas fa-download" aria-hidden="true"></i> <%= __('compliance:privacy_download') %></a>
     <span class="text-muted md-note"><%= __('compliance:privacy_download_hint') %></span>
   </p>
   <% } %>
