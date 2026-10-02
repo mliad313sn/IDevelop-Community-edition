@@ -63,6 +63,14 @@ project uses [Semantic Versioning](https://semver.org/).
 - The installer package no longer ships `.gitleaks.toml` or `.dockerignore`.
 - The SSO page always shows the canonical SAML reply URL
   (`/auth/sso/saml/callback`), never a mistyped configured value.
+- SSO reply URLs: a base URL that points at a page of the app (`…/login`,
+  `…/dashboard`, `…/auth/…`) is normalised to the application root, with a
+  warning in the log; `/login/auth/sso/:provider/callback` is answered by the
+  same handler and `/login/login` redirects to `/login`; the SAML reply URL
+  configured on the SSO page is answered too when it differs from the
+  canonical one (same handler and checks; the origin guard and the CSRF skip
+  accept it). The SSO settings page receives `callbackMismatch` to name the
+  address to register instead.
 - HTTP hardening moved into `src/middleware/httpHardening.js`, with tests:
     - JSON detection is anchored on the MIME essence, so
       `text/plain; x=application/json` no longer skips the CSRF check;

@@ -64,14 +64,36 @@ let _settingBase = null;
 let _settingAt = 0;
 const SETTING_TTL_MS = 30_000;
 
+// The base URL is the address of the APPLICATION ROOT. An operator who pasted
+// the sign-in page ("https://host/login") produced "/login/login" in every
+// e-mail and "/login/auth/sso/saml/callback" as the SAML ACS suggested on the
+// SSO page, a callback no route answered, so every SSO sign-in bounced back to
+// the sign-in page. Page paths of the app are never part of the base: strip them.
+const APP_PAGE_SUFFIX = /\/(?:login|logout|dashboard|auth(?:\/.*)?)$/i;
+const _warnedBase = new Set();
+function normalizeBase(raw) {
+    let v = String(raw || '')
+        .trim()
+        .replace(/\/+$/, '');
+    if (!v) return '';
+    const before = v;
+    let guard = 0;
+    while (APP_PAGE_SUFFIX.test(v) && guard++ < 5)
+        v = v.replace(APP_PAGE_SUFFIX, '').replace(/\/+$/, '');
+    if (v !== before && !_warnedBase.has(before)) {
+        _warnedBase.add(before);
+        console.warn(
+            `[config] base URL "${before}" points at a page of the app; using "${v}" (the application root) instead. Fix it in App Settings.`
+        );
+    }
+    return v;
+}
+
 async function refreshBaseUrl() {
     try {
         const AppSettingsModel = require('../models/AppSettingsModel');
         const v = await AppSettingsModel.getValue('appBaseUrl', '');
-        _settingBase =
-            String(v || '')
-                .trim()
-                .replace(/\/+$/, '') || null;
+        _settingBase = normalizeBase(v) || null;
     } catch (_) {
         /* settings unavailable (boot, tests) → env/hostname */
     }
@@ -93,9 +115,7 @@ function baseUrl(req) {
     }
     if (_settingBase) return _settingBase;
 
-    const envUrl = String(process.env.APP_BASE_URL || process.env.BASE_URL || '')
-        .trim()
-        .replace(/\/+$/, '');
+    const envUrl = normalizeBase(process.env.APP_BASE_URL || process.env.BASE_URL || '');
     if (envUrl) return envUrl;
 
     if (req && typeof req.get === 'function') {
@@ -267,4 +287,5 @@ module.exports = {
     baseUrl,
     baseUrlAsync,
     refreshBaseUrl,
+    normalizeBase,
 };

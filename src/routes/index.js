@@ -336,6 +336,24 @@ router.get(
 // Both POST (form_post / SAML ACS) and GET (query mode) callbacks are supported.
 router.post('/auth/sso/:provider/callback', SsoController.callback);
 router.get('/auth/sso/:provider/callback', SsoController.callback);
+// Installs whose base URL was set to the sign-in page ("https://host/login")
+// registered "/login/auth/sso/<p>/callback" at the IdP and "/login/login" in
+// every invitation. No route answered, so each SSO sign-in bounced to /login.
+// Same handler (same signature, destination and state checks); the SSO page
+// tells the operator to move the IdP to the canonical address.
+router.post('/login/auth/sso/:provider/callback', SsoController.callback);
+router.get('/login/auth/sso/:provider/callback', SsoController.callback);
+router.get('/login/login', (req, res) => res.redirect(302, '/login'));
+// The SAML ACS is also answered at the path configured on the SSO page when it
+// differs from the canonical one (config/sso.js samlCallbackAliasPath): same
+// handler, same checks; the SSO page names the address to register instead.
+router.use((req, res, next) => {
+    if (req.method !== 'POST' && req.method !== 'GET') return next();
+    const alias = require('../config/sso').samlCallbackAliasPath();
+    if (!alias || req.path.replace(/\/+$/, '') !== alias) return next();
+    req.params = { ...(req.params || {}), provider: 'saml' };
+    return SsoController.callback(req, res, next);
+});
 
 // Self-service onboarding — public entry points (gated at runtime by the
 // onboarding.* settings; the controller bounces back to /login when disabled).

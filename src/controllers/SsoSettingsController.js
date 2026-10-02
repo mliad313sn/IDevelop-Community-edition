@@ -67,6 +67,16 @@ function denyIfNotSuperAdmin(req, res) {
     return false;
 }
 
+/** {configured, expected} when the configured SAML ACS is not the canonical one, else null. */
+function callbackMismatch(configured, base) {
+    const c = String(configured || '').trim();
+    if (!c || !base) return null;
+    const expected = `${String(base).replace(/\/+$/, '')}/auth/sso/saml/callback`;
+    return c.replace(/\/+$/, '').toLowerCase() === expected.toLowerCase()
+        ? null
+        : { configured: c, expected };
+}
+
 class SsoSettingsController {
     async index(req, res) {
         if (denyIfNotSuperAdmin(req, res)) return;
@@ -82,6 +92,11 @@ class SsoSettingsController {
                     callbackUrl: model.saml.callbackUrl,
                 }),
                 publicBase: base,
+                // A SAML ACS that is not <base>/auth/sso/saml/callback (typically
+                // ".../login/auth/sso/saml/callback", from a base URL set to the
+                // sign-in page): named, with the address to register instead. The
+                // route answers both meanwhile (routes/index.js).
+                callbackMismatch: callbackMismatch(model.saml.callbackUrl, base),
                 // the breadcrumb printed the literal English "App Settings"
                 // on the French UI.
                 breadcrumbs: [
@@ -379,3 +394,4 @@ SsoSettingsController.prototype.setEmployeeException = async function (req, res)
 };
 
 module.exports = new SsoSettingsController();
+module.exports.callbackMismatch = callbackMismatch;

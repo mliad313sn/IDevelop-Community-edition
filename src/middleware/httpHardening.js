@@ -100,10 +100,23 @@ function securityHeaders(req, res, next) {
 // IdP callbacks (OIDC form_post, SAML ACS) are cross-site by design and are
 // protected by state/nonce or the signed assertion instead of Origin/CSRF.
 // ---------------------------------------------------------------------------
-const SSO_CALLBACK = /^\/auth\/sso\/[^/]+\/callback$/;
+// The optional "/login" prefix: see the compatibility callback in routes/index.js.
+const SSO_CALLBACK = /^(?:\/login)?\/auth\/sso\/[^/]+\/callback$/;
+
+/** The SAML ACS configured on the SSO page when it is not the canonical path. */
+function _samlAlias() {
+    try {
+        return require('../config/sso').samlCallbackAliasPath();
+    } catch (_) {
+        return null;
+    }
+}
 
 function isSsoCallbackPath(p) {
-    return SSO_CALLBACK.test(String(p || ''));
+    const path = String(p || '');
+    if (SSO_CALLBACK.test(path)) return true;
+    const alias = _samlAlias();
+    return !!alias && path.replace(/\/+$/, '') === alias;
 }
 
 // ---------------------------------------------------------------------------
