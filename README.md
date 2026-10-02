@@ -318,7 +318,7 @@ docs/                     architecture, brand guide, contracts, user guide
 ```bash
 npm run dev                 # nodemon
 npm run lint && npm run format:check && npm run lint:icons
-npm test                    # Jest; set DATABASE_URL to a disposable *_test database
+npm test                    # Jest, one file at a time (DB suites share the test database); set DATABASE_URL to a disposable *_test database
 npm run test:smoke          # Playwright (needs a running instance + E2E_* credentials)
 npm run contracts:export    # refresh docs/contracts/ after changing the API or palette
 ```
