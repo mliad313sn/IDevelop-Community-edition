@@ -78,6 +78,8 @@ function expectSecurityHeaders(res) {
     expect(res.headers['referrer-policy']).toBe('no-referrer');
     expect(res.headers['x-powered-by']).toBeUndefined();
     expect(res.headers['content-security-policy']).toMatch(/frame-ancestors 'self'/);
+    // SA-14: no inline event handler may run.
+    expect(res.headers['content-security-policy']).toMatch(/script-src-attr 'none'/);
 }
 
 describe('security headers (ASVS 14.3.3, 14.4)', () => {
