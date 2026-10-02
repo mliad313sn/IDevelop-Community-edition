@@ -24,6 +24,7 @@
 
 const fs = require('fs');
 const { checkFile } = require('../utils/fileSignature');
+const { containedUploadPath } = require('../utils/uploadTempPath');
 const { wantsJson } = require('../utils/wantsJson');
 
 const MESSAGES = {
@@ -73,7 +74,11 @@ function allFiles(req) {
 }
 
 function removeTemp(files) {
-    for (const f of files) if (f && f.path) fs.unlink(f.path, () => {});
+    for (const f of files) {
+        // Only a temp file inside an upload directory is ever deleted.
+        const p = f ? containedUploadPath(f.path) : null;
+        if (p) fs.unlink(p, () => {});
+    }
 }
 
 /** The Referer path when it is this site's own page, else null. */

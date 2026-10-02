@@ -1963,7 +1963,9 @@ const _serveBrandingAsset = (kind) => async (req, res) => {
         if (!m) return res.status(404).end();
         const buf = Buffer.from(m[2], 'base64');
         const etag =
-            '"' + require('crypto').createHash('sha1').update(buf).digest('hex').slice(0, 16) + '"';
+            '"' +
+            require('crypto').createHash('sha256').update(buf).digest('hex').slice(0, 16) +
+            '"';
         if (req.headers['if-none-match'] === etag) return res.status(304).end();
         res.setHeader('Content-Type', m[1]);
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');

@@ -34,6 +34,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const { zipDirectory, ZIP_READ_LIMITS } = require('./importGuards');
+const { containedUploadPath } = require('./uploadTempPath');
 
 // Extension -> the kind the CONTENT must prove. One table for every route.
 const EXT_KIND = {
@@ -226,7 +227,9 @@ async function inspectZip(buf, limits = {}) {
 
 function fileBuffer(file) {
     if (file && Buffer.isBuffer(file.buffer)) return file.buffer;
-    if (file && file.path) return fs.readFileSync(file.path);
+    // Disk storage: only a temp file INSIDE an upload directory is read.
+    const p = file ? containedUploadPath(file.path) : null;
+    if (p) return fs.readFileSync(p);
     return null;
 }
 

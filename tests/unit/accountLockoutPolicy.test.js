@@ -176,12 +176,44 @@ describe('fail closed', () => {
 
 describe('authenticated secret checks count toward the account lockout', () => {
     test('noteAuthenticatedFailure records a failed attempt under the account name', async () => {
-        kind('employee');
+        mockDb.get.mockImplementation(async (sql) =>
+            /SELECT username FROM employees WHERE id = \?/.test(sql) ||
+            /FROM employees WHERE lower\(username\)/.test(sql)
+                ? { id: 77, username: 'j.doe' }
+                : undefined
+        );
         await rl.noteAuthenticatedFailure(
             { id: 77, userType: 'manager', username: 'j.doe' },
             '10.2.2.2'
         );
         expect(mockAttempts.recordFailedAttempt).toHaveBeenCalledWith('j.doe', '10.2.2.2');
+    });
+
+    // CodeQL js/user-controlled-bypass: the username carried on the object
+    // (session mfaPending) never picks the bucket, nor skips the record.
+    test('a username carried on the session is ignored: the id decides the bucket', async () => {
+        mockAttempts.recordFailedAttempt.mockClear();
+        mockDb.get.mockImplementation(async (sql) =>
+            /SELECT username FROM admins WHERE id = \?/.test(sql) ||
+            /FROM admins WHERE lower\(username\)/.test(sql)
+                ? { id: 3, username: 'ops.admin' }
+                : undefined
+        );
+        await rl.noteAuthenticatedFailure(
+            { id: 3, userType: 'admin', username: 'someone-else' },
+            '10.2.2.4'
+        );
+        expect(mockAttempts.recordFailedAttempt).toHaveBeenCalledWith('ops.admin', '10.2.2.4');
+        expect(mockAttempts.recordFailedAttempt).not.toHaveBeenCalledWith(
+            'someone-else',
+            expect.anything()
+        );
+    });
+
+    test('an object with a username but no id records nothing', async () => {
+        mockAttempts.recordFailedAttempt.mockClear();
+        await rl.noteAuthenticatedFailure({ userType: 'admin', username: 'ops.admin' }, '10.2.2.5');
+        expect(mockAttempts.recordFailedAttempt).not.toHaveBeenCalled();
     });
 
     test('without a username on the session, the name is looked up by id', async () => {
