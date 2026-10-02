@@ -196,9 +196,40 @@ async function rotateMfa(db, keys, log = console) {
     return stats;
 }
 
-function summary(mfa, box) {
-    const parts = [`${mfa.done} MFA secret(s) (${mfa.skipped} skipped)`];
-    for (const [k, v] of Object.entries(box)) parts.push(`${v.done} ${k} (${v.skipped} skipped)`);
+// The stores rotateSecretBoxStores counts, by name. The operator summary is
+// built from THIS fixed list (never from the keys of a returned object), and
+// every value is coerced to a non-negative integer: only tallies can reach the
+// console, never a key, a secret or a decrypted value.
+const COUNTED_STORES = Object.freeze([
+    'appSettings',
+    'lmsAuthConfig',
+    'lmsWebhookSecret',
+    'webhookSubscriptions',
+    'safetyGate',
+    'hrisConnectors',
+]);
+function tally(v) {
+    const n = Number(v);
+    return Number.isSafeInteger(n) && n >= 0 ? n : 0;
+}
+/** A fresh plain object of counts: { mfa: {done, skipped}, stores: {name: {done, skipped}} }. */
+function rotationCounts(mfa, box) {
+    const counts = {
+        mfa: { done: tally(mfa && mfa.done), skipped: tally(mfa && mfa.skipped) },
+        stores: {},
+    };
+    for (const name of COUNTED_STORES) {
+        const v = box && Object.hasOwn(box, name) ? box[name] : null;
+        if (v) counts.stores[name] = { done: tally(v.done), skipped: tally(v.skipped) };
+    }
+    return counts;
+}
+function summary(counts) {
+    const parts = [`${counts.mfa.done} MFA secret(s) (${counts.mfa.skipped} skipped)`];
+    for (const name of COUNTED_STORES) {
+        const c = counts.stores[name];
+        if (c) parts.push(`${c.done} ${name} (${c.skipped} skipped)`);
+    }
     return parts.join(', ');
 }
 
@@ -241,11 +272,13 @@ async function main() {
                 throw new Error('__DRYRUN_ROLLBACK__');
             }
         });
-        console.log(`\n✓ COMMITTED. Re-encrypted ${summary(mfa, box)}.`);
+        console.log(`\n✓ COMMITTED. Re-encrypted ${summary(rotationCounts(mfa, box))}.`);
         console.log('  NEXT: set APP_KEY to the new value in .env and restart the service.');
     } catch (e) {
         if (e.message === '__DRYRUN_ROLLBACK__') {
-            console.log(`\n✓ DRY RUN OK (rolled back). Would re-encrypt ${summary(mfa, box)}.`);
+            console.log(
+                `\n✓ DRY RUN OK (rolled back). Would re-encrypt ${summary(rotationCounts(mfa, box))}.`
+            );
             console.log('  Re-run with --commit to apply, then set APP_KEY in .env and restart.');
         } else {
             console.error('\n✗ ROTATION FAILED (rolled back):', e.message);
@@ -258,4 +291,11 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { rotateSecretBoxStores, rotateMfa, rotateBoxValue };
+module.exports = {
+    rotateSecretBoxStores,
+    rotateMfa,
+    rotateBoxValue,
+    rotationCounts,
+    summary,
+    COUNTED_STORES,
+};

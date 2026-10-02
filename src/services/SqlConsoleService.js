@@ -996,7 +996,12 @@ class SqlConsoleService {
      * { t: 'opaque' } for U&-escaped text the guard refuses to guess at.
      */
     _sqlTokens(text) {
-        const s = String(text == null ? '' : text);
+        // The loop below is bounded by `s.length`: it must be a real string's
+        // length, never a `length` property of a parsed request object
+        // (`{"sql": {"length": 1e9}}`) — an object or array is refused outright.
+        if (text != null && typeof text === 'object')
+            throw new TypeError('SQL text must be a string');
+        const s = typeof text === 'string' ? text : text == null ? '' : String(text);
         const n = s.length;
         const out = [];
         let i = 0;

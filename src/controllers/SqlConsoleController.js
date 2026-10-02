@@ -68,7 +68,9 @@ class SqlConsoleController {
 
     async execute(req, res) {
         if (this._denied(req, res)) return;
-        const sql = (req.body && req.body.sql) || '';
+        // Only a string is SQL: a parsed object or array (`sql[]=…`, a JSON
+        // object with its own `length`) never reaches the tokeniser's loops.
+        const sql = req.body && typeof req.body.sql === 'string' ? req.body.sql : '';
         // Omitting `dryRun` means "execute" (what the console's own UI relies on).
         // But once a client SENDS the field, any value that is not an explicit no
         // means SIMULATE. The old `String(x) === 'true'` did the reverse: a JSON
