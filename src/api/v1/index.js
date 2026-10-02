@@ -203,9 +203,33 @@ const apiSuperadminSession = (req, res, next) => {
     return res.status(403).json({ error: 'forbidden', hint: 'superadmin session required' });
 };
 
-// ---- Discovery (public) ----------------------------------------------------
-router.get('/openapi.json', (req, res) => res.json(openapi));
-router.get('/', (req, res) =>
+// ---- Discovery -------------------------------------------------------------
+// An anonymous caller learns only that the API answers: no version, no
+// endpoint list, no OpenAPI document (fingerprinting). The full discovery needs
+// a session or a valid key, or a loopback caller: the installer's post-deploy
+// checks (Deploy-OneShot / Repair-Install) read the version from
+// http://localhost:<port>/api/v1/ on the server itself.
+function _presentsCredential(req) {
+    const h = req.headers || {};
+    return !!(h['x-api-key'] || h.authorization || (req.query && req.query.apiKey));
+}
+function _discoveryOpen(req) {
+    const { isLoopbackUnforwarded } = require('../../middleware/apiAuth');
+    return (
+        isLoopbackUnforwarded(req) || !!(req.isAuthenticated && req.isAuthenticated() && req.user)
+    );
+}
+const discoveryAllowed = (req, res, next) => {
+    if (_discoveryOpen(req)) return next();
+    if (!_presentsCredential(req)) return res.json({ status: 'ok' });
+    return apiAuth(req, res, next);
+};
+router.get('/openapi.json', (req, res) => {
+    if (_discoveryOpen(req)) return res.json(openapi);
+    if (_presentsCredential(req)) return apiAuth(req, res, () => res.json(openapi));
+    return res.status(401).json({ error: 'unauthenticated' });
+});
+router.get('/', discoveryAllowed, (req, res) =>
     res.json({
         name: 'IDevelop API',
         version: openapi.info.version,

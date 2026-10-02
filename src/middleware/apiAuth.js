@@ -284,6 +284,35 @@ function apiKeyCanWrite(req) {
  * Everything else gets 403. Reads the socket, never req.ip (trust-proxy aware).
  */
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const _normIp = (ip) =>
+    String(ip || '')
+        .trim()
+        .replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i, '$1')
+        .toLowerCase();
+function _forwarded(req) {
+    const h = (req && req.headers) || {};
+    return !!(h['x-forwarded-for'] || h.forwarded || h['x-real-ip']);
+}
+/** The TCP peer is loopback and no proxy forwarded the request. */
+function isLoopbackUnforwarded(req) {
+    const peer = (req && req.socket && req.socket.remoteAddress) || '';
+    return LOOPBACK.has(peer) && !_forwarded(req);
+}
+/**
+ * METRICS_ALLOW_IPS: comma-separated exact peer addresses (a remote Prometheus
+ * on the LAN) allowed without a token. Compared with the socket peer (never
+ * X-Forwarded-For) and never when a forwarding header is present: a reverse
+ * proxy on an allowed host must not open it to the world.
+ */
+function metricsAllowListed(req) {
+    const list = String(process.env.METRICS_ALLOW_IPS || '')
+        .split(/[\s,;]+/)
+        .map(_normIp)
+        .filter(Boolean);
+    if (!list.length || _forwarded(req)) return false;
+    const peer = _normIp(req && req.socket && req.socket.remoteAddress);
+    return !!peer && list.includes(peer);
+}
 function metricsAccessAllowed(req) {
     const token = String(process.env.METRICS_TOKEN || '').trim();
     if (token) {
@@ -291,10 +320,7 @@ function metricsAccessAllowed(req) {
         const m = /^Bearer\s+(.+)$/i.exec(auth);
         if (m && safeEqual(m[1].trim(), token)) return true;
     }
-    const peer = (req.socket && req.socket.remoteAddress) || '';
-    const h = req.headers || {};
-    const forwarded = h['x-forwarded-for'] || h.forwarded || h['x-real-ip'];
-    return LOOPBACK.has(peer) && !forwarded;
+    return isLoopbackUnforwarded(req) || metricsAllowListed(req);
 }
 function requireMetricsAccess(req, res, next) {
     if (metricsAccessAllowed(req)) return next();
@@ -313,4 +339,5 @@ module.exports = {
     legacySharedKey,
     metricsAccessAllowed,
     requireMetricsAccess,
+    isLoopbackUnforwarded,
 };

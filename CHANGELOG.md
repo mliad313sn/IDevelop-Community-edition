@@ -63,6 +63,26 @@ project uses [Semantic Versioning](https://semver.org/).
 - The installer package no longer ships `.gitleaks.toml` or `.dockerignore`.
 - The SSO page always shows the canonical SAML reply URL
   (`/auth/sso/saml/callback`), never a mistyped configured value.
+- HTTP hardening moved into `src/middleware/httpHardening.js`, with tests:
+    - JSON detection is anchored on the MIME essence, so
+      `text/plain; x=application/json` no longer skips the CSRF check;
+    - `Origin: null` is refused on every state-changing request unless a machine
+      credential validates, and a malformed `Origin` is refused on form posts too;
+    - pages send `Referrer-Policy: same-origin` (our own form posts then carry a
+      real `Origin`); `/api` and `/scim` keep `no-referrer`;
+    - `Permissions-Policy` also denies Bluetooth and the Topics API;
+    - the session cookie is `__Host-app.sid` whenever it is always `Secure`
+      (`COOKIE_SECURE=1` or built-in TLS); an existing `app.sid` session is
+      carried over once, so nobody is signed out by the upgrade;
+    - logout sends `Clear-Site-Data: "cache"`;
+    - `/health` and `/readyz` answer the status only, unless the caller passes the
+      `/metrics` gate, which now also accepts `METRICS_ALLOW_IPS`;
+    - an anonymous remote `GET /api/v1/` returns `{status:'ok'}` only and
+      `/api/v1/openapi.json` needs a session, a valid key or a loopback caller
+      (the installer's local check still reads the version);
+    - `system_logs` no longer records every successful mutation (`HTTP_POST`…);
+      it keeps 401, 403 and 5xx. Authenticated mutations stay in the bounded
+      activity trail (`perf_events`).
 
 ## [1.0.0] — 2026-09-29
 

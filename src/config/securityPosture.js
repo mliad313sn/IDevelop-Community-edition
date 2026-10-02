@@ -42,10 +42,18 @@ const CATEGORIES = [
             },
             {
                 id: 'sessions',
-                fr: 'Cookies de session httpOnly, SameSite et Secure en HTTPS ; expiration d’inactivité et durée maximale.',
-                en: 'httpOnly, SameSite and Secure (over HTTPS) session cookies, with idle and absolute timeouts.',
-                evidence: ['server.js', 'src/middleware/sessionActivity.js'],
-                tests: ['c319-real-session.test.js', 'sessionBucketsBothTypes.test.js'],
+                fr: 'Cookies de session httpOnly, SameSite et Secure en HTTPS (nom de cookie verrouillé sur l’hôte quand il est toujours sécurisé) ; expiration d’inactivité et durée maximale.',
+                en: 'httpOnly, SameSite and Secure (over HTTPS) session cookies, with a host-locked cookie name when the cookie is always Secure; idle and absolute timeouts.',
+                evidence: [
+                    'server.js',
+                    'src/middleware/sessionActivity.js',
+                    'src/middleware/httpHardening.js',
+                ],
+                tests: [
+                    'c319-real-session.test.js',
+                    'sessionBucketsBothTypes.test.js',
+                    'httpHardening.test.js',
+                ],
             },
             {
                 id: 'reauth',
@@ -108,10 +116,10 @@ const CATEGORIES = [
             },
             {
                 id: 'headers',
-                fr: 'En-têtes de sécurité : Permissions-Policy (caméra, micro, localisation, paiement, USB refusés), isolation COOP/CORP, aucun référent transmis, pas de bannière du framework ; pages dynamiques jamais mises en cache.',
-                en: 'Security headers: Permissions-Policy (camera, microphone, location, payment, USB denied), COOP/CORP isolation, no referrer sent, no framework banner; dynamic pages never cached.',
-                evidence: ['server.js'],
-                tests: ['asvsHeaders.test.js'],
+                fr: 'En-têtes de sécurité : Permissions-Policy (caméra, micro, localisation, paiement, USB, Bluetooth refusés), isolation COOP/CORP, aucun référent vers un autre site (aucun du tout depuis les API), pas de bannière du framework ; pages dynamiques jamais mises en cache, cache du navigateur vidé à la déconnexion ; sondes de santé sans détail pour un appelant anonyme.',
+                en: 'Security headers: Permissions-Policy (camera, microphone, location, payment, USB, Bluetooth denied), COOP/CORP isolation, no referrer to another site (none at all from the APIs), no framework banner; dynamic pages never cached, browser cache cleared at sign-out; health probes give no detail to an anonymous caller.',
+                evidence: ['server.js', 'src/middleware/httpHardening.js'],
+                tests: ['asvsHeaders.test.js', 'httpHardening.test.js'],
             },
             {
                 id: 'api-content-type',
@@ -122,10 +130,10 @@ const CATEGORIES = [
             },
             {
                 id: 'csrf',
-                fr: 'Jeton anti-CSRF sur chaque formulaire et appel qui modifie des données.',
-                en: 'Anti-CSRF token on every form and call that changes data.',
-                evidence: ['server.js'],
-                tests: ['webSecurityBaseline.test.js'],
+                fr: 'Jeton anti-CSRF sur chaque formulaire et appel qui modifie des données ; contrôle de l’origine sur toute requête qui modifie des données (une origine « null » est refusée).',
+                en: 'Anti-CSRF token on every form and call that changes data; an origin check on every state-changing request (a "null" origin is refused).',
+                evidence: ['server.js', 'src/middleware/httpHardening.js'],
+                tests: ['webSecurityBaseline.test.js', 'httpHardening.test.js'],
             },
             {
                 id: 'xss',
@@ -395,8 +403,8 @@ const ASVS_L2 = {
     level: 2,
     total: 258,
     pass: 167,
-    fixed: 10,
-    partial: 45,
+    fixed: 11,
+    partial: 44,
     gap: 2,
     na: 29,
     notVerified: 5,

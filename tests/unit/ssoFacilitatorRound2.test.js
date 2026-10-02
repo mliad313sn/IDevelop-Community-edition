@@ -158,20 +158,26 @@ describe('SCIM — reachable by a real identity provider', () => {
         expect(m).toMatch(/req\.headers\['x-api-key'\] \|\| opaqueBearer \|\| req\.query\.apiKey/);
     });
     test('application/scim+json is JSON for the parser, the origin guard and the CSRF skip', () => {
+        // The JSON media types and the predicate moved to
+        // src/middleware/httpHardening.js, shared by the parser (server.js), the
+        // origin guard and the CSRF skip; the predicate is now anchored on the
+        // MIME essence.
         const s = read('server.js');
-        expect(s).toMatch(/const _JSON_TYPES = \['application\/json', 'application\/\*\+json'\];/);
+        const H = require('../../src/middleware/httpHardening');
+        expect(H.JSON_TYPES).toEqual(['application/json', 'application/*+json']);
+        expect(s).toMatch(/const _JSON_TYPES = \[\.\.\.httpHardening\.JSON_TYPES\];/);
         expect(s).toMatch(/express\.json\(\{[^}]*type: _JSON_TYPES/);
-        const isJson = new Function(
-            'ct',
-            'return ' +
-                /const _isJsonType = \(ct\) => (.*);/
-                    .exec(s)[1]
-                    .replace(/String\(ct \|\| ''\)/, "String(ct || '')")
-        );
-        expect(isJson('application/scim+json; charset=utf-8')).toBe(true);
-        expect(isJson('application/json')).toBe(true);
-        expect(isJson('application/x-www-form-urlencoded')).toBe(false);
-        expect((s.match(/_isJsonType\(req\.headers\['content-type'\]\)/g) || []).length).toBe(2);
+        expect(H.isJsonType('application/scim+json; charset=utf-8')).toBe(true);
+        expect(H.isJsonType('application/json')).toBe(true);
+        expect(H.isJsonType('application/x-www-form-urlencoded')).toBe(false);
+        const hh = read('src/middleware/httpHardening.js');
+        expect(
+            (
+                hh.match(
+                    /isJsonType\(req\.headers(\['content-type'\]| && req\.headers\['content-type'\])\)/g
+                ) || []
+            ).length
+        ).toBe(2);
     });
     test('a PATCH without Operations is 400 invalidSyntax, never a silent 200', () => {
         expect(code('src/routes/scim.js')).toMatch(

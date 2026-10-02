@@ -597,11 +597,9 @@ describe('route authorisation', () => {
     });
 
     test('the multipart upload is NOT exempt from the global CSRF check', () => {
-        const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-        const exempt = server.slice(
-            server.indexOf('const isExemptUpload'),
-            server.indexOf('if (\n        p.startsWith')
-        );
+        // The exemption list lives in src/middleware/httpHardening.js.
+        const H = require('../../src/middleware/httpHardening');
+        const exempt = [...H.CSRF_EXEMPT_UPLOADS, ...H.CSRF_EXEMPT_UPLOAD_EXACT].join(' ');
         expect(exempt).not.toMatch(/framework/);
         const js = fs.readFileSync(path.join(ROOT, 'public', 'js', 'framework-library.js'), 'utf8');
         expect(js).toMatch(/'x-csrf-token'/);

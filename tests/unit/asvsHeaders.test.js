@@ -75,7 +75,10 @@ function expectSecurityHeaders(res) {
     expect(res.headers['cross-origin-opener-policy']).toBe('same-origin');
     expect(res.headers['cross-origin-resource-policy']).toBe('same-origin');
     expect(res.headers['x-content-type-options']).toBe('nosniff');
-    expect(res.headers['referrer-policy']).toBe('no-referrer');
+    // Pages: `same-origin` (nothing leaves for another site, and our own form
+    // posts carry a real Origin so the guard can refuse `Origin: null`). The
+    // machine surfaces keep `no-referrer` (see the /api test below).
+    expect(res.headers['referrer-policy']).toBe('same-origin');
     expect(res.headers['x-powered-by']).toBeUndefined();
     expect(res.headers['content-security-policy']).toMatch(/frame-ancestors 'self'/);
 }
@@ -85,6 +88,13 @@ describe('security headers (ASVS 14.3.3, 14.4)', () => {
         const res = await request(app).get('/health');
         expect(res.status).toBe(200);
         expectSecurityHeaders(res);
+    });
+
+    test('/api and /scim answers send no Referer at all', async () => {
+        for (const p of ['/api/v1/skills', '/scim/v2/Users']) {
+            const res = await request(app).get(p);
+            expect([p, res.headers['referrer-policy']]).toEqual([p, 'no-referrer']);
+        }
     });
 
     test('404 page', async () => {

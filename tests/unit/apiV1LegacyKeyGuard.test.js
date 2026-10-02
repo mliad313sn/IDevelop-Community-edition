@@ -62,6 +62,52 @@ test('a distinct legacy key still opens /api/v1', async () => {
     expect(r.status).toBe(200);
 });
 
+describe('discovery: an anonymous remote caller learns only that the API answers', () => {
+    // supertest connects over loopback: X-Forwarded-For makes the caller REMOTE.
+    const REMOTE = { 'X-Forwarded-For': '10.1.2.3' };
+    const KEY = 'legacy-env-key-0123456789';
+    beforeEach(() => {
+        process.env.APP_KEY = APP_KEY;
+        mockConfig.apiKey = KEY;
+    });
+
+    test('GET /api/v1/ -> status only (no version, no endpoints)', async () => {
+        const r = await request(v1App()).get('/api/v1/').set(REMOTE);
+        expect(r.status).toBe(200);
+        expect(r.body).toEqual({ status: 'ok' });
+    });
+    test('GET /api/v1/openapi.json -> 401', async () => {
+        const r = await request(v1App()).get('/api/v1/openapi.json').set(REMOTE);
+        expect(r.status).toBe(401);
+        expect(JSON.stringify(r.body)).not.toMatch(/paths|version/);
+    });
+    test('with a valid key: full discovery and the OpenAPI document', async () => {
+        const d = await request(v1App()).get('/api/v1/').set(REMOTE).set('X-API-Key', KEY);
+        expect(d.body.version).toBeDefined();
+        expect(Array.isArray(d.body.endpoints)).toBe(true);
+        const o = await request(v1App())
+            .get('/api/v1/openapi.json')
+            .set(REMOTE)
+            .set('X-API-Key', KEY);
+        expect(o.status).toBe(200);
+        expect(o.body.paths).toBeDefined();
+    });
+    test('with an invalid key: 401, never the document', async () => {
+        const r = await request(v1App()).get('/api/v1/').set(REMOTE).set('X-API-Key', 'bogus');
+        expect(r.status).toBe(401);
+        const o = await request(v1App())
+            .get('/api/v1/openapi.json')
+            .set(REMOTE)
+            .set('X-API-Key', 'bogus');
+        expect(o.status).toBe(401);
+    });
+    test('loopback (installer post-deploy check) still reads the version', async () => {
+        const r = await request(v1App()).get('/api/v1/');
+        expect(r.body.version).toBeDefined();
+        expect(r.body.status).toBe('ok');
+    });
+});
+
 test('the router has no direct comparison with appConfig.apiKey', () => {
     const src = require('fs').readFileSync(
         require('path').join(__dirname, '../../src/api/v1/index.js'),
