@@ -41,6 +41,40 @@ project uses [Semantic Versioning](https://semver.org/).
   started with it is recorded at stage 3. i18n no longer depends on
   `V2_FEATURES`.
 
+### Dependencies
+
+- Minor/patch group: compression 1.8.2, express-session 1.19.0,
+  express-validator 7.3.2, fast-xml-parser 5.11.1, i18next-fs-backend 2.6.8,
+  i18next-http-middleware 3.9.9, node-mocks-http 1.18.1, passport 0.7.0,
+  pg 8.23.0, winston 3.19.0, yaml 2.9.1; dev: Playwright 1.63, nodemon 3.1.14,
+  Prettier 3.9.9 (four files reformatted), supertest 7.3.0.
+- **ejs 6.0.1** (from 3.1.10): locals are now copied into a null-prototype
+  object before rendering. No template change was needed.
+- **express-rate-limit 8.7.0** (from 7.5.1): IPv6 clients are limited per /56
+  subnet. The custom key generators (API, write-action and account
+  re-authentication limiters) now pass their IP fallback through
+  `ipKeyGenerator`, so rotating addresses inside one subnet no longer resets
+  the count.
+- **otplib 13.5.0** (from 12.0.1): TOTP verification moves to `verifySync` with
+  the same ±1 step tolerance. Existing enrolments and backup codes keep working.
+  A malformed code is still a plain refusal.
+- **bcryptjs 3.0.3** (from 2.4.3, installer password script only; the app uses
+  native bcrypt): new hashes are `$2b$`, and existing `$2a$`/`$2b$` hashes still
+  verify.
+- Dev: **Jest 30.5** (ES-module dependencies reach tests through
+  `tests/helpers/nativeEsmEnvironment.js`), **eslint-plugin-n 18.4** (Node
+  builtin checks off for browser code under `public/`, global `fetch` allowed).
+- Compose: **Redis 8** (`redis:8-alpine`, used under AGPLv3, one of the three
+  licences it is offered under). PostgreSQL stays on `postgres:17-alpine`
+  because a major tag bump does not upgrade an existing data volume. CI now also
+  runs on PostgreSQL 18, and the README documents the dump/restore upgrade.
+- Patched brace-expansion (exceljs → archiver) for three DoS advisories. The
+  production `npm audit` reports 0 vulnerabilities.
+- Deferred, with Dependabot ignore rules: ioredis 6 (BullMQ 5 pins ioredis 5,
+  and v6 defaults to RESP3; it will move with BullMQ 6, which also drops the
+  legacy `repeat` option the jobs use), and commitlint 21 (needs Node ≥ 22.12,
+  while the project supports 20.19+).
+
 ## [1.0.0] — 2026-09-29
 
 First public release of **IDevelop Community Edition**.
