@@ -3,7 +3,10 @@
  * Protects against brute force attacks and API abuse
  */
 
-const rateLimit = require('express-rate-limit');
+// v8: custom keyGenerators must pass IP fallbacks through ipKeyGenerator so an
+// IPv6 client is bucketed by its /56 subnet (the default keyGenerator does the
+// same); a raw req.ip let one host rotate through its subnet to dodge the limit.
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const crypto = require('crypto');
 const LoginAttemptModel = require('../models/LoginAttemptModel');
 const LogService = require('../services/LogService');
@@ -90,26 +93,34 @@ function makeStore(name) {
 // Resolve a submitted login identifier (username OR email, any case) to ONE
 // canonical bucket so failed-attempt lockout can't be bypassed by alternating
 // between a username and its email (or case variants).
-async function canonicalLoginKey(identifier) {
+/**
+ * The canonical key AND the kind of account it names —
+ * 'admin' | 'employee' | 'unknown' | 'error' (lookup failed: the caller must
+ * not assume it is NOT an admin). `id` is the account id when known.
+ * @returns {Promise<{key:string, kind:string, id:number|null}>}
+ */
+async function resolveLoginAccount(identifier) {
     const id = String(identifier || '')
         .trim()
         .toLowerCase();
-    if (!id) return id;
+    if (!id) return { key: id, kind: 'unknown', id: null };
     try {
         const a = await db.get(
-            'SELECT username FROM admins WHERE lower(username) = ? OR lower(email) = ? LIMIT 1',
+            'SELECT id, username FROM admins WHERE lower(username) = ? OR lower(email) = ? LIMIT 1',
             [id, id]
         );
-        if (a && a.username) return String(a.username).toLowerCase();
+        if (a && a.username)
+            return { key: String(a.username).toLowerCase(), kind: 'admin', id: Number(a.id) };
         const e = await db.get(
-            'SELECT username FROM employees WHERE lower(username) = ? OR lower(email) = ? LIMIT 1',
+            'SELECT id, username FROM employees WHERE lower(username) = ? OR lower(email) = ? LIMIT 1',
             [id, id]
         );
-        if (e && e.username) return String(e.username).toLowerCase();
+        if (e && e.username)
+            return { key: String(e.username).toLowerCase(), kind: 'employee', id: Number(e.id) };
     } catch (_) {
-        /* fall back to the normalized identifier */
+        return { key: id, kind: 'error', id: null };
     }
-    return id;
+    return { key: id, kind: 'unknown', id: null };
 }
 
 // Best-effort security audit (never throws / never blocks the request).
@@ -216,53 +227,296 @@ function releaseLabel(req, until) {
     }
 }
 
-/**
- * Rate limiter for login attempts
- * Limits based on IP address
- */
-const loginRateLimiter = rateLimit({
-    windowMs: LOGIN_RATE_WINDOW * 60 * 1000,
-    max: LOGIN_RATE_LIMIT,
-    store: makeStore('login'),
-    message: `Too many login attempts. Please try again in ${LOGIN_RATE_WINDOW} minutes.`,
-    standardHeaders: true,
-    legacyHeaders: false,
-    skipSuccessfulRequests: true, // Don't count successful logins
-    // ...but "successful" cannot be judged by the HTTP status here. A failed login
-    // answers `res.redirect('/login')` — a 302 — and the library's default
-    // predicate is `statusCode < 400`, so every failure was classified a success
-    // and decremented straight back out of the window. The limiter therefore never
-    // accumulated anything on /login, /login/mfa, /forgot-password or
-    // /reset-password. Reproduced before the fix: 12 consecutive bad passwords from
-    // one IP, never blocked. On /login/mfa this was the only network-level cap on
-    // guessing a 6-digit TOTP code.
-    //
-    // Success means an authenticated session actually exists. /forgot-password and
-    // /reset-password never establish one, so every attempt there counts — which is
-    // the intent: it stops a third party having unlimited reset mail sent to a victim.
-    requestWasSuccessful: (req, res) =>
-        res.statusCode < 400 &&
-        !!(req.session && req.session.passport && req.session.passport.user),
-    handler: (req, res) => {
-        secAudit(
-            req,
-            'LOGIN_RATE_LIMITED',
-            `IP exceeded ${LOGIN_RATE_LIMIT} login attempts in ${LOGIN_RATE_WINDOW}m (username "${String((req.body && req.body.username) || '').slice(0, 64)}")`
-        );
-        // 3.23.19: a password sign-in refused while SSO is enforced reads the same whatever the cause.
-        if (req.path === '/login' && ssoEnforced()) return enforcedRefusal(req, res);
-        req.flash(
-            'error',
-            say(
-                req,
-                'flash:adm_too_many_attempts',
-                { minutes: LOGIN_RATE_WINDOW },
-                `Too many login attempts. Please try again in ${LOGIN_RATE_WINDOW} minutes.`
-            )
-        );
-        res.redirect('/login');
+// ---------------------------------------------------------------------------
+// The pre-authentication THROTTLE.
+//
+// Before: ONE express-rate-limit instance, keyed on the IP alone, shared by
+// /login, /login/mfa, /forgot-password and /reset-password (5 per 15 min). A
+// whole site behind one NAT address shared that budget: one person mistyping
+// locked everyone else out, and a reset request consumed a login attempt.
+//
+// Now each endpoint has its OWN counters (never shared), keyed on
+// (IP, identifier): the first LOGIN_RATE_LIMIT failures are free, then every
+// further attempt must wait an exponentially growing delay (2 s, 4 s, 8 s …)
+// capped at 15 minutes. A per-IP CEILING (LOGIN_IP_CEILING, default 100 per
+// window per endpoint) remains for spraying many names from one address — high
+// enough for a site behind NAT. Nothing here ever locks an account: the account
+// policy is checkAccountLockout's (below).
+//
+// Counters live in memory (bounded), or in Redis when REDIS_URL is set.
+// ---------------------------------------------------------------------------
+const THROTTLE_BASE_MS = 2000;
+const THROTTLE_CAP_MS = 15 * 60 * 1000;
+const LOGIN_IP_CEILING = parseInt(process.env.LOGIN_IP_CEILING) || 100;
+
+/** 0 while `failures` < `free`, then 2 s, 4 s, 8 s … capped at 15 min. */
+function throttleDelayMs(failures, free = LOGIN_RATE_LIMIT) {
+    const n = Number(failures) || 0;
+    if (n < free) return 0;
+    return Math.min(THROTTLE_CAP_MS, THROTTLE_BASE_MS * 2 ** Math.min(30, n - free));
+}
+
+const _throttleMem = new Map(); // key -> { n, since, last, exp }
+const THROTTLE_MAX_KEYS = 50000;
+const throttleStore = {
+    async get(key) {
+        if (_redis) {
+            try {
+                const v = await _redis.get('rl:throttle:' + key);
+                return v ? JSON.parse(v) : null;
+            } catch (_) {
+                return null;
+            }
+        }
+        const e = _throttleMem.get(key);
+        if (!e) return null;
+        if (e.exp <= Date.now()) {
+            _throttleMem.delete(key);
+            return null;
+        }
+        return e;
     },
-});
+    async put(key, val, ttlMs) {
+        if (_redis) {
+            try {
+                await _redis.set('rl:throttle:' + key, JSON.stringify(val), 'PX', ttlMs);
+            } catch (_) {
+                /* best effort */
+            }
+            return;
+        }
+        if (!_throttleMem.has(key) && _throttleMem.size >= THROTTLE_MAX_KEYS) {
+            for (const k of _throttleMem.keys()) {
+                _throttleMem.delete(k);
+                if (_throttleMem.size < THROTTLE_MAX_KEYS * 0.9) break;
+            }
+        }
+        _throttleMem.set(key, { ...val, exp: Date.now() + ttlMs });
+    },
+    async del(key) {
+        if (_redis) {
+            try {
+                await _redis.del('rl:throttle:' + key);
+            } catch (_) {
+                /* best effort */
+            }
+            return;
+        }
+        _throttleMem.delete(key);
+    },
+};
+
+/** "45 s" / "3 min" in the request language. */
+function waitLabel(req, ms) {
+    const s = Math.max(1, Math.ceil(ms / 1000));
+    if (s < 60) return say(req, 'auth:wait_seconds', { n: s }, `${s} s`);
+    const m = Math.ceil(s / 60);
+    return say(req, 'auth:wait_minutes', { n: m }, `${m} min`);
+}
+
+function normId(v) {
+    return String(v == null ? '' : v)
+        .trim()
+        .toLowerCase()
+        .slice(0, 200);
+}
+
+/**
+ * One endpoint's throttle.
+ * @param {object} o
+ * @param {string} o.name            counter namespace (never shared)
+ * @param {(req)=>string} o.idOf     the identifier half of the key
+ * @param {(req,res)=>boolean} [o.requestWasSuccessful] success clears the pair
+ *        counter; omitted = every attempt counts (reset/forgot never sign in)
+ * @param {string} o.redirect        where a refusal lands
+ */
+function makeThrottle({ name, idOf, requestWasSuccessful = null, redirect }) {
+    const windowMs = LOGIN_RATE_WINDOW * 60 * 1000;
+    return async function throttle(req, res, next) {
+        // IPv6 clients share their /56 subnet bucket, like the express-rate-limit ones.
+        const ip = req.ip ? ipKeyGenerator(String(req.ip)) : '';
+        const id = normId(idOf(req));
+        const pairKey = `${name}|${ip}|${id}`;
+        const ipKey = `${name}|ip|${ip}`;
+        const now = Date.now();
+        const [pair, ipc] = await Promise.all([
+            throttleStore.get(pairKey),
+            throttleStore.get(ipKey),
+        ]);
+        const n = pair ? Number(pair.n) || 0 : 0;
+        const ipN = ipc && now - ipc.since < windowMs ? Number(ipc.n) || 0 : 0;
+
+        let wait = 0;
+        let reason = null;
+        if (ipN >= LOGIN_IP_CEILING) {
+            wait = ipc.since + windowMs - now;
+            reason = 'ip';
+        } else if (pair) {
+            const w = pair.last + throttleDelayMs(n) - now;
+            if (w > 0) {
+                wait = w;
+                reason = 'pair';
+            }
+        }
+        if (reason) {
+            secAudit(
+                req,
+                'LOGIN_RATE_LIMITED',
+                reason === 'ip'
+                    ? `${name}: address reached the ceiling of ${LOGIN_IP_CEILING} failed attempts in ${LOGIN_RATE_WINDOW}m`
+                    : `${name}: "${id.slice(0, 64)}" from this address must wait ${Math.ceil(wait / 1000)} s after ${n} failures`
+            );
+            res.set('Retry-After', String(Math.max(1, Math.ceil(wait / 1000))));
+            // 3.23.19: a password sign-in refused while SSO is enforced reads
+            // the same whatever the cause.
+            if (name === 'login' && ssoEnforced()) return enforcedRefusal(req, res);
+            if (typeof req.flash === 'function')
+                req.flash(
+                    'error',
+                    reason === 'ip'
+                        ? say(
+                              req,
+                              'flash:adm_ip_blocked',
+                              { minutes: LOGIN_RATE_WINDOW },
+                              'Too many failed login attempts from your network. Please try again later.'
+                          )
+                        : wait >= 60000
+                          ? say(
+                                req,
+                                'flash:adm_too_many_attempts',
+                                { minutes: Math.ceil(wait / 60000) },
+                                `Too many login attempts. Please try again in ${Math.ceil(wait / 60000)} minutes.`
+                            )
+                          : say(
+                                req,
+                                'auth:throttled_wait',
+                                { wait: waitLabel(req, wait) },
+                                `Too many attempts. Please try again in ${waitLabel(req, wait)}.`
+                            )
+                );
+            return res.redirect(typeof redirect === 'function' ? redirect(req) : redirect);
+        }
+
+        res.set('RateLimit-Limit', String(LOGIN_RATE_LIMIT));
+        res.set('RateLimit-Remaining', String(Math.max(0, LOGIN_RATE_LIMIT - n - 1)));
+        res.on('finish', () => {
+            const ok = requestWasSuccessful ? requestWasSuccessful(req, res) : false;
+            const t = Date.now();
+            if (ok) {
+                throttleStore.del(pairKey);
+                return;
+            }
+            throttleStore.put(
+                pairKey,
+                { n: n + 1, since: pair ? pair.since : t, last: t },
+                THROTTLE_CAP_MS * 2
+            );
+            const fresh = !ipc || t - ipc.since >= windowMs;
+            throttleStore.put(
+                ipKey,
+                { n: fresh ? 1 : ipN + 1, since: fresh ? t : ipc.since, last: t },
+                windowMs
+            );
+        });
+        return next();
+    };
+}
+
+const _throttles = {
+    // Success means an authenticated session actually exists — NOT an HTTP
+    // status: a failed login answers `res.redirect('/login')`, a 302 (the
+    // the library default `statusCode < 400` counted every failure as a success).
+    // A correct password that stops at the MFA step (mfaPending) is not a
+    // password failure either; the code step has its own counters.
+    '/login': makeThrottle({
+        name: 'login',
+        idOf: (req) => req.body && req.body.username,
+        requestWasSuccessful: (req, res) =>
+            res.statusCode < 400 &&
+            !!(
+                (req.session && req.session.passport && req.session.passport.user) ||
+                (req.session && req.session.mfaPending)
+            ),
+        redirect: '/login',
+    }),
+    '/login/mfa': makeThrottle({
+        name: 'login-mfa',
+        idOf: (req) => {
+            const p = req.session && req.session.mfaPending;
+            return p ? `${p.userType}:${p.id}` : '';
+        },
+        requestWasSuccessful: (req, res) =>
+            res.statusCode < 400 &&
+            !!(req.session && req.session.passport && req.session.passport.user),
+        redirect: '/login',
+    }),
+    // /forgot-password and /reset-password never establish a session: every
+    // attempt counts (stops a third party having unlimited reset mail sent).
+    '/forgot-password': makeThrottle({
+        name: 'forgot',
+        idOf: (req) => req.body && req.body.identifier,
+        redirect: '/login',
+    }),
+    '/reset-password': makeThrottle({
+        name: 'reset',
+        idOf: (req) =>
+            crypto
+                .createHash('sha256')
+                .update(String((req.body && req.body.token) || ''))
+                .digest('hex')
+                .slice(0, 16),
+        redirect: '/forgot-password',
+    }),
+    '/auth/sso/choose': makeThrottle({
+        name: 'sso-choose',
+        idOf: () => '',
+        requestWasSuccessful: (req, res) =>
+            res.statusCode < 400 &&
+            !!(req.session && req.session.passport && req.session.passport.user),
+        redirect: '/login',
+    }),
+    '/auth/sso/enrol-code': makeThrottle({
+        name: 'sso-enrol',
+        idOf: () => '',
+        requestWasSuccessful: (req, res) =>
+            res.statusCode < 400 &&
+            !!(req.session && req.session.passport && req.session.passport.user),
+        redirect: '/login',
+    }),
+};
+const _otherThrottles = new Map();
+
+/**
+ * The pre-authentication limiter, mounted on every public auth endpoint. It
+ * dispatches to that ENDPOINT's own throttle instance (separate counters per
+ * endpoint); an unlisted path gets its own instance too.
+ */
+function loginRateLimiter(req, res, next) {
+    const p = String(req.originalUrl || req.url || req.path || '').split('?')[0];
+    // The request path picks the throttle: only an OWN entry of the table counts
+    // (`/__proto__`, `/constructor`, `/toString` must not resolve to an inherited
+    // member and be called as a middleware).
+    let t = Object.hasOwn(_throttles, p) ? _throttles[p] : null;
+    if (!t) {
+        t = _otherThrottles.get(p);
+        if (!t) {
+            t = makeThrottle({
+                name: 'auth:' + p.slice(0, 60),
+                idOf: (r) => r.body && (r.body.username || r.body.identifier),
+                requestWasSuccessful: (r, s) =>
+                    s.statusCode < 400 &&
+                    !!(r.session && r.session.passport && r.session.passport.user),
+                redirect: '/login',
+            });
+            if (_otherThrottles.size < 100) _otherThrottles.set(p, t);
+        }
+    }
+    if (typeof t !== 'function') return next(new Error('rate-limit: no throttle'));
+    return Promise.resolve(t(req, res, next)).catch((e) => {
+        console.error('[rate-limit] throttle error:', e && e.message);
+        next();
+    });
+}
 
 /**
  * Stricter limiter for self-service signup — counts ALL attempts (no
@@ -297,38 +551,95 @@ const signupRateLimiter = rateLimit({
 });
 
 /**
- * Rate limiter for API endpoints
+ * Rate limiter for API endpoints.
+ *
+ * The per-key bucket used to be keyed on the RAW, unvalidated credential: every
+ * random junk key got a fresh bucket of its own, so a caller rotating keys was
+ * never limited at all. Now:
+ *   1. the per-IP bucket ALWAYS applies (API_IP_RATE_LIMIT, default
+ *      API_RATE_LIMIT); requests carrying an invalid key count against it;
+ *   2. a SECOND, per-key bucket applies only once the key VALIDATES (an
+ *      api_keys row, or the legacy shared env key). A JWT bearer is validated
+ *      by the route itself and stays on the IP bucket here.
+ * An integration key therefore still gets its own quota (one Power BI feed
+ * cannot exhaust another's), but only a real key earns one.
  */
-const apiRateLimiter = rateLimit({
+const API_IP_RATE_LIMIT = parseInt(process.env.API_IP_RATE_LIMIT) || API_RATE_LIMIT;
+const _apiLimitMessage = {
+    error: 'Too many requests. Please try again later.',
+    retryAfter: API_RATE_WINDOW,
+};
+const _apiIpLimiter = rateLimit({
     windowMs: API_RATE_WINDOW * 60 * 1000,
-    max: API_RATE_LIMIT,
+    max: API_IP_RATE_LIMIT,
     store: makeStore('api'),
-    message: {
-        error: 'Too many requests. Please try again later.',
-        retryAfter: API_RATE_WINDOW,
-    },
+    message: _apiLimitMessage,
     standardHeaders: true,
     legacyHeaders: false,
-    // Per-API-key budget: an authenticated integration key gets its OWN quota so
-    // one Power BI feed can't exhaust the shared IP bucket for everyone else.
-    // This limiter is mounted on `/api/` BEFORE per-route auth runs, so req._apiKey
-    // isn't populated yet — derive the bucket from the raw credential in the request
-    // (hashed, never stored in the clear). Falls back to the resolved key, then IP.
-    keyGenerator: (req) => {
+    keyGenerator: (req) => 'ip:' + ipKeyGenerator(req.ip),
+});
+const _apiKeyLimiter = rateLimit({
+    windowMs: API_RATE_WINDOW * 60 * 1000,
+    max: API_RATE_LIMIT,
+    store: makeStore('api-key'),
+    message: _apiLimitMessage,
+    standardHeaders: false, // the IP bucket's headers stay the ones the client reads
+    legacyHeaders: false,
+    keyGenerator: (req) => 'apikey:' + req._rateKeyId,
+});
+
+// A validated key is remembered briefly (hash -> key id) so the limiter does not
+// add a second DB round-trip to every API call. Only POSITIVE results are kept:
+// an invalid key never earns a bucket.
+const _validKeyCache = new Map();
+const VALID_KEY_TTL_MS = 30000;
+async function validatedKeyId(raw) {
+    const h = crypto.createHash('sha256').update(String(raw)).digest('hex');
+    const hit = _validKeyCache.get(h);
+    if (hit && Date.now() - hit.at < VALID_KEY_TTL_MS) return hit.id;
+    let id = null;
+    try {
+        const p = await require('../services/ApiKeyService').validate(String(raw));
+        if (p && p.id != null) id = String(p.id);
+    } catch (_) {
+        id = null;
+    }
+    if (id == null) {
+        try {
+            const legacy = require('./apiAuth').legacySharedKey();
+            const a = Buffer.from(String(raw));
+            const b = Buffer.from(String(legacy || ''));
+            if (legacy && a.length === b.length && crypto.timingSafeEqual(a, b)) id = 'env';
+        } catch (_) {
+            id = null;
+        }
+    }
+    if (id != null) {
+        if (_validKeyCache.size > 5000) _validKeyCache.clear();
+        _validKeyCache.set(h, { id, at: Date.now() });
+    }
+    return id;
+}
+
+function apiRateLimiter(req, res, next) {
+    _apiIpLimiter(req, res, (err) => {
+        if (err) return next(err);
+        const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+        const looksJwt = /^[\w-]+\.[\w-]+\.[\w-]*$/.test(bearer);
         const raw =
             req.headers['x-api-key'] ||
-            (req.headers.authorization || '').replace(/^Bearer\s+/i, '') ||
+            (bearer && !looksJwt ? bearer : '') ||
             (req.query && req.query.apiKey);
-        if (raw)
-            return (
-                'apikey:' +
-                crypto.createHash('sha256').update(String(raw)).digest('hex').slice(0, 32)
-            );
-        const k = req._apiKey;
-        if (k && (k.id != null || k.label)) return 'apikey:' + (k.id != null ? k.id : k.label);
-        return req.ip;
-    },
-});
+        if (!raw) return next();
+        validatedKeyId(raw)
+            .then((id) => {
+                if (id == null) return next(); // invalid: the IP bucket alone
+                req._rateKeyId = id;
+                return _apiKeyLimiter(req, res, next);
+            })
+            .catch(() => next());
+    });
+}
 
 // Per-user write limiter for cheap-to-spam authenticated endpoints (survey
 // responses, recognition, feedback) — keyed by the signed-in user so one
@@ -341,8 +652,69 @@ const writeActionLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req) =>
-        req.user && req.user.id != null ? `${req.user.userType || 'u'}:${req.user.id}` : req.ip,
+        req.user && req.user.id != null
+            ? `${req.user.userType || 'u'}:${req.user.id}`
+            : ipKeyGenerator(req.ip),
 });
+
+/**
+ * App-wide backstop limiter (CodeQL js/missing-rate-limiting; CWE-770).
+ *
+ * The targeted limiters above guard the credential surfaces (sign-in, reset,
+ * signup, re-authentication) and the API. Everything else (every page, export,
+ * download and admin write) had no ceiling at all: one session could replay an
+ * expensive report or export in a tight loop. This is a GENEROUS ceiling that a
+ * person clicking through the app, or a page firing its XHRs, never reaches; it
+ * only stops a scripted flood.
+ *
+ *   - a signed-in person is counted per ACCOUNT (colleagues behind one NAT are
+ *     not penalised for each other): GLOBAL_RATE_LIMIT per minute (default 600);
+ *   - an anonymous request is counted per address (IPv6 /56):
+ *     GLOBAL_IP_RATE_LIMIT per minute (default 1200, a whole site signing in).
+ *
+ * server.js mounts it with `app.use` after the session/passport middleware (so
+ * req.user is known) and before every route; static assets and the health
+ * probes are served above it and never count. Only the OPTIONS live here:
+ * server.js builds the limiter with express-rate-limit itself, so the mounted
+ * middleware is the library's own (no wrapper).
+ */
+const GLOBAL_RATE_WINDOW_MS = 60 * 1000;
+function globalRateLimitOptions(env = process.env) {
+    const perUser = parseInt(env.GLOBAL_RATE_LIMIT) || 600;
+    const perIp = parseInt(env.GLOBAL_IP_RATE_LIMIT) || 1200;
+    const signedIn = (req) => !!(req.user && req.user.id != null);
+    return {
+        windowMs: GLOBAL_RATE_WINDOW_MS,
+        limit: (req) => (signedIn(req) ? perUser : perIp),
+        store: makeStore('global'),
+        // The API keeps the headers its own (per-key) limiter sets.
+        standardHeaders: false,
+        legacyHeaders: false,
+        keyGenerator: (req) =>
+            signedIn(req)
+                ? `u:${req.user.userType === 'admin' ? 'admin' : 'person'}:${req.user.id}`
+                : `ip:${ipKeyGenerator(String(req.ip || ''))}`,
+        handler: (req, res) => {
+            const who = signedIn(req) ? `${req.user.userType || 'u'}:${req.user.id}` : 'anonymous';
+            secAudit(
+                req,
+                'GLOBAL_RATE_LIMITED',
+                `${who} exceeded the app-wide request ceiling (${signedIn(req) ? perUser : perIp}/min)`
+            );
+            res.set('Retry-After', String(Math.ceil(GLOBAL_RATE_WINDOW_MS / 1000)));
+            const msg = say(
+                req,
+                'flash:too_many_requests',
+                { defaultValue: 'Too many requests. Please slow down and try again shortly.' },
+                'Too many requests. Please slow down and try again shortly.'
+            );
+            const p = String(req.path || '');
+            if (p.startsWith('/api/') || p.startsWith('/scim/') || !req.accepts('html'))
+                return res.status(429).json({ error: msg });
+            return res.status(429).type('text/plain').send(msg);
+        },
+    };
+}
 
 /**
  * 3.23.18 — POST /account (« Mon profil ») re-authentication limiter.
@@ -375,7 +747,7 @@ const _accountReauthLimiter = rateLimit({
     keyGenerator: (req) =>
         req.user && req.user.id != null
             ? `acct:${req.user.userType || 'u'}:${req.user.id}`
-            : `acct-ip:${req.ip}`,
+            : `acct-ip:${ipKeyGenerator(req.ip)}`,
     skipSuccessfulRequests: true,
     requestWasSuccessful: (req, res) =>
         res.statusCode < 400 && _flashErrorCount(req) <= (req._acctFlashErrorsBefore || 0),
@@ -400,6 +772,91 @@ const _accountReauthLimiter = rateLimit({
 function accountReauthLimiter(req, res, next) {
     req._acctFlashErrorsBefore = _flashErrorCount(req);
     return _accountReauthLimiter(req, res, next);
+}
+
+/**
+ * The same guard for the OTHER authenticated secret
+ * checks, which had none: POST /change-password (current password) and
+ * POST /v2/uam/mfa/verify + /mfa/disable (a TOTP or backup code). Each family
+ * has its own namespace and is keyed per signed-in user; only refused posts
+ * (an error flash queued during the request) consume the budget. The refusals
+ * ALSO count toward the account's lockout policy — see noteAuthenticatedFailure.
+ * @param {string} name        store namespace ('pw-reauth' | 'mfa-reauth')
+ * @param {string|function} redirect  where a refused request lands
+ */
+function makeReauthLimiter(name, redirect) {
+    const limiter = rateLimit({
+        windowMs: ACCOUNT_REAUTH_WINDOW * 60 * 1000,
+        max: ACCOUNT_REAUTH_LIMIT,
+        store: makeStore(name),
+        standardHeaders: true,
+        legacyHeaders: false,
+        keyGenerator: (req) =>
+            req.user && req.user.id != null
+                ? `${name}:${req.user.userType === 'admin' ? 'admin' : 'person'}:${req.user.id}`
+                : `${name}-ip:${ipKeyGenerator(req.ip)}`,
+        skipSuccessfulRequests: true,
+        requestWasSuccessful: (req, res) =>
+            req._reauthNotAGuess === true ||
+            (res.statusCode < 400 && _flashErrorCount(req) <= (req._reauthFlashErrorsBefore || 0)),
+        handler: (req, res) => {
+            const who = req.user ? `${req.user.userType || 'u'}:${req.user.id}` : 'anonymous';
+            secAudit(
+                req,
+                'REAUTH_RATE_LIMITED',
+                `${who} exceeded ${ACCOUNT_REAUTH_LIMIT} refused ${name} checks in ${ACCOUNT_REAUTH_WINDOW}m`
+            );
+            if (typeof req.flash === 'function')
+                req.flash(
+                    'error',
+                    say(
+                        req,
+                        'flash:account_reauth_rate_limited',
+                        {
+                            minutes: ACCOUNT_REAUTH_WINDOW,
+                            defaultValue: `Trop de tentatives refusées. Réessayez dans ${ACCOUNT_REAUTH_WINDOW} minutes.`,
+                        },
+                        `Too many refused attempts. Please try again in ${ACCOUNT_REAUTH_WINDOW} minutes.`
+                    )
+                );
+            res.redirect(typeof redirect === 'function' ? redirect(req) : redirect);
+        },
+    });
+    return function reauthLimiter(req, res, next) {
+        req._reauthFlashErrorsBefore = _flashErrorCount(req);
+        return limiter(req, res, next);
+    };
+}
+const passwordReauthLimiter = makeReauthLimiter('pw-reauth', '/change-password');
+const mfaReauthLimiter = makeReauthLimiter('mfa-reauth', (req) =>
+    String(req.originalUrl || req.path || '').includes('/mfa/verify')
+        ? '/v2/uam/mfa/setup'
+        : '/v2/uam/mfa/manage'
+);
+
+/**
+ * A refused authenticated secret check (current password on /change-password,
+ * a TOTP/backup code on /mfa/verify or /mfa/disable, a wrong code at /login/mfa)
+ * is a failed authentication of THAT account: record it like a failed sign-in,
+ * so the account's lockout policy (admin hard lock at 10, staff soft lock) sees
+ * guesses made from inside a borrowed session too. Never throws.
+ */
+async function noteAuthenticatedFailure(user, ip) {
+    try {
+        // The account is named by its ID, resolved here from the database. A
+        // `username` carried on the object (a session's mfaPending, req.user) is
+        // NOT believed: whatever string it holds must never decide which lockout
+        // bucket a failure lands in, nor whether it is recorded at all.
+        if (!user || user.id == null) return;
+        const row =
+            user.userType === 'admin'
+                ? await db.get('SELECT username FROM admins WHERE id = ?', [user.id])
+                : await db.get('SELECT username FROM employees WHERE id = ?', [user.id]);
+        const name = row && row.username;
+        if (name) await recordLoginAttempt(name, ip, false);
+    } catch (_) {
+        /* the refusal itself stands; the tally is best effort */
+    }
 }
 
 /**
@@ -432,16 +889,17 @@ const checkAccountLockout = async (req, res, next) => {
         return next();
     }
 
-    const username = await canonicalLoginKey(req.body.username);
+    const account = await resolveLoginAccount(req.body.username);
+    const username = account.key;
     const ipAddress = req.ip;
 
     try {
-        // Threshold and window come from App Settings (env fallback) — .
+        // Threshold and window come from App Settings (env fallback).
         const policy = await lockoutPolicy();
         const enforced = ssoEnforced();
 
         if (enforced) {
-            // 3.23.19 (S2 + residual-leak fix): while SSO is enforced there is no
+            // 3.23.19: while SSO is enforced there is no
             // global account lock that someone elsewhere could trigger. Instead a
             // PROGRESSIVE DELAY (none for 2 failures, then 1 s, 2 s, 4 s … 30 s)
             // from the throttle counter keyed on (normalized identifier, IP) that
@@ -461,13 +919,47 @@ const checkAccountLockout = async (req, res, next) => {
                 await new Promise((r) => setTimeout(r, ms));
             }
         } else {
-            // Check failed attempts by username (canonicalized)
-            const state = await lockStateFor(username, policy);
+            // The account policy, by kind of account:
+            //  - an ADMIN account is HARD-locked after ADMIN_HARD_LOCK_AFTER (10)
+            //    failures in the window (SuperAdmins alerted when it trips — see
+            //    recordLoginAttempt); an admin unlock clears it;
+            //  - any other identifier (staff, unknown — treated alike so the answer
+            //    reveals nothing) is NEVER locked: from maxLoginAttempts failures
+            //    it is SOFT-locked — each further attempt is slowed (5 s doubling,
+            //    60 s max), the person is notified, an admin can clear it. A
+            //    username lock would let anyone lock a named colleague out.
+            //  - a lookup that FAILED ('error') may be an admin: fail closed.
+            if (account.kind === 'error') throw new Error('account lookup failed');
+            if (account.kind !== 'admin') {
+                const attempts =
+                    Number(
+                        await LoginAttemptModel.getFailedAttemptsCount(
+                            username,
+                            policy.lockoutMinutes
+                        )
+                    ) || 0;
+                const ms = softLockDelayMs(attempts, policy.maxAttempts);
+                if (ms > 0) {
+                    secAudit(
+                        req,
+                        'LOGIN_SOFT_LOCK_DELAY',
+                        `Sign-in for "${String(username).slice(0, 64)}" slowed ${ms} ms after ${attempts} failed attempts (soft lock, ${policy.lockoutMinutes}m)`
+                    );
+                    await new Promise((r) => setTimeout(r, ms));
+                }
+            }
+            const state =
+                account.kind === 'admin'
+                    ? await lockStateFor(username, {
+                          ...policy,
+                          maxAttempts: ADMIN_HARD_LOCK_AFTER,
+                      })
+                    : { locked: false };
             if (state.locked) {
                 secAudit(
                     req,
                     'ACCOUNT_LOCKED',
-                    `Account "${String(username).slice(0, 64)}" locked after ${state.attempts} failed attempts (${policy.lockoutMinutes}m)`
+                    `Admin account "${String(username).slice(0, 64)}" hard-locked after ${state.attempts} failed attempts (${policy.lockoutMinutes}m)`
                 );
                 const time = releaseLabel(req, state.until);
                 req.flash(
@@ -498,8 +990,12 @@ const checkAccountLockout = async (req, res, next) => {
             ? enforcedIpFailureCount(ipAddress, policy.lockoutMinutes)
             : await LoginAttemptModel.getFailedAttemptsByIP(ipAddress, policy.lockoutMinutes);
 
-        if (ipAttempts >= policy.maxAttempts * 2) {
-            // More lenient for IP (allows multiple users)
+        // Outside enforcement the per-address ceiling is high enough
+        // for a whole site behind one NAT address (LOGIN_IP_CEILING, default 100
+        // failures per window); while SSO is enforced only the break-glass uses a
+        // password, so the 3.23.19 threshold (2 × maxLoginAttempts) is kept.
+        const ipCeiling = enforced ? policy.maxAttempts * 2 : LOGIN_IP_CEILING;
+        if (ipAttempts >= ipCeiling) {
             secAudit(
                 req,
                 'IP_BLOCKED',
@@ -521,16 +1017,41 @@ const checkAccountLockout = async (req, res, next) => {
 
         next();
     } catch (error) {
+        // FAIL CLOSED unless the identifier is known NOT to
+        // be an administrator. An admin (or an identifier we could not resolve,
+        // which might be one) is refused with the generic sign-in error; a staff
+        // or unknown identifier proceeds — the password check still applies.
         console.error('Account lockout check error:', error);
-        next(); // Don't block login on error
+        if (account.kind === 'employee' || account.kind === 'unknown') return next();
+        secAudit(
+            req,
+            'LOGIN_LOCKOUT_CHECK_FAILED',
+            `Lockout check failed for "${String(username).slice(0, 64)}" — sign-in refused (fail closed): ${error && error.message}`
+        );
+        if (ssoEnforced()) return enforcedRefusal(req, res);
+        req.flash(
+            'error',
+            say(req, 'flash:auth_login_error', {}, 'An error occurred during login')
+        );
+        return res.redirect('/login');
     }
 };
+
+/** Soft lock: 0 below `max` failures, then 5 s doubling, capped at 60 s. */
+function softLockDelayMs(failures, max = LOGIN_RATE_LIMIT) {
+    const n = Number(failures) || 0;
+    if (n < max) return 0;
+    return Math.min(60000, 5000 * 2 ** Math.min(10, n - max));
+}
+
+/** An ADMIN account is hard-locked after this many failures in the window. */
+const ADMIN_HARD_LOCK_AFTER = parseInt(process.env.ADMIN_HARD_LOCK_AFTER) || 10;
 
 // ---------------------------------------------------------------------------
 // 3.23.19 — the break-glass THROTTLE while SSO is enforced. ONE counter for
 // EVERY failed password attempt (unknown name, employee, local admin, viewer,
 // SuperAdmin alike), keyed on (normalized identifier, IP). It is NOT the
-// account-lockout counter: it never locks any account (S2 stays true), it only
+// account-lockout counter: it never locks any account, it only
 // delays the next answer — identically for every identifier, so the delay
 // cannot reveal which name is the SuperAdmin. In memory, per process; entries
 // expire with the lockout window.
@@ -609,7 +1130,7 @@ function enforcedIdFailureCount(identifier, windowMinutes) {
     return e.n;
 }
 
-/** N5: 0 below 10 failures, then at least 5 s, doubling, capped at 60 s. */
+/** 0 below 10 failures, then at least 5 s, doubling, capped at 60 s. */
 function accountSlowdownMs(failures) {
     const n = Number(failures) || 0;
     if (n < ACCOUNT_SLOWDOWN_AFTER) return 0;
@@ -674,7 +1195,7 @@ function clearEnforcedFailures(identifier, ip) {
     _enforcedIdFails.delete(enforcedKey(identifier, '').replace(/\|$/, ''));
 }
 
-/** S2: 0 below 3 failures, then 1 s, 2 s, 4 s … capped at 30 s. */
+/** 0 below 3 failures, then 1 s, 2 s, 4 s … capped at 30 s. */
 function progressiveDelayMs(failures) {
     const n = Number(failures) || 0;
     if (n < 3) return 0;
@@ -687,29 +1208,123 @@ function progressiveDelayMs(failures) {
  */
 const recordLoginAttempt = async (username, ipAddress, successful) => {
     try {
-        username = await canonicalLoginKey(username); // same bucket as the lockout check
+        const account = await resolveLoginAccount(username); // same bucket as the lockout check
+        username = account.key;
         if (successful) {
             await LoginAttemptModel.recordSuccessfulLogin(username, ipAddress);
             await LoginAttemptModel.clearFailedAttempts(username);
         } else {
             await LoginAttemptModel.recordFailedAttempt(username, ipAddress);
+            // Not awaited: the answer time must not depend on the kind of account.
+            Promise.resolve()
+                .then(() => afterFailure(account, ipAddress))
+                .catch(() => {});
         }
     } catch (error) {
         console.error('Failed to record login attempt:', error);
     }
 };
 
+/**
+ * The moment an account CROSSES its threshold:
+ *  - an admin reaching ADMIN_HARD_LOCK_AFTER failures → hard lock: CRITICAL log,
+ *    audit ADMIN_ACCOUNT_HARD_LOCKED and an alert to every SuperAdmin (kind
+ *    'security.admin_account_locked', at most hourly per account);
+ *  - a staff account reaching maxLoginAttempts → soft lock: audit
+ *    ACCOUNT_SOFT_LOCKED and an in-app notice to the person (their password
+ *    still works, each attempt is only slowed; an admin can clear it).
+ * Fires on the crossing only (== threshold), never once per failure.
+ */
+/**
+ * A sign-in identifier as it may appear in a log line: CR, LF, the Unicode line
+ * and paragraph separators and every other control character become a space,
+ * so a crafted identifier cannot forge a second log entry (CWE-117). Capped.
+ */
+function logSafe(v) {
+    return String(v == null ? '' : v)
+        .replace(/[\r\n\u2028\u2029]/g, ' ')
+        .replace(/[\u0000-\u001F\u007F]/g, ' ') // eslint-disable-line no-control-regex
+        .slice(0, 200);
+}
+
+async function afterFailure(account, ipAddress) {
+    if (!account || !account.key || (account.kind !== 'admin' && account.kind !== 'employee'))
+        return;
+    const policy = await lockoutPolicy();
+    const n =
+        Number(
+            await LoginAttemptModel.getFailedAttemptsCount(account.key, policy.lockoutMinutes)
+        ) || 0;
+    if (account.kind === 'admin' && n === ADMIN_HARD_LOCK_AFTER) {
+        console.error(
+            `[CRITICAL] admin account "${logSafe(account.key)}" hard-locked after ${n} failed sign-in attempts (${policy.lockoutMinutes} min window)`
+        );
+        LogService.log({
+            adminId: account.id,
+            action: 'ADMIN_ACCOUNT_HARD_LOCKED',
+            entityType: 'auth',
+            details: `Admin account "${logSafe(account.key)}" hard-locked after ${n} failed attempts in ${policy.lockoutMinutes}m (last from ${ipAddress || '?'}) — an admin unlock clears it`,
+            ipAddress,
+        });
+        require('../services/SuperadminAlertService')
+            .alert('security.admin_account_locked', {
+                targetAdminId: account.id,
+                username: account.key,
+                detail: `${n} failed sign-in attempts — account locked for ${policy.lockoutMinutes} min`,
+                hourly: true,
+            })
+            .catch(() => {});
+    } else if (account.kind === 'employee' && n === policy.maxAttempts) {
+        LogService.log({
+            adminId: null,
+            action: 'ACCOUNT_SOFT_LOCKED',
+            entityType: 'employee',
+            entityId: account.id,
+            actorRef: `employee:${account.id}`,
+            details: `Account "${logSafe(account.key)}" soft-locked after ${n} failed attempts (sign-ins slowed, never refused; an admin unlock clears it)`,
+            ipAddress,
+        });
+        try {
+            await require('../services/NotificationService').notify({
+                userType: 'employee',
+                userId: account.id,
+                kind: 'security.account_soft_locked',
+                category: 'security',
+                payload: { attempts: n, minutes: policy.lockoutMinutes },
+            });
+        } catch (_) {
+            /* the notice is best effort */
+        }
+    }
+}
+
 module.exports = {
     loginRateLimiter,
     signupRateLimiter,
     apiRateLimiter,
     writeActionLimiter,
+    globalRateLimitOptions,
     accountReauthLimiter,
+    passwordReauthLimiter,
+    mfaReauthLimiter,
+    noteAuthenticatedFailure,
     checkAccountLockout,
     recordLoginAttempt,
+    resolveLoginAccount,
+    throttleDelayMs,
+    softLockDelayMs,
+    ADMIN_HARD_LOCK_AFTER,
+    LOGIN_IP_CEILING,
+    _resetThrottlesForTests: () => {
+        _throttleMem.clear();
+        _validKeyCache.clear();
+    },
+    validatedKeyId,
+    _resetApiKeyCacheForTests: () => _validKeyCache.clear(),
     lockoutPolicy,
     lockStateFor,
     progressiveDelayMs,
+    logSafe,
     noteEnforcedFailure,
     enforcedFailureCount,
     enforcedIpFailureCount,

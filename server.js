@@ -32,6 +32,7 @@ const {
     loginRateLimiter,
     apiRateLimiter,
     checkAccountLockout,
+    globalRateLimitOptions,
 } = require('./src/middleware/rateLimiter');
 const routes = require('./src/routes/index');
 const appConfig = require('./src/config/app');
@@ -89,10 +90,12 @@ app.use((req, res, next) => {
     next();
 });
 
-// Content-Security-Policy. script-src is nonce-based (no 'unsafe-inline'); the
-// remaining 'unsafe-inline' on script-src-attr (onclick=) and style-src
-// (inline style=) reflect pervasive inline handlers/styles in the EJS views and
-// are a separate, lower-risk migration. Plugins/objects blocked, base-uri locked,
+// Content-Security-Policy. script-src is nonce-based (no 'unsafe-inline') and
+// script-src-attr is 'none': no inline event handler (onclick= …) may run. The
+// views declare their controls as data-on-<event> attributes, dispatched by the
+// delegated listeners in public/js/csp-actions.js (SA-14;
+// tests/unit/noInlineHandlers.test.js keeps it that way). style-src still allows
+// 'unsafe-inline' for inline style= attributes, a separate, lower-risk migration. Plugins/objects blocked, base-uri locked,
 // anti-clickjacking frame-ancestors, restricted form-action. upgrade-insecure-
 // requests is removed because the app is commonly served over plain HTTP internally.
 // Data sovereignty (3.23.17): Font Awesome is self-hosted under /vendor, and
@@ -119,7 +122,8 @@ app.use(
                 // Chart.js and Font Awesome are self-hosted under /vendor; Google
                 // Fonts are allowed only when ENABLE_EXTERNAL_FONTS=1.
                 scriptSrc: ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
-                scriptSrcAttr: ["'unsafe-inline'"], // onclick= handlers used throughout the UI (separate refactor)
+                // No inline event handler attribute runs (SA-14): see public/js/csp-actions.js.
+                scriptSrcAttr: ["'none'"],
                 styleSrc: ["'self'", "'unsafe-inline'", ...CDN_STYLE],
                 fontSrc: ["'self'", ...CDN_FONT, 'data:'],
                 imgSrc: ["'self'", 'data:'],
@@ -138,41 +142,22 @@ app.use(
         // library upgrade cannot silently relax them (tests/unit/asvsHeaders.test.js).
         crossOriginOpenerPolicy: { policy: 'same-origin' },
         crossOriginResourcePolicy: { policy: 'same-origin' },
-        referrerPolicy: { policy: 'no-referrer' },
+        // `same-origin`, not `no-referrer`: nothing leaves for another site, but
+        // under `no-referrer` the browser sends `Origin: null` on our OWN form
+        // posts (Fetch standard), which kept the origin guard from refusing a
+        // real `null`. /api and /scim keep `no-referrer` (securityHeaders below).
+        referrerPolicy: { policy: 'same-origin' },
         xContentTypeOptions: true,
         hidePoweredBy: true,
     })
 );
 // No framework fingerprint (ASVS 14.3.3), even if helmet is ever removed.
 app.disable('x-powered-by');
-// Browser features the product never uses are denied to every page, so an
-// injected script or a framed page cannot reach the camera, microphone,
-// location, payment or device APIs.
-const PERMISSIONS_POLICY = [
-    'accelerometer=()',
-    'autoplay=()',
-    'camera=()',
-    'display-capture=()',
-    'encrypted-media=()',
-    'fullscreen=(self)',
-    'geolocation=()',
-    'gyroscope=()',
-    'hid=()',
-    'magnetometer=()',
-    'microphone=()',
-    'midi=()',
-    'payment=()',
-    'picture-in-picture=()',
-    'publickey-credentials-get=()',
-    'screen-wake-lock=()',
-    'serial=()',
-    'usb=()',
-    'xr-spatial-tracking=()',
-].join(', ');
-app.use((req, res, next) => {
-    res.setHeader('Permissions-Policy', PERMISSIONS_POLICY);
-    next();
-});
+// Browser features the product never uses are denied to every page
+// (Permissions-Policy), and the machine surfaces (/api, /scim) send no Referer.
+// The list and the rules live in src/middleware/httpHardening.js (testable).
+const httpHardening = require('./src/middleware/httpHardening');
+app.use(httpHardening.securityHeaders);
 // 3.23.18 (S-05): Strict-Transport-Security on every HTTPS response (the built-in
 // TLS listener, or a TLS-terminating proxy when TRUST_PROXY makes req.secure true).
 const tlsServer = require('./src/utils/tlsServer');
@@ -209,8 +194,11 @@ app.use((req, res, next) => {
 // (application/scim+json is what Entra / Okta send to /scim/v2 — RFC 7644).
 // The body parser, the origin guard and the CSRF skip must all agree on this,
 // or a SCIM deprovisioning request is refused (403) or parsed as an empty body.
-const _JSON_TYPES = ['application/json', 'application/*+json'];
-const _isJsonType = (ct) => /application\/(?:[\w.-]+\+)?json\b/i.test(String(ct || ''));
+// The parser takes httpHardening.JSON_TYPES; the origin guard and the CSRF skip
+// use httpHardening.isJsonType, anchored on the MIME essence, so
+// `text/plain; x=application/json` is not JSON (the old unanchored regex said
+// it was, and skipped the CSRF check).
+const _JSON_TYPES = [...httpHardening.JSON_TYPES];
 const _jsonParser = express.json({
     limit: process.env.JSON_BODY_LIMIT || '1mb',
     type: _JSON_TYPES,
@@ -290,30 +278,23 @@ app.get('/metrics', require('./src/middleware/apiAuth').requireMetricsAccess, (r
     res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8').send(out.join('\n') + '\n');
 });
 
-app.get(['/health', '/healthz'], (req, res) => {
-    res.json({
-        status: 'ok',
-        service: PRODUCT.name,
-        uptimeSec: Math.round((Date.now() - APP_START) / 1000),
-        ts: new Date().toISOString(),
-    });
-});
-app.get(['/health/ready', '/readyz'], async (req, res) => {
-    try {
-        const row = await db.get('SELECT 1 AS ok');
-        if (!row || Number(row.ok) !== 1) throw new Error('database probe returned no row');
-        res.json({
-            status: 'ready',
-            db: 'up',
-            uptimeSec: Math.round((Date.now() - APP_START) / 1000),
-            ts: new Date().toISOString(),
-        });
-    } catch (e) {
-        // Don't leak the raw DB error to an unauthenticated probe; log it server-side.
-        console.error('[readyz] db probe failed:', e && e.message);
-        res.status(503).json({ status: 'degraded', db: 'down', ts: new Date().toISOString() });
-    }
-});
+// Public probes answer the status only. Service name, uptime, timestamps and
+// the database state go to the callers /metrics admits (loopback,
+// METRICS_ALLOW_IPS, METRICS_TOKEN). The installer's post-deploy checks only
+// read the HTTP status, so they are unaffected.
+const _probeDetails = require('./src/middleware/apiAuth').metricsAccessAllowed;
+app.get(
+    ['/health', '/healthz'],
+    httpHardening.healthHandler({
+        startedAt: APP_START,
+        detailsAllowed: _probeDetails,
+        serviceName: PRODUCT.name,
+    })
+);
+app.get(
+    ['/health/ready', '/readyz'],
+    httpHardening.readyHandler({ db, startedAt: APP_START, detailsAllowed: _probeDetails })
+);
 
 // Session configuration (driver-aware)
 const { store: sessionStore, label: sessionStoreLabel } = buildSessionStore(session, appConfig);
@@ -368,7 +349,21 @@ const sessionSecret = _secretList.length > 1 ? _secretList : appConfig.sessionSe
 
 // Neutral session cookie name — the express-session default ('connect.sid')
 // fingerprints the stack to anyone enumerating the login page. Overridable.
-const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'app.sid';
+// `__Host-app.sid` whenever the cookie is always Secure (COOKIE_SECURE on, or
+// TLS terminated here); plain HTTP keeps `app.sid`. The bridge below carries an
+// existing `app.sid` session over the rename once, so nobody is logged out by
+// the upgrade.
+const SESSION_COOKIE_NAME = httpHardening.sessionCookieName({
+    env: process.env,
+    cookieSecure,
+    tlsConfigured: tlsServer.isTlsConfigured(process.env),
+});
+app.set('sessionCookieName', SESSION_COOKIE_NAME);
+app.use(httpHardening.legacyCookieBridge(SESSION_COOKIE_NAME));
+// The other readers of the name (AuthController logout, sessionActivity idle
+// sign-out) compute this; their clearCookie is mapped onto the real cookie.
+const READER_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'app.sid';
+app.use(httpHardening.sessionCookieAlias(READER_COOKIE_NAME, SESSION_COOKIE_NAME));
 
 app.use(
     session({
@@ -387,7 +382,9 @@ app.use(
             secure: cookieSecure,
             httpOnly: true,
             sameSite: 'lax', // CSRF hardening for cookie-based session
-            maxAge: Number(process.env.SESSION_MAX_HOURS || 24) * 60 * 60 * 1000,
+            // Absolute ceiling: 12 h by default (ASVS 3.3.2); the sessionTimeout App
+            // Setting is enforced per request by sessionActivity.
+            maxAge: Number(process.env.SESSION_MAX_HOURS || 12) * 60 * 60 * 1000,
         },
     })
 );
@@ -398,6 +395,14 @@ app.use(flash());
 // Passport initialization
 app.use(passport.initialize());
 app.use(passport.session());
+
+// App-wide backstop rate limit (CWE-770; CodeQL js/missing-rate-limiting):
+// every route below — pages, exports, downloads, admin writes, /api/v1 — runs
+// behind it. Per signed-in account (req.user is known from here on), per
+// address when anonymous; generous ceilings that only a scripted flood reaches.
+// Static assets and the health probes are served above and never count. The
+// targeted limiters (sign-in, reset, API keys, re-auth) still apply on top.
+app.use(require('express-rate-limit')(globalRateLimitOptions()));
 
 // SECURITY — never let a cache store a per-user, authenticated response. Every
 // dynamic response here also carries the rolling `Set-Cookie` session id (session
@@ -416,7 +421,7 @@ app.use((req, res, next) => {
 
 // Idle-timeout: sign out a session that has been INACTIVE beyond the threshold
 // (sensitive HR data). Absolute cap stays on the cookie maxAge above; this adds a
-// sliding inactivity window. Configurable via SESSION_IDLE_MINUTES (default 60).
+// sliding inactivity window. Configurable via SESSION_IDLE_MINUTES (default 30).
 app.use(require('./src/middleware/sessionActivity'));
 
 // Multi-provider SSO transport (gated by the master switch; no-ops when off).
@@ -498,181 +503,64 @@ app.use('/api/', apiRateLimiter);
 // requiring every client to carry a token. Requests with no Origin (same-origin
 // XHR that omits it, server-to-server API-key calls) fall through to the normal
 // session/API-key auth + csurf.
-// Does the request carry a credential that actually VALIDATES? Only then may it
-// stand in for the Origin check. The presence of `?apiKey=anything` or of any
-// `Authorization: Bearer` header used to switch the origin guard off — an
-// unvalidated string, appended by whoever crafted the URL, disabling the sole
-// CSRF defence for JSON mutations on a session-cookie request. A JWT-shaped
-// bearer is accepted when Entra bearer auth is enabled (it is verified by the
-// route's own auth and never rides a browser session); everything else must
-// resolve through ApiKeyService or match the legacy shared key.
-async function _validatedApiCredential(req) {
-    const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-    const key = req.headers['x-api-key'] || bearer || req.query.apiKey;
-    if (!key || typeof key !== 'string') return false;
-    try {
-        const sso = require('./src/config/sso');
-        if (
-            bearer &&
-            sso.looksLikeJwt &&
-            sso.looksLikeJwt(bearer) &&
-            sso.isEntraBearerEnabled &&
-            sso.isEntraBearerEnabled()
-        )
-            return true;
-    } catch (_) {
-        /* SSO module optional */
-    }
-    try {
-        if (await require('./src/services/ApiKeyService').validate(key)) return true;
-    } catch (_) {
-        /* fall through to the legacy key */
-    }
-    try {
-        const crypto = require('crypto');
-        const a = Buffer.from(String(key));
-        // Never APP_KEY (S-02): the same guard as the API middleware.
-        const b = Buffer.from(String(require('./src/middleware/apiAuth').legacySharedKey() || ''));
-        if (a.length && b.length && a.length === b.length && crypto.timingSafeEqual(a, b))
-            return true;
-    } catch (_) {
-        /* no legacy key */
-    }
-    return false;
-}
-app.use(async (req, res, next) => {
-    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
-    // SSO callbacks (/auth/sso/<provider>/callback) are legitimate cross-site
-    // requests from the IdP (e.g. login.microsoftonline.com, a SAML ACS POST);
-    // the OIDC state/nonce and signed SAML assertions protect them instead of
-    // the same-origin check, so they must be allowed through here.
-    if (/^\/auth\/sso\/[^/]+\/callback$/.test(req.path)) return next();
-    const origin = req.headers.origin;
-    // JSON mutations are NOT covered by csurf (it's skipped for application/json),
-    // so the same-origin check is their ONLY CSRF defense — it must not fall open.
-    // Modern browsers send Origin on same-origin POST/PUT/DELETE, and API clients
-    // carry a key, so requiring one of those for JSON mutations closes the hole
-    // without breaking form posts (which still go through csurf + sameSite cookie).
-    const isJson = _isJsonType(req.headers['content-type']);
-    // Only consulted when it can matter (a JSON mutation without a usable Origin),
-    // so the common browser path pays nothing for the validation.
-    const originMissing0 = !origin || origin === 'null';
-    let hasApiKey = false;
-    if (isJson && (originMissing0 || !/^https?:\/\//i.test(origin))) {
-        try {
-            hasApiKey = await _validatedApiCredential(req);
-        } catch (_) {
-            hasApiKey = false;
-        }
-    }
-    // Security-audit helper for the guards below — best-effort, never blocking.
-    const secLog = (action, details) => {
-        try {
-            require('./src/services/LogService')
-                .log({
-                    action,
-                    entityType: 'security',
-                    details,
-                    severity: 'warn',
-                    category: 'security',
-                    requestId: req.id || null,
-                    ipAddress: req.ip,
-                    userAgent: req.get('user-agent'),
-                    actorRef: req.user ? `${req.user.userType}:${req.user.id}` : null,
-                })
-                .catch(() => {});
-        } catch (_) {
-            /* audit must never break the guard */
-        }
-    };
-    const originMissing = !origin || origin === 'null';
-    if (originMissing) {
-        if (isJson && !hasApiKey) {
-            secLog(
-                'ORIGIN_GUARD_BLOCKED',
-                `Origin-less JSON ${req.method} ${req.path} refused (origin_required)`
-            );
-            return res.status(403).json({ error: 'origin_required' });
-        }
-        return next();
-    }
-    // Only trust X-Forwarded-Host when a reverse proxy is explicitly trusted; otherwise
-    // a client could spoof X-Forwarded-Host to match a crafted Origin and defeat the
-    // same-origin check (the sole CSRF defense for JSON mutations).
-    const trustProxy = app.get('trust proxy');
-    const host =
-        trustProxy && req.headers['x-forwarded-host']
-            ? req.headers['x-forwarded-host']
-            : req.headers.host;
-    let originHost;
-    try {
-        originHost = new URL(origin).host;
-    } catch (_) {
-        if (isJson && !hasApiKey) {
-            secLog(
-                'ORIGIN_GUARD_BLOCKED',
-                `Malformed Origin on JSON ${req.method} ${req.path} refused`
-            );
-            return res.status(403).json({ error: 'origin_required' });
-        }
-        return next();
-    }
-    if (originHost !== host) {
-        secLog(
-            'CROSS_ORIGIN_BLOCKED',
-            `Cross-origin ${req.method} ${req.path} refused (origin host "${String(originHost).slice(0, 100)}" != "${String(host).slice(0, 100)}")`
-        );
-        return res.status(403).json({ error: 'cross_origin_blocked' });
-    }
-    next();
-});
+// The guard lives in src/middleware/httpHardening.js (testable): Origin must
+// match Host for every state-changing request that carries one; a JSON mutation
+// with no usable Origin needs a credential that VALIDATES (never the mere
+// presence of `?apiKey=` or a Bearer header); `Origin: null` never passes a
+// mutation unless such a credential validates; IdP callbacks are exempt.
+const _validatedApiCredential = httpHardening.makeValidatedApiCredential();
+app.use(
+    httpHardening.originGuard({
+        trustProxy: () => app.get('trust proxy'),
+        validatedCredential: _validatedApiCredential,
+        // Security-audit helper — best-effort, never blocking.
+        secLog: (req, action, details) => {
+            try {
+                require('./src/services/LogService')
+                    .log({
+                        action,
+                        entityType: 'security',
+                        details,
+                        severity: 'warn',
+                        category: 'security',
+                        requestId: req.id || null,
+                        ipAddress: req.ip,
+                        userAgent: req.get('user-agent'),
+                        actorRef: req.user ? `${req.user.userType}:${req.user.id}` : null,
+                    })
+                    .catch(() => {});
+            } catch (_) {
+                /* audit must never break the guard */
+            }
+        },
+    })
+);
 
 // CSRF protection — session-based synchroniser token via `csrf-sync` (the maintained
 // successor to the now-deprecated `csurf`; same session model as the old
 // `csurf({cookie:false})`). The token is minted per session in the res.locals
-// middleware below (`generateToken`) and read from `_csrf` (form) or `x-csrf-token`
-// (AJAX). Validation here runs only on state-changing methods.
+// middleware below (`generateToken`) and read from `_csrf` (form), `x-csrf-token`
+// (fetch/XHR) or, for a multipart request only, `?_csrf=` on the action: multer
+// parses a multipart body after this check (httpHardening.csrfTokenFromRequest).
+// Validation here runs only on state-changing methods.
 const { generateToken: csrfGenerate, csrfSynchronisedProtection } = csrfSync({
-    getTokenFromRequest: (req) => (req.body && req.body._csrf) || req.headers['x-csrf-token'],
+    getTokenFromRequest: httpHardening.csrfTokenFromRequest,
 });
 app.set('csrfGenerate', csrfGenerate); // reused by the res.locals token minter
 app.use((req, res, next) => {
-    // Skip CSRF for API routes, JSON requests (same-origin-guarded elsewhere), login
-    // POST, SSO callbacks (state/assertion-protected), and the multipart file-upload
-    // routes — multer parses the body AFTER this middleware, so `_csrf` isn't visible
-    // yet. These skipped routes are all otherwise authenticated/SuperAdmin-gated.
-    // Prefix-match (startsWith), never substring includes, so a future route that
-    // merely CONTAINS one of these fragments can't silently inherit the exemption.
-    const p = req.path;
-    // Full mounted paths — the router is mounted at '/', so the workbook routes are
-    // /data-management/skill-matrix-workbook/... (truncated prefixes would 403 them).
-    const isExemptUpload =
-        req.method === 'POST' &&
-        (p.startsWith('/data-management/import/') ||
-            p.startsWith('/data-management/skill-matrix-workbook/import') ||
-            p.startsWith('/data-management/skill-matrix-workbook/preview') ||
-            p === '/compliance/certifications'); // multipart VOC evidence (manage_compliance-gated)
-    if (
-        p.startsWith('/api/') ||
-        (p === '/login' && req.method === 'POST') ||
-        (/^\/auth\/sso\/[^/]+\/callback$/.test(p) && req.method === 'POST') ||
-        (p.startsWith('/admin/data/') && req.method === 'POST') ||
-        isExemptUpload ||
-        _isJsonType(req.headers['content-type'])
-    ) {
-        return next();
-    }
+    // Skip CSRF for API routes, JSON requests (same-origin-guarded above), login
+    // POST and SSO callbacks (state/assertion-protected). No multipart upload is
+    // exempt any more (audit SA-15): every upload presents the token in the
+    // x-csrf-token header or, from a native form, as ?_csrf= on the action.
+    if (httpHardening.csrfSkip(req)) return next();
     // csrfSynchronisedProtection is a no-op for safe methods (GET/HEAD/OPTIONS) and
     // rejects unsafe methods whose token doesn't match the session's. Any error it
     // yields is a CSRF failure → 403.
     csrfSynchronisedProtection(req, res, (err) => {
         if (err) {
-            console.error('CSRF token validation failed:', {
-                path: req.path,
-                method: req.method,
-                sessionId: req.sessionID,
-                hasSession: !!req.session,
-            });
+            // Never the session id itself (a log reader could replay it): a
+            // short hash is enough to correlate repeated failures.
+            console.error('CSRF token validation failed:', httpHardening.csrfFailureLogFields(req));
             // Security incident trail: repeated CSRF failures = probe or a
             // broken client — either way it belongs in the audit, not just stderr.
             try {
@@ -835,6 +723,10 @@ app.use(async (req, res, next) => {
 });
 
 // Account lockout check for login attempts
+// Logout clears the browser's HTTP cache for this origin (shared workstations)
+// and expires the session cookie actually in use (sessionCookieAlias above).
+app.post('/logout', httpHardening.logoutHardening());
+
 app.post('/login', checkAccountLockout);
 
 // Login rate limiting
@@ -844,79 +736,13 @@ app.post('/login', loginRateLimiter);
 // see src/middleware/forcePasswordChange.js.
 app.use(require('./src/middleware/forcePasswordChange').forcePasswordChange);
 
-// MFA policy: when the 'mfaRequiredForPrivileged' app setting is on,
-// privileged admin roles must enrol in two-factor auth — until they do,
-// pages funnel to the MFA setup (the MFA pages, change-password and logout
-// stay reachable). Same UX pattern as the forced password change above.
-// The flag and per-admin enrolment are briefly cached to avoid per-request
-// DB reads; negative enrolment is NOT cached so finishing setup unblocks
-// immediately.
-const mfaPolicyCache = { flag: null, at: 0 }; // enrolment cache lives in MfaService
-app.use(async (req, res, next) => {
-    try {
-        const u = req.user;
-        if (!u || u.userType !== 'admin') return next();
-        const MfaService = require('./src/services/MfaService');
-        if (!MfaService.isPrivileged(u.role)) return next();
-        if (
-            req.path.startsWith('/v2/uam/mfa') ||
-            req.path === '/change-password' ||
-            req.path === '/logout'
-        ) {
-            return next();
-        }
-
-        const now = Date.now();
-        if (mfaPolicyCache.flag === null || now - mfaPolicyCache.at > 30_000) {
-            const AppSettingsModel = require('./src/models/AppSettingsModel');
-            mfaPolicyCache.flag = await AppSettingsModel.getValue(
-                'mfaRequiredForPrivileged',
-                false
-            );
-            mfaPolicyCache.at = now;
-        }
-        if (!mfaPolicyCache.flag) return next();
-
-        // The cache is held by MfaService so that MfaService.disable can clear it;
-        // when it lived here, turning MFA off left this gate waving the admin
-        // through for the rest of the 5-minute window.
-        if (MfaService.hasFreshEnrolment('admin', u.id, 5 * 60_000)) return next();
-        const active = await MfaService.isActive({ userType: 'admin', userId: u.id });
-        if (active) {
-            MfaService.rememberEnrolment('admin', u.id, now);
-            return next();
-        }
-
-        if (req.path.startsWith('/api/')) {
-            return res.status(403).json({
-                error: 'Two-factor authentication setup required',
-                mfaSetupRequired: true,
-            });
-        }
-        // QA P2-16 (residu) — ce bandeau est la SEULE phrase que l'administrateur
-        // puisse lire : le bloc ci-dessus l'entonne vers la page MFA et ne laisse
-        // passer que celle-la, /change-password et /logout. Il partait en anglais
-        // fige, en session francaise, vers une page desormais traduite. La cle
-        // existe dans les deux langues depuis longtemps ; le repli anglais reste
-        // pour le cas ou le traducteur ne serait pas monte sur cette requete.
-        req.flash(
-            'error',
-            req.t
-                ? req.t('flash:mfa_enrollment_required')
-                : 'Your administrator requires two-factor authentication. Please set it up to continue.'
-        );
-        return res.redirect('/v2/uam/mfa/manage');
-    } catch (e) {
-        // The policy gate must never take the app down.
-        console.error('MFA policy check error:', e.message);
-        return next();
-    }
-});
+// The privileged-MFA policy (every admin role, and managers who sign in with a
+// password, with an upgrade grace period, FAILING CLOSED) is enforced by
+// src/middleware/mfaEnforcement.js below. The inline gate that stood here
+// (privileged roles only, no grace, failed OPEN on any error) was removed.
 
 // ---------------------------------------------------------------------------
-// Global activity & security audit — a backstop that captures EVERY meaningful
-// event in system_logs so the System Logs analytics has full coverage:
-//   • every state-changing request (POST/PUT/PATCH/DELETE) = "all activities"
+// Global security audit — a backstop that captures in system_logs:
 //   • every 401/403 = access denied / authz threat pattern
 //   • every 5xx = errors/issues
 // Successful GETs and noise (assets, health/metrics, the log views themselves,
@@ -941,7 +767,6 @@ app.use((req, res, next) => {
             // else the mount path) so aggregates group by endpoint, not by every id.
             const route =
                 req.route && req.route.path ? (req.baseUrl || '') + req.route.path : reqPath;
-            const mutating = m !== 'GET' && m !== 'HEAD' && m !== 'OPTIONS';
             const denied = sc === 401 || sc === 403;
             const errored = sc >= 500;
             const slow = latencyMs >= _SLOW_REQUEST_MS;
@@ -959,16 +784,20 @@ app.use((req, res, next) => {
                     statusCode: sc,
                 });
             }
-            if (!mutating && !denied && !errored) return;
-            const severity = errored ? 'error' : denied ? 'warn' : 'info';
-            const category = denied ? 'security' : errored ? 'http' : 'audit';
+            // The evidentiary system_logs keep security events (401/403) and
+            // server errors only. A successful mutation is NOT written here (it
+            // put every POST, with IP and user agent, into a hash-chained table
+            // kept forever): authenticated mutations go to perf_events (bounded
+            // trail, middleware/activityTrail) and business events are audited
+            // by their own controllers.
+            if (httpHardening.requestAuditSink(sc) !== 'system') return;
+            const severity = errored ? 'error' : 'warn';
+            const category = denied ? 'security' : 'http';
             const action = denied
                 ? sc === 401
                     ? 'ACCESS_UNAUTHENTICATED'
                     : 'ACCESS_DENIED'
-                : errored
-                  ? 'REQUEST_ERROR'
-                  : `HTTP_${m}`;
+                : 'REQUEST_ERROR';
             _LogService.log({
                 adminId: u && u.userType === 'admin' ? u.id : null,
                 action,
@@ -992,16 +821,23 @@ app.use((req, res, next) => {
     next();
 });
 
-// Policy enforcement: when `mfaRequiredForPrivileged` is on, a privileged account
-// with no confirmed MFA is forced to the setup screen before any other page. Mounted
-// after auth/session + flash and before the app routes. Fails open on any error.
+// Policy enforcement: every admin role (`mfaRequiredForPrivileged`) and every
+// manager signed in with a password (`mfaRequiredForManagers`) with no confirmed
+// MFA is forced to the setup screen before any other page, after the upgrade
+// grace period (migration 162). Mounted after auth/session + flash and before
+// the app routes. Fails CLOSED.
 const { enforceMfaEnrollment } = require('./src/middleware/mfaEnforcement');
 app.use(enforceMfaEnrollment);
 
 // Per-USER auth policy (migration 55): an account whose auth_policy is
-// 'mfa_required' is forced to MFA setup regardless of role. Fails open.
+// 'mfa_required' is forced to MFA setup regardless of role. Fails CLOSED.
 const { enforceUserAuthPolicy } = require('./src/middleware/authPolicy');
 app.use(enforceUserAuthPolicy);
+
+// Privacy notice (GDPR art. 13/14): once a SuperAdmin has published a version,
+// every signed-in person acknowledges it before using the app. Inactive until
+// then; fails closed on a read error.
+app.use(require('./src/middleware/privacyNotice').privacyNotice);
 
 // Catch-all activity trail: every authenticated MUTATION gets a coarse DB
 // audit row (method/path/status/duration, joined by requestId to the file
@@ -1044,6 +880,11 @@ function nodeTooOldForEntraWarning(nodeVersion, cfg) {
 // Initialize database and start server
 async function startServer() {
     try {
+        // Production refuses to start without a strong APP_KEY: secrets at rest
+        // are never silently stored in clear text, and SESSION_SECRET is never
+        // an encryption key there (development is unaffected).
+        require('./src/utils/secretBox').assertConfigured();
+
         console.log('Initializing database...');
         await db.connect();
         console.log('✓ Database connected');
@@ -1064,6 +905,12 @@ async function startServer() {
         console.log('Seeding default data...');
         await db.seed();
         console.log('✓ Database seeding completed');
+
+        // Snapshots taken before secrets were masked may still hold them: scrub
+        // once per boot, best-effort (never blocks start-up; idempotent).
+        require('./src/services/SnapshotService')
+            .scrubSecretsFromStoredSnapshots()
+            .catch(() => {});
 
         // Optional modules: an install started with the legacy V2_FEATURES=1 and
         // no recorded adoption stage is recorded at stage 3 (everything on), so

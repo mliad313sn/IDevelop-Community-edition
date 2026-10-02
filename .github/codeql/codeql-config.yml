@@ -1,0 +1,31 @@
+# CodeQL configuration (referenced by .github/workflows/codeql.yml).
+#
+# Every exclusion below is a FALSE POSITIVE across the whole code base, with
+# its reasoning in docs/SECURITY-AUDIT.md, section "Static analysis (CodeQL)
+# triage". Do not add a rule here to make a real finding go away: fix the code,
+# or keep the alert open and accepted, documented in that same section.
+name: IDevelop CodeQL config
+
+queries:
+  - uses: security-extended
+
+paths-ignore:
+  - node_modules
+  - public/vendor
+  - coverage
+  - '**/*.min.js'
+  # Jest suites and fixtures are not shipped; they deliberately build
+  # unprotected apps, fake uploads and weak inputs to exercise the guards.
+  - tests/**
+
+query-filters:
+  # CSRF is enforced by csrf-sync (synchroniser token in the session), mounted
+  # with app.use in server.js before every router; CodeQL only models csurf,
+  # lusca and fastify-csrf, so it reports the session cookie middleware itself.
+  - exclude:
+      id: js/missing-token-validation
+  # The only inputs SHA-256 sees are 192-bit random API keys (lookup hash and
+  # rate-limit cache key). Passwords are bcrypt-hashed; a Jest guard
+  # (tests/unit/codeqlTriage.test.js) fails if a fast hash ever meets one.
+  - exclude:
+      id: js/insufficient-password-hash

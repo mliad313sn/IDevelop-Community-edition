@@ -33,10 +33,24 @@ function fail(req, res, e) {
         });
     }
     if (e && e.expose && e.userMessage) {
+        // A legal-hold refusal names who set the hold, when and why.
+        const hold = e.hold || null;
+        const vars = hold
+            ? {
+                  by: hold.by || '?',
+                  at: hold.at ? new Date(hold.at).toISOString().slice(0, 10) : '?',
+                  reason: hold.reason || '—',
+              }
+            : {};
         const msg = req.t
-            ? req.t(`admin:maint_err_${e.userMessage}`, { defaultValue: e.userMessage })
+            ? req.t(`admin:maint_err_${e.userMessage}`, { defaultValue: e.userMessage, ...vars })
             : e.userMessage;
-        return res.status(e.status || 400).json({ ok: false, error: msg, code: e.userMessage });
+        return res.status(e.status || 400).json({
+            ok: false,
+            error: msg,
+            code: e.userMessage,
+            ...(hold ? { hold } : {}),
+        });
     }
     throw e;
 }
@@ -385,6 +399,67 @@ class MaintenanceController {
                     employeeId: req.body.employeeId,
                     reason: req.body.reason,
                     confirmNumber: req.body.confirmNumber,
+                },
+                req
+            );
+            res.json(out);
+        } catch (e) {
+            return fail(req, res, e);
+        }
+    }
+
+    // ---- Erasure under legal hold: two-person override (migration 166) ---------
+    /** Is the person under legal hold, and is an override possible? (erase dialog) */
+    async dsrEraseStatus(req, res) {
+        try {
+            const out = await MaintenanceService.dsrEraseStatus(req.user, {
+                employeeId: req.params.id,
+            });
+            res.setHeader('Cache-Control', 'no-store');
+            res.json({ ok: true, ...out });
+        } catch (e) {
+            return fail(req, res, e);
+        }
+    }
+
+    /** Pending override requests, for the panel. */
+    async dsrOverrideList(req, res) {
+        try {
+            const rows = await MaintenanceService.dsrOverrideList(req.user);
+            res.setHeader('Cache-Control', 'no-store');
+            res.json({ ok: true, rows: rows || [] });
+        } catch (e) {
+            return fail(req, res, e);
+        }
+    }
+
+    /** Step 1: request the erasure of a held person (reason + number retyped). */
+    async dsrOverrideRequest(req, res) {
+        try {
+            const out = await MaintenanceService.dsrOverrideRequest(
+                req.user,
+                {
+                    employeeId: req.body.employeeId,
+                    reason: req.body.reason,
+                    confirmNumber: req.body.confirmNumber,
+                },
+                req
+            );
+            res.json(out);
+        } catch (e) {
+            return fail(req, res, e);
+        }
+    }
+
+    /** Step 2: another SuperAdmin approves / refuses; the requester withdraws. */
+    async dsrOverrideDecide(req, res) {
+        try {
+            const out = await MaintenanceService.dsrOverrideDecide(
+                req.user,
+                {
+                    requestId: req.params.rid,
+                    approve: req.body.approve,
+                    note: req.body.note,
                 },
                 req
             );

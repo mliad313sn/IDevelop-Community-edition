@@ -58,18 +58,19 @@ No SMTP server is installed or required by the installer.
 
 ### Common options
 
-| Option                  | Purpose                                                                |
-| ----------------------- | ---------------------------------------------------------------------- |
-| `-InstallDir <path>`    | Install location (default `C:\Program Files\IDevelop`)                 |
-| `-AppPort <n>`          | App HTTP port (default `3000`)                                         |
-| `-PgSuperPassword <pw>` | postgres superuser password (required when reusing PG)                 |
-| `-UseExistingPostgres`  | Force reuse mode (never install PG)                                    |
-| `-PgHost`, `-PgPort`    | Target an existing PostgreSQL                                          |
-| `-PgSsl`                | Connect to PostgreSQL over TLS                                         |
-| `-SkipFirewall`         | Don't add the firewall rule                                            |
-| `-NoService`            | Deploy + configure DB but don't register/start the service             |
-| `-ServiceMode <m>`      | `Service` (real Windows service), `ScheduledTask`, or `Auto` (default) |
-| `-UseScheduledTask`     | Shortcut for `-ServiceMode ScheduledTask`                              |
+| Option                   | Purpose                                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `-InstallDir <path>`     | Install location (default `C:\Program Files\IDevelop`)                                                      |
+| `-AppPort <n>`           | App HTTP port (default `3000`)                                                                              |
+| `-PgSuperPassword <pw>`  | postgres superuser password (required when reusing PG)                                                      |
+| `-UseExistingPostgres`   | Force reuse mode (never install PG)                                                                         |
+| `-PgHost`, `-PgPort`     | Target an existing PostgreSQL                                                                               |
+| `-PgSsl`                 | Connect to PostgreSQL over TLS                                                                              |
+| `-SkipFirewall`          | Don't add the firewall rule                                                                                 |
+| `-NoService`             | Deploy + configure DB but don't register/start the service                                                  |
+| `-ServiceMode <m>`       | `Service` (real Windows service), `ScheduledTask`, or `Auto` (default)                                      |
+| `-UseScheduledTask`      | Shortcut for `-ServiceMode ScheduledTask`                                                                   |
+| `-AllowPasswordRecovery` | Allow the temporary `pg_hba.conf` trust window that resets an unknown local `postgres` password (see below) |
 
 Defaults live in **`config.psd1`**.
 
@@ -93,6 +94,41 @@ existing install is clean: the installer removes the other host before registeri
 the chosen one (no double-run). Re-running the installer / `-Patch` converts a box
 that previously used a Scheduled Task into a real service automatically (mode `Auto`).
 
+### Security checks during install and upgrade
+
+- **Pinned downloads.** Node.js, PostgreSQL, the Visual C++ Redistributable and
+  the WinSW service wrapper are each pinned by SHA-256 in `config.psd1`
+  (`NodeMsiSha256`, `PgInstallerSha256`, `VcRedistSha256`, `WinSwSha256`), and
+  the vendor-signed ones by their Authenticode publisher too. A file whose hash
+  or signature does not match is deleted and never run, and the install stops.
+  A file pre-placed in `%TEMP%` for an offline install is reused only when its
+  hash matches; a WinSW copy bundled in `bin\` is held to the same hash.
+  Changing a URL means changing its hash in the same edit.
+- **PostgreSQL 17.11** is the version installed when no PostgreSQL is found. An
+  existing server is never upgraded.
+- **No silent `trust` window.** When the `postgres` password of a LOCAL
+  PostgreSQL is unknown, Setup can reset it by opening a temporary `pg_hba.conf`
+  trust window (about 10 s, loopback only, database and user `postgres` only).
+  It does so only with `-AllowPasswordRecovery` or after you type `TRUST` at the
+  console; an unattended run without the switch stops with an explanation. Every
+  decision and every opening / closing is recorded in
+  `%ProgramData%\IDevelop\logs\pg-trust-window.log`. `Manage-IDevelop.ps1
+-SetPgPassword` follows the same rule.
+- **Passwords never on a command line.** SQL that sets a password (`ALTER ROLE`
+  / `CREATE ROLE ... PASSWORD`) is sent to `psql` through its standard input, so
+  it never appears in the process list, crash dumps or EDR process logs.
+- **Read-only warnings.** Setup and `Manage-IDevelop.ps1 -CheckDb` report any
+  `trust` entry in `pg_hba.conf` (passwordless login, never changed by Setup) and
+  an unsynchronised Windows clock (TOTP codes, session expiry and audit
+  timestamps depend on it). Setup changes the Windows Time service only if you
+  type `Y` when asked.
+- **Firewall rules.** Every rule Setup creates carries the Group `IDevelop`. On
+  each run, rules for ports no longer in use, duplicates and older untagged
+  rules are removed; the uninstaller removes every rule of the group.
+- **Service logs.** The `service\` folder (the wrapper's stdout / stderr logs)
+  is restricted to SYSTEM, Administrators and the service account before the
+  service writes its first line.
+
 ---
 
 ## Troubleshooting
@@ -102,6 +138,11 @@ The full log is at `C:\ProgramData\IDevelop\install-*.log`. The last
 
 - **"Cannot connect to PostgreSQL"** — wrong `-PgSuperPassword`, wrong port, the
   server doesn't allow your host in `pg_hba.conf`, or it needs TLS (`-PgSsl`).
+  On an unattended run with an unknown local password, re-run with
+  `-AllowPasswordRecovery` or supply the current password.
+- **"INTEGRITY CHECK FAILED"** — a download did not match the SHA-256 (or the
+  publisher) pinned in `config.psd1`: a proxy rewriting downloads, a truncated
+  file, or a URL changed without its hash. The file was deleted and not run.
 - **"Migrations failed"** — read the captured SQL error in the log. If it's
   _permission denied for schema public_, the DB pre-existed with different
   ownership; re-run the installer (it re-applies grants) or grant the app role
@@ -369,3 +410,15 @@ requirements document are excluded at build time (`$excludeFiles` /
 for `node_modules`, `tests`, `docs` and the dev-only credential seeders. A
 production `Program Files` should contain nothing an operator could mistake for
 something to run.
+
+- The repository's CI secret-scan configuration (`.gitleaks.toml`) and the
+  container ignore file (`.dockerignore`) never ship.
+- The project root is an allow-list covering every extension: each entry either
+  ships (`$shipRootFiles` / `$shipRootDirs`) or is excluded. Any other file or
+  folder left at the root (an export, a query result, a scratch note) fails the
+  build. A git worktree's `.git` file is excluded like the `.git` folder.
+- `uploads\` ships empty: a file in it on the build machine fails the build.
+- A package built with `-IncludeData` excludes the data of every secret table
+  (sessions, reset tokens, SAML caches, MFA secrets, API keys, SSO links, sign-in
+  history, LMS / webhook / HRIS connector credentials), then reads the dump and
+  fails the build if any of those tables still carries a row.

@@ -595,6 +595,8 @@ class NotificationService {
             // still sits in an inbox (notification #1, admin:1) and rendered as
             // its own slug.
             'certification.revoked': 'A certification was revoked',
+            'privacy.objection': 'Someone objected to automated profiling',
+            'privacy.trigger_paused': 'An automatic development action awaits your review',
             'review.due': 'A review is due',
             'review.completed': 'A supervisor review was completed',
             'mc.submitted': 'An action awaits your approval',
@@ -1372,7 +1374,11 @@ class NotificationService {
             },
             'sso.migration_invite': {
                 icon: 'fa-right-to-bracket',
-                link: '/login',
+                // The signed-in explanation (same text as the e-mail); /login took
+                // a signed-in reader nowhere. Wins over the payload link, so the
+                // notices already stored with '/login' open it too.
+                link: '/account/sso-change',
+                forceLink: true,
                 title: {
                     fr: 'Connexion avec votre compte d’entreprise : ce qui change',
                     en: 'Signing in with your company account: what changes',
@@ -1384,6 +1390,41 @@ class NotificationService {
                 title: {
                     fr: 'Mot de passe d’un super administrateur réinitialisé',
                     en: 'Super administrator password reset',
+                },
+            },
+            // Objection to automated profiling (GDPR art. 21): reviewed on the
+            // works-council register page. The row names nobody.
+            'privacy.objection': {
+                icon: 'fa-hand',
+                link: '/compliance/register',
+                title: {
+                    fr: 'Une personne s’est opposée au profilage automatisé',
+                    en: 'Someone objected to automated profiling',
+                },
+            },
+            'privacy.trigger_paused': {
+                icon: 'fa-pause',
+                link: '/compliance/register',
+                title: {
+                    fr: 'Une action de développement automatique attend votre examen',
+                    en: 'An automatic development action awaits your review',
+                },
+            },
+            // ---- Lockout model (progressive throttling, admin hard lock).
+            'security.admin_account_locked': {
+                icon: 'fa-lock',
+                link: '/admins',
+                title: {
+                    fr: 'Compte administrateur verrouillé après des échecs de connexion',
+                    en: 'Administrator account locked after failed sign-ins',
+                },
+            },
+            'security.account_soft_locked': {
+                icon: 'fa-user-lock',
+                link: '/account',
+                title: {
+                    fr: 'Connexions ralenties sur votre compte',
+                    en: 'Sign-ins slowed on your account',
                 },
             },
         };
@@ -1497,9 +1538,17 @@ class NotificationService {
             'security.superadmin_sso_refused': 'immediate',
             'security.superadmin_mfa_changed': 'immediate',
             'security.superadmin_password_reset': 'immediate',
+            // Lockout: the SuperAdmins now; the person, now too (someone is
+            // trying their account; still user-controllable by category).
+            'security.admin_account_locked': 'immediate',
+            'security.account_soft_locked': 'immediate',
             // 3.23.20: the SSO migration invitation — in-app row written by
             // SsoInviteService (enqueue); its e-mail is composed and sent there.
             'sso.migration_invite': 'none',
+            // Profiling objections: in-app only. They name nobody, but an
+            // objection is itself personal data: it never leaves the app.
+            'privacy.objection': 'none',
+            'privacy.trigger_paused': 'none',
             // 'dept_brief' is DELIBERATELY ABSENT — do not add it.
             //
             // Like manager_digest, dept_digest and planning.digest, the department
@@ -1540,6 +1589,10 @@ class NotificationService {
     static get KIND_SUBTITLE() {
         const n = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
         return {
+            // The announcement carries its date, the invitation its provider: the
+            // title alone said nothing to a person with no e-mail.
+            'sso.migration_invite': (p, lang) =>
+                require('./SsoInviteService').inAppSubtitle(p, lang),
             'cycle.escalation': (p, lang) => {
                 const code = String((p && p.cycle) || '').trim();
                 if (!code) return null;
@@ -1685,7 +1738,7 @@ class NotificationService {
         // récapitulatif e-mail, que `withReason:false` ne fait taire que pour les
         // motifs, jamais pour l'identité de l'objet concerné.
         const subtitle = NotificationService._kindSubtitle(n.kind, payload, locale);
-        const link = payload.link || meta.link || '/dashboard';
+        const link = (meta.forceLink && meta.link) || payload.link || meta.link || '/dashboard';
         const parts = [label, subtitle];
         if (reason && opts.withReason !== false) parts.push(reason);
         return {
@@ -1788,6 +1841,14 @@ class NotificationService {
             },
             // Compétence et motif restent dans l'application : la phrase dit ce qui
             // s'est passé, jamais quelle certification ni pourquoi.
+            'privacy.objection': {
+                fr: "Une personne s'est opposée au profilage automatisé. Examinez sa demande dans le registre.",
+                en: 'Someone objected to automated profiling. Review the request in the register.',
+            },
+            'privacy.trigger_paused': {
+                fr: "Une action de développement déclenchée automatiquement a été suspendue parce que la personne s'est opposée au profilage. Elle attend une décision humaine.",
+                en: 'An automatically triggered development action was paused because the person objected to profiling. It awaits a human decision.',
+            },
             'certification.revoked': {
                 fr: "Une de vos certifications a été retirée. Le motif et la marche à suivre sont consultables dans l'application.",
                 en: 'One of your certifications was revoked. The reason and what to do next are available in the app.',
@@ -2126,6 +2187,15 @@ class NotificationService {
             'security.superadmin_password_reset': {
                 fr: "Le mot de passe d'un compte super administrateur a été réinitialisé. La double authentification reste exigée. Si ce n'était pas prévu, vérifiez le journal de sécurité.",
                 en: "A super administrator account's password was reset. Two-factor authentication is still required. If this was not expected, check the security log.",
+            },
+            // ---- Lockout ----
+            'security.admin_account_locked': {
+                fr: "Un compte administrateur a été verrouillé après une série d'échecs de connexion. Si ce n'était pas la personne elle-même, vérifiez le journal de sécurité ; un super administrateur peut le déverrouiller.",
+                en: 'An administrator account was locked after a series of failed sign-ins. If it was not the person themselves, check the security log; a super administrator can unlock it.',
+            },
+            'security.account_soft_locked': {
+                fr: "Plusieurs tentatives de connexion ont échoué sur votre compte : les connexions sont ralenties pour un moment. Votre mot de passe reste valable. Si ce n'était pas vous, prévenez votre administrateur.",
+                en: 'Several sign-in attempts on your account failed: sign-ins are slowed for a while. Your password still works. If it was not you, tell your administrator.',
             },
         };
     }

@@ -357,6 +357,7 @@
   "adm_account_locked_until": "Compte temporairement verrouillé après trop de tentatives échouées. Réessayez après {{time}}.",
   "adm_account_locked": "Compte temporairement verrouillé après trop de tentatives échouées. Réessayez dans {{minutes}} minutes.",
   "adm_ip_blocked": "Trop de tentatives échouées depuis votre réseau. Réessayez plus tard.",
+  "too_many_requests": "Trop de requêtes. Ralentissez et réessayez dans un instant.",
   "admin_target_out_of_scope": "Cet administrateur a autorité sur des personnes hors de votre périmètre : vous ne pouvez pas agir sur son compte.",
   "adm_revoke_revoked": "Accès administrateur retiré à {{username}} : {{perms}} capacité(s) et {{scopes}} périmètre(s) conservés et marqués révoqués, restaurables à la réactivation.",
   "adm_revoke_reason_required": "Un motif écrit est obligatoire pour retirer un accès administrateur.",

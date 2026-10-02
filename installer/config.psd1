@@ -92,10 +92,34 @@
     # downloads this URL at install time (same pattern as the Node/PG/VC++ downloads).
     WinSwUrl       = 'https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW-x64.exe'
 
+    # ---- Download integrity ----
+    # Every artefact the installer downloads and runs is pinned by SHA-256 and,
+    # when the vendor signs it, by an Authenticode signature that must be Valid
+    # AND issued to the publisher named here. A mismatch ABORTS the install; a file
+    # pre-placed in %TEMP% (offline install) is used only when its hash matches.
+    # Changing a URL means changing its hash in the same edit.
+    # How each pin below was obtained (re-check them before every release):
+    #   WinSW      downloaded from the URL and hashed (2026-10-02). Not signed by
+    #              its project: the hash is the only check (a copy bundled in
+    #              bin\ is held to the same hash).
+    #   Node.js    the line for the MSI in nodejs.org/dist/v<version>/SHASUMS256.txt.
+    #   VC++       Microsoft's versioned download URL carries the file's SHA-256
+    #              in its path; the pin is that value.
+    #   PostgreSQL taken from the EDB 17.11-4 release; NOT re-derived on the build
+    #              machine that wrote this file (no access to the EDB CDN). Verify
+    #              it (Get-FileHash) before shipping: a wrong pin aborts a fresh
+    #              install that has to download PostgreSQL, it never runs a file.
+    WinSwSha256    = '05b82d46ad331cc16bdc00de5c6332c1ef818df8ceefcd49c726553209b3a0da'
+    WinSwPublisher = ''
+
     # ---- Prerequisites ----
     # Visual C++ Redistributable (x64) - required by PostgreSQL and several
-    # native node modules. Installed only if not already present.
-    VcRedistUrl = 'https://aka.ms/vs/17/release/vc_redist.x64.exe'
+    # native node modules. Installed only if not already present. A VERSIONED URL:
+    # the aka.ms/vs/17/release/vc_redist.x64.exe link moves with every Microsoft
+    # release and would break the pin.
+    VcRedistUrl       = 'https://download.visualstudio.microsoft.com/download/pr/bd1c8d9d-ba95-4eee-bc6e-df1fcc876373/CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B/VC_redist.x64.exe'
+    VcRedistSha256    = 'cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b'
+    VcRedistPublisher = 'Microsoft Corporation'
 
     # ---- Node.js (downloaded only if missing or older than the app's engines) ----
     # The required minimum is read from app\package.json "engines.node" (major.minor,
@@ -105,13 +129,20 @@
     NodeMinMajor = 20
     NodeVersion  = '22.23.3'
     NodeMsiUrl   = 'https://nodejs.org/dist/v22.23.3/node-v22.23.3-x64.msi'
+    # = the line for node-v22.23.3-x64.msi in nodejs.org/dist/v22.23.3/SHASUMS256.txt
+    NodeMsiSha256    = '1c0efc8449987e7da5d184786a0a96da83ffa11d334421201e5c09b93017cb8d'
+    NodeMsiPublisher = 'OpenJS Foundation'
 
     # ---- Redis (OPTIONAL - background jobs only; app runs fine without it) ----
     RedisExpected = $false
 
     # ---- PostgreSQL ----
     PgMajor        = 17
-    PgInstallerUrl = 'https://get.enterprisedb.com/postgresql/postgresql-17.2-1-windows-x64.exe'
+    # PostgreSQL 17.11 (EDB installer build 4). Used only when NO PostgreSQL is
+    # found; an existing server is never upgraded by Setup.
+    PgInstallerUrl       = 'https://get.enterprisedb.com/postgresql/postgresql-17.11-4-windows-x64.exe'
+    PgInstallerSha256    = 'c9828fd3a4daebbeeace19bec2de5f38d73c047fce47278148b525cfbe28a5e4'
+    PgInstallerPublisher = 'EnterpriseDB Corporation'
     PgHost         = 'localhost'
     PgPort         = 5432
     # Superuser (postgres) password.

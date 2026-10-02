@@ -6,8 +6,8 @@
 </div>
 
 <div class="nb-tabs" style="display:flex;gap:.5rem;margin-bottom:1rem;">
-  <button class="btn btn-primary" id="nb-tab-roster" onclick="NB.show('roster')"><%= __('talentx:nb_tab_roster') %></button>
-  <button class="btn btn-secondary" id="nb-tab-grid" onclick="NB.show('grid')"><%= __('talentx:nb_tab_grid') %></button>
+  <button class="btn btn-primary" id="nb-tab-roster" data-on-click="NB.show" data-args='["roster"]'><%= __('talentx:nb_tab_roster') %></button>
+  <button class="btn btn-secondary" id="nb-tab-grid" data-on-click="NB.show" data-args='["grid"]'><%= __('talentx:nb_tab_grid') %></button>
 </div>
 
 <!-- ROSTER -->
@@ -16,7 +16,7 @@
     <div style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem;border-bottom:1px solid #eee">
       <strong><%= __('talentx:nb_roster_heading') %></strong>
       <label class="sr-only" for="nb-search"><%= __('talentx:nb_search_ph') %></label>
-      <input id="nb-search" type="search" class="form-control" placeholder="<%= __('talentx:nb_search_ph') %>" aria-label="<%= __('talentx:nb_search_ph') %>" style="max-width:280px" oninput="NB.renderRoster()">
+      <input id="nb-search" type="search" class="form-control" placeholder="<%= __('talentx:nb_search_ph') %>" aria-label="<%= __('talentx:nb_search_ph') %>" style="max-width:280px" data-on-input="NB.renderRoster" data-args='[]'>
     </div>
     <div class="nb-table-scroll">
     <table style="width:100%;border-collapse:collapse;font-size:.92rem">
@@ -64,15 +64,15 @@
     </div>
     <div id="nb-sugg" style="display:none;margin:.4rem 0;padding:8px 10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:.82rem;color:#1e3a8a">
       <i class="fas fa-lightbulb" aria-hidden="true"></i> <strong><%= __('talentx:nb_sugg') %></strong> <span id="nb-sugg-text"></span>
-      <button type="button" class="btn btn-sm btn-primary" style="margin-left:6px;padding:2px 10px" onclick="NB.useSuggestion()"><%= __('talentx:nb_use_sugg') %></button>
+      <button type="button" class="btn btn-sm btn-primary" style="margin-left:6px;padding:2px 10px" data-on-click="NB.useSuggestion" data-args='[]'><%= __('talentx:nb_use_sugg') %></button>
       <span id="nb-pos-src" style="margin-left:6px;font-style:italic;color:#3b82f6"></span>
     </div>
     <p style="font-size:.78rem;color:#94a3b8;margin:.1rem 0 .4rem"><%= __('talentx:nb_sugg_hint') %></p>
     <div style="margin:.5rem 0"><label for="nb-comments"><%= __('talentx:nb_comments') %></label>
       <textarea id="nb-comments" class="form-control" rows="2"></textarea></div>
     <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.75rem">
-      <button type="button" class="btn btn-secondary" onclick="NB.closeModal()"><%= __('talentx:cancel') %></button>
-      <button type="button" class="btn btn-primary" onclick="NB.create()"><%= __('talentx:nb_create_draft') %></button>
+      <button type="button" class="btn btn-secondary" data-on-click="NB.closeModal" data-args='[]'><%= __('talentx:cancel') %></button>
+      <button type="button" class="btn btn-primary" data-on-click="NB.create" data-args='[]'><%= __('talentx:nb_create_draft') %></button>
     </div>
   </div>
 </div>
@@ -236,8 +236,8 @@ const NB = {
             +(e.pendingProposal?provTag(e.pendingProposal.status, e.pendingProposal.box):'')+' '+dueBadge
         : '<span style="color:var(--text-muted)">'+NB_T.notAssessed+'</span> '+dueBadge;
       const action = p
-        ? '<button class="btn btn-sm btn-secondary" onclick="NB.open('+p.id+')">'+NB_T.open+'</button> <button class="btn btn-sm '+(e.dueForReassessment?'btn-primary':'btn-secondary')+'" data-emp="'+e.employeeId+'" data-name="'+nmAttr+'" onclick="NB.assessBtn(this)">'+NB_T.reassess+'</button>'
-        : '<button class="btn btn-sm btn-primary" data-emp="'+e.employeeId+'" data-name="'+nmAttr+'" onclick="NB.assessBtn(this)">'+NB_T.assess+'</button>';
+        ? '<button class="btn btn-sm btn-secondary"'+nbOn('click','NB.open',[p.id])+'>'+NB_T.open+'</button> <button class="btn btn-sm '+(e.dueForReassessment?'btn-primary':'btn-secondary')+'" data-emp="'+e.employeeId+'" data-name="'+nmAttr+'"'+nbOn('click','NB.assessBtn',['$el'])+'>'+NB_T.reassess+'</button>'
+        : '<button class="btn btn-sm btn-primary" data-emp="'+e.employeeId+'" data-name="'+nmAttr+'"'+nbOn('click','NB.assessBtn',['$el'])+'>'+NB_T.assess+'</button>';
       return '<tr style="border-top:1px solid #f1f5f9">'+
         '<td style="padding:.5rem .75rem"><strong>'+esc(e.firstName+' '+e.lastName)+'</strong><div style="color:#94a3b8;font-size:.78rem">'+esc(e.employeeNumber||'')+'</div></td>'+
         '<td style="padding:.5rem">'+esc(e.roleName||'—')+'</td>'+
@@ -358,10 +358,10 @@ const NB = {
         const mayApprove = ev.canApprove === true, mayDraft = ev.canDraft === true;
         const open = ['draft','under_review'].includes(ev.status);
         return '<div style="margin:.5rem 0">'+
-        (open && mayApprove?'<button class="btn btn-sm btn-success" onclick="NB.act('+id+',\'approve\')">'+NB_T.approveManager+'</button> <button class="btn btn-sm btn-danger" onclick="NB.act('+id+',\'reject\')">'+NB_T.reject+'</button> ':'')+
-        (ev.status==='draft' && mayDraft?'<button class="btn btn-sm btn-secondary" onclick="NB.act('+id+',\'submit\')">'+NB_T.submitReview+'</button> ':'')+
-        (ev.status==='approved' && mayApprove?'<button class="btn btn-sm" onclick="NB.act('+id+',\'archive\')">'+NB_T.archive+'</button> '+
-          '<button class="btn btn-sm '+(ev.disclosedToEmployee?'btn-secondary':'btn-primary')+'" onclick="NB.disclose('+id+','+(ev.disclosedToEmployee?'false':'true')+')">'+(ev.disclosedToEmployee?'<i class=\'fas fa-eye-slash\' aria-hidden=\'true\'></i> '+NB_T.hide:'<i class=\'fas fa-eye\' aria-hidden=\'true\'></i> '+NB_T.disclose)+'</button> ':'')+
+        (open && mayApprove?'<button class="btn btn-sm btn-success"'+nbOn('click','NB.act',[id,'approve'])+'>'+NB_T.approveManager+'</button> <button class="btn btn-sm btn-danger"'+nbOn('click','NB.act',[id,'reject'])+'>'+NB_T.reject+'</button> ':'')+
+        (ev.status==='draft' && mayDraft?'<button class="btn btn-sm btn-secondary"'+nbOn('click','NB.act',[id,'submit'])+'>'+NB_T.submitReview+'</button> ':'')+
+        (ev.status==='approved' && mayApprove?'<button class="btn btn-sm"'+nbOn('click','NB.act',[id,'archive'])+'>'+NB_T.archive+'</button> '+
+          '<button class="btn btn-sm '+(ev.disclosedToEmployee?'btn-secondary':'btn-primary')+'"'+nbOn('click','NB.disclose',[id,!ev.disclosedToEmployee])+'>'+(ev.disclosedToEmployee?'<i class=\'fas fa-eye-slash\' aria-hidden=\'true\'></i> '+NB_T.hide:'<i class=\'fas fa-eye\' aria-hidden=\'true\'></i> '+NB_T.disclose)+'</button> ':'')+
         // L'état de confidentialité est une INFORMATION, pas une commande : il
         // reste affiché au superviseur, qui perd les boutons, pas ce qu'il sait.
         (ev.status==='approved'?'<span style="margin-left:8px;font-size:.82rem;color:#64748b">'+(ev.disclosedToEmployee?NB_T.visible:NB_T.confidential)+'</span>':'')+
@@ -371,6 +371,10 @@ const NB = {
       })()+
       '<h4>'+NB_T.audit+'</h4>'+h.events.map(e=>'<div style="font-size:.85em;color:#555">'+FMT.dateTime(e.createdAt)+' — <strong>'+e.action+'</strong> '+(e.actorType||'')+(e.toStatus?(' → '+e.toStatus):'')+'</div>').join('');
   },
+  // A grid chip is an <a href="#">: open the detail and keep the page where it is
+  // (was an inline `NB.open(id);return false`). Returning false makes
+  // csp-actions.js call preventDefault().
+  openChip(id){ this.open(id); return false; },
   async act(id,a){let body={};
     if(a==='reject'){
       // Reason is mandatory — use the styled dialog and abort on cancel/empty
@@ -447,7 +451,7 @@ const NB = {
           const ar=this.TRENDARROW[x.cellTrend]||'';
           const st=window.EL?EL(x.status):String(x.status||'');
           const mark=x.provisional?'◌ ':(x.pendingProposal?'• ':'');
-          return '<a class="nb-chip'+(x.provisional?' nb-chip-prov':'')+(x.pendingProposal?' nb-chip-pend':'')+'" href="#" onclick="NB.open('+x.id+');return false" title="'+NB_T.tierWord+' '+(x.cellTier||2)+' · '+NB_T.trendWord+' '+(x.cellTrend||'stable')+' · '+esc(st)+'">'+mark+(ar?('<b>'+ar+'</b> '):'')+esc(x.firstName+' '+x.lastName)+'</a>';
+          return '<a class="nb-chip'+(x.provisional?' nb-chip-prov':'')+(x.pendingProposal?' nb-chip-pend':'')+'" href="#"'+nbOn('click','NB.openChip',[x.id])+' title="'+NB_T.tierWord+' '+(x.cellTier||2)+' · '+NB_T.trendWord+' '+(x.cellTrend||'stable')+' · '+esc(st)+'">'+mark+(ar?('<b>'+ar+'</b> '):'')+esc(x.firstName+' '+x.lastName)+'</a>';
         }).join('')+'</div>').join('')+'</div>'
       : '';
     return '<div class="nb-box" style="background:'+c+'">'+
@@ -469,6 +473,12 @@ const NB = {
   }
 };
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+// CSP: no inline handlers — built controls are wired by public/js/csp-actions.js.
+function nbOn(type,fn,args){ return ' data-on-'+type+'="'+fn+'" data-args="'+esc(JSON.stringify(args||[]))+'"'; }
+// csp-actions.js resolves handlers on window and calls them with `this` = the
+// element; NB is a top-level const (not on window) and its methods use `this`.
+Object.keys(NB).forEach(function(k){ const d=Object.getOwnPropertyDescriptor(NB,k); if(d && typeof d.value==='function') NB[k]=d.value.bind(NB); });
+window.NB = NB;
 NB.loadRoster();
 </script>
 

@@ -125,13 +125,24 @@ describe('S2/S9 — the login lockout while SSO is enforced', () => {
         ]);
     });
 
-    test('not enforced → the global lock applies as before', async () => {
+    test('not enforced → the account lock applies (hard lock = ADMIN accounts)', async () => {
         enforced = false;
         perIp = 0;
-        const r = await run('root');
-        expect(r.to).toBe('/login');
-        expect(r.flashes[0][0]).toBe('error');
-        enforced = true;
+        // Only an administrator account is hard-locked; staff and unknown names
+        // are soft-locked (slowed, never refused). See accountLockoutPolicy.test.js.
+        mockDb.get.mockImplementation(async (sql) =>
+            /FROM admins WHERE lower\(username\)/.test(sql)
+                ? { id: 1, username: 'root' }
+                : undefined
+        );
+        try {
+            const r = await run('root');
+            expect(r.to).toBe('/login');
+            expect(r.flashes[0][0]).toBe('error');
+        } finally {
+            enforced = true;
+            mockDb.get.mockResolvedValue(undefined);
+        }
     });
 });
 describe('Residual leak closed — the break-glass throttle is identical for every identifier', () => {

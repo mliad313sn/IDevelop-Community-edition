@@ -1,7 +1,7 @@
 <!-- Top Bar (slim header, only shows when sidebar is present) -->
 <header class="topbar" id="appTopbar" role="banner">
     <div class="topbar-left">
-        <button class="topbar-menu-btn" id="mobileMenuToggle" onclick="toggleSidebar()" title="<%= __('chrome:topbar_menu_title') %>"
+        <button class="topbar-menu-btn" id="mobileMenuToggle" data-on-click="toggleSidebar" title="<%= __('chrome:topbar_menu_title') %>"
             aria-label="<%= __('chrome:topbar_menu_aria') %>">
             <i class="fas fa-bars" aria-hidden="true"></i>
         </button>
@@ -16,7 +16,7 @@
     </div>
     <div class="topbar-right">
         <div class="action-center" id="actionCenter">
-            <button class="ac-bell" id="acBell" onclick="toggleActionCenter()" title="<%= __('chrome:ac_pending_actions') %>" aria-label="<%= __('chrome:ac_pending_actions') %>">
+            <button class="ac-bell" id="acBell" data-on-click="toggleActionCenter" title="<%= __('chrome:ac_pending_actions') %>" aria-label="<%= __('chrome:ac_pending_actions') %>">
                 <i class="fas fa-bell" aria-hidden="true"></i>
                 <span class="ac-badge" id="acBadge" hidden>0</span>
             </button>
@@ -52,7 +52,7 @@
                 </fieldset>
             </div>
         </div>
-        <div class="topbar-user" onclick="toggleUserMenu()" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-label="<%= __('chrome:account_menu_aria') %>" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleUserMenu();}">
+        <div class="topbar-user" data-on-click="toggleUserMenu" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-label="<%= __('chrome:account_menu_aria') %>" data-on-keydown="topbarUserKey">
             <span class="topbar-avatar">
                 <%= (user.username || user.employeeNumber || 'U' ).charAt(0).toUpperCase() %>
             </span>
@@ -144,6 +144,11 @@
 function toggleActionCenter(){
   var d=document.getElementById('acDropdown');
   if(!d)return; d.hidden=!d.hidden;
+}
+// Keyboard activation of the account menu (role="button" on a div). Wired by
+// csp-actions.js via data-on-keydown — no inline handler (CSP).
+function topbarUserKey(event){
+  if(event && (event.key==='Enter'||event.key===' ')){ event.preventDefault(); if(typeof toggleUserMenu==='function') toggleUserMenu(); }
 }
 document.addEventListener('click',function(e){
   var ac=document.getElementById('actionCenter'), d=document.getElementById('acDropdown');

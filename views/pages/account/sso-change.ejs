@@ -1,0 +1,38 @@
+<%#
+    « Connexion avec votre compte d'entreprise : ce qui change ».
+    Rendered by InvitationController.ssoChange (GET /account/sso-change), the page
+    the in-app SSO notice opens. It shows the SAME sentences as the e-mail the
+    person received (or would have received: no address, e-mail off), for this
+    person only, in the interface language. `doc` = { heading, hello, blocks[] }
+    where a block is { t: 'p'|'h', text } or { t: 'steps', items[] }.
+    No script, no inline handler (CSP).
+%>
+<div class="page-header">
+    <h1><i class="fas fa-right-to-bracket" aria-hidden="true"></i> <%= __('auth:ssochg_title') %></h1>
+</div>
+
+<div class="card hz-sso-change" data-sso-change="<%= mode %>">
+    <% if ((mode === 'invite' || mode === 'announce') && doc) { %>
+        <h2><%= doc.heading %></h2>
+        <p><%= doc.hello %></p>
+        <% doc.blocks.forEach(function (b) { %>
+            <% if (b.t === 'h') { %>
+                <h3><%= b.text %></h3>
+            <% } else if (b.t === 'steps') { %>
+                <ol>
+                    <% b.items.forEach(function (s) { %><li><%= s %></li><% }); %>
+                </ol>
+            <% } else { %>
+                <p><%= b.text %></p>
+            <% } %>
+        <% }); %>
+    <% } else if (mode === 'later') { %>
+        <p><%= __('auth:ssochg_later') %></p>
+    <% } else if (mode === 'error') { %>
+        <p role="alert"><%= __('auth:ssochg_error') %></p>
+    <% } else { %>
+        <p><%= __('auth:ssochg_none') %></p>
+    <% } %>
+</div>
+
+<p><a href="/notifications"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('auth:ssochg_back') %></a></p>

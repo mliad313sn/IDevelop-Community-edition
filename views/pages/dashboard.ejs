@@ -1,5 +1,10 @@
 <div class="dashboard-container">
 
+    <%# Permanent warning while an unencrypted SMTP relay is in use (admin roles). %>
+    <% if (typeof smtpRelay !== 'undefined' && smtpRelay && smtpRelay.active) { %>
+    <%- include('../partials/smtp-plaintext-relay', { smtpRelay: smtpRelay, showForm: false, isSuperAdmin: false }) %>
+    <% } %>
+
     <% if (typeof setupPending !== 'undefined' && setupPending) { %>
     <!-- First-run setup banner (SuperAdmin, until complete or dismissed) -->
     <div class="card hz-callout hz-setup-banner" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:14px;flex-wrap:wrap;">
@@ -495,7 +500,7 @@
         <div class="chart-box wide">
             <div class="box-header">
                 <h3><%= __('dash:high_priority_training_needs') %></h3>
-                <button class="btn-copy" onclick="Dashboard.copyToClipboard('training-priority-table')"><%= __('dash:copy_table') %></button>
+                <button class="btn-copy" data-on-click="Dashboard.copyToClipboard" data-args='["training-priority-table"]'><%= __('dash:copy_table') %></button>
             </div>
             <div class="table-responsive" id="training-priority-container">
                 <!-- Data Table -->
@@ -634,7 +639,7 @@
         <div class="chart-box wide">
             <div class="box-header">
                 <h3><%= __('dash:employee_list') %></h3>
-                <button class="btn-copy" onclick="Dashboard.copyToClipboard('employee-table')"><%= __('dash:copy_table') %></button>
+                <button class="btn-copy" data-on-click="Dashboard.copyToClipboard" data-args='["employee-table"]'><%= __('dash:copy_table') %></button>
             </div>
             <div class="table-responsive" id="employee-table-container">
                 <!-- Employee Table -->

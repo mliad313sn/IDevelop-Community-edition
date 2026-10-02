@@ -39,7 +39,7 @@
         <div style="position: relative; display: flex; align-items: center;">
             <input type="password" name="password" id="password" required minlength="12" autocomplete="new-password"
                 style="flex: 1; padding-right: 35px;">
-            <button type="button" onclick="togglePasswordVisibility('password', this)"
+            <button type="button" data-on-click="togglePasswordVisibility" data-args='["password","$el"]'
                 style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px 8px;"
                 title="<%= __('admin:toggle_visibility') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
         </div>
@@ -53,7 +53,7 @@
         <div style="position: relative; display: flex; align-items: center;">
             <input type="password" name="passwordConfirm" id="passwordConfirm" required minlength="12"
                 autocomplete="new-password" style="flex: 1; padding-right: 35px;">
-            <button type="button" onclick="togglePasswordVisibility('passwordConfirm', this)"
+            <button type="button" data-on-click="togglePasswordVisibility" data-args='["passwordConfirm","$el"]'
                 style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px 8px;"
                 title="<%= __('admin:toggle_visibility') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
         </div>
@@ -61,7 +61,7 @@
 
     <div class="form-group">
         <label for="newAdminRole"><%= __('admin:role_account') %> *</label>
-        <select name="role" id="newAdminRole" required onchange="onRoleChange(this.value)">
+        <select name="role" id="newAdminRole" required data-on-change="onRoleChange" data-args='["$value"]'>
             <option value=""><%= __('admin:select_role') %></option>
             <% if (typeof granterIsSuper === 'undefined' || granterIsSuper) { %>
                 <option value="superadmin" <%= dv('role') === 'superadmin' ? 'selected' : '' %>><%= __('admin:superadmin_label') %></option>
@@ -87,7 +87,7 @@
         <div class="form-group">
             <label><%= __('admin:scopes') %> <small style="color:#888;">— <%= __('admin:scopes_hint') %></small></label>
             <div id="scopes-container"></div>
-            <button type="button" class="btn btn-sm" onclick="addScope()"><%= __('admin:add_scope') %></button>
+            <button type="button" class="btn btn-sm" data-on-click="addScope" data-args='[]'><%= __('admin:add_scope') %></button>
         </div>
     </div>
 
@@ -356,7 +356,7 @@
         const div = document.createElement('div');
         div.className = 'scope-item';
         div.innerHTML = `
-        <select name="scopes[${index}][type]" onchange="updateScopeOptions(this)">
+        <select name="scopes[${index}][type]" data-on-change="updateScopeOptions" data-args='["$el"]'>
             <% if (typeof regions !== 'undefined' && regions && regions.length) { %><option value="region">${<%- JSON.stringify(__('admin:adm_region_widest')) %>}</option><% } %>
             <% if (countries && countries.length) { %><option value="country">${<%- JSON.stringify(__('admin:country_widest')) %>}</option><% } %>
             <option value="site">${<%- JSON.stringify(__('admin:site')) %>}</option>
@@ -364,7 +364,7 @@
             <option value="service">${<%- JSON.stringify(__('admin:service')) %>}</option>
         </select>
         <select name="scopes[${index}][value]"></select>
-        <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">${<%- JSON.stringify(__('admin:remove')) %>}</button>
+        <button type="button" class="btn btn-sm btn-danger" data-remove-parent>${<%- JSON.stringify(__('admin:remove')) %>}</button>
     `;
         container.appendChild(div);
         updateScopeOptions(div.querySelector('select[name*="[type]"]'));

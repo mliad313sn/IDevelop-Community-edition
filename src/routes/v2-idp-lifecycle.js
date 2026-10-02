@@ -40,15 +40,13 @@ function handle(action, { successKey, successFallback, backTo }) {
         try {
             ({ result, back } = await action(req));
         } catch (e) {
-            if (
-                !(
-                    e &&
-                    e.code &&
-                    typeof e.code === 'string' &&
-                    e.code.startsWith('IDP_') &&
-                    e.status
-                )
-            )
+            if (!(
+                e &&
+                e.code &&
+                typeof e.code === 'string' &&
+                e.code.startsWith('IDP_') &&
+                e.status
+            ))
                 throw e;
             const message = say(req, e);
             if (wantsJson(req))

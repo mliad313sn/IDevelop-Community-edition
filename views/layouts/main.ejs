@@ -21,7 +21,7 @@
     <% if (typeof externalFonts !== 'undefined' && externalFonts === true) { %>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" media="print" data-async-css>
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"></noscript>
     <% } %>
     <!-- App Styles -->
@@ -51,6 +51,20 @@
                         <div class="content-wrapper">
                             <%- include('../partials/breadcrumbs') %>
                                 <%- include('../partials/flash') %>
+                                    <%# Two-factor grace countdown: set by middleware/mfaEnforcement only
+                                        while an unenrolled account is inside its upgrade grace period. The
+                                        same sentence also arrives once per session as a warning flash: the
+                                        banner is skipped on that page so it is not said twice. %>
+                                    <% if (typeof mfaGrace !== 'undefined' && mfaGrace && mfaGrace.daysLeft) {
+                                        const _mgText = __('auth:mfa_grace_notice', { count: mfaGrace.daysLeft, date: mfaGrace.date });
+                                        const _mgFlashed = typeof warnings !== 'undefined' && Array.isArray(warnings) && warnings.indexOf(_mgText) !== -1; %>
+                                        <% if (!_mgFlashed) { %>
+                                        <div class="card hz-callout hz-mfa-grace" role="status" id="mfa-grace-banner">
+                                            <p><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= _mgText %></p>
+                                            <a href="/v2/uam/mfa/setup" class="btn btn-sm btn-primary"><%= __('auth:mfa_grace_cta') %></a>
+                                        </div>
+                                        <% } %>
+                                    <% } %>
                                     <%# — appliance-licence warning strip. It wraps EVERY authenticated
                                         page, so it is written defensively: `entitlement` is null for employees and
                                         whenever the status lookup failed (server.js), every property is read through
@@ -116,6 +130,7 @@
                                         sortBy: __('chrome:uif_sort_by'), close: __('chrome:flash_close')
                                     } }) %>;
                                 </script>
+                                <script src="/js/csp-actions.js?v=<%= assetVersion %>" defer></script>
                                 <script src="/js/ui-feedback.js?v=<%= assetVersion %>" defer></script>
                                 <script src="/js/enum-labels.js?v=<%= assetVersion %>" defer></script>
                                 <script src="/js/main.js?v=<%= assetVersion %>" defer></script>

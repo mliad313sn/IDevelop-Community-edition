@@ -4,15 +4,15 @@
 </div>
 
 <div class="nb-tabs" style="display:flex;gap:.5rem;margin-bottom:1rem">
-  <button class="btn btn-primary" id="cp-tab-roster" onclick="CP.show('roster')"><%= __('coaching:tab_my_people') %></button>
-  <button class="btn btn-secondary" id="cp-tab-plans" onclick="CP.show('plans')"><%= __('coaching:tab_plans') %></button>
+  <button class="btn btn-primary" id="cp-tab-roster" data-on-click="CP.show" data-args='["roster"]'><%= __('coaching:tab_my_people') %></button>
+  <button class="btn btn-secondary" id="cp-tab-plans" data-on-click="CP.show" data-args='["plans"]'><%= __('coaching:tab_plans') %></button>
 </div>
 
 <!-- ROSTER -->
 <div id="cp-roster-panel" class="card" style="padding:0;overflow:hidden">
   <div style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem;border-bottom:1px solid #eee">
     <strong><%= __('coaching:roster_heading') %></strong>
-    <input id="cp-search" class="form-control" placeholder="<%= __('coaching:search_placeholder') %>" style="max-width:280px" oninput="CP.renderRoster()">
+    <input id="cp-search" class="form-control" placeholder="<%= __('coaching:search_placeholder') %>" style="max-width:280px" data-on-input="CP.renderRoster" data-args='[]'>
   </div>
   <table style="width:100%;border-collapse:collapse;font-size:.92rem">
     <thead><tr style="text-align:left;background:#f8fafc;color:#64748b;font-size:.78rem;">
@@ -57,8 +57,8 @@
     <div style="margin:.5rem 0"><label><%= __('coaching:outcome_label') %></label><input id="cp-out" class="form-control" placeholder="<%= __('coaching:outcome_ph') %>"></div>
     <div style="margin:.5rem 0"><label><%= __('coaching:target_date_label') %></label><input id="cp-target" class="form-control" type="date"></div>
     <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.75rem">
-      <button class="btn btn-secondary" onclick="CP.closeModal()"><%= __('common:cancel') %></button>
-      <button class="btn btn-primary" onclick="CP.create()"><%= __('coaching:create_plan') %></button>
+      <button class="btn btn-secondary" data-on-click="CP.closeModal" data-args='[]'><%= __('common:cancel') %></button>
+      <button class="btn btn-primary" data-on-click="CP.create" data-args='[]'><%= __('coaching:create_plan') %></button>
     </div>
   </div>
 </div>
@@ -164,14 +164,14 @@ const CP = {
       '<td style="padding:.5rem;color:#64748b">'+esc((e.serviceName||'—')+' · '+(e.siteName||'—'))+'</td>'+
       '<td style="padding:.5rem">'+(e.planCount?('<span class="badge" style="background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:999px;font-size:.78rem">'+e.planCount+' '+esc(CP_T.activeSuffix)+'</span>'):'<span style="color:var(--text-muted)">'+esc(CP_T.none)+'</span>')+'</td>'+
       '<td style="padding:.5rem;text-align:right;white-space:nowrap">'+
-        '<button class="btn btn-sm btn-primary" data-emp="'+esc(e.employeeId)+'" data-name="'+esc(e.firstName+" "+e.lastName)+'" onclick="CP.startBtn(this)"><i class="fas fa-people-arrows" aria-hidden="true"></i> '+esc(CP_T.startPlan)+'</button>'+
+        '<button class="btn btn-sm btn-primary" data-emp="'+esc(e.employeeId)+'" data-name="'+esc(e.firstName+" "+e.lastName)+'"'+cpOn('click','CP.startBtn',['$el'])+'><i class="fas fa-people-arrows" aria-hidden="true"></i> '+esc(CP_T.startPlan)+'</button>'+
       '</td></tr>').join('');
     document.getElementById('cp-roster-count').textContent=CP_T.rosterCount.replace('{{shown}}',rows.length).replace('{{total}}',this.roster.length);
   },
 
   // The employee travels on data- attributes and is read back through dataset.
-  // It used to be spliced into onclick="CP.start(id,'coaching','NAME')" behind
-  // esc(name).replace(/'/g,...) - a no-op, because esc had already turned the
+  // It used to be spliced into an inline click handler CP.start(id,'coaching','NAME') behind
+  // esc(name).replace(/'/g,...) - a no-op, because esc() had already turned the
   // quote into &#39;, which the HTML parser decodes back BEFORE the handler is
   // compiled: a first name  x');alert(1);//  ran for every manager opening this
   // page, and O'Brien threw a SyntaxError. Never put a value in a JS string
@@ -221,6 +221,9 @@ const CP = {
     await this.loadRoster();
   },
 
+  // Cancel button: the plan kind travels on data-kind, read back here (was
+  // CP.act(id,'cancel',this.dataset.kind) inline).
+  cancelBtn(btn,id){ return this.act(id,'cancel',btn.dataset.kind); },
   async act(id,action,kind){
     const ask=window.promptDialog;
     if(action==='session'){const n=await ask(CP_T.promptSessionNote);if(n!==null&&n.trim())await this.api('/api/coaching/'+id+'/session','POST',{note:n});}
@@ -245,12 +248,18 @@ const CP = {
     const [q,m]=await Promise.all([this.api('/api/coaching/queue'),this.api('/api/coaching/monitor')]);
     const tb=document.querySelector('#cp-table tbody');
     tb.innerHTML=q.items.length?q.items.map(p=>'<tr><td>'+esc((p.firstName||'')+' '+(p.lastName||''))+'</td><td>'+esc(this.lbl(CP_T.kind,p.kind))+'</td><td>'+esc(p.title)+'</td><td>'+(p.contextLabel?'<span style="background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:999px;font-size:.78rem">'+esc(p.contextLabel)+'</span>':'<span style="color:var(--text-muted)">—</span>')+'</td><td>'+(p.targetDate?String(p.targetDate).slice(0,10):'-')+'</td><td>'+this.badge(p.state)+'</td><td>'+p.progress+'%</td><td>'+
-      '<button class="btn btn-sm btn-secondary" onclick="CP.act('+p.id+',\'session\')">'+esc(CP_T.btnNote)+'</button> '+
-      (p.state==='active'?'<button class="btn btn-sm btn-success" onclick="CP.act('+p.id+',\'validate\')">'+esc(CP_T.btnValidate)+'</button> <button class="btn btn-sm btn-danger" data-kind="'+((p.kind==='mentoring'||p.kind==='mentor')?'mentoring':'coaching')+'" onclick="CP.act('+Number(p.id)+',\'cancel\',this.dataset.kind)">'+esc(CP_T.btnCancel)+'</button>':'')+
+      '<button class="btn btn-sm btn-secondary"'+cpOn('click','CP.act',[p.id,'session'])+'>'+esc(CP_T.btnNote)+'</button> '+
+      (p.state==='active'?'<button class="btn btn-sm btn-success"'+cpOn('click','CP.act',[p.id,'validate'])+'>'+esc(CP_T.btnValidate)+'</button> <button class="btn btn-sm btn-danger" data-kind="'+((p.kind==='mentoring'||p.kind==='mentor')?'mentoring':'coaching')+'"'+cpOn('click','CP.cancelBtn',['$el',Number(p.id)])+'>'+esc(CP_T.btnCancel)+'</button>':'')+
       '</td></tr>').join(''):'<tr><td colspan="8"><em>'+esc(CP_T.noPlans)+'</em></td></tr>';
     document.getElementById('cp-monitor-body').innerHTML=(m.monitor.byState||[]).map(s=>this.badge(s.state)+' '+s.n).join(' &nbsp; ')+' &nbsp; | '+esc(CP_T.monitorOverdue)+': '+m.monitor.overdue.length;
   }
 };
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+// CSP: no inline handlers — built controls are wired by public/js/csp-actions.js.
+function cpOn(type,fn,args){ return ' data-on-'+type+'="'+fn+'" data-args="'+esc(JSON.stringify(args||[]))+'"'; }
+// csp-actions.js resolves handlers on window and calls them with `this` = the
+// element; CP is a top-level const (not on window) and its methods use `this`.
+Object.keys(CP).forEach(function(k){ const d=Object.getOwnPropertyDescriptor(CP,k); if(d && typeof d.value==='function') CP[k]=d.value.bind(CP); });
+window.CP = CP;
 CP.loadRoster();
 </script>

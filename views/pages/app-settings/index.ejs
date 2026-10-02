@@ -20,6 +20,11 @@
 <div class="alert alert-info" role="status" style="margin:0 0 1rem;padding:.6rem .9rem;border-radius:8px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.35);font-size:.88rem;"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:read_only_notice') %></div>
 <% } %>
 
+<%# Security-class settings are SuperAdmin-only (refused server-side too). %>
+<% if (user && user.role !== 'superadmin' && (settings || []).some(function (s) { return s.locked; })) { %>
+<div class="card hz-callout hz-sec-note" role="status" data-settings-locked-notice><p><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:set_security_notice') %></p></div>
+<% } %>
+
 <div class="help-text" style="margin-bottom: 2rem;">
     <%= __('admin:settings_help') %>
 </div>
@@ -97,8 +102,13 @@
                                         <% const editPayload = Object.assign({}, isSecretKey(setting.settingKey)
                                               ? Object.assign({}, setting, { settingValue: '' })
                                               : setting, { rule: setting.rule || {} }); %>
-                                        <button class="btn btn-sm"
-                                            onclick='editSetting(<%= JSON.stringify(editPayload) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                        <% if (setting.locked) { %>
+                                            <%# Security-class: SuperAdmin only (AppSettingsController refuses the write too). %>
+                                            <span class="badge badge-secondary hz-locked-badge" title="<%= __('admin:set_security_locked_hint') %>" data-setting-locked><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:set_security_locked_badge') %></span>
+                                        <% } else { %>
+                                        <button type="button" class="btn btn-sm"
+                                            data-on-click="editSetting" data-args="<%= JSON.stringify([editPayload]) %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                        <% } %>
                                     </td>
                                 </tr>
                                 <% }); %>
@@ -161,6 +171,13 @@
                                 <i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('admin:send_test_email') %>
                             </button>
                         </form>
+                        <%# The one named unencrypted SMTP relay: warning + SuperAdmin form. %>
+                        <%- include('../../partials/smtp-plaintext-relay', {
+                            smtpRelay: (typeof smtpRelay !== 'undefined') ? smtpRelay : null,
+                            showForm: true,
+                            isSuperAdmin: (typeof isSuperAdmin !== 'undefined') ? isSuperAdmin : false,
+                            csrfToken: csrfToken
+                        }) %>
                     </div>
 
                     <% if (typeof can !== 'function' || can('manage_app_settings')) { %>
@@ -194,8 +211,7 @@
                             <div class="form-group" style="margin:0;">
                                 <label for="brandAccentColor"><%= __('admin:brand_accent') %></label>
                                 <div style="display:flex;gap:8px;align-items:center;">
-                                    <input type="color" id="brandAccentPick" aria-label="<%= __('admin:brand_accent') %>" value="<%= _b.accentColor || '#7C6CFF' %>" style="width:44px;height:38px;padding:2px;border:1px solid var(--border-light);border-radius:8px;background:transparent;"
-                                        oninput="document.getElementById('brandAccentColor').value=this.value">
+                                    <input type="color" id="brandAccentPick" aria-label="<%= __('admin:brand_accent') %>" value="<%= _b.accentColor || '#7C6CFF' %>" style="width:44px;height:38px;padding:2px;border:1px solid var(--border-light);border-radius:8px;background:transparent;">
                                     <input type="text" id="brandAccentColor" name="brandAccentColor" value="<%= _b.accentColor || '' %>" placeholder="#7C6CFF" pattern="#?[0-9a-fA-F]{6}" class="form-control" style="max-width:120px;">
                                     <label style="font-size:.8rem;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" name="clearAccent" value="1"> <%= __('admin:brand_clear') %></label>
                                 </div>
@@ -285,6 +301,12 @@
                     <!-- Test Copilot LLM Connection -->
                     <div class="dashboard-section">
                         <h2><i class="fas fa-robot" aria-hidden="true"></i> <%= __('admin:copilot_test_title') %></h2>
+                        <%# Copilot egress gate: blocked reason, private-host allow-list, transfer basis. %>
+                        <%- include('../../partials/copilot-egress-gate', {
+                            copilotPolicy: (typeof copilotPolicy !== 'undefined') ? copilotPolicy : null,
+                            isSuperAdmin: (typeof isSuperAdmin !== 'undefined') ? isSuperAdmin : false,
+                            csrfToken: csrfToken
+                        }) %>
                         <div class="help-text" style="margin-bottom: 1rem;">
                             <%= __('admin:copilot_test_help') %>
                         </div>
@@ -360,7 +382,7 @@
                         <div class="modal-content">
                             <div class="modal-header">
                                 <h2><%= __('admin:edit_setting') %></h2>
-                                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editSettingModal')">&times;</button>
+                                <button type="button" class="close" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["editSettingModal"]'>&times;</button>
                             </div>
                             <div class="modal-body">
                                 <form id="editSettingForm" method="POST">
@@ -394,7 +416,7 @@
                                     <div class="modal-footer">
                                         <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('admin:save_changes') %></button>
                                         <button type="button" class="btn btn-secondary"
-                                            onclick="hideModal('editSettingModal')"><%= __('admin:cancel') %></button>
+                                            data-on-click="hideModal" data-args='["editSettingModal"]'><%= __('admin:cancel') %></button>
                                     </div>
                                 </form>
                             </div>

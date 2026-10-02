@@ -39,7 +39,7 @@ psql "$DATABASE_URL" -f db/postgres/seed-test.sql
 npm test
 ```
 
-CI runs the same steps on PostgreSQL 16 and 17 and must be green before merge.
+CI runs the same steps on PostgreSQL 16, 17 and 18 and must be green before merge.
 
 ### Integration fixtures
 
@@ -73,6 +73,18 @@ welcome.
 - Never edit a migration that has shipped; add a new one.
 - Provide a `NNN_short_description_down.sql` when a rollback is meaningful.
 - The migrator runs each file in one transaction and records it in `schema_meta`.
+- A new table must be classified twice, or the tests fail: in
+  `scripts/reset-for-golive.js` (KEEP or WIPE) and in
+  `src/services/erasureRegistry.js` (each employee column with its erasure
+  treatment, or the table in `TABLES_WITHOUT_SUBJECT_COLUMN` with the reason).
+- The SQL console reads through the `sqlconsole_reader` role
+  (`167_console_reader_role.sql`), which is granted table by table. A table
+  created by a later migration is not readable from the console until it is
+  granted, so a migration that adds tables must end by repeating the `DO`
+  block of `167_console_reader_role.sql`. A table that holds a secret column
+  must also be added to the lists in that block and to `SECRET_TABLES`,
+  `SECRET_COLUMNS` or `GUARDED_TABLES` in `src/services/SqlConsoleService.js`
+  (`migration167ConsoleReaderRole-db.test.js` checks they match).
 
 ## Translations
 

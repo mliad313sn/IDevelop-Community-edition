@@ -93,5 +93,6 @@
   "bp_action_certs": "Traiter les {n} certifications arrivant à échéance sous 90 jours.",
   "bp_footnote": "Chiffres calculés sur le périmètre indiqué. Les valeurs « non mesuré » sont laissées vides et ne sont jamais assimilées à zéro.",
   "bp_open": "Ouvrir le dossier de séance",
-  "kp_truncated": "Ce tableau ne montre que les {shown} premières des {total} compétences à détenteur unique recensées. La liste complète est dans Continuité → Risque personne-clé."
+  "kp_truncated": "Ce tableau ne montre que les {shown} premières des {total} compétences à détenteur unique recensées. La liste complète est dans Continuité → Risque personne-clé.",
+  "kp_holder_objection": "Non nommé (opposition au profilage)"
 }

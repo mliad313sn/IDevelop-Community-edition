@@ -3,18 +3,24 @@
 /**
  * Rotate APP_KEY safely.
  *
- * APP_KEY encrypts two secret stores with DIFFERENT derivations:
- *   - mfa_secrets.secret_enc  (MfaService: AES-256-GCM, key = APP_KEY[:32] raw
- *                              when len>=32, else sha256(SESSION_SECRET||'dev-key');
- *                              blob = [iv(12)|tag(16)|ct] bytea)
- *   - lms_integrations.auth_config._enc (secretBox: AES-256-GCM, key =
- *                              sha256(APP_KEY||SESSION_SECRET); 'enc:v1:iv:tag:ct' b64)
- *   - appSettings 'sso.*' secrets (secretBox, same format — SSO client secrets
- *                              and the SAML IdP certificates, encrypted since the SSO facilitator, migration 145)
+ * APP_KEY encrypts two families of secrets with DIFFERENT derivations:
+ *   - mfa_secrets.secret_enc (MfaService): v2 blobs ['MFA2'|iv|tag|ct] keyed by
+ *     HKDF over the whole APP_KEY, and legacy v1 blobs [iv|tag|ct] keyed by
+ *     APP_KEY[:32] (or SHA-256(SESSION_SECRET) when APP_KEY was short). Both
+ *     are read; every one is written back as v2 under the NEW key.
+ *   - secretBox values ('enc:v2:<purpose>:…', legacy 'enc:v1:…'), see
+ *     src/utils/secretBox.js; every one is re-encrypted to v2 under the NEW key:
+ *       · appSettings rows whose value is sealed (SSO client secrets and SAML
+ *         certificates, SMTP password, AI provider key: any 'enc:' value)
+ *       · lms_integrations.auth_config._enc and lms_integrations.webhook_secret
+ *       · webhook_subscriptions.secret
+ *       · safety_gate_settings.webhook_secret
+ *       · hris_connectors.credentials
  *
- * Hot-swapping APP_KEY without re-encrypting would make every MFA secret and LMS
- * credential undecryptable. This script decrypts each with the OLD key and
- * re-encrypts with the NEW key, in ONE transaction, verifying before commit.
+ * Hot-swapping APP_KEY without re-encrypting would make every one of them
+ * undecryptable. This script decrypts each with the OLD key and re-encrypts
+ * with the NEW key, in ONE transaction, verifying each value before it is
+ * written.
  *
  *   NEW_APP_KEY='<>=32 char key>' node scripts/rotate-app-key.js [--commit]
  *
@@ -22,178 +28,257 @@
  * then ROLLS BACK) so you can confirm it works before the real rotation.
  * After a real run: set APP_KEY=<new> in .env and restart the service.
  */
-require('dotenv').config();
-const crypto = require('crypto');
-const db = require('../src/config/database');
+const secretBox = require('../src/utils/secretBox');
 
-const OLD_APP_KEY = process.env.APP_KEY || '';
-const SESSION_SECRET = process.env.SESSION_SECRET || '';
-const NEW_APP_KEY =
-    process.env.NEW_APP_KEY || process.argv.find((a) => a.startsWith('--new='))?.slice(6) || '';
-const COMMIT = process.argv.includes('--commit');
-
-// --- key derivations (must match MfaService + secretBox exactly) -----------
-function mfaKey(appKey) {
-    if (appKey && appKey.length >= 32) return Buffer.from(appKey.slice(0, 32));
-    return crypto
-        .createHash('sha256')
-        .update(SESSION_SECRET || 'dev-key')
-        .digest();
-}
-function boxKey(appKey) {
-    const secret = appKey || SESSION_SECRET || '';
-    return crypto.createHash('sha256').update(secret).digest();
+/** MfaService's own primitives (the derivations live in ONE place). */
+function mfaCrypto() {
+    return require('../src/services/MfaService')._crypto;
 }
 
-// --- MFA blob [iv|tag|ct] ---------------------------------------------------
-function mfaDec(key, blob) {
-    const iv = blob.slice(0, 12),
-        tag = blob.slice(12, 28),
-        ct = blob.slice(28);
-    if (tag.length !== 16) throw new Error('rotate-app-key: bad MFA auth tag length');
-    const d = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
-    d.setAuthTag(tag);
-    return Buffer.concat([d.update(ct), d.final()]).toString('utf8');
-}
-function mfaEnc(key, plaintext) {
-    const iv = crypto.randomBytes(12);
-    const c = crypto.createCipheriv('aes-256-gcm', key, iv);
-    const ct = Buffer.concat([c.update(plaintext, 'utf8'), c.final()]);
-    return Buffer.concat([iv, c.getAuthTag(), ct]);
+/**
+ * Re-encrypt one secretBox value from the OLD key set to the NEW APP_KEY and
+ * verify the round-trip before handing it back. Clear/empty values give null
+ * (nothing to rotate: the owner encrypts them on its next write).
+ */
+function rotateBoxValue(value, keys, purpose) {
+    if (!secretBox.isEncrypted(value)) return null;
+    const from = { appKey: keys.oldAppKey, sessionSecret: keys.sessionSecret };
+    const plain = secretBox.decryptWithKeys(value, from);
+    const out = secretBox.rotateValue(value, { from, toAppKey: keys.newAppKey, purpose });
+    if (secretBox.decryptWithKeys(out, { appKey: keys.newAppKey, production: true }) !== plain)
+        throw new Error('verify failed');
+    return out;
 }
 
-// --- secretBox 'enc:v1:iv:tag:ct' (base64) ----------------------------------
-const PREFIX = 'enc:v1:';
-function boxDec(key, value) {
-    if (typeof value !== 'string' || !value.startsWith(PREFIX)) return value; // legacy clear
-    const [ivB, tagB, ...ctRest] = value.slice(PREFIX.length).split(':');
-    const tag = Buffer.from(tagB, 'base64');
-    if (tag.length !== 16) throw new Error('rotate-app-key: bad secretBox auth tag length');
-    const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivB, 'base64'), {
-        authTagLength: 16,
-    });
-    d.setAuthTag(tag);
-    return Buffer.concat([d.update(Buffer.from(ctRest.join(':'), 'base64')), d.final()]).toString(
-        'utf8'
+/** Purpose label for a v1 value that carries none (a v2 value keeps its own). */
+function settingPurpose(key) {
+    let isSso = false;
+    try {
+        isSso = require('../src/utils/ssoSettingKeys').isSsoSettingKey(key);
+    } catch (_) {
+        isSso = /^sso\./.test(String(key || ''));
+    }
+    if (isSso) return 'sso';
+    return require('../src/models/AppSettingsModel').isSecretKey(key) ? 'app_settings' : null;
+}
+
+/** Read every row of a table, or [] when the table does not exist (older schema). */
+async function rowsOf(db, sql) {
+    try {
+        return (await db.all(sql)) || [];
+    } catch (_) {
+        return [];
+    }
+}
+
+/**
+ * Rotate every secretBox store. Runs INSIDE the caller's transaction; an
+ * undecryptable value is skipped (counted, warned), a verify failure throws.
+ * @returns {Promise<object>} per-store { done, skipped } counters
+ */
+async function rotateSecretBoxStores(db, keys, log = console) {
+    const stats = {};
+    const bump = (k, f) => {
+        stats[k] = stats[k] || { done: 0, skipped: 0 };
+        stats[k][f]++;
+    };
+    const one = async (store, label, value, purpose, write) => {
+        if (!secretBox.isEncrypted(value)) return;
+        let out;
+        try {
+            out = rotateBoxValue(value, keys, purpose);
+        } catch (e) {
+            if (e.message === 'verify failed') throw new Error(`${label} verify failed`);
+            bump(store, 'skipped');
+            log.warn(`  ${label}: cannot decrypt with current key (${e.message}), skipped`);
+            return;
+        }
+        await write(out);
+        bump(store, 'done');
+    };
+
+    // 1. App settings (SSO and every secret setting): any sealed value.
+    const settings = await rowsOf(
+        db,
+        "SELECT id, settingKey, settingValue FROM appSettings WHERE settingValue LIKE 'enc:%'"
     );
-}
-function boxEnc(key, plaintext) {
-    const iv = crypto.randomBytes(12);
-    const c = crypto.createCipheriv('aes-256-gcm', key, iv);
-    const ct = Buffer.concat([c.update(String(plaintext), 'utf8'), c.final()]);
-    return (
-        PREFIX +
-        [iv.toString('base64'), c.getAuthTag().toString('base64'), ct.toString('base64')].join(':')
-    );
+    for (const r of settings) {
+        await one(
+            'appSettings',
+            `setting ${r.settingKey}`,
+            r.settingValue,
+            settingPurpose(r.settingKey),
+            (v) => db.run('UPDATE appSettings SET settingValue = ? WHERE id = ?', [v, r.id])
+        );
+    }
+
+    // 2. LMS integrations: auth_config._enc and webhook_secret.
+    const lms = await rowsOf(db, 'SELECT id, auth_config, webhook_secret FROM lms_integrations');
+    for (const r of lms) {
+        let ac = r.authConfig;
+        if (typeof ac === 'string') {
+            try {
+                ac = JSON.parse(ac);
+            } catch (_) {
+                ac = null;
+            }
+        }
+        if (ac && ac._enc)
+            await one('lmsAuthConfig', `lms id=${r.id} auth_config`, ac._enc, 'lms', (v) =>
+                db.run('UPDATE lms_integrations SET auth_config = ? WHERE id = ?', [
+                    JSON.stringify({ ...ac, _enc: v }),
+                    r.id,
+                ])
+            );
+        await one(
+            'lmsWebhookSecret',
+            `lms id=${r.id} webhook_secret`,
+            r.webhookSecret,
+            'lms',
+            (v) => db.run('UPDATE lms_integrations SET webhook_secret = ? WHERE id = ?', [v, r.id])
+        );
+    }
+
+    // 3. Outbound webhook subscriptions.
+    const subs = await rowsOf(db, 'SELECT id, secret FROM webhook_subscriptions');
+    for (const r of subs) {
+        await one('webhookSubscriptions', `webhook id=${r.id}`, r.secret, 'webhook', (v) =>
+            db.run('UPDATE webhook_subscriptions SET secret = ? WHERE id = ?', [v, r.id])
+        );
+    }
+
+    // 4. Safety gate outbound webhook.
+    const gate = await rowsOf(db, 'SELECT id, webhook_secret FROM safety_gate_settings');
+    for (const r of gate) {
+        await one('safetyGate', `safety_gate id=${r.id}`, r.webhookSecret, 'safety_gate', (v) =>
+            db.run('UPDATE safety_gate_settings SET webhook_secret = ? WHERE id = ?', [v, r.id])
+        );
+    }
+
+    // 5. HRIS connectors (API credentials of the HRIS synchronisation).
+    const hris = await rowsOf(db, 'SELECT id, credentials FROM hris_connectors');
+    for (const r of hris) {
+        await one('hrisConnectors', `hris_connector id=${r.id}`, r.credentials, 'hris', (v) =>
+            db.run('UPDATE hris_connectors SET credentials = ? WHERE id = ?', [v, r.id])
+        );
+    }
+    return stats;
 }
 
-(async () => {
-    if (!NEW_APP_KEY || NEW_APP_KEY.length < 32) {
+/** Rotate the MFA secrets: read v2 or v1 under the old keys, write v2 under the new key. */
+async function rotateMfa(db, keys, log = console) {
+    const stats = { done: 0, skipped: 0 };
+    const M = mfaCrypto();
+    const oldIkm = keys.oldAppKey || keys.sessionSecret || 'dev-key';
+    const from = {
+        v2Key: M.v2KeyFrom(oldIkm),
+        legacyKeys: M.legacyKeysFor(keys.oldAppKey, keys.sessionSecret),
+    };
+    const toKey = M.v2KeyFrom(keys.newAppKey);
+    const mfaRows = await rowsOf(db, 'SELECT id, secret_enc FROM mfa_secrets');
+    for (const r of mfaRows) {
+        const blob = Buffer.isBuffer(r.secretEnc) ? r.secretEnc : Buffer.from(r.secretEnc);
+        let plain;
+        try {
+            plain = M.decryptWithKeys(blob, from).secret;
+        } catch (e) {
+            stats.skipped++;
+            log.warn(`  mfa id=${r.id}: cannot decrypt with current key (${e.message}), skipped`);
+            continue;
+        }
+        const reb = M.encryptWithKey(toKey, plain);
+        // verify the round-trip with the NEW key before persisting
+        if (M.decryptWithKeys(reb, { v2Key: toKey, legacyKeys: [] }).secret !== plain)
+            throw new Error(`mfa id=${r.id} verify failed`);
+        await db.run('UPDATE mfa_secrets SET secret_enc = ? WHERE id = ?', [reb, r.id]);
+        stats.done++;
+    }
+    return stats;
+}
+
+// The stores rotateSecretBoxStores counts, by name. The operator summary is
+// built from THIS fixed list (never from the keys of a returned object), and
+// every value is coerced to a non-negative integer: only tallies can reach the
+// console, never a key, a secret or a decrypted value.
+const COUNTED_STORES = Object.freeze([
+    'appSettings',
+    'lmsAuthConfig',
+    'lmsWebhookSecret',
+    'webhookSubscriptions',
+    'safetyGate',
+    'hrisConnectors',
+]);
+function tally(v) {
+    const n = Number(v);
+    return Number.isSafeInteger(n) && n >= 0 ? n : 0;
+}
+/** A fresh plain object of counts: { factors: {done, skipped}, stores: {name: {done, skipped}} }. */
+function rotationCounts(factorTally, box) {
+    const t = factorTally;
+    const counts = {
+        factors: { done: tally(t && t.done), skipped: tally(t && t.skipped) },
+        stores: {},
+    };
+    for (const name of COUNTED_STORES) {
+        const v = box && Object.hasOwn(box, name) ? box[name] : null;
+        if (v) counts.stores[name] = { done: tally(v.done), skipped: tally(v.skipped) };
+    }
+    return counts;
+}
+function summary(counts) {
+    const parts = [`${counts.factors.done} MFA secret(s) (${counts.factors.skipped} skipped)`];
+    for (const name of COUNTED_STORES) {
+        const c = counts.stores[name];
+        if (c) parts.push(`${c.done} ${name} (${c.skipped} skipped)`);
+    }
+    return parts.join(', ');
+}
+
+async function main() {
+    require('dotenv').config();
+    const db = require('../src/config/database');
+    const keys = {
+        oldAppKey: process.env.APP_KEY || '',
+        sessionSecret: process.env.SESSION_SECRET || '',
+        newAppKey:
+            process.env.NEW_APP_KEY ||
+            process.argv.find((a) => a.startsWith('--new='))?.slice(6) ||
+            '',
+    };
+    const COMMIT = process.argv.includes('--commit');
+
+    if (!keys.newAppKey || secretBox.isWeakAppKey(keys.newAppKey)) {
         console.error(
-            'ERROR: provide NEW_APP_KEY (>=32 chars) via env NEW_APP_KEY=... or --new=...'
+            'ERROR: provide a strong NEW_APP_KEY (>=32 random chars, e.g. `openssl rand -hex 32`) via env NEW_APP_KEY=... or --new=...'
         );
         process.exit(2);
     }
-    if (NEW_APP_KEY === OLD_APP_KEY) {
-        console.error('ERROR: new key equals current APP_KEY — nothing to do.');
+    if (keys.newAppKey === keys.oldAppKey) {
+        console.error('ERROR: new key equals current APP_KEY, nothing to do.');
         process.exit(2);
     }
-    if (!OLD_APP_KEY)
+    if (!keys.oldAppKey)
         console.warn(
-            'WARN: current APP_KEY is empty — MFA/secretBox used the SESSION_SECRET fallback; rotating to a real APP_KEY.'
+            'WARN: no current APP_KEY was set, so encrypted values used the SESSION_SECRET fallback. Rotating to a real APP_KEY.'
         );
-
-    const oldMfa = mfaKey(OLD_APP_KEY),
-        newMfa = mfaKey(NEW_APP_KEY);
-    const oldBox = boxKey(OLD_APP_KEY),
-        newBox = boxKey(NEW_APP_KEY);
 
     await db.connect();
-    const stats = { mfa: 0, lms: 0, sso: 0, mfaSkipped: 0, lmsSkipped: 0, ssoSkipped: 0 };
+    let factorTally = { done: 0, skipped: 0 };
+    let box = {};
     try {
         await db.runTransaction(async () => {
-            // MFA secrets
-            const mfaRows = await db.all('SELECT id, secret_enc FROM mfa_secrets');
-            for (const r of mfaRows) {
-                const blob = Buffer.isBuffer(r.secretEnc) ? r.secretEnc : Buffer.from(r.secretEnc);
-                let plain;
-                try {
-                    plain = mfaDec(oldMfa, blob);
-                } catch (e) {
-                    stats.mfaSkipped++;
-                    console.warn(
-                        `  mfa id=${r.id}: cannot decrypt with current key (${e.message}) — skipped`
-                    );
-                    continue;
-                }
-                const reb = mfaEnc(newMfa, plain);
-                // verify round-trip with the NEW key before persisting
-                if (mfaDec(newMfa, reb) !== plain) throw new Error(`mfa id=${r.id} verify failed`);
-                await db.run('UPDATE mfa_secrets SET secret_enc = ? WHERE id = ?', [reb, r.id]);
-                stats.mfa++;
-            }
-            // LMS integration auth_config._enc
-            const lmsRows = await db.all('SELECT id, auth_config FROM lms_integrations');
-            for (const r of lmsRows) {
-                const ac = r.authConfig;
-                if (!ac || !ac._enc) {
-                    stats.lmsSkipped++;
-                    continue;
-                }
-                let plain;
-                try {
-                    plain = boxDec(oldBox, ac._enc);
-                } catch (e) {
-                    stats.lmsSkipped++;
-                    console.warn(
-                        `  lms id=${r.id}: cannot decrypt with current key (${e.message}) — skipped`
-                    );
-                    continue;
-                }
-                const reEnc = boxEnc(newBox, plain);
-                if (boxDec(newBox, reEnc) !== plain)
-                    throw new Error(`lms id=${r.id} verify failed`);
-                await db.run('UPDATE lms_integrations SET auth_config = ? WHERE id = ?', [
-                    JSON.stringify({ _enc: reEnc }),
-                    r.id,
-                ]);
-                stats.lms++;
-            }
-            // SSO secrets in appSettings (only the encrypted ones; clear legacy
-            // values are left for the next settings save to encrypt).
-            const ssoRows = await db.all(
-                "SELECT id, settingKey, settingValue FROM appSettings WHERE settingKey LIKE 'sso.%' AND settingValue LIKE 'enc:v1:%'"
-            );
-            for (const r of ssoRows) {
-                let plain;
-                try {
-                    plain = boxDec(oldBox, r.settingValue);
-                } catch (e) {
-                    stats.ssoSkipped++;
-                    console.warn(
-                        `  sso ${r.settingKey}: cannot decrypt with current key (${e.message}) — skipped`
-                    );
-                    continue;
-                }
-                const reEnc = boxEnc(newBox, plain);
-                if (boxDec(newBox, reEnc) !== plain)
-                    throw new Error(`sso ${r.settingKey} verify failed`);
-                await db.run('UPDATE appSettings SET settingValue = ? WHERE id = ?', [reEnc, r.id]);
-                stats.sso++;
-            }
+            factorTally = await rotateMfa(db, keys);
+            box = await rotateSecretBoxStores(db, keys);
             if (!COMMIT) {
                 throw new Error('__DRYRUN_ROLLBACK__');
             }
         });
-        console.log(
-            `\n✓ COMMITTED. Re-encrypted ${stats.mfa} MFA secret(s), ${stats.lms} LMS credential(s), ${stats.sso} SSO secret(s).`
-        );
-        console.log('  NEXT: set APP_KEY to the new value in .env and restart the service:');
-        console.log(`        APP_KEY=${NEW_APP_KEY}`);
+        console.log(`\n✓ COMMITTED. Re-encrypted ${summary(rotationCounts(factorTally, box))}.`);
+        console.log('  NEXT: set APP_KEY to the new value in .env and restart the service.');
     } catch (e) {
         if (e.message === '__DRYRUN_ROLLBACK__') {
             console.log(
-                `\n✓ DRY RUN OK (rolled back). Would re-encrypt ${stats.mfa} MFA secret(s) (${stats.mfaSkipped} skipped), ${stats.lms} LMS credential(s) (${stats.lmsSkipped} skipped), ${stats.sso} SSO secret(s) (${stats.ssoSkipped} skipped).`
+                `\n✓ DRY RUN OK (rolled back). Would re-encrypt ${summary(rotationCounts(factorTally, box))}.`
             );
             console.log('  Re-run with --commit to apply, then set APP_KEY in .env and restart.');
         } else {
@@ -203,4 +288,15 @@ function boxEnc(key, plaintext) {
         }
     }
     await db.close().catch(() => {});
-})();
+}
+
+if (require.main === module) main();
+
+module.exports = {
+    rotateSecretBoxStores,
+    rotateMfa,
+    rotateBoxValue,
+    rotationCounts,
+    summary,
+    COUNTED_STORES,
+};

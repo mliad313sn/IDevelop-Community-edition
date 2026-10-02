@@ -108,7 +108,8 @@ suite('HRIS sync on the real schema (rolled back)', () => {
             const row = await db.get(
                 `SELECT credentials FROM hris_connectors WHERE provider = 'personio'`
             );
-            expect(row.credentials.startsWith('enc:v1:')).toBe(true);
+            // secretBox v2, purpose-bound (v1 is read-only since SA-18 was closed).
+            expect(row.credentials.startsWith('enc:v2:hris:')).toBe(true);
             expect(row.credentials).not.toContain('s3cr3t-value');
             expect(row.credentials).not.toContain('cid-123');
             const masked = Hris.mask(await Hris.getRow('personio'));

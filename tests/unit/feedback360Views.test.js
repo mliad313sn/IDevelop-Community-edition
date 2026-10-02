@@ -365,7 +365,10 @@ describe('styles', () => {
 
     test('the new rules of horizon.css are scoped under :root .hz-360 / .hz-oneone', () => {
         const css = read('public/css/horizon.css');
-        const tail = css.slice(css.indexOf('/* ── 360° feedback (views/pages/feedback360)'));
+        const from = css.indexOf('/* ── 360° feedback (views/pages/feedback360)');
+        // The 360 / one-to-one block ends where the next section header starts.
+        const next = css.indexOf('/* ── SSO change page', from);
+        const tail = css.slice(from, next > from ? next : undefined);
         expect(tail.length).toBeGreaterThan(500);
         const selectors = tail
             .replace(/\/\*[\s\S]*?\*\//g, '')

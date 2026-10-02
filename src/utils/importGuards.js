@@ -66,8 +66,12 @@ function zipRefusal(msg) {
 
 /**
  * Walk the central directory of a ZIP buffer and return its entries
- * ({ name, method, csize, usize, dataStart }) without inflating anything.
+ * ({ name, flags, method, csize, usize, dataStart }) without inflating anything.
  * Throws the 400 refusal on anything malformed, ZIP64, or too many entries.
+ * `refusal(message, code)` receives a typed code for ZIP64 and entry-count
+ * refusals (ZIP_UNSUPPORTED / ZIP_TOO_MANY_ENTRIES); anything else is malformed.
+ * This is the ONE ZIP directory reader of the app: the upload guard
+ * (utils/fileSignature) uses it too.
  */
 function zipDirectory(buf, maxEntries, refusal = zipRefusal) {
     if (!Buffer.isBuffer(buf) || buf.length < 22) throw refusal('not a ZIP archive');
@@ -82,13 +86,15 @@ function zipDirectory(buf, maxEntries, refusal = zipRefusal) {
     if (eocd < 0) throw refusal('not a ZIP archive');
     const count = buf.readUInt16LE(eocd + 10);
     const cdOffset = buf.readUInt32LE(eocd + 16);
-    if (count === 0xffff || cdOffset === 0xffffffff) throw refusal('ZIP64 is not supported');
-    if (count > maxEntries) throw refusal(`too many entries (${count})`);
+    if (count === 0xffff || cdOffset === 0xffffffff)
+        throw refusal('ZIP64 is not supported', 'ZIP_UNSUPPORTED');
+    if (count > maxEntries) throw refusal(`too many entries (${count})`, 'ZIP_TOO_MANY_ENTRIES');
     const entries = [];
     let p = cdOffset;
     for (let n = 0; n < count; n++) {
         if (p + 46 > buf.length || buf.readUInt32LE(p) !== 0x02014b50)
             throw refusal('corrupt central directory');
+        const flags = buf.readUInt16LE(p + 8);
         const method = buf.readUInt16LE(p + 10);
         const csize = buf.readUInt32LE(p + 20);
         const usize = buf.readUInt32LE(p + 24);
@@ -97,13 +103,13 @@ function zipDirectory(buf, maxEntries, refusal = zipRefusal) {
         const commentLen = buf.readUInt16LE(p + 32);
         const local = buf.readUInt32LE(p + 42);
         if (csize === 0xffffffff || usize === 0xffffffff || local === 0xffffffff)
-            throw refusal('ZIP64 is not supported');
+            throw refusal('ZIP64 is not supported', 'ZIP_UNSUPPORTED');
         if (local + 30 > buf.length || buf.readUInt32LE(local) !== 0x04034b50)
             throw refusal('corrupt local header');
         const dataStart = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
         if (dataStart + csize > buf.length) throw refusal('truncated entry');
         const name = buf.toString('utf8', p + 46, Math.min(buf.length, p + 46 + nameLen));
-        entries.push({ name, method, csize, usize, dataStart });
+        entries.push({ name, flags, method, csize, usize, dataStart });
         p += 46 + nameLen + extraLen + commentLen;
     }
     return entries;
@@ -196,6 +202,7 @@ function assertSafeXlsxFile(filepath, limits) {
 
 module.exports = {
     isNonDataRow,
+    zipDirectory,
     assertSafeXlsxBuffer,
     assertSafeXlsxFile,
     readZipEntries,

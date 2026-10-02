@@ -129,8 +129,13 @@ describe('CI workflows: least privilege and pinned actions', () => {
         const text = byName['supply-chain.yml'].text;
         expect(text).toMatch(/scan-type:\s*fs/);
         expect(text).toMatch(/scan-type:\s*image/);
-        expect(text.match(/severity:\s*CRITICAL,HIGH/g)).toHaveLength(2);
-        expect(text.match(/ignore-unfixed:\s*true/g)).toHaveLength(2);
+        // Two gates (fs, image) plus one failure-only table step that prints the
+        // fs findings in the log; the gates keep exit-code '1', the table never fails.
+        expect(text.match(/severity:\s*CRITICAL,HIGH/g)).toHaveLength(3);
+        expect(text.match(/ignore-unfixed:\s*true/g)).toHaveLength(3);
+        expect(text).toMatch(
+            /trivy fs findings \(table\)[\s\S]*?if: failure\(\)[\s\S]*?format: table[\s\S]*?exit-code: '0'/
+        );
         expect(text.match(/exit-code:\s*'1'/g)).toHaveLength(2);
         expect(text).toMatch(/upload-sarif@/);
         expect(text).toMatch(/npm run security:sbom/);

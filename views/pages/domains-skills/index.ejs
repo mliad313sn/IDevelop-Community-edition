@@ -8,13 +8,13 @@
 <% } %>
 
 <div class="tabs fw-tabs">
-    <button class="tab <%= activeTab === 'framework' ? 'active' : '' %>" onclick="showTab(event, 'framework')"><i class="fas fa-diagram-project" aria-hidden="true"></i>
+    <button class="tab <%= activeTab === 'framework' ? 'active' : '' %>" data-tab="framework" data-on-click="showTab" data-args='["$el","framework"]'><i class="fas fa-diagram-project" aria-hidden="true"></i>
         <%= __('framework:tab_framework') %></button>
-    <button class="tab <%= activeTab === 'domains' ? 'active' : '' %>" onclick="showTab(event, 'domains')"><i class="fas fa-book" aria-hidden="true"></i>
+    <button class="tab <%= activeTab === 'domains' ? 'active' : '' %>" data-tab="domains" data-on-click="showTab" data-args='["$el","domains"]'><i class="fas fa-book" aria-hidden="true"></i>
         <%= __('framework:tab_domains') %></button>
-    <button class="tab <%= activeTab === 'subdomains' ? 'active' : '' %>" onclick="showTab(event, 'subdomains')"><i class="fas fa-sitemap" aria-hidden="true"></i>
+    <button class="tab <%= activeTab === 'subdomains' ? 'active' : '' %>" data-tab="subdomains" data-on-click="showTab" data-args='["$el","subdomains"]'><i class="fas fa-sitemap" aria-hidden="true"></i>
         <%= __('framework:tab_subdomains') %></button>
-    <button class="tab <%= activeTab === 'skills' ? 'active' : '' %>" onclick="showTab(event, 'skills')"><i class="fas fa-bullseye" aria-hidden="true"></i>
+    <button class="tab <%= activeTab === 'skills' ? 'active' : '' %>" data-tab="skills" data-on-click="showTab" data-args='["$el","skills"]'><i class="fas fa-bullseye" aria-hidden="true"></i>
         <%= __('framework:tab_skills') %></button>
 </div>
 
@@ -92,7 +92,7 @@
 <div id="domains-tab" class="tab-content <%= activeTab === 'domains' ? 'active' : '' %>">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2><%= __('framework:domains_heading') %></h2>
-        <button class="btn btn-primary" onclick="showModal('createDomainModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('framework:create_domain') %></button>
+        <button class="btn btn-primary" data-on-click="showModal" data-args='["createDomainModal"]'><i class="fas fa-plus" aria-hidden="true"></i> <%= __('framework:create_domain') %></button>
     </div>
 
     <div class="table-wrapper">
@@ -112,7 +112,7 @@
                                 <div class="empty-state-icon"><i class="fas fa-book" aria-hidden="true"></i></div>
                                 <h3><%= __('framework:empty_domains_title') %></h3>
                                 <p><%= __('framework:empty_domains_hint') %></p>
-                                <button class="btn btn-primary" onclick="showModal('createDomainModal')"><%= __('framework:create_domain') %></button>
+                                <button class="btn btn-primary" data-on-click="showModal" data-args='["createDomainModal"]'><%= __('framework:create_domain') %></button>
                             </div>
                         </td>
                     </tr>
@@ -128,7 +128,7 @@
                                 <td>
                                     <div class="table-actions">
                                         <button class="btn btn-sm"
-                                            onclick='editDomain(<%= JSON.stringify(domain) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('framework:edit') %></button>
+                                            data-on-click="editDomain" data-args="<%= JSON.stringify([domain]) %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('framework:edit') %></button>
                                         <form action="/domains/<%= domain.id %>/delete" method="POST"
                                             style="display:inline;"
                                             data-confirm="<%= __('framework:confirm_delete_domain') %>" data-confirm-title="<%= __('admin:cfm_delete_title') %>" data-confirm-danger>
@@ -150,7 +150,7 @@
     <div class="section-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <h2 style="margin:0;"><%= __('framework:subdomains_heading') %></h2>
         <span style="color:var(--text-secondary);font-size:.85rem;"><%= __('framework:subdomains_intro') %></span>
-        <button class="btn btn-primary" style="margin-left:auto;" onclick="showModal('createSubDomainModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('framework:create_subdomain') %></button>
+        <button class="btn btn-primary" style="margin-left:auto;" data-on-click="showModal" data-args='["createSubDomainModal"]'><i class="fas fa-plus" aria-hidden="true"></i> <%= __('framework:create_subdomain') %></button>
     </div>
     <div class="table-wrapper">
         <table class="table">
@@ -171,7 +171,7 @@
                             <div class="empty-state">
                                 <div class="empty-state-icon"><i class="fas fa-sitemap" aria-hidden="true"></i></div>
                                 <h3><%= __('framework:empty_subdomains_title') %></h3>
-                                <button class="btn btn-primary" onclick="showModal('createSubDomainModal')"><%= __('framework:create_subdomain') %></button>
+                                <button class="btn btn-primary" data-on-click="showModal" data-args='["createSubDomainModal"]'><%= __('framework:create_subdomain') %></button>
                             </div>
                         </td>
                     </tr>
@@ -188,7 +188,7 @@
                             <td style="text-align:center;"><%= sd.weightPct === null ? '—' : sd.weightPct + ' %' %></td>
                             <td>
                                 <div class="table-actions">
-                                    <button class="btn btn-sm" onclick='editSubDomain(<%= JSON.stringify({ id: sd.id, name: sd.name, definition: sd.definition, domainId: sd.domainId }) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('framework:edit') %></button>
+                                    <button class="btn btn-sm" data-on-click="editSubDomain" data-args="<%= JSON.stringify([{ id: sd.id, name: sd.name, definition: sd.definition, domainId: sd.domainId }]) %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('framework:edit') %></button>
                                     <form action="/subdomains/<%= sd.id %>/delete" method="POST" style="display:inline;" data-confirm="<%= __('framework:confirm_delete_subdomain', { name: sd.name }) %>" data-confirm-title="<%= __('admin:cfm_delete_title') %>" data-confirm-danger>
                                         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                                         <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash" aria-hidden="true"></i> <%= __('framework:delete') %></button>
@@ -207,7 +207,7 @@
 <div id="skills-tab" class="tab-content <%= activeTab === 'skills' ? 'active' : '' %>">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2><%= __('framework:skills_heading') %></h2>
-        <button class="btn btn-primary" onclick="showModal('createSkillModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('framework:create_skill') %></button>
+        <button class="btn btn-primary" data-on-click="showModal" data-args='["createSkillModal"]'><i class="fas fa-plus" aria-hidden="true"></i> <%= __('framework:create_skill') %></button>
     </div>
 
     <%# the catalogue is browsed ONE SUB-DOMAIN AT A TIME. Rendering
@@ -249,7 +249,7 @@
                                 <%# Rule 1: "nothing selected" is not "nothing exists". %>
                                 <h3><%= subDomainFilter ? __('framework:empty_skills_title') : __('framework:pick_subdomain_prompt') %></h3>
                                 <p><%= subDomainFilter ? __('framework:empty_skills_hint') : __('framework:pick_subdomain_hint') %></p>
-                                <% if (subDomainFilter) { %><button class="btn btn-primary" onclick="showModal('createSkillModal')"><%= __('framework:create_skill') %></button><% } %>
+                                <% if (subDomainFilter) { %><button class="btn btn-primary" data-on-click="showModal" data-args='["createSkillModal"]'><%= __('framework:create_skill') %></button><% } %>
                             </div>
                         </td>
                     </tr>
@@ -276,7 +276,7 @@
                                 </td>
                                 <td>
                                     <div class="table-actions">
-                                        <button class="btn btn-sm" onclick='editSkill(<%= JSON.stringify(skill) %>)'><i class="fas fa-pen" aria-hidden="true"></i>
+                                        <button class="btn btn-sm" data-on-click="editSkill" data-args="<%= JSON.stringify([skill]) %>"><i class="fas fa-pen" aria-hidden="true"></i>
                                             <%= __('framework:edit') %></button>
                                         <form action="/skills/<%= skill.id %>/delete" method="POST"
                                             style="display:inline;" data-confirm="<%= __('framework:confirm_delete_skill') %>" data-confirm-title="<%= __('admin:cfm_delete_title') %>" data-confirm-danger>
@@ -298,7 +298,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2><%= __('framework:modal_create_domain') %></h2>
-            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('createDomainModal')">&times;</button>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["createDomainModal"]'>&times;</button>
         </div>
         <div class="modal-body">
             <form action="/domains" method="POST">
@@ -314,7 +314,7 @@
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary"><%= __('framework:btn_create') %></button>
                     <button type="button" class="btn btn-secondary"
-                        onclick="hideModal('createDomainModal')"><%= __('framework:btn_cancel') %></button>
+                        data-on-click="hideModal" data-args='["createDomainModal"]'><%= __('framework:btn_cancel') %></button>
                 </div>
             </form>
         </div>
@@ -325,7 +325,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2><%= __('framework:modal_edit_domain') %></h2>
-            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('editDomainModal')">&times;</button>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["editDomainModal"]'>&times;</button>
         </div>
         <div class="modal-body">
             <form id="editDomainForm" method="POST">
@@ -341,7 +341,7 @@
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary"><%= __('framework:btn_update') %></button>
                     <button type="button" class="btn btn-secondary"
-                        onclick="hideModal('editDomainModal')"><%= __('framework:btn_cancel') %></button>
+                        data-on-click="hideModal" data-args='["editDomainModal"]'><%= __('framework:btn_cancel') %></button>
                 </div>
             </form>
         </div>
@@ -354,7 +354,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2><%= __('framework:modal_create_subdomain') %></h2>
-            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('createSubDomainModal')">&times;</button>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["createSubDomainModal"]'>&times;</button>
         </div>
         <div class="modal-body">
             <form action="/subdomains" method="POST">
@@ -376,7 +376,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary"><%= __('framework:btn_create') %></button>
-                    <button type="button" class="btn btn-secondary" onclick="hideModal('createSubDomainModal')"><%= __('framework:btn_cancel') %></button>
+                    <button type="button" class="btn btn-secondary" data-on-click="hideModal" data-args='["createSubDomainModal"]'><%= __('framework:btn_cancel') %></button>
                 </div>
             </form>
         </div>
@@ -387,7 +387,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2><%= __('framework:modal_edit_subdomain') %></h2>
-            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('editSubDomainModal')">&times;</button>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["editSubDomainModal"]'>&times;</button>
         </div>
         <div class="modal-body">
             <form id="editSubDomainForm" method="POST">
@@ -409,7 +409,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary"><%= __('framework:btn_update') %></button>
-                    <button type="button" class="btn btn-secondary" onclick="hideModal('editSubDomainModal')"><%= __('framework:btn_cancel') %></button>
+                    <button type="button" class="btn btn-secondary" data-on-click="hideModal" data-args='["editSubDomainModal"]'><%= __('framework:btn_cancel') %></button>
                 </div>
             </form>
         </div>
@@ -421,7 +421,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2><%= __('framework:modal_create_skill') %></h2>
-            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('createSkillModal')">&times;</button>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["createSkillModal"]'>&times;</button>
         </div>
         <div class="modal-body">
             <form action="/skills" method="POST">
@@ -460,7 +460,7 @@
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary"><%= __('framework:btn_create') %></button>
                     <button type="button" class="btn btn-secondary"
-                        onclick="hideModal('createSkillModal')"><%= __('framework:btn_cancel') %></button>
+                        data-on-click="hideModal" data-args='["createSkillModal"]'><%= __('framework:btn_cancel') %></button>
                 </div>
             </form>
         </div>
@@ -471,7 +471,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2><%= __('framework:modal_edit_skill') %></h2>
-            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('editSkillModal')">&times;</button>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["editSkillModal"]'>&times;</button>
         </div>
         <div class="modal-body">
             <form id="editSkillForm" method="POST">
@@ -528,7 +528,7 @@
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary"><%= __('framework:btn_update') %></button>
                     <button type="button" class="btn btn-secondary"
-                        onclick="hideModal('editSkillModal')"><%= __('framework:btn_cancel') %></button>
+                        data-on-click="hideModal" data-args='["editSkillModal"]'><%= __('framework:btn_cancel') %></button>
                 </div>
             </form>
         </div>
@@ -537,7 +537,9 @@
 
 <script nonce="<%= cspNonce %>">
     // Tab switching
-    function showTab(event, tabName) {
+    // CSP: called from data-on-click with the tab BUTTON ("$el") — the
+    // delegated event's target could be the inner <i> glyph.
+    function showTab(btnOrEvent, tabName) {
         // Hide all tabs
         document.querySelectorAll('.tab-content').forEach(tab => {
             tab.classList.remove('active');
@@ -548,7 +550,10 @@
 
         // Show selected tab
         document.getElementById(tabName + '-tab').classList.add('active');
-        event.target.classList.add('active');
+        const btn = btnOrEvent && btnOrEvent.nodeType === 1
+            ? btnOrEvent
+            : document.querySelector('.tab[data-tab="' + tabName + '"]');
+        if (btn) btn.classList.add('active');
     }
 
     // Domain edit function

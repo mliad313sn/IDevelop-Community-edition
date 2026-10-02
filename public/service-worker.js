@@ -25,7 +25,7 @@
  *   the offline page rather than a stale copy of someone's record.
  */
 
-const CACHE = 'app-shell-v8'; // v7: + horizon.css theme layer and brand assets
+const CACHE = 'app-shell-v9'; // v9: + offline.js (no inline handler); v8: + horizon.css theme layer
 
 // Bumped whenever the caching RULES change, so an old worker's cache is discarded
 // wholesale by the activate handler rather than lingering with stale semantics.
@@ -46,6 +46,7 @@ const SHELL = [
     '/js/sa-skill-help.js',
     '/css/sa-skill-help.css',
     '/offline.html',
+    '/js/offline.js',
 ];
 
 const STATIC_PREFIXES = [

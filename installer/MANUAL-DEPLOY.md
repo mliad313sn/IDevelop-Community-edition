@@ -12,25 +12,31 @@ Two things to know up front:
   **§8**. The app itself is just **Node.js + PostgreSQL**.
 
 Defaults used throughout (change to taste, keep them consistent):
-| Setting | Value |
-|---|---|
+
+| Setting     | Value                       |
+| ----------- | --------------------------- |
 | Install dir | `C:\Program Files\IDevelop` |
-| App port | `3000` |
-| Database | `idevelop` |
-| DB role | `idevelop_app` |
+| App port    | `3000`                      |
+| Database    | `idevelop`                  |
+| DB role     | `idevelop_app`              |
 
 ---
 
 ## PHASE A — Download the requirements
 
-| #   | Component                          | Where to get it                                                           | Needed                         |
-| --- | ---------------------------------- | ------------------------------------------------------------------------- | ------------------------------ |
-| A1  | **Node.js 22.x LTS (x64 MSI)**     | https://nodejs.org/dist/v22.23.3/node-v22.23.3-x64.msi                    | Required (20.19+ minimum)      |
-| A2  | **PostgreSQL 17 (x64)**            | https://get.enterprisedb.com/postgresql/postgresql-17.2-1-windows-x64.exe | Required                       |
-| A3  | **Visual C++ Redistributable x64** | https://aka.ms/vs/17/release/vc_redist.x64.exe                            | Required (PostgreSQL needs it) |
-| A4  | **The IDevelop package**           | `IDevelop-Installer-<version>.zip` (this package)                         | Required                       |
-| A5  | _(Optional)_ **Redis / Memurai**   | https://www.memurai.com/ (Windows)                                        | Background jobs only           |
-| A6  | _(Optional)_ **ClamAV**            | https://www.clamav.net/downloads                                          | Upload virus-scan only         |
+| #   | Component                          | Where to get it                                                            | Needed                         |
+| --- | ---------------------------------- | -------------------------------------------------------------------------- | ------------------------------ |
+| A1  | **Node.js 22.x LTS (x64 MSI)**     | https://nodejs.org/dist/v22.23.3/node-v22.23.3-x64.msi                     | Required (20.19+ minimum)      |
+| A2  | **PostgreSQL 17 (x64)**            | https://get.enterprisedb.com/postgresql/postgresql-17.11-4-windows-x64.exe | Required                       |
+| A3  | **Visual C++ Redistributable x64** | the `VcRedistUrl` of `config.psd1` (a versioned Microsoft URL)             | Required (PostgreSQL needs it) |
+| A4  | **The IDevelop package**           | `IDevelop-Installer-<version>.zip` (this package)                          | Required                       |
+| A5  | _(Optional)_ **Redis / Memurai**   | https://www.memurai.com/ (Windows)                                         | Background jobs only           |
+| A6  | _(Optional)_ **ClamAV**            | https://www.clamav.net/downloads                                           | Upload virus-scan only         |
+
+Verify every file you fetch by hand against the SHA-256 pinned in `config.psd1`
+(`NodeMsiSha256`, `PgInstallerSha256`, `VcRedistSha256`, `WinSwSha256`) with
+`Get-FileHash <file> -Algorithm SHA256` before running it. The installer itself
+refuses a file whose hash or Authenticode publisher does not match.
 
 ---
 
@@ -122,7 +128,9 @@ ALTER SCHEMA public OWNER TO idevelop_app;
     V2_FEATURES=1
     # Optional — only if you installed them:
     # REDIS_URL=redis://localhost:6379
-    # CLAMD_SOCKET=\\.\pipe\clamd      (or set a ClamAV host/port)
+    # CLAMD_HOST=127.0.0.1  CLAMD_PORT=3310   (ClamAV daemon; else Microsoft Defender is used,
+    #                                        else uploads are recorded as "not scanned")
+    # REQUIRE_MALWARE_SCAN=1                 (hold unscanned uploads instead of accepting them)
     # Optional — outgoing email (notifications). Normally configured in the app
     # (Settings → Email (SMTP)); these are only a fallback used when the matching
     # in-app Setting is blank. Email stays OFF until enabled in Settings.
@@ -262,14 +270,14 @@ The only steps needing internet are the **Phase A downloads** and **`npm ci`**. 
 
 ## §10 — Troubleshooting
 
-| Symptom                            | Cause / fix                                                                               |
-| ---------------------------------- | ----------------------------------------------------------------------------------------- |
-| `npm ci` fails                     | No internet, or wrong Node version. Use Node 20; for offline see §9.                      |
-| App won't start, DB error          | `DATABASE_URL` wrong, or PostgreSQL not running, or role/password mismatch (Phase C/E).   |
-| Migration error about an extension | Extensions weren't created as superuser — re-run the `CREATE EXTENSION` lines in Phase C. |
-| Login fails on fresh DB            | Seed didn't run, or you set a new admin password — use the one from Phase F.              |
-| Port 3000 in use                   | Change `PORT` in `.env` (and the firewall rule / service).                                |
-| Evidence upload shows "scan_error" | ClamAV not installed/reachable — optional; set `CLAMD_SOCKET` or ignore.                  |
+| Symptom                             | Cause / fix                                                                                                                                                                  |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm ci` fails                      | No internet, or wrong Node version. Use Node 20; for offline see §9.                                                                                                         |
+| App won't start, DB error           | `DATABASE_URL` wrong, or PostgreSQL not running, or role/password mismatch (Phase C/E).                                                                                      |
+| Migration error about an extension  | Extensions weren't created as superuser — re-run the `CREATE EXTENSION` lines in Phase C.                                                                                    |
+| Login fails on fresh DB             | Seed didn't run, or you set a new admin password — use the one from Phase F.                                                                                                 |
+| Port 3000 in use                    | Change `PORT` in `.env` (and the firewall rule / service).                                                                                                                   |
+| Evidence upload shows "not scanned" | No antivirus engine answered: neither clamd (`CLAMD_HOST` / `CLAMD_PORT`, or `CLAMD_SOCKET`) nor Microsoft Defender. Optional; the file stays usable with restricted access. |
 
 A clean run leaves the app at `http://localhost:3000/`, an auto-start service, and admin
 secured. To remove later, stop/unregister the service, delete the install dir, and

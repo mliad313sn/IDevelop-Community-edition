@@ -1,6 +1,43 @@
 const PRODUCT = require('../config/product');
 const db = require('../config/database');
 const { TtlCache } = require('../utils/ttlCache');
+const secretBox = require('../utils/secretBox');
+
+/**
+ * SECRET SETTINGS. A setting whose key names a credential is encrypted at rest
+ * with secretBox (purpose 'app_settings') INSIDE this model: setValue() and
+ * update() encrypt, getValue() decrypts, so EmailService and CopilotService
+ * read plaintext without knowing. A legacy clear (or v1) value still reads and
+ * is re-encrypted to v2 lazily on read (best-effort) and on the next write.
+ * Listing methods (findAll / findByCategory) NEVER return the value, only
+ * SECRET_MASK when one is set, and a write of SECRET_MASK is refused as
+ * "unchanged", so a mask echoed back by a form or a restore can never
+ * overwrite the stored secret.
+ *
+ * Matched by the LAST dot-segment of the key: …password / …secret / …token /
+ * …apiKey / …privateKey / …passphrase / …pass (smtpPassword, copilotApiSecret,
+ * sso.entra.clientSecret…). SSO values arrive already encrypted by
+ * SsoSettingsService; an 'enc:' value is never encrypted twice.
+ */
+const SECRET_MASK = '••••••••';
+const SECRET_PURPOSE = 'app_settings';
+const { isSecretKey } = require('../utils/secretSettingKeys');
+/**
+ * Secrets this MODEL seals and opens. SSO keys are excluded: SsoSettingsService
+ * seals them itself and must SEE an undecryptable value as such (it then keeps
+ * the provider unconfigured instead of falling back to an older .env value),
+ * so they are stored and returned exactly as that service hands them over.
+ */
+function isManagedSecret(key, type) {
+    return isSecretKey(key, type) && !require('../utils/ssoSettingKeys').isSsoSettingKey(key);
+}
+/** Encrypt a secret value for storage ('' and already-encrypted values pass through). */
+function sealSecret(stringValue) {
+    const v = stringValue == null ? '' : String(stringValue);
+    if (v === '' || secretBox.isEncrypted(v)) return v;
+    return secretBox.encrypt(v, SECRET_PURPOSE);
+}
+const _undecryptableWarned = new Set();
 
 // Settings are read very frequently (e.g. EmailService reads ~5 keys per event,
 // ReadinessService reads the threshold per calculation) but change rarely, so
@@ -35,6 +72,12 @@ const CATALOG = {
     maxLoginAttempts: { min: 1, max: 100, integer: true },
     loginLockoutMinutes: { min: 1, max: 10080, integer: true },
     mfaRequiredForPrivileged: { type: 'boolean' },
+    // Migration 162: managers with a local password, and the upgrade grace
+    // periods. mfaGraceStartedAt is written once by the migration.
+    mfaRequiredForManagers: { type: 'boolean' },
+    mfaGraceAdminDays: { min: 0, max: 365, integer: true },
+    mfaGraceManagerDays: { min: 0, max: 365, integer: true },
+    mfaGraceStartedAt: { readOnly: true },
     // 3.23.19 (S6, migration 152): extra multi-factor acr values, comma list; blank = built-ins only.
     'sso.mfaAcrValues': { optional: true },
     // 3.23.20 (C3, migration 153): help contact (free text) + invitation batch size.
@@ -43,6 +86,16 @@ const CATALOG = {
     smtpHost: { kind: 'host', optional: true },
     smtpPort: { min: 1, max: 65535, integer: true },
     smtpFromAddress: { kind: 'email', optional: true },
+    // ONE named private/loopback relay may be reached without TLS. Written only
+    // by EmailService.setPlaintextRelay (SuperAdmin, mandatory reason, audited),
+    // never by the generic settings form.
+    smtpPlaintextRelayHost: { readOnly: true },
+    smtpPlaintextRelayReason: { readOnly: true },
+    smtpPlaintextRelaySetBy: { readOnly: true },
+    // Private/loopback AI hosts a SuperAdmin explicitly allows (comma list of
+    // host or host:port), and the recorded external-transfer basis.
+    copilotAllowedPrivateHosts: { optional: true },
+    copilotTransferRecord: { readOnly: true },
     appBaseUrl: { kind: 'url', optional: true },
     invitationExpiryDays: { min: 0, max: 3650, integer: true },
     'onboarding.allowedDomains': { kind: 'domains', optional: true },
@@ -81,6 +134,14 @@ const CATALOG = {
     perfEventsRetentionDays: { min: 0, max: 3650, integer: true },
     notificationRetentionDays: { min: 0, max: 3650, integer: true },
     reminderLogRetentionDays: { min: 0, max: 3650, integer: true },
+    // Blank = follow notificationRetentionDays (read by jobs/telemetry-prune.js).
+    unreadNotificationRetentionDays: { min: 0, max: 3650, integer: true, optional: true },
+    onboardingRejectedRetentionDays: { min: 0, max: 3650, integer: true },
+    // Tri-state: 'auto' = required as soon as a scanner is detected
+    // (MalwareScanService.requireScan reads anything but true/false as auto).
+    requireMalwareScan: { enum: ['auto', 'true', 'false'] },
+    // Self-service "my data" downloads per person per hour (PrivacyService).
+    privacySelfExportPerHour: { min: 1, max: 100, integer: true },
     cycleAutoLock: { type: 'boolean' },
     // -1 = automatic closing off; 0 = close at the deadline.
     cycleAutoCloseGraceDays: { min: -1, max: 365, integer: true },
@@ -251,24 +312,87 @@ class AppSettingsModel {
     isReadOnly(key) {
         return Boolean(ruleFor(key).readOnly);
     }
+    get SECRET_MASK() {
+        return SECRET_MASK;
+    }
+    isSecretKey(key, type) {
+        return isSecretKey(key, type);
+    }
+
+    /**
+     * A settings row safe to hand to a view or an export: a secret's value is
+     * replaced by SECRET_MASK (set) or '' (not set), and `secretSet` says which.
+     */
+    maskRow(row) {
+        if (
+            !row ||
+            !(
+                isSecretKey(row.settingKey, row.settingType) ||
+                secretBox.isEncrypted(row.settingValue)
+            )
+        )
+            return row;
+        const set = row.settingValue != null && String(row.settingValue) !== '';
+        return { ...row, settingValue: set ? SECRET_MASK : '', isSecret: true, secretSet: set };
+    }
 
     async findAll() {
         // Attribution: who last changed each row, for the "Modifié le · par" column.
-        return await db.all(
+        const rows = await db.all(
             `SELECT s.*, a.username AS updatedByUsername
                FROM appSettings s LEFT JOIN admins a ON a.id = s.updatedBy
               ORDER BY s.category, s.settingKey`
         );
+        return (rows || []).map((r) => this.maskRow(r));
     }
 
+    /** RAW row (a secret is still sealed): internal use; never render it. */
     async findByKey(key) {
         return await db.get('SELECT * FROM appSettings WHERE settingKey = ?', [key]);
     }
 
     async findByCategory(category) {
-        return await db.all('SELECT * FROM appSettings WHERE category = ? ORDER BY settingKey', [
-            category,
-        ]);
+        const rows = await db.all(
+            'SELECT * FROM appSettings WHERE category = ? ORDER BY settingKey',
+            [category]
+        );
+        return (rows || []).map((r) => this.maskRow(r));
+    }
+
+    /**
+     * The plaintext of a stored secret value. Undecryptable (APP_KEY changed)
+     * gives null, warned once per key, never thrown into the caller.
+     */
+    _openSecret(key, raw) {
+        if (raw == null || raw === '') return raw;
+        try {
+            return secretBox.decrypt(String(raw));
+        } catch (e) {
+            if (!_undecryptableWarned.has(key)) {
+                _undecryptableWarned.add(key);
+                console.warn(
+                    `[security] app setting ${key} is stored encrypted but cannot be decrypted (${e.code || e.message}). ` +
+                        'Treated as unset until it is re-entered, or run scripts/rotate-app-key.js with the old key.'
+                );
+            }
+            return null;
+        }
+    }
+
+    /** Lazy re-encryption: a secret still stored clear or v1 is resealed as v2 (best-effort). */
+    async _upgradeSecretAtRest(setting, plain) {
+        try {
+            if (plain == null || plain === '' || !secretBox.isEnabled()) return;
+            if (!secretBox.needsUpgrade(setting.settingValue)) return;
+            const sealed = secretBox.encrypt(String(plain), SECRET_PURPOSE);
+            await db.run(
+                'UPDATE appSettings SET settingValue = ? WHERE settingKey = ? AND settingValue = ?',
+                [sealed, setting.settingKey, setting.settingValue]
+            );
+            settingsCache.bust();
+        } catch (_) {
+            /* best-effort: the next write re-encrypts anyway */
+        }
     }
 
     async getValue(key, defaultValue = null) {
@@ -279,6 +403,13 @@ class AppSettingsModel {
             settingsCache.set(key, setting || null); // null sentinel for "absent"
         }
         if (!setting) return defaultValue;
+
+        if (isManagedSecret(setting.settingKey || key, setting.settingType)) {
+            const plain = this._openSecret(key, setting.settingValue);
+            await this._upgradeSecretAtRest(setting, plain);
+            if (plain == null) return defaultValue;
+            setting = { ...setting, settingValue: plain };
+        }
 
         switch (setting.settingType) {
             case 'number': {
@@ -322,6 +453,13 @@ class AppSettingsModel {
         }
 
         const existing = await this.findByKey(key);
+        if (isSecretKey(key, type) && stringValue === SECRET_MASK) {
+            // The mask is what a listing shows, never a value: echoing it back
+            // (a form, an import, a restore) leaves the stored secret untouched.
+            if (existing) return;
+            stringValue = '';
+        }
+        if (isManagedSecret(key, type)) stringValue = sealSecret(stringValue);
         if (existing) {
             await db.run(
                 'UPDATE appSettings SET settingValue = ?, settingType = ?, description = ?, category = ?, updatedBy = ?, updatedAt = CURRENT_TIMESTAMP WHERE settingKey = ?',
@@ -337,7 +475,23 @@ class AppSettingsModel {
     }
 
     async update(data) {
-        const { id, settingValue, settingType, description, category, updatedBy } = data;
+        const { id, settingType, description, category, updatedBy } = data;
+        let { settingValue } = data;
+        // The key decides whether the value is a secret: taken from the ROW,
+        // never trusted from the caller alone.
+        let key = data.settingKey;
+        try {
+            const row = await db.get('SELECT settingKey FROM appSettings WHERE id = ?', [id]);
+            if (row && row.settingKey) key = row.settingKey;
+        } catch (_) {
+            /* fall back to the caller's key */
+        }
+        if (
+            isSecretKey(key, settingType) &&
+            String(settingValue == null ? '' : settingValue) === SECRET_MASK
+        )
+            return; // a mask is never a value (see setValue)
+        if (isManagedSecret(key, settingType)) settingValue = sealSecret(settingValue);
         await db.run(
             'UPDATE appSettings SET settingValue = ?, settingType = ?, description = ?, category = ?, updatedBy = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
             [settingValue, settingType, description, category, updatedBy, id]
@@ -373,7 +527,10 @@ class AppSettingsModel {
             },
             {
                 key: 'sessionTimeout',
-                value: String(Number(process.env.SESSION_MAX_HOURS) || 24),
+                // 12 h by default (ASVS 3.3.2). Seeded only when absent: an
+                // upgraded install keeps its row (migration 162 moves only the
+                // untouched old default).
+                value: String(Number(process.env.SESSION_MAX_HOURS) || 12),
                 type: 'number',
                 description:
                     'Absolute session lifetime in hours — a session older than this is signed out even while active (applies to new requests immediately; SESSION_MAX_HOURS is the fallback)',
@@ -562,6 +719,14 @@ class AppSettingsModel {
                 type: 'string',
                 description:
                     'Comma-separated hostnames classified as INTERNAL AI servers — e.g. ai.mycompany.com. Localhost, *.local/*.lan/*.internal/*.corp and private-IP targets are internal automatically. Whether internal servers receive full or anonymized data is governed by copilotAnonymizationMode; EXTERNAL targets always receive anonymized data.',
+                category: 'copilot',
+            },
+            {
+                key: 'copilotAllowedPrivateHosts',
+                value: '',
+                type: 'string',
+                description:
+                    'Private, loopback or link-local AI hosts the copilot may call (comma list: host or host:port, e.g. localhost:11434, llm.lan). Hosts listed in copilotTrustedHosts are allowed too. Blank = none: every other private target is refused. Plain http is accepted only for a LOOPBACK host listed here and only without an API key.',
                 category: 'copilot',
             },
             {
@@ -838,11 +1003,89 @@ class AppSettingsModel {
                 category: 'jobs',
             },
             {
+                // Read by jobs/telemetry-prune.js. Blank (the default) = the same
+                // window as READ notifications.
+                key: 'unreadNotificationRetentionDays',
+                value: '',
+                type: 'number',
+                description:
+                    'Days to keep UNREAD in-app notifications before pruning. Blank = the same window as read notifications (notificationRetentionDays); 0 = keep forever. A notification scheduled for later is never pruned.',
+                category: 'jobs',
+            },
+            {
+                // Read by jobs/telemetry-prune.js (ONBOARDING_REJECTED_RETENTION_DAYS
+                // is the fallback).
+                key: 'onboardingRejectedRetentionDays',
+                value: String(Number(process.env.ONBOARDING_REJECTED_RETENTION_DAYS) || 180),
+                type: 'number',
+                description:
+                    'Days after the decision before a REJECTED self-onboarding request is pseudonymised (name, e-mail, password hash, SSO subject and note removed; the decision, its date and who decided are kept). 0 = keep forever.',
+                category: 'jobs',
+            },
+            {
+                // Security-class (SuperAdmin only, utils/securitySettings). The
+                // REQUIRE_MALWARE_SCAN environment variable still wins.
+                key: 'requireMalwareScan',
+                value: 'auto',
+                type: 'string',
+                description:
+                    'auto (default): an antivirus scan of uploads is required as soon as a scanner (ClamAV or Microsoft Defender) is detected. true: an upload that could not be scanned is held and never served. false: files are served even without a scan (marked as not scanned, restricted access).',
+                category: 'security',
+            },
+            {
+                // PrivacyService.exportLimit: a download is refused past this many in
+                // the last hour, per person (the ledger is the audit trail).
+                key: 'privacySelfExportPerHour',
+                value: '5',
+                type: 'number',
+                description:
+                    'How many "my data" downloads (JSON or printable) one person may make per hour (1-100).',
+                category: 'security',
+            },
+            {
                 key: 'sessionIdleMinutes',
-                value: String(Number(process.env.SESSION_IDLE_MINUTES) || 60),
+                // 30 min by default (ASVS 3.3.2).
+                value: String(Number(process.env.SESSION_IDLE_MINUTES) || 30),
                 type: 'number',
                 description:
                     'Sign users out after this many minutes of inactivity (applies to admins and employees; takes effect immediately)',
+                category: 'security',
+            },
+            // Two-factor policy. Same rows as migration 162 (insert-if-absent, so
+            // the migration's values always win). The grace start
+            // (mfaGraceStartedAt) is deliberately NOT seeded here: it is the
+            // migration's own first-run marker, and an empty row written before
+            // the migration would cancel the upgrade grace period.
+            {
+                key: 'mfaRequiredForPrivileged',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    'Require two-factor authentication for every administrator role (HR-wide viewers included). Upgrades: grace period of mfaGraceAdminDays from the upgrade, then enrolment is forced.',
+                category: 'security',
+            },
+            {
+                key: 'mfaRequiredForManagers',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    "Require two-factor authentication for managers who sign in with a local password (managers signing in through SSO use their organisation's MFA). Upgrades: grace period of mfaGraceManagerDays.",
+                category: 'security',
+            },
+            {
+                key: 'mfaGraceAdminDays',
+                value: '14',
+                type: 'number',
+                description:
+                    'Upgrade grace period (days) before two-factor enrolment is forced for administrators.',
+                category: 'security',
+            },
+            {
+                key: 'mfaGraceManagerDays',
+                value: '30',
+                type: 'number',
+                description:
+                    'Upgrade grace period (days) before two-factor enrolment is forced for managers with a local password.',
                 category: 'security',
             },
             {

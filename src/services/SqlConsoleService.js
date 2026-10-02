@@ -887,6 +887,766 @@ class SqlConsoleService {
         );
     }
 
+    // ---- Secret guard -----------------------------------------------------------
+    /**
+     * WHY. The console is a SuperAdmin tool, but "SuperAdmin" must not mean
+     * "can read every live session cookie, TOTP secret, API-key hash, password
+     * hash and SSO secret": `SELECT sess FROM session` was a one-line session
+     * hijack of every signed-in user, `SELECT secret_enc FROM mfa_secrets` a
+     * second-factor bypass. These relations and columns are refused for READ
+     * and WRITE, whoever runs the console.
+     *
+     * HOW — not a regex over the text. The script is TOKENISED the way
+     * PostgreSQL reads it (comments dropped, nested block comments, '…' / E'…' /
+     * $tag$…$tag$ strings, "quoted" identifiers kept exact, unquoted folded to
+     * lower case, schema-qualified chains), and then:
+     *   1. whole relations: SECRET_TABLES, plus every EXISTING view that reads
+     *      one of them or a secret column (pg_depend, column-level), plus every
+     *      relation the script itself defines on top of one;
+     *   2. secret columns anywhere (password_hash, key_hash, token_hash, …) and,
+     *      for a table that carries one, the table-specific name (app_settings.
+     *      setting_value, webhook_subscriptions.secret, hris_connectors.credentials);
+     *   3. whole-row and `*` access to a table that carries a secret column:
+     *      refused in any statement that could STORE the row (write, DDL, COPY,
+     *      subquery / CTE, routine body) or turn it into one value (row_to_json(a),
+     *      `SELECT a FROM admins a`); a TOP-LEVEL `SELECT *` of a pure read is
+     *      allowed and its secret cells are masked in the result (maskSecretCells);
+     *   4. doors that reach the same data without naming it: pg_read_file & co,
+     *      lo_*, dblink*, *_to_xml, ts_stat, current_setting / set_config,
+     *      pg_authid / pg_shadow / pg_settings / pg_largeobject, COPY to/from a
+     *      server file, SET ROLE / SESSION AUTHORIZATION, CREATE/ALTER ROLE|USER,
+     *      CREATE EXTENSION / SERVER / FOREIGN TABLE / USER MAPPING /
+     *      PUBLICATION / SUBSCRIPTION, LOAD, untrusted routine languages,
+     *      triggers/rules on a secret-bearing table, renaming one;
+     *   5. dynamic SQL: DO blocks and routine bodies are tokenised and checked
+     *      the same way; an EXECUTE whose SQL is COMPUTED (format(), ||, a
+     *      variable) cannot be checked and is refused; an existing routine that
+     *      the script CALLS is checked through its pg_proc source and its return
+     *      type.
+     * Every refusal is audit-logged (SQL_CONSOLE_SECRET_REFUSED). The database
+     * role of migration 167 (sqlconsole_reader, when present) is the
+     * second, database-side layer — see _consoleReadRole().
+     */
+    static get SECRET_TABLES() {
+        return [
+            'session',
+            'mfa_secrets',
+            'mfa_backup_codes',
+            'mfa_used_codes',
+            'admin_mfa_enrol_codes',
+            'password_reset_tokens',
+            'password_history',
+            'saml_request_cache',
+        ];
+    }
+
+    static get SECRET_COLUMNS() {
+        return [
+            'password_hash',
+            'key_hash',
+            'token_hash',
+            'code_hash',
+            'secret_enc',
+            'auth_config',
+            'webhook_secret',
+            'sess',
+        ];
+    }
+
+    /** Tables that carry a secret column: table → the column(s) that are secret there. */
+    static get GUARDED_TABLES() {
+        return {
+            admins: ['password_hash'],
+            employees: ['password_hash'],
+            onboarding_requests: ['password_hash'],
+            api_keys: ['key_hash'],
+            lms_integrations: ['auth_config', 'webhook_secret'],
+            safety_gate_settings: ['webhook_secret'],
+            webhook_subscriptions: ['secret'],
+            app_settings: ['setting_value'],
+            // HRIS connector credentials (API tokens, sealed with secretBox).
+            hris_connectors: ['credentials'],
+        };
+    }
+
+    static get FORBIDDEN_RELATIONS() {
+        return [
+            'pg_authid',
+            'pg_shadow',
+            'pg_user_mapping',
+            'pg_user_mappings',
+            'pg_settings',
+            'pg_file_settings',
+            'pg_hba_file_rules',
+            'pg_ident_file_rules',
+            'pg_largeobject',
+            'pg_largeobject_metadata',
+        ];
+    }
+
+    static get FORBIDDEN_FUNCTION_RE() {
+        return /^(pg_read_file|pg_read_binary_file|pg_ls_[a-z_]+|pg_stat_file|pg_file_[a-z_]+|pg_logdir_ls|lo_[a-z_]+|loread|lowrite|dblink[a-z_]*|current_setting|set_config|query_to_xml[a-z_]*|cursor_to_xml[a-z_]*|table_to_xml[a-z_]*|schema_to_xml[a-z_]*|database_to_xml[a-z_]*|ts_stat)$/;
+    }
+
+    /**
+     * Tokenise SQL like PostgreSQL's lexer does, as far as the guard needs:
+     * { t: 'id', v, q } identifiers (unquoted folded to lower case, "quoted"
+     * kept exact), { t: 'str', v } string bodies ('…', E'…', $tag$…$tag$),
+     * { t: 'p', v } punctuation/operators, { t: 'num' }, { t: 'param' },
+     * { t: 'opaque' } for U&-escaped text the guard refuses to guess at.
+     */
+    _sqlTokens(text) {
+        // The loop below is bounded by `s.length`: it must be a real string's
+        // length, never a `length` property of a parsed request object
+        // (`{"sql": {"length": 1e9}}`) — an object or array is refused outright.
+        if (text != null && typeof text === 'object')
+            throw new TypeError('SQL text must be a string');
+        const s = typeof text === 'string' ? text : text == null ? '' : String(text);
+        const n = s.length;
+        const out = [];
+        let i = 0;
+        const isIdStart = (c) => /[A-Za-z_\u0080-￿]/.test(c);
+        const isIdPart = (c) => /[A-Za-z0-9_$\u0080-￿]/.test(c);
+        while (i < n) {
+            const c = s[i];
+            if (/\s/.test(c)) {
+                i++;
+                continue;
+            }
+            if (c === '-' && s[i + 1] === '-') {
+                const nl = s.indexOf('\n', i);
+                i = nl === -1 ? n : nl + 1;
+                continue;
+            }
+            if (c === '/' && s[i + 1] === '*') {
+                // PostgreSQL block comments NEST.
+                let depth = 1;
+                let j = i + 2;
+                while (j < n && depth > 0) {
+                    if (s[j] === '/' && s[j + 1] === '*') {
+                        depth++;
+                        j += 2;
+                    } else if (s[j] === '*' && s[j + 1] === '/') {
+                        depth--;
+                        j += 2;
+                    } else j++;
+                }
+                i = j;
+                continue;
+            }
+            if ((c === 'u' || c === 'U') && s[i + 1] === '&' && /['"]/.test(s[i + 2] || '')) {
+                out.push({ t: 'opaque', v: 'U&' });
+                i += 2;
+                continue;
+            }
+            if ((c === 'e' || c === 'E') && s[i + 1] === "'") {
+                // E'…' — backslash escapes.
+                let j = i + 2;
+                let v = '';
+                while (j < n) {
+                    if (s[j] === '\\' && j + 1 < n) {
+                        v += s[j + 1];
+                        j += 2;
+                        continue;
+                    }
+                    if (s[j] === "'" && s[j + 1] === "'") {
+                        v += "'";
+                        j += 2;
+                        continue;
+                    }
+                    if (s[j] === "'") {
+                        j++;
+                        break;
+                    }
+                    v += s[j++];
+                }
+                out.push({ t: 'str', v });
+                i = j;
+                continue;
+            }
+            if (c === "'") {
+                let j = i + 1;
+                let v = '';
+                while (j < n) {
+                    if (s[j] === "'" && s[j + 1] === "'") {
+                        v += "'";
+                        j += 2;
+                        continue;
+                    }
+                    if (s[j] === "'") {
+                        j++;
+                        break;
+                    }
+                    v += s[j++];
+                }
+                out.push({ t: 'str', v });
+                i = j;
+                continue;
+            }
+            if (c === '"') {
+                let j = i + 1;
+                let v = '';
+                while (j < n) {
+                    if (s[j] === '"' && s[j + 1] === '"') {
+                        v += '"';
+                        j += 2;
+                        continue;
+                    }
+                    if (s[j] === '"') {
+                        j++;
+                        break;
+                    }
+                    v += s[j++];
+                }
+                out.push({ t: 'id', v, q: true });
+                i = j;
+                continue;
+            }
+            if (c === '$') {
+                const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(s.slice(i));
+                if (m) {
+                    const tag = m[0];
+                    const close = s.indexOf(tag, i + tag.length);
+                    const end = close === -1 ? n : close;
+                    out.push({ t: 'str', v: s.slice(i + tag.length, end), dollar: true });
+                    i = close === -1 ? n : close + tag.length;
+                    continue;
+                }
+                let j = i + 1;
+                while (j < n && /[0-9]/.test(s[j])) j++;
+                out.push({ t: 'param', v: s.slice(i, j) });
+                i = Math.max(j, i + 1);
+                continue;
+            }
+            if (isIdStart(c)) {
+                let j = i + 1;
+                while (j < n && isIdPart(s[j])) j++;
+                out.push({ t: 'id', v: s.slice(i, j).toLowerCase() });
+                i = j;
+                continue;
+            }
+            if (/[0-9]/.test(c)) {
+                let j = i + 1;
+                while (j < n && /[0-9.eE_]/.test(s[j])) j++;
+                out.push({ t: 'num', v: s.slice(i, j) });
+                i = j;
+                continue;
+            }
+            if (c === ':' && s[i + 1] === ':') {
+                out.push({ t: 'p', v: '::' });
+                i += 2;
+                continue;
+            }
+            out.push({ t: 'p', v: c });
+            i++;
+        }
+        return out;
+    }
+
+    /**
+     * The relations the guard treats as secret: the declared tables plus every
+     * existing view that (transitively) reads one of them or a secret column.
+     * Cached 30 s. A catalog that cannot be read leaves the declared list.
+     */
+    async _secretRelationContext() {
+        const now = Date.now();
+        if (this._secretCtxCache && now - this._secretCtxCache.at < 30_000)
+            return this._secretCtxCache.ctx;
+        const S = SqlConsoleService;
+        const secretTables = new Set(S.SECRET_TABLES);
+        const colPairs = [];
+        for (const [t, cols] of Object.entries(S.GUARDED_TABLES))
+            for (const c of cols) colPairs.push(`${t}.${c}`);
+        for (const t of S.SECRET_TABLES)
+            for (const c of S.SECRET_COLUMNS) colPairs.push(`${t}.${c}`);
+        const rows = await this._rawQuery(
+            `WITH RECURSIVE dep AS (
+                 SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                  WHERE n.nspname = 'public' AND c.relname = ANY($1)
+                 UNION
+                 SELECT r.ev_class
+                   FROM pg_rewrite r
+                   JOIN pg_depend d ON d.objid = r.oid AND d.classid = 'pg_rewrite'::regclass
+                                   AND d.refclassid = 'pg_class'::regclass
+                   JOIN pg_class t ON t.oid = d.refobjid
+                   JOIN pg_namespace tn ON tn.oid = t.relnamespace AND tn.nspname = 'public'
+                   JOIN pg_attribute a ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid
+                  WHERE (t.relname || '.' || a.attname) = ANY($2)
+                 UNION
+                 SELECT r.ev_class
+                   FROM pg_rewrite r
+                   JOIN pg_depend d ON d.objid = r.oid AND d.classid = 'pg_rewrite'::regclass
+                                   AND d.refclassid = 'pg_class'::regclass
+                   JOIN dep ON dep.oid = d.refobjid
+             )
+             SELECT c.relname AS rel FROM pg_class c JOIN dep ON dep.oid = c.oid`,
+            [S.SECRET_TABLES, colPairs]
+        );
+        for (const r of rows) if (r && r.rel) secretTables.add(String(r.rel));
+        const ctx = { secretTables };
+        this._secretCtxCache = { at: now, ctx };
+        return ctx;
+    }
+
+    /** Catalog read that says when it FAILED (null) instead of pretending "no rows". */
+    async _catalogQuery(sql, params = []) {
+        try {
+            const res = await db.pool.query(sql, params);
+            return (res && res.rows) || [];
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /**
+     * Analyse ONE token stream (a statement, a DO body, a routine body).
+     * Returns { reason, relation } for the first violation, or null.
+     * `opts.write` = the statement can store what it reads (anything that is not
+     * a pure top-level read); `opts.calls` collects called routine names.
+     */
+    _secretTokenViolation(toks, secretTables, opts = {}) {
+        const S = SqlConsoleService;
+        const GUARDED = S.GUARDED_TABLES;
+        const SECRET_COLS = new Set(S.SECRET_COLUMNS);
+        const FORBIDDEN_REL = new Set(S.FORBIDDEN_RELATIONS);
+        const FN_RE = S.FORBIDDEN_FUNCTION_RE;
+        const write = !!opts.write;
+        const calls = opts.calls || new Set();
+        const V = (k) => (toks[k] && toks[k].t === 'id' && !toks[k].q ? toks[k].v : null);
+        const deny = (reason, relation = null) => ({ reason, relation });
+
+        if (toks.some((t) => t.t === 'opaque'))
+            return deny(
+                'Unicode-escaped identifiers or strings (U&…) cannot be checked by the SQL console guard.'
+            );
+
+        // ---- statement-level doors ------------------------------------------
+        const w = [0, 1, 2, 3, 4].map(V);
+        const headIs = (...words) => words.every((x, k) => w[k] === x);
+        if (
+            (w[0] === 'set' || w[0] === 'reset') &&
+            (w[1] === 'role' ||
+                (w[1] === 'session' && w[2] === 'authorization') ||
+                ((w[1] === 'local' || w[1] === 'session') &&
+                    (w[2] === 'role' || (w[2] === 'session' && w[3] === 'authorization'))))
+        )
+            return deny(
+                'switching the database role (SET ROLE / SESSION AUTHORIZATION) is not allowed from the SQL console.'
+            );
+        if (
+            (w[0] === 'create' || w[0] === 'alter' || w[0] === 'drop') &&
+            (w[1] === 'role' || w[1] === 'user' || w[1] === 'group')
+        )
+            return deny(
+                'database roles, users and user mappings cannot be managed from the SQL console.'
+            );
+        if (
+            headIs('create', 'extension') ||
+            headIs('create', 'server') ||
+            headIs('alter', 'server') ||
+            headIs('create', 'foreign') ||
+            headIs('import', 'foreign') ||
+            headIs('create', 'publication') ||
+            headIs('alter', 'publication') ||
+            headIs('create', 'subscription') ||
+            headIs('alter', 'subscription') ||
+            w[0] === 'load'
+        )
+            return deny(
+                'extensions, foreign servers/tables, replication and LOAD are not allowed from the SQL console — each can read data outside the guarded query path.'
+            );
+        if (w[0] === 'grant' && toks.some((t) => t.t === 'id' && !t.q && /^pg_/.test(t.v)))
+            return deny(
+                'granting a built-in pg_* role (server files, all data) is not allowed from the SQL console.'
+            );
+        if (w[0] === 'create' || w[0] === 'alter') {
+            const langAt = toks.findIndex((t, k) => V(k) === 'language');
+            if (langAt >= 0) {
+                const lang = toks[langAt + 1] ? String(toks[langAt + 1].v).toLowerCase() : '';
+                if (/^(c|internal|plpythonu|plpython2u|plpython3u|plperlu|pltclu)$/.test(lang))
+                    return deny(
+                        `routines in the untrusted language "${lang}" cannot be created from the SQL console.`
+                    );
+            }
+        }
+        if (
+            w[0] === 'copy' &&
+            toks.some((t, k) => t.t === 'str' && (V(k - 1) === 'from' || V(k - 1) === 'to'))
+        )
+            return deny(
+                'COPY to or from a file on the server is not allowed from the SQL console — the server holds the key file (.env) that protects every stored secret.'
+            );
+
+        // ---- identifier chains ---------------------------------------------------
+        const guardedRefs = new Map(); // name or alias -> table
+        const declPos = new Set();
+        const RESERVED = new Set(
+            'where join on set inner left right full cross natural using group order limit union returning values select from lateral tablesample for window having offset fetch except intersect default only as and or not into do then when with'.split(
+                ' '
+            )
+        );
+        let parenDepth = 0;
+        const depthAt = [];
+        for (let k = 0; k < toks.length; k++) {
+            const t = toks[k];
+            if (t.t === 'p' && t.v === '(') parenDepth++;
+            depthAt[k] = parenDepth;
+            if (t.t === 'p' && t.v === ')') parenDepth = Math.max(0, parenDepth - 1);
+        }
+        for (let k = 0; k < toks.length; k++) {
+            const t = toks[k];
+            if (t.t !== 'id') continue;
+            if (toks[k - 1] && toks[k - 1].t === 'p' && toks[k - 1].v === '.') continue; // mid-chain
+            const parts = [t.v];
+            let e = k;
+            while (
+                toks[e + 1] &&
+                toks[e + 1].t === 'p' &&
+                toks[e + 1].v === '.' &&
+                toks[e + 2] &&
+                toks[e + 2].t === 'id'
+            ) {
+                parts.push(toks[e + 2].v);
+                e += 2;
+            }
+            const last = parts[parts.length - 1];
+            const next = toks[e + 1];
+            const prevWord = V(k - 1);
+            const isCall = next && next.t === 'p' && next.v === '(';
+            if (FORBIDDEN_REL.has(last))
+                return deny(
+                    `${last} is a server secret catalog and cannot be read from the SQL console.`,
+                    last
+                );
+            if (isCall) {
+                if (FN_RE.test(last))
+                    return deny(
+                        `${last}() is not allowed from the SQL console — it reads server files, settings or data outside the guarded query path.`,
+                        last
+                    );
+                calls.add(last);
+            }
+            if (secretTables.has(last)) {
+                const kwSession =
+                    last === 'session' &&
+                    !t.q &&
+                    parts.length === 1 &&
+                    (prevWord === 'set' ||
+                        prevWord === 'reset' ||
+                        prevWord === 'show' ||
+                        prevWord === 'local' ||
+                        V(e + 1) === 'authorization' ||
+                        V(e + 1) === 'characteristics');
+                if (!kwSession)
+                    return deny(
+                        `${last} holds secrets (sessions, second factors, tokens, hashes) and cannot be read or written from the SQL console.`,
+                        last
+                    );
+            }
+            if (SECRET_COLS.has(last))
+                return deny(
+                    `the column ${last} holds a secret and cannot be read or written from the SQL console.`,
+                    last
+                );
+            // (`INSERT INTO app_settings (…)` puts a '(' after the name: still a relation.)
+            if (Object.prototype.hasOwnProperty.call(GUARDED, last)) {
+                guardedRefs.set(last, last);
+                for (let x = k; x <= e; x++) declPos.add(x);
+                // Alias: `admins a` / `admins AS a`.
+                let a = e + 1;
+                if (V(a) === 'as') a++;
+                const at = toks[a];
+                if (at && at.t === 'id' && (at.q || !RESERVED.has(at.v))) {
+                    guardedRefs.set(at.v, last);
+                    declPos.add(a);
+                }
+                // Rename / move / re-parent a secret-bearing table: the next
+                // statement could read it under a name the guard does not know.
+                if (
+                    w[0] === 'alter' &&
+                    toks.some(
+                        (tt, kk) =>
+                            ['rename', 'inherit', 'attach'].includes(V(kk)) ||
+                            (V(kk) === 'set' && V(kk + 1) === 'schema')
+                    )
+                )
+                    return deny(
+                        `${last} carries a secret column and cannot be renamed, moved or re-parented from the SQL console.`,
+                        last
+                    );
+                if (
+                    (w[0] === 'create' &&
+                        toks.some((tt, kk) => ['trigger', 'rule', 'policy'].includes(V(kk)))) ||
+                    w[0] === 'copy'
+                )
+                    return deny(
+                        `${last} carries a secret column: triggers, rules and COPY on it are not allowed from the SQL console.`,
+                        last
+                    );
+            }
+        }
+
+        if (guardedRefs.size) {
+            const tables = new Set(guardedRefs.values());
+            // Table-specific secret columns (app_settings.setting_value, …).
+            const specific = new Set();
+            for (const tb of tables) for (const c of GUARDED[tb]) specific.add(c);
+            for (let k = 0; k < toks.length; k++) {
+                const t = toks[k];
+                if (t.t === 'id' && specific.has(t.v) && !declPos.has(k))
+                    return deny(
+                        `the column ${t.v} of ${[...tables].join(', ')} holds a secret and cannot be read or written from the SQL console.`,
+                        t.v
+                    );
+            }
+            // INSERT INTO <guarded> without a column list writes every column.
+            const insAt = toks.findIndex((t, k) => V(k) === 'insert' && V(k + 1) === 'into');
+            if (insAt >= 0) {
+                let k = insAt + 2;
+                // target chain: ident ('.' ident)*, then an optional `AS alias`
+                while (toks[k + 1] && toks[k + 1].t === 'p' && toks[k + 1].v === '.' && toks[k + 2])
+                    k += 2;
+                const target = toks[k] && toks[k].v;
+                k++;
+                if (V(k) === 'as') k += 2;
+                if (tables.has(target) && !(toks[k] && toks[k].t === 'p' && toks[k].v === '('))
+                    return deny(
+                        `INSERT INTO ${target} must name its columns — without a list it writes the secret column too.`,
+                        target
+                    );
+            }
+            for (let k = 0; k < toks.length; k++) {
+                const t = toks[k];
+                // `*` as "every column": after SELECT / DISTINCT / ALL / , / RETURNING,
+                // after DISTINCT ON (…), or qualified `x.*`.
+                if (t.t === 'p' && t.v === '*') {
+                    const pv = toks[k - 1];
+                    let star = false;
+                    let qualifier = null;
+                    if (pv && pv.t === 'p' && pv.v === '.') {
+                        star = true;
+                        qualifier = toks[k - 2] && toks[k - 2].v;
+                    } else if (
+                        pv &&
+                        pv.t === 'id' &&
+                        ['select', 'distinct', 'all', 'returning'].includes(pv.v) &&
+                        !pv.q
+                    ) {
+                        star = true;
+                    } else if (pv && pv.t === 'p' && pv.v === ',') {
+                        star = true;
+                    } else if (pv && pv.t === 'p' && pv.v === ')') {
+                        let d = 0;
+                        let m = k - 1;
+                        for (; m >= 0; m--) {
+                            if (toks[m].t === 'p' && toks[m].v === ')') d++;
+                            else if (toks[m].t === 'p' && toks[m].v === '(') {
+                                d--;
+                                if (d === 0) break;
+                            }
+                        }
+                        if (V(m - 1) === 'on' && V(m - 2) === 'distinct') star = true;
+                    }
+                    if (!star) continue;
+                    if (qualifier && !guardedRefs.has(qualifier)) continue; // x.* of an unguarded relation
+                    if (write || depthAt[k] > 0 || opts.body)
+                        return deny(
+                            `${[...tables].join(', ')} carries a secret column: "*" is only allowed in a top-level read, never in a statement that stores, nests or wraps the rows.`,
+                            [...tables][0]
+                        );
+                    opts.maskNeeded = true;
+                }
+                // Whole-row reference: `SELECT a FROM admins a`, row_to_json(a), a::text.
+                if (t.t === 'id' && guardedRefs.has(t.v) && !declPos.has(k)) {
+                    const nx = toks[k + 1];
+                    const pv = toks[k - 1];
+                    if (nx && nx.t === 'p' && nx.v === '.') continue; // a.column
+                    if (pv && pv.t === 'p' && pv.v === '.') continue;
+                    return deny(
+                        `${guardedRefs.get(t.v)} carries a secret column: a whole-row reference ("${t.v}") would carry it and is not allowed from the SQL console.`,
+                        guardedRefs.get(t.v)
+                    );
+                }
+                // TABLE admins
+                if (V(k) === 'table' && k === 0 && toks[1] && tables.has(toks[1].v)) {
+                    if (write || opts.body)
+                        return deny(`TABLE ${toks[1].v} would carry the secret column.`, toks[1].v);
+                    opts.maskNeeded = true;
+                }
+            }
+        }
+
+        // ---- dynamic SQL ---------------------------------------------------------
+        const dynamicBody =
+            w[0] === 'do' ||
+            ((w[0] === 'create' || w[0] === 'alter') &&
+                toks.some((t, k) => V(k) === 'function' || V(k) === 'procedure')) ||
+            opts.body;
+        if (dynamicBody) {
+            for (let k = 0; k < toks.length; k++) {
+                const t = toks[k];
+                if (
+                    t.t === 'str' &&
+                    !opts.body &&
+                    (t.dollar || w[0] === 'do' || V(k - 1) === 'as' || toks[k - 1]?.v === ',')
+                ) {
+                    const inner = this._sqlTokens(t.v);
+                    const r = this._secretTokenViolation(inner, secretTables, {
+                        write: true,
+                        body: true,
+                        calls,
+                    });
+                    if (r) return r;
+                }
+                if (opts.body && V(k) === 'execute') {
+                    const nx = toks[k + 1];
+                    const after = toks[k + 2];
+                    const literalOnly =
+                        nx &&
+                        nx.t === 'str' &&
+                        (!after ||
+                            (after.t === 'p' && after.v === ';') ||
+                            ['using', 'into'].includes(V(k + 2)));
+                    if (!literalOnly)
+                        return deny(
+                            'dynamic SQL built at run time (EXECUTE of a computed string) cannot be checked and is not allowed from the SQL console.'
+                        );
+                    const r = this._secretTokenViolation(this._sqlTokens(nx.v), secretTables, {
+                        write: true,
+                        body: true,
+                        calls,
+                    });
+                    if (r) return r;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The secret guard over a whole script. Returns { reason, relation } or null.
+     * Relations a statement DEFINES on top of a secret one join the secret set
+     * for the statements that follow (CREATE VIEW v AS SELECT … FROM session).
+     */
+    async _secretAccessViolation(stmts, state = {}) {
+        const ctx = await this._secretRelationContext();
+        const secretTables = new Set(ctx.secretTables);
+        const calls = new Set();
+        state.maskNeeded = false;
+        const DEFINES =
+            /^create\s+(?:or\s+replace\s+)?(?:temp(?:orary)?\s+|unlogged\s+|global\s+|local\s+)*(?:materialized\s+|recursive\s+)*(?:view|table)\s+(?:if\s+not\s+exists\s+)?([a-z0-9_$."]+)/;
+        for (const s of stmts) {
+            const toks = this._sqlTokens(s);
+            const opts = { write: this._isWrite(s), calls };
+            const r = this._secretTokenViolation(toks, secretTables, opts);
+            if (r) return r;
+            if (opts.maskNeeded) state.maskNeeded = true;
+            const def = DEFINES.exec(this._head(s));
+            if (def) {
+                // Defined on top of a secret relation (already refused) is moot;
+                // track the NAME so a later statement cannot launder through it.
+                const alias = def[1].replace(/"/g, '').replace(/^public\./, '');
+                if (toks.some((t) => t.t === 'id' && secretTables.has(t.v)))
+                    secretTables.add(alias);
+            }
+        }
+        // Existing routines the script calls: their body and return type count.
+        if (calls.size) {
+            const rows = await this._catalogQuery(
+                `SELECT p.proname, p.prosrc, rt.typrelid::regclass::text AS returns_rel
+                   FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   LEFT JOIN pg_type rt ON rt.oid = p.prorettype
+                  WHERE p.proname = ANY($1) AND n.nspname NOT IN ('pg_catalog', 'information_schema')`,
+                [[...calls]]
+            );
+            if (rows === null)
+                return {
+                    reason: 'the routines this script calls cannot be verified (catalog unavailable) — refused.',
+                    relation: null,
+                };
+            const guardedNames = Object.keys(SqlConsoleService.GUARDED_TABLES);
+            for (const r of rows) {
+                const rel = r.returns_rel ? String(r.returns_rel).replace(/^public\./, '') : null;
+                if (rel && rel !== '-' && (secretTables.has(rel) || guardedNames.includes(rel)))
+                    return {
+                        reason: `${r.proname}() returns whole rows of ${rel}, which carries a secret column.`,
+                        relation: rel,
+                    };
+                const v = this._secretTokenViolation(
+                    this._sqlTokens(r.prosrc || ''),
+                    secretTables,
+                    {
+                        write: true,
+                        body: true,
+                        calls: new Set(),
+                    }
+                );
+                if (v) return { reason: `${r.proname}() — ${v.reason}`, relation: v.relation };
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Mask secret cells in a result set (defence in depth, and the reason a
+     * top-level `SELECT * FROM employees` stays usable): secret column names,
+     * app_settings.setting_value of secret keys, and any value that is a
+     * secretBox ciphertext or a password hash.
+     */
+    maskSecretCells(fields, rows) {
+        const S = SqlConsoleService;
+        const SECRET_FIELDS = new Set([...S.SECRET_COLUMNS, 'secret', 'credentials']);
+        const MASK = '[secret]';
+        const fieldList = fields || [];
+        const hasKey = fieldList.includes('setting_key');
+        let isSecretKey = () => true;
+        try {
+            isSecretKey = (k) => require('../utils/secretSettingKeys').isSecretKey(k);
+        } catch (_) {
+            /* keep the fail-closed default */
+        }
+        const looksSecret = (v) =>
+            typeof v === 'string' && /^(enc:v[12]:|\$2[aby]\$\d\d\$|\$argon2)/.test(v);
+        return (rows || []).map((row) => {
+            if (!row || typeof row !== 'object') return row;
+            const out = { ...row };
+            for (const f of Object.keys(out)) {
+                if (SECRET_FIELDS.has(f) && out[f] != null) out[f] = MASK;
+                else if (f === 'setting_value' && out[f] != null && out[f] !== '') {
+                    if (!hasKey || isSecretKey(out.setting_key)) out[f] = MASK;
+                } else if (looksSecret(out[f])) out[f] = MASK;
+            }
+            return out;
+        });
+    }
+
+    /**
+     * Optional database-side layer: a read-only role WITHOUT privileges on the
+     * secret relations/columns (db/postgres/167_console_reader_role.sql).
+     * Pure-read scripts run under it when it exists; absent = unchanged.
+     */
+    async _consoleReadRole() {
+        const name = process.env.SQL_CONSOLE_READ_ROLE || 'sqlconsole_reader';
+        if (!/^[a-z_][a-z0-9_]{0,62}$/.test(name)) return null;
+        const now = Date.now();
+        if (this._roleCache && now - this._roleCache.at < 60_000) return this._roleCache.role;
+        // Used only when it is really usable HERE: the role exists, the current
+        // user may SET ROLE to it, and migration 167 granted it in THIS database
+        // (roles are cluster-wide — a role created for another database on the
+        // same cluster has no grants here and would make every read fail).
+        const rows = await this._rawQuery(
+            `SELECT 1 AS ok FROM pg_roles r
+              WHERE r.rolname = $1
+                AND pg_has_role(current_user, r.oid, 'MEMBER')
+                AND has_table_privilege(r.oid, 'public.schema_meta', 'SELECT')`,
+            [name]
+        );
+        const role = rows.length ? name : null;
+        this._roleCache = { at: now, role };
+        return role;
+    }
+
     // ---- Restore points (pg_dump / pg_restore) ---------------------------------
     _connInfo() {
         const u = new URL(process.env.DATABASE_URL);
@@ -1747,6 +2507,31 @@ class SqlConsoleService {
             return result;
         }
 
+        // Secret guard: sessions, second factors, tokens, hashes and stored
+        // secrets are never read or written from here — refused before anything
+        // runs, and the refusal is audited on its own line.
+        const secretState = {};
+        const secret = await this._secretAccessViolation(stmts, secretState);
+        if (secret) {
+            result.error = `Refused: ${secret.reason} Secrets are managed only from their own pages (sessions, MFA, API keys, SSO, settings).`;
+            result.errorCode = 'secret_refused';
+            result.refusedRelation = secret.relation || null;
+            try {
+                await LogService.log({
+                    adminId: actor && actor.adminId ? actor.adminId : null,
+                    action: 'SQL_CONSOLE_SECRET_REFUSED',
+                    entityType: 'database',
+                    details: `SQL console refused a statement touching secret data${secret.relation ? ` (${secret.relation})` : ''}: ${secret.reason}`,
+                    severity: 'warning',
+                    ipAddress: actor && actor.ipAddress,
+                    userAgent: actor && actor.userAgent,
+                });
+            } catch (_) {
+                /* audit best-effort — the refusal stands either way */
+            }
+            return result;
+        }
+
         const { hasWrite, volatileCalls } = await this._writeAnalysis(stmts);
         // Said out loud rather than assumed away: a script whose only statements are
         // SELECTs can still write, and a dry run's ROLLBACK does not un-consume a
@@ -1778,21 +2563,26 @@ class SqlConsoleService {
         const pushParts = (res) => {
             const parts = Array.isArray(res) ? res : [res];
             for (const r of parts) {
+                const fields = (r.fields || []).map((f) => f.name);
                 result.statements.push({
                     command: r.command || null,
                     rowCount: typeof r.rowCount === 'number' ? r.rowCount : null,
-                    fields: (r.fields || []).map((f) => f.name),
-                    rows: (r.rows || []).slice(0, 200),
+                    fields,
+                    // Secret cells never leave the server (see maskSecretCells).
+                    rows: this.maskSecretCells(fields, (r.rows || []).slice(0, 200)),
                     rowsTruncated: (r.rows || []).length > 200,
                 });
             }
         };
+        const readRole = !hasWrite ? await this._consoleReadRole() : null;
 
         if (!noTx) {
             // Transactional path: one BEGIN…COMMIT around the whole script.
             const client = await db.pool.connect();
             try {
                 await client.query('BEGIN');
+                // Pure reads run under the restricted role when the database has it.
+                if (readRole) await client.query(`SET LOCAL ROLE "${readRole}"`);
                 // No parameters → simple query protocol, which allows multiple statements
                 // separated by ';' and returns an array of per-statement results.
                 const res = await client.query(text);
@@ -1811,6 +2601,9 @@ class SqlConsoleService {
                 }
                 result.error = e.message;
                 result.errorDetail = { code: e.code, position: e.position };
+                // Pure reads run under the restricted role (migration 167): a « * » over
+                // a table that holds a secret column is refused by PostgreSQL itself.
+                if (e.code === '42501') result.errorCode = 'column_privilege';
             } finally {
                 client.release();
             }

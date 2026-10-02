@@ -72,6 +72,16 @@ const DATA_CATEGORIES = [
     { key: 'recognitions', group: 'engagement', audience: 'self_line_hr' },
     { key: 'demographics', group: 'engagement', audience: 'hr_aggregate' },
     { key: 'lifecycleEvents', group: 'employment', audience: 'self_line_hr' },
+    { key: 'certifications', group: 'skills', audience: 'self_line_hr' },
+    { key: 'aspirations', group: 'development', audience: 'self_line_hr' },
+    { key: 'opportunityApplications', group: 'development', audience: 'self_line_hr' },
+    { key: 'lmsEnrollments', group: 'development', audience: 'self_line_hr' },
+    { key: 'lmsCompletions', group: 'development', audience: 'self_line_hr' },
+    { key: 'plannedAbsences', group: 'employment', audience: 'self_line_hr' },
+    { key: 'notifications', group: 'identity', audience: 'self_admins' },
+    { key: 'hrisLinks', group: 'identity', audience: 'self_admins' },
+    { key: 'profilingObjections', group: 'privacy', audience: 'self_admins' },
+    { key: 'privacyNoticeAcks', group: 'privacy', audience: 'self_admins' },
 ];
 
 /** Export keys that are envelope, not data about the person. */

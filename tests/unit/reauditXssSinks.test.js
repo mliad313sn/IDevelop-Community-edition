@@ -101,7 +101,12 @@ describe('X4 — nine-box roster passes the name safely, never spliced into oncl
     test('the name goes on an esc()-guarded data attribute', () => {
         expect(flat).toMatch(/const nmAttr = esc\(e\.firstName \+ ' ' \+ e\.lastName\)/);
         expect(flat).toMatch(/data-name="'\+nmAttr\+'"/);
-        expect(flat).toMatch(/onclick="NB\.assessBtn\(this\)"/);
+        // CSP (SA-14): delegated handler, the button itself passed as '$el'
+        // (csp-actions.js) — still no value spliced into an attribute as code.
+        expect(flat).toMatch(/nbOn\('click','NB\.assessBtn',\['\$el'\]\)/);
+        expect(flat).toMatch(
+            /function nbOn\(type,fn,args\)\{ return ' data-on-'\+type\+'="'\+fn\+'" data-args="'\+esc\(JSON\.stringify\(args\|\|\[\]\)\)\+'"'; \}/
+        );
     });
 
     test('assessBtn reads the decoded name from the dataset', () => {

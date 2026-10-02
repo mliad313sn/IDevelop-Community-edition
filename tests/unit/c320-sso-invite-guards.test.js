@@ -71,8 +71,10 @@ describe('C3e — the invitation content', () => {
 
     test('an admin gets the second-factor block; a first e-mail match gets the security notice', () => {
         const a = Inv.compose({ ...base, rec: { ...emp, type: 'admin', isAdmin: true } });
+        // The local code is asked only when the company sign-in did not already
+        // prove a second factor (AdminSsoService.mfaFromEvidence).
         expect(a.text).toMatch(
-            /Compte administrateur : après la connexion Contoso, un code à 6 chiffres/
+            /Compte administrateur : si votre connexion d’entreprise ne vous a pas déjà demandé une seconde vérification .*un code à 6 chiffres/
         );
         const s = Inv.compose({ ...base, variant: 'security_notice', rec: emp });
         expect(s.text).toMatch(/Si ce n’est pas vous, contactez immédiatement le support RH/);

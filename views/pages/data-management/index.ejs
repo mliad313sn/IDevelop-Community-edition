@@ -296,7 +296,7 @@
                 <input type="file" name="jsonFile" accept=".json" required class="file-input" id="jsonFile">
                 <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                 <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
-                    <button type="button" class="btn btn-secondary" onclick="previewJsonImport()"><i class="fas fa-magnifying-glass" aria-hidden="true"></i> <%= __('datamgmt:btn_preview_changes') %></button>
+                    <button type="button" class="btn btn-secondary" data-on-click="previewJsonImport" data-args='[]'><i class="fas fa-magnifying-glass" aria-hidden="true"></i> <%= __('datamgmt:btn_preview_changes') %></button>
                     <button type="submit" class="btn btn-purple"><i class="fas fa-dna" aria-hidden="true"></i> <%= __('datamgmt:btn_load_from_json') %></button>
                 </div>
             </form>
@@ -365,7 +365,7 @@
                     id="skillMatrixWorkbookFile">
                 <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                 <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
-                    <button type="button" class="btn btn-secondary" onclick="previewSkillMatrixWorkbook()"><i class="fas fa-magnifying-glass" aria-hidden="true"></i> <%= __('datamgmt:btn_preview_changes') %></button>
+                    <button type="button" class="btn btn-secondary" data-on-click="previewSkillMatrixWorkbook" data-args='[]'><i class="fas fa-magnifying-glass" aria-hidden="true"></i> <%= __('datamgmt:btn_preview_changes') %></button>
                     <button type="submit" class="btn btn-green"><i class="fas fa-file-import" aria-hidden="true"></i> <%= __('datamgmt:btn_import') %></button>
                 </div>
             </form>
@@ -384,7 +384,7 @@
             <h2><i class="fas fa-camera" aria-hidden="true"></i> <%= __('datamgmt:snapshots_title') %></h2>
             <p><%= __('datamgmt:snapshots_desc') %></p>
         </div>
-        <button class="btn btn-primary" onclick="showModal('createSnapshotModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('datamgmt:btn_create_snapshot') %></button>
+        <button class="btn btn-primary" data-on-click="showModal" data-args='["createSnapshotModal"]'><i class="fas fa-plus" aria-hidden="true"></i> <%= __('datamgmt:btn_create_snapshot') %></button>
     </div>
 
     <% if (snapshots && snapshots.length> 0) { %>
@@ -427,13 +427,13 @@
                             </td>
                             <td>
                                 <div class="table-actions">
-                                    <button class="btn btn-sm" onclick="viewSnapshotStats(<%= snapshot.id %>)"
+                                    <button class="btn btn-sm" data-on-click="viewSnapshotStats" data-args="<%= JSON.stringify([snapshot.id]) %>"
                                         title="<%= __('datamgmt:title_view_details') %>"><i class="fas fa-eye" aria-hidden="true"></i> <%= __('datamgmt:btn_view') %></button>
                                     <button class="btn btn-sm btn-warning"
                                         data-snapshot-id="<%= snapshot.id %>" data-snapshot-name="<%= snapshot.name %>"
-                                        onclick="restoreSnapshotBtn(this)"
+                                        data-on-click="restoreSnapshotBtn" data-args='["$el"]'
                                         title="<%= __('datamgmt:title_restore_snapshot') %>"><i class="fas fa-arrows-rotate" aria-hidden="true"></i> <%= __('datamgmt:btn_restore') %></button>
-                                    <button class="btn btn-sm btn-danger" onclick="deleteSnapshot(<%= snapshot.id %>)"
+                                    <button class="btn btn-sm btn-danger" data-on-click="deleteSnapshot" data-args="<%= JSON.stringify([snapshot.id]) %>"
                                         title="<%= __('datamgmt:title_delete_snapshot') %>"><i class="fas fa-trash-can" aria-hidden="true"></i> <%= __('datamgmt:btn_delete') %></button>
                                 </div>
                             </td>
@@ -447,7 +447,7 @@
                 <div class="empty-state-icon"><i class="fas fa-camera" aria-hidden="true"></i></div>
                 <h3><%= __('datamgmt:snapshots_empty_title') %></h3>
                 <p><%= __('datamgmt:snapshots_empty_desc') %></p>
-                <button class="btn btn-primary" onclick="showModal('createSnapshotModal')"><%= __('datamgmt:btn_create_first_snapshot') %></button>
+                <button class="btn btn-primary" data-on-click="showModal" data-args='["createSnapshotModal"]'><%= __('datamgmt:btn_create_first_snapshot') %></button>
             </div>
             <% } %>
 </div>
@@ -509,7 +509,7 @@
         <p class="text-muted" style="font-size:.85rem"><%= __('datamgmt:reset_backup_required') %></p>
     </div>
 
-    <button class="btn btn-danger" onclick="showModal('resetDatabaseModal')" style="margin-top: 1.5rem;">
+    <button class="btn btn-danger" data-on-click="showModal" data-args='["resetDatabaseModal"]' style="margin-top: 1.5rem;">
         <i class="fas fa-trash-can" aria-hidden="true"></i> <%= __('datamgmt:btn_reset_database') %>
     </button>
 </div>
@@ -520,7 +520,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2><%= __('datamgmt:btn_create_snapshot') %></h2>
-            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('createSnapshotModal')">&times;</button>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["createSnapshotModal"]'>&times;</button>
         </div>
         <div class="modal-body">
             <form id="createSnapshotForm">
@@ -536,7 +536,7 @@
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary"><i class="fas fa-camera" aria-hidden="true"></i> <%= __('datamgmt:btn_create_snapshot') %></button>
                     <button type="button" class="btn btn-secondary"
-                        onclick="hideModal('createSnapshotModal')"><%= __('datamgmt:btn_cancel') %></button>
+                        data-on-click="hideModal" data-args='["createSnapshotModal"]'><%= __('datamgmt:btn_cancel') %></button>
                 </div>
             </form>
         </div>
@@ -548,7 +548,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2><%= __('datamgmt:modal_snapshot_details_title') %></h2>
-            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('snapshotStatsModal')">&times;</button>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["snapshotStatsModal"]'>&times;</button>
         </div>
         <div class="modal-body">
             <div id="snapshotStatsContent"><%= __('datamgmt:loading') %></div>
@@ -562,7 +562,7 @@
     <div class="modal-content" style="max-width: 600px;">
         <div class="modal-header" style="background: var(--danger); color: white;">
             <h2><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('datamgmt:btn_reset_database') %></h2>
-            <button class="close" type="button" aria-label="<%= __('common:close') %>" onclick="hideModal('resetDatabaseModal')" style="color: white;">&times;</button>
+            <button class="close" type="button" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["resetDatabaseModal"]' style="color: white;">&times;</button>
         </div>
         <div class="modal-body">
             <div class="alert alert-error alert-prose" style="margin-bottom: 1.5rem;">
@@ -602,7 +602,7 @@
                         <i class="fas fa-trash-can" aria-hidden="true"></i> <%= __('datamgmt:btn_reset_database') %>
                     </button>
                     <button type="button" class="btn btn-secondary"
-                        onclick="hideModal('resetDatabaseModal')"><%= __('datamgmt:btn_cancel') %></button>
+                        data-on-click="hideModal" data-args='["resetDatabaseModal"]'><%= __('datamgmt:btn_cancel') %></button>
                 </div>
             </form>
         </div>
@@ -759,6 +759,9 @@
 </style>
 
 <script nonce="<%= cspNonce %>">
+    // Multipart uploads: multer parses the body after the server's CSRF check, so
+    // the token travels in the x-csrf-token header (audit SA-15).
+    const CSRF_HEADERS = { 'x-csrf-token': '<%= csrfToken %>' };
     // Localized strings injected from the datamgmt namespace (server-side).
     const I18N = {
         confirmRestoreFull: <%- JSON.stringify(__('datamgmt:js_confirm_restore_full')) %>,
@@ -962,7 +965,7 @@
         fd.append('file', fileInput.files[0]);
         panel.style.display = 'none';
         showLoading(I18N.analyzingWorkbook);
-        fetch('/data-management/skill-matrix-workbook/preview', { method: 'POST', body: fd })
+        fetch('/data-management/skill-matrix-workbook/preview', { method: 'POST', body: fd, headers: CSRF_HEADERS })
             .then(res => res.json())
             .then(data => {
                 hideLoading();
@@ -1016,6 +1019,7 @@
 
         fetch(url, {
             method: 'POST',
+            headers: CSRF_HEADERS,
             body: formData
         })
             .then(res => res.json())
@@ -1136,7 +1140,7 @@
         fd.append('jsonFile', fileInput.files[0]);
         panel.style.display = 'none';
         showLoading(I18N.analyzingFile);
-        fetch('/admin/data/preview-json', { method: 'POST', body: fd })
+        fetch('/admin/data/preview-json', { method: 'POST', body: fd, headers: CSRF_HEADERS })
             .then(res => res.json())
             .then(data => {
                 hideLoading();
@@ -1238,7 +1242,7 @@
     }
 
     // The snapshot name travels on a data- attribute and is read back through
-    // dataset. It used to be spliced into onclick="restoreSnapshot(id,'NAME')" via an
+    // dataset. It used to be spliced into an inline click handler restoreSnapshot(id,'NAME') via an
     // escaped EJS output tag: EJS turns ' into &#39;, the HTML parser decodes it back BEFORE the handler is
     // compiled, so a name like  x');alert(1);//  ran as script (and O'Brien broke).
     function restoreSnapshotBtn(btn) {

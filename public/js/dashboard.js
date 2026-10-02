@@ -1135,18 +1135,18 @@ const Dashboard = (() => {
 
         let html = '';
         html += `<button disabled>${esc(I18N.pagerTotal || 'Total')}: ${total}</button>`; // Info
-        html += `<button ${page === 1 ? 'disabled' : ''} onclick="Dashboard.changePage(${page - 1})">${esc(I18N.pagerPrev || '« Prev')}</button>`;
+        html += `<button ${page === 1 ? 'disabled' : ''} data-on-click="Dashboard.changePage" data-args="[${page - 1}]">${esc(I18N.pagerPrev || '« Prev')}</button>`;
 
         // Simple range: current-1, current, current+1
         for (let i = Math.max(1, page - 2); i <= Math.min(totalPages, page + 2); i++) {
-            html += `<button class="${i === page ? 'active' : ''}" onclick="Dashboard.changePage(${i})">${i}</button>`;
+            html += `<button class="${i === page ? 'active' : ''}" data-on-click="Dashboard.changePage" data-args="[${i}]">${i}</button>`;
         }
 
-        html += `<button ${page === totalPages ? 'disabled' : ''} onclick="Dashboard.changePage(${page + 1})">${esc(I18N.pagerNext || 'Next »')}</button>`;
+        html += `<button ${page === totalPages ? 'disabled' : ''} data-on-click="Dashboard.changePage" data-args="[${page + 1}]">${esc(I18N.pagerNext || 'Next »')}</button>`;
         container.innerHTML = html;
     }
 
-    // Exposed for onclick
+    // Exposed for the pager buttons (data-on-click, csp-actions.js)
     function changePage(newPage) {
         state.employeePage = newPage;
         loadTeam();

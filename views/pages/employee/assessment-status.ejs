@@ -115,11 +115,11 @@ var campHeaderKey = campOpen ? 'loop_campaign_header'
 </div>
 
 <div id="my-thread" class="card" style="display:none;margin-top:1rem;padding:1rem;">
-  <h2><%= __('employee:status_discussion') %> <button class="btn btn-sm" onclick="document.getElementById('my-thread').style.display='none'"><%= __('employee:btn_close') %></button></h2>
+  <h2><%= __('employee:status_discussion') %> <button class="btn btn-sm" data-on-click="MY.closeThread" data-args='[]'><%= __('employee:btn_close') %></button></h2>
   <div id="my-thread-body"></div>
   <div style="margin-top:.5rem;display:flex;gap:.5rem;">
     <input id="my-thread-input" class="form-control" placeholder="<%= __('employee:status_respond_placeholder') %>" style="flex:1;">
-    <button class="btn btn-secondary" onclick="MY.respond()"><%= __('employee:btn_respond') %></button>
+    <button class="btn btn-secondary" data-on-click="MY.respond" data-args='[]'><%= __('employee:btn_respond') %></button>
   </div>
 </div>
 
@@ -177,13 +177,18 @@ const MY = {
   // Sur un refus, l ecran de suivi affichait un etat VIDE comme s il etait mesure.
   async api(p,m,b){ try { return await SAConsoleNet.call(p,m,b); } catch(e){ (window.toast||alert)(e.message,'error'); throw e; } },
   badge(s){ return '<span style="padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:'+(this.STATES[s]||'#555')+'">'+(this.LABELS[s]||s)+'</span>'; },
+  closeThread(){ document.getElementById('my-thread').style.display='none'; },
   async openThread(id){ this.current=id; const j=await this.api('/api/self-assessment/'+id+'/thread');
     document.getElementById('my-thread').style.display='block';
     document.getElementById('my-thread-body').innerHTML = j.comments.length ? j.comments.map(c=>'<div style="padding:.4rem 0;border-bottom:1px solid #eee;"><strong>'+esc((this.I18N.AUTH&&this.I18N.AUTH[c.authorType])||c.authorType)+'</strong>: '+esc(c.body)+'</div>').join('') : '<em>'+esc(this.I18N.noComments)+'</em>'; },
   async respond(){ const v=document.getElementById('my-thread-input').value.trim(); if(!v||!this.current)return; await this.api('/api/self-assessment/'+this.current+'/respond','POST',{body:v}); document.getElementById('my-thread-input').value=''; await this.openThread(this.current); await this.load(); },
   async load(){ const j=await this.api('/api/self-assessment/mine'); const tb=document.querySelector('#my-sa tbody');
-    tb.innerHTML = j.items.length ? j.items.map(it=>{ var cr = it.workflowState==='changes_requested'; return '<tr'+(cr?' style="background:rgba(198,40,40,.08)"':'')+'><td>'+esc(it.skillName||('#'+it.skillId))+(cr?' <span style="color:#c62828;font-weight:600;font-size:.8em">· '+esc(this.I18N.actionNeeded)+'</span>':'')+'</td><td>'+it.selfRatedLevel+'</td><td>'+this.badge(it.workflowState)+'</td><td>'+it.commentCount+'</td><td><button class="btn btn-sm" onclick="MY.openThread('+it.id+')">'+esc(this.I18N.discussRespond)+'</button>'+(cr?' <a class="btn btn-sm btn-primary" href="/employee/self-assessment">'+esc(this.I18N.reviseResubmit)+'</a>':'')+'</td></tr>'; }).join('') : '<tr><td colspan="5"><em>'+esc(this.I18N.noAssessments)+'</em></td></tr>'; }
+    tb.innerHTML = j.items.length ? j.items.map(it=>{ var cr = it.workflowState==='changes_requested'; return '<tr'+(cr?' style="background:rgba(198,40,40,.08)"':'')+'><td>'+esc(it.skillName||('#'+it.skillId))+(cr?' <span style="color:#c62828;font-weight:600;font-size:.8em">· '+esc(this.I18N.actionNeeded)+'</span>':'')+'</td><td>'+it.selfRatedLevel+'</td><td>'+this.badge(it.workflowState)+'</td><td>'+it.commentCount+'</td><td><button class="btn btn-sm" data-on-click="MY.openThread" data-args="'+esc(JSON.stringify([it.id]))+'">'+esc(this.I18N.discussRespond)+'</button>'+(cr?' <a class="btn btn-sm btn-primary" href="/employee/self-assessment">'+esc(this.I18N.reviseResubmit)+'</a>':'')+'</td></tr>'; }).join('') : '<tr><td colspan="5"><em>'+esc(this.I18N.noAssessments)+'</em></td></tr>'; }
 };
 function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// CSP: buttons are wired by csp-actions.js (data-on-click: MY.<method>), which
+// calls with this = the element; the methods use this.*, so each is bound to MY.
+Object.keys(MY).forEach(function(k){ if(typeof MY[k]==='function') MY[k]=MY[k].bind(MY); });
+window.MY = MY;
 MY.load();
 </script>

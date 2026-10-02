@@ -657,17 +657,15 @@ function registerOidc(passport) {
     const tokenURL = env('OIDC_TOKEN_URL');
     const userInfoURL = env('OIDC_USERINFO_URL');
     const callbackURL = env('OIDC_REDIRECT_URL');
-    if (
-        !(
-            issuer &&
-            clientID &&
-            clientSecret &&
-            authorizationURL &&
-            tokenURL &&
-            userInfoURL &&
-            callbackURL
-        )
-    ) {
+    if (!(
+        issuer &&
+        clientID &&
+        clientSecret &&
+        authorizationURL &&
+        tokenURL &&
+        userInfoURL &&
+        callbackURL
+    )) {
         return null;
     }
 
@@ -1339,7 +1337,33 @@ function isDegraded() {
     return isSsoIntended() && _enabled.size === 0;
 }
 
+/**
+ * The SAML reply URL saved in the app (and registered at the IdP) can differ
+ * from the canonical one, e.g. ".../auth/saml/saml/callback": a path no route
+ * answered, so every sign-in POST from the IdP hit the origin guard and read
+ * {"error":"cross_origin_blocked"}. The SAML ACS is therefore answered at the
+ * CONFIGURED path too, with exactly the same handler (signature, destination =
+ * the configured URL, replay and state checks). Only a path that cannot shadow
+ * an app page qualifies: it must end in /callback and must not be the
+ * canonical one (nor its /login-prefixed twin, which is routed already).
+ * @returns {string|null} the extra ACS path, or null
+ */
+const CANONICAL_SAML_ACS = '/auth/sso/saml/callback';
+function samlCallbackAliasPath() {
+    let p;
+    try {
+        p = new URL(env('SAML_CALLBACK_URL')).pathname.replace(/\/+$/, '');
+    } catch (_) {
+        return null;
+    }
+    if (!p || p === CANONICAL_SAML_ACS || !/\/callback$/i.test(p)) return null;
+    if (/^\/login\/auth\/sso\/[^/]+\/callback$/i.test(p)) return null; // routed already
+    return p;
+}
+
 module.exports = {
+    samlCallbackAliasPath,
+    CANONICAL_SAML_ACS,
     configureSso,
     reloadSso,
     getEnabledProviders,

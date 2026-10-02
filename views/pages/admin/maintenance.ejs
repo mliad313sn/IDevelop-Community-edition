@@ -279,7 +279,7 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
         <option value="<%= e.id %>"><%= who(e) %><%= e.employeeNumber ? ' · ' + e.employeeNumber : '' %><%= e.isActive ? '' : ' · ' + __('admin:maint_inactive') %></option>
       <% }); %>
     </datalist>
-    <button type="button" class="btn btn-danger" onclick="mntVoidEmployee()"><%= __('admin:maint_void') %></button>
+    <button type="button" class="btn btn-danger" data-on-click="mntVoidEmployee" data-args="[]"><%= __('admin:maint_void') %></button>
   </div>
   <% if (candidatesTruncated) { %>
     <p class="text-muted mnt-hint"><%= __('admin:maint_employee_truncated') %></p>
@@ -387,7 +387,7 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
               placeholder="<%= __('admin:maint_reason_ph') %>"></textarea>
     <p id="mntDlgErr" class="mnt-err" hidden></p>
     <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.9rem">
-      <button type="button" class="btn" onclick="document.getElementById('mntDlg').close()"><%= __('admin:maint_dlg_cancel') %></button>
+      <button type="button" class="btn" data-on-click="mntCloseDlg" data-args="[]"><%= __('admin:maint_dlg_cancel') %></button>
       <button type="button" id="mntDlgOk" class="btn btn-danger"><%= __('admin:maint_dlg_confirm') %></button>
     </div>
   </form>
@@ -433,6 +433,9 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
   };
   var dlg = document.getElementById('mntDlg');
   var pending = null;
+  // CSP: the buttons call these through data-on-click (public/js/csp-actions.js),
+  // which resolves window functions — no inline on*= handler left on this page.
+  window.mntCloseDlg = function(){ dlg.close(); };
 
   // One dialog for every action: kind decides the endpoint and the payload.
   window.mntAsk = function(kind, id, entityType, what){
@@ -602,6 +605,7 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
   });
 })();
 </script>
+<%- include('../../partials/erase-override') %>
 <!-- ══ end SECTION accounts ══ -->
 
 <!-- ══ 3.23.18 (S-07) — Retention: periods, what is due, last run, tombstones.

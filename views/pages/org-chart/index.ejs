@@ -1,26 +1,26 @@
 <div class="page-header">
     <h1><i class="fas fa-sitemap" aria-hidden="true"></i> <%= __('talentx:oc_title') %></h1>
     <div class="page-actions">
-        <button class="btn btn-secondary" onclick="OC.zoom(-0.1)" title="<%= __('talentx:oc_zoom_out') %>" aria-label="<%= __('talentx:oc_zoom_out') %>"><i class="fas fa-magnifying-glass-minus" aria-hidden="true"></i></button>
+        <button class="btn btn-secondary" data-on-click="OC.zoom" data-args='[-0.1]' title="<%= __('talentx:oc_zoom_out') %>" aria-label="<%= __('talentx:oc_zoom_out') %>"><i class="fas fa-magnifying-glass-minus" aria-hidden="true"></i></button>
         <span class="oc-zoom-pct" id="oc-zoom-pct" aria-hidden="true">100%</span>
-        <button class="btn btn-secondary" onclick="OC.zoom(0.1)" title="<%= __('talentx:oc_zoom_in') %>" aria-label="<%= __('talentx:oc_zoom_in') %>"><i class="fas fa-magnifying-glass-plus" aria-hidden="true"></i></button>
-        <button class="btn btn-secondary" onclick="OC.fit()" title="<%= __('talentx:oc_fit') %>" aria-label="<%= __('talentx:oc_fit') %>"><i class="fas fa-arrows-left-right-to-line" aria-hidden="true"></i></button>
-        <button class="btn btn-secondary" onclick="OC.expandAll(true)"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('talentx:oc_expand') %></button>
-        <button class="btn btn-secondary" onclick="OC.expandAll(false)"><i class="fas fa-minus" aria-hidden="true"></i> <%= __('talentx:oc_collapse') %></button>
+        <button class="btn btn-secondary" data-on-click="OC.zoom" data-args='[0.1]' title="<%= __('talentx:oc_zoom_in') %>" aria-label="<%= __('talentx:oc_zoom_in') %>"><i class="fas fa-magnifying-glass-plus" aria-hidden="true"></i></button>
+        <button class="btn btn-secondary" data-on-click="OC.fit" data-args='[]' title="<%= __('talentx:oc_fit') %>" aria-label="<%= __('talentx:oc_fit') %>"><i class="fas fa-arrows-left-right-to-line" aria-hidden="true"></i></button>
+        <button class="btn btn-secondary" data-on-click="OC.expandAll" data-args='[true]'><i class="fas fa-plus" aria-hidden="true"></i> <%= __('talentx:oc_expand') %></button>
+        <button class="btn btn-secondary" data-on-click="OC.expandAll" data-args='[false]'><i class="fas fa-minus" aria-hidden="true"></i> <%= __('talentx:oc_collapse') %></button>
     </div>
 </div>
 
 <div class="oc-toolbar card">
     <div class="oc-modes">
         <span class="oc-label"><%= __('talentx:oc_view') %></span>
-        <button class="btn btn-primary" id="oc-m-line" onclick="OC.setMode('line')" title="<%= __('talentx:oc_line_mode_title') %>"><i class="fas fa-sitemap" aria-hidden="true"></i> <%= __('talentx:oc_line_mode') %></button>
-        <button class="btn btn-secondary" id="oc-m-manager" onclick="OC.setMode('manager')"><i class="fas fa-user-tie" aria-hidden="true"></i> <%= __('talentx:g9_manager') %></button>
-        <button class="btn btn-secondary" id="oc-m-supervisor" onclick="OC.setMode('supervisor')"><i class="fas fa-user-gear" aria-hidden="true"></i> <%= __('talentx:oc_supervisor') %></button>
-        <button class="btn btn-secondary" id="oc-m-structure" onclick="OC.setMode('structure')"><i class="fas fa-building" aria-hidden="true"></i> <%= __('talentx:oc_structure') %></button>
+        <button class="btn btn-primary" id="oc-m-line" data-on-click="OC.setMode" data-args='["line"]' title="<%= __('talentx:oc_line_mode_title') %>"><i class="fas fa-sitemap" aria-hidden="true"></i> <%= __('talentx:oc_line_mode') %></button>
+        <button class="btn btn-secondary" id="oc-m-manager" data-on-click="OC.setMode" data-args='["manager"]'><i class="fas fa-user-tie" aria-hidden="true"></i> <%= __('talentx:g9_manager') %></button>
+        <button class="btn btn-secondary" id="oc-m-supervisor" data-on-click="OC.setMode" data-args='["supervisor"]'><i class="fas fa-user-gear" aria-hidden="true"></i> <%= __('talentx:oc_supervisor') %></button>
+        <button class="btn btn-secondary" id="oc-m-structure" data-on-click="OC.setMode" data-args='["structure"]'><i class="fas fa-building" aria-hidden="true"></i> <%= __('talentx:oc_structure') %></button>
     </div>
     <div class="oc-search">
         <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
-        <input id="oc-q" type="search" placeholder="<%= __('talentx:oc_search_ph') %>" oninput="OC.search(this.value)">
+        <input id="oc-q" type="search" placeholder="<%= __('talentx:oc_search_ph') %>" data-on-input="OC.search" data-args='["$value"]'>
         <span class="oc-match-count" id="oc-matches" aria-live="polite"></span>
     </div>
     <div class="oc-stats" id="oc-stats"></div>
@@ -147,6 +147,8 @@ const OC_T = {
 // Employees only see their own subtree and cannot open colleagues' pages —
 // drill-through links are for admins & managers.
 const OC_CAN_DRILL = <%- include('../../partials/json-script', { v: !!(user && user.userType !== 'employee') }) %>;
+// CSP: no inline handlers — built controls are wired by public/js/csp-actions.js.
+const ocOn = (type, fn, args) => ' data-on-' + type + '="' + fn + '" data-args="' + OC.esc(JSON.stringify(args || [])) + '"';
 const OC = {
   nodes: [], byId: {}, mode: 'line', scale: 1, focusId: null,
   // The reader's own employee id when the reader IS a node (governed perimeter:
@@ -299,7 +301,7 @@ const OC = {
       if(focused){
         const f=this.byId[this.focusId];
         const fVia=(apex && f.id===apex.id) ? via : [];
-        banner='<div class="oc-focus-banner"><button type="button" class="btn btn-sm btn-secondary" onclick="OC.clearFocus()"><i class="fas fa-arrow-left" aria-hidden="true"></i> '+OC_T.fullChart+'</button><span>'+OC_T.focusedOn+' <strong>'+this.esc(f.name)+'</strong> '+OC_T.andTeam+'</span></div>';
+        banner='<div class="oc-focus-banner"><button type="button" class="btn btn-sm btn-secondary"'+ocOn('click','OC.clearFocus')+'><i class="fas fa-arrow-left" aria-hidden="true"></i> '+OC_T.fullChart+'</button><span>'+OC_T.focusedOn+' <strong>'+this.esc(f.name)+'</strong> '+OC_T.andTeam+'</span></div>';
         stat=(this.countSubtree(f,kids)+this.viaTotal(fVia,kids))+' '+OC_T.inFocused+' · '+modeLabel;
         html=banner+'<ul><li>'+this.personNode(f,kids,0,{head:false,via:fVia,viaLabel:other.label,viaTitle:other.title})+'</li></ul>';
       } else if(!apex && !linked){
@@ -309,7 +311,7 @@ const OC = {
         stat=this.nodes.length+' '+(this.nodes.length>1?OC_T.people:OC_T.person)+' · '+OC_T.noLinesStat+' · '+modeLabel;
         html='<div class="oc-empty" role="status"><i class="fas fa-diagram-project" aria-hidden="true"></i>'
             +'<p class="oc-empty-msg">'+OC_T.noLines+'</p><p>'+OC_T.noLinesHint+'</p>'
-            +'<button type="button" class="btn btn-primary" onclick="OC.setMode(\'structure\')"><i class="fas fa-building" aria-hidden="true"></i> '+OC_T.seeStructure+'</button></div>';
+            +'<button type="button" class="btn btn-primary"'+ocOn('click','OC.setMode',['structure'])+'><i class="fas fa-building" aria-hidden="true"></i> '+OC_T.seeStructure+'</button></div>';
       } else if(apex){
         // Governed perimeter: the reader is the single apex; their in-mode
         // reports hang directly, the others in the "via the other line" group.
@@ -374,7 +376,7 @@ const OC = {
       '<span class="oc-info"><span class="oc-name">'+this.nameHtml(n)+'</span>'+
         '<span class="oc-role">'+this.esc(n.role||n.org||'—')+'</span></span>'+
       (hasKids?'<span class="oc-badge" title="'+direct+' '+OC_T.direct+' · '+total+' '+OC_T.total+'"><i class="fas fa-users" aria-hidden="true"></i>'+total+'</span>':'')+
-      (hasKids?'<button type="button" class="oc-focus" title="'+OC_T.focusTitle+'" aria-label="'+OC_T.focusAriaPre+' '+this.esc(n.name)+OC_T.focusAriaPost+'" onclick="OC.focus('+n.id+')"><i class="fas fa-crosshairs" aria-hidden="true"></i></button>':'');
+      (hasKids?'<button type="button" class="oc-focus" title="'+OC_T.focusTitle+'" aria-label="'+OC_T.focusAriaPre+' '+this.esc(n.name)+OC_T.focusAriaPost+'"'+ocOn('click','OC.focus',[n.id])+'><i class="fas fa-crosshairs" aria-hidden="true"></i></button>':'');
   },
   // One level of a person's reports as <li>s. Managers (people with their own
   // reports) keep classic tree columns; individual contributors stack
@@ -398,7 +400,7 @@ const OC = {
     const hasKids=ch.length>0||via.length>0;
     const collapsed = depth>=2 && hasKids;
     let out=this.personCard(n,{head:!!opts.head,direct:ch.length,total,hasKids})+
-      (hasKids?'<button type="button" class="oc-toggle" data-n="'+total+'" aria-label="'+OC_T.toggleAria+'" aria-expanded="'+(collapsed?'false':'true')+'" onclick="OC.toggle(this)">'+(collapsed?'+'+total:'−')+'</button>':'')+
+      (hasKids?'<button type="button" class="oc-toggle" data-n="'+total+'" aria-label="'+OC_T.toggleAria+'" aria-expanded="'+(collapsed?'false':'true')+'"'+ocOn('click','OC.toggle',['$el'])+'>'+(collapsed?'+'+total:'−')+'</button>':'')+
     '</div>';
     if(hasKids){
       let inner=this.childrenLi(ch,kids,depth+1);
@@ -418,7 +420,7 @@ const OC = {
       '<span class="oc-av"><i class="fas '+icon+'" aria-hidden="true"></i></span>'+
       '<span class="oc-info"><span class="oc-name">'+this.esc(label)+'</span>'+
         '<span class="oc-role">'+this.esc(sub)+'</span></span>'+
-      '<button type="button" class="oc-toggle"'+(count!=null?' data-n="'+count+'"':'')+' aria-label="'+OC_T.toggleAria+'" aria-expanded="'+(collapsed?'false':'true')+'" onclick="OC.toggle(this)">'+(collapsed?'+'+(count!=null?count:''):'−')+'</button>'+
+      '<button type="button" class="oc-toggle"'+(count!=null?' data-n="'+count+'"':'')+' aria-label="'+OC_T.toggleAria+'" aria-expanded="'+(collapsed?'false':'true')+'"'+ocOn('click','OC.toggle',['$el'])+'>'+(collapsed?'+'+(count!=null?count:''):'−')+'</button>'+
     '</div>';
   },
   groupNode(node,depth){
@@ -431,7 +433,7 @@ const OC = {
       '<span class="oc-av"><i class="fas '+icon+'" aria-hidden="true"></i></span>'+
       '<span class="oc-info"><span class="oc-name">'+this.esc(node.label)+'</span>'+
         '<span class="oc-role">'+kindLabel+' · '+count+' '+(count>1?OC_T.people:OC_T.person)+'</span></span>'+
-      (node.children.length?'<button type="button" class="oc-toggle" data-n="'+count+'" aria-label="'+OC_T.toggleAria+'" aria-expanded="'+(collapsed?'false':'true')+'" onclick="OC.toggle(this)">'+(collapsed?'+'+count:'−')+'</button>':'')+
+      (node.children.length?'<button type="button" class="oc-toggle" data-n="'+count+'" aria-label="'+OC_T.toggleAria+'" aria-expanded="'+(collapsed?'false':'true')+'"'+ocOn('click','OC.toggle',['$el'])+'>'+(collapsed?'+'+count:'−')+'</button>':'')+
     '</div>';
     if(node.children.length){
       const groups=node.children.filter(c=>c.kind!=='person');
@@ -483,6 +485,10 @@ OC.render=function(){
   _origRender();
   document.querySelectorAll('#oc-tree ul[data-collapsed="1"]').forEach(ul=>{ const li=ul.parentElement; if(li&&li.tagName==='LI'){ li.classList.add('oc-collapsed'); } ul.removeAttribute('data-collapsed'); });
 };
+// csp-actions.js resolves handlers on window and calls them with `this` = the
+// element; OC is a top-level const (not on window) and its methods use `this`.
+Object.keys(OC).forEach(function(k){ if(typeof OC[k]==='function') OC[k]=OC[k].bind(OC); });
+window.OC = OC;
 
 // ---- canvas interactions: drag-to-pan + Ctrl/Cmd+wheel zoom ----
 (function(){

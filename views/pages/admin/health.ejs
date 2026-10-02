@@ -48,6 +48,10 @@ var never = (ticks || []).filter(function (t) { return !t.last; }).length;
   <div class="card hl-card <%= database.migrations && database.migrations.pending.length ? 'hl-warn' : '' %>"><div class="hl-k"><%= __('admin:health_kpi_migrations') %></div><div class="hl-v"><%= database.migrations ? database.migrations.pending.length : '—' %></div><div class="hl-sub"><%= database.migrations ? __('admin:health_migrations_applied', { n: database.migrations.applied, latest: database.migrations.latest || '—' }) : __('admin:health_never_measured') %></div></div>
   <div class="card hl-card <%= license && license.warn ? 'hl-bad' : '' %>"><div class="hl-k"><%= __('admin:health_kpi_license') %></div><div class="hl-v hl-v-sm"><% if (!license) { %>—<% } else if (license.unmanaged) { %><%= __('admin:health_license_unmanaged') %><% } else if (license.expired) { %><%= __('admin:health_license_expired') %><% } else if (license.overSeat) { %><%= __('admin:health_license_overseat') %><% } else { %><%= __('admin:health_license_ok') %><% } %></div><div class="hl-sub"><% if (license && license.seats != null) { %><%= license.seatsUsed %> / <%= license.seats %> <%= __('admin:health_license_seats') %><% } else if (license) { %><%= license.seatsUsed %> <%= __('admin:health_license_seats') %><% } %> · <a href="/admin/license"><%= __('admin:lic_banner_manage') %></a></div></div>
   <div class="card hl-card <%= typeof sqlConsoleEnabled !== 'undefined' && sqlConsoleEnabled ? 'hl-warn' : '' %>" data-health-sql-console><div class="hl-k"><%= __('admin:health_kpi_sql_console') %></div><div class="hl-v hl-v-sm"><%= typeof sqlConsoleEnabled !== 'undefined' && sqlConsoleEnabled ? __('admin:health_sql_console_on') : __('admin:health_sql_console_off') %></div><div class="hl-sub"><%= __('admin:health_sql_console_hint') %></div></div>
+  <%# Which antivirus scans uploads (MalwareScanService.status: clamd, then Defender). %>
+  <% var _av = (typeof malwareScan !== 'undefined' && malwareScan) ? malwareScan : null; %>
+  <% var _avEngine = function (e) { return e === 'clamd' ? __('admin:health_av_engine_clamd') : e === 'defender' ? __('admin:health_av_engine_defender') : e; }; %>
+  <div class="card hl-card <%= _av && _av.alert ? 'hl-warn' : '' %>" data-health-av><div class="hl-k"><%= __('admin:health_kpi_av') %></div><div class="hl-v hl-v-sm"><% if (!_av) { %><%= __('admin:health_never_measured') %><% } else if (_av.engine) { %><%= _avEngine(_av.engine) %><% } else { %><%= __('admin:health_av_none') %><% } %></div><div class="hl-sub"><% if (_av) { %><%= _av.requireMalwareScan ? __('admin:health_av_required_on') : __('admin:health_av_required_off') %><% } %></div></div>
 </div>
 
 <!-- ── Ticks ─────────────────────────────────────────────────────────────── -->
@@ -166,6 +170,30 @@ var never = (ticks || []).filter(function (t) { return !t.last; }).length;
   <% } else { %><p class="text-muted"><%= __('admin:health_reset_bk_none') %></p><% } %>
 </section>
 
+<!-- ── Upload antivirus ──────────────────────────────────────────────────── -->
+<section class="card hl-section" id="malware-scan">
+  <h2 class="hl-h2"><i class="fas fa-shield-virus" aria-hidden="true"></i> <%= __('admin:health_av_title') %></h2>
+  <% if (_av && _av.alert) { %>
+  <div class="hz-callout hz-sec-warn" role="status"><p><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('compliance:av_no_scanner_alert') %></p></div>
+  <% } %>
+  <% if (_av) { %>
+  <div class="hl-kv">
+    <div><span class="hl-k"><%= __('admin:health_av_engine') %></span><%= _av.engine ? _avEngine(_av.engine) : __('admin:health_av_none') %></div>
+    <div><span class="hl-k"><%= __('admin:health_av_policy') %></span><%= _av.requireMalwareScan ? __('admin:health_av_required_on') : __('admin:health_av_required_off') %> · <a href="/app-settings"><code>requireMalwareScan</code></a></div>
+    <div><span class="hl-k"><%= __('admin:health_av_checked') %></span><%= _av.checkedAt ? _fdt(_av.checkedAt) : '—' %></div>
+  </div>
+  <h3 class="hl-h3"><%= __('admin:health_av_counts') %></h3>
+  <% var _avCounts = _av.counts || {};
+     var _avLabels = { clean: __('admin:health_av_st_clean'), quarantined: __('admin:health_av_st_quarantined'), not_scanned: __('admin:health_av_st_not_scanned'), scan_error: __('admin:health_av_st_scan_error'), pending: __('admin:health_av_st_pending') };
+     var _avKeys = Object.keys(_avLabels).filter(function (k) { return _avCounts[k]; }); %>
+  <% if (_avKeys.length) { %>
+  <ul class="hl-list"><% _avKeys.forEach(function (k) { %><li><%= _avLabels[k] %><%= colon %> <strong><%= _avCounts[k] %></strong></li><% }); %></ul>
+  <% } else { %><p class="text-muted"><%= __('admin:health_av_no_files') %></p><% } %>
+  <% } else { %>
+  <p class="text-muted"><%= __('admin:health_never_measured') %></p>
+  <% } %>
+</section>
+
 <!-- ── SMTP ──────────────────────────────────────────────────────────────── -->
 <section class="card hl-section" id="smtp">
   <h2 class="hl-h2"><i class="fas fa-envelope" aria-hidden="true"></i> <%= __('admin:health_smtp_title') %></h2>
@@ -199,7 +227,7 @@ var never = (ticks || []).filter(function (t) { return !t.last; }).length;
 </section>
 
 <style>
-  .hl-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:14px}
+  .hl-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
   .hl-card{padding:12px 14px;border-left:4px solid transparent}
   .hl-bad{border-left-color:#ef4444}.hl-warn{border-left-color:#f59e0b}
   .hl-k{font-size:.72rem;letter-spacing:.04em;color:var(--text-secondary)}

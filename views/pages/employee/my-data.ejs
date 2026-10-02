@@ -43,11 +43,50 @@
   <h2><i class="fas fa-file-export" aria-hidden="true"></i> <%= __('compliance:mydata_rights_title') %></h2>
   <p><%= __('compliance:mydata_rights_body') %></p>
   <p class="text-muted md-note"><%= __('compliance:mydata_rights_limits') %></p>
+  <% var PV = (typeof privacy !== 'undefined' && privacy) ? privacy : {}; %>
+  <% if (PV.isEmployee) { %>
+  <p class="md-actions">
+    <a class="btn btn-primary" href="/employee/my-data/download"><i class="fas fa-download" aria-hidden="true"></i> <%= __('compliance:privacy_download') %></a>
+    <span class="text-muted md-note"><%= __('compliance:privacy_download_hint') %></span>
+  </p>
+  <% } %>
+  <% if (PV.notice) { %>
+  <p class="md-note"><a href="/privacy/notice"><%= __('compliance:privacy_notice_link', { version: PV.notice.version }) %></a></p>
+  <% } %>
 </div>
+
+<% if (PV.isEmployee) { %>
+<div class="card md-card" id="profiling-objection">
+  <h2><i class="fas fa-hand" aria-hidden="true"></i> <%= __('compliance:privacy_objection_title') %></h2>
+  <p><%= __('compliance:privacy_objection_body') %></p>
+  <% if (PV.objectionUnknown) { %>
+  <p class="text-muted"><%= __('compliance:privacy_objection_unreadable') %></p>
+  <% } else if (PV.objection) { %>
+  <p><span class="badge badge-warning"><%= __('compliance:privacy_objection_active', { date: fmtDate(PV.objection.createdAt) }) %></span>
+    <% if (PV.objection.hrReviewedAt) { %><span class="badge badge-secondary"><%= __('compliance:privacy_objection_reviewed', { date: fmtDate(PV.objection.hrReviewedAt) }) %></span><% } %></p>
+  <form method="POST" action="/employee/my-data/objection/withdraw" class="md-form">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <label for="md-withdraw-reason"><%= __('compliance:privacy_objection_withdraw_reason') %></label>
+    <textarea id="md-withdraw-reason" name="reason" class="form-control" rows="2" maxlength="1000"></textarea>
+    <button type="submit" class="btn btn-secondary"><%= __('compliance:privacy_objection_withdraw') %></button>
+  </form>
+  <% } else { %>
+  <form method="POST" action="/employee/my-data/objection" class="md-form">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <label for="md-object-reason"><%= __('compliance:privacy_objection_reason') %></label>
+    <textarea id="md-object-reason" name="reason" class="form-control" rows="2" maxlength="1000"></textarea>
+    <button type="submit" class="btn btn-warning"><%= __('compliance:privacy_objection_submit') %></button>
+  </form>
+  <% } %>
+</div>
+<% } %>
 
 <style>
 .md-card { margin-bottom: 1rem; padding: 1rem 1.15rem; }
 .md-card h2 { margin-top: 0; font-size: 1.05rem; }
 .md-group { font-size: .8rem; }
 .md-note { font-size: .88rem; margin: .7rem 0 0; }
+.md-actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin: .8rem 0 0; }
+.md-form { display: grid; gap: .45rem; max-width: 40rem; margin-top: .6rem; }
+.md-form .btn { justify-self: start; }
 </style>

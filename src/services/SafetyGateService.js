@@ -513,7 +513,7 @@ const SafetyGateService = {
         const newSecret = String(webhookSecret || '');
         if (enabled && !newSecret && !(current && current.secret)) fail('secret_required');
         const storedSecret = newSecret
-            ? secretBox.encrypt(newSecret)
+            ? secretBox.encrypt(newSecret, 'safety_gate')
             : current
               ? current.secret
               : null;

@@ -14,6 +14,19 @@ updates:
     commit-message:
       prefix: build(deps)
       prefix-development: build(deps)
+    ignore:
+      # ioredis 6: BullMQ 5 pins ioredis 5.x as its own dependency and passes our
+      # connection through; v6 switches to RESP3 by default, an untested pairing
+      # with BullMQ 5's scripts. BullMQ 6 takes ioredis as a peer but removes the
+      # legacy `repeat` option src/jobs relies on. Lift with the BullMQ 6 move.
+      - dependency-name: ioredis
+        versions: ['>=6']
+      # commitlint 21 requires Node >= 22.12; the project supports Node 20.19+
+      # and the commit-msg hook runs on contributors' machines.
+      - dependency-name: '@commitlint/cli'
+        versions: ['>=21']
+      - dependency-name: '@commitlint/config-conventional'
+        versions: ['>=21']
     groups:
       npm-minor-patch:
         applies-to: version-updates
@@ -50,6 +63,13 @@ updates:
       day: monday
     commit-message:
       prefix: build(docker)
+    ignore:
+      # PostgreSQL 18: a major tag bump does not upgrade an existing pgdata
+      # volume (18 refuses a 17 data directory) and the 18 image moved its data
+      # path. CI proves 18; the compose move is a deliberate dump/restore, see
+      # README "Moving the compose database to PostgreSQL 18". Lift when done.
+      - dependency-name: postgres
+        versions: ['>=18']
     groups:
       compose-minor-patch:
         applies-to: version-updates

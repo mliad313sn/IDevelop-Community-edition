@@ -51,7 +51,7 @@
                 <form action="/onboarding/<%= r.id %>/merge" method="POST" style="display:flex; flex-wrap:wrap; gap:.5rem; align-items:center;">
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                     <select name="_target" class="form-control" style="max-width:420px;"
-                        onchange="var v=this.value.split(':'); this.form.targetType.value=v[0]; this.form.targetId.value=v[1];">
+                        data-on-change="onbMergeTarget" data-args='["$el"]'>
                         <% mergeable.forEach(function(m){ %>
                             <option value="<%= m._admin ? 'admin' : 'employee' %>:<%= m.id %>">
                                 <%= m._admin ? __('admin:onb_role_admin') : __('admin:onb_role_employee') %>: <%= m.username %><%= m.email ? ' · ' + m.email : '' %><%= m._admin ? ' · ' + m.role : (m.employeeNumber ? ' · ' + m.employeeNumber : '') %><%= m.hasIdentity ? __('admin:onb_already_linked') : '' %>
@@ -153,6 +153,13 @@
     department). Options carry data-site-id / data-department-id; we only
     show/hide — the POST payload is unchanged. %>
 <script nonce="<%= cspNonce %>">
+    // Merge picker: the "<type>:<id>" option value feeds the two hidden fields
+    // (CSP — was an inline onchange; wired by csp-actions.js).
+    function onbMergeTarget(sel) {
+        var v = String(sel.value || '').split(':');
+        sel.form.targetType.value = v[0];
+        sel.form.targetId.value = v[1];
+    }
     (function () {
         // Show only options whose `attr` matches `value` (empty value or empty
         // option attribute => always shown, e.g. the "— select —" placeholder).
