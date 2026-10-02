@@ -319,6 +319,22 @@ const REDACTED_ON_ERASURE = [
         erased: ['flight_risk', 'impact_of_loss', 'risk_factors', 'computed_score'],
         kept: [],
     },
+    // OBJECTION TO PROFILING (migration 165): the person's reasons and the
+    // review stamp. The rows are deleted on erasure (see `erase`).
+    {
+        key: 'profilingObjections',
+        table: 'profiling_objections',
+        deleted: true,
+        erased: [
+            'id',
+            'reason',
+            'created_at',
+            'withdrawn_at',
+            'withdrawn_reason',
+            'hr_reviewed_at',
+        ],
+        kept: [],
+    },
     // ASYMÉTRIE INVERSE TRANCHÉE :
     // l'export rendait ces trois catégories et l'effacement n'y touchait PAS.
     // Décision : une note de revue NOMINATIVE est une donnée personnelle du
@@ -423,6 +439,14 @@ const DISCLOSED_ABOUT_SUBJECT = [
         key: 'feedback360',
         table: 'feedback360_subjects',
         kept: ['id', 'round_id', 'status', 'created_at'],
+    },
+    // PRIVACY NOTICE (migration 165): which version the person acknowledged and
+    // when. No free text; kept after erasure as the evidence that the person
+    // was informed.
+    {
+        key: 'privacyNoticeAcks',
+        table: 'privacy_notice_acks',
+        kept: ['version', 'locale', 'acknowledged_at'],
     },
 ];
 
@@ -648,6 +672,21 @@ class DSRService {
         await q(
             'retentionRisk',
             'SELECT flight_risk, impact_of_loss, risk_factors, computed_score FROM retention_risk WHERE employee_id = ?',
+            [employeeId]
+        );
+        // PRIVACY (migration 165): the person's objections to profiling (open
+        // and withdrawn), the notice versions they acknowledged and their own
+        // self-service downloads. Who reviewed an objection is an id, not a name.
+        await q(
+            'profilingObjections',
+            `SELECT id, reason, created_at, withdrawn_at, withdrawn_reason, hr_reviewed_at
+               FROM profiling_objections WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'privacyNoticeAcks',
+            `SELECT version, locale, acknowledged_at FROM privacy_notice_acks
+              WHERE subject_type = 'employee' AND subject_id = ? ORDER BY version`,
             [employeeId]
         );
         return out;
@@ -882,6 +921,18 @@ class DSRService {
             // personne, aucune référence entrante, jamais recalculé après le
             // départ. Supprimée comme la démographie, et pour la même raison.
             await db.run('DELETE FROM retention_risk WHERE employee_id = ?', [employeeId]);
+            // PRIVACY (migration 165): the objection rows carry the person's own
+            // free text and the reviewer's note about them; once erased, nobody
+            // profiles the person any more (inactive, risk row gone), so the rows
+            // go. The held development triggers about them go with them. A
+            // notice acknowledgement is kept (no free text): it is the evidence
+            // that the person was informed (accountability).
+            await inSavepoint(() =>
+                db.run('DELETE FROM profiling_objections WHERE employee_id = ?', [employeeId])
+            ).catch(() => {});
+            await inSavepoint(() =>
+                db.run('DELETE FROM privacy_paused_triggers WHERE employee_id = ?', [employeeId])
+            ).catch(() => {});
             // A-04, asymétrie inverse TRANCHÉE : ce que l'export restitue déjà et
             // que l'effacement laissait intact — le texte libre écrit SUR la
             // personne, ou PAR elle, dans la revue, le litige et la demande de

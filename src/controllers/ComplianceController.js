@@ -547,6 +547,7 @@ class ComplianceController {
         res.render('pages/compliance/register', {
             title: req.t ? req.t('compliance:reg_title') : 'Employee-representative register',
             reg,
+            privacy: await require('./PrivacyController').registerLocals(req),
         });
     }
 
@@ -564,6 +565,7 @@ class ComplianceController {
         res.render('pages/employee/my-data', {
             title: req.t ? req.t('compliance:mydata_title') : 'What is recorded about me',
             mine,
+            privacy: await require('./PrivacyController').myDataLocals(req),
         });
     }
 

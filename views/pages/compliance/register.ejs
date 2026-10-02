@@ -138,6 +138,100 @@
   </table></div>
 </section>
 
+<%
+  var PV = (typeof privacy !== 'undefined' && privacy) ? privacy : {};
+  var PN = PV.notice || null;
+  var TPL = PV.template || { fr: {}, en: {} };
+  var RV = PV.review || {};
+  function nm(r) { return ((r.firstName || '') + ' ' + (r.lastName || '')).trim() + (r.employeeNumber ? ' (' + r.employeeNumber + ')' : ''); }
+%>
+<section class="card reg-section" id="privacy-notice">
+  <h2><%= __('compliance:privacy_reg_notice_title') %></h2>
+  <% if (PN) { %>
+  <p><%= __('compliance:privacy_reg_notice_current', { version: PN.version, date: fmtDate(PN.publishedAt) }) %>
+    · <%= __('compliance:privacy_reg_notice_acks', { employees: PV.acks ? PV.acks.employee : NM, admins: PV.acks ? PV.acks.admin : NM }) %></p>
+  <% } else { %>
+  <p><span class="badge badge-secondary"><%= __('compliance:reg_off') %></span> <%= __('compliance:privacy_reg_notice_none') %></p>
+  <% } %>
+  <details class="no-print">
+    <summary><%= __('compliance:privacy_reg_notice_edit') %></summary>
+    <p class="text-muted reg-note"><%= __('compliance:privacy_reg_notice_help') %></p>
+    <form method="POST" action="/compliance/register/privacy-notice" class="reg-form">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <label for="pn-title-fr"><%= __('compliance:privacy_reg_title_fr') %></label>
+      <input id="pn-title-fr" name="titleFr" class="form-control" maxlength="200" required value="<%= PN ? PN.titleFr : TPL.fr.title %>">
+      <label for="pn-body-fr"><%= __('compliance:privacy_reg_body_fr') %></label>
+      <textarea id="pn-body-fr" name="bodyFr" class="form-control" rows="12" required><%= PN ? PN.bodyFr : TPL.fr.body %></textarea>
+      <label for="pn-title-en"><%= __('compliance:privacy_reg_title_en') %></label>
+      <input id="pn-title-en" name="titleEn" class="form-control" maxlength="200" required value="<%= PN ? PN.titleEn : TPL.en.title %>">
+      <label for="pn-body-en"><%= __('compliance:privacy_reg_body_en') %></label>
+      <textarea id="pn-body-en" name="bodyEn" class="form-control" rows="12" required><%= PN ? PN.bodyEn : TPL.en.body %></textarea>
+      <label for="pn-note"><%= __('compliance:privacy_reg_change_note') %></label>
+      <input id="pn-note" name="changeNote" class="form-control" maxlength="500">
+      <button type="submit" class="btn btn-primary"><%= __('compliance:privacy_reg_publish') %></button>
+    </form>
+  </details>
+</section>
+
+<section class="card reg-section" id="privacy-objections">
+  <h2><%= __('compliance:privacy_reg_objections_title') %></h2>
+  <p class="text-muted"><%= __('compliance:privacy_reg_objections_intro') %></p>
+  <% if (RV.objections === null || RV.objections === undefined) { %>
+  <p><%= NM %></p>
+  <% } else if (!RV.objections.length) { %>
+  <p><%= __('compliance:privacy_reg_objections_none') %></p>
+  <% } else { %>
+  <div class="table-wrapper"><table class="table">
+    <thead><tr><th><%= __('compliance:privacy_reg_th_person') %></th><th><%= __('compliance:privacy_reg_th_since') %></th><th><%= __('compliance:privacy_reg_th_reason') %></th><th><%= __('compliance:privacy_reg_th_review') %></th></tr></thead>
+    <tbody>
+      <% RV.objections.forEach(function (o) { %>
+      <tr>
+        <td><%= nm(o) %></td>
+        <td><%= fmtDate(o.createdAt) %></td>
+        <td><%= o.reason || '—' %></td>
+        <td>
+          <% if (o.hrReviewedAt) { %><span class="badge badge-success"><%= __('compliance:privacy_objection_reviewed', { date: fmtDate(o.hrReviewedAt) }) %></span><% } else { %>
+          <form method="POST" action="/compliance/privacy/objections/<%= o.id %>/review" class="reg-inline no-print">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input name="note" class="form-control" maxlength="1000" required aria-label="<%= __('compliance:privacy_reg_review_note') %>" placeholder="<%= __('compliance:privacy_reg_review_note') %>">
+            <button type="submit" class="btn btn-sm btn-secondary"><%= __('compliance:privacy_reg_mark_reviewed') %></button>
+          </form><% } %>
+        </td>
+      </tr>
+      <% }); %>
+    </tbody>
+  </table></div>
+  <% } %>
+
+  <h3><%= __('compliance:privacy_reg_triggers_title') %></h3>
+  <% if (RV.triggers === null || RV.triggers === undefined) { %>
+  <p><%= NM %></p>
+  <% } else if (!RV.triggers.length) { %>
+  <p><%= __('compliance:privacy_reg_triggers_none') %></p>
+  <% } else { %>
+  <div class="table-wrapper"><table class="table">
+    <thead><tr><th><%= __('compliance:privacy_reg_th_person') %></th><th><%= __('compliance:privacy_reg_th_zone') %></th><th><%= __('compliance:privacy_reg_th_since') %></th><th><%= __('compliance:privacy_reg_th_decision') %></th></tr></thead>
+    <tbody>
+      <% RV.triggers.forEach(function (t) { %>
+      <tr>
+        <td><%= nm(t) %><% if (t.stillObjecting) { %> <span class="badge badge-warning"><%= __('compliance:privacy_reg_still_objecting') %></span><% } %></td>
+        <td><%= __('compliance:privacy_reg_zone_' + (t.zone === 'red' ? 'red' : 'blue')) %></td>
+        <td><%= fmtDate(t.createdAt) %></td>
+        <td>
+          <form method="POST" action="/compliance/privacy/triggers/<%= t.id %>/resolve" class="reg-inline no-print">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input name="reason" class="form-control" maxlength="1000" required aria-label="<%= __('compliance:privacy_reg_decision_reason') %>" placeholder="<%= __('compliance:privacy_reg_decision_reason') %>">
+            <button type="submit" name="resolution" value="dismiss" class="btn btn-sm btn-secondary"><%= __('compliance:privacy_reg_dismiss') %></button>
+            <button type="submit" name="resolution" value="proceed" class="btn btn-sm btn-warning"><%= __('compliance:privacy_reg_proceed') %></button>
+          </form>
+        </td>
+      </tr>
+      <% }); %>
+    </tbody>
+  </table></div>
+  <% } %>
+</section>
+
 <p class="text-muted reg-foot"><%= __('compliance:reg_footer') %></p>
 </div>
 
@@ -149,6 +243,10 @@
 .reg-doc .reg-hint, .reg-doc .reg-meta { font-size: .85rem; }
 .reg-doc .reg-note { font-size: .88rem; margin: .6rem 0 0; }
 .reg-doc .reg-foot { font-size: .82rem; }
+.reg-doc .reg-form { display: grid; gap: .45rem; max-width: 52rem; margin-top: .6rem; }
+.reg-doc .reg-form .btn { justify-self: start; }
+.reg-doc .reg-inline { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.reg-doc .reg-inline .form-control { min-width: 12rem; flex: 1; }
 @media print {
   .no-print, .sidebar, .topbar, .breadcrumbs, .skip-link, .help-fab { display: none !important; }
   body, .main-content, .content-wrapper { background: #fff !important; color: #000 !important; margin: 0 !important; padding: 0 !important; }

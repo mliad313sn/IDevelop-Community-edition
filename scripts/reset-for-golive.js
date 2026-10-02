@@ -136,6 +136,13 @@ const KEEP = new Set([
     // and the retention ledger is the record of what the purge did.
     'erasure_tombstones',
     'retention_ledger',
+    // Privacy (migration 165): the notice (configuration), who acknowledged
+    // which version, the people's objections to profiling (a right they
+    // exercised) and the record of their self-service downloads: registers, kept.
+    'privacy_notice_versions',
+    'privacy_notice_acks',
+    'profiling_objections',
+    'privacy_self_exports',
 ]);
 
 // Tables to WIPE: assessment, talent, performance, workflow and operational data.
@@ -213,6 +220,9 @@ const WIPE = new Set([
     'pips',
     'planned_absences',
     'post_approval_reviews',
+    // Privacy (migration 165): 9-box development triggers held for review follow
+    // the 9-box evaluations they came from (wiped here).
+    'privacy_paused_triggers',
     'readiness_snapshots',
     'recognitions',
     'reminder_log',

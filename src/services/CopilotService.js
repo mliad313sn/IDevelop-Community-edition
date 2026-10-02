@@ -526,7 +526,7 @@ class CopilotService {
             // NAMED as the weakest at 0 % and the org average read 64 % against the
             // dashboard's 82 %. Coverage (assessed / expected) travels with the score.
             safe(
-                `SELECT e.first_name || ' ' || e.last_name AS full_name,
+                `SELECT e.id AS emp_id, e.first_name || ' ' || e.last_name AS full_name,
                        c.readiness_assessed_only AS pct,
                        c.assessed_skills AS assessed, c.expected_skills AS expected, c.coverage AS coverage
                 FROM employees e JOIN v_employee_assessment_coverage c ON c.employee_id = e.id
@@ -542,7 +542,7 @@ class CopilotService {
                 'flightRisk'
             ),
             safe(
-                `SELECT e.first_name || ' ' || e.last_name AS name
+                `SELECT e.id AS emp_id, e.first_name || ' ' || e.last_name AS name
                 FROM retention_risk rr JOIN employees e ON e.id = rr.employee_id
                 WHERE rr.flight_risk = 'high' AND rr.employee_id = ANY(?)
                 ORDER BY rr.computed_score DESC NULLS LAST LIMIT 10`,
@@ -593,6 +593,22 @@ class CopilotService {
             ),
         ]);
 
+        // Objection to profiling (GDPR art. 21): a person who objected is still in
+        // the counts and averages, but is never NAMED in a ranking (weakest /
+        // strongest readiness, flight-risk list). Fails closed: when the
+        // objections cannot be read, nobody is named.
+        let objectors;
+        try {
+            objectors = await require('./PrivacyService').activeObjectorIds();
+        } catch (_) {
+            objectors = null;
+            ctx.objections_err = true;
+        }
+        const nameable = (r) => {
+            const id = Number(r.empId ?? r.emp_id);
+            return objectors !== null && !objectors.has(id);
+        };
+
         // Only MEASURED people are averaged or ranked. Someone with no assessed
         // requirement has no readiness — they are counted in `neverAssessed`, and
         // never named as "weakest" on the strength of zero measurement.
@@ -604,6 +620,7 @@ class CopilotService {
             coveragePct: r.coverage == null ? null : Math.round(Number(r.coverage)),
         });
         const measured = perEmp.filter((r) => r.pct != null).map(person);
+        const rankable = perEmp.filter((r) => r.pct != null && nameable(r)).map(person);
         ctx.measuredCount = measured.length;
         ctx.neverAssessed = perEmp.length - measured.length;
         ctx.coverage = {
@@ -618,8 +635,8 @@ class CopilotService {
             ctx.avgReadinessPct = Math.round(
                 measured.reduce((s, r) => s + r.pct, 0) / measured.length
             );
-            ctx.lowestReadiness = measured.slice(0, 5);
-            ctx.highestReadiness = measured.slice(-5).reverse();
+            ctx.lowestReadiness = rankable.slice(0, 5);
+            ctx.highestReadiness = rankable.slice(-5).reverse();
         } else {
             ctx.avgReadinessPct = null;
             ctx.lowestReadiness = [];
@@ -627,7 +644,7 @@ class CopilotService {
         }
         ctx.nineBox = nineBox;
         ctx.flightRisk = flightRisk;
-        ctx.flightRiskWho = flightRiskWho;
+        ctx.flightRiskWho = flightRiskWho.filter(nameable).map((r) => ({ name: r.name }));
         ctx.openPipsWho = openPipsWho;
         ctx.openPips = { n: pipCount[0] ? Number(pipCount[0].n) : openPipsWho.length };
         ctx.topGaps = topGaps.map((r) => ({

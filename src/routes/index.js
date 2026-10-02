@@ -3133,6 +3133,36 @@ router.get('/compliance/register', requireSuperAdminPage, _m55(_cc.register.bind
 // « Ce qui est enregistré sur moi » — the signed-in person's own data only
 // (the controller keys on req.user.id; no :id, no query-string id).
 router.get('/employee/my-data', requireEmployeeOrManager, _m55(_cc.myData.bind(_cc)));
+// Privacy (GDPR art. 13/14, 15, 20 and 21; migration 165): the notice every
+// signed-in person acknowledges once a SuperAdmin has published it, the "my
+// data" download and the objection to profiling on the page above, and the
+// SuperAdmin's publishing and review actions on the register page.
+const PrivacyController = require('../controllers/PrivacyController');
+const _pv = (fn) => _m55(fn.bind(PrivacyController));
+router.get('/privacy/notice', requireAuth, _pv(PrivacyController.notice));
+router.post('/privacy/notice/acknowledge', requireAuth, _pv(PrivacyController.acknowledge));
+router.get('/employee/my-data/download', requireEmployeeOrManager, _pv(PrivacyController.download));
+router.post('/employee/my-data/objection', requireEmployeeOrManager, _pv(PrivacyController.object));
+router.post(
+    '/employee/my-data/objection/withdraw',
+    requireEmployeeOrManager,
+    _pv(PrivacyController.withdraw)
+);
+router.post(
+    '/compliance/register/privacy-notice',
+    requireSuperAdminPage,
+    _pv(PrivacyController.publish)
+);
+router.post(
+    '/compliance/privacy/objections/:id(\\d+)/review',
+    requireSuperAdminPage,
+    _pv(PrivacyController.markReviewed)
+);
+router.post(
+    '/compliance/privacy/triggers/:id(\\d+)/resolve',
+    requireSuperAdminPage,
+    _pv(PrivacyController.resolveTrigger)
+);
 router.get(
     '/api/compliance/certifications',
     requireManagerOrAnyPermission('view_compliance'),

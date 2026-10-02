@@ -93,5 +93,6 @@
   "bp_action_certs": "Handle the {n} certifications expiring within 90 days.",
   "bp_footnote": "Figures computed over the stated scope. \"Not measured\" values are left blank and are never treated as zero.",
   "bp_open": "Open the board pack",
-  "kp_truncated": "This table shows only the first {shown} of the {total} sole-holder skills identified. The full list is under Continuity → Key-person risk."
+  "kp_truncated": "This table shows only the first {shown} of the {total} sole-holder skills identified. The full list is under Continuity → Key-person risk.",
+  "kp_holder_objection": "Not named (objection to profiling)"
 }

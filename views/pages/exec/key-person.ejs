@@ -172,7 +172,7 @@
                   <span class="text-muted"><%= __('exec:kp_no_holder') %></span>
                 <% } else { %>
                   <% r.holders.forEach(function (h, i) { %>
-                    <% if (i) { %>, <% } %><a href="/employees/<%= h.id %>"><%= h.name %></a><% if (h.roleName) { %> <span class="text-muted small">(<%= h.roleName %>)</span><% } %>
+                    <% if (i) { %>, <% } %><% if (h.objection) { %><span class="text-muted"><%= __('exec:kp_holder_objection') %></span><% } else { %><a href="/employees/<%= h.id %>"><%= h.name %></a><% if (h.roleName) { %> <span class="text-muted small">(<%= h.roleName %>)</span><% } %><% } %>
                   <% }); %>
                 <% } %>
                 <% if (r.blockedByCert > 0) { %>
