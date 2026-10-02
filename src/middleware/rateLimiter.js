@@ -3,7 +3,10 @@
  * Protects against brute force attacks and API abuse
  */
 
-const rateLimit = require('express-rate-limit');
+// v8: custom keyGenerators must pass IP fallbacks through ipKeyGenerator so an
+// IPv6 client is bucketed by its /56 subnet (the default keyGenerator does the
+// same); a raw req.ip let one host rotate through its subnet to dodge the limit.
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const crypto = require('crypto');
 const LoginAttemptModel = require('../models/LoginAttemptModel');
 const LogService = require('../services/LogService');
@@ -326,7 +329,7 @@ const apiRateLimiter = rateLimit({
             );
         const k = req._apiKey;
         if (k && (k.id != null || k.label)) return 'apikey:' + (k.id != null ? k.id : k.label);
-        return req.ip;
+        return ipKeyGenerator(req.ip);
     },
 });
 
@@ -341,7 +344,9 @@ const writeActionLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req) =>
-        req.user && req.user.id != null ? `${req.user.userType || 'u'}:${req.user.id}` : req.ip,
+        req.user && req.user.id != null
+            ? `${req.user.userType || 'u'}:${req.user.id}`
+            : ipKeyGenerator(req.ip),
 });
 
 /**
@@ -375,7 +380,7 @@ const _accountReauthLimiter = rateLimit({
     keyGenerator: (req) =>
         req.user && req.user.id != null
             ? `acct:${req.user.userType || 'u'}:${req.user.id}`
-            : `acct-ip:${req.ip}`,
+            : `acct-ip:${ipKeyGenerator(req.ip)}`,
     skipSuccessfulRequests: true,
     requestWasSuccessful: (req, res) =>
         res.statusCode < 400 && _flashErrorCount(req) <= (req._acctFlashErrorsBefore || 0),
