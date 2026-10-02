@@ -186,7 +186,7 @@ class HrisSyncService {
             }
         }
         const encrypted = Object.keys(creds).length
-            ? secretBox.encrypt(JSON.stringify(creds))
+            ? secretBox.encrypt(JSON.stringify(creds), 'hris')
             : null;
 
         await db.runTransaction(async () => {

@@ -49,7 +49,8 @@ describe('session cookie', () => {
         const cookie = SRC.slice(SRC.indexOf('cookie: {'), SRC.indexOf('cookie: {') + 400);
         expect(cookie).toMatch(/httpOnly:\s*true/);
         expect(cookie).toMatch(/sameSite:\s*'(lax|strict)'/);
-        expect(cookie).toMatch(/maxAge:\s*Number\(process\.env\.SESSION_MAX_HOURS \|\| 24\)/);
+        // Absolute ceiling 12 h by default since migration 162 (ASVS 3.3.2; it was 24 h).
+        expect(cookie).toMatch(/maxAge:\s*Number\(process\.env\.SESSION_MAX_HOURS \|\| 12\)/);
     });
     test('proxies are not trusted by default', () => {
         expect(SRC).toMatch(/app\.set\('trust proxy', false\)/);

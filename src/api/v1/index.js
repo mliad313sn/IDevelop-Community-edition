@@ -11,7 +11,6 @@
 const express = require('express');
 const router = express.Router();
 const RBACService = require('../../services/RBACService');
-const appConfig = require('../../config/app');
 const ApiKeyService = require('../../services/ApiKeyService');
 const AdminModel = require('../../models/AdminModel');
 const sso = require('../../config/sso');
@@ -78,7 +77,15 @@ const apiAuth = async (req, res, next) => {
         });
     }
 
-    const key = req.headers['x-api-key'] || bearer || req.query.apiKey;
+    // Header first; `?apiKey=` only for a key with the legacy flag (migration 163).
+    const {
+        presentedApiKey,
+        queryKeyAllowed,
+        QUERY_KEY_REFUSED,
+        legacySharedKey,
+    } = require('../../middleware/apiAuth');
+    const presented = presentedApiKey(req);
+    const key = presented ? presented.key : null;
     if (key) {
         try {
             const principal = await ApiKeyService.validate(key);
@@ -88,6 +95,8 @@ const apiAuth = async (req, res, next) => {
                 const { feedScopeAllowed } = require('../../middleware/apiAuth');
                 if (!feedScopeAllowed('v1', principal.scope))
                     return res.status(403).json({ error: 'insufficient_scope' });
+                if (!queryKeyAllowed(presented.source, principal))
+                    return res.status(401).json(QUERY_KEY_REFUSED);
                 if (principal.ownerAdminId != null) {
                     // Per-profile key: run AS the owning admin so this read API
                     // (RBAC-scoped, like the EJS app) returns ONLY that profile's
@@ -116,7 +125,12 @@ const apiAuth = async (req, res, next) => {
         } catch (e) {
             /* fall through to legacy / 401 */
         }
-        if (appConfig.apiKey && _safeEqual(key, appConfig.apiKey)) {
+        // Never APP_KEY (S-02): the same guard as middleware/apiAuth. This
+        // router used to compare against the raw configured key directly.
+        const legacy = legacySharedKey();
+        if (legacy && _safeEqual(key, legacy)) {
+            if (!queryKeyAllowed(presented.source, 'legacy.shared'))
+                return res.status(401).json(QUERY_KEY_REFUSED);
             req.user = {
                 id: 0,
                 userType: 'admin',
@@ -201,9 +215,33 @@ const apiSuperadminSession = (req, res, next) => {
     return res.status(403).json({ error: 'forbidden', hint: 'superadmin session required' });
 };
 
-// ---- Discovery (public) ----------------------------------------------------
-router.get('/openapi.json', (req, res) => res.json(openapi));
-router.get('/', (req, res) =>
+// ---- Discovery -------------------------------------------------------------
+// An anonymous caller learns only that the API answers: no version, no
+// endpoint list, no OpenAPI document (fingerprinting). The full discovery needs
+// a session or a valid key, or a loopback caller: the installer's post-deploy
+// checks (Deploy-OneShot / Repair-Install) read the version from
+// http://localhost:<port>/api/v1/ on the server itself.
+function _presentsCredential(req) {
+    const h = req.headers || {};
+    return !!(h['x-api-key'] || h.authorization || (req.query && req.query.apiKey));
+}
+function _discoveryOpen(req) {
+    const { isLoopbackUnforwarded } = require('../../middleware/apiAuth');
+    return (
+        isLoopbackUnforwarded(req) || !!(req.isAuthenticated && req.isAuthenticated() && req.user)
+    );
+}
+const discoveryAllowed = (req, res, next) => {
+    if (_discoveryOpen(req)) return next();
+    if (!_presentsCredential(req)) return res.json({ status: 'ok' });
+    return apiAuth(req, res, next);
+};
+router.get('/openapi.json', (req, res) => {
+    if (_discoveryOpen(req)) return res.json(openapi);
+    if (_presentsCredential(req)) return apiAuth(req, res, () => res.json(openapi));
+    return res.status(401).json({ error: 'unauthenticated' });
+});
+router.get('/', discoveryAllowed, (req, res) =>
     res.json({
         name: 'IDevelop API',
         version: openapi.info.version,
@@ -628,6 +666,23 @@ router.post(
             data: k,
             note: 'Store this key now — it is shown only once and cannot be retrieved later.',
         });
+    })
+);
+
+// The per-key "allow ?apiKey= in the URL (legacy Power BI)" switch (migration
+// 163). Superadmin SESSION only, like the rest of key management; audited.
+router.post(
+    '/admin/api-keys/:id/query-string',
+    apiSuperadminSession,
+    asyncH(async (req, res) => {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad_id' });
+        const b = req.body || {};
+        if (typeof b.allowed !== 'boolean')
+            return res.status(400).json({ error: 'allowed (boolean) required' });
+        const n = await ApiKeyService.setQueryKeyAllowed(id, b.allowed, req);
+        if (!n) return res.status(404).json({ error: 'not_found' });
+        res.json({ ok: true, id, allowQueryKey: b.allowed });
     })
 );
 

@@ -3,6 +3,20 @@ const { scopedEmployeeIds } = require('../utils/rbacScope');
 const { ilike } = require('../utils/searchSql');
 const { csvCell } = require('../utils/csvSafe');
 
+/**
+ * The SQL expression a client-supplied field name maps to, or null. OWN
+ * properties only: `fieldMapping['constructor']` used to return Object's
+ * constructor (truthy), which was then printed into the SQL as
+ * "function Object() { [native code] }" and failed as a server error. An
+ * unknown or inherited name is simply not a column (SA-19).
+ */
+function ownCol(fieldMapping, field) {
+    if (typeof field !== 'string' || !fieldMapping || !Object.hasOwn(fieldMapping, field))
+        return null;
+    const v = fieldMapping[field];
+    return typeof v === 'string' ? v : null;
+}
+
 class ReportBuilderService {
     /**
      * Get available data sources for report building
@@ -255,7 +269,8 @@ class ReportBuilderService {
                 );
                 break;
             default:
-                throw new Error('Invalid data source');
+                // A client mistake, answered 400, never a server error.
+                throw Object.assign(new Error('Invalid data source'), { status: 400 });
         }
 
         return {
@@ -273,17 +288,17 @@ class ReportBuilderService {
      * key the caller reads back from each row.
      */
     buildSelectList(selectedFields, fieldMapping) {
-        const known = (Array.isArray(selectedFields) ? selectedFields : []).filter(
-            (f) => fieldMapping[f]
+        const known = (Array.isArray(selectedFields) ? selectedFields : []).filter((f) =>
+            ownCol(fieldMapping, f)
         );
-        return known.map((f) => `${fieldMapping[f]} AS "${f}"`).join(', ');
+        return known.map((f) => `${ownCol(fieldMapping, f)} AS "${f}"`).join(', ');
     }
 
     /** Whitelisted GROUP BY expression list (drops unknown fields). */
     buildGroupList(groupBy, fieldMapping) {
         return (Array.isArray(groupBy) ? groupBy : [])
-            .filter((f) => fieldMapping[f])
-            .map((f) => fieldMapping[f])
+            .filter((f) => ownCol(fieldMapping, f))
+            .map((f) => ownCol(fieldMapping, f))
             .join(', ');
     }
 
@@ -308,11 +323,13 @@ class ReportBuilderService {
 
         // Whitelist: only fields present in fieldMapping reach the SQL. An unknown
         // field would otherwise emit `undefined AS <field>` (an unhandled 500).
-        const knownSel = (Array.isArray(selectedFields) ? selectedFields : []).filter(
-            (f) => fieldMapping[f]
+        const knownSel = (Array.isArray(selectedFields) ? selectedFields : []).filter((f) =>
+            ownCol(fieldMapping, f)
         );
         const cols = knownSel.length ? knownSel : [Object.keys(fieldMapping)[0]];
-        const selectFields = cols.map((field) => `${fieldMapping[field]} AS ${field}`).join(', ');
+        const selectFields = cols
+            .map((field) => `${ownCol(fieldMapping, field)} AS ${field}`)
+            .join(', ');
 
         let query = `
             SELECT ${selectFields}
@@ -349,8 +366,8 @@ class ReportBuilderService {
         // Apply grouping (whitelisted — unknown fields dropped, never interpolated)
         if (groupBy && groupBy.length > 0) {
             const groupFields = groupBy
-                .filter((f) => fieldMapping[f])
-                .map((field) => fieldMapping[field])
+                .filter((f) => ownCol(fieldMapping, f))
+                .map((field) => ownCol(fieldMapping, field))
                 .join(', ');
             if (groupFields) query += ` GROUP BY ${groupFields}`;
         }
@@ -358,10 +375,10 @@ class ReportBuilderService {
         // Apply sorting (whitelisted — an unknown sort field would yield ORDER BY undefined)
         if (sorting && sorting.length > 0) {
             const orderClauses = sorting
-                .filter((s) => fieldMapping[s.field])
+                .filter((s) => ownCol(fieldMapping, s.field))
                 .map(
                     (sort) =>
-                        `${fieldMapping[sort.field]} ${/^desc$/i.test(String(sort.direction).trim()) ? 'DESC' : 'ASC'}`
+                        `${ownCol(fieldMapping, sort.field)} ${/^desc$/i.test(String(sort.direction).trim()) ? 'DESC' : 'ASC'}`
                 )
                 .join(', ');
             if (orderClauses) query += ` ORDER BY ${orderClauses}`;
@@ -388,11 +405,13 @@ class ReportBuilderService {
         };
 
         // Whitelist: drop unknown fields before they land raw in the SELECT alias slot.
-        const knownSel = (Array.isArray(selectedFields) ? selectedFields : []).filter(
-            (f) => fieldMapping[f]
+        const knownSel = (Array.isArray(selectedFields) ? selectedFields : []).filter((f) =>
+            ownCol(fieldMapping, f)
         );
         const cols = knownSel.length ? knownSel : [Object.keys(fieldMapping)[0]];
-        const selectFields = cols.map((field) => `${fieldMapping[field]} AS ${field}`).join(', ');
+        const selectFields = cols
+            .map((field) => `${ownCol(fieldMapping, field)} AS ${field}`)
+            .join(', ');
 
         let query = `
             SELECT ${selectFields}
@@ -430,8 +449,8 @@ class ReportBuilderService {
         // Apply grouping (whitelisted — unknown fields dropped, never interpolated)
         if (groupBy && groupBy.length > 0) {
             const groupFields = groupBy
-                .filter((f) => fieldMapping[f])
-                .map((field) => fieldMapping[field])
+                .filter((f) => ownCol(fieldMapping, f))
+                .map((field) => ownCol(fieldMapping, field))
                 .join(', ');
             if (groupFields) query += ` GROUP BY ${groupFields}`;
         }
@@ -439,10 +458,10 @@ class ReportBuilderService {
         // Apply sorting (whitelisted — an unknown sort field would yield ORDER BY undefined)
         if (sorting && sorting.length > 0) {
             const orderClauses = sorting
-                .filter((s) => fieldMapping[s.field])
+                .filter((s) => ownCol(fieldMapping, s.field))
                 .map(
                     (sort) =>
-                        `${fieldMapping[sort.field]} ${/^desc$/i.test(String(sort.direction).trim()) ? 'DESC' : 'ASC'}`
+                        `${ownCol(fieldMapping, sort.field)} ${/^desc$/i.test(String(sort.direction).trim()) ? 'DESC' : 'ASC'}`
                 )
                 .join(', ');
             if (orderClauses) query += ` ORDER BY ${orderClauses}`;
@@ -508,8 +527,8 @@ class ReportBuilderService {
 
         // Whitelist (this source was the only builder that skipped it: an
         // unknown key emitted `undefined AS <key>` → an unhandled 500).
-        const knownSel = (Array.isArray(selectedFields) ? selectedFields : []).filter(
-            (f) => fieldMapping[f]
+        const knownSel = (Array.isArray(selectedFields) ? selectedFields : []).filter((f) =>
+            ownCol(fieldMapping, f)
         );
         const cols = knownSel.length ? knownSel : ['employeeName'];
 
@@ -540,7 +559,9 @@ class ReportBuilderService {
             });
         }
 
-        const selectFields = cols.map((field) => `${fieldMapping[field]} AS ${field}`).join(', ');
+        const selectFields = cols
+            .map((field) => `${ownCol(fieldMapping, field)} AS ${field}`)
+            .join(', ');
 
         let query = `
             SELECT ${selectFields}
@@ -573,17 +594,17 @@ class ReportBuilderService {
         }
         if (groupBy && groupBy.length > 0) {
             const groupFields = groupBy
-                .filter((f) => fieldMapping[f])
-                .map((f) => fieldMapping[f])
+                .filter((f) => ownCol(fieldMapping, f))
+                .map((f) => ownCol(fieldMapping, f))
                 .join(', ');
             if (groupFields) query += ` GROUP BY ${groupFields}`;
         }
         if (sorting && sorting.length > 0) {
             const orderClauses = sorting
-                .filter((s) => fieldMapping[s.field])
+                .filter((s) => ownCol(fieldMapping, s.field))
                 .map(
                     (sort) =>
-                        `${fieldMapping[sort.field]} ${/^desc$/i.test(String(sort.direction).trim()) ? 'DESC' : 'ASC'}`
+                        `${ownCol(fieldMapping, sort.field)} ${/^desc$/i.test(String(sort.direction).trim()) ? 'DESC' : 'ASC'}`
                 )
                 .join(', ');
             if (orderClauses) query += ` ORDER BY ${orderClauses}`;
@@ -603,11 +624,13 @@ class ReportBuilderService {
             createdAt: 'sk.createdAt',
         };
 
-        const knownSel = (Array.isArray(selectedFields) ? selectedFields : []).filter(
-            (f) => fieldMapping[f]
+        const knownSel = (Array.isArray(selectedFields) ? selectedFields : []).filter((f) =>
+            ownCol(fieldMapping, f)
         );
         const cols = knownSel.length ? knownSel : [Object.keys(fieldMapping)[0]];
-        const selectFields = cols.map((field) => `${fieldMapping[field]} AS ${field}`).join(', ');
+        const selectFields = cols
+            .map((field) => `${ownCol(fieldMapping, field)} AS ${field}`)
+            .join(', ');
 
         let query = `
             SELECT ${selectFields}
@@ -634,8 +657,8 @@ class ReportBuilderService {
         // Apply grouping (whitelisted — unknown fields dropped, never interpolated)
         if (groupBy && groupBy.length > 0) {
             const groupFields = groupBy
-                .filter((f) => fieldMapping[f])
-                .map((field) => fieldMapping[field])
+                .filter((f) => ownCol(fieldMapping, f))
+                .map((field) => ownCol(fieldMapping, field))
                 .join(', ');
             if (groupFields) query += ` GROUP BY ${groupFields}`;
         }
@@ -643,10 +666,10 @@ class ReportBuilderService {
         // Apply sorting (whitelisted — an unknown sort field would yield ORDER BY undefined)
         if (sorting && sorting.length > 0) {
             const orderClauses = sorting
-                .filter((s) => fieldMapping[s.field])
+                .filter((s) => ownCol(fieldMapping, s.field))
                 .map(
                     (sort) =>
-                        `${fieldMapping[sort.field]} ${/^desc$/i.test(String(sort.direction).trim()) ? 'DESC' : 'ASC'}`
+                        `${ownCol(fieldMapping, sort.field)} ${/^desc$/i.test(String(sort.direction).trim()) ? 'DESC' : 'ASC'}`
                 )
                 .join(', ');
             if (orderClauses) query += ` ORDER BY ${orderClauses}`;
@@ -670,9 +693,11 @@ class ReportBuilderService {
 
         // Drop unknown field keys before they reach the SQL text (defense-in-depth;
         // an unknown key would otherwise emit `undefined AS <raw>`).
-        const safeFields = (selectedFields || []).filter((f) => fieldMapping[f]);
+        const safeFields = (selectedFields || []).filter((f) => ownCol(fieldMapping, f));
         const cols = safeFields.length ? safeFields : ['roleName'];
-        const selectFields = cols.map((field) => `${fieldMapping[field]} AS ${field}`).join(', ');
+        const selectFields = cols
+            .map((field) => `${ownCol(fieldMapping, field)} AS ${field}`)
+            .join(', ');
 
         // Scope the employee COUNT to the caller's RBAC scope — this source previously
         // ignored scope, so a site-limited admin could read org-wide headcount per role.
@@ -710,15 +735,15 @@ class ReportBuilderService {
         // Apply grouping (whitelisted — unknown fields dropped, never interpolated)
         if (groupBy && groupBy.length > 0) {
             const groupFields = groupBy
-                .filter((f) => fieldMapping[f])
-                .map((field) => fieldMapping[field])
+                .filter((f) => ownCol(fieldMapping, f))
+                .map((field) => ownCol(fieldMapping, field))
                 .join(', ');
             if (groupFields) query += ` GROUP BY ${groupFields}`;
         } else if (selectedFields.includes('employeeCount')) {
             // Auto-group if counting employees
             const nonAggregateFields = selectedFields
-                .filter((f) => f !== 'employeeCount' && fieldMapping[f])
-                .map((f) => fieldMapping[f]);
+                .filter((f) => f !== 'employeeCount' && ownCol(fieldMapping, f))
+                .map((f) => ownCol(fieldMapping, f));
             if (nonAggregateFields.length > 0) {
                 query += ` GROUP BY ${nonAggregateFields.join(', ')}`;
             }
@@ -727,10 +752,10 @@ class ReportBuilderService {
         // Apply sorting (whitelisted — an unknown sort field would yield ORDER BY undefined)
         if (sorting && sorting.length > 0) {
             const orderClauses = sorting
-                .filter((s) => fieldMapping[s.field])
+                .filter((s) => ownCol(fieldMapping, s.field))
                 .map(
                     (sort) =>
-                        `${fieldMapping[sort.field]} ${/^desc$/i.test(String(sort.direction).trim()) ? 'DESC' : 'ASC'}`
+                        `${ownCol(fieldMapping, sort.field)} ${/^desc$/i.test(String(sort.direction).trim()) ? 'DESC' : 'ASC'}`
                 )
                 .join(', ');
             if (orderClauses) query += ` ORDER BY ${orderClauses}`;
@@ -751,11 +776,13 @@ class ReportBuilderService {
             isActive: 'sv.isActive',
         };
 
-        const knownSel = (Array.isArray(selectedFields) ? selectedFields : []).filter(
-            (f) => fieldMapping[f]
+        const knownSel = (Array.isArray(selectedFields) ? selectedFields : []).filter((f) =>
+            ownCol(fieldMapping, f)
         );
         const cols = knownSel.length ? knownSel : [Object.keys(fieldMapping)[0]];
-        const selectFields = cols.map((field) => `${fieldMapping[field]} AS ${field}`).join(', ');
+        const selectFields = cols
+            .map((field) => `${ownCol(fieldMapping, field)} AS ${field}`)
+            .join(', ');
 
         // The scope belongs in the JOIN, not the WHERE — same as the role report
         // above. A condition on a LEFT-JOINed table placed in WHERE silently makes
@@ -794,15 +821,15 @@ class ReportBuilderService {
         // Apply grouping (whitelisted — unknown fields dropped, never interpolated)
         if (groupBy && groupBy.length > 0) {
             const groupFields = groupBy
-                .filter((f) => fieldMapping[f])
-                .map((field) => fieldMapping[field])
+                .filter((f) => ownCol(fieldMapping, f))
+                .map((field) => ownCol(fieldMapping, field))
                 .join(', ');
             if (groupFields) query += ` GROUP BY ${groupFields}`;
         } else if (selectedFields.includes('employeeCount')) {
             // Auto-group if counting employees
             const nonAggregateFields = selectedFields
-                .filter((f) => f !== 'employeeCount' && fieldMapping[f])
-                .map((f) => fieldMapping[f]);
+                .filter((f) => f !== 'employeeCount' && ownCol(fieldMapping, f))
+                .map((f) => ownCol(fieldMapping, f));
             if (nonAggregateFields.length > 0) {
                 query += ` GROUP BY ${nonAggregateFields.join(', ')}`;
             }
@@ -811,10 +838,10 @@ class ReportBuilderService {
         // Apply sorting (whitelisted — an unknown sort field would yield ORDER BY undefined)
         if (sorting && sorting.length > 0) {
             const orderClauses = sorting
-                .filter((s) => fieldMapping[s.field])
+                .filter((s) => ownCol(fieldMapping, s.field))
                 .map(
                     (sort) =>
-                        `${fieldMapping[sort.field]} ${/^desc$/i.test(String(sort.direction).trim()) ? 'DESC' : 'ASC'}`
+                        `${ownCol(fieldMapping, sort.field)} ${/^desc$/i.test(String(sort.direction).trim()) ? 'DESC' : 'ASC'}`
                 )
                 .join(', ');
             if (orderClauses) query += ` ORDER BY ${orderClauses}`;
@@ -838,7 +865,7 @@ class ReportBuilderService {
         const logic = String(filters.logic).toUpperCase() === 'OR' ? 'OR' : 'AND';
 
         filters.conditions.forEach((filter) => {
-            const field = fieldMapping[filter.field];
+            const field = ownCol(fieldMapping, filter.field);
             if (!field) return;
 
             const { condition, params } = this.buildSingleFilter(
@@ -1174,3 +1201,4 @@ class ReportBuilderService {
 }
 
 module.exports = new ReportBuilderService();
+module.exports.ownCol = ownCol;

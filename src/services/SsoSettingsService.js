@@ -41,8 +41,9 @@ function readSecret(v, name) {
 
 /** Stored (non-empty) but undecryptable — distinct from "never set". */
 function isUndecryptable(v) {
+    // Any sealed format (v2 now, v1 before): the prefix test must follow secretBox.
     return (
-        v !== null && v !== undefined && String(v).startsWith('enc:v1:') && readSecret(v) === null
+        v !== null && v !== undefined && secretBox.isEncrypted(String(v)) && readSecret(v) === null
     );
 }
 
@@ -470,7 +471,7 @@ async function applyMetadata({ parsed, metadataUrl, base }, adminId) {
     const set = (key, value, desc, secret) =>
         AppSettingsModel.setValue(
             key,
-            secret ? secretBox.encrypt(value) : value,
+            secret ? secretBox.encrypt(value, 'sso') : value,
             'string',
             desc,
             CATEGORY,
@@ -651,7 +652,7 @@ async function save(body, adminId) {
                 if (raw === undefined || String(raw).trim() === '') continue;
                 await AppSettingsModel.setValue(
                     f.db,
-                    secretBox.encrypt(String(raw)),
+                    secretBox.encrypt(String(raw), 'sso'),
                     'string',
                     `SSO ${p.key} ${f.name}`,
                     CATEGORY,

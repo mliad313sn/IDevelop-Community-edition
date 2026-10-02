@@ -779,12 +779,19 @@ describe('S16 — apiRequireWrite rejects a read-only viewer', () => {
 });
 
 describe('S17 — the origin guard only honours a credential that validates', () => {
+    // The guard and the credential check moved to src/middleware/httpHardening.js;
+    // server.js wires one into the other.
     const src = read('server.js');
+    const hh = read('src/middleware/httpHardening.js');
     test('hasApiKey comes from _validatedApiCredential (ApiKeyService.validate / legacy key), never from the raw header', () => {
-        expect(src).toMatch(/async function _validatedApiCredential\(req\)/);
-        expect(src).toMatch(/require\('\.\/src\/services\/ApiKeyService'\)\.validate\(key\)/);
-        expect(src).toMatch(/hasApiKey = await _validatedApiCredential\(req\)/);
-        expect(src).not.toMatch(/const hasApiKey = !!\(req\.headers\['x-api-key'\]/);
+        expect(src).toMatch(
+            /const _validatedApiCredential = httpHardening\.makeValidatedApiCredential\(\)/
+        );
+        expect(src).toMatch(/validatedCredential: _validatedApiCredential/);
+        expect(hh).toMatch(/require\('\.\.\/services\/ApiKeyService'\)/);
+        expect(hh).toMatch(/await getApiKeys\(\)\.validate\(key\)/);
+        expect(hh).toMatch(/hasCredential = await validatedCredential\(req\)/);
+        expect(src + hh).not.toMatch(/const hasApiKey = !!\(req\.headers\['x-api-key'\]/);
     });
 });
 

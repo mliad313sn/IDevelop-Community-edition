@@ -39,7 +39,12 @@ function spValues(base, configured = {}) {
     const b = String(base || '').replace(/\/+$/, '');
     return {
         entityId: configured.issuer || `${b}/saml/metadata`,
-        acsUrl: configured.callbackUrl || `${b}/auth/sso/saml/callback`,
+        // ALWAYS the canonical ACS. The page used to echo the configured value,
+        // so a mistyped reply URL (e.g. ".../auth/saml/saml/callback") was handed
+        // back to the operator as the value to paste into the IdP. A configured
+        // value that differs is named by the SSO page's mismatch warning instead
+        // (SsoSettingsController.callbackMismatch).
+        acsUrl: `${b}/auth/sso/saml/callback`,
         signOnUrl: `${b}/auth/sso/saml`,
         metadataUrl: `${b}/saml/metadata`,
         // Claims the app reads (config/sso.js SAML_CLAIMS), as named in Entra.

@@ -109,6 +109,143 @@ project uses [Semantic Versioning](https://semver.org/).
   package root is an allow-list, `.gitleaks.toml` and `.dockerignore` no longer
   ship, and an `-IncludeData` package fails on any secret-table row.
 
+### Security
+
+- API rate limit: a request carrying an unknown key no longer gets a bucket of
+  its own. The per-address bucket always applies; only a key that validates
+  (an `api_keys` row or the legacy shared key) earns a second, per-key bucket
+  (`API_IP_RATE_LIMIT`, default `API_RATE_LIMIT`).
+- Sign-in fails closed when the MFA state cannot be read (it used to open the
+  session on the password alone).
+- Timing: an unknown, inactive, locked or not-yet-activated identifier costs the
+  same bcrypt comparison as a real account; the password-reset mail is sent
+  without holding the answer.
+- Re-issuing MFA backup codes invalidates the unused older ones.
+- A CSRF failure logs a short hash of the session id, never the id itself.
+- Report builder and import: field names are looked up as own properties only
+  (an inherited name such as `constructor` is not a column), an unknown data
+  source is a 400, and `BaseModel.create()` checks column identifiers as
+  `update()` does.
+- `/api/v1` applies the same `APP_KEY` guard to the legacy shared key as the
+  other API surfaces.
+- The installer package no longer ships `.gitleaks.toml` or `.dockerignore`.
+- The SSO page always shows the canonical SAML reply URL
+  (`/auth/sso/saml/callback`), never a mistyped configured value.
+- SSO reply URLs: a base URL that points at a page of the app (`…/login`,
+  `…/dashboard`, `…/auth/…`) is normalised to the application root, with a
+  warning in the log; `/login/auth/sso/:provider/callback` is answered by the
+  same handler and `/login/login` redirects to `/login`; the SAML reply URL
+  configured on the SSO page is answered too when it differs from the
+  canonical one (same handler and checks; the origin guard and the CSRF skip
+  accept it). The SSO settings page receives `callbackMismatch` to name the
+  address to register instead.
+- **Secrets at rest (audit SA-18 closed). `APP_KEY` is now required in
+  production:** the service refuses to start when it is missing, shorter than
+  32 characters or a placeholder, and `SESSION_SECRET` is never used as an
+  encryption key there.
+    - secretBox v2: `enc:v2:<purpose>:…`, AES-256-GCM under HKDF-SHA256 of
+      `APP_KEY`, the purpose bound as additional data. Existing `enc:v1:` values
+      stay readable and are re-encrypted on their next write or by the rotation
+      script.
+    - MFA secrets v2 (HKDF over the whole `APP_KEY` instead of its first 32
+      characters); a v1 secret is re-encrypted after its next successful use.
+      Confirming an already-active MFA enrolment is refused, and the code used to
+      confirm is consumed.
+    - The SMTP password and the AI provider key are encrypted in `app_settings`
+      (lazily for existing values), shown only as a mask, never exported to JSON,
+      never imported from JSON and never copied into snapshots; snapshots taken
+      earlier are scrubbed once at start-up.
+    - `scripts/rotate-app-key.js` re-encrypts every store, v1 and v2: app
+      settings, LMS, webhooks, safety gate, HRIS connector credentials and MFA
+      secrets.
+- **Two-factor authentication is mandatory** for every administrator role and
+  for managers who sign in with a password (SSO sessions rely on the identity
+  provider's MFA), migration 162. An upgraded install gets a grace period
+  (14 days for administrators, 30 for managers) with a countdown at each
+  sign-in; a new install enforces it at once. The gate fails closed, and so
+  does the per-account `mfa_required` policy. SuperAdmins can switch the
+  policies off (`mfaRequiredForPrivileged`, `mfaRequiredForManagers`).
+- **Session defaults: 30 minutes idle, 12 hours absolute** (they were 60 min
+  and 24 h). An upgrade changes them only where the old default was never
+  changed.
+- Sign-in throttling: progressive delays per (address, identifier) and per
+  endpoint, a per-address ceiling high enough for a site behind one address
+  (`LOGIN_IP_CEILING`, default 100); administrator accounts are locked after
+  10 failures (`ADMIN_HARD_LOCK_AFTER`) and the SuperAdmins alerted; other
+  accounts are slowed, never refused, and the person is notified. A wrong
+  current password on `/change-password` or a wrong code at `/login/mfa`,
+  `/v2/uam/mfa/verify` or `/v2/uam/mfa/disable` counts toward the lockout,
+  and those checks are rate-limited per user.
+- **API keys go in headers** (`X-API-Key`, or an opaque bearer token in
+  `Authorization`). A key in the URL (`?apiKey=`) is refused with a 401 that shows the
+  header form, except for a key that carries the per-key compatibility flag
+  (migration 163: keys that existed at the upgrade keep it, new keys never get
+  it) or the env shared key with `API_KEY_QUERY_STRING=1`. A SuperAdmin
+  switches the flag per key (`POST /api/v1/admin/api-keys/:id/query-string`,
+  audited). In Power Query:
+  `Web.Contents(url, [Headers=[#"X-API-Key"="ak_…"]])`.
+- **Security-class settings are SuperAdmin-only** (refused server-side,
+  audited): authentication, sessions, MFA, SSO, onboarding, data retention,
+  AI/copilot, API, backup, the public base URL, the outgoing mail server and
+  HRIS. Operational settings stay delegable (`manage_app_settings`). The
+  settings page receives `locked` / `securityClass` per row for a read-only
+  badge.
+- **SMTP requires TLS.** STARTTLS is mandatory (`requireTLS`), so an attacker
+  cannot strip it and credentials are never sent in clear. Product decision:
+  one internal relay may be exempted by a SuperAdmin
+  (`POST /app-settings/smtp/plaintext-relay`, reason mandatory, audited); it
+  must resolve to a private or loopback address, it is reached at the pinned
+  address, and SMTP credentials are still never sent to it without TLS. The
+  dashboard and the settings page receive the relay status for a permanent
+  warning.
+- **Copilot egress gate (audit SA-17).** Product decision, safe by default:
+  a private, loopback or link-local AI target is refused unless a SuperAdmin
+  lists it in `copilotAllowedPrivateHosts` (or `copilotTrustedHosts`); plain
+  http only for an allow-listed loopback model without an API key; the
+  connection is pinned to the checked address and redirects are refused; an
+  external provider stays blocked until a SuperAdmin records the legal basis
+  of the transfer and the processor-agreement acknowledgement for that
+  provider and host (`/app-settings/copilot/transfer-basis`, audited,
+  withdrawable). A blocked call answers with the built-in engine and sends
+  nothing. `COPILOT_BLOCK_PRIVATE_HOSTS` is no longer read.
+- **SQL console secret guard.** The SuperAdmin SQL console refuses, read and
+  write, every statement that reaches sessions, second factors, reset tokens,
+  password and API-key hashes, LMS, webhook and safety-gate secrets, HRIS
+  connector credentials and secret settings. The script is tokenised the way
+  PostgreSQL reads it (comments, quoted and qualified names, views, routine
+  and `DO` bodies, computed dynamic SQL), and the doors to the same data are
+  closed (server files, large objects, `dblink`, `*_to_xml`, `SET ROLE`,
+  role and extension management). Each refusal is audited
+  (`SQL_CONSOLE_SECRET_REFUSED`); a top-level `SELECT *` that is allowed has
+  its secret cells masked.
+- **Migration 167: `sqlconsole_reader` role.** Pure reads from the console
+  run under a read-only role that has no privilege on the secret tables or
+  columns (column-level grants, including `hris_connectors.credentials`). Once
+  it exists, `SELECT *` on a table with a secret column is refused by
+  PostgreSQL and the console asks for a column list. Without CREATEROLE the
+  migration logs a notice and the application guard still applies. A later
+  migration that adds tables must repeat its grant block (CONTRIBUTING.md).
+- HTTP hardening moved into `src/middleware/httpHardening.js`, with tests:
+    - JSON detection is anchored on the MIME essence, so
+      `text/plain; x=application/json` no longer skips the CSRF check;
+    - `Origin: null` is refused on every state-changing request unless a machine
+      credential validates, and a malformed `Origin` is refused on form posts too;
+    - pages send `Referrer-Policy: same-origin` (our own form posts then carry a
+      real `Origin`); `/api` and `/scim` keep `no-referrer`;
+    - `Permissions-Policy` also denies Bluetooth and the Topics API;
+    - the session cookie is `__Host-app.sid` whenever it is always `Secure`
+      (`COOKIE_SECURE=1` or built-in TLS); an existing `app.sid` session is
+      carried over once, so nobody is signed out by the upgrade;
+    - logout sends `Clear-Site-Data: "cache"`;
+    - `/health` and `/readyz` answer the status only, unless the caller passes the
+      `/metrics` gate, which now also accepts `METRICS_ALLOW_IPS`;
+    - an anonymous remote `GET /api/v1/` returns `{status:'ok'}` only and
+      `/api/v1/openapi.json` needs a session, a valid key or a loopback caller
+      (the installer's local check still reads the version);
+    - `system_logs` no longer records every successful mutation (`HTTP_POST`…);
+      it keeps 401, 403 and 5xx. Authenticated mutations stay in the bounded
+      activity trail (`perf_events`).
+
 ## [1.0.0] — 2026-09-29
 
 First public release of **IDevelop Community Edition**.

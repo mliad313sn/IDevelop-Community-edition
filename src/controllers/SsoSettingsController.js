@@ -92,9 +92,10 @@ class SsoSettingsController {
                     callbackUrl: model.saml.callbackUrl,
                 }),
                 publicBase: base,
-                // A SAML reply URL that is not <base>/auth/sso/saml/callback (typically
-                // « …/login/auth/sso/saml/callback », from a base URL set to the sign-in
-                // page) is named, with the address to register instead.
+                // A SAML ACS that is not <base>/auth/sso/saml/callback (typically
+                // ".../login/auth/sso/saml/callback", from a base URL set to the
+                // sign-in page): named, with the address to register instead. The
+                // route answers both meanwhile (routes/index.js).
                 callbackMismatch: callbackMismatch(model.saml.callbackUrl, base),
                 // the breadcrumb printed the literal English "App Settings"
                 // on the French UI.
@@ -393,5 +394,6 @@ SsoSettingsController.prototype.setEmployeeException = async function (req, res)
 };
 
 module.exports = new SsoSettingsController();
-// Exposed for tests.
+// Exposed for tests (both names are used).
+module.exports.callbackMismatch = callbackMismatch;
 module.exports._callbackMismatch = callbackMismatch;

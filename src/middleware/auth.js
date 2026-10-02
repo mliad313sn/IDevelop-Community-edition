@@ -9,9 +9,9 @@ const { safeBackUrl } = require('../utils/safeRedirect');
 const bcrypt = require('bcrypt');
 
 // A bcrypt hash of a random secret per cost, so a refused identifier costs the
-// same comparison as a real one (A1 / S8 anti-enumeration). Built on first use.
-const _dummyHashes = new Map();
-const APP_BCRYPT_COST = 10; // the cost every password is hashed with (AuthService, resets)
+// same comparison as a real one (A1 / S8 anti-enumeration). Built on first use,
+// shared with AuthService and EmployeeAuthService (src/utils/dummyBcrypt.js).
+const { APP_BCRYPT_COST, dummyHash } = require('../utils/dummyBcrypt');
 function bcryptCost(hash) {
     const m = /^\$2[aby]?\$(\d{2})\$/.exec(String(hash || ''));
     const n = m ? Number(m[1]) : APP_BCRYPT_COST;
@@ -42,15 +42,6 @@ function superadminCost() {
     }
     return _superCost;
 }
-function dummyHash(cost = APP_BCRYPT_COST) {
-    if (!_dummyHashes.has(cost))
-        _dummyHashes.set(
-            cost,
-            bcrypt.hash(require('crypto').randomBytes(18).toString('base64'), cost)
-        );
-    return _dummyHashes.get(cost);
-}
-
 // Audit a refused/accepted break-glass attempt WITHOUT awaiting it: the time the
 // caller waits must not depend on which branch was taken.
 function authLog(ctx, action, details, adminId = null) {

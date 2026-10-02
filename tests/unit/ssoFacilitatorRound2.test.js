@@ -151,27 +151,43 @@ describe('F4 / F5 — metadata fetch', () => {
 
 describe('SCIM — reachable by a real identity provider', () => {
     test('an opaque Bearer token is accepted as an API key (JWTs stay for Entra)', () => {
+        // One resolver, presentedApiKey: header, then an OPAQUE bearer, then
+        // ?apiKey= (reported as 'query', honoured only for flagged keys, migration 163).
         const m = code('src/middleware/apiAuth.js');
-        expect(m).toMatch(
-            /const opaqueBearer = bearer && !sso\.looksLikeJwt\(bearer\) \? bearer : null;/
+        expect(m).toMatch(/function presentedApiKey/);
+        const { presentedApiKey } = require('../../src/middleware/apiAuth');
+        expect(presentedApiKey({ headers: { authorization: 'Bearer opaque-scim-token' } })).toEqual(
+            { key: 'opaque-scim-token', source: 'bearer' }
         );
-        expect(m).toMatch(/req\.headers\['x-api-key'\] \|\| opaqueBearer \|\| req\.query\.apiKey/);
+        expect(
+            presentedApiKey({ headers: { authorization: 'Bearer aaa.bbb.ccc' }, query: {} })
+        ).toBeNull();
+        expect(presentedApiKey({ headers: {}, query: { apiKey: 'k' } })).toEqual({
+            key: 'k',
+            source: 'query',
+        });
     });
     test('application/scim+json is JSON for the parser, the origin guard and the CSRF skip', () => {
+        // The JSON media types and the predicate moved to
+        // src/middleware/httpHardening.js, shared by the parser (server.js), the
+        // origin guard and the CSRF skip; the predicate is now anchored on the
+        // MIME essence.
         const s = read('server.js');
-        expect(s).toMatch(/const _JSON_TYPES = \['application\/json', 'application\/\*\+json'\];/);
+        const H = require('../../src/middleware/httpHardening');
+        expect(H.JSON_TYPES).toEqual(['application/json', 'application/*+json']);
+        expect(s).toMatch(/const _JSON_TYPES = \[\.\.\.httpHardening\.JSON_TYPES\];/);
         expect(s).toMatch(/express\.json\(\{[^}]*type: _JSON_TYPES/);
-        const isJson = new Function(
-            'ct',
-            'return ' +
-                /const _isJsonType = \(ct\) => (.*);/
-                    .exec(s)[1]
-                    .replace(/String\(ct \|\| ''\)/, "String(ct || '')")
-        );
-        expect(isJson('application/scim+json; charset=utf-8')).toBe(true);
-        expect(isJson('application/json')).toBe(true);
-        expect(isJson('application/x-www-form-urlencoded')).toBe(false);
-        expect((s.match(/_isJsonType\(req\.headers\['content-type'\]\)/g) || []).length).toBe(2);
+        expect(H.isJsonType('application/scim+json; charset=utf-8')).toBe(true);
+        expect(H.isJsonType('application/json')).toBe(true);
+        expect(H.isJsonType('application/x-www-form-urlencoded')).toBe(false);
+        const hh = read('src/middleware/httpHardening.js');
+        expect(
+            (
+                hh.match(
+                    /isJsonType\(req\.headers(\['content-type'\]| && req\.headers\['content-type'\])\)/g
+                ) || []
+            ).length
+        ).toBe(2);
     });
     test('a PATCH without Operations is 400 invalidSyntax, never a silent 200', () => {
         expect(code('src/routes/scim.js')).toMatch(

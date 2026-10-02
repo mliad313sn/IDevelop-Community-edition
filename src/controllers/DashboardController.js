@@ -228,12 +228,24 @@ class DashboardController {
                 readerScope = { restricted: false };
             }
 
+            // Permanent warning when an unencrypted SMTP relay is in use: admin
+            // roles only; a read failure never blocks the dashboard.
+            let smtpRelay = null;
+            if (req.user && req.user.userType === 'admin') {
+                try {
+                    smtpRelay = await require('../services/EmailService').plaintextRelayStatus();
+                } catch (_) {
+                    smtpRelay = null;
+                }
+            }
+
             res.render('pages/dashboard', {
                 user: req.user,
                 filterOptions,
                 readerScope,
                 setupPending,
                 setupProgress,
+                smtpRelay,
                 // `title` (not just pageTitle) — the top bar and the browser <title>
                 // read `title`; passing only pageTitle left it undefined, so the header
                 // fell back to a hardcoded product name while the sidebar showed the
