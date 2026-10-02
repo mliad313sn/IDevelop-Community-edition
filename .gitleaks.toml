@@ -13,7 +13,7 @@ useDefault = true
 description = "unit-test fixture credentials (not real secrets)"
 regexTarget = "match"
 regexes = [
-  '''sk_live_opaqueapikey''',       # tests/unit/ssoConfig.test.js: opaque-key vs JWT detection
+  '''sk[_]live_opaqueapikey''',    # tests/unit/ssoConfig.test.js: opaque-key vs JWT detection
   '''legacy-env-key-0123456789''',  # tests/unit/c321-L2-apikey-feed-scope.test.js: legacy env key
 ]
 
