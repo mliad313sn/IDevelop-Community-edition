@@ -3686,5 +3686,13 @@
   "cpg_private_hosts_none": "None: every private, loopback or link-local AI address is refused.",
   "cpg_private_hosts_hint": "Set in copilotAllowedPrivateHosts (AI copilot settings above). Hosts listed in copilotTrustedHosts are allowed too.",
   "cpg_no_record": "No transfer basis is recorded.",
-  "smtp_relay_none": "No unencrypted relay is allowed: every SMTP server must use TLS."
+  "smtp_relay_none": "No unencrypted relay is allowed: every SMTP server must use TLS.",
+  "set_name_unreadNotificationRetentionDays": "Unread-notification retention (days)",
+  "set_desc_unreadNotificationRetentionDays": "Days to keep UNREAD in-app notifications before pruning. Blank = the same window as read notifications; 0 = keep forever. A notification scheduled for later is never pruned.",
+  "set_name_onboardingRejectedRetentionDays": "Rejected sign-up retention (days)",
+  "set_desc_onboardingRejectedRetentionDays": "Days after the decision before a rejected self-onboarding request is pseudonymised (name, e-mail, password, SSO subject and note removed; the decision, its date and who decided are kept). 0 = keep forever.",
+  "set_name_requireMalwareScan": "Antivirus scan of uploads required",
+  "set_desc_requireMalwareScan": "auto (default): required as soon as a scanner (ClamAV or Microsoft Defender) is detected. true: a file that could not be scanned is held and never served. false: files are served without a scan, marked as not scanned, with restricted access.",
+  "set_name_privacySelfExportPerHour": "“My data” downloads per hour",
+  "set_desc_privacySelfExportPerHour": "How many “my data” downloads (JSON or printable) one person may make per hour (1 to 100)."
 }

@@ -3686,5 +3686,13 @@
   "cpg_private_hosts_none": "Aucun : toute adresse IA privée, de bouclage ou lien-local est refusée.",
   "cpg_private_hosts_hint": "Réglage copilotAllowedPrivateHosts (réglages du copilote IA ci-dessus). Les hôtes listés dans copilotTrustedHosts sont aussi autorisés.",
   "cpg_no_record": "Aucune base de transfert n’est enregistrée.",
-  "smtp_relay_none": "Aucun relais non chiffré n’est autorisé : tout serveur SMTP doit utiliser TLS."
+  "smtp_relay_none": "Aucun relais non chiffré n’est autorisé : tout serveur SMTP doit utiliser TLS.",
+  "set_name_unreadNotificationRetentionDays": "Rétention des notifications non lues (jours)",
+  "set_desc_unreadNotificationRetentionDays": "Nombre de jours de conservation des notifications NON LUES avant purge. Vide = la même durée que pour les notifications lues ; 0 = conservation illimitée. Une notification programmée pour plus tard n’est jamais purgée.",
+  "set_name_onboardingRejectedRetentionDays": "Rétention des inscriptions refusées (jours)",
+  "set_desc_onboardingRejectedRetentionDays": "Nombre de jours après la décision avant la pseudonymisation d’une demande d’inscription refusée (nom, e-mail, mot de passe, identifiant SSO et note supprimés ; la décision, sa date et son auteur sont conservés). 0 = conservation illimitée.",
+  "set_name_requireMalwareScan": "Analyse antivirus des fichiers déposés exigée",
+  "set_desc_requireMalwareScan": "auto (par défaut) : exigée dès qu’un antivirus (ClamAV ou Microsoft Defender) est détecté. true : un fichier qui n’a pas pu être analysé est retenu et jamais servi. false : les fichiers sont servis sans analyse, marqués non analysés, avec un accès restreint.",
+  "set_name_privacySelfExportPerHour": "Téléchargements « mes données » par heure",
+  "set_desc_privacySelfExportPerHour": "Nombre de téléchargements « mes données » (JSON ou imprimable) qu’une personne peut faire par heure (de 1 à 100)."
 }

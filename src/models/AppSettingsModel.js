@@ -134,6 +134,14 @@ const CATALOG = {
     perfEventsRetentionDays: { min: 0, max: 3650, integer: true },
     notificationRetentionDays: { min: 0, max: 3650, integer: true },
     reminderLogRetentionDays: { min: 0, max: 3650, integer: true },
+    // Blank = follow notificationRetentionDays (read by jobs/telemetry-prune.js).
+    unreadNotificationRetentionDays: { min: 0, max: 3650, integer: true, optional: true },
+    onboardingRejectedRetentionDays: { min: 0, max: 3650, integer: true },
+    // Tri-state: 'auto' = required as soon as a scanner is detected
+    // (MalwareScanService.requireScan reads anything but true/false as auto).
+    requireMalwareScan: { enum: ['auto', 'true', 'false'] },
+    // Self-service "my data" downloads per person per hour (PrivacyService).
+    privacySelfExportPerHour: { min: 1, max: 100, integer: true },
     cycleAutoLock: { type: 'boolean' },
     // -1 = automatic closing off; 0 = close at the deadline.
     cycleAutoCloseGraceDays: { min: -1, max: 365, integer: true },
@@ -993,6 +1001,46 @@ class AppSettingsModel {
                 description:
                     'Days to keep the reminder ledger (reminder_log: one row per nudge sent) before pruning; 0 = keep forever. Audit logs are never pruned.',
                 category: 'jobs',
+            },
+            {
+                // Read by jobs/telemetry-prune.js. Blank (the default) = the same
+                // window as READ notifications.
+                key: 'unreadNotificationRetentionDays',
+                value: '',
+                type: 'number',
+                description:
+                    'Days to keep UNREAD in-app notifications before pruning. Blank = the same window as read notifications (notificationRetentionDays); 0 = keep forever. A notification scheduled for later is never pruned.',
+                category: 'jobs',
+            },
+            {
+                // Read by jobs/telemetry-prune.js (ONBOARDING_REJECTED_RETENTION_DAYS
+                // is the fallback).
+                key: 'onboardingRejectedRetentionDays',
+                value: String(Number(process.env.ONBOARDING_REJECTED_RETENTION_DAYS) || 180),
+                type: 'number',
+                description:
+                    'Days after the decision before a REJECTED self-onboarding request is pseudonymised (name, e-mail, password hash, SSO subject and note removed; the decision, its date and who decided are kept). 0 = keep forever.',
+                category: 'jobs',
+            },
+            {
+                // Security-class (SuperAdmin only, utils/securitySettings). The
+                // REQUIRE_MALWARE_SCAN environment variable still wins.
+                key: 'requireMalwareScan',
+                value: 'auto',
+                type: 'string',
+                description:
+                    'auto (default): an antivirus scan of uploads is required as soon as a scanner (ClamAV or Microsoft Defender) is detected. true: an upload that could not be scanned is held and never served. false: files are served even without a scan (marked as not scanned, restricted access).',
+                category: 'security',
+            },
+            {
+                // PrivacyService.exportLimit: a download is refused past this many in
+                // the last hour, per person (the ledger is the audit trail).
+                key: 'privacySelfExportPerHour',
+                value: '5',
+                type: 'number',
+                description:
+                    'How many "my data" downloads (JSON or printable) one person may make per hour (1-100).',
+                category: 'security',
             },
             {
                 key: 'sessionIdleMinutes',
