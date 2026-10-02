@@ -19,13 +19,16 @@
     "n/no-process-exit": "off",
     "n/no-missing-require": "off",
     "security/detect-object-injection": "off",
-    "security/detect-non-literal-fs-filename": "off"
+    "security/detect-non-literal-fs-filename": "warn"
   },
   "overrides": [
     {
       "files": ["tests/**/*.js", "**/*.test.js", "**/*.spec.js"],
       "env": { "jest": true },
-      "rules": { "n/no-unpublished-require": "off" }
+      "rules": {
+        "n/no-unpublished-require": "off",
+        "security/detect-non-literal-fs-filename": "off"
+      }
     },
     {
       "files": ["public/js/**/*.js"],
