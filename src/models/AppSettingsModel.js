@@ -86,6 +86,16 @@ const CATALOG = {
     smtpHost: { kind: 'host', optional: true },
     smtpPort: { min: 1, max: 65535, integer: true },
     smtpFromAddress: { kind: 'email', optional: true },
+    // ONE named private/loopback relay may be reached without TLS. Written only
+    // by EmailService.setPlaintextRelay (SuperAdmin, mandatory reason, audited),
+    // never by the generic settings form.
+    smtpPlaintextRelayHost: { readOnly: true },
+    smtpPlaintextRelayReason: { readOnly: true },
+    smtpPlaintextRelaySetBy: { readOnly: true },
+    // Private/loopback AI hosts a SuperAdmin explicitly allows (comma list of
+    // host or host:port), and the recorded external-transfer basis.
+    copilotAllowedPrivateHosts: { optional: true },
+    copilotTransferRecord: { readOnly: true },
     appBaseUrl: { kind: 'url', optional: true },
     invitationExpiryDays: { min: 0, max: 3650, integer: true },
     'onboarding.allowedDomains': { kind: 'domains', optional: true },
@@ -701,6 +711,14 @@ class AppSettingsModel {
                 type: 'string',
                 description:
                     'Comma-separated hostnames classified as INTERNAL AI servers — e.g. ai.mycompany.com. Localhost, *.local/*.lan/*.internal/*.corp and private-IP targets are internal automatically. Whether internal servers receive full or anonymized data is governed by copilotAnonymizationMode; EXTERNAL targets always receive anonymized data.',
+                category: 'copilot',
+            },
+            {
+                key: 'copilotAllowedPrivateHosts',
+                value: '',
+                type: 'string',
+                description:
+                    'Private, loopback or link-local AI hosts the copilot may call (comma list: host or host:port, e.g. localhost:11434, llm.lan). Hosts listed in copilotTrustedHosts are allowed too. Blank = none: every other private target is refused. Plain http is accepted only for a LOOPBACK host listed here and only without an API key.',
                 category: 'copilot',
             },
             {

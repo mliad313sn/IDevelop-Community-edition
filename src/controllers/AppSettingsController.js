@@ -4,6 +4,7 @@ const RBACService = require('../services/RBACService');
 const LogService = require('../services/LogService');
 const EmailService = require('../services/EmailService');
 const { validationResult } = require('express-validator');
+const { isSecurityClassSetting, canEditSetting } = require('../utils/securitySettings');
 
 class AppSettingsController {
     async index(req, res) {
@@ -32,6 +33,13 @@ class AppSettingsController {
             const jobState = [];
             settings.forEach((setting) => {
                 setting.rule = AppSettingsModel.ruleFor(setting.settingKey);
+                // Security-class settings are read-only below SuperAdmin (the
+                // update handler refuses them server-side whatever the page shows).
+                setting.securityClass = isSecurityClassSetting(
+                    setting.settingKey,
+                    setting.category
+                );
+                setting.locked = !canEditSetting(req.user, setting.settingKey, setting.category);
                 if (setting.rule.readOnly) {
                     jobState.push(setting);
                     return;
@@ -279,6 +287,23 @@ class AppSettingsController {
                 ];
             }
 
+            // The copilot egress gate (blocked reason, recorded transfer basis).
+            // A failure here never blocks the settings page.
+            let copilotPolicy = null;
+            try {
+                copilotPolicy = await require('../services/CopilotService').policyStatus();
+            } catch (_) {
+                copilotPolicy = null;
+            }
+            // The one named plaintext SMTP relay: permanent warning (and the
+            // SuperAdmin form). A read failure never blocks the page.
+            let smtpRelay = null;
+            try {
+                smtpRelay = await EmailService.plaintextRelayStatus();
+            } catch (_) {
+                smtpRelay = null;
+            }
+
             res.render('pages/app-settings/index', {
                 title: req.t ? req.t('chrome:pt_app_settings') : 'App Settings',
                 settings,
@@ -286,6 +311,9 @@ class AppSettingsController {
                 jobState,
                 settingError,
                 envInfo,
+                copilotPolicy,
+                smtpRelay,
+                isSuperAdmin: Boolean(req.user && req.user.role === 'superadmin'),
                 // Copilot provider presets — shown in the test card so an admin
                 // sees the supported engines + default models without docs.
                 copilotPresets: require('../services/CopilotService').presets(),
@@ -407,18 +435,27 @@ class AppSettingsController {
                 );
                 return res.redirect('/app-settings');
             }
-            const SENSITIVE_CATEGORIES = new Set(['onboarding', 'copilot']);
-            if (
-                SENSITIVE_CATEGORIES.has(currentSetting.category) &&
-                !(req.user && req.user.role === 'superadmin')
-            ) {
-                req.flash(
-                    'error',
-                    req.t
-                        ? req.t('flash:settings_onboarding_superadmin')
-                        : 'Only SuperAdmins can change self-service onboarding settings.'
-                );
-                return res.redirect('/app-settings');
+            // Every SECURITY-CLASS setting (auth, session, MFA, SSO, onboarding,
+            // retention, AI/copilot, API, backup, mail server, HRIS, public base
+            // URL) is read-only below SuperAdmin: refused here, whatever the page
+            // shows (a superset of the former onboarding/copilot-only rule).
+            if (!canEditSetting(req.user, currentSetting.settingKey, currentSetting.category)) {
+                try {
+                    await LogService.log({
+                        adminId: req.user ? req.user.id : null,
+                        action: 'APP_SETTING_UPDATE_REFUSED',
+                        entityType: 'appSetting',
+                        entityId: id,
+                        category: 'security',
+                        severity: 'warn',
+                        details: `Security-class setting ${currentSetting.settingKey} is SuperAdmin-only`,
+                        ipAddress: req.ip,
+                        userAgent: req.get ? req.get('user-agent') : null,
+                    });
+                } catch (_) {
+                    /* audit best-effort */
+                }
+                return refuse('security_superadmin', { key: currentSetting.settingKey });
             }
 
             // Secret fields are shown blank in the UI; an empty submission means

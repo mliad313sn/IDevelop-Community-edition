@@ -41,6 +41,7 @@
  *    shown as decision support, whether it was about people, and whether named
  *    ranking was allowed or withheld.
  */
+const net = require('net');
 const db = require('../config/database');
 const RBACService = require('./RBACService');
 const LogService = require('./LogService');
@@ -359,48 +360,327 @@ class CopilotService {
         return cfg;
     }
 
+    // ------------------------------------------------------------------
+    // EGRESS GATE
+    // Every outbound LLM call passes connectionGate() first:
+    //   - http(s) only, no credentials in the URL;
+    //   - an API key is NEVER sent over plain http;
+    //   - the host is resolved ONCE and every address checked: a private,
+    //     loopback, link-local, CGNAT, ULA or metadata address is refused unless
+    //     the host is allow-listed by a SuperAdmin (copilotAllowedPrivateHosts,
+    //     or copilotTrustedHosts, which already names an internal AI server).
+    //     Plain http is accepted only for a LOOPBACK host on that list and only
+    //     without a key;
+    //   - the connection is made to the address that was checked (pinned
+    //     lookup: DNS rebinding cannot swap it) and any redirect is refused;
+    //   - a PUBLIC (external) target, whatever the provider is called, needs a
+    //     recorded transfer basis and processor-agreement acknowledgement for
+    //     that provider AND host (recordTransferBasis). Without it the copilot
+    //     answers with the deterministic engine and nothing leaves the server.
+    //     An on-premises allow-listed target is exempt (no transfer).
+    // The residency rule (copilot.eu_only_providers) still applies on top.
+    // ------------------------------------------------------------------
+
+    static get TRANSFER_BASES() {
+        return ['adequacy', 'sccs', 'consent', 'authorization', 'other'];
+    }
+
+    _hostList(raw) {
+        return String(raw || '')
+            .toLowerCase()
+            .split(',')
+            .map((x) => x.trim())
+            .filter(Boolean);
+    }
+
+    /** host / host:port match against the SuperAdmin allow-list. */
+    _isAllowListed(u, list) {
+        const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+        const port = u.port || (u.protocol === 'https:' ? '443' : '80');
+        return list.some((entry) => {
+            // A bare IPv6 entry contains ':', so accept it whole as a host.
+            if (net.isIP(entry) === 6) return entry === host;
+            const m = /^\[?([^\]]+?)\]?(?::(\d+))?$/.exec(entry);
+            if (!m) return false;
+            return m[1] === host && (!m[2] || m[2] === port);
+        });
+    }
+
+    _isLoopback(ip) {
+        const a = String(ip || '').toLowerCase();
+        return a === '::1' || /^127\./.test(a) || /^::ffff:127\./.test(a);
+    }
+
+    /** Resolve a host (an IP literal passes through). Stubbable in tests. */
+    async _resolve(host) {
+        const fam = net.isIP(host);
+        if (fam) return [{ address: host, family: fam }];
+        return require('dns').promises.lookup(host, { all: true, verbatim: true });
+    }
+
+    /** The recorded external-transfer basis (or null when none, or withdrawn). */
+    async transferRecord() {
+        try {
+            const AppSettingsModel = require('../models/AppSettingsModel');
+            const rec = await AppSettingsModel.getValue('copilotTransferRecord', null);
+            return rec && typeof rec === 'object' && !rec.revokedAt ? rec : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _recordCovers(rec, cfg, u) {
+        return !!(
+            rec &&
+            rec.dpaAcknowledged === true &&
+            rec.provider === cfg.provider &&
+            String(rec.host || '').toLowerCase() === u.host.toLowerCase() &&
+            CopilotService.TRANSFER_BASES.includes(rec.basis)
+        );
+    }
+
     /**
-     * SSRF guard for the outbound LLM URL. ALWAYS: http(s) only + no redirects (in
-     * _callLlm). The private/loopback/link-local block is OPT-IN via
-     * COPILOT_BLOCK_PRIVATE_HOSTS=1 — because a fully on-prem deployment's flagship
-     * path is a LOCAL model (Ollama on localhost:11434 or an internal-LAN host), so
-     * blocking private ranges by default would break the primary use case. The real
-     * control against the delegated-admin SSRF vector is that copilot settings are
-     * superadmin-only (SENSITIVE_CATEGORIES); cloud/hardened installs can additionally
-     * set the env flag to forbid internal targets.
+     * Decide whether (and where) an LLM call may connect.
+     * @returns {Promise<{ok:boolean, code?:string, external?:boolean, pinned?:{address,family}, url?:URL}>}
+     *   codes: not_configured | bad_url | https_required | dns | private_host | transfer_basis_missing
      */
-    async _assertSafeUrl(rawUrl) {
+    async connectionGate(cfg) {
+        if (!cfg || cfg.provider === 'none' || !cfg.url)
+            return { ok: false, code: 'not_configured' };
         let u;
         try {
-            u = new URL(rawUrl);
+            u = new URL(cfg.url);
         } catch {
-            throw new Error('Invalid LLM URL.');
+            return { ok: false, code: 'bad_url' };
         }
-        if (u.protocol !== 'http:' && u.protocol !== 'https:')
-            throw new Error('LLM URL must use http or https.');
-        const blockPrivate = process.env.COPILOT_BLOCK_PRIVATE_HOSTS === '1';
-        if (!blockPrivate) return; // on-prem default: local/LAN LLM allowed
-        const dns = require('dns').promises;
-        const host = u.hostname.replace(/^\[|\]$/g, '');
-        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) {
-            if (isPrivateIp(host))
-                throw new Error(
-                    'LLM URL points to a private/loopback address — refused (COPILOT_BLOCK_PRIVATE_HOSTS).'
-                );
-            return;
-        }
-        if (host === 'localhost')
-            throw new Error('LLM URL points to localhost — refused (COPILOT_BLOCK_PRIVATE_HOSTS).');
+        if ((u.protocol !== 'http:' && u.protocol !== 'https:') || u.username || u.password)
+            return { ok: false, code: 'bad_url' };
+        if (cfg.apiKey && u.protocol === 'http:') return { ok: false, code: 'https_required' };
+        const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+        let addrs;
         try {
-            const addrs = await dns.lookup(host, { all: true });
-            for (const a of addrs)
-                if (isPrivateIp(a.address))
-                    throw new Error(
-                        'LLM URL resolves to a private/loopback address — refused (COPILOT_BLOCK_PRIVATE_HOSTS).'
-                    );
-        } catch (e) {
-            if (/refused/.test(e.message)) throw e;
+            addrs = await this._resolve(host);
+        } catch (_) {
+            return { ok: false, code: 'dns' };
         }
+        if (!addrs || !addrs.length) return { ok: false, code: 'dns' };
+        const { isPrivateAddress } = require('./SamlMetadataService');
+        const anyPrivate = addrs.some((a) => isPrivateAddress(a.address));
+        let allowList = [];
+        try {
+            const AppSettingsModel = require('../models/AppSettingsModel');
+            const [allowed, trusted] = await Promise.all([
+                AppSettingsModel.getValue('copilotAllowedPrivateHosts', ''),
+                AppSettingsModel.getValue('copilotTrustedHosts', ''),
+            ]);
+            allowList = [...this._hostList(allowed), ...this._hostList(trusted)];
+        } catch (_) {
+            allowList = [];
+        }
+        const pinned = {
+            address: addrs[0].address,
+            family: addrs[0].family || net.isIP(addrs[0].address),
+        };
+        if (anyPrivate) {
+            if (!this._isAllowListed(u, allowList))
+                return { ok: false, code: 'private_host', external: false };
+            const loopback = addrs.every((a) => this._isLoopback(a.address));
+            if (u.protocol === 'http:' && !(loopback && !cfg.apiKey))
+                return { ok: false, code: 'https_required', external: false };
+            return { ok: true, external: false, pinned, url: u };
+        }
+        // Public address: an external processor.
+        if (u.protocol === 'http:') return { ok: false, code: 'https_required', external: true };
+        if (!this._recordCovers(await this.transferRecord(), cfg, u))
+            return { ok: false, code: 'transfer_basis_missing', external: true };
+        return { ok: true, external: true, pinned, url: u };
+    }
+
+    /**
+     * Record the controller's transfer basis and processor-agreement
+     * acknowledgement for the CURRENT external provider/host. SuperAdmin only
+     * (the caller checks); stored as the app setting copilotTransferRecord with
+     * who / when / the exact text acknowledged.
+     */
+    async recordTransferBasis(actor, { basis, basisText, region, dpaAcknowledged, dpaText } = {}) {
+        const cfg = await this.getConfig();
+        if (!cfg || cfg.provider === 'none' || !cfg.url)
+            return { ok: false, code: 'not_configured' };
+        let u;
+        try {
+            u = new URL(cfg.url);
+        } catch {
+            return { ok: false, code: 'bad_url' };
+        }
+        const b = String(basis || '').trim();
+        const text = String(basisText || '').trim();
+        const reg = String(region || '').trim();
+        if (!CopilotService.TRANSFER_BASES.includes(b)) return { ok: false, code: 'basis_invalid' };
+        if (text.length < 20) return { ok: false, code: 'basis_text_short' };
+        if (!reg) return { ok: false, code: 'region_required' };
+        if (
+            !(
+                dpaAcknowledged === true ||
+                dpaAcknowledged === 'true' ||
+                dpaAcknowledged === '1' ||
+                dpaAcknowledged === 'on'
+            )
+        )
+            return { ok: false, code: 'dpa_required' };
+        const record = {
+            provider: cfg.provider,
+            host: u.host.toLowerCase(),
+            basis: b,
+            basisText: text.slice(0, 2000),
+            region: reg.slice(0, 200),
+            dpaAcknowledged: true,
+            dpaText: String(dpaText || '').slice(0, 2000),
+            recordedBy: actor ? { id: actor.id || null, username: actor.username || null } : null,
+            recordedAt: new Date().toISOString(),
+        };
+        const AppSettingsModel = require('../models/AppSettingsModel');
+        await AppSettingsModel.setValue(
+            'copilotTransferRecord',
+            record,
+            'json',
+            'External AI transfer basis and processor-agreement acknowledgement (who, when, text), recorded from the copilot settings, never edited by hand',
+            'copilot',
+            actor && actor.id ? actor.id : null
+        );
+        this.invalidate();
+        try {
+            await LogService.log({
+                adminId: actor && actor.id ? actor.id : null,
+                action: 'COPILOT_TRANSFER_BASIS_RECORDED',
+                entityType: 'appSetting',
+                category: 'security',
+                details: `External AI transfer basis recorded: provider=${record.provider}, host=${record.host}, basis=${record.basis}, region=${record.region}`,
+            });
+        } catch (_) {
+            /* audit best-effort */
+        }
+        return { ok: true, record };
+    }
+
+    /** Withdraw the recorded basis (the external copilot stops at once). */
+    async revokeTransferBasis(actor) {
+        const rec = await this.transferRecord();
+        if (!rec) return { ok: true, revoked: false };
+        const AppSettingsModel = require('../models/AppSettingsModel');
+        await AppSettingsModel.setValue(
+            'copilotTransferRecord',
+            {
+                ...rec,
+                revokedAt: new Date().toISOString(),
+                revokedBy: actor ? actor.id || null : null,
+            },
+            'json',
+            'External AI transfer basis and processor-agreement acknowledgement (who, when, text), recorded from the copilot settings, never edited by hand',
+            'copilot',
+            actor && actor.id ? actor.id : null
+        );
+        this.invalidate();
+        try {
+            await LogService.log({
+                adminId: actor && actor.id ? actor.id : null,
+                action: 'COPILOT_TRANSFER_BASIS_REVOKED',
+                entityType: 'appSetting',
+                category: 'security',
+                details: `External AI transfer basis withdrawn (provider=${rec.provider}, host=${rec.host})`,
+            });
+        } catch (_) {
+            /* audit best-effort */
+        }
+        return { ok: true, revoked: true };
+    }
+
+    /**
+     * What the settings page shows: the gate verdict for the saved config, the
+     * record (if any) and whether the copilot is held back because of it.
+     */
+    async policyStatus() {
+        const cfg = await this.getConfig();
+        const gate = await this.connectionGate(cfg);
+        const record = await this.transferRecord();
+        let host = null;
+        try {
+            host = cfg.url ? new URL(cfg.url).host : null;
+        } catch {
+            host = null;
+        }
+        return {
+            provider: cfg.provider,
+            host,
+            configured: cfg.provider !== 'none',
+            allowed: gate.ok && !cfg.blocked,
+            external: gate.external === true,
+            blockedCode: cfg.blocked || (gate.ok ? null : gate.code),
+            needsTransferBasis: gate.code === 'transfer_basis_missing',
+            record,
+            bases: CopilotService.TRANSFER_BASES,
+        };
+    }
+
+    /**
+     * POST over the PINNED address; redirects refused; body capped.
+     * @returns {Promise<{status:number, text:string}>}
+     */
+    _pinnedPost(u, pinned, headers, bodyStr, timeoutMs) {
+        const mod = u.protocol === 'https:' ? require('https') : require('http');
+        const MAX = 4 * 1024 * 1024;
+        return new Promise((resolve, reject) => {
+            let done = false;
+            let timer = null;
+            const finish = (fn, v) => {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                fn(v);
+            };
+            const req = mod.request(
+                u,
+                {
+                    method: 'POST',
+                    headers: { ...headers, 'Content-Length': Buffer.byteLength(bodyStr) },
+                    // Connect to the address that was CHECKED, never a fresh lookup.
+                    lookup: (_h, opts, cb) =>
+                        opts && opts.all
+                            ? cb(null, [{ address: pinned.address, family: pinned.family }])
+                            : cb(null, pinned.address, pinned.family),
+                },
+                (res) => {
+                    if (res.statusCode >= 300 && res.statusCode < 400) {
+                        res.resume();
+                        return finish(
+                            reject,
+                            new Error('LLM endpoint returned a redirect, refused.')
+                        );
+                    }
+                    let size = 0;
+                    const chunks = [];
+                    res.on('data', (c) => {
+                        size += c.length;
+                        if (size > MAX) {
+                            req.destroy();
+                            finish(reject, new Error('LLM response too large, refused.'));
+                        } else chunks.push(c);
+                    });
+                    res.on('end', () =>
+                        finish(resolve, {
+                            status: res.statusCode,
+                            text: Buffer.concat(chunks).toString('utf8'),
+                        })
+                    );
+                    res.on('error', (e) => finish(reject, e));
+                }
+            );
+            timer = setTimeout(() => {
+                req.destroy();
+                finish(reject, new Error(`LLM timed out after ${timeoutMs}ms`));
+            }, timeoutMs);
+            req.on('error', (e) => finish(reject, e));
+            req.end(bodyStr);
+        });
     }
 
     /** Drop the cached connection config + target classification (called when
@@ -828,31 +1108,31 @@ class CopilotService {
     }
 
     async _callLlm(cfg, system, userPrompt, timeoutMs) {
-        const { headers, body, parse } = this._providerRequest(cfg, system, userPrompt);
-        await this._assertSafeUrl(cfg.url); // SSRF guard before any outbound request
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-        try {
-            // redirect:'manual' — refuse 3xx so a redirect to a private/metadata host
-            // can't bypass the pre-flight URL check.
-            const res = await globalThis.fetch(cfg.url, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(body),
-                signal: ctrl.signal,
-                redirect: 'manual',
-            });
-            if (res.status >= 300 && res.status < 400)
-                throw new Error('LLM endpoint returned a redirect — refused.');
-            if (!res.ok) throw new Error('LLM HTTP ' + res.status);
-            const j = await res.json();
-            return parse(j) || '(no answer)';
-        } catch (e) {
-            if (e.name === 'AbortError') throw new Error(`LLM timed out after ${timeoutMs}ms`);
+        // Egress gate BEFORE the request is even built: nothing (not the key, not
+        // the context) leaves unless the target passes.
+        const gate = await this.connectionGate(cfg);
+        if (!gate.ok) {
+            const e = new Error(`LLM call blocked by the egress policy (${gate.code}).`);
+            e.code = 'COPILOT_EGRESS_BLOCKED';
+            e.gate = gate.code;
             throw e;
-        } finally {
-            clearTimeout(timer);
         }
+        const { headers, body, parse } = this._providerRequest(cfg, system, userPrompt);
+        const res = await this._pinnedPost(
+            gate.url,
+            gate.pinned,
+            headers,
+            JSON.stringify(body),
+            timeoutMs
+        );
+        if (res.status < 200 || res.status >= 300) throw new Error('LLM HTTP ' + res.status);
+        let j;
+        try {
+            j = JSON.parse(res.text);
+        } catch {
+            throw new Error('LLM returned a non-JSON response.');
+        }
+        return parse(j) || '(no answer)';
     }
 
     async _askLlm(
@@ -955,12 +1235,15 @@ class CopilotService {
                 sample: String(out).slice(0, 80),
             };
         } catch (e) {
+            const blocked = e && e.code === 'COPILOT_EGRESS_BLOCKED';
             return {
                 configured: true,
                 reachable: false,
-                mode: 'fallback',
+                // Refused by the egress gate: no request was sent.
+                mode: blocked ? 'blocked' : 'fallback',
                 provider: cfg.provider,
                 model: cfg.model,
+                ...(blocked ? { blocked: e.gate } : {}),
                 error: e.message,
             };
         }
@@ -1134,6 +1417,25 @@ class CopilotService {
                     `[copilot] LLM (${cfg.provider}) unavailable, using deterministic fallback: ${e.message}`
                 );
                 const answer = this._deterministic(question, ctx, { allowNamedPersonRanking });
+                if (e && e.code === 'COPILOT_EGRESS_BLOCKED') {
+                    // Refused BEFORE any connection: nothing left the server.
+                    await this._auditQuery(user, cfg, {
+                        mode: 'deterministic',
+                        question,
+                        answer,
+                        subjectCount: ctx.headcount,
+                        blocked: e.gate,
+                        ...oversight,
+                    });
+                    return {
+                        answer,
+                        mode: 'deterministic',
+                        provider: cfg.provider,
+                        scope: ctx.headcount,
+                        llmBlocked: e.gate,
+                        ...guard,
+                    };
+                }
                 // A failed call may still have transmitted the request body — record it.
                 await this._auditQuery(user, cfg, { ...auditBase, mode: 'fallback', answer });
                 return {

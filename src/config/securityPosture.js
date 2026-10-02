@@ -164,10 +164,14 @@ const CATEGORIES = [
             },
             {
                 id: 'ssrf',
-                fr: 'Webhooks et fournisseurs d’IA : les adresses internes, locales et de métadonnées sont refusées.',
-                en: 'Webhooks and AI providers: internal, loopback and metadata addresses are refused.',
+                fr: 'Webhooks et fournisseurs d’IA : les adresses internes, locales et de métadonnées sont refusées (un modèle d’IA hébergé sur site doit être autorisé nommément par un super-administrateur) ; connexion épinglée sur l’adresse vérifiée, sans redirection.',
+                en: 'Webhooks and AI providers: internal, loopback and metadata addresses are refused (an on-premises AI model must be allowed by name by a super-administrator); the connection is pinned to the checked address, with no redirect.',
                 evidence: ['src/services/WebhookService.js', 'src/services/CopilotService.js'],
-                tests: ['securityControls.test.js', 'copilotPresetsAndEmails.test.js'],
+                tests: [
+                    'securityControls.test.js',
+                    'copilotPresetsAndEmails.test.js',
+                    'copilotEgressGate.test.js',
+                ],
             },
             {
                 id: 'uploads',
@@ -304,13 +308,14 @@ const CATEGORIES = [
         controls: [
             {
                 id: 'ai-off',
-                fr: 'Copilote désactivé par défaut ; noms et identifiants anonymisés avant tout envoi à un modèle externe.',
-                en: 'Copilot off by default; names and identifiers anonymised before anything reaches an external model.',
+                fr: 'Copilote désactivé par défaut ; un fournisseur d’IA externe reste bloqué tant qu’un super-administrateur n’a pas enregistré la base juridique du transfert et l’accord de sous-traitance ; noms et identifiants anonymisés avant tout envoi à un modèle externe.',
+                en: 'Copilot off by default; an external AI provider stays blocked until a super-administrator records the legal basis of the transfer and the processor agreement; names and identifiers anonymised before anything reaches an external model.',
                 evidence: [
                     'src/services/CopilotService.js',
                     'src/services/AnonymizationService.js',
+                    'src/controllers/CopilotEgressController.js',
                 ],
-                tests: ['copilotPrivacyFilter.test.js'],
+                tests: ['copilotPrivacyFilter.test.js', 'copilotEgressGate.test.js'],
             },
             {
                 id: 'ai-guardrails',
@@ -342,13 +347,19 @@ const CATEGORIES = [
             },
             {
                 id: 'safe-defaults',
-                fr: 'Réglages sûrs par défaut : inscription publique, classement nominatif par l’IA et notifications désactivés à l’installation.',
-                en: 'Safe defaults: public signup, named-person AI ranking and notifications are off on a fresh install.',
+                fr: 'Réglages sûrs par défaut : inscription publique, classement nominatif par l’IA et notifications désactivés à l’installation ; les réglages de sécurité (authentification, sessions, SSO, conservation, IA, serveur de messagerie, SIRH) ne sont modifiables que par un super-administrateur ; envoi des e-mails chiffré (TLS exigé, un seul relais interne peut en être dispensé, nommé et motivé par un super-administrateur).',
+                en: 'Safe defaults: public signup, named-person AI ranking and notifications are off on a fresh install; security settings (authentication, sessions, SSO, retention, AI, mail server, HRIS) can be changed by a super-administrator only; outgoing mail encrypted (TLS required; one internal relay may be exempted, named with a reason by a super-administrator).',
                 evidence: [
                     'src/models/AppSettingsModel.js',
                     'db/postgres/159_boolean_settings_repair.sql',
+                    'src/utils/securitySettings.js',
+                    'src/services/EmailService.js',
                 ],
-                tests: ['booleanSettingsSeededOff.test.js'],
+                tests: [
+                    'booleanSettingsSeededOff.test.js',
+                    'securityClassSettings.test.js',
+                    'smtpRequireTls.test.js',
+                ],
             },
             {
                 id: 'sql-console',

@@ -108,14 +108,38 @@ project uses [Semantic Versioning](https://semver.org/).
   current password on `/change-password` or a wrong code at `/login/mfa`,
   `/v2/uam/mfa/verify` or `/v2/uam/mfa/disable` counts toward the lockout,
   and those checks are rate-limited per user.
-- **API keys go in headers** (`X-API-Key` or an opaque `Authorization:
-Bearer`). A key in the URL (`?apiKey=`) is refused with a 401 that shows the
+- **API keys go in headers** (`X-API-Key`, or an opaque bearer token in
+  `Authorization`). A key in the URL (`?apiKey=`) is refused with a 401 that shows the
   header form, except for a key that carries the per-key compatibility flag
   (migration 163: keys that existed at the upgrade keep it, new keys never get
   it) or the env shared key with `API_KEY_QUERY_STRING=1`. A SuperAdmin
   switches the flag per key (`POST /api/v1/admin/api-keys/:id/query-string`,
   audited). In Power Query:
   `Web.Contents(url, [Headers=[#"X-API-Key"="ak_…"]])`.
+- **Security-class settings are SuperAdmin-only** (refused server-side,
+  audited): authentication, sessions, MFA, SSO, onboarding, data retention,
+  AI/copilot, API, backup, the public base URL, the outgoing mail server and
+  HRIS. Operational settings stay delegable (`manage_app_settings`). The
+  settings page receives `locked` / `securityClass` per row for a read-only
+  badge.
+- **SMTP requires TLS.** STARTTLS is mandatory (`requireTLS`), so an attacker
+  cannot strip it and credentials are never sent in clear. Product decision:
+  one internal relay may be exempted by a SuperAdmin
+  (`POST /app-settings/smtp/plaintext-relay`, reason mandatory, audited); it
+  must resolve to a private or loopback address, it is reached at the pinned
+  address, and SMTP credentials are still never sent to it without TLS. The
+  dashboard and the settings page receive the relay status for a permanent
+  warning.
+- **Copilot egress gate (audit SA-17).** Product decision, safe by default:
+  a private, loopback or link-local AI target is refused unless a SuperAdmin
+  lists it in `copilotAllowedPrivateHosts` (or `copilotTrustedHosts`); plain
+  http only for an allow-listed loopback model without an API key; the
+  connection is pinned to the checked address and redirects are refused; an
+  external provider stays blocked until a SuperAdmin records the legal basis
+  of the transfer and the processor-agreement acknowledgement for that
+  provider and host (`/app-settings/copilot/transfer-basis`, audited,
+  withdrawable). A blocked call answers with the built-in engine and sends
+  nothing. `COPILOT_BLOCK_PRIVATE_HOSTS` is no longer read.
 - HTTP hardening moved into `src/middleware/httpHardening.js`, with tests:
     - JSON detection is anchored on the MIME essence, so
       `text/plain; x=application/json` no longer skips the CSRF check;

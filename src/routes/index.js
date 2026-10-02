@@ -1909,6 +1909,32 @@ router.post(
     requirePermission('manage_app_settings'),
     AppSettingsController.testCopilot
 );
+// External AI transfer basis: SuperAdmin only (the controller re-checks the
+// role); CSRF as every other /app-settings POST.
+const CopilotEgressController = require('../controllers/CopilotEgressController');
+router.get(
+    '/app-settings/copilot/egress',
+    requireSuperAdmin,
+    CopilotEgressController.status.bind(CopilotEgressController)
+);
+router.post(
+    '/app-settings/copilot/transfer-basis',
+    requireSuperAdmin,
+    CopilotEgressController.record.bind(CopilotEgressController)
+);
+router.post(
+    '/app-settings/copilot/transfer-basis/revoke',
+    requireSuperAdmin,
+    CopilotEgressController.revoke.bind(CopilotEgressController)
+);
+// The ONE named plaintext SMTP relay: SuperAdmin only, reason mandatory,
+// audited (EmailService.setPlaintextRelay re-checks the role). CSRF global.
+const SmtpRelayController = require('../controllers/SmtpRelayController');
+router.post(
+    '/app-settings/smtp/plaintext-relay',
+    requireSuperAdmin,
+    SmtpRelayController.set.bind(SmtpRelayController)
+);
 // White-label branding (logo/favicon are small images → dedicated multer instance).
 const brandUpload = require('multer')({
     dest: require('path').join(__dirname, '../../tmp'),
