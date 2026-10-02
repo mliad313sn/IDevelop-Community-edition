@@ -68,7 +68,12 @@ describe('request bodies and CSRF', () => {
     });
     test('state-changing requests carry a synchroniser token or get 403', () => {
         expect(SRC).toMatch(/csrfSync\(/);
-        expect(SRC).toMatch(/req\.body\._csrf\)\s*\|\|\s*req\.headers\['x-csrf-token'\]/);
+        // Body `_csrf`, the x-csrf-token header, or ?_csrf= on a multipart request
+        // (httpHardening.csrfTokenFromRequest, SA-15).
+        expect(SRC).toMatch(/getTokenFromRequest:\s*httpHardening\.csrfTokenFromRequest/);
+        const H = require('../../src/middleware/httpHardening');
+        expect(H.csrfTokenFromRequest({ body: { _csrf: 'b' }, headers: {} })).toBe('b');
+        expect(H.csrfTokenFromRequest({ headers: { 'x-csrf-token': 'h' } })).toBe('h');
         expect(SRC).toMatch(/status\(403\)\.send\('Invalid CSRF token'\)/);
     });
 });
