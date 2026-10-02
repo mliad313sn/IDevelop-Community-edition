@@ -11,7 +11,6 @@
 const express = require('express');
 const router = express.Router();
 const RBACService = require('../../services/RBACService');
-const appConfig = require('../../config/app');
 const ApiKeyService = require('../../services/ApiKeyService');
 const AdminModel = require('../../models/AdminModel');
 const sso = require('../../config/sso');
@@ -116,7 +115,10 @@ const apiAuth = async (req, res, next) => {
         } catch (e) {
             /* fall through to legacy / 401 */
         }
-        if (appConfig.apiKey && _safeEqual(key, appConfig.apiKey)) {
+        // Never APP_KEY (S-02): the same guard as middleware/apiAuth. This
+        // router used to compare against the raw configured key directly.
+        const legacy = require('../../middleware/apiAuth').legacySharedKey();
+        if (legacy && _safeEqual(key, legacy)) {
             req.user = {
                 id: 0,
                 userType: 'admin',

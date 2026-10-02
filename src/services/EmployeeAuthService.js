@@ -2,6 +2,8 @@ const bcrypt = require('bcrypt');
 const EmployeeModel = require('../models/EmployeeModel');
 const LogService = require('./LogService');
 const passwordValidator = require('../utils/passwordValidator');
+// Timing: a refused identifier costs the same bcrypt comparison as a real one.
+const { dummyCompare } = require('../utils/dummyBcrypt');
 
 // the passport strategy collapses every refusal into "Invalid
 // credentials" and drops the service's `code`. A POLICY refusal the person
@@ -64,6 +66,7 @@ class EmployeeAuthService {
             // login works only when it names exactly one employee — never guess.
             const u = await require('./EmailAccountsService').uniqueEmployeeByEmail(identifier);
             if (u.ambiguous) {
+                await dummyCompare(password);
                 await LogService.log({
                     action: 'EMPLOYEE_LOGIN_FAILED',
                     details: `Login by e-mail refused: the address is shared by several employee accounts (username required): ${identifier}`,
@@ -84,6 +87,7 @@ class EmployeeAuthService {
         const username = identifier;
 
         if (!employee || !employee.isAccountActive) {
+            await dummyCompare(password);
             // ONE row per attempt: the strategy tries the admin table
             // first, and AuthService already wrote LOGIN_FAILED for an identifier
             // that names an ADMIN — a second, employee-side row for the same
@@ -110,6 +114,7 @@ class EmployeeAuthService {
         }
 
         if (!employee.passwordHash) {
+            await dummyCompare(password);
             return {
                 success: false,
                 message: 'Account not activated. Please contact your administrator.',

@@ -667,10 +667,15 @@ app.use((req, res, next) => {
     // yields is a CSRF failure → 403.
     csrfSynchronisedProtection(req, res, (err) => {
         if (err) {
+            // Never the session id itself (a log reader could replay it): a
+            // short hash is enough to correlate repeated failures.
+            const sid = req.sessionID ? String(req.sessionID) : '';
             console.error('CSRF token validation failed:', {
                 path: req.path,
                 method: req.method,
-                sessionId: req.sessionID,
+                sidHash: sid
+                    ? crypto.createHash('sha256').update(sid).digest('hex').slice(0, 8)
+                    : null,
                 hasSession: !!req.session,
             });
             // Security incident trail: repeated CSRF failures = probe or a

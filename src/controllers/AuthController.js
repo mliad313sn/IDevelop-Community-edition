@@ -466,8 +466,25 @@ class AuthController {
                         userType: MfaService.mfaUserType(user),
                         userId: user.id,
                     });
-                } catch (_) {
-                    /* MFA tables absent → treat as inactive */
+                } catch (e) {
+                    // FAIL CLOSED. A failed lookup used to be read as "no MFA" and
+                    // opened the session on the password alone: a database hiccup
+                    // (or anything that makes this query throw) skipped the second
+                    // factor. The sign-in is refused with the generic error and the
+                    // reason is logged.
+                    console.error('Login MFA lookup failed, sign-in refused:', e && e.message);
+                    authAudit(
+                        req,
+                        'LOGIN_MFA_CHECK_FAILED',
+                        `MFA state of ${user.userType} "${user.username || user.employeeNumber || user.id}" could not be read; sign-in refused (fail closed)`,
+                        user.userType === 'admin' ? user.id : null,
+                        actorRefOf(user)
+                    );
+                    req.flash(
+                        'error',
+                        req.t ? req.t('flash:auth_login_error') : 'An error occurred during login'
+                    );
+                    return res.redirect('/login');
                 }
 
                 if (mfaActive) {
@@ -948,9 +965,15 @@ class AuthController {
                         `${link}\n\n` +
                         `${T('mail_reset_text_validity', { mins }, `This link is valid for ${mins} minutes.`)} ` +
                         `${T('mail_reset_ignore', {}, 'If you did not request this, you can safely ignore this email — your password is unchanged.')}`;
-                    await EmailService.send({ to: result.email, subject, html, text }).catch((e) =>
-                        console.error('Reset email send failed:', e.message)
-                    );
+                    // Timing: NOT awaited. Awaiting the SMTP round-trip only for
+                    // REAL accounts made the response seconds slower exactly when
+                    // the identifier exists, an enumeration oracle despite the
+                    // identical message. Sent in the background; `result` is
+                    // re-used across the loop, so capture THIS mail now.
+                    const mail = { to: result.email, subject, html, text };
+                    Promise.resolve()
+                        .then(() => EmailService.send(mail))
+                        .catch((e) => console.error('Reset email send failed:', e && e.message));
                 } else {
                     console.warn(
                         `[reset] token created but email delivery is DISABLED — no link sent. ` +

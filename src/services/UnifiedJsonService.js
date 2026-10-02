@@ -1079,8 +1079,12 @@ class UnifiedJsonService {
                             region: 'region_id',
                             country: 'country_id',
                         };
-                        const table = tableByType[sc.type];
-                        const col = colByType[sc.type];
+                        // Own keys only: sc.type comes from the imported file, and
+                        // 'constructor' / '__proto__' must never resolve to a value
+                        // that is then interpolated into SQL.
+                        const t = String(sc.type);
+                        const table = Object.hasOwn(tableByType, t) ? tableByType[t] : null;
+                        const col = Object.hasOwn(colByType, t) ? colByType[t] : null;
                         if (!table || !col) continue;
                         const target = await db.get(`SELECT id FROM ${table} WHERE name = ?`, [
                             sc.name,

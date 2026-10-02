@@ -125,7 +125,11 @@ $excludeDirs = @('node_modules', '.git', '.github', '.husky', '.claude', '.vscod
 $excludeFiles = @('.editorconfig', '.eslintrc.json', '.prettierrc', '.prettierignore',
     '.gitattributes', '.gitignore', 'commitlint.config.js', 'playwright.config.js',
     'jest.config.js', 'Dockerfile', 'docker-compose.yml',
-    'install_and_run.bat', 'restart_server.bat', 'Requirements_Document.html')
+    'install_and_run.bat', 'restart_server.bat', 'Requirements_Document.html',
+    # CI and container build configuration: the secret-scan rules (they list
+    # what the scanner ignores) and the Docker build-context filter have no
+    # consumer on an installed server.
+    '.gitleaks.toml', '.dockerignore')
 
 # GUARD - stray root-level scripts must never ship.
 # The exclude list above covers DIRECTORIES only, so any loose .js dropped in the

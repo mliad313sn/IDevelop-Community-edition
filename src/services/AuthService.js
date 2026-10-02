@@ -3,6 +3,8 @@ const AdminModel = require('../models/AdminModel');
 const LogService = require('./LogService');
 const PasswordHistoryModel = require('../models/PasswordHistoryModel');
 const passwordValidator = require('../utils/passwordValidator');
+// Timing: a refused identifier costs the same bcrypt comparison as a real one.
+const { dummyCompare } = require('../utils/dummyBcrypt');
 
 class AuthService {
     async login(username, password, req) {
@@ -13,6 +15,7 @@ class AuthService {
         if (!admin && username && String(username).includes('@')) {
             const u = await require('./EmailAccountsService').uniqueAdminByEmail(username);
             if (u.ambiguous) {
+                await dummyCompare(password);
                 await LogService.log({
                     action: 'LOGIN_FAILED',
                     details: `Login by e-mail refused: the address is shared by several admin accounts (username required): ${username}`,
@@ -32,6 +35,7 @@ class AuthService {
         }
 
         if (!admin || !admin.isActive) {
+            await dummyCompare(password); // same cost as a real wrong password
             await LogService.log({
                 action: 'LOGIN_FAILED',
                 details: `Failed login attempt for username: ${username}`,
@@ -46,6 +50,7 @@ class AuthService {
             const lockDate = new Date(admin.lockedUntil);
             const now = new Date();
             if (lockDate > now) {
+                await dummyCompare(password);
                 await LogService.log({
                     action: 'LOGIN_FAILED',
                     details: `Login attempt for locked account: ${username}`,

@@ -317,15 +317,28 @@ class MfaService {
     static async issueBackupCodes({ userType, userId, count = 10 }) {
         const bcrypt = require('bcrypt');
         const codes = [];
+        const hashes = [];
         for (let i = 0; i < count; i++) {
             const plain = crypto.randomBytes(5).toString('hex'); // 10 hex chars
             codes.push(plain);
-            const hash = await bcrypt.hash(plain, 10);
-            await db.run(
-                `INSERT INTO mfa_backup_codes (user_type, user_id, code_hash) VALUES (?, ?, ?)`,
-                [userType, userId, hash]
-            );
+            hashes.push(await bcrypt.hash(plain, 10));
         }
+        // A new set REPLACES the unused older codes (it used to be additive, so
+        // a printed sheet the person thought they had discarded stayed valid).
+        // Used codes are kept as the audit trail. One transaction: never a
+        // moment with no codes, never old and new together.
+        await db.runTransaction(async () => {
+            await db.run(
+                `DELETE FROM mfa_backup_codes WHERE user_type = ? AND user_id = ? AND used_at IS NULL`,
+                [userType, userId]
+            );
+            for (const hash of hashes) {
+                await db.run(
+                    `INSERT INTO mfa_backup_codes (user_type, user_id, code_hash) VALUES (?, ?, ?)`,
+                    [userType, userId, hash]
+                );
+            }
+        });
         return codes;
     }
 

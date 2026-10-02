@@ -297,38 +297,95 @@ const signupRateLimiter = rateLimit({
 });
 
 /**
- * Rate limiter for API endpoints
+ * Rate limiter for API endpoints.
+ *
+ * The per-key bucket used to be keyed on the RAW, unvalidated credential: every
+ * random junk key got a fresh bucket of its own, so a caller rotating keys was
+ * never limited at all. Now:
+ *   1. the per-IP bucket ALWAYS applies (API_IP_RATE_LIMIT, default
+ *      API_RATE_LIMIT); requests carrying an invalid key count against it;
+ *   2. a SECOND, per-key bucket applies only once the key VALIDATES (an
+ *      api_keys row, or the legacy shared env key). A JWT bearer is validated
+ *      by the route itself and stays on the IP bucket here.
+ * An integration key therefore still gets its own quota (one Power BI feed
+ * cannot exhaust another's), but only a real key earns one.
  */
-const apiRateLimiter = rateLimit({
+const API_IP_RATE_LIMIT = parseInt(process.env.API_IP_RATE_LIMIT) || API_RATE_LIMIT;
+const _apiLimitMessage = {
+    error: 'Too many requests. Please try again later.',
+    retryAfter: API_RATE_WINDOW,
+};
+const _apiIpLimiter = rateLimit({
     windowMs: API_RATE_WINDOW * 60 * 1000,
-    max: API_RATE_LIMIT,
+    max: API_IP_RATE_LIMIT,
     store: makeStore('api'),
-    message: {
-        error: 'Too many requests. Please try again later.',
-        retryAfter: API_RATE_WINDOW,
-    },
+    message: _apiLimitMessage,
     standardHeaders: true,
     legacyHeaders: false,
-    // Per-API-key budget: an authenticated integration key gets its OWN quota so
-    // one Power BI feed can't exhaust the shared IP bucket for everyone else.
-    // This limiter is mounted on `/api/` BEFORE per-route auth runs, so req._apiKey
-    // isn't populated yet — derive the bucket from the raw credential in the request
-    // (hashed, never stored in the clear). Falls back to the resolved key, then IP.
-    keyGenerator: (req) => {
+    keyGenerator: (req) => 'ip:' + req.ip,
+});
+const _apiKeyLimiter = rateLimit({
+    windowMs: API_RATE_WINDOW * 60 * 1000,
+    max: API_RATE_LIMIT,
+    store: makeStore('api-key'),
+    message: _apiLimitMessage,
+    standardHeaders: false, // the IP bucket's headers stay the ones the client reads
+    legacyHeaders: false,
+    keyGenerator: (req) => 'apikey:' + req._rateKeyId,
+});
+
+// A validated key is remembered briefly (hash -> key id) so the limiter does not
+// add a second DB round-trip to every API call. Only POSITIVE results are kept:
+// an invalid key never earns a bucket.
+const _validKeyCache = new Map();
+const VALID_KEY_TTL_MS = 30000;
+async function validatedKeyId(raw) {
+    const h = crypto.createHash('sha256').update(String(raw)).digest('hex');
+    const hit = _validKeyCache.get(h);
+    if (hit && Date.now() - hit.at < VALID_KEY_TTL_MS) return hit.id;
+    let id = null;
+    try {
+        const p = await require('../services/ApiKeyService').validate(String(raw));
+        if (p && p.id != null) id = String(p.id);
+    } catch (_) {
+        id = null;
+    }
+    if (id == null) {
+        try {
+            const legacy = require('./apiAuth').legacySharedKey();
+            const a = Buffer.from(String(raw));
+            const b = Buffer.from(String(legacy || ''));
+            if (legacy && a.length === b.length && crypto.timingSafeEqual(a, b)) id = 'env';
+        } catch (_) {
+            id = null;
+        }
+    }
+    if (id != null) {
+        if (_validKeyCache.size > 5000) _validKeyCache.clear();
+        _validKeyCache.set(h, { id, at: Date.now() });
+    }
+    return id;
+}
+
+function apiRateLimiter(req, res, next) {
+    _apiIpLimiter(req, res, (err) => {
+        if (err) return next(err);
+        const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+        const looksJwt = /^[\w-]+\.[\w-]+\.[\w-]*$/.test(bearer);
         const raw =
             req.headers['x-api-key'] ||
-            (req.headers.authorization || '').replace(/^Bearer\s+/i, '') ||
+            (bearer && !looksJwt ? bearer : '') ||
             (req.query && req.query.apiKey);
-        if (raw)
-            return (
-                'apikey:' +
-                crypto.createHash('sha256').update(String(raw)).digest('hex').slice(0, 32)
-            );
-        const k = req._apiKey;
-        if (k && (k.id != null || k.label)) return 'apikey:' + (k.id != null ? k.id : k.label);
-        return req.ip;
-    },
-});
+        if (!raw) return next();
+        validatedKeyId(raw)
+            .then((id) => {
+                if (id == null) return next(); // invalid: the IP bucket alone
+                req._rateKeyId = id;
+                return _apiKeyLimiter(req, res, next);
+            })
+            .catch(() => next());
+    });
+}
 
 // Per-user write limiter for cheap-to-spam authenticated endpoints (survey
 // responses, recognition, feedback) — keyed by the signed-in user so one
@@ -716,4 +773,6 @@ module.exports = {
     enforcedIdFailureCount,
     accountSlowdownMs,
     clearEnforcedFailures,
+    validatedKeyId,
+    _resetApiKeyCacheForTests: () => _validKeyCache.clear(),
 };

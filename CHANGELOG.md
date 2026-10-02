@@ -41,6 +41,29 @@ project uses [Semantic Versioning](https://semver.org/).
   started with it is recorded at stage 3. i18n no longer depends on
   `V2_FEATURES`.
 
+### Security
+
+- API rate limit: a request carrying an unknown key no longer gets a bucket of
+  its own. The per-address bucket always applies; only a key that validates
+  (an `api_keys` row or the legacy shared key) earns a second, per-key bucket
+  (`API_IP_RATE_LIMIT`, default `API_RATE_LIMIT`).
+- Sign-in fails closed when the MFA state cannot be read (it used to open the
+  session on the password alone).
+- Timing: an unknown, inactive, locked or not-yet-activated identifier costs the
+  same bcrypt comparison as a real account; the password-reset mail is sent
+  without holding the answer.
+- Re-issuing MFA backup codes invalidates the unused older ones.
+- A CSRF failure logs a short hash of the session id, never the id itself.
+- Report builder and import: field names are looked up as own properties only
+  (an inherited name such as `constructor` is not a column), an unknown data
+  source is a 400, and `BaseModel.create()` checks column identifiers as
+  `update()` does.
+- `/api/v1` applies the same `APP_KEY` guard to the legacy shared key as the
+  other API surfaces.
+- The installer package no longer ships `.gitleaks.toml` or `.dockerignore`.
+- The SSO page always shows the canonical SAML reply URL
+  (`/auth/sso/saml/callback`), never a mistyped configured value.
+
 ## [1.0.0] — 2026-09-29
 
 First public release of **IDevelop Community Edition**.
