@@ -34,13 +34,9 @@ jobs:
         with:
           languages: javascript-typescript
           build-mode: none
-          queries: security-extended
-          config: |
-            paths-ignore:
-              - node_modules
-              - public/vendor
-              - coverage
-              - '**/*.min.js'
+          # Query suite, paths-ignore and the documented false-positive
+          # exclusions (docs/SECURITY-AUDIT.md, "Static analysis (CodeQL) triage").
+          config-file: ./.github/codeql/codeql-config.yml
       - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           category: /language:javascript-typescript
