@@ -285,6 +285,13 @@ describe('server.js and the clients', () => {
         expect(js).toMatch(/h\.set\('x-csrf-token', t\)/);
         expect(js).toMatch(/searchParams\.set\('_csrf', t\)/);
         expect(js).toMatch(/sameOrigin\(url\)/);
+        // Decided at the end of the submit dispatch: a form a script sends itself
+        // (fetch + header) never gets the token in its URL; a data-confirm form,
+        // re-submitted natively after its dialog, does.
+        expect(js).toMatch(/window\.addEventListener\('submit'/);
+        expect(js).toMatch(
+            /if \(e\.defaultPrevented && !f\.hasAttribute\('data-confirm'\)\) return;/
+        );
     });
     test.each([
         ['public/js/hris-admin.js'],

@@ -1938,10 +1938,12 @@ html {
     cursor: help;
 }
 :root .hz-apikey-query {
-    white-space: nowrap;
+    min-width: 8.5rem;
 }
 :root .hz-apikey-query .btn {
-    margin-left: 0.35rem;
+    display: block;
+    margin-top: 0.35rem;
+    white-space: nowrap;
 }
 :root .hz-code-block {
     margin: 0;
@@ -1956,8 +1958,5 @@ html {
 @media (max-width: 600px) {
     :root .hz-sec-dl {
         grid-template-columns: 1fr;
-    }
-    :root .hz-apikey-query {
-        white-space: normal;
     }
 }

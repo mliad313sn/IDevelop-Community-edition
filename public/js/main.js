@@ -3,9 +3,9 @@
 // must carry the token outside the body:
 //   1. every same-origin fetch() with an unsafe method gets the `x-csrf-token`
 //      header from <meta name="csrf-token"> unless it already carries one;
-//   2. a native multipart POST <form> gets `?_csrf=` on its action at submit
-//      time (the server reads the query token for multipart requests only, and
-//      the request log redacts it).
+//   2. a native multipart POST <form> (one no script sends itself) gets
+//      `?_csrf=` on its action at submit time (the server reads the query token
+//      for multipart requests only, and the request log redacts it).
 // The token never goes to another origin.
 (function () {
     'use strict';
@@ -48,41 +48,31 @@
             return origFetch.call(this, input, init);
         };
     }
-    document.addEventListener(
-        'submit',
-        function (e) {
-            var f = e.target;
-            if (!f || f.nodeName !== 'FORM') return;
-            if (String(f.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
-            if (String(f.enctype || '').toLowerCase() !== 'multipart/form-data') return;
-            var field = f.querySelector('input[name="_csrf"]');
-            var t = (field && field.value) || csrfToken();
-            if (!t) return;
-            try {
-                var u = new URL(
-                    f.getAttribute('action') || window.location.href,
-                    window.location.href
-                );
-                if (u.origin !== window.location.origin) return;
-                if (f.__csrfOrigAction === undefined) f.__csrfOrigAction = f.getAttribute('action');
-                u.searchParams.set('_csrf', t);
-                f.setAttribute('action', u.pathname + u.search + u.hash);
-            } catch (err) {
-                /* leave the form as it is */
-            }
-        },
-        true
-    );
-    // A form a script handles itself (fetch + preventDefault) never navigates: put
-    // its action back so the token does not linger in the URL. data-confirm forms
-    // keep it: they are re-submitted natively after the dialog (ui-feedback.js).
+    // A native multipart POST <form> carries the token on its action. Decided at
+    // the END of the submit dispatch (window, bubble phase), when the page's own
+    // handlers have run: a form a script sends itself (preventDefault + fetch,
+    // which gets the header above) is left alone, so the token never lands in a
+    // fetch URL. A data-confirm form IS submitted natively after its dialog
+    // (ui-feedback.js re-submits it without a new event), so it gets the token
+    // now. The browser reads the action after the event, so the change applies
+    // to this very submission.
     window.addEventListener('submit', function (e) {
         var f = e.target;
-        if (!f || f.nodeName !== 'FORM' || f.__csrfOrigAction === undefined) return;
-        if (!e.defaultPrevented || f.hasAttribute('data-confirm')) return;
-        if (f.__csrfOrigAction === null) f.removeAttribute('action');
-        else f.setAttribute('action', f.__csrfOrigAction);
-        f.__csrfOrigAction = undefined;
+        if (!f || f.nodeName !== 'FORM') return;
+        if (String(f.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+        if (String(f.enctype || '').toLowerCase() !== 'multipart/form-data') return;
+        if (e.defaultPrevented && !f.hasAttribute('data-confirm')) return;
+        var field = f.querySelector('input[name="_csrf"]');
+        var t = (field && field.value) || csrfToken();
+        if (!t) return;
+        try {
+            var u = new URL(f.getAttribute('action') || window.location.href, window.location.href);
+            if (u.origin !== window.location.origin) return;
+            u.searchParams.set('_csrf', t);
+            f.setAttribute('action', u.pathname + u.search + u.hash);
+        } catch (err) {
+            /* leave the form as it is */
+        }
     });
 })();
 

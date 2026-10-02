@@ -307,12 +307,14 @@
     <div class="card hz-callout <%= malwareScan.alert ? 'hz-sec-warn' : 'hz-sec-note' %>" role="status" data-compliance-av="<%= malwareScan.engine || 'none' %>">
         <p>
             <i class="fas fa-shield-virus" aria-hidden="true"></i>
-            <% if (malwareScan.alert) { %>
+            <% if (malwareScan.alert && !malwareScan.requireMalwareScan) { %>
                 <%= __('compliance:av_no_scanner_alert') %>
+            <% } else if (malwareScan.alert) { %>
+                <%= __('admin:health_av_none') %> · <%= __('admin:health_av_required_on') %>.
             <% } else { %>
                 <%= __('compliance:av_engine_on', { engine: malwareScan.engine === 'clamd' ? __('admin:health_av_engine_clamd') : malwareScan.engine === 'defender' ? __('admin:health_av_engine_defender') : malwareScan.engine }) %>
+                <%= malwareScan.requireMalwareScan ? __('admin:health_av_required_on') : __('admin:health_av_required_off') %>.
             <% } %>
-            <%= malwareScan.requireMalwareScan ? __('admin:health_av_required_on') : __('admin:health_av_required_off') %>.
         </p>
     </div>
     <% } %>
