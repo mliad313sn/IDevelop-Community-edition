@@ -3286,6 +3286,13 @@ router.post(
 // reset_employee_password runs it for THEIR scope (SuperAdmin implicitly);
 // the controller enforces scope on every read and write.
 const InvitationController = require('../controllers/InvitationController');
+// The page the in-app SSO notice opens: the same explanation as the e-mail, for
+// the signed-in person only (employee, manager or admin).
+router.get(
+    '/account/sso-change',
+    requireAuth,
+    asyncHandler(InvitationController.ssoChange.bind(InvitationController))
+);
 // the console lives at /admin/accounts; bookmarks and the sidebar link land there.
 router.get(
     '/admin/invitations',

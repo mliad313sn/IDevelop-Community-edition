@@ -43,6 +43,8 @@ const EXCEPTION_HOLD = 'sso_exception';
 const ANNOUNCE_LEAD_DEFAULT_H = 48;
 const ANNOUNCE_LEAD_MIN_H = 24;
 const ANNOUNCE_LEAD_MAX_H = 168;
+// The signed-in page the in-app notice opens (same text as the e-mail).
+const SSO_CHANGE_PATH = '/account/sso-change';
 
 const TEXTS = {
     fr: require('../../locales/fr/auth.json'),
@@ -102,12 +104,44 @@ function providerLabel(key) {
         const m = /^(?:sign in with|log in with|se connecter avec)\s+(.+)$/i.exec(
             String(p.label).trim()
         );
-        return m ? m[1] : String(p.label);
+        // « Sign in with your Contoso Account » → « Contoso Account »: the sentence
+        // already says « votre compte … » (invitations used to read « votre
+        // compte d'entreprise your … Account »).
+        const name = (m ? m[1] : String(p.label))
+            .replace(/^(?:your|votre|ton|the|le|la)\s+/i, '')
+            .replace(/^(?:compte|account)\s+/i, '')
+            .replace(/\s+(?:account|compte)$/i, '')
+            .trim();
+        return name || String(p.label);
     }
     return (
         { entra: 'Microsoft', google: 'Google', saml: 'SSO', oidc: 'SSO' }[key] ||
         String(key || 'SSO')
     );
+}
+
+/**
+ * The bare fallback label ('SSO', a generic SAML/OIDC provider with no
+ * name) is never printed in a sentence: « votre compte d'entreprise SSO » read
+ * like a product name. It then reads « votre compte d'entreprise ».
+ */
+function isBareLabel(label) {
+    return !label || /^\s*sso\s*$/i.test(String(label));
+}
+
+/**
+ * « le même que pour Windows ou Outlook » is only true for a Microsoft (Entra)
+ * account: the provider key 'entra', or a provider NAMED Microsoft.
+ */
+function isMicrosoftProvider(key, label) {
+    return key === 'entra' || /\bmicrosoft\b/i.test(String(label || ''));
+}
+
+/** « votre compte Microsoft » / « votre compte d'entreprise » in the reader's language. */
+function accountPhrase(lang, provider) {
+    return isBareLabel(provider)
+        ? tr(lang, 'ssoinv_account_generic')
+        : tr(lang, 'ssoinv_account_named', { provider });
 }
 
 /** The login-page button text exactly as the person will see it (views/pages/auth/login.ejs). */
@@ -246,12 +280,31 @@ async function upnFor(row, rec) {
 }
 
 /**
+ * One ordered content spec → the three renderings (e-mail HTML, plain text /
+ * printed notice, signed-in page /account/sso-change). The page shows the SAME
+ * sentences as the e-mail, in the reader's language.
+ *   spec item: { t: 'p'|'h'|'steps'|'cta', k?: key, ks?: [keys], href? }
+ */
+function pageOf(spec, v, lang) {
+    return spec
+        .filter((b) => b.t !== 'cta') // the page is read signed in: no « sign in » button
+        .map((b) =>
+            b.t === 'steps'
+                ? { t: 'steps', items: b.ks.map((k) => tr(lang, k, v(lang))) }
+                : { t: b.t, text: tr(lang, b.k, v(lang)) }
+        );
+}
+
+/**
  * Compose the invitation (FR first, EN below) — pure given its inputs.
- * @returns {{subject:string, html:string, text:string}}
+ * `providerKey` (entra/google/saml/oidc…) selects the Microsoft-only sentence
+ * « le même que pour Windows ou Outlook »; a provider NAMED Microsoft does too.
+ * @returns {{subject:string, html:string, text:string, page:{fr:object, en:object}}}
  */
 function compose({
     rec,
     provider,
+    providerKey = null,
     variant,
     upn,
     contact,
@@ -265,44 +318,51 @@ function compose({
     const v = (lang) => ({
         app,
         provider,
+        account: accountPhrase(lang, provider),
         url,
         upn,
         first: rec.firstName || rec.name || '',
         contact: contact || tr(lang, 'ssoinv_contact_default'),
         // UX-11: the button's own text, as printed on the sign-in page.
-        button: (buttons && buttons[lang]) || tr(lang, 'login_sso_with', { name: provider }),
+        button:
+            (buttons && buttons[lang]) ||
+            (isBareLabel(provider)
+                ? tr(lang, 'login_sso_org')
+                : tr(lang, 'login_sso_with', { name: provider })),
     });
     // UX-11: French puts a space before « : », English does not.
     const colon = (lang) => (lang === 'fr' ? ' :' : ':');
-    const both = (key, extra = {}) => [
-        tr('fr', key, { ...v('fr'), ...extra }),
-        tr('en', key, { ...v('en'), ...extra }),
-    ];
-    const blocks = [];
-    if (variant === 'security_notice') blocks.push(T.para(...both('ssoinv_security_notice')));
-    blocks.push(T.para(...both('ssoinv_intro')));
-    blocks.push(T.section(...both('ssoinv_benefits_title')));
-    blocks.push(T.para(...both('ssoinv_benefits')));
-    blocks.push(T.section(...both('ssoinv_how_title')));
+    const introKey = isMicrosoftProvider(providerKey, provider)
+        ? 'ssoinv_intro_ms'
+        : 'ssoinv_intro';
     const step3 = upn ? 'ssoinv_step3_upn' : 'ssoinv_step3';
-    blocks.push(
-        T.steps([
-            { fr: tr('fr', 'ssoinv_step1', v('fr')), en: tr('en', 'ssoinv_step1', v('en')) },
-            { fr: tr('fr', 'ssoinv_step2', v('fr')), en: tr('en', 'ssoinv_step2', v('en')) },
-            { fr: tr('fr', step3, v('fr')), en: tr('en', step3, v('en')) },
-        ])
-    );
-    if (rec.isAdmin) {
-        blocks.push(T.section(...both('ssoinv_admin_title')));
-        blocks.push(T.para(...both('ssoinv_admin')));
-    }
-    blocks.push(T.para(...both('ssoinv_shared_pc')));
-    blocks.push(T.para(...both('ssoinv_never_password')));
-    if (url)
-        blocks.push(T.cta(...both('ssoinv_cta'), `${url}/login`, branding && branding.accentColor));
-    blocks.push(T.para(...both('ssoinv_help')));
-    const prefix = reminder ? `${tr('fr', 'ssoinv_reminder_prefix')} ` : '';
-    const subject = `${prefix}${tr('fr', 'ssoinv_subject', v('fr'))} / ${tr('en', 'ssoinv_subject', v('en'))}`;
+    const spec = [
+        variant === 'security_notice' ? { t: 'p', k: 'ssoinv_security_notice' } : null,
+        { t: 'p', k: introKey },
+        { t: 'h', k: 'ssoinv_benefits_title' },
+        { t: 'p', k: 'ssoinv_benefits' },
+        { t: 'h', k: 'ssoinv_how_title' },
+        { t: 'steps', ks: ['ssoinv_step1', 'ssoinv_step2', step3] },
+        rec.isAdmin ? { t: 'h', k: 'ssoinv_admin_title' } : null,
+        rec.isAdmin ? { t: 'p', k: 'ssoinv_admin' } : null,
+        { t: 'p', k: 'ssoinv_shared_pc' },
+        { t: 'p', k: 'ssoinv_never_password' },
+        url ? { t: 'cta', k: 'ssoinv_cta', href: `${url}/login` } : null,
+        { t: 'p', k: 'ssoinv_help' },
+    ].filter(Boolean);
+    const both = (key) => [tr('fr', key, v('fr')), tr('en', key, v('en'))];
+    const blocks = spec.map((b) => {
+        if (b.t === 'h') return T.section(...both(b.k));
+        if (b.t === 'steps')
+            return T.steps(
+                b.ks.map((k) => ({ fr: tr('fr', k, v('fr')), en: tr('en', k, v('en')) }))
+            );
+        if (b.t === 'cta') return T.cta(...both(b.k), b.href, branding && branding.accentColor);
+        return T.para(...both(b.k));
+    });
+    // The reminder prefix is in BOTH halves (« Rappel : … / Reminder: … »).
+    const pre = (lang) => (reminder ? `${tr(lang, 'ssoinv_reminder_prefix')} ` : '');
+    const subject = `${pre('fr')}${tr('fr', 'ssoinv_subject', v('fr'))} / ${pre('en')}${tr('en', 'ssoinv_subject', v('en'))}`;
     const html = T.wrap({
         branding: branding || { appName: app },
         title: `${tr('fr', 'ssoinv_title')} / ${tr('en', 'ssoinv_title')}`,
@@ -313,8 +373,8 @@ function compose({
         [
             tr(lang, 'ssoinv_hello', v(lang)),
             variant === 'security_notice' ? tr(lang, 'ssoinv_security_notice', v(lang)) : null,
-            tr(lang, 'ssoinv_intro', v(lang)),
-            `${tr(lang, 'ssoinv_benefits_title')}${colon(lang)} ${tr(lang, 'ssoinv_benefits')}`,
+            tr(lang, introKey, v(lang)),
+            `${tr(lang, 'ssoinv_benefits_title')}${colon(lang)} ${tr(lang, 'ssoinv_benefits', v(lang))}`,
             `${tr(lang, 'ssoinv_how_title')}${colon(lang)}`,
             `1. ${tr(lang, 'ssoinv_step1', v(lang))}`,
             `2. ${tr(lang, 'ssoinv_step2', v(lang))}`,
@@ -326,7 +386,17 @@ function compose({
         ]
             .filter(Boolean)
             .join('\n');
-    return { subject, html, text: `${lines('fr')}\n\n----\n\n${lines('en')}` };
+    const page = (lang) => ({
+        heading: tr(lang, 'ssoinv_title'),
+        hello: tr(lang, 'ssoinv_hello', v(lang)),
+        blocks: pageOf(spec, v, lang),
+    });
+    return {
+        subject,
+        html,
+        text: `${lines('fr')}\n\n----\n\n${lines('en')}`,
+        page: { fr: page('fr'), en: page('en') },
+    };
 }
 
 /** Everything compose needs for one outbox row. */
@@ -341,6 +411,7 @@ async function messageFor(row, rec, { reminder = false } = {}) {
     return compose({
         rec,
         provider: providerLabel(row.provider),
+        providerKey: row.provider,
         variant: row.variant || 'standard',
         upn: await upnFor(row, rec),
         contact: await helpContact(),
@@ -433,7 +504,9 @@ async function deliver(row) {
                 userId: rec.id,
                 kind: 'sso.migration_invite',
                 channel: 'inapp',
-                payload: { link: '/login', provider: row.provider, variant: row.variant },
+                // The notice opens the SAME explanation as the e-mail, signed
+                // in (the only one for a person with no address or with e-mail off).
+                payload: { link: SSO_CHANGE_PATH, provider: row.provider, variant: row.variant },
             });
         } catch (_) {
             /* the e-mail still goes; the console shows the status */
@@ -687,7 +760,9 @@ async function announcementPlan() {
 /** Long date (+ time when not midnight) in the reader's language. */
 function formatGoLive(d, lang) {
     const loc = lang === 'en' ? 'en-GB' : 'fr-FR';
-    const day = d.toLocaleDateString(loc, { day: 'numeric', month: 'long', year: 'numeric' });
+    let day = d.toLocaleDateString(loc, { day: 'numeric', month: 'long', year: 'numeric' });
+    // French writes the first day of the month « 1er octobre ».
+    if (lang !== 'en' && d.getDate() === 1) day = day.replace(/^1(?=\s)/, '1er');
     if (d.getHours() === 0 && d.getMinutes() === 0) return day;
     const hh = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     return tr(lang, 'ssoann_date_time', { date: day, time: hh });
@@ -697,22 +772,40 @@ function formatGoLive(d, lang) {
  * The announcement text (FR first, EN below) — pure given its inputs.
  * @returns {{subject:string, html:string, text:string}}
  */
-function composeAnnouncement({ rec, provider, goLiveAt, contact, app, url, branding = null }) {
+function composeAnnouncement({
+    rec,
+    provider,
+    providerKey = null,
+    goLiveAt,
+    contact,
+    app,
+    url,
+    branding = null,
+}) {
     const T = require('../utils/emailTemplate');
     const v = (lang) => ({
         app,
         provider,
+        account: accountPhrase(lang, provider),
         url,
         date: formatGoLive(goLiveAt, lang),
         first: rec.firstName || rec.name || '',
         contact: contact || tr(lang, 'ssoinv_contact_default'),
     });
+    const bodyKey = isMicrosoftProvider(providerKey, provider) ? 'ssoann_body_ms' : 'ssoann_body';
+    const spec = [
+        { t: 'p', k: bodyKey },
+        { t: 'p', k: 'ssoann_nothing_yet' },
+        { t: 'p', k: 'ssoinv_never_password' },
+        url ? { t: 'cta', k: 'ssoann_cta', href: `${url}/login` } : null,
+        { t: 'p', k: 'ssoinv_help' },
+    ].filter(Boolean);
     const both = (key) => [tr('fr', key, v('fr')), tr('en', key, v('en'))];
-    const blocks = [T.para(...both('ssoann_body')), T.para(...both('ssoann_nothing_yet'))];
-    blocks.push(T.para(...both('ssoinv_never_password')));
-    if (url)
-        blocks.push(T.cta(...both('ssoann_cta'), `${url}/login`, branding && branding.accentColor));
-    blocks.push(T.para(...both('ssoinv_help')));
+    const blocks = spec.map((b) =>
+        b.t === 'cta'
+            ? T.cta(...both(b.k), b.href, branding && branding.accentColor)
+            : T.para(...both(b.k))
+    );
     const subject = `${tr('fr', 'ssoann_subject', v('fr'))} / ${tr('en', 'ssoann_subject', v('en'))}`;
     const html = T.wrap({
         branding: branding || { appName: app },
@@ -723,7 +816,7 @@ function composeAnnouncement({ rec, provider, goLiveAt, contact, app, url, brand
     const lines = (lang) =>
         [
             tr(lang, 'ssoinv_hello', v(lang)),
-            tr(lang, 'ssoann_body', v(lang)),
+            tr(lang, bodyKey, v(lang)),
             tr(lang, 'ssoann_nothing_yet', v(lang)),
             url ? `${url}/login` : null,
             tr(lang, 'ssoinv_never_password'),
@@ -731,7 +824,99 @@ function composeAnnouncement({ rec, provider, goLiveAt, contact, app, url, brand
         ]
             .filter(Boolean)
             .join('\n');
-    return { subject, html, text: `${lines('fr')}\n\n----\n\n${lines('en')}` };
+    const page = (lang) => ({
+        heading: tr(lang, 'ssoann_title'),
+        hello: tr(lang, 'ssoinv_hello', v(lang)),
+        blocks: pageOf(spec, v, lang),
+    });
+    return {
+        subject,
+        html,
+        text: `${lines('fr')}\n\n----\n\n${lines('en')}`,
+        page: { fr: page('fr'), en: page('en') },
+    };
+}
+
+/**
+ * The complement of the in-app title « Connexion avec votre compte
+ * d'entreprise : ce qui change »: the announcement carries its DATE (« à partir
+ * du 12 octobre 2026 »), the invitation its provider NAME (none for the bare
+ * 'SSO' fallback). Sync (NotificationService.KIND_SUBTITLE).
+ */
+function inAppSubtitle(payload, lang) {
+    const p = payload || {};
+    if (p.variant === 'announce') {
+        const d = p.goLiveAt ? new Date(p.goLiveAt) : null;
+        if (!d || Number.isNaN(d.getTime())) return null;
+        return tr(lang, 'ssochg_sub_from', { date: formatGoLive(d, lang) });
+    }
+    if (!p.provider) return null;
+    const label = providerLabel(p.provider);
+    return isBareLabel(label) ? null : label;
+}
+
+/**
+ * GET /account/sso-change — what the signed-in person's e-mail says, for THIS
+ * person: the invitation once SSO is live; the announcement while it is not and
+ * a go-live date is planned; otherwise a short neutral page.
+ * @returns {Promise<{mode:'invite'|'announce'|'later'|'none', page?:object}>}
+ */
+async function changeFor(user, { now = new Date() } = {}) {
+    const subjectType = user && user.userType === 'admin' ? 'admin' : 'employee';
+    const id = Number(user && user.id);
+    if (!id) return { mode: 'none' };
+    let row = null;
+    try {
+        row = await db.get(
+            `SELECT id, subject_type, subject_id, provider, variant, status
+               FROM sso_migration_invites
+              WHERE subject_type = ? AND subject_id = ?
+                AND status NOT IN ('cancelled', 'skipped_superadmin')
+              ORDER BY id DESC LIMIT 1`,
+            [subjectType, id]
+        );
+    } catch (e) {
+        if (!isMissingTable(e)) throw e;
+    }
+    const live = isSsoLive();
+    if (!row && live) {
+        // Migrated before the outbox existed: an identity or an open mapping.
+        const p = await currentProvider(subjectType, id);
+        if (p) row = { subjectType, subjectId: id, provider: p, variant: 'standard' };
+    }
+    if (!row) return { mode: 'none' };
+    row = { ...row, subjectType, subjectId: id };
+    const rec = await recipientOf(row);
+    if (!rec || rec.superadmin || !rec.active) return { mode: 'none' };
+    if (rec.type === 'employee' && (await require('./AdminSsoService').hasSsoException(rec.id)))
+        return { mode: 'none' };
+    if (!(await stillMigrated(row, rec))) return { mode: 'none' };
+    if (live) {
+        const m = await messageFor(row, rec);
+        return { mode: 'invite', page: m.page };
+    }
+    const plan = await announcementPlan();
+    if (!plan.goLiveAt || now >= plan.goLiveAt) return { mode: 'later' };
+    let branding = null;
+    try {
+        branding = await require('../utils/branding').getBranding();
+    } catch (_) {
+        branding = null;
+    }
+    const m = composeAnnouncement({
+        rec,
+        provider: providerLabel(row.provider),
+        providerKey: row.provider,
+        goLiveAt: plan.goLiveAt,
+        contact: await helpContact(),
+        app: (branding && branding.appName) || (await appName()),
+        url: String((await require('../utils/emailTemplate').baseUrlAsync()) || '').replace(
+            /\/+$/,
+            ''
+        ),
+        branding,
+    });
+    return { mode: 'announce', page: m.page };
 }
 
 function auditAnn(action, subjectType, subjectId, details) {
@@ -856,7 +1041,7 @@ async function announce({ limit = null, now = new Date() } = {}) {
                 kind: 'sso.migration_invite',
                 channel: 'inapp',
                 payload: {
-                    link: '/login',
+                    link: SSO_CHANGE_PATH,
                     provider: r.provider,
                     variant: 'announce',
                     goLiveAt: plan.goLiveAt.toISOString(),
@@ -873,6 +1058,7 @@ async function announce({ limit = null, now = new Date() } = {}) {
             const mail = composeAnnouncement({
                 rec,
                 provider: providerLabel(r.provider),
+                providerKey: r.provider,
                 goLiveAt: plan.goLiveAt,
                 contact,
                 app,
@@ -1150,7 +1336,13 @@ module.exports = {
     announcementPlan,
     announcementStatus,
     composeAnnouncement,
+    formatGoLive,
     parseGoLive,
+    // The in-app notice and its signed-in page
+    inAppSubtitle,
+    changeFor,
+    isMicrosoftProvider,
+    SSO_CHANGE_PATH,
     clampLeadHours,
     ANNOUNCE_LEAD_DEFAULT_H,
     ANNOUNCE_LEAD_MIN_H,

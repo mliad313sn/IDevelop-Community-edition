@@ -1813,3 +1813,28 @@ html {
 :root .hz-oneone-past ul {
     padding-left: 1.1rem;
 }
+
+/* ── SSO change page (/account/sso-change): the in-app notice's text ── */
+:root .hz-sso-change {
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+    max-width: 52rem;
+}
+:root .hz-sso-change h2 {
+    margin-top: 0;
+    font-size: 1.15rem;
+}
+:root .hz-sso-change h3 {
+    font-size: 1rem;
+    margin: 1rem 0 0.35rem;
+}
+:root .hz-sso-change ol {
+    margin: 0.25rem 0 0.75rem 1.25rem;
+    padding: 0;
+}
+:root .hz-sso-change li {
+    margin: 0.2rem 0;
+}
+:root .hz-sso-change > p:only-child {
+    margin: 0;
+}

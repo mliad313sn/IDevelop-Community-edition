@@ -63,11 +63,20 @@ const FLAG_FILTERS = [
     'sso_notice_due',
 ];
 const SSO_INVITED = "('sent', 'reminded', 'inapp_only', 'skipped_no_email')";
+// A printed notice is DUE when the person never received the e-mail (no
+// address: 'skipped_no_email'; e-mail off or skipped: 'inapp_only') and it was
+// not handed over yet. Judged on the person's LATEST invitation row only (the
+// one the console shows), so a later e-mailed invitation clears it and one
+// person is never counted twice. `si` is the row, `x.id` the employee.
+const NOTICE_DUE_STATUSES = "('skipped_no_email', 'inapp_only')";
+const NOTICE_DUE_ROW = `si.subject_type = 'employee' AND si.subject_id = x.id
+    AND si.status IN ${NOTICE_DUE_STATUSES} AND si.handed_over_at IS NULL
+    AND si.id = (SELECT MAX(l.id) FROM sso_migration_invites l WHERE l.subject_type = 'employee' AND l.subject_id = x.id)`;
 const SSO_SQL = {
     migrated: `EXISTS (SELECT 1 FROM sso_migration_invites si WHERE si.subject_type = 'employee' AND si.subject_id = x.id AND si.status NOT IN ('cancelled', 'skipped_superadmin'))`,
     invited: `EXISTS (SELECT 1 FROM sso_migration_invites si WHERE si.subject_type = 'employee' AND si.subject_id = x.id AND si.status IN ${SSO_INVITED})`,
     signed: `EXISTS (SELECT 1 FROM user_identities ui WHERE ui.subject_type = 'employee' AND ui.subject_id = x.id AND ui.last_used_at IS NOT NULL)`,
-    noticeDue: `EXISTS (SELECT 1 FROM sso_migration_invites si WHERE si.subject_type = 'employee' AND si.subject_id = x.id AND si.status = 'skipped_no_email' AND si.handed_over_at IS NULL)`,
+    noticeDue: `EXISTS (SELECT 1 FROM sso_migration_invites si WHERE ${NOTICE_DUE_ROW})`,
 };
 const PER_PAGE = [25, 50, 100, 200];
 const SORT = {
@@ -356,12 +365,9 @@ class InvitationController {
             .map(Number)
             .filter((n) => Number.isFinite(n) && n > 0);
         if (!ids.length) {
-            const where = [
-                `si.subject_type = 'employee'`,
-                `si.status = 'skipped_no_email'`,
-                'si.handed_over_at IS NULL',
-                'e.is_active = true',
-            ];
+            // Same rule as the « notices to hand over » counter (NOTICE_DUE_ROW):
+            // no address OR e-mail off, latest row, not handed over yet.
+            const where = [NOTICE_DUE_ROW.replace(/x\.id/g, 'e.id'), 'e.is_active = true'];
             const params = [];
             const siteId = parseInt(req.query.siteId, 10);
             const supervisorId = parseInt(req.query.supervisorId, 10);
@@ -397,6 +403,33 @@ class InvitationController {
             layout: false,
             title: tr(req, 'admin:acc_sso_notices_title'),
             notices,
+        });
+    }
+
+    /**
+     * GET /account/sso-change: any signed-in person (employee, manager, admin).
+     * The page the in-app SSO notice opens: the SAME explanation as the e-mail,
+     * for THIS person only (their own invitation or announcement), in the UI
+     * language. Nothing about anyone else, no secret, no action.
+     */
+    async ssoChange(req, res) {
+        const lang = String(req.language || 'fr')
+            .toLowerCase()
+            .startsWith('en')
+            ? 'en'
+            : 'fr';
+        let r = { mode: 'none' };
+        try {
+            r = await require('../services/SsoInviteService').changeFor(req.user);
+        } catch (e) {
+            // Never « nothing changes for you » on a failure: say it could not be read.
+            console.warn('[sso-change] explanation unavailable:', e && e.message);
+            r = { mode: 'error' };
+        }
+        res.render('pages/account/sso-change', {
+            title: tr(req, 'auth:ssochg_title'),
+            mode: r.mode,
+            doc: r.page ? r.page[lang] : null,
         });
     }
 

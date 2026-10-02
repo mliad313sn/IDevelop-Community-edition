@@ -1374,7 +1374,11 @@ class NotificationService {
             },
             'sso.migration_invite': {
                 icon: 'fa-right-to-bracket',
-                link: '/login',
+                // The signed-in explanation (same text as the e-mail); /login took
+                // a signed-in reader nowhere. Wins over the payload link, so the
+                // notices already stored with '/login' open it too.
+                link: '/account/sso-change',
+                forceLink: true,
                 title: {
                     fr: 'Connexion avec votre compte d’entreprise : ce qui change',
                     en: 'Signing in with your company account: what changes',
@@ -1585,6 +1589,10 @@ class NotificationService {
     static get KIND_SUBTITLE() {
         const n = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
         return {
+            // The announcement carries its date, the invitation its provider: the
+            // title alone said nothing to a person with no e-mail.
+            'sso.migration_invite': (p, lang) =>
+                require('./SsoInviteService').inAppSubtitle(p, lang),
             'cycle.escalation': (p, lang) => {
                 const code = String((p && p.cycle) || '').trim();
                 if (!code) return null;
@@ -1730,7 +1738,7 @@ class NotificationService {
         // récapitulatif e-mail, que `withReason:false` ne fait taire que pour les
         // motifs, jamais pour l'identité de l'objet concerné.
         const subtitle = NotificationService._kindSubtitle(n.kind, payload, locale);
-        const link = payload.link || meta.link || '/dashboard';
+        const link = (meta.forceLink && meta.link) || payload.link || meta.link || '/dashboard';
         const parts = [label, subtitle];
         if (reason && opts.withReason !== false) parts.push(reason);
         return {
