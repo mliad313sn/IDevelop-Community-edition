@@ -17,18 +17,20 @@ const SECRET_FIELD = /pass|pwd|secret|token|_csrf|otp|mfa/i;
 const UNSAFE_KEY = new Set(['__proto__', 'constructor', 'prototype']);
 
 function safeDraft(body) {
-    // A prototype-less map: no posted key can shadow or reach Object.prototype.
-    const out = Object.create(null);
+    // Collected in a Map, so no posted field name is ever used as a property key
+    // on a live object (CWE-1321; CodeQL js/remote-property-injection). The draft
+    // only travels as JSON, where the entries become plain data again.
+    const out = new Map();
     Object.entries(body || {}).forEach(([k, v]) => {
         if (UNSAFE_KEY.has(k) || SECRET_FIELD.test(k)) return;
         if (v == null) return;
         // Scalars and small arrays (checkbox groups); files/objects never belong in a draft.
-        if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === 'string').slice(0, 200);
+        if (Array.isArray(v)) out.set(k, v.filter((x) => typeof x === 'string').slice(0, 200));
         else if (typeof v === 'object')
-            out[k] = v; // scopes[idx][type] — qs-parsed nested object
-        else out[k] = String(v).slice(0, 4000);
+            out.set(k, v); // scopes[idx][type] — qs-parsed nested object
+        else out.set(k, String(v).slice(0, 4000));
     });
-    return out;
+    return Object.fromEntries(out);
 }
 
 /**
