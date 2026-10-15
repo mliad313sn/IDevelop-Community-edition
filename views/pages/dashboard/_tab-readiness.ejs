@@ -48,6 +48,18 @@
     </form>
     <% if (C.isDefault) { %><p class="ds-note" id="ds-compare-default"><%= __('dash:d3_rd_cmp_default') %></p><% } %>
     <div class="ds-pair">
+        <% if (C.axes.length < 3) { %>
+        <div>
+            <h4><%= __('dash:d3_rd_cmp_radar') %></h4>
+            <p class="ds-note"><%= __('dash:d3_rd_cmp_few_axes') %></p>
+            <div class="ds-table-wrap"><table class="ds-table" id="ds-compare-table">
+                <thead><tr><th scope="col"><%= __('dash:d3_col_pillar') %></th><th scope="col" class="num"><%= __('dash:d3_rd_cmp_scope') %></th><th scope="col" class="num"><%= C.label || '' %></th><th scope="col" class="num"><%= __('dash:d3_rd_cmp_required') %></th></tr></thead>
+                <tbody>
+                <% C.axes.forEach(function (a) { %><tr><th scope="row"><%= a.label || '—' %></th><td class="num"><%= _num(a.ref) ? _F.level(a.ref) : __('viz:unmeasured') %></td><td class="num"><%= _num(a.unit) ? _F.level(a.unit) : __('viz:unmeasured') %></td><td class="num"><%= _num(a.required) ? _F.level(a.required) : __('viz:unmeasured') %></td></tr><% }); %>
+                </tbody>
+            </table></div>
+        </div>
+        <% } else { %>
         <%- include('../../partials/viz/chart', { vizChart: {
             id: 'ds-compare-radar',
             title: __('dash:d3_rd_cmp_radar'),
@@ -66,6 +78,7 @@
             mobileList: false,
             height: 300
         } }) %>
+        <% } %>
         <div>
             <h4><%= __('dash:d3_rd_cmp_gaps') %></h4>
             <% if (C.gaps.length < 3) { %>

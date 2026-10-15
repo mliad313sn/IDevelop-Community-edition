@@ -772,5 +772,7 @@
   "d3_bp_indicator": "Indicateur",
   "d3_bp_month": "Mois",
   "d3_retired": "Ce point d’accès a été retiré : le tableau de bord calcule désormais ses chiffres sur le serveur.",
-  "d3_no_department": "Sans département"
+  "d3_no_department": "Sans département",
+  "d3_rd_cmp_few_axes": "Un radar demande au moins trois piliers : les niveaux sont dans le tableau.",
+  "d3_col_pillar": "Pilier"
 }

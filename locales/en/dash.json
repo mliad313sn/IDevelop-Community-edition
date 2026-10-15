@@ -772,5 +772,7 @@
   "d3_bp_indicator": "Indicator",
   "d3_bp_month": "Month",
   "d3_retired": "This endpoint was retired: the dashboard now renders its figures on the server.",
-  "d3_no_department": "No department"
+  "d3_no_department": "No department",
+  "d3_rd_cmp_few_axes": "A radar needs three pillars or more: the levels are in the table.",
+  "d3_col_pillar": "Pillar"
 }
