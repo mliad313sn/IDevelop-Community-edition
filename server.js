@@ -675,12 +675,8 @@ app.use(async (req, res, next) => {
     // for every server-rendered view. `enumLabel(value)` keeps working; views may
     // also call `enumLabel('cycle_status', value)`.
     {
-        const {
-            fmtDate,
-            fmtDateTime,
-            fmtPeriodBound,
-            fmtMonth,
-        } = require('./src/utils/dateFormat');
+        const { fmtMonth } = require('./src/utils/dateFormat');
+        const { fmtDate, fmtDateTime, fmtPeriodBound } = require('./src/utils/dateFormat');
         const { enumLabel, KINDS } = require('./src/utils/enumLabels');
         const lang = res.locals.lang || 'fr';
         res.locals.fmtDate = (d) => fmtDate(d, lang);

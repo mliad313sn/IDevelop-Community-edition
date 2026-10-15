@@ -126,7 +126,11 @@ describe('exec views — CSP, i18n and branding hygiene', () => {
             const src = fs.readFileSync(path.join(VIEW_DIR, v), 'utf8');
             for (const m of src.matchAll(/<script\b/g)) {
                 const head = src.slice(m.index, m.index + 200);
-                if (/\bsrc=/.test(head.split('>')[0])) continue; // external script
+                if (/\bsrc=/.test(head.split('>')[0])) {
+                    // external script: CSP-safe by construction, still counted
+                    checked++;
+                    continue;
+                }
                 expect(`${v} @${m.index}: ${head.slice(0, 80)}`).toMatch(/nonce="<%= cspNonce %>"/);
                 checked++;
             }
@@ -146,9 +150,14 @@ describe('exec views — CSP, i18n and branding hygiene', () => {
     test('the board pack’s Print button actually calls window.print()', () => {
         // The report builder's Print button only toggled a CSS class and never
         // printed, leaving the user to find Ctrl+P.
+        // CSP: no inline handler — the view marks the button, a served script prints.
         const src = fs.readFileSync(path.join(VIEW_DIR, 'board-pack.ejs'), 'utf8');
-        expect(src).toMatch(/window\.print\(\)/);
-        expect(src).toMatch(/@media print/);
+        expect(src).toMatch(/<button[^>]*data-print/);
+        expect(src).toMatch(/src="\/js\/board-pack\.js/);
+        const js = fs.readFileSync(path.join(__dirname, '../../public/js/board-pack.js'), 'utf8');
+        expect(js).toMatch(/window\.print\(\)/);
+        const css = fs.readFileSync(path.join(__dirname, '../../public/css/dashboard.css'), 'utf8');
+        expect(css).toMatch(/@media print/);
     });
 
     test('every exec: key used in the views and controller exists in FR and EN', () => {
