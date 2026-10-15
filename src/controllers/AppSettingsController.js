@@ -1,3 +1,4 @@
+const { containedUploadPath } = require('../utils/uploadTempPath');
 const PRODUCT = require('../config/product');
 const AppSettingsModel = require('../models/AppSettingsModel');
 const RBACService = require('../services/RBACService');
@@ -890,8 +891,10 @@ class AppSettingsController {
             const readImage = (file, maxKb) => {
                 if (!file) return { skip: true };
                 try {
-                    const buf = fs.readFileSync(file.path);
-                    fs.unlinkSync(file.path);
+                    const src = containedUploadPath(file.path);
+                    if (!src) return { error: 'Could not read the uploaded file.' };
+                    const buf = fs.readFileSync(src);
+                    fs.unlinkSync(src);
                     if (buf.length > maxKb * 1024)
                         return { error: `File too large (max ${maxKb} KB).` };
                     const ext = require('path').extname(file.originalname).toLowerCase();
