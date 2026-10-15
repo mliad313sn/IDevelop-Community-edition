@@ -41,6 +41,11 @@ function actorRefOf(user) {
     if (!user || user.id == null) return null;
     return `${user.userType === 'admin' ? 'admin' : 'employee'}:${Number(user.id)}`;
 }
+/** A date column as YYYY-MM-DD for an audit line (pg returns a Date). */
+function ymd(d) {
+    if (!d) return '—';
+    return d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+}
 function reasonRequired(req) {
     return req.t ? req.t('compliance:err_deactivate_reason_required') : 'A reason is required.';
 }
@@ -433,7 +438,7 @@ class ComplianceController {
             action: 'ABSENCE_DEACTIVATED',
             entityType: 'employee',
             entityId: absence.employeeId,
-            details: `Planned absence ${absence.id} cancelled (${absence.startsOn} → ${absence.endsOn}); reason: ${reason.slice(0, 200)}`,
+            details: `Planned absence ${absence.id} cancelled (${ymd(absence.startsOn)} → ${ymd(absence.endsOn)}); reason: ${reason.slice(0, 200)}`,
             ipAddress: req.ip,
             userAgent: req.get('user-agent'),
         });
