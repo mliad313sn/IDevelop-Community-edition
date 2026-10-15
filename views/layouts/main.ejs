@@ -137,6 +137,15 @@
                                 <script src="/js/date-format.js?v=<%= assetVersion %>" defer></script>
                                 <script src="/js/table-search.js?v=<%= assetVersion %>" defer></script>
                                 <script src="/js/list-tools.js?v=<%= assetVersion %>" defer></script>
+<% if (typeof sharedDevice !== 'undefined' && sharedDevice) { %>
+<script src="/js/shared-device.js?v=<%= assetVersion %>" defer data-mode="session"
+    data-beacon-token="<%= sharedDevice.beaconToken %>" data-render-at="<%= sharedDevice.renderAt %>"
+    data-idle-minutes="<%= sharedDevice.idleMinutes %>" data-draft-owner="<%= sharedDevice.draftOwner %>"
+    data-label="<%= __('auth:kiosk_badge') %>" data-logout-label="<%= __('auth:kiosk_logout') %>"
+    data-drafts-warning="<%= __('auth:kiosk_drafts_warning') %>" data-idle-warning="<%= __('auth:kiosk_idle_warning') %>"
+    data-stay-label="<%= __('auth:kiosk_stay') %>"
+    data-confirm-yes="<%= __('auth:kiosk_confirm_yes') %>" data-confirm-no="<%= __('auth:kiosk_confirm_no') %>"></script>
+<% } %>
 </body>
 
 </html>

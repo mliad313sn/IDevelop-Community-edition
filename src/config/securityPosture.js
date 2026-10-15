@@ -53,17 +53,24 @@ const CATEGORIES = [
             },
             {
                 id: 'sessions',
-                fr: 'Cookies de session httpOnly, SameSite et Secure en HTTPS (nom de cookie verrouillé sur l’hôte quand il est toujours sécurisé) ; expiration après 30 min d’inactivité et 12 h au plus par défaut.',
-                en: 'httpOnly, SameSite and Secure (over HTTPS) session cookies, with a host-locked cookie name when the cookie is always Secure; idle timeout 30 min and absolute 12 h by default.',
+                fr: 'Cookies de session httpOnly, SameSite et Secure en HTTPS (nom de cookie verrouillé sur l’hôte quand il est toujours sécurisé) ; expiration après 30 min d’inactivité et 12 h au plus par défaut ; aucune session pour un visiteur anonyme hors des pages de formulaire ; retour à la page demandée par un cookie signé de 15 min. Mode poste partagé optionnel (désactivé par défaut) : inactivité courte, déconnexion à la fermeture de l’onglet ; les brouillons hors ligne sont effacés de l’appareil à chaque déconnexion.',
+                en: 'httpOnly, SameSite and Secure (over HTTPS) session cookies, with a host-locked cookie name when the cookie is always Secure; idle timeout 30 min and absolute 12 h by default; no session for an anonymous visitor outside the form pages; back to the requested page through a signed 15-minute cookie. Optional shared-computer mode (off by default): short idle window, sign-out when the tab closes; offline drafts are wiped from the device at every sign-out.',
                 evidence: [
                     'server.js',
                     'src/middleware/sessionActivity.js',
                     'src/middleware/httpHardening.js',
+                    'src/utils/returnTo.js',
+                    'public/js/shared-device.js',
+                    'public/js/draft-store.js',
                 ],
                 tests: [
                     'c319-real-session.test.js',
                     'sessionBucketsBothTypes.test.js',
                     'httpHardening.test.js',
+                    'anonymousNoSession.test.js',
+                    'returnToAfterSignIn.test.js',
+                    'sharedComputerMode.test.js',
+                    'selfAssessmentDraftsWiped.test.js',
                 ],
             },
             {
@@ -75,13 +82,19 @@ const CATEGORIES = [
             },
             {
                 id: 'sso',
-                fr: 'Authentification unique OpenID Connect (dont Microsoft Entra ID), SAML 2.0 et Google ; provisionnement SCIM.',
-                en: 'Single sign-on with OpenID Connect (including Microsoft Entra ID), SAML 2.0 and Google; SCIM provisioning.',
-                evidence: ['src/services/SsoService.js', 'src/routes/scim.js'],
+                fr: 'Authentification unique OpenID Connect (dont Microsoft Entra ID), SAML 2.0 et Google ; provisionnement SCIM. SAML strict par défaut (réponse et assertion signées), assouplissement à l’assertion seule sur décision d’un super-administrateur.',
+                en: 'Single sign-on with OpenID Connect (including Microsoft Entra ID), SAML 2.0 and Google; SCIM provisioning. SAML strict by default (response and assertion signed); assertion-only signing only when a super-administrator switches it.',
+                evidence: [
+                    'src/services/SsoService.js',
+                    'src/routes/scim.js',
+                    'src/config/sso.js',
+                    'src/services/SsoSettingsService.js',
+                ],
                 tests: [
                     'ssoService.test.js',
                     'c319-sso-enforcement.test.js',
                     'scimReadOnlyKeyCannotWrite.test.js',
+                    'samlStrictMode.test.js',
                 ],
             },
             {
@@ -313,6 +326,23 @@ const CATEGORIES = [
                     'c317-P-privacy-retention.test.js',
                     'snapshotRestoreProtectsJournals.test.js',
                     'auditErasureNeedles-db.test.js',
+                ],
+            },
+            {
+                id: 'special-category',
+                fr: 'Données de diversité déclarées par la personne seule, avec un consentement explicite et retirable (registre des consentements) ; origine ethnique désactivée sauf validation juridique saisie par un super-administrateur ; handicap jamais visible d’un manager ni analysé ; nationalité collectée et analysée seulement quand le module Contenu local est activé ; les réglages sensibles sont regroupés et chaque changement est confirmé.',
+                en: 'Diversity data declared by the person only, with explicit, withdrawable consent (consent ledger); ethnicity off unless a super-administrator records a legal sign-off; disability never visible to a manager nor analysed; nationality collected and analysed only while the Local content module is on; the sensitive settings are grouped and every change is confirmed.',
+                evidence: [
+                    'src/services/DEIService.js',
+                    'db/postgres/171_dei_consent_self_declaration.sql',
+                    'src/utils/featureFlags.js',
+                    'views/pages/app-settings/index.ejs',
+                ],
+                tests: [
+                    'deiConsentSelfDeclaration.test.js',
+                    'deiConsent-db.test.js',
+                    'nationalitySwitch.test.js',
+                    'sensitiveSettingsBand.test.js',
                 ],
             },
             {

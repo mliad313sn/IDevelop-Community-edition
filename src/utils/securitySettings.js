@@ -61,6 +61,10 @@ const SECURITY_KEY_PATTERNS = [
     // How long the audit log is kept before its sealed purge.
     /^auditLog/i,
     /^kiosk/i,
+    // Nationality is sensitive: the one switch (the localContent module) and
+    // the reference country decide whether it is collected and analysed.
+    /^featureLocalContent$/,
+    /^localContentHomeCountry$/,
     /^appBaseUrl$/i,
     /^trustedHosts$/i,
     // Where every password-reset link and notification is sent from.

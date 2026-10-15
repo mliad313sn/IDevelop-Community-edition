@@ -600,6 +600,15 @@ const SUBJECT_DATA_REGISTRY = [
     red('recognitions', 'to_employee_id', 'recognitions'),
     red('recognitions', 'from_employee_id', 'recognitions'),
     red('employee_demographics', 'employee_id', 'demographics'),
+    // The DEI consent ledger (migration 171): field NAMES, consent-text version
+    // and dates, never a declared value (those live in employee_demographics,
+    // deleted on erasure). Kept as the proof of the consent and of its withdrawal.
+    keep(
+        'dei_consents',
+        'employee_id',
+        'consent ledger (field names, text version, grant and withdrawal dates, no values): proof of consent and of its withdrawal (accountability)',
+        { export: 'deiConsents' }
+    ),
     keep('review_delegations', 'grantor_id', ACTOR),
     keep('review_delegations', 'grantee_id', ACTOR),
 

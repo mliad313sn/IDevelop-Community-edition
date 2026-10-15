@@ -219,10 +219,13 @@ class SsoController {
                 mapped: {},
             };
             // Deep link (SP-initiated ?RelayState=/path, or the IdP portal's
-            // RelayState): only ever one of our own pages.
-            const relay = safeRelayPath(
-                (req.body && req.body.RelayState) || (req.query && req.query.RelayState)
-            );
+            // RelayState): only ever one of our own pages. Otherwise the page an
+            // auth guard bounced to /login (utils/returnTo: a short signed cookie;
+            // it rides the OIDC/Entra GET callback, not a cross-site SAML POST).
+            const relay =
+                safeRelayPath(
+                    (req.body && req.body.RelayState) || (req.query && req.query.RelayState)
+                ) || safeRelayPath(require('../utils/returnTo').takeReturnTo(req));
             // An identity linked DIRECTLY to an admin (D3a). Refused exactly as
             // before 3.23.19 unless the SuperAdmin switched admin SSO on; then
             // the admin is re-checked and must present a second factor.

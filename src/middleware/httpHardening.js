@@ -495,6 +495,20 @@ function isStaticHtmlDoc(p) {
 }
 
 // ---------------------------------------------------------------------------
+// No session for an anonymous visitor, except on the pages that render a form
+// (they need the CSRF token, which lives in the session). Every anonymous hit
+// (a 404, the API root, a probe, a bot) used to mint a token and so persist a
+// session row for the whole session lifetime.
+// ---------------------------------------------------------------------------
+const ANON_FORM_PAGES = /^\/(?:login(?:\/|$)|forgot-password$|reset-password$|signup$|auth\/sso\/)/;
+function mayMintCsrfToken(req) {
+    if (!req || !req.session) return false;
+    if (req.user) return true;
+    if (req.session.csrfToken) return true; // already established: no new write
+    return ANON_FORM_PAGES.test(String(req.path || ''));
+}
+
+// ---------------------------------------------------------------------------
 // TRUST_PROXY is validated at boot, fail closed. proxy-addr < 2.0.8
 // (GHSA-jqcg-44mw-7w3h) compiled an IPv4-mapped IPv6 subnet with a short prefix
 // (`::ffff:10.0.0.0/8`) or an IPv6 subnet with zero leading bits (`::/1`) into
@@ -551,6 +565,8 @@ function parseTrustProxy(raw) {
 }
 
 module.exports = {
+    mayMintCsrfToken,
+    ANON_FORM_PAGES,
     JSON_TYPES,
     mimeEssence,
     isJsonType,

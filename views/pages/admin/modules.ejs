@@ -174,7 +174,17 @@
     if (!html) html = '<p class="text-muted" style="margin:0;">' + esc(T.none) + '</p>';
     if (LEGACY) html += '<p class="text-muted" style="margin:.4rem 0 0;font-size:.85rem;">' + esc(T.legacy) + '</p>';
     box.innerHTML = html;
+    // The localContent module is the ONE nationality switch (sensitive data):
+    // changing it asks for confirmation, with its consequence.
+    ['data-confirm', 'data-confirm-title', 'data-confirm-yes', 'data-confirm-danger'].forEach(function (x) { form.removeAttribute(x); });
+    if (after.localContent !== !!CURRENT.localContent) {
+      form.setAttribute('data-confirm', after.localContent ? LC.onBody : LC.offBody);
+      form.setAttribute('data-confirm-title', after.localContent ? LC.onTitle : LC.name);
+      form.setAttribute('data-confirm-yes', after.localContent ? LC.on : LC.off);
+      if (!after.localContent) form.setAttribute('data-confirm-danger', '');
+    }
   }
+  var LC = <%- include('../../partials/json-script', { v: { onBody: __('admin:set_lc_toggle_confirm'), onTitle: __('admin:set_lc_toggle_confirm_title'), offBody: __('admin:set_sensitive_consequence_featureLocalContent'), name: __('admin:set_name_featureLocalContent'), on: __('admin:set_sensitive_on_featureLocalContent'), off: __('admin:set_sensitive_off_featureLocalContent') } }) %>;
   form.addEventListener('change', render);
   render();
 })();

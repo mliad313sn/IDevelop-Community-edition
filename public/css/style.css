@@ -4081,3 +4081,80 @@ textarea.form-control {
     outline: 2px solid var(--brand);
     outline-offset: 2px;
 }
+
+/* ── Shared computer (kiosk) mode: badge and idle warning (shared-device.js) ── */
+.kiosk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-right: var(--space-2);
+    padding: 2px var(--space-1) 2px var(--space-3);
+    border-radius: var(--radius-pill);
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: var(--brand-dim);
+    border: 1px solid var(--border-active);
+    color: var(--brand-text);
+    white-space: nowrap;
+}
+
+.kiosk-badge .btn {
+    border-radius: var(--radius-pill);
+    font-size: 0.85rem;
+}
+
+.kiosk-badge--floating {
+    position: fixed;
+    top: var(--space-2);
+    right: var(--space-2);
+    z-index: 1100;
+}
+
+.kiosk-idle {
+    position: sticky;
+    top: var(--topbar-height);
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-3);
+    background: var(--warning-bg);
+    color: var(--amber-text);
+    border-left: 3px solid var(--amber);
+    flex-wrap: wrap;
+}
+
+.kiosk-idle .btn {
+    margin-left: auto;
+    min-height: 44px;
+}
+
+/* ── App settings: the sensitive-settings band (nationality, shared computer, MFA) ── */
+.settings-sensitive-band {
+    border: 1px solid var(--amber);
+    border-left-width: 4px;
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    background: var(--warning-bg);
+}
+
+.setting-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-left: var(--space-1);
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--amber-text);
+    border: 1px solid var(--amber);
+    white-space: nowrap;
+}
+
+.setting-consequence {
+    margin: var(--space-1) 0 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    max-width: 48ch;
+}

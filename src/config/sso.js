@@ -792,9 +792,12 @@ function registerSaml(passport, opts = {}) {
                 cacheProvider: SamlSec.requestCache,
                 passReqToCallback: true,
                 wantAssertionsSigned: true,
-                // Default to requiring the whole SAML response signed (defence-in-depth);
-                // set SAML_WANT_RESPONSE_SIGNED=0 only for an IdP that signs the assertion
-                // but not the response envelope.
+                // STRICT by default: the whole SAML response must be signed as well as
+                // the assertion (defence-in-depth). A SuperAdmin may relax it to
+                // assertion-only signing with the « Strict » switch on the SSO page
+                // (setting samlStrict, read through SsoSettingsService.getOverrides as
+                // SAML_WANT_RESPONSE_SIGNED '1'/'0'); before the setting is stored,
+                // SAML_WANT_RESPONSE_SIGNED=0 in the environment still relaxes it.
                 wantAuthnResponseSigned: env('SAML_WANT_RESPONSE_SIGNED') !== '0',
                 disableRequestedAuthnContext: true,
                 signatureAlgorithm: 'sha256',

@@ -210,6 +210,25 @@ function enforcedRefusal(req, res) {
     return res.redirect('/login?breakglass=1');
 }
 
+/**
+ * The return-to helpers (utils/returnTo): the guards set the path, sign-in
+ * reads it once. Loaded lazily; a module that cannot load degrades to « no
+ * remembered page » — never to an open redirect.
+ */
+const NO_RETURN_TO = {
+    peekReturnTo: () => null,
+    takeReturnTo: () => null,
+    returnTarget: (_p, fallback) => fallback,
+};
+function returnToApi() {
+    try {
+        const m = require('../utils/returnTo');
+        return m && typeof m.takeReturnTo === 'function' ? m : NO_RETURN_TO;
+    } catch (_) {
+        return NO_RETURN_TO;
+    }
+}
+
 function homeFor(userType) {
     if (userType === 'employee') return '/employee/dashboard';
     if (userType === 'manager') return '/supervisor/dashboard';
@@ -347,9 +366,40 @@ class AuthController {
                 }
             }
         }
+        // « Shared computer ». From an address in kioskIpRanges the box is ticked
+        // and locked (the server applies the mode whatever is posted); otherwise
+        // it is pre-ticked when this browser already carries the intent (the
+        // previous session on it was a shared-device one). No box at all while
+        // the SuperAdmin switch kioskModeEnabled is OFF (the default).
+        const kioskMode = require('../middleware/sessionActivity');
+        let kioskEnabled = false;
+        let kioskForced = false;
+        let kioskIdleMinutes = 5;
+        try {
+            kioskEnabled = await kioskMode.kioskEnabled();
+            kioskForced = kioskEnabled && (await kioskMode.isKioskIp(req));
+            kioskIdleMinutes = await kioskMode.kioskIdleMinutes();
+        } catch (_) {
+            kioskForced = false;
+        }
+        // A page sent here by an auth guard is remembered; the person reads a
+        // neutral sentence (never the red « Please log in »).
+        let returnNotice = null;
+        try {
+            if (returnToApi().peekReturnTo(req))
+                returnNotice = req.t
+                    ? req.t('auth:notice_return_to')
+                    : 'Sign in to open the page you asked for: you will be taken back to it.';
+        } catch (_) {
+            returnNotice = null;
+        }
         res.render('pages/auth/login', {
             layout: false,
             title: req.t ? req.t('chrome:pt_login') : 'Login',
+            kioskEnabled,
+            kioskForced,
+            kioskChecked: kioskForced || (kioskEnabled && kioskMode.hasKioskIntent(req)),
+            kioskIdleMinutes,
             ssoProviders,
             ssoHelpContact,
             ssoExceptions,
@@ -366,7 +416,7 @@ class AuthController {
                   ? req.t
                       ? req.t('auth:notice_signed_out')
                       : 'Vous avez été déconnecté.'
-                  : null,
+                  : returnNotice,
         });
     }
 
@@ -460,6 +510,30 @@ class AuthController {
             // Two-factor: when the account has confirmed MFA, do NOT establish
             // the session yet — park the identity and ask for the TOTP code.
             (async () => {
+                // Shared-computer mode: the « Shared computer » box (form field,
+                // or the intent cookie the login page mirrors it into), or ALWAYS
+                // from an address listed in kioskIpRanges. Ignored entirely while
+                // kioskModeEnabled is OFF.
+                const kioskMode = require('../middleware/sessionActivity');
+                let kioskOn = false;
+                try {
+                    kioskOn = await kioskMode.kioskEnabled();
+                } catch (_) {
+                    kioskOn = false;
+                }
+                const kioskWanted =
+                    kioskOn &&
+                    (String((req.body && req.body.sharedDevice) || '') === '1' ||
+                        kioskMode.hasKioskIntent(req));
+                let kioskForced = false;
+                try {
+                    kioskForced = kioskOn && (await kioskMode.isKioskIp(req));
+                } catch (_) {
+                    kioskForced = false;
+                }
+                // Where the person was going before a guard sent them here —
+                // read NOW, the session is regenerated below.
+                const returnTo = returnToApi().takeReturnTo(req);
                 let mfaActive = false;
                 try {
                     mfaActive = await MfaService.isActive({
@@ -505,7 +579,13 @@ class AuthController {
                             // A wrong code counts toward THIS account's lockout.
                             username: user.username || null,
                             at: Date.now(),
+                            // Carried across the code step (validated again there).
+                            returnTo: returnTo || null,
                         };
+                        // The code step opens a NEW session (regenerated again in
+                        // logIn): the choice rides the intent cookie, which the
+                        // first request of that session consumes (sessionActivity).
+                        if (kioskWanted) kioskMode.setKioskIntent(req, res);
                         return req.session.save(() => res.redirect('/login/mfa'));
                     });
                 }
@@ -538,6 +618,11 @@ class AuthController {
                         // regenerates it inside logIn and copies nothing across —
                         // before the response (and therefore before it is saved).
                         if (holdForEnrolment) req.session.mfaEnrolRequired = true;
+                        // Same rule for the shared-computer flags: on the FINAL session.
+                        if (kioskForced || kioskWanted)
+                            kioskMode.enableSharedDevice(req, kioskForced ? 'ip' : 'checkbox');
+                        else req.session.kioskDecided = true;
+                        if (kioskMode.hasKioskIntent(req)) kioskMode.clearKioskIntent(res);
                         console.log(
                             'Login successful for:',
                             user.username || user.employeeNumber,
@@ -547,7 +632,7 @@ class AuthController {
                         authAudit(
                             req,
                             'LOGIN_SUCCESS',
-                            `${user.userType} #${user.id} signed in`,
+                            `${user.userType} #${user.id} signed in${kioskMode.isShared(req) ? ' (shared device)' : ''}`,
                             user.userType === 'admin' ? user.id : null,
                             actorRefOf(user)
                         );
@@ -556,7 +641,9 @@ class AuthController {
                                 detail: 'password, no two-factor yet (held on enrolment)',
                             });
                         if (holdForEnrolment) return res.redirect('/v2/uam/mfa/setup');
-                        return res.redirect(homeFor(user.userType));
+                        return res.redirect(
+                            returnToApi().returnTarget(returnTo, homeFor(user.userType))
+                        );
                     });
                 });
             })().catch((e) => {
@@ -806,7 +893,10 @@ class AuthController {
                                 .stampAdminIdentityUse(pending.provider, pending.mapped, user.id)
                                 .catch(() => {});
                         const { safeRelayPath } = require('../services/SamlSecurityService');
-                        return res.redirect(safeRelayPath(pending.relay) || homeFor(user.userType));
+                        return res.redirect(
+                            safeRelayPath(pending.relay) ||
+                                returnToApi().returnTarget(pending.returnTo, homeFor(user.userType))
+                        );
                     }
                     authAudit(
                         req,
@@ -827,7 +917,10 @@ class AuthController {
                                 detail: 'a backup (recovery) code was used to sign in',
                             });
                     }
-                    return res.redirect(homeFor(user.userType));
+                    // Back to the page the person asked for (re-validated).
+                    return res.redirect(
+                        returnToApi().returnTarget(pending.returnTo, homeFor(user.userType))
+                    );
                 });
             });
         } catch (error) {
@@ -844,11 +937,13 @@ class AuthController {
 
     async logout(req, res) {
         const u = req.user;
+        const kioskMode = require('../middleware/sessionActivity');
+        const wasShared = kioskMode.isShared(req);
         if (u)
             authAudit(
                 req,
                 'LOGOUT',
-                `${u.userType || 'user'} #${u.id} signed out`,
+                `${u.userType || 'user'} #${u.id} signed out${wasShared ? ' (shared device)' : ''}`,
                 u.userType === 'admin' ? u.id : null
             );
         req.logout((err) => {
@@ -859,6 +954,28 @@ class AuthController {
             // session ID can't be reused after logout.
             req.session.destroy(() => {
                 res.clearCookie(process.env.SESSION_COOKIE_NAME || 'app.sid');
+                // A shared computer: the next person finds « Shared computer »
+                // already ticked (they may untick it), and the previous person's
+                // language is dropped.
+                if (wasShared) {
+                    kioskMode.setKioskIntent(req, res);
+                    kioskMode.resetLanguage(res);
+                }
+                // This person's offline self-assessment drafts are removed from
+                // the device at sign-out (shared computer or not). The browser
+                // does it: public/js/draft-store.js reads this short cookie (a
+                // numeric id, no secret) on the next page and clears it. Admin
+                // ids live in another table — never sent (a same-number
+                // employee's drafts would be wiped).
+                if (u && u.userType !== 'admin' && Number.isInteger(Number(u.id))) {
+                    res.cookie('app_drafts_wipe', String(Number(u.id)), {
+                        path: '/',
+                        maxAge: 10 * 60 * 1000,
+                        sameSite: 'lax',
+                        httpOnly: false,
+                        secure: Boolean(req.secure),
+                    });
+                }
                 res.redirect('/login?loggedout=1');
             });
         });

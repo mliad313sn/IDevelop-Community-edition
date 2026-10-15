@@ -471,6 +471,49 @@ function denyJson(req, res, key, fallback) {
         .json({ ok: false, error: msg, code: authed ? key : 'session_expired' });
 }
 
+/**
+ * BACK TO THE REQUESTED PAGE AFTER SIGN-IN.
+ *
+ * A link received by e-mail leads to a protected page; the anonymous visitor
+ * was sent to /login with a red « Please log in » banner and, once signed in,
+ * landed on their dashboard: the link was lost. Now, when a PAGE navigation
+ * (GET document) is sent to /login by a guard, its path is remembered (a short
+ * signed cookie, utils/returnTo — never the session, so an anonymous hit
+ * creates no session row) and the sign-in (password, MFA, SSO) goes back to
+ * it. The rules of the path are in utils/returnTo.
+ */
+const { safeReturnPath, setReturnTo, peekReturnTo, takeReturnTo } = require('../utils/returnTo');
+
+/** Is this an anonymous top-level page navigation (worth coming back to)? */
+function isDocumentGet(req) {
+    if (!req || req.method !== 'GET' || wantsJson(req)) return false;
+    const mode = req.get && req.get('sec-fetch-mode');
+    const dest = req.get && req.get('sec-fetch-dest');
+    if (mode || dest) return mode === 'navigate' && (!dest || dest === 'document');
+    return true;
+}
+
+/** Remember where an anonymous page navigation was going. Never throws. */
+function rememberReturnTo(req, res) {
+    try {
+        if (!isDocumentGet(req)) return false;
+        return setReturnTo(req, res || req.res, String(req.originalUrl || req.url || ''));
+    } catch (_) {
+        return false;
+    }
+}
+
+/**
+ * The anonymous visitor is sent to /login. A page navigation is remembered and
+ * gets NO red error banner (the login page shows a neutral notice instead); any
+ * other request (a form POST from an expired page…) keeps the error flash.
+ */
+function bounceToLogin(req, res, key, fallback) {
+    if (!rememberReturnTo(req, res) && typeof req.flash === 'function')
+        req.flash('error', req.t ? req.t(`flash:${key}`) : fallback);
+    return res.redirect('/login');
+}
+
 // Middleware to check if user is authenticated
 const requireAuth = (req, res, next) => {
     if (req.isAuthenticated()) {
@@ -478,8 +521,7 @@ const requireAuth = (req, res, next) => {
     }
     if (wantsJson(req))
         return denyJson(req, res, 'login_required', 'Please log in to access this page');
-    req.flash('error', req.t ? req.t('flash:login_required') : 'Please log in to access this page');
-    res.redirect('/login');
+    return bounceToLogin(req, res, 'login_required', 'Please log in to access this page');
 };
 
 /**
@@ -515,6 +557,9 @@ function denyUserType(req, res, key, fallback) {
     // a plus de session du tout — sinon l'écran dit « hors de votre périmètre » à
     // quelqu'un dont le vrai problème est qu'il doit se reconnecter.
     if (wantsJson(req)) return denyJson(req, res, key, fallback);
+    // An anonymous page navigation is remembered, without the red banner.
+    if (!(typeof req.isAuthenticated === 'function' && req.isAuthenticated()))
+        return bounceToLogin(req, res, key, fallback);
     if (typeof req.flash === 'function') req.flash('error', msg);
     return res.redirect(homeFor(req));
 }
@@ -544,6 +589,13 @@ const requireEmployeeOrManager = (req, res, next) => {
             'employee_or_manager_required',
             'Employee or Manager access required'
         );
+    if (!req.isAuthenticated())
+        return bounceToLogin(
+            req,
+            res,
+            'employee_or_manager_required',
+            'Employee or Manager access required'
+        );
     req.flash(
         'error',
         req.t ? req.t('flash:employee_or_manager_required') : 'Employee or Manager access required'
@@ -567,6 +619,8 @@ const requireAdmin = (req, res, next) => {
         return next();
     }
     if (wantsJson(req)) return denyJson(req, res, 'admin_access_required', 'Admin access required');
+    if (!req.isAuthenticated())
+        return bounceToLogin(req, res, 'admin_access_required', 'Admin access required');
     req.flash('error', req.t ? req.t('flash:admin_access_required') : 'Admin access required');
     res.redirect('/login');
 };
@@ -598,13 +652,20 @@ const requireManagerOrAdmin = (req, res, next) => {
             .status(403)
             .json({ error: 'Access denied. Manager or admin privileges required.' });
     }
+    if (!req.isAuthenticated())
+        return bounceToLogin(
+            req,
+            res,
+            'manager_or_admin_required',
+            'Access denied. Manager or admin privileges required.'
+        );
     req.flash(
         'error',
         req.t
             ? req.t('flash:manager_or_admin_required')
             : 'Access denied. Manager or admin privileges required.'
     );
-    res.redirect(req.isAuthenticated() ? '/employee/dashboard' : '/login');
+    res.redirect('/employee/dashboard');
 };
 
 // Middleware to check if user is SuperAdmin
@@ -618,6 +679,15 @@ const requireSuperAdmin = (req, res, next) => {
     // à un appel JSON, y compris à une session vivante du mauvais profil.
     if (wantsJson(req))
         return denyJson(
+            req,
+            res,
+            'superadmin_required',
+            'Access denied. SuperAdmin privileges required.'
+        );
+    // An anonymous PAGE navigation goes to /login and comes back after it (it
+    // used to bounce via /dashboard, whose own guard then lost the path).
+    if (!req.isAuthenticated() && isDocumentGet(req))
+        return bounceToLogin(
             req,
             res,
             'superadmin_required',
@@ -674,15 +744,15 @@ async function denyPermission(req, res, slugs) {
 
     const authed = typeof req.isAuthenticated === 'function' && req.isAuthenticated();
 
-    // 2) Not signed in — unchanged: flash + bounce to the login screen.
+    // 2) Not signed in — bounce to the login screen (a page navigation is
+    //    remembered and comes back after sign-in, without the red banner).
     if (!authed) {
-        req.flash(
-            'error',
-            req.t
-                ? req.t('flash:no_permission')
-                : 'Access denied. You do not have permission for this action.'
+        return bounceToLogin(
+            req,
+            res,
+            'no_permission',
+            'Access denied. You do not have permission for this action.'
         );
-        return res.redirect('/login');
     }
 
     // 3) Signed in — render the explanatory 403. Any failure here degrades to the
@@ -847,8 +917,7 @@ const requireSuperAdminPage = async (req, res, next) => {
             .json({ error: 'Access denied. You do not have permission for this action.' });
     }
     if (!(req.isAuthenticated && req.isAuthenticated())) {
-        req.flash('error', req.t ? req.t('flash:no_permission') : 'Access denied.');
-        return res.redirect('/login');
+        return bounceToLogin(req, res, 'no_permission', 'Access denied.');
     }
     try {
         const t = (key, fallback) => (req.t ? req.t(key, { defaultValue: fallback }) : fallback);
@@ -894,6 +963,11 @@ module.exports = {
     requireManagerOrAnyPermission,
     requireAdmin,
     requireReadWrite,
+    // Back to the requested page after sign-in (utils/returnTo).
+    safeReturnPath,
+    rememberReturnTo,
+    peekReturnTo,
+    takeReturnTo,
     // Amendment A1 (3.23.19) — exported for the behavioural tests.
     _enforcedPasswordLogin: enforcedPasswordLogin,
     _resetSuperadminCostCache: () => {

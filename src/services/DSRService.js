@@ -488,6 +488,13 @@ const REDACTED_ON_ERASURE = [
  * sur la personne — le test le vérifie.
  */
 const DISCLOSED_ABOUT_SUBJECT = [
+    // The DEI consent ledger (migration 171): field names, consent-text version
+    // and dates, never a value — the proof of the consent and of its withdrawal.
+    {
+        key: 'deiConsents',
+        table: 'dei_consents',
+        kept: ['fields', 'text_version', 'locale', 'granted_at', 'withdrawn_at', 'end_reason'],
+    },
     {
         key: 'lifecycleEvents',
         table: 'lifecycle_events',
@@ -765,6 +772,14 @@ class DSRService {
         await q(
             'demographics',
             'SELECT gender, ethnicity, age_band, disability, nationality FROM employee_demographics WHERE employee_id = ?',
+            [employeeId]
+        );
+        // The DEI consent ledger (migration 171): what the person consented to,
+        // when, and when it ended — field names only, never a value.
+        await q(
+            'deiConsents',
+            `SELECT fields, text_version, locale, granted_at, withdrawn_at, end_reason
+               FROM dei_consents WHERE employee_id = ? ORDER BY id`,
             [employeeId]
         );
         // HISTORIQUE DE CYCLE DE VIE — arrivée, mutation, départ, avec leurs motifs.

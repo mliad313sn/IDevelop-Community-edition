@@ -79,6 +79,9 @@
         if (!window.AppDraftStore) return;
         const owner = ownerId();
         if (!owner) return; // cannot attribute the drafts — never guess an owner
+        // A sign-out wipe still in progress finishes first: a draft the
+        // person's own sign-out removed is never replayed.
+        if (window.AppDraftStore.wipeDone) await window.AppDraftStore.wipeDone;
         const pending = await window.AppDraftStore.listPending(owner);
         if (!pending.length) return setLabel('✓ synced', GREEN);
 

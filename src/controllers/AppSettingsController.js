@@ -555,6 +555,32 @@ class AppSettingsController {
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
+            // The nationality switch (sensitive data) is also recorded as a
+            // security event of its own.
+            if (
+                require('../utils/featureFlags').NATIONALISATION_SETTING_KEYS.includes(
+                    currentSetting.settingKey
+                )
+            ) {
+                try {
+                    await LogService.log({
+                        adminId: req.user.id,
+                        action:
+                            currentSetting.settingKey === 'featureLocalContent'
+                                ? 'NATIONALISATION_FEATURE_TOGGLED'
+                                : 'NATIONALISATION_SETTING_CHANGED',
+                        entityType: 'appSetting',
+                        entityId: id,
+                        category: 'security',
+                        severity: 'warn',
+                        details: logDetail,
+                        ipAddress: req.ip,
+                        userAgent: req.get('user-agent'),
+                    });
+                } catch (_) {
+                    /* the APP_SETTING_UPDATED entry above is the record */
+                }
+            }
 
             req.flash(
                 'success',

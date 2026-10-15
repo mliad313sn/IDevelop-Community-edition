@@ -31,5 +31,6 @@
   "edp_sign_coach": "Coach / mentor",
   "edp_sign_hr": "HR business partner",
   "choose_placeholder": "— Choose —",
-  "choose_required_fields": "Choose a value for every required field (*)."
+  "choose_required_fields": "Choose a value for every required field (*).",
+  "sensitive_setting": "Sensitive setting"
 }

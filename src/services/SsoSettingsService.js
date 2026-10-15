@@ -216,6 +216,18 @@ const PROVIDERS = [
                 label: 'Allow sign-in launched from the IdP portal (My Apps / Okta dashboard)',
                 bool: true,
             },
+            // The ASSERTION signature is always required and verified. Strict mode
+            // (ON by default, setting samlStrict) ALSO requires the whole response
+            // envelope to be signed; a SuperAdmin may switch it off for an IdP that
+            // signs the assertion only (Entra « Sign SAML assertion »).
+            {
+                name: 'strict',
+                db: 'samlStrict',
+                env: 'SAML_WANT_RESPONSE_SIGNED',
+                label: 'Strict: also require the whole SAML response to be signed (recommended; Entra: “Sign SAML response and assertion”)',
+                bool: true,
+                defaultOn: true,
+            },
             {
                 name: 'label',
                 db: 'sso.saml.label',
@@ -348,7 +360,10 @@ async function getFormModel() {
             const hasDb = dbVal !== null && dbVal !== undefined && String(dbVal).trim() !== '';
             const envVal = (process.env[f.env] || '').trim();
             if (f.bool) {
-                const on = hasDb ? dbVal === true || truthy(dbVal) : truthy(envVal);
+                // `defaultOn`: ON unless explicitly switched off (samlStrict: only
+                // SAML_WANT_RESPONSE_SIGNED=0 relaxed it before the setting existed).
+                const envOn = f.defaultOn ? envVal !== '0' : truthy(envVal);
+                const on = hasDb ? dbVal === true || truthy(dbVal) : envOn;
                 fields.push({
                     name: f.name,
                     label: f.label,

@@ -97,7 +97,10 @@ describe('migration 159 repairs untouched rows only', () => {
         const off = booleanDefaults()
             .filter(([, v]) => !['true', '1'].includes(v))
             .map(([k]) => k)
-            .filter((k) => !['smtpSecure', 'emailOnAuth'].includes(k));
+            .filter((k) => !['smtpSecure', 'emailOnAuth'].includes(k))
+            // Added after 159 and only ever seeded through the fixed setValue
+            // (asserted OFF by sharedComputerLoginView.test.js).
+            .filter((k) => !['kioskModeEnabled'].includes(k));
         for (const k of off) expect([k, sql.includes(`'${k}'`)]).toEqual([k, true]);
         expect(sql).toMatch(/updated_by IS NULL/);
     });

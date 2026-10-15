@@ -603,7 +603,11 @@ app.use(async (req, res, next) => {
     // already stored (overwrite=false), so it is stable across a session's requests.
     try {
         const gen = req.app.get('csrfGenerate');
-        res.locals.csrfToken = gen && req.session ? gen(req) : '';
+        // An anonymous visitor gets a token (hence a stored session) only on a
+        // page that renders a form: /login, /forgot-password, /reset-password,
+        // /signup and the SSO pages (httpHardening.mayMintCsrfToken).
+        res.locals.csrfToken =
+            gen && req.session && httpHardening.mayMintCsrfToken(req) ? gen(req) : '';
     } catch (error) {
         // If CSRF token generation fails, log but don't crash
         console.error('CSRF token generation error:', error);
@@ -680,9 +684,12 @@ app.use(async (req, res, next) => {
     }
     // Local-content module: its flag comes from the same resolution as the
     // other modules (strict boolean parse — a '0' stored as a string is OFF).
+    // It is also the ONE nationality switch (utils/featureFlags): views read
+    // `nationalisationEnabled` for every nationality field and dimension.
     res.locals.featureLocalContent = Boolean(
         res.locals.appModules && res.locals.appModules.localContent
     );
+    res.locals.nationalisationEnabled = res.locals.featureLocalContent;
     // AI companion (help panel « Assistant » tab) — default ON; only an explicit
     // off value hides it. Rendered pages only need it for signed-in users.
     res.locals.companionEnabled = true;
