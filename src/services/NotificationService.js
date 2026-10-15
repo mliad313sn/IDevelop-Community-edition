@@ -1278,7 +1278,7 @@ class NotificationService {
             },
             'safety.contest.review': {
                 icon: 'fa-scale-balanced',
-                link: '/safety-gate#contests',
+                link: '/safety-gate',
                 title: {
                     fr: 'Une contestation d’habilitation sécurité attend votre décision',
                     en: 'A safety clearance contest needs your decision',
