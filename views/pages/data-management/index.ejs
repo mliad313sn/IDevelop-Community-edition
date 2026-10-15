@@ -274,7 +274,7 @@
 <% if (_isSuperDm) { %>
 <!-- SQL Console (super-admin only) -->
 <div class="dashboard-section" style="border-left: 4px solid #8e44ad;">
-    <h2><i class="fas fa-terminal" aria-hidden="true"></i> <%= __('datamgmt:sql_console_title') %> <span class="badge" style="background:#8e44ad; color:#fff; font-size:11px; padding:2px 8px; border-radius:10px;"><%= __('datamgmt:badge_superadmin') %></span></h2>
+    <h2><i class="fas fa-terminal" aria-hidden="true"></i> <%= __('datamgmt:sql_console_title') %> <span class="badge" style="background:#8e44ad; color:#fff; font-size:12px; padding:2px 8px; border-radius:10px;"><%= __('datamgmt:badge_superadmin') %></span></h2>
     <p><%= __('datamgmt:sql_console_desc') %></p>
     <% if (typeof sqlConsoleEnabled !== 'undefined' && sqlConsoleEnabled) { %>
     <a href="/data-management/sql-console" class="btn btn-purple"><i class="fas fa-terminal" aria-hidden="true"></i>
@@ -646,7 +646,7 @@
     .export-grid,
     .import-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
         gap: 1.5rem;
         margin-top: 1.5rem;
     }
@@ -775,7 +775,7 @@
     }
 
     /* d — the captured-entity counts under a snapshot's size. */
-    .snap-counts { font-size: .72rem; color: var(--text-muted); white-space: normal; max-width: 20rem; }
+    .snap-counts { font-size: .75rem; color: var(--text-muted); white-space: normal; max-width: 20rem; }
 </style>
 
 <script nonce="<%= cspNonce %>">

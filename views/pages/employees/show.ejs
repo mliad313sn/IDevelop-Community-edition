@@ -24,7 +24,7 @@
     const recDate = (d) => { try { return new Date(d).toLocaleDateString(typeof lang !== 'undefined' && lang === 'en' ? 'en-GB' : 'fr-FR', { year: 'numeric', month: 'long', day: 'numeric' }); } catch (e) { return String(d).slice(0, 10); } };
 %>
 <style nonce="<%= cspNonce %>">
-    .rec-badge { display:inline-block; padding:2px 9px; border:1px solid; border-radius:999px; font: 600 11px/1.6 var(--font-data, system-ui); letter-spacing:.04em; white-space:nowrap; }
+    .rec-badge { display:inline-block; padding:2px 9px; border:1px solid; border-radius:999px; font: 600 12px/1.6 var(--font-data, system-ui); letter-spacing:.04em; white-space:nowrap; }
     .rec-badge[data-s="inactive"] { border-color: var(--danger, #b91c1c); color: var(--danger, #b91c1c); }
     .rec-badge[data-s="voided"]   { border-color: var(--warning, #b45309); color: var(--warning, #b45309); }
     .rec-badge[data-s="erased"]   { border-color: var(--text-muted, #64748b); color: var(--text-muted, #64748b); }
@@ -155,9 +155,9 @@
             <div>
                 <i class="fas fa-key" aria-hidden="true"></i> <strong><%= __('admin:acc_id_local_password') %></strong>
                 <% if (typeof passwordDisabled !== 'undefined' && passwordDisabled) { %>
-                    <span class="pill" style="background:#f6e4e8;color:#9e3a52;font-size:11px;padding:2px 8px;border-radius:999px;"><%= __('admin:acc_id_pw_disabled') %></span>
+                    <span class="pill" style="background:#f6e4e8;color:#9e3a52;font-size:12px;padding:2px 8px;border-radius:999px;"><%= __('admin:acc_id_pw_disabled') %></span>
                 <% } else { %>
-                    <span class="pill" style="background:#e3f0e9;color:#2f7d5b;font-size:11px;padding:2px 8px;border-radius:999px;"><%= __('admin:acc_id_pw_enabled') %></span>
+                    <span class="pill" style="background:#e3f0e9;color:#2f7d5b;font-size:12px;padding:2px 8px;border-radius:999px;"><%= __('admin:acc_id_pw_enabled') %></span>
                 <% } %>
             </div>
             <form action="/employees/<%= employee.id %>/password-auth" method="POST">
@@ -177,7 +177,7 @@
                         <i class="fas fa-id-badge" aria-hidden="true"></i> <strong><%= idn.provider %></strong>
                         <code style="font-size:.85em;"><%= idn.uid %></code>
                         <% if (idn.email) { %><span class="help-text" style="font-size:.85em;">· <%= idn.email %></span><% } %>
-                        <% if (idn.isPrimary) { %><span style="font-size:11px;color:var(--brand,#b8860b);">· <%= __('admin:acc_id_primary') %></span><% } %>
+                        <% if (idn.isPrimary) { %><span style="font-size:12px;color:var(--brand,#b8860b);">· <%= __('admin:acc_id_primary') %></span><% } %>
                     </div>
                     <form action="/employees/<%= employee.id %>/identity/remove" method="POST" data-confirm="<%= __('admin:acc_id_remove_confirm') %>" data-confirm-danger>
                         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
@@ -433,7 +433,7 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
 .tl-dot{flex:0 0 12px;width:12px;height:12px;border-radius:50%;margin-top:5px}
 .tl-when{color:#94a3b8;font-size:.76rem;white-space:nowrap}
 .tl-txt{font-size:.86rem;color:var(--ink,#0f172a)}
-.tl-k{font-size:.7rem;letter-spacing:.04em;font-weight:700;margin-right:6px}
+.tl-k{font-size:.75rem;letter-spacing:.04em;font-weight:700;margin-right:6px}
 </style>
 <script nonce="<%= cspNonce %>">
 (function(){
@@ -480,7 +480,7 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
 .dev-item:last-child{border-bottom:0}
 .dev-item .dev-t{font-weight:600;color:var(--ink,#0f172a)}
 .dev-sub{color:#94a3b8;font-size:.76rem;margin-top:2px}
-.dev-badge{padding:1px 8px;border-radius:999px;color:#fff;font-size:.72rem;text-transform:capitalize}
+.dev-badge{padding:1px 8px;border-radius:999px;color:#fff;font-size:.75rem;text-transform:capitalize}
 .dev-badge[data-s="active"]{background:#15803d}.dev-badge[data-s="proposed"],.dev-badge[data-s="draft"]{background:#b45309}
 .dev-badge[data-s="closed"],.dev-badge[data-s="completed"]{background:#475569}.dev-badge[data-s="cancelled"],.dev-badge[data-s="rejected"]{background:#b91c1c}
 .dev-bar{height:7px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin-top:5px}
@@ -539,7 +539,7 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
   var OKR_T = <%- include('../../partials/json-script', { v: { status: __('talentx:okr_status'), align: __('talentx:okr_align'), alignPh: __('talentx:okr_align_ph'), alignDone: __('talentx:okr_align_done') } }) %>;
   var OBJECTIVES = null; // org objectives for the align control (null = not offered to this viewer)
   // UX-12 (3.23.21): white text on these fills is >= 4.5:1 (the former fills were 2.4-4.0:1).
-  function badge(s){ var m={active:'#1f5f99',at_risk:'#8a4b00',done:'#1e6b3a',cancelled:'#5f6368'}; return '<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;color:#fff;background:'+(m[s]||'#4a5563')+'">'+e(GST[s]||s)+'</span>'; }
+  function badge(s){ var m={active:'#1f5f99',at_risk:'#8a4b00',done:'#1e6b3a',cancelled:'#5f6368'}; return '<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:12px;font-weight:700;color:#fff;background:'+(m[s]||'#4a5563')+'">'+e(GST[s]||s)+'</span>'; }
   function statusSelect(g){ return '<select id="gst-'+g.id+'" aria-label="'+e(OKR_T.status+' — '+(g.title||''))+'" style="padding:2px 4px;font-size:.8rem" data-on-change="okrSetStatus" data-args="'+e(JSON.stringify([g.id,'$value']))+'">'
     + ['active','at_risk','done','cancelled'].map(function(s){ return '<option value="'+s+'"'+(s===g.status?' selected':'')+'>'+e(GST[s]||s)+'</option>'; }).join('') + '</select>'; }
   function alignSelect(o){ if(!OBJECTIVES||!OBJECTIVES.length) return '';
@@ -641,7 +641,7 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
   var base = '/api/v1';
   var MOOD = {1:'😟',2:'🙁',3:'😐',4:'🙂',5:'😀'};
   function e(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
-  function badge(s){ var m={scheduled:'#2f80c4',completed:'#2e9e57',cancelled:'#9e9e9e'}; return '<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:9px;font-weight:700;color:#fff;background:'+(m[s]||'#5b6b7b')+'">'+e(s)+'</span>'; }
+  function badge(s){ var m={scheduled:'#2f80c4',completed:'#2e9e57',cancelled:'#9e9e9e'}; return '<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:12px;font-weight:700;color:#fff;background:'+(m[s]||'#5b6b7b')+'">'+e(s)+'</span>'; }
   function kindLabel(k){ return {one_on_one:<%- JSON.stringify(__('admin:one_on_one')) %>,feedback:<%- JSON.stringify(__('admin:feedback')) %>,pulse:<%- JSON.stringify(__('admin:pulse')) %>}[k]||k; }
   // jamais d'ISO dans une page française. dd/MM/aaaa,
   // forcé UTC comme fmtPeriodBound côté serveur, « — » si la date est illisible.
@@ -656,7 +656,7 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
       return items.map(function(it){
         return '<div style="margin:.2rem 0 .2rem 1rem;font-size:.85rem;display:flex;align-items:center;gap:.4rem">'
           + (it.isAction ? '<input type="checkbox" '+(it.done?'checked':'')+' data-on-change="ciToggle" data-args="'+e(JSON.stringify([it.id,'$checked']))+'">' : '<span class="text-muted">•</span>')
-          + '<span style="'+(it.done?'text-decoration:line-through;opacity:.6':'')+'">'+e(it.body)+(it.isAction?' <span class="text-muted" style="font-size:9px">'+<%- JSON.stringify(__('admin:action_tag')) %>+'</span>':'')+'</span></div>';
+          + '<span style="'+(it.done?'text-decoration:line-through;opacity:.6':'')+'">'+e(it.body)+(it.isAction?' <span class="text-muted" style="font-size:12px">'+<%- JSON.stringify(__('admin:action_tag')) %>+'</span>':'')+'</span></div>';
       }).join('');
     });
   }
@@ -745,7 +745,7 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
         <tr>
           <td><%= fmtDateTime(r.createdAt) %></td>
           <td><span class="chip"><%= r.action %></span>
-              <span class="text-muted" style="font-size:.72rem"><%= isSelf ? __('admin:ops_journal_role_actor') : __('admin:ops_journal_role_target') %></span></td>
+              <span class="text-muted" style="font-size:.75rem"><%= isSelf ? __('admin:ops_journal_role_actor') : __('admin:ops_journal_role_target') %></span></td>
           <td><%= r.username || r.actorRef || '—' %></td>
           <td style="white-space:normal;max-width:40rem"><%= typeof r.details === 'string' ? r.details : JSON.stringify(r.details || '') %></td>
         </tr>

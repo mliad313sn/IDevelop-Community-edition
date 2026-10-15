@@ -39,7 +39,7 @@
         pill.setAttribute('aria-live', 'polite');
         pill.style.cssText =
             'position:fixed;bottom:16px;right:16px;padding:6px 12px;border-radius:16px;' +
-            'font:13px system-ui;color:#fff;z-index:9999;box-shadow:0 4px 14px rgba(0,0,0,.25)';
+            'font:13px system-ui;color:#fff;z-index:var(--z-toast,800);box-shadow:0 4px 14px rgba(0,0,0,.25)';
         document.body.appendChild(pill);
         return pill;
     }

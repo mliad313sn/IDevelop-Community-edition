@@ -240,7 +240,7 @@
 
         <%# §2.8 — the defensible footer: source, rule in plain words, deep link. %>
         <p class="text-muted" style="margin:.6rem 0 0;font-size:.78rem;">
-            <% if (s.source) { %><%= __('reports:db_source') %><%= colon %> <code style="font-size:.74rem;"><%= s.source %></code><% } %>
+            <% if (s.source) { %><%= __('reports:db_source') %><%= colon %> <code style="font-size:.75rem;"><%= s.source %></code><% } %>
             <% if (s.rule) { %> · <%= __('reports:db_rule') %><%= colon %> <%= L(s.rule) %><% } %>
             <%# the section CTA goes through the SAME resolution as the link
                 (it used to short-circuit it, so a frozen `cta` escaped the alias

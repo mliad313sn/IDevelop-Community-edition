@@ -32,5 +32,7 @@
   "edp_sign_hr": "Partenaire RH",
   "choose_placeholder": "— Choisir —",
   "choose_required_fields": "Choisissez une valeur pour chaque champ obligatoire (*).",
-  "sensitive_setting": "Réglage sensible"
+  "sensitive_setting": "Réglage sensible",
+  "form_required_legend": "Les champs marqués d'un astérisque sont obligatoires.",
+  "loading_skeleton_sr": "Chargement en cours…"
 }

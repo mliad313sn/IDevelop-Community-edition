@@ -105,7 +105,7 @@ const arExcClass = {
         <td>
           <strong><%= r.username %></strong>
           <% if (r.email) { %><div class="text-muted" style="font-size:.8rem"><%= r.email %></div><% } %>
-          <% if (r.authProvider) { %><span class="chip" style="font-size:.7rem"><%= r.authProvider %></span><% } %>
+          <% if (r.authProvider) { %><span class="chip" style="font-size:.75rem"><%= r.authProvider %></span><% } %>
           <% if (!r.isActive) { %><span class="chip ar-exc-muted" title="<%= r.deactivationReason ? __('admin:adm_deactivation_reason', { reason: r.deactivationReason }) : '' %>"><%= __('admin:ar_inactive') %></span><% } %>
         </td>
         <td><span class="chip chip-<%= r.role %>"><%= enumLabel('admin_role', r.role) %></span></td>
@@ -184,7 +184,7 @@ const arExcClass = {
   .ar-filters select{max-width:260px}
   .ar-kpi{padding:.75rem 1rem;min-width:110px;text-align:center}
   .ar-kpi-n{font-size:1.6rem;font-weight:800;line-height:1}
-  .ar-kpi-l{font-size:.72rem;letter-spacing:.06em;color:var(--text-muted,#9aa1ac);margin-top:.25rem}
+  .ar-kpi-l{font-size:.75rem;letter-spacing:.06em;color:var(--text-muted,#9aa1ac);margin-top:.25rem}
   .ar-kpi.ar-warn .ar-kpi-n{color:#b45309}
   .ar-kpi.ar-danger .ar-kpi-n{color:var(--danger,#c8514b)}
   .ar-expiring{color:#b45309;font-weight:600}

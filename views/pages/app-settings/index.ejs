@@ -65,6 +65,9 @@
         if (rows.length) _groups.push({ key: c, name: categories[c].name, icon: categories[c].icon, rows: rows });
     }); %>
 
+    <%# « Sur cette page »: the settings page is long; one link per group. %>
+    <%- include('../../partials/page-toc', { tocId: 'settingsToc', tocItems: _groups.map(function (g) { return { id: 'set-' + g.key, label: g.name, icon: g.icon }; }) }) %>
+
     <% _groups.forEach(function (g) { %>
             <div class="dashboard-section<%= g.sensitive ? ' settings-sensitive-band' : '' %>" id="set-<%= g.key %>"<% if (g.sensitive) { %> data-sensitive-band<% } %>>
                 <h2>
@@ -211,7 +214,7 @@
                             </div>
                         </div>
                         <form id="brandingForm" action="/app-settings/branding" method="POST" enctype="multipart/form-data"
-                              style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;align-items:end;">
+                              style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px, 100%), 1fr));gap:14px;align-items:end;">
                             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                             <div class="form-group" style="margin:0;">
                                 <label for="brandAppName"><%= __('admin:brand_name') %></label>
@@ -223,7 +226,7 @@
                             </div>
                             <div class="form-group" style="margin:0;">
                                 <label for="brandAccentColor"><%= __('admin:brand_accent') %></label>
-                                <div style="display:flex;gap:8px;align-items:center;">
+                                <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
                                     <input type="color" id="brandAccentPick" aria-label="<%= __('admin:brand_accent') %>" value="<%= _b.accentColor || '#7C6CFF' %>" style="width:44px;height:38px;padding:2px;border:1px solid var(--border-light);border-radius:8px;background:transparent;">
                                     <input type="text" id="brandAccentColor" name="brandAccentColor" value="<%= _b.accentColor || '' %>" placeholder="#7C6CFF" pattern="#?[0-9a-fA-F]{6}" class="form-control" style="max-width:120px;">
                                     <label style="font-size:.8rem;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" name="clearAccent" value="1"> <%= __('admin:brand_clear') %></label>

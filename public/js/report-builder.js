@@ -420,7 +420,7 @@ window.RB = (function () {
             if (data.unmeasuredGroups > 0) {
                 const note = document.createElement('div');
                 note.className = 'rb-note';
-                note.style.cssText = 'padding:8px 4px 0;font-size:11px;opacity:.7';
+                note.style.cssText = 'padding:8px 4px 0;font-size:12px;opacity:.7';
                 note.textContent =
                     T('unmeasured_groups', 'Not shown (never assessed):') +
                     ' ' +

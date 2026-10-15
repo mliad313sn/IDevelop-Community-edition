@@ -306,7 +306,7 @@
 }
 
 .requirement-badge {
-    font-size: 0.7rem;
+    font-size: .75rem;
     line-height: 1;
     color: var(--red, #F06060);
 }

@@ -311,7 +311,7 @@ function reasonText(x) {
 <style>
 .sg-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:.85rem 1.1rem;margin-bottom:1rem}
 .sg-filters .form-control{max-width:220px}
-.sg-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:1.2rem}
+.sg-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px, 100%), 1fr));gap:10px;margin-bottom:1.2rem}
 .sg-kpi{padding:.8rem 1rem;display:flex;flex-direction:column;gap:2px}
 .sg-kpi strong{font-size:1.6rem;line-height:1.1}
 .sg-kpi span{font-size:.8rem;color:var(--text-secondary,#475569)}
@@ -319,13 +319,13 @@ function reasonText(x) {
 .sg-kpi-expiring strong{color:var(--warning,#b45309)}
 .sg-kpi-cleared strong{color:var(--success,#15803d)}
 .sg-h2{font-size:1.05rem;margin:.4rem 0 .6rem}
-.sg-sub{font-size:.74rem;color:var(--text-muted)}
+.sg-sub{font-size:.75rem;color:var(--text-muted)}
 .sg-small{font-size:.83rem}
 .sg-reasons{margin:0;padding-left:1.1rem}
 .sg-reasons li.is-blocking{color:var(--danger,#b91c1c)}
 .sg-reasons li.is-warning{color:var(--warning,#b45309)}
 .sg-reasons li.is-observe{color:var(--text-secondary,#475569)}
-.sg-observe{font-size:.74rem;font-weight:600;color:var(--text-secondary,#475569)}
+.sg-observe{font-size:.75rem;font-weight:600;color:var(--text-secondary,#475569)}
 .sg-empty{padding:.9rem 1.1rem;margin-bottom:1.2rem;border-left:4px solid var(--warning,#b45309)}
 .sg-kpi-waived strong,.sg-waived{color:var(--warning,#b45309)}
 .sg-human details{margin-bottom:.35rem}

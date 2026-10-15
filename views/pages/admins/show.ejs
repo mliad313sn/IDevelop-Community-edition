@@ -326,7 +326,7 @@
                                             <%= granted.indexOf(p.slug) !== -1 ? 'checked' : '' %>>
                                         <span>
                                             <strong><%= p.label %></strong>
-                                            <% if (p.write) { %><span class="badge badge-warning" style="font-size:0.65rem;"><%= __('admin:write_badge') %></span><% } %>
+                                            <% if (p.write) { %><span class="badge badge-warning" style="font-size:.75rem;"><%= __('admin:write_badge') %></span><% } %>
                                             <br><small style="color:#888;"><%= p.description %></small>
                                         </span>
                                     </label>
@@ -527,7 +527,7 @@
         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <% var _wsTabs = wsComponents.filter(function(c){ return c.group==='tab'; }); %>
         <% var _wsNav  = wsComponents.filter(function(c){ return c.group==='nav'; }); %>
-        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1.5rem;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(min(280px, 100%), 1fr)); gap:1.5rem;">
             <div>
                 <h3 style="margin:.25rem 0 .5rem;"><i class="fas fa-window-maximize" aria-hidden="true"></i> <%= __('admin:workspace_tabs') %></h3>
                 <% _wsTabs.forEach(function(c){ %>

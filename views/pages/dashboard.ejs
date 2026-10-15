@@ -264,7 +264,7 @@
                 if (href) { a.href = href; a.style.textDecoration = 'none'; }
                 a.style.cssText += ';flex:1;min-width:150px;padding:.7rem .9rem;border:1px solid var(--border-color,#e5e7eb);border-radius:10px;background:var(--bg-primary,transparent);color:inherit;';
                 var h = document.createElement('div');
-                h.style.cssText = 'font-size:.72rem;letter-spacing:.04em;color:var(--text-muted,#6b7280);';
+                h.style.cssText = 'font-size:.75rem;letter-spacing:.04em;color:var(--text-muted,#6b7280);';
                 h.textContent = label;
                 var v = document.createElement('div');
                 v.style.cssText = 'font-size:1.45rem;font-weight:700;color:' + color + ';';
@@ -1103,9 +1103,9 @@
 .measure-body { min-width:0; max-width:100%; display:flex; flex-direction:column; align-items:center; }
 .measure-val { font-size:1.5rem; font-weight:800; color:var(--text-primary); line-height:1.1; font-variant-numeric:tabular-nums; }
 .measure-lbl { font-size:.78rem; color:var(--text-secondary); overflow-wrap:anywhere; }
-.measure-sub { font-size:.7rem; color:var(--text-muted); overflow-wrap:anywhere; }
+.measure-sub { font-size:.75rem; color:var(--text-muted); overflow-wrap:anywhere; }
 /* M-12 : marque les cartes que le périmètre NE borne PAS (le référentiel). */
-.measure-chip { margin-top:.3rem; font-size:.63rem; font-weight:700; letter-spacing:.04em; padding:.08rem .4rem; border-radius:999px; border:1px dashed var(--border-light,rgba(255,255,255,.22));
+.measure-chip { margin-top:.3rem; font-size:.75rem; font-weight:700; letter-spacing:.04em; padding:.08rem .4rem; border-radius:999px; border:1px dashed var(--border-light,rgba(255,255,255,.22));
     color:var(--text-muted,#8a93a6); cursor:help; }
 
 /* ═══ Executive information architecture ═══════════════════════════════════
@@ -1119,12 +1119,12 @@
     background:var(--bg-subtle,rgba(255,255,255,.04)); font-size:.85rem; }
 .exec-scope.is-filtered { border-left-color:var(--brand,#7C6CFF); }
 .exec-scope > i { color:var(--text-muted,#8a93a6); }
-.exec-scope-label { letter-spacing:.06em; font-size:.7rem; font-weight:700; color:var(--text-muted,#8a93a6); }
+.exec-scope-label { letter-spacing:.06em; font-size:.75rem; font-weight:700; color:var(--text-muted,#8a93a6); }
 .exec-scope-value { font-weight:700; color:var(--text-primary); overflow-wrap:anywhere; }
 .exec-scope-hint { margin-left:auto; font-size:.75rem; color:var(--text-muted,#8a93a6); }
 /* M-12 (résiduel) : marque un périmètre IMPOSÉ (RBAC), que le lecteur ne choisit
    pas dans les listes — à ne pas confondre avec un filtre appliqué. */
-.exec-scope-own { font-size:.7rem; font-weight:700; letter-spacing:.05em;
+.exec-scope-own { font-size:.75rem; font-weight:700; letter-spacing:.05em;
     padding:.1rem .4rem; border-radius:999px; color:var(--text-muted,#8a93a6);
     border:1px solid var(--border-color,rgba(255,255,255,.12)); }
 @media (max-width:700px){ .exec-scope-hint { margin-left:0; flex:1 1 100%; } }
@@ -1133,18 +1133,18 @@
 @media (max-width:900px){ .exec-hero { grid-template-columns:1fr; } }
 .exec-hero .risk-gauge-box { max-width:none; min-width:0; }
 .exec-hero-kpis { min-width:0; display:flex; flex-direction:column; }
-.exec-hero-kpis .kpi-grid { margin-bottom:0; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); }
+.exec-hero-kpis .kpi-grid { margin-bottom:0; grid-template-columns:repeat(auto-fit,minmax(min(165px, 100%), 1fr)); }
 /* Assessment provenance — "never assessed" must never read as an honest zero. */
 .exec-provenance { margin:.7rem 0 0; padding:.6rem .75rem; font-size:.8rem; line-height:1.45;
     color:var(--text-secondary); border-left:3px solid var(--text-tertiary,#8a93a6); border-radius:8px;
     background:var(--bg-subtle,rgba(255,255,255,.04)); }
 .exec-provenance:empty { display:none; }
 .exec-provenance.is-blind { border-left-color:var(--warn,#b45309); }
-.exec-provenance .prov-label { letter-spacing:.06em; font-size:.7rem;
+.exec-provenance .prov-label { letter-spacing:.06em; font-size:.75rem;
     font-weight:700; color:var(--text-muted,#8a93a6); margin-right:.4rem; }
 .exec-provenance strong { color:var(--text-primary); }
 
-.prov-badge { display:inline-flex; align-items:center; gap:.25rem; font-size:.68rem; font-weight:700;
+.prov-badge { display:inline-flex; align-items:center; gap:.25rem; font-size:.75rem; font-weight:700;
     padding:.1rem .4rem; border-radius:999px; border:1px solid var(--border-light,rgba(255,255,255,.18));
     color:var(--text-secondary); white-space:nowrap; }
 .prov-badge.never { border-color:var(--warn,#b45309); color:var(--warn,#b45309); }
@@ -1154,7 +1154,7 @@
 /* A required skill nobody has ever rated: dashed frame + em-dash, never a "0". */
 .skill-card.prov-never { border-style:dashed !important; opacity:.85; }
 .skill-card.prov-never .actual { color:var(--warn,#b45309); font-weight:700; }
-.skill-card .prov-mark { font-size:.66rem; font-weight:700; letter-spacing:.04em;
+.skill-card .prov-mark { font-size:.75rem; font-weight:700; letter-spacing:.04em;
     display:block; margin-top:.15rem; color:var(--text-muted,#8a93a6); }
 .skill-card.prov-never .prov-mark { color:var(--warn,#b45309); }
 .skill-card.prov-self .prov-mark { color:var(--info,#4a90d9); }

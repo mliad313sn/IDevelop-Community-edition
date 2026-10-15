@@ -1,0 +1,27 @@
+<%#
+  bulk-bar — the shared bulk-action bar. Hidden until at least one row is
+  selected; public/js/list-tools.js shows it, keeps the count and moves the focus
+  to it on the first selection.
+  include('../partials/bulk-bar', { id: 'bulkBar', scope: '#myTable', actions: [ … ] })
+    id       element id (default bulkBar)
+    scope    CSS selector of the table / list whose [data-bulk] checkboxes it
+             counts (default: the whole document)
+    actions  the VERB-FIRST action buttons, as data: [{ label, icon, form, name,
+             value, danger }] — each becomes a submit button of the form named by
+             `form` (the page's own POST form, which carries the CSRF token and,
+             when the action needs one, data-confirm for the shared dialog). No
+             markup is passed in: every value is escaped here.
+%>
+<% const _bbId = (typeof id !== 'undefined' && id) ? String(id) : 'bulkBar';
+   const _bbScope = (typeof scope !== 'undefined' && scope) ? String(scope) : '';
+   const _bbActions = (typeof actions !== 'undefined' && Array.isArray(actions)) ? actions : []; %>
+<div class="bulk-bar" id="<%= _bbId %>" hidden role="region" aria-live="polite" aria-label="<%= __('chrome:bulk_bar_aria') %>" tabindex="-1" data-bulk-bar<% if (_bbScope) { %> data-bulk-scope="<%= _bbScope %>"<% } %> data-count-label="<%= __('chrome:bulk_selected_count') %>">
+    <span class="bulk-bar-count" data-bulk-count></span>
+    <div class="bulk-bar-actions">
+        <% _bbActions.forEach(function (a) { %>
+        <button type="submit" class="btn btn-sm <%= a.danger ? 'btn-danger' : 'btn-primary' %>"<% if (a.form) { %> form="<%= a.form %>"<% } %><% if (a.name) { %> name="<%= a.name %>" value="<%= a.value == null ? '' : a.value %>"<% } %>>
+            <% if (a.icon && /^fa-[a-z0-9-]+$/.test(String(a.icon))) { %><i class="fas <%= a.icon %>" aria-hidden="true"></i> <% } %><%= a.label %>
+        </button>
+        <% }); %>
+    </div>
+</div>

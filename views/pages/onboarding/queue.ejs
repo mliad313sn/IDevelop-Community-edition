@@ -76,7 +76,7 @@
                     <span><%= __('admin:ssom_onb_create_anyway_check') %></span>
                 </label>
                 <% } %>
-                <div class="form-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem;">
+                <div class="form-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(min(220px, 100%), 1fr)); gap:1rem;">
                     <div class="form-group">
                         <label for="onb-<%= r.id %>-f2-employeeNumber"><%= __('admin:employee_number_label') %></label>
                         <input id="onb-<%= r.id %>-f2-employeeNumber" type="text" name="employeeNumber" class="form-control" value="<%= pd ? (pd.employeeNumber || '') : '' %>" placeholder="ONB-<%= r.id %> <%= __('admin:auto_if_blank') %>">

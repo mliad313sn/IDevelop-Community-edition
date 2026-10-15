@@ -157,6 +157,7 @@ const CLIENT_SINKS = {
     'public/js/rb-renderers.js': 8, // esc() on every label, header and value
     'public/js/report-builder.js': 24, // _esc(); the SQL preview escaped before highlighting
     'public/js/skill-matrix.js': 6, // smEsc(); levels are integers
+    'public/js/status-badge.js': 1, // el(): the markup of html(), every value through esc()
     'public/js/table-search.js': 2, // restores its own button markup / static spinner
     'public/js/ui-feedback.js': 2, // esc() on title and buttons; the message set as text
     'views/pages/admin/access-review.ejs': 1, // static skeleton, text set after

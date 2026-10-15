@@ -779,5 +779,14 @@
   "todo_verb_recognition": "View",
   "todo_verb_f360_answer": "Answer",
   "todo_verb_f360_nominate": "Choose",
-  "todo_verb_f360_approve": "Approve"
+  "todo_verb_f360_approve": "Approve",
+  "bulk_selected_count": "{{count}} selected",
+  "bulk_bar_aria": "Actions on the selection",
+  "pg_toc_title": "On this page",
+  "toast_success": "Success",
+  "toast_error": "Error",
+  "toast_warn": "Warning",
+  "toast_info": "Information",
+  "uif_reason_label": "Reason",
+  "tbl_scroll_hint": "Scroll →"
 }

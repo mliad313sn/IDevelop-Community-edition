@@ -537,7 +537,7 @@ body::before {
     background: var(--bg-card);
     border: 1px solid var(--border);
     box-shadow: var(--shadow-lg);
-    z-index: 400;
+    z-index: var(--z-dropdown);
 }
 .hz-palette-menu[hidden] {
     display: none;
@@ -585,7 +585,7 @@ body::before {
     padding: 6px 0;
     border-radius: var(--radius-md);
     color: var(--text-secondary);
-    font: 600 11.5px var(--font-body);
+    font: 600 12px var(--font-body);
     cursor: pointer;
 }
 .hz-swatch:hover {
@@ -930,7 +930,7 @@ html {
     border-radius: 999px;
     background: var(--brand-subtle);
     color: var(--brand-text);
-    font-size: 0.72rem;
+    font-size: .75rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
 }
@@ -1278,7 +1278,7 @@ html {
 :root .hz-companion__source,
 :root .hz-companion__disclaimer {
     margin: 0;
-    font-size: 0.72rem;
+    font-size: .75rem;
     color: var(--text-muted);
 }
 :root .hz-companion__disclaimer {

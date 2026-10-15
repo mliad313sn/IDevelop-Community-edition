@@ -779,5 +779,14 @@
   "todo_verb_recognition": "Voir",
   "todo_verb_f360_answer": "Répondre",
   "todo_verb_f360_nominate": "Choisir",
-  "todo_verb_f360_approve": "Valider"
+  "todo_verb_f360_approve": "Valider",
+  "bulk_selected_count": "{{count}} sélectionné(s)",
+  "bulk_bar_aria": "Actions sur la sélection",
+  "pg_toc_title": "Sur cette page",
+  "toast_success": "Succès",
+  "toast_error": "Erreur",
+  "toast_warn": "Attention",
+  "toast_info": "Information",
+  "uif_reason_label": "Motif",
+  "tbl_scroll_hint": "Faites défiler →"
 }

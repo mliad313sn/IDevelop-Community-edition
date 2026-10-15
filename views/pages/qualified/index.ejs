@@ -73,7 +73,7 @@
                 <% result.rows.forEach(function (r) { %>
                 <tr>
                     <td><a href="/employees/<%= r.employeeId %>"><%= r.name %></a>
-                        <div style="font-size:.74rem;color:var(--text-muted);"><%= r.employeeNumber %></div></td>
+                        <div style="font-size:.75rem;color:var(--text-muted);"><%= r.employeeNumber %></div></td>
                     <td style="font-size:.83rem;"><%= r.siteName || '—' %><% if (r.departmentName) { %> · <%= r.departmentName %><% } %></td>
                     <td style="font-size:.83rem;"><%= r.roleName || '—' %></td>
                     <td><strong><%= r.level %></strong></td>
@@ -87,7 +87,7 @@
                         <span class="badge <%= r.readiness === 'available' ? 'badge-success' : (r.readiness === 'cert_expiring' ? 'badge-warning' : 'badge-danger') %>">
                             <%= __('admin:qp_ready_' + r.readiness) %></span>
                         <% if (r.readiness === 'available' && r.nextAbsenceFrom) { %>
-                        <div style="font-size:.72rem;color:var(--text-muted);"><%= __('admin:qp_away_from') %> <%= fmtPeriodBound(r.nextAbsenceFrom) %></div>
+                        <div style="font-size:.75rem;color:var(--text-muted);"><%= __('admin:qp_away_from') %> <%= fmtPeriodBound(r.nextAbsenceFrom) %></div>
                         <% } %>
                     </td>
                 </tr>

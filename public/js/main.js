@@ -480,6 +480,44 @@ document.addEventListener('DOMContentLoaded', function () {
     hzLabelCardTables(document);
 });
 
+// Horizontal scroll cue on wide tables (.table-wrapper): `.is-scrollable` while
+// the content overflows, with the written hint (data-scroll-hint, in the session
+// language) until the first scroll; the scroller becomes keyboard-reachable.
+document.addEventListener('DOMContentLoaded', function () {
+    const hint = (window.__UIF_I18N__ && window.__UIF_I18N__.scrollHint) || 'Faites défiler →';
+    const boxes = Array.prototype.slice.call(document.querySelectorAll('.table-wrapper'));
+    if (!boxes.length) return;
+    function paint(box) {
+        const over = box.scrollWidth > box.clientWidth + 1;
+        box.classList.toggle('is-scrollable', over);
+        if (over && !box.hasAttribute('data-scroll-hint'))
+            box.setAttribute('data-scroll-hint', hint);
+        if (over && !box.hasAttribute('tabindex')) box.setAttribute('tabindex', '0');
+    }
+    boxes.forEach(function (box) {
+        paint(box);
+        box.addEventListener(
+            'scroll',
+            function () {
+                if (box.scrollLeft > 4) box.classList.add('is-scrolled');
+            },
+            { passive: true }
+        );
+    });
+    if (typeof ResizeObserver === 'function') {
+        const ro = new ResizeObserver(function () {
+            boxes.forEach(paint);
+        });
+        boxes.forEach(function (b) {
+            ro.observe(b);
+        });
+    } else {
+        window.addEventListener('resize', function () {
+            boxes.forEach(paint);
+        });
+    }
+});
+
 // Disclosure pattern: a button that shows a panel of two native radio groups.
 document.addEventListener('DOMContentLoaded', function () {
     const wrap = document.getElementById('hzPalette');
