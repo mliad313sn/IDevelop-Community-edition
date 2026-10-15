@@ -903,12 +903,24 @@ router.post(
 // Supervisor Review Routes (available to managers AND admins — admins stand in
 // for absent managers; requireManagerOrAdmin matches every other talent surface
 // and redirects to /dashboard rather than bouncing admins to /login).
-router.get('/supervisor/reviews', requireManagerOrAdmin, SupervisorReviewController.index);
+// The legacy one-skill review pages duplicate the grouped queue: they answer a
+// PERMANENT redirect to it (a bookmark or an old e-mail still lands somewhere
+// useful). Nothing is deleted: SupervisorReviewController.index / .review stay,
+// and POST …/complete still works. The legacy id travels as ?review=<id>; the
+// target is a fixed relative path.
+const LEGACY_REVIEW_QUEUE = '/supervisor/self-assessment-reviews';
+router.get('/supervisor/reviews', requireManagerOrAdmin, (req, res) =>
+    res.redirect(301, LEGACY_REVIEW_QUEUE)
+);
 router.get(
     '/supervisor/reviews/:reviewId',
     requireManagerOrAdmin,
     requireNumericParam('reviewId'),
-    SupervisorReviewController.review
+    (req, res) =>
+        res.redirect(
+            301,
+            `${LEGACY_REVIEW_QUEUE}?review=${encodeURIComponent(String(Number(req.params.reviewId)))}`
+        )
 );
 router.post(
     '/supervisor/reviews/:reviewId/complete',
@@ -3395,12 +3407,20 @@ router.get(
                 params
             );
         }
+        // A result links to a page: offer it only to a person who can OPEN that
+        // page. Skills open /domains-skills and roles /roles/:id, behind
+        // requirePermission('view_domains_skills' / 'view_roles'): employees and
+        // managers were handed links that answered 403.
+        const RBAC = require('../services/RBACService');
+        const mayOpen = (slug) => u.userType === 'admin' && RBAC.hasPermission(u, slug);
         const [skills, roles] = await Promise.all([
-            db.all(
-                'SELECT id, name FROM skills WHERE is_active AND name ILIKE ? ORDER BY name LIMIT 5',
-                [like]
-            ),
-            canSeePeople
+            mayOpen('view_domains_skills')
+                ? db.all(
+                      'SELECT id, name FROM skills WHERE is_active AND name ILIKE ? ORDER BY name LIMIT 5',
+                      [like]
+                  )
+                : Promise.resolve([]),
+            canSeePeople && mayOpen('view_roles')
                 ? db.all(
                       'SELECT id, name FROM roles WHERE is_active AND name ILIKE ? ORDER BY name LIMIT 5',
                       [like]

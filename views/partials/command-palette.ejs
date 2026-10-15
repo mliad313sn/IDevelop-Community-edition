@@ -1,4 +1,4 @@
-<!-- Global command palette (Ctrl/Cmd+K, or "/" ) — jump to any page, person,
+<!-- Global command palette (Ctrl/Cmd+K, or the header search button) — jump to any page, person,
      skill or role without hunting through menus. Results are RBAC-scoped by
      /api/quick-search; employees never see other people's records. -->
 <div class="cmdk" id="cmdk" hidden role="dialog" aria-modal="true" aria-label="<%= __('chrome:cmdk_aria') %>">
@@ -10,7 +10,7 @@
                    placeholder="<%= __('chrome:cmdk_placeholder') %>" aria-label="<%= __('chrome:cmdk_placeholder') %>">
             <kbd class="cmdk-esc">Esc</kbd>
         </div>
-        <div class="cmdk-results" id="cmdkResults" role="listbox"></div>
+        <div class="cmdk-results" id="cmdkResults" role="listbox" aria-label="<%= __('chrome:cmdk_results_aria') %>"></div>
         <div class="cmdk-foot">
             <span><kbd>↑</kbd><kbd>↓</kbd> <%= __('chrome:cmdk_navigate') %></span>
             <span><kbd>↵</kbd> <%= __('chrome:cmdk_open') %></span>
@@ -48,44 +48,61 @@
         skills: __('chrome:cmdk_skills'), roles: __('chrome:cmdk_roles'),
         empty: __('chrome:cmdk_empty'), hint: __('chrome:cmdk_hint'),
     } }) %>;
-    // Static destinations come from the links the user actually has — the
-    // sidebar is already permission-filtered server-side, so the palette can
-    // never offer a page this person cannot open.
-    const PAGES = Array.from(document.querySelectorAll('.sidebar-nav a.sidebar-link')).map((a) => ({
-        label: (a.querySelector('.sidebar-link-text') || a).textContent.trim(),
-        href: a.getAttribute('href'),
-        icon: (a.querySelector('i') || {}).className || 'fas fa-arrow-right',
-    })).filter((p) => p.label && p.href);
+    // Static destinations come from the navigation config (navConfig.paletteIndex):
+    // every rail page this person may see — sub-pages and folded sections
+    // included — then the account menu, with the same names and the same
+    // visibility predicates as the rail. The palette never offers a page this
+    // person cannot open.
+    <% const _pN = (typeof navConfig !== 'undefined' && navConfig) ? navConfig : null;
+       const _pT = (k) => __(String(k).indexOf(':') === -1 ? 'chrome:' + k : k);
+       const _pIdx = _pN ? _pN.paletteIndex(locals).map(function (p) {
+           return { label: _pT(p.labelKey), group: _pT(p.groupKey), href: p.href, icon: p.icon };
+       }) : []; %>
+    const PAGES = <%- include('./json-script', { v: _pIdx }) %>;
 
     const el = document.getElementById('cmdk');
     const input = document.getElementById('cmdkInput');
     const list = document.getElementById('cmdkResults');
-    let items = [], active = 0, reqSeq = 0;
+    let items = [], active = 0, reqSeq = 0, opener = null;
 
     function open() {
+        // Remember who opened the palette (the header search button, or whatever
+        // had the focus on Ctrl+K) so closing gives the focus back.
+        const a = document.activeElement;
+        opener = a && a !== document.body && !el.contains(a) ? a : null;
         el.hidden = false;
         input.value = '';
         render(defaultItems());
         setTimeout(() => input.focus(), 10);
     }
-    function close() { el.hidden = true; }
+    function close() {
+        el.hidden = true;
+        const back = opener || document.getElementById('hdrSearch');
+        opener = null;
+        if (back && typeof back.focus === 'function' && document.contains(back)) back.focus();
+    }
     function defaultItems() {
-        return PAGES.slice(0, 8).map((p) => ({ ...p, group: T.pages }));
+        return PAGES.slice(0, 8).map((p) => ({ ...p, group: p.group || T.pages }));
     }
     function render(next) {
         items = next; active = 0;
-        if (!items.length) { list.innerHTML = '<div class="cmdk-empty">' + T.empty + '</div>'; return; }
+        if (!items.length) { list.innerHTML = '<div class="cmdk-empty">' + esc(T.empty) + '</div>'; return; }
         let html = '', lastGroup = null;
         items.forEach((it, i) => {
-            if (it.group !== lastGroup) { html += '<div class="cmdk-group">' + it.group + '</div>'; lastGroup = it.group; }
-            html += '<a class="cmdk-item' + (i === 0 ? ' is-active' : '') + '" data-i="' + i + '" href="' + it.href + '" role="option">' +
-                '<i class="' + it.icon + '"></i><span></span>' +
+            if (it.group !== lastGroup) { html += '<div class="cmdk-group" role="presentation"></div>'; lastGroup = it.group; }
+            html += '<a class="cmdk-item' + (i === 0 ? ' is-active' : '') + '" data-i="' + i + '" role="option">' +
+                '<i class="' + esc(it.icon) + '" aria-hidden="true"></i><span></span>' +
                 (it.sub ? '<span class="cmdk-item-sub"></span>' : '') + '</a>';
         });
         list.innerHTML = html;
-        // Text set via textContent (never innerHTML) so a person's name or a
-        // skill title can't inject markup into the palette.
+        // Text and links set as properties (never innerHTML) so a person's name
+        // or a skill title can't inject markup into the palette.
+        const groups = [];
+        let prev = null;
+        items.forEach((it) => { if (it.group !== prev) { groups.push(it.group); prev = it.group; } });
+        list.querySelectorAll('.cmdk-group').forEach((node, i) => { node.textContent = groups[i] || ''; });
         list.querySelectorAll('.cmdk-item').forEach((node, i) => {
+            node.setAttribute('href', items[i].href);
             node.querySelector('span').textContent = items[i].label;
             const sub = node.querySelector('.cmdk-item-sub');
             if (sub) sub.textContent = items[i].sub;
@@ -99,13 +116,18 @@
         nodes[active].scrollIntoView({ block: 'nearest' });
     }
 
+    function esc(v) {
+        return String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    }
+
     let debounce = null;
     input.addEventListener('input', () => {
         const q = input.value.trim();
         clearTimeout(debounce);
         if (!q) { render(defaultItems()); return; }
-        const local = PAGES.filter((p) => p.label.toLowerCase().includes(q.toLowerCase()))
-            .map((p) => ({ ...p, group: T.pages }));
+        const ql = q.toLowerCase();
+        const local = PAGES.filter((p) => p.label.toLowerCase().includes(ql) || String(p.group || '').toLowerCase().includes(ql))
+            .map((p) => ({ ...p, group: p.group || T.pages }));
         render(local);
         if (q.length < 2) return;
         const seq = ++reqSeq;
@@ -124,9 +146,9 @@
     });
 
     document.addEventListener('keydown', (e) => {
-        const typing = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+        // Ctrl/Cmd+K only: a bare « / » swallowed the key in every non-input
+        // widget; the header carries a visible search button instead.
         if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); el.hidden ? open() : close(); return; }
-        if (e.key === '/' && !typing && el.hidden) { e.preventDefault(); open(); return; }
         if (el.hidden) return;
         if (e.key === 'Escape') { e.preventDefault(); close(); }
         else if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }

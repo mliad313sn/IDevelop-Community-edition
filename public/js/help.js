@@ -3266,6 +3266,102 @@ document.addEventListener('DOMContentLoaded', () => {
             ),
         },
 
+        '/tasks': {
+            title: L('Tasks', 'À traiter'),
+            why: L(
+                '<strong>Process:</strong> everything waiting for you to act — assessments to review, plans to start, training to approve, accounts to process — grouped by type, with how many and what to do. The number on the bell counts exactly this list.',
+                '<strong>Processus :</strong> tout ce qui attend une action de votre part — évaluations à valider, plans à démarrer, formations à valider, comptes à traiter — regroupé par type, avec le nombre et ce qu’il faut faire. Le chiffre de la cloche compte exactement cette liste.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        '<strong>Start at the top:</strong> assessments first, then plans, training and accounts.',
+                        '<strong>Commencez par le haut :</strong> les évaluations d’abord, puis les plans, les formations et les comptes.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Use the button on each line</strong> to open the page where you act; the line goes once the work is done.',
+                        '<strong>Utilisez le bouton de chaque ligne</strong> pour ouvrir la page où agir ; la ligne disparaît une fois le travail fait.'
+                    ),
+                },
+                {
+                    text: L(
+                        'Messages and reminders are in <strong>Notifications</strong>, the second tab of the bell.',
+                        'Les messages et rappels sont dans <strong>Notifications</strong>, le deuxième onglet de la cloche.'
+                    ),
+                },
+            ],
+            value: L(
+                'One place for your to-do list: nothing waits unseen, and every link opens a page you are allowed to use.',
+                'Un seul endroit pour ce qui vous attend : rien ne patiente sans être vu, et chaque lien ouvre une page à laquelle vous avez accès.'
+            ),
+        },
+
+        '/reports/dept-brief': {
+            title: L('Department brief', 'Fiche département'),
+            why: L(
+                'One page that sums up a department: completion, gaps, talent placements and open actions, computed on the data of your scope.',
+                'Une page qui résume un département : avancement, écarts, positionnements talents et actions ouvertes, calculés sur les données de votre périmètre.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        'Pick a department in the list to open its latest brief.',
+                        'Choisissez un département dans la liste pour ouvrir sa dernière fiche.'
+                    ),
+                },
+                {
+                    text: L(
+                        'Recompute it after a campaign closes to see the new figures.',
+                        'Recalculez-la après la clôture d’une campagne pour voir les nouveaux chiffres.'
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'A figure that is not measured is shown as such — never read an empty cell as zero.',
+                    'Une valeur non mesurée est signalée comme telle : ne lisez jamais une case vide comme un zéro.'
+                ),
+            ],
+            value: L(
+                'Prepare a department review meeting in minutes.',
+                'Préparez une revue de département en quelques minutes.'
+            ),
+        },
+
+        '/admin/integrations/hris': {
+            title: L('HRIS sync', 'Synchronisation SIRH'),
+            why: L(
+                '<strong>Process:</strong> feed people from your HRIS. Joiners, movers and leavers are prepared in a dry run, reviewed, then applied with the same rules as the employee record.',
+                '<strong>Processus :</strong> alimentez les collaborateurs depuis votre SIRH. Arrivées, mobilités et départs sont préparés dans un essai à blanc, relus, puis appliqués avec les mêmes règles que la fiche collaborateur.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        '<strong>Configure the connector</strong> and test it.',
+                        '<strong>Configurez le connecteur</strong> et testez-le.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Run a dry run</strong> or upload a file, then read the plan: what will be created, changed or closed, and what could not be matched.',
+                        '<strong>Lancez un essai à blanc</strong> ou déposez un fichier, puis lisez le plan : ce qui sera créé, modifié ou clôturé, et ce qui n’a pas pu être rapproché.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Apply</strong> the plan once it is right; every change is recorded in the audit log.',
+                        '<strong>Appliquez</strong> le plan quand il est juste ; chaque changement est tracé dans le journal d’audit.'
+                    ),
+                },
+            ],
+            value: L(
+                'The people in the platform stay those of the organisation, without retyping.',
+                'Les collaborateurs de la plateforme restent ceux de l’organisation, sans ressaisie.'
+            ),
+        },
+
         '/admin/modules': {
             title: L('Modules &amp; adoption stage', 'Modules et étape d’adoption'),
             why: L(
@@ -4122,19 +4218,42 @@ document.addEventListener('DOMContentLoaded', () => {
         return html;
     }
 
+    // The canonical page names the rail emits (views/partials/sidebar.ejs, from
+    // src/config/navigation.js), in the session language.
+    const NAV_TITLES = (() => {
+        try {
+            const node = document.getElementById('navGlossary');
+            const v = node ? JSON.parse(node.textContent || '{}') : {};
+            return v && typeof v === 'object' ? v : {};
+        } catch (_) {
+            return {};
+        }
+    })();
+    const navTitle = (k) =>
+        k && Object.prototype.hasOwnProperty.call(NAV_TITLES, k) ? NAV_TITLES[k] : null;
+    const escHtml = (v) =>
+        String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
     function updateGuideContent() {
         const path = window.location.pathname;
         // Normalise numeric segments so detail pages can have their OWN entry
         // (e.g. /employees/123/assessments -> /employees/:id/assessments).
         const norm = path.replace(/\/\d+(?=\/|$)/g, '/:id');
         let content = HELP_CONTENT[path] || HELP_CONTENT[norm];
+        let matchedKey = HELP_CONTENT[path] ? path : HELP_CONTENT[norm] ? norm : null;
         if (!content) {
             // longest matching prefix wins (e.g. /employees/123 -> /employees)
             const key = Object.keys(HELP_CONTENT)
                 .filter((k) => path.startsWith(k) || norm.startsWith(k))
                 .sort((a, b) => b.length - a.length)[0];
             if (key) content = HELP_CONTENT[key];
+            matchedKey = key || null;
         }
+        // The help title is the page's canonical name — the one the rail, the
+        // page title and the palette use. The help CONTENT is unchanged.
+        const glossTitle = navTitle(path) || navTitle(norm) || navTitle(matchedKey);
+        if (content && glossTitle)
+            content = Object.assign({}, content, { title: escHtml(glossTitle) });
         const box = document.getElementById('guide-content');
         if (!box) return;
         box.innerHTML = content

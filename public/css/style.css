@@ -508,13 +508,11 @@ body.no-sidebar .main-content {
 /* Collapsed: hide the links, rotate the affordance. The links stay in the DOM
    so the command palette and any in-page search can still find them. */
 .sidebar-section-label[aria-expanded="false"] .sidebar-section-chevron { transform: rotate(-90deg); }
-.sidebar-section-label[aria-expanded="false"] ~ .sidebar-link,
-.sidebar-section-label[aria-expanded="false"] ~ .sidebar-entry { display: none; }
+.sidebar-section-label[aria-expanded="false"] + .sidebar-section-items { display: none; }
 
 /* A collapsed section that contains the CURRENT page would hide the user's own
    location, so it is marked and always rendered open. */
-.sidebar-section.has-current .sidebar-link { display: flex; }
-.sidebar-section.has-current .sidebar-entry { display: block; }
+.sidebar-section.has-current > .sidebar-section-items { display: block; }
 
 /* 3.23.18 (UX-03) — task entries. An entry is either a link to its main page
    with a chevron that folds its related pages (.sidebar-entry-row), or a HUB:
@@ -614,10 +612,31 @@ button.sidebar-hub-toggle {
     border-radius: var(--radius-md);
     position: relative;
     transition: color 0.15s, background 0.15s;
-    white-space: nowrap;
+    /* A label is never cut: it wraps on two lines instead of ending in « … »
+       (every link also carries its full name in title=). */
+    white-space: normal;
+    line-height: 1.25;
     overflow: hidden;
     margin: 1px 8px;
 }
+
+.sidebar-link-text { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.sidebar-logo-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* « À traiter » count in the rail: the same number as the bell. */
+.sidebar-badge {
+    margin-left: auto;
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--brand);
+    color: var(--text-inverse);
+    font: 700 12px/20px var(--font-body);
+    text-align: center;
+}
+.sidebar-badge[hidden],
+.sidebar-collapsed .sidebar-badge { display: none; }
+.nav-backdrop { display: none; }
 
 .sidebar-link i {
     width: 20px;
@@ -2335,6 +2354,24 @@ body.has-sidebar.sidebar-collapsed .app-footer {
         visibility: visible;
         transition: transform var(--transition-slow), visibility 0s linear 0s;
     }
+
+    /* The open drawer is a modal dialog (public/js/nav-rail.js): a backdrop
+       covers the page, the page does not scroll behind it, and every row is a
+       44 px target. */
+    body.has-sidebar.sidebar-open .nav-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 199;
+        background: rgba(2, 6, 23, 0.45);
+    }
+    body.nav-drawer-lock { overflow: hidden; }
+    .sidebar-link,
+    .sidebar-link.sidebar-sublink { min-height: 44px; }
+    .sidebar-entry-toggle { width: 44px; height: 44px; }
+    .sidebar-section-label { min-height: 44px; }
+    .sidebar-toggle,
+    .sidebar-logo { min-height: 44px; }
 
     body.has-sidebar .main-content,
     body.has-sidebar .app-footer {

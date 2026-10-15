@@ -158,6 +158,7 @@ describe('exec views — CSP, i18n and branding hygiene', () => {
             ...VIEWS.map((v) => path.join(VIEW_DIR, v)),
             path.join(__dirname, '../../src/controllers/ExecDecisionController.js'),
             path.join(__dirname, '../../views/partials/sidebar.ejs'),
+            path.join(__dirname, '../../src/config/navigation.js'),
         ];
         const used = new Set();
         for (const f of sources) {

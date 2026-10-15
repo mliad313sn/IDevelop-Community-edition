@@ -143,8 +143,14 @@
         // The next person on the shared computer must not inherit this
         // person's open menus: every logout of a shared-device session (badge,
         // account menu, idle) passes here.
+        // HTMLFormElement.prototype.submit fires NO submit event, so the rail's
+        // own logout listener (nav-rail.js) never runs here: forget it explicitly.
         try {
-            window.localStorage.removeItem('sidebarNav.v2');
+            if (typeof window.appForgetRail === 'function') window.appForgetRail();
+            else {
+                window.localStorage.removeItem('sidebarNav.v3');
+                window.localStorage.removeItem('sidebarNav.v2');
+            }
         } catch (_) {
             /* private mode: never block the sign-out */
         }

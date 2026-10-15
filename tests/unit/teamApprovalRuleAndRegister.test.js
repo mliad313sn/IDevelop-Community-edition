@@ -215,6 +215,7 @@ describe('R4 — catalogues', () => {
             'views/pages/supervisor/dashboard.ejs',
             'views/pages/supervisor/self-assessment-review.ejs',
             'views/partials/sidebar.ejs',
+            'src/config/navigation.js',
         ];
         for (const v of views) {
             for (const m of read(v).matchAll(/__\('(compliance|talentx):([a-z0-9_]+)'\s*[,)]/gi)) {
@@ -276,8 +277,11 @@ describe('R5 — guards and menu', () => {
             /'\/api\/self-assessment\/team\/approve-all',\s*requireManagerOrAnyPermission\('approve_assessments'\),/
         );
     });
-    test('the employee menu links the page', () => {
-        expect(read('views/partials/sidebar.ejs')).toMatch(/href="\/employee\/my-data"/);
+    test('the employee account menu links the page', () => {
+        const NAV = require('../../src/config/navigation');
+        const L = { user: { userType: 'employee', id: 1 } };
+        expect(NAV.accountMenu(L).map((m) => m.href)).toContain('/employee/my-data');
+        expect(read('src/config/navigation.js')).toMatch(/label: 'compliance:mydata_nav'/);
     });
     test('the register is printable', () => {
         const v = read('views/pages/compliance/register.ejs');

@@ -183,6 +183,13 @@ router.get(
 );
 
 // ===================== Calibration ==========================================
+// There is no calibration PAGE: the sessions live on the hub (/v2/cap, the
+// calibration card). A GET on the bare resource path answered 404; it now sends
+// the reader to that card, permanently. The router is mounted behind
+// ModuleService.capGuard(), so the talent module still gates it (404 when off).
+router.get('/calibration', requireManagerOrAdmin, (req, res) =>
+    res.redirect(301, '/v2/cap#calibration')
+);
 router.post(
     '/calibration',
     requireManagerOrAnyPermission('manage_talent_reviews'),

@@ -112,6 +112,8 @@ app.locals.personName = require('./src/utils/personName').personNameOf;
 // 3.23.21: one resolver for « what a skill and its levels mean », shared by
 // views/partials/skill-help.ejs and the browser (public/js/sa-skill-help.js).
 app.locals.skillHelpCore = require('./src/utils/skillHelp');
+// The one navigation config: rail, breadcrumbs, quick search, account menu, help titles.
+app.locals.navConfig = require('./src/config/navigation');
 const CDN_STYLE = EXTERNAL_FONTS ? ['https://fonts.googleapis.com'] : [];
 const CDN_FONT = EXTERNAL_FONTS ? ['https://fonts.gstatic.com'] : [];
 app.use(

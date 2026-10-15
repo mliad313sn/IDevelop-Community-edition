@@ -1,7 +1,8 @@
 'use strict';
 
 /**
- * 3.23.18 — lane U-navigation (UX-03 / UX-17 / UX-05).
+ * The navigation rail, re-expressed for the one navigation config
+ * (src/config/navigation.js).
  *
  * Behavioural: the REAL sidebar/header partials are rendered with ejs for an
  * employee, a manager, two local admins, a viewer and a SuperAdmin (fake
@@ -29,6 +30,7 @@ const SIDEBAR = path.join(ROOT, 'views/partials/sidebar.ejs');
 const HEADER = path.join(ROOT, 'views/partials/header.ejs');
 const FR = require('../../locales/fr/chrome.json');
 const EN = require('../../locales/en/chrome.json');
+const NAV = require('../../src/config/navigation');
 
 const ROLES = {
     employee: { user: { userType: 'employee', username: 'emp' }, perms: [] },
@@ -293,42 +295,85 @@ const BEFORE = {
         '/v2/uam/maker-checker/queue',
     ],
 };
-// The only destinations the new rail may ADD: the person's own profile, open to
-// every signed-in account (routes/index.js: router.get('/account', requireAuth…)),
-// and the 3.23.18 safety-clearances page, for admins holding a compliance grant
-// and SuperAdmins (its route: requireManagerOrAnyPermission view/manage_compliance).
-// « Mes données » (/employee/my-data) is the person's OWN data register — the
-// route is requireEmployeeOrManager and keys on req.user.id — so it is a
-// legitimate addition for exactly the two accounts that have a « mine » section.
-// Administration → Modules (/admin/modules) is the SuperAdmin's switchboard for
-// the optional modules that replaced the boot-time V2_FEATURES gate — its route
-// is requireSuperAdminPage, so it is a legitimate SuperAdmin-only addition.
-// « Mon habilitation sécurité » (/safety-gate/me) is the person's OWN safety
-// status and contest form: the route serves only an employee or manager session
-// and keys on req.user.id.
-const ALLOWED_ADDITIONS = {
-    employee: ['/account', '/employee/my-data', '/safety-gate/me'],
-    manager: ['/employee/my-data', '/safety-gate/me'],
-    localadmin_ops: ['/safety-gate'],
-    superadmin: ['/safety-gate', '/admin/modules'],
+/**
+ * Destinations the config-driven rail ADDS to the BEFORE sets. Every one is a
+ * route the role already opens (proven over HTTP by
+ * navigationRouteReachability.test.js):
+ *  - « À traiter » (/tasks): managers and admins who can act — never a
+ *    read-only account (its route sends them home);
+ *  - pages that had no menu entry (9-box movements, scheduled reports,
+ *    department brief, gaps and readiness reports): requireManagerOrAdmin;
+ *  - /safety-gate for managers (the route admits them) and its rules page for
+ *    holders of manage_compliance; « Mon habilitation sécurité » for the two
+ *    accounts that have a personal space;
+ *  - the SuperAdmin's instance pages: modules, HRIS sync, the notification
+ *    catalogue and effectiveness (requireSuperAdmin / requireSuperAdminPage);
+ *  - training to approve (/v2/lms/uplifts, development module): managers and
+ *    configure_lms holders.
+ */
+const ORPHANS = [
+    '/talent/nine-box/movements',
+    '/reports/schedules',
+    '/reports/dept-brief',
+    '/reports/gaps',
+    '/reports/readiness',
+];
+const ADDED = {
+    employee: ['/safety-gate/me'],
+    manager: ['/tasks', ...ORPHANS, '/safety-gate', '/safety-gate/me'],
+    localadmin_ops: ['/tasks', ...ORPHANS, '/safety-gate'],
+    localadmin_people: ['/tasks', ...ORPHANS],
+    localadmin_none: ['/tasks', ...ORPHANS],
+    viewer: [...ORPHANS],
+    superadmin: [
+        '/tasks',
+        ...ORPHANS,
+        '/safety-gate',
+        '/safety-gate/config',
+        '/admin/modules',
+        '/admin/integrations/hris',
+        '/admin/notifications/catalogue',
+        '/admin/notifications/metrics',
+    ],
 };
-
-// Destinations added by optional modules AFTER the BEFORE sets were captured,
-// visible only while their module is on (the `v2=true` configs):
-//  - « Mon feedback 360° » (/feedback-360, development) and « Mes entretiens
-//    1:1 » (/one-on-one, engagement): the person's OWN space, for the two
-//    accounts that have a « mine » section;
-//  - the 360° console (/feedback-360/manage, development) in the team plans hub,
-//    for every account that sees that hub (managers and admins — the route is
-//    requireManagerOrAdmin and lists only rounds inside the caller's scope).
+// Added while their module is on (the `v2=true` configs).
 const MODULE_ADDITIONS = {
     employee: ['/feedback-360', '/one-on-one'],
-    manager: ['/feedback-360', '/one-on-one', '/feedback-360/manage'],
+    manager: ['/feedback-360', '/one-on-one', '/feedback-360/manage', '/v2/lms/uplifts'],
     localadmin_ops: ['/feedback-360/manage'],
-    localadmin_people: ['/feedback-360/manage'],
+    localadmin_people: ['/feedback-360/manage', '/v2/lms/uplifts'],
     localadmin_none: ['/feedback-360/manage'],
     viewer: ['/feedback-360/manage'],
-    superadmin: ['/feedback-360/manage'],
+    superadmin: ['/feedback-360/manage', '/v2/lms/uplifts'],
+};
+/**
+ * Removals, each a documented decision (navigation only — every route is
+ * unchanged and each page stays reachable another way):
+ *  - /notifications: the bell's « Tout voir » and the palette, for everyone;
+ *  - the employee's /account and « Mes données »: the account menu (and the
+ *    sidebar footer for the profile);
+ *  - a manager's /employee/dashboard (« À faire »): replaced by « À traiter »,
+ *    which lists the manager's own actions too;
+ *  - read-only accounts: the work queues (they cannot act on them).
+ */
+const READ_ONLY_QUEUES = [
+    '/movements',
+    '/supervisor/self-assessment-reviews',
+    '/talent/actions',
+    '/v2/idp/manage',
+    '/v2/lifecycle',
+    '/v2/pip',
+    '/v2/slf/disputes',
+    '/coaching/plans',
+];
+const REMOVED = {
+    employee: ['/notifications', '/account', '/employee/my-data'],
+    manager: ['/notifications', '/employee/dashboard', '/employee/my-data'],
+    localadmin_ops: ['/notifications'],
+    localadmin_people: ['/notifications'],
+    localadmin_none: ['/notifications'],
+    viewer: ['/notifications', ...READ_ONLY_QUEUES],
+    superadmin: ['/notifications'],
 };
 
 // Optional modules (config/modules.js). The BEFORE sets were captured with the
@@ -364,17 +409,35 @@ const STAGE_1_HIDDEN = [
     '/coaching/plans',
 ];
 
-function locals(role, { v2, lc, ws = true, currentPath = '/nowhere', lang = 'fr' }) {
+/** The real catalogue in the session language (namespaced keys included). */
+function translator(lang) {
+    const cache = new Map();
+    const dict = (ns) => {
+        const k = lang + ':' + ns;
+        if (!cache.has(k)) cache.set(k, require(`../../locales/${lang}/${ns}.json`));
+        return cache.get(k);
+    };
+    return (key, o) => {
+        const str = String(key);
+        const [ns, k] = str.includes(':') ? str.split(':') : ['chrome', str];
+        const v = dict(ns)[k];
+        const out = v !== undefined ? v : str;
+        return o && o.name !== undefined ? out.replace('{{name}}', o.name) : out;
+    };
+}
+
+function locals(role, { v2, lc, ws = true, currentPath = '/nowhere', lang = 'fr', prefs } = {}) {
     const r = ROLES[role];
     return {
-        user: r.user,
+        user: prefs ? { ...r.user, workspacePrefs: prefs } : r.user,
         can: (s) => r.perms === '*' || r.perms.includes(s),
-        wsVisible: () => ws,
+        wsVisible: typeof ws === 'function' ? ws : () => ws,
         appModules: { ...(v2 ? ALL_MODULES_ON : STAGE_1), localContent: !!lc },
         sqlConsoleEnabled: true,
         featureLocalContent: lc,
         currentPath,
-        __: (k, o) => k + (o && o.name !== undefined ? '|' + o.name : ''),
+        navConfig: NAV,
+        __: translator(lang),
         cspNonce: 'n',
         csrfToken: 't',
         lang,
@@ -382,38 +445,38 @@ function locals(role, { v2, lc, ws = true, currentPath = '/nowhere', lang = 'fr'
 }
 const render = (file, L) => ejs.render(fs.readFileSync(file, 'utf8'), L, { filename: file });
 const navOf = (html) => html.slice(html.indexOf('<nav'), html.indexOf('</nav>'));
-const hrefs = (nav) => new Set([...nav.matchAll(/<a\s+href="([^"]+)"/g)].map((m) => m[1]));
-/** Top-level rows: entry links that are not sub-links, plus hub buttons. */
-function topEntries(nav) {
-    const links = [
-        ...nav.matchAll(/<a\s+href="[^"]+"\s+class="sidebar-link(?![^"]*sidebar-sublink)[^"]*"/g),
-    ];
-    const hubs = [...nav.matchAll(/class="sidebar-link sidebar-hub-toggle"/g)];
-    return links.length + hubs.length;
-}
+const hrefs = (nav) =>
+    new Set([...nav.matchAll(/<a\s+href="([^"]+)"/g)].map((m) => m[1].split('#')[0]));
+const allHrefs = (nav) => [...nav.matchAll(/<a\s+href="([^"]+)"/g)].map((m) => m[1].split('#')[0]);
+/** Section headers rendered in the rail. */
+const topRows = (nav) => (nav.match(/class="sidebar-section[" ]/g) || []).length;
 const CONFIGS = Object.keys(BEFORE).map((k) => {
     const [role, v2, lc] = k.split('|');
     return { key: k, role, v2: v2 === 'v2=true', lc: lc === 'lc=true' };
 });
 
-describe('UX-03 — the rail is cut by task and keeps every gate', () => {
-    test.each(CONFIGS)('$key: no new visibility, nothing lost', ({ key, role, v2, lc }) => {
-        const got = hrefs(navOf(render(SIDEBAR, locals(role, { v2, lc }))));
-        const before = new Set(BEFORE[key].filter((h) => v2 || !STAGE_1_HIDDEN.includes(h)));
-        const allowed = new Set([
-            ...before,
-            ...(ALLOWED_ADDITIONS[role] || []),
-            ...(v2 ? MODULE_ADDITIONS[role] || [] : []),
-            ...(v2 ? [] : CORE_NOW),
-        ]);
-        // (b) nothing a role could not reach before becomes visible
-        expect([...got].filter((h) => !allowed.has(h))).toEqual([]);
-        // (c) every destination visible before is still reachable in the rail
-        expect([...before].filter((h) => !got.has(h))).toEqual([]);
-    });
+describe('the rail keeps every gate (navigation config)', () => {
+    test.each(CONFIGS)(
+        '$key: no new visibility, nothing lost — except the documented lists',
+        ({ key, role, v2, lc }) => {
+            const got = hrefs(navOf(render(SIDEBAR, locals(role, { v2, lc }))));
+            const before = new Set(BEFORE[key].filter((h) => v2 || !STAGE_1_HIDDEN.includes(h)));
+            const allowed = new Set([
+                ...before,
+                ...(ADDED[role] || []),
+                ...(v2 ? MODULE_ADDITIONS[role] || [] : []),
+                ...(v2 ? [] : CORE_NOW),
+            ]);
+            // nothing a role could not reach before becomes visible, except the lists
+            expect([...got].filter((h) => !allowed.has(h))).toEqual([]);
+            // every destination visible before is still in the rail, except the removals
+            const removed = new Set(REMOVED[role] || []);
+            expect([...before].filter((h) => !got.has(h) && !removed.has(h))).toEqual([]);
+        }
+    );
 
     test.each(Object.keys(MODULE_ADDITIONS))(
-        '%s: the 360° / one-to-one entries follow their modules',
+        '%s: the 360° / one-to-one / training entries follow their modules',
         (role) => {
             const on = hrefs(navOf(render(SIDEBAR, locals(role, { v2: true, lc: false }))));
             const off = hrefs(navOf(render(SIDEBAR, locals(role, { v2: false, lc: false }))));
@@ -424,26 +487,62 @@ describe('UX-03 — the rail is cut by task and keeps every gate', () => {
         }
     );
 
-    test('/safety-gate: admins with a compliance grant and SuperAdmins only', () => {
+    test('every module-owned destination disappears with its module', () => {
+        const M = require('../../src/config/modules');
+        const owner = (h) =>
+            Object.keys(M.MODULE_PREFIXES).find((k) =>
+                M.MODULE_PREFIXES[k].some((p) => h === p || h.startsWith(p + '/'))
+            );
+        for (const role of Object.keys(ROLES)) {
+            for (const off of M.STAGED_MODULES) {
+                const mods = { ...ALL_MODULES_ON, [off]: false };
+                const L = { ...locals(role, { v2: true, lc: true }), appModules: mods };
+                const got = [...hrefs(navOf(render(SIDEBAR, L)))];
+                const leaked = got.filter((h) => owner(h) === off);
+                expect(`${role}/${off}: ${leaked.join(',')}`).toBe(`${role}/${off}: `);
+            }
+            const noLc = { ...locals(role, { v2: true, lc: false }) };
+            expect(hrefs(navOf(render(SIDEBAR, noLc))).has('/reports/local-content')).toBe(false);
+        }
+    });
+
+    test('/safety-gate: managers, admins with a compliance grant and SuperAdmins', () => {
         const sees = (role) =>
             hrefs(navOf(render(SIDEBAR, locals(role, { v2: true, lc: true })))).has('/safety-gate');
         expect(sees('superadmin')).toBe(true);
         expect(sees('localadmin_ops')).toBe(true); // holds view_compliance
-        for (const r of ['employee', 'manager', 'localadmin_people', 'localadmin_none', 'viewer']) {
+        expect(sees('manager')).toBe(true); // the route admits managers
+        for (const r of ['employee', 'localadmin_people', 'localadmin_none', 'viewer']) {
             expect(`${r}:${sees(r)}`).toBe(`${r}:false`);
         }
     });
 
-    test('a hidden workspace component hides its links for an admin (wsVisible still honoured)', () => {
-        const got = hrefs(
-            navOf(render(SIDEBAR, locals('superadmin', { v2: true, lc: true, ws: false })))
+    test('an explicitly hidden workspace component hides its links; « Tableau de bord » stays first', () => {
+        const hidden = {
+            'nav:main': false,
+            'nav:team': false,
+            'nav:talent': false,
+            'nav:tools': false,
+            'nav:administration': false,
+            'nav:configuration': false,
+        };
+        const nav = navOf(
+            render(
+                SIDEBAR,
+                locals('superadmin', {
+                    v2: true,
+                    lc: true,
+                    ws: (k) => hidden[k] !== false,
+                    prefs: hidden,
+                })
+            )
         );
-        expect([...got].sort()).toEqual(['/about', '/guide', '/notifications']);
+        expect(allHrefs(nav)).toEqual(['/dashboard', '/tasks', '/guide', '/about']);
     });
 
-    test('(a) an employee meets at most six task entries, in the agreed order', () => {
+    test('an employee meets at most six task entries, in the agreed order', () => {
         const nav = navOf(render(SIDEBAR, locals('employee', { v2: true, lc: true })));
-        expect(topEntries(nav)).toBeLessThanOrEqual(6);
+        expect(nav).not.toMatch(/class="sidebar-section[" ]/); // no group header for the frontline
         const tops = [
             ...nav.matchAll(/<a\s+href="([^"]+)"\s+class="sidebar-link(?![^"]*sidebar-sublink)/g),
         ].map((m) => m[1]);
@@ -452,20 +551,10 @@ describe('UX-03 — the rail is cut by task and keeps every gate', () => {
             '/employee/self-assessment',
             '/employee/my-development',
             '/employee/my-learning',
-            '/account',
+            '/safety-gate/me',
             '/guide',
         ]);
-        for (const k of [
-            'nav_todo',
-            'nav_my_assessments',
-            'nav_my_plan',
-            'nav_my_learning',
-            'menu_my_profile',
-            'nav_help',
-        ]) {
-            expect(nav).toContain(`>chrome:${k}<`);
-        }
-        // the near-synonyms are no longer top entries: they are sub-links
+        // the near-synonyms are sub-links, not top entries
         for (const h of [
             '/employee/assessment-status',
             '/employee/my-progress',
@@ -475,45 +564,50 @@ describe('UX-03 — the rail is cut by task and keeps every gate', () => {
         }
     });
 
-    test.each([
-        ['manager', 20],
-        ['superadmin', 20],
-        ['localadmin_people', 20],
-    ])('(a) %s sees at most %i top-level rows (was ~45 / ~56 flat links)', (role, max) => {
-        const nav = navOf(render(SIDEBAR, locals(role, { v2: true, lc: true })));
-        expect(topEntries(nav)).toBeLessThanOrEqual(max);
-    });
-
-    test('the review notions sit under ONE « Revues & contestations » hub', () => {
-        const nav = navOf(render(SIDEBAR, locals('superadmin', { v2: true, lc: true })));
-        const hub = nav.slice(nav.indexOf('data-entry-key="reviews"'));
-        const sub = hub.slice(hub.indexOf('id="sbsub-reviews"'), hub.indexOf('</div>'));
-        for (const h of [
-            '/supervisor/self-assessment-reviews',
-            '/assessment-changes',
-            '/reviews/post-approval',
-            '/v2/slf/disputes',
-        ]) {
-            expect(sub).toContain(`href="${h}"`);
-            // …and nowhere else in the rail: one entry per notion
-            expect(nav.split(`href="${h}"`).length - 1).toBe(1);
+    test.each(['manager', 'superadmin', 'localadmin_people', 'localadmin_ops', 'viewer'])(
+        '%s sees at most 10 top-level rows (level-0 entries + section headers)',
+        (role) => {
+            const built = NAV.buildNav(locals(role, { v2: true, lc: true }));
+            expect(built.tree.length).toBeLessThanOrEqual(10);
+            const nav = navOf(render(SIDEBAR, locals(role, { v2: true, lc: true })));
+            expect(topRows(nav)).toBe(built.tree.filter((t) => t.type === 'section').length);
         }
-    });
+    );
 
-    test('the section holding the current page opens its hub server-side', () => {
+    test.each(['employee', 'manager', 'superadmin', 'viewer'])(
+        '%s: « Tableau de bord » is the first entry and leads to the person’s home',
+        (role) => {
+            const list = allHrefs(navOf(render(SIDEBAR, locals(role, { v2: true, lc: true }))));
+            expect(list[0]).toBe(NAV.homeUrl(ROLES[role].user));
+        }
+    );
+
+    test.each(Object.keys(ROLES))(
+        '%s: one entry per notion — no destination twice in the rail',
+        (role) => {
+            const list = allHrefs(navOf(render(SIDEBAR, locals(role, { v2: true, lc: true }))));
+            expect(list.filter((h, i) => list.indexOf(h) !== i)).toEqual([]);
+        }
+    );
+
+    test('the section and entry holding the current page are open server-side, the link is aria-current', () => {
         const nav = navOf(
             render(
                 SIDEBAR,
-                locals('manager', { v2: true, lc: true, currentPath: '/v2/slf/disputes' })
+                locals('manager', { v2: true, lc: true, currentPath: '/talent/nine-box/movements' })
             )
         );
-        expect(nav).toMatch(/sidebar-entry sidebar-hub is-open" data-entry-key="reviews"/);
+        expect(nav).toMatch(/class="sidebar-entry is-open" data-entry-key="nine_box"/);
         expect(nav).toMatch(
-            /href="\/v2\/slf\/disputes" class="sidebar-link sidebar-sublink active"/
+            /class="sidebar-section has-current" data-section-key="section_talent"/
         );
+        expect(nav).toMatch(
+            /href="\/talent\/nine-box\/movements" class="sidebar-link sidebar-sublink active" aria-current="page"/
+        );
+        expect((nav.match(/aria-current=/g) || []).length).toBe(1);
     });
 
-    test.each(Object.keys(ROLES))('UX-17 — %s: every destination has its own icon', (role) => {
+    test.each(Object.keys(ROLES))('%s: every destination has its own icon', (role) => {
         const nav = navOf(render(SIDEBAR, locals(role, { v2: true, lc: true })));
         const byIcon = new Map();
         for (const m of nav.matchAll(
@@ -524,32 +618,45 @@ describe('UX-03 — the rail is cut by task and keeps every gate', () => {
             byIcon.set(m[2], set);
         }
         const shared = [...byIcon]
-            .filter(([, s]) => s.size > 1)
-            .map(([i, s]) => `${i}: ${[...s].join(', ')}`);
+            .filter(([, v]) => v.size > 1)
+            .map(([i, v]) => `${i}: ${[...v].join(', ')}`);
         expect(shared).toEqual([]);
     });
 
     test('every section carries a stable data-section-key', () => {
         const nav = navOf(render(SIDEBAR, locals('superadmin', { v2: true, lc: true })));
-        const sections = nav.match(/<div class="sidebar-section"[^>]*>/g);
-        expect(sections.length).toBeGreaterThan(3);
-        for (const s of sections) expect(s).toMatch(/data-section-key="section_[a-z_]+"/);
+        const sections = nav.match(/<div class="sidebar-section(?: has-current)?"[^>]*>/g);
+        expect(sections.length).toBeGreaterThan(5);
+        for (const x of sections) expect(x).toMatch(/data-section-key="section_[a-z_]+"/);
+    });
+
+    test('a read-only account gets no work queue and no « À traiter »', () => {
+        const list = allHrefs(navOf(render(SIDEBAR, locals('viewer', { v2: true, lc: true }))));
+        expect(list).not.toContain('/tasks');
+        for (const h of READ_ONLY_QUEUES) expect(list).not.toContain(h);
+    });
+
+    test('the SQL console entry follows its operator switch', () => {
+        const on = hrefs(navOf(render(SIDEBAR, locals('superadmin', { v2: true, lc: true }))));
+        const L = { ...locals('superadmin', { v2: true, lc: true }), sqlConsoleEnabled: false };
+        const off = hrefs(navOf(render(SIDEBAR, L)));
+        expect(on.has('/data-management/sql-console')).toBe(true);
+        expect(off.has('/data-management/sql-console')).toBe(false);
     });
 });
 
-describe('UX-17 — the fold state is keyed on data-section-key, not on the translated label', () => {
-    // A tiny DOM stand-in, enough for the rail script: sections with a label
-    // button (whose TEXT depends on the language) and entries with a toggle.
+describe('the fold state is keyed on data-section-key, not on the translated label', () => {
+    // A tiny DOM stand-in, enough for the rail script.
     function fakeClassList(initial = []) {
-        const s = new Set(initial);
+        const set = new Set(initial);
         return {
-            add: (c) => s.add(c),
-            remove: (c) => s.delete(c),
-            contains: (c) => s.has(c),
+            add: (c) => set.add(c),
+            remove: (c) => set.delete(c),
+            contains: (c) => set.has(c),
             toggle: (c, on) => {
-                const v = on === undefined ? !s.has(c) : !!on;
-                if (v) s.add(c);
-                else s.delete(c);
+                const v = on === undefined ? !set.has(c) : !!on;
+                if (v) set.add(c);
+                else set.delete(c);
                 return v;
             },
         };
@@ -569,9 +676,9 @@ describe('UX-17 — the fold state is keyed on data-section-key, not on the tran
             },
         };
     }
-    function build(lang) {
+    function build(lang, owner = 'o1') {
         const label = {
-            section_talent: { fr: 'Talents', en: 'Talent' },
+            section_reference: { fr: 'Référentiel & réglages', en: 'Framework & settings' },
             section_reports: { fr: 'Rapports', en: 'Reports' },
         };
         const sections = Object.keys(label).map((key) => {
@@ -580,18 +687,31 @@ describe('UX-17 — the fold state is keyed on data-section-key, not on the tran
                 key,
                 btn,
                 classList: fakeClassList(),
-                getAttribute: (a) => (a === 'data-section-key' ? key : null),
+                getAttribute: (a) =>
+                    a === 'data-section-key'
+                        ? key
+                        : a === 'data-closed-default'
+                          ? NAV.CLOSED_BY_DEFAULT.includes(key)
+                              ? '1'
+                              : '0'
+                          : null,
                 querySelector: (sel) => (sel === '.sidebar-section-label' ? btn : null),
             };
         });
-        const toggle = fakeButton(lang === 'fr' ? 'Revues & contestations' : 'Reviews & disputes');
+        const toggle = fakeButton(lang === 'fr' ? 'Grille 9 cases' : '9-box grid');
         const entry = {
             classList: fakeClassList(),
-            getAttribute: (a) => (a === 'data-entry-key' ? 'reviews' : null),
+            getAttribute: (a) => (a === 'data-entry-key' ? 'nine_box' : null),
             querySelector: (sel) => (sel.includes('toggle') ? toggle : null),
         };
         const nav = {
             classList: fakeClassList(),
+            getAttribute: (a) =>
+                ({
+                    'data-nav-storage': NAV.STORAGE_KEY,
+                    'data-nav-owner': owner,
+                    'data-nav-legacy': NAV.LEGACY_STORAGE_KEYS.join(','),
+                })[a] || null,
             querySelectorAll: (sel) =>
                 sel === '.sidebar-section' ? sections : sel === '.sidebar-entry' ? [entry] : [],
         };
@@ -606,47 +726,54 @@ describe('UX-17 — the fold state is keyed on data-section-key, not on the tran
             setItem: (k, v) => {
                 storage[k] = v;
             },
+            removeItem: (k) => {
+                delete storage[k];
+            },
         };
         new Function('document', 'localStorage', 'window', src)(document, localStorage, {});
     }
+    const sec = (dom, key) => dom.sections.find((x) => x.key === key);
 
     test('a group opened / an entry unfolded in French is still so after switching to English', () => {
         const storage = {};
         const fr = build('fr');
         runScript(fr, storage);
-        const talentFr = fr.sections.find((s) => s.key === 'section_talent');
-        expect(talentFr.btn.getAttribute('aria-expanded')).toBe('false'); // folded by default
-        talentFr.btn.click();
-        fr.sections.find((s) => s.key === 'section_reports').btn.click(); // close Rapports
-        fr.toggle.click(); // unfold the reviews hub
+        expect(sec(fr, 'section_reference').btn.getAttribute('aria-expanded')).toBe('false'); // closed by default
+        expect(sec(fr, 'section_reports').btn.getAttribute('aria-expanded')).toBe('true');
+        sec(fr, 'section_reference').btn.click();
+        sec(fr, 'section_reports').btn.click(); // close Rapports
+        fr.toggle.click(); // unfold the 9-box entry
 
         const en = build('en');
         runScript(en, storage);
-        expect(
-            en.sections.find((s) => s.key === 'section_talent').btn.getAttribute('aria-expanded')
-        ).toBe('true');
-        expect(
-            en.sections.find((s) => s.key === 'section_reports').btn.getAttribute('aria-expanded')
-        ).toBe('false');
+        expect(sec(en, 'section_reference').btn.getAttribute('aria-expanded')).toBe('true');
+        expect(sec(en, 'section_reports').btn.getAttribute('aria-expanded')).toBe('false');
         expect(en.entry.classList.contains('is-open')).toBe(true);
         expect(en.toggle.getAttribute('aria-expanded')).toBe('true');
     });
+
+    test('another person on the same computer starts from the defaults; the old saved state is reset once', () => {
+        const storage = { 'sidebarNav.v2': JSON.stringify({ 's:section_talent': false }) };
+        const a = build('fr', 'personA');
+        runScript(a, storage);
+        expect(storage['sidebarNav.v2']).toBeUndefined();
+        sec(a, 'section_reports').btn.click(); // A closes Rapports
+        const b = build('fr', 'personB');
+        runScript(b, storage);
+        expect(sec(b, 'section_reports').btn.getAttribute('aria-expanded')).toBe('true');
+    });
 });
 
-describe('UX-17 — one account menu', () => {
-    test('the sidebar no longer carries a second dropdown; its footer links to the profile', () => {
+describe('one account menu', () => {
+    test('the sidebar carries no second dropdown; its footer links to the profile', () => {
         const html = render(SIDEBAR, locals('manager', { v2: true, lc: true }));
         expect(html).not.toContain('sidebarUserDropdown');
         expect(html).not.toContain('toggleUserMenu');
         expect(html).toMatch(/<a href="\/account" class="sidebar-user"/);
     });
 
-    test('the header menu offers the same entries to every role (Mon accès: admins only)', () => {
-        const menu = (role) => {
-            const h = render(HEADER, locals(role, { v2: true, lc: true }));
-            const dd = h.slice(h.indexOf('id="userDropdown"'), h.indexOf('</form>'));
-            return [...dd.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]);
-        };
+    test('the navigation config holds ONE account-menu list, same order for everyone', () => {
+        const menu = (role) => NAV.accountMenu(locals(role, {})).map((m) => m.href);
         const emp = menu('employee');
         expect(emp).toEqual([
             '/account',
@@ -654,23 +781,52 @@ describe('UX-17 — one account menu', () => {
             '/change-password',
             '/v2/uam/mfa/manage',
             '/account/sessions',
-            '/lang/en',
-            '/guide',
-            '/about',
+            '/employee/my-data',
+            '/v2/cap/my-diversity',
+            '/notifications',
         ]);
         expect(menu('manager')).toEqual(emp);
         const adm = menu('superadmin');
-        expect(adm.filter((h) => h !== '/mon-acces')).toEqual(emp);
-        expect(adm).toContain('/mon-acces');
+        expect(adm.filter((h) => h !== '/mon-acces')).toEqual(
+            emp.filter((h) => h !== '/v2/cap/my-diversity' && h !== '/employee/my-data')
+        );
+        expect(adm[1]).toBe('/mon-acces');
+        // Guide / À propos live in « Aide » only (one place).
+        expect(adm).not.toContain('/guide');
+        expect(adm).not.toContain('/about');
+    });
+
+    test('the header renders that list (minus Notifications: the bell) + language + sign-out', () => {
+        const h = render(HEADER, locals('employee', { v2: true, lc: true }));
+        const dd = h.slice(h.indexOf('id="userDropdown"'), h.indexOf('</form>'));
+        const got = [...dd.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]);
+        expect(got).toEqual([
+            '/account',
+            '/account/notifications',
+            '/change-password',
+            '/v2/uam/mfa/manage',
+            '/account/sessions',
+            '/employee/my-data',
+            '/v2/cap/my-diversity',
+            '/lang/en',
+        ]);
+        expect(dd).toMatch(/role="menu"/);
+        expect(h).toMatch(/id="hdrAccountBtn" aria-haspopup="menu" aria-expanded="false"/);
+    });
+
+    test('password change is hidden while sign-in is SSO-only', () => {
+        const L = { ...locals('employee', {}), passwordChangeAllowed: false };
+        expect(NAV.accountMenu(L).map((m) => m.href)).not.toContain('/change-password');
     });
 });
 
-describe('UX-05 / i18n — French glossary and key parity', () => {
-    test('FR speaks French for the talent acronyms; EN keeps English', () => {
+describe('i18n — French glossary and key parity', () => {
+    test('FR speaks French for the talent acronyms', () => {
         expect(FR.nav_benchmark).toBe('Comparatif des rôles');
         expect(FR.nav_pip).toBe("Plans d'amélioration (PAP)");
         expect(FR.nav_dev_plans).toBe('Plans de développement (PDI)');
         expect(FR.nav_nine_box).toBe('Grille 9 cases');
+        expect(FR.nav_tasks).toBe('À traiter');
         for (const k of [
             'nav_benchmark',
             'nav_pip',
@@ -678,18 +834,33 @@ describe('UX-05 / i18n — French glossary and key parity', () => {
             'nav_nine_box',
             'nav_my_okr',
             'nav_talent_actions_title',
+            'nav_nine_box_movements',
         ]) {
             expect(FR[k]).not.toMatch(/\b(PIP|IDP|9-?Box|OKR|Benchmark|Référentiel)\b/i);
         }
-        expect(EN.nav_benchmark).toBe('Benchmark');
-        expect(EN.nav_pip).toBe('PIP');
+        expect(EN.nav_tasks).toBe('Tasks');
     });
 
-    test('every chrome: key the rail and the header use exists in both locales', () => {
+    test('every key the rail, the config and the header use exists in both locales', () => {
         const src = fs.readFileSync(SIDEBAR, 'utf8') + fs.readFileSync(HEADER, 'utf8');
-        const keys = [...new Set([...src.matchAll(/__\('chrome:([a-z0-9_]+)'/g)].map((m) => m[1]))];
-        expect(keys.length).toBeGreaterThan(60);
-        expect(keys.filter((k) => !FR[k] || !EN[k])).toEqual([]);
+        const keys = new Set([...src.matchAll(/__\('(chrome:[a-z0-9_]+)'/g)].map((m) => m[1]));
+        for (const d of Object.values(NAV.CATALOGUE)) {
+            keys.add(NAV.i18nKey(d.label));
+            if (d.title) keys.add(NAV.i18nKey(d.title));
+        }
+        for (const x of Object.values(NAV.SECTIONS))
+            for (const k of Object.keys(x)) keys.add(NAV.i18nKey(k));
+        for (const m of NAV.ACCOUNT_MENU) keys.add(NAV.i18nKey(m.label));
+        keys.add('chrome:nav_breadcrumb_root');
+        keys.add('chrome:nav_palette_account');
+        expect(keys.size).toBeGreaterThan(100);
+        const missing = [...keys].filter((k) => {
+            const [ns, key] = k.split(':');
+            const fr = require(`../../locales/fr/${ns}.json`);
+            const en = require(`../../locales/en/${ns}.json`);
+            return !fr[key] || !en[key];
+        });
+        expect(missing).toEqual([]);
         expect(Object.keys(FR).sort()).toEqual(Object.keys(EN).sort());
     });
 });

@@ -113,7 +113,7 @@ describe('the module is wired end to end', () => {
     });
 
     test('the sidebar links to it and both locales define the labels', () => {
-        expect(read('views/partials/sidebar.ejs')).toMatch(/href="\/admin\/notifications"/);
+        expect(read('src/config/navigation.js')).toMatch(/href: '\/admin\/notifications'/);
         const en = require('../../locales/en/admin.json');
         const fr = require('../../locales/fr/admin.json');
         for (const k of ['notif_nav', 'notif_title', 'notif_state_failed', 'notif_retry']) {

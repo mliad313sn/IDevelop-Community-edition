@@ -1,8 +1,26 @@
-<!-- Top Bar (slim header, only shows when sidebar is present) -->
+<%# Top bar: menu · page title · « Rechercher… Ctrl K » · bell (À traiter +
+    Notifications) · theme palette · account button. Rendered BEFORE the sidebar
+    in the DOM (layouts/main.ejs) so the tab order is skip link → header →
+    sidebar → main. Every control is at least 44 × 44 px. No inline handlers
+    (CSP): the behaviour is wired by the nonce'd scripts at the end. %>
+<%
+  const _hu = (typeof user !== 'undefined' && user) ? user : {};
+  // « À traiter » exists for managers and for admins who are not read-only; an
+  // employee's to-do list is their dashboard; a read-only account has none.
+  const _hdrReadOnly = _hu.userType === 'admin' && _hu.role === 'viewer';
+  const _hdrHasTasks = _hu.userType === 'manager' || (_hu.userType === 'admin' && !_hdrReadOnly);
+  const _hdrTasksUrl = _hdrHasTasks ? '/tasks' : '/employee/dashboard';
+  const _hdrName = _hu.username || _hu.employeeNumber || __('chrome:topbar_user_fallback');
+  // A shared-computer session gets a bell with COUNTS ONLY: no preview list is
+  // rendered, and the script never paints one.
+  const _hdrShared = typeof sharedDevice !== 'undefined' && !!sharedDevice;
+  const _hdrN = (typeof navConfig !== 'undefined' && navConfig && typeof navConfig.accountMenu === 'function') ? navConfig : null;
+  const _hdrT = (k) => __(String(k).indexOf(':') === -1 ? 'chrome:' + k : k);
+%>
 <header class="topbar" id="appTopbar" role="banner">
     <div class="topbar-left">
-        <button class="topbar-menu-btn" id="mobileMenuToggle" data-on-click="toggleSidebar" title="<%= __('chrome:topbar_menu_title') %>"
-            aria-label="<%= __('chrome:topbar_menu_aria') %>">
+        <button type="button" class="topbar-menu-btn hdr-target" id="mobileMenuToggle" data-on-click="toggleSidebar" title="<%= __('chrome:hdr_menu_btn') %>"
+            aria-label="<%= __('chrome:hdr_menu_btn') %>" aria-controls="appSidebar" aria-expanded="false">
             <i class="fas fa-bars" aria-hidden="true"></i>
         </button>
         <div class="topbar-breadcrumb">
@@ -15,21 +33,62 @@
         </div>
     </div>
     <div class="topbar-right">
+        <%# The quick-search palette is visible: this button opens it (the palette
+            binds every [data-cmdk-open]). Icon-only below 1024 px; its accessible
+            name never depends on the visible text. %>
+        <button type="button" class="hdr-search hdr-target" id="hdrSearch" data-cmdk-open
+            aria-label="<%= __('chrome:hdr_search_aria') %>" aria-keyshortcuts="Control+K Meta+K" title="<%= __('chrome:hdr_search_aria') %>">
+            <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+            <span class="hdr-search-text" aria-hidden="true"><%= __('chrome:hdr_search_label') %></span>
+            <kbd class="hdr-kbd" id="hdrSearchKbd" aria-hidden="true">Ctrl K</kbd>
+        </button>
+
+        <%# The badge counts ACTIONS waiting for this person; unread notifications
+            are a dot. The accessible name carries both counts. %>
         <div class="action-center" id="actionCenter">
-            <button class="ac-bell" id="acBell" data-on-click="toggleActionCenter" title="<%= __('chrome:ac_pending_actions') %>" aria-label="<%= __('chrome:ac_pending_actions') %>">
+            <button type="button" class="ac-bell hdr-target" id="acBell" aria-expanded="false" aria-controls="acDropdown"
+                data-kiosk="<%= _hdrShared ? '1' : '0' %>"
+                title="<%= __('chrome:hdr_bell_title') %>" aria-label="<%= __('chrome:hdr_bell_name') %>">
                 <i class="fas fa-bell" aria-hidden="true"></i>
-                <span class="ac-badge" id="acBadge" hidden>0</span>
+                <span class="ac-badge" id="acBadge" hidden aria-hidden="true">0</span>
+                <span class="ac-dot" id="acDot" hidden aria-hidden="true"></span>
             </button>
-            <div class="ac-dropdown" id="acDropdown" hidden>
-                <div class="ac-head"><%= __('chrome:ac_my_actions') %></div>
-                <div class="ac-body" id="acBody"><div class="ac-empty"><%= __('chrome:ac_loading') %></div></div>
-                <div class="ac-subhead"><%= __('chrome:notifications_recent') %></div>
-                <div class="ac-body" id="acNotifs"></div>
-                <a class="ac-foot" href="/notifications"><%= __('chrome:notifications_view_all') %></a>
+            <% if (_hdrShared) { %>
+            <%# Counts only: no list container exists, so nothing can be painted into one. %>
+            <div class="ac-dropdown ac-dropdown-shared" id="acDropdown" hidden role="region" aria-label="<%= __('chrome:hdr_bell_title') %>">
+                <p class="ac-shared-note"><%= __('chrome:hdr_bell_shared_note') %></p>
+                <% if (!_hdrReadOnly) { %>
+                <a class="ac-foot" href="<%= _hdrTasksUrl %>"><%= __('chrome:nav_tasks') %> <span class="ac-tab-n" id="acTabTasksN"></span></a>
+                <% } %>
+                <a class="ac-foot" href="/notifications"><%= __('chrome:hdr_tab_notifs') %> <span class="ac-tab-n" id="acSharedUnreadN"></span></a>
             </div>
+            <% } else { %>
+            <div class="ac-dropdown" id="acDropdown" hidden role="region" aria-label="<%= __('chrome:hdr_bell_title') %>">
+                <div class="ac-tabs" role="tablist" aria-label="<%= __('chrome:hdr_bell_title') %>">
+                    <% if (!_hdrReadOnly) { %>
+                    <button type="button" class="ac-tab is-active" role="tab" id="acTabTasks" aria-selected="true" aria-controls="acPanelTasks" tabindex="0">
+                        <%= __('chrome:nav_tasks') %> <span class="ac-tab-n" id="acTabTasksN"></span>
+                    </button>
+                    <% } %>
+                    <button type="button" class="ac-tab<%= _hdrReadOnly ? ' is-active' : '' %>" role="tab" id="acTabNotifs" aria-selected="<%= _hdrReadOnly ? 'true' : 'false' %>" aria-controls="acPanelNotifs" tabindex="<%= _hdrReadOnly ? '0' : '-1' %>">
+                        <%= __('chrome:hdr_tab_notifs') %> <span class="ac-tab-dot" id="acTabDot" hidden><span class="sr-only"><%= __('chrome:hdr_unread_dot') %></span></span>
+                    </button>
+                </div>
+                <% if (!_hdrReadOnly) { %>
+                <div class="ac-panel" role="tabpanel" id="acPanelTasks" aria-labelledby="acTabTasks" tabindex="-1">
+                    <div class="ac-body" id="acBody"><div class="ac-empty"><%= __('chrome:ac_loading') %></div></div>
+                    <a class="ac-foot" href="<%= _hdrTasksUrl %>"><%= __('chrome:hdr_tasks_all') %></a>
+                </div>
+                <% } %>
+                <div class="ac-panel" role="tabpanel" id="acPanelNotifs" aria-labelledby="acTabNotifs" tabindex="-1"<%= _hdrReadOnly ? '' : ' hidden' %>>
+                    <div class="ac-body" id="acNotifs"><div class="ac-empty"><%= __('chrome:ac_loading') %></div></div>
+                    <a class="ac-foot" href="/notifications"><%= __('chrome:notifications_view_all') %></a>
+                </div>
+            </div>
+            <% } %>
         </div>
         <div class="hz-palette" id="hzPalette">
-            <button type="button" class="hz-palette-btn" id="hzPaletteBtn" aria-expanded="false"
+            <button type="button" class="hz-palette-btn hdr-target" id="hzPaletteBtn" aria-expanded="false"
                 aria-controls="hzPaletteMenu" title="<%= __('chrome:theme_menu_title') %>" aria-label="<%= __('chrome:theme_menu_aria') %>">
                 <i class="fas fa-palette" aria-hidden="true"></i>
             </button>
@@ -52,65 +111,42 @@
                 </fieldset>
             </div>
         </div>
-        <div class="topbar-user" data-on-click="toggleUserMenu" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-label="<%= __('chrome:account_menu_aria') %>" data-on-keydown="topbarUserKey">
-            <span class="topbar-avatar">
-                <%= (user.username || user.employeeNumber || 'U' ).charAt(0).toUpperCase() %>
+        <%# THE account menu: one menu, the same order for everyone. A real <button>
+            with menu semantics: Enter, Space or ArrowDown opens it on the first
+            item, ArrowUp on the last; arrows move, Escape closes and gives the
+            focus back to the button, Tab leaves it. %>
+        <button type="button" class="topbar-user hdr-target" id="hdrAccountBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="userDropdown"
+            aria-label="<%= __('chrome:hdr_account_aria', { name: _hdrName }) %>">
+            <span class="topbar-avatar" aria-hidden="true">
+                <%= (_hu.username || _hu.employeeNumber || 'U' ).charAt(0).toUpperCase() %>
             </span>
-            <span class="topbar-username">
-                <%= user.username || user.employeeNumber || __('chrome:topbar_user_fallback') %>
+            <span class="topbar-username" aria-hidden="true">
+                <%= _hdrName %>
             </span>
             <i class="fas fa-chevron-down topbar-arrow" aria-hidden="true"></i>
-        </div>
-        <%# THE account menu (UX-17). The sidebar footer used to open a SECOND
-            dropdown with different contents (it had « À propos » and « Sessions
-            actives » for everyone; this one had « Mon profil », the notification
-            preferences and « Mon accès »), and one click opened both. There is now
-            one menu, here, with the same entries on every page; the sidebar footer
-            simply links to the profile. Order: me → my security → language → help
-            → sign out. « Mon accès » stays admin-only because the page itself
-            bounces employees and managers. %>
-        <div class="user-dropdown" id="userDropdown">
-            <%# The profile page is where a person sets the email the password-reset
-                flow depends on, so it must be reachable from the chrome. %>
-            <a href="/account" class="dropdown-item">
-                <i class="fas fa-user" aria-hidden="true"></i> <%= __('chrome:menu_my_profile') %>
+        </button>
+        <div class="user-dropdown" id="userDropdown" role="menu" aria-labelledby="hdrAccountBtn">
+            <%# One account-menu list, shared with the palette: navConfig.accountMenu
+                (src/config/navigation.js ACCOUNT_MENU), each entry gated there —
+                « Mon accès » admins only; password change hidden while sign-in is
+                SSO-only; the person's own data and diversity pages for employee and
+                manager accounts. « Notifications » is the bell's second tab, so it
+                is not repeated here. Language, help and sign-out follow. %>
+            <% const _accMenu = _hdrN
+                 ? _hdrN.accountMenu(locals).filter(function (m) { return m.id !== 'notifications'; })
+                 : [{ href: '/account', icon: 'fa-user', labelKey: 'chrome:menu_my_profile' }]; %>
+            <% _accMenu.forEach(function (m) { %>
+            <a href="<%= m.href %>" class="dropdown-item" role="menuitem" tabindex="-1">
+                <i class="fas <%= m.icon %>" aria-hidden="true"></i> <%= _hdrT(m.labelKey) %>
             </a>
-            <a href="/account/notifications" class="dropdown-item">
-                <i class="fas fa-bell" aria-hidden="true"></i> <%= __('chrome:menu_notif_prefs') %>
-            </a>
-            <% if (typeof user !== 'undefined' && user && user.userType === 'admin') { %>
-            <%# « Mon accès » — self-service view of one's own scope + capabilities. %>
-            <a href="/mon-acces" class="dropdown-item">
-                <i class="fas fa-id-card" aria-hidden="true"></i> <%= __('admin:acc_menu_my_access', { defaultValue: 'Mon accès' }) %>
-            </a>
-            <% } %>
-            <%# UX-8 (3.23.21): hidden while SSO is enforced, except the super
-                administrator and employees listed as SSO exceptions. %>
-            <% if (typeof passwordChangeAllowed === 'undefined' || passwordChangeAllowed !== false) { %>
-            <a href="/change-password" class="dropdown-item">
-                <i class="fas fa-key" aria-hidden="true"></i> <%= __('chrome:menu_change_password') %>
-            </a>
-            <% } %>
-            <a href="/v2/uam/mfa/manage" class="dropdown-item">
-                <i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('chrome:menu_two_factor') %>
-            </a>
-            <%# Self-service device list: open to EVERY signed-in person (routes/index.js). %>
-            <a href="/account/sessions" class="dropdown-item">
-                <i class="fas fa-desktop" aria-hidden="true"></i> <%= __('chrome:menu_active_sessions') %>
-            </a>
+            <% }); %>
             <% const _hlng = (typeof lang !== 'undefined' && lang) ? lang : 'fr'; %>
-            <a href="/lang/<%= _hlng === 'fr' ? 'en' : 'fr' %>" class="dropdown-item" lang="<%= _hlng === 'fr' ? 'en' : 'fr' %>">
+            <a href="/lang/<%= _hlng === 'fr' ? 'en' : 'fr' %>" class="dropdown-item" role="menuitem" tabindex="-1" lang="<%= _hlng === 'fr' ? 'en' : 'fr' %>">
                 <i class="fas fa-language" aria-hidden="true"></i> <%= _hlng === 'fr' ? 'English' : 'Français' %>
             </a>
-            <a href="/guide" class="dropdown-item">
-                <i class="fas fa-circle-question" aria-hidden="true"></i> <%= __('chrome:menu_user_guide') %>
-            </a>
-            <a href="/about" class="dropdown-item">
-                <i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('chrome:menu_about') %>
-            </a>
-            <form action="/logout" method="POST" class="dropdown-item-form">
+            <form action="/logout" method="POST" class="dropdown-item-form" role="none">
                 <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                <button type="submit" class="dropdown-item-btn">
+                <button type="submit" class="dropdown-item-btn" role="menuitem" tabindex="-1">
                     <i class="fas fa-right-from-bracket" aria-hidden="true"></i> <%= __('chrome:menu_logout') %>
                 </button>
             </form>
@@ -119,85 +155,258 @@
 </header>
 
 <style>
+/* 44 × 44 px minimum for every header control (WCAG 2.5.5). */
+.topbar .hdr-target{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+.topbar .topbar-menu-btn.hdr-target{display:none}
+@media (max-width:768px){ .topbar .topbar-menu-btn.hdr-target{display:inline-flex} }
+.topbar .topbar-user.hdr-target{justify-content:flex-start;background:none;border:0;color:inherit;font:inherit}
+.topbar .hdr-target:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.hdr-search{gap:var(--space-2);padding:0 var(--space-3);background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-secondary);cursor:pointer;font:inherit;font-size:.875rem;min-width:200px;justify-content:flex-start}
+.hdr-search:hover{color:var(--text-primary);border-color:var(--border-strong,var(--border))}
+.hdr-search-text{flex:1;text-align:left}
+.hdr-kbd{font-size:.75rem;border:1px solid var(--border);border-radius:4px;padding:1px var(--space-2);font-family:var(--font-data);color:var(--text-secondary)}
+@media (max-width:1023.98px){
+  .hdr-search{min-width:44px;padding:0;justify-content:center;background:none;border-color:transparent}
+  .hdr-search .hdr-search-text,.hdr-search .hdr-kbd{display:none}
+}
+.user-dropdown .dropdown-item,.user-dropdown .dropdown-item-btn{min-height:44px}
+.user-dropdown .dropdown-item:focus-visible,.user-dropdown .dropdown-item-btn:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px;background:var(--bg-subtle)}
+.topbar .topbar-left,.topbar .topbar-breadcrumb{min-width:0}
+.topbar .topbar-page-title{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:768px){
+  .topbar{padding:0 var(--space-2)}
+  .topbar .topbar-left{gap:var(--space-2)}
+  .topbar-right{gap:var(--space-1);flex-shrink:0}
+}
 .action-center{position:relative}
 .ac-bell{position:relative;background:none;border:0;cursor:pointer;font-size:1.05rem;color:inherit;padding:6px 8px;border-radius:8px}
-.ac-bell:hover{background:rgba(148,163,184,.18)}
-.ac-badge{position:absolute;top:0;right:0;background:#b91c1c;color:#fff;border-radius:999px;font-size:.62rem;font-weight:800;min-width:16px;height:16px;line-height:16px;text-align:center;padding:0 3px}
-.ac-dropdown{position:absolute;right:0;top:120%;width:300px;background:var(--bg-elevated,#fff);color:var(--text-primary,#0f172a);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;box-shadow:0 14px 40px rgba(2,32,71,.35);z-index:1200;overflow:hidden}
-.ac-head{padding:11px 14px;font-weight:700;border-bottom:1px solid var(--border-color,#eef2f7);font-size:.92rem}
+.ac-bell:hover{background:var(--bg-subtle)}
+.ac-badge{position:absolute;top:4px;right:2px;background:var(--brand);color:var(--text-inverse);border-radius:999px;font-size:.75rem;font-weight:800;min-width:18px;height:18px;line-height:18px;text-align:center;padding:0 4px}
+.ac-dot{position:absolute;top:8px;left:8px;width:9px;height:9px;border-radius:50%;background:var(--danger,#b91c1c);border:2px solid var(--bg-surface)}
+.ac-dropdown{position:absolute;right:0;top:120%;width:320px;max-width:calc(100vw - 16px);background:var(--bg-elevated,var(--bg-surface));color:var(--text-primary);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-xl);z-index:1000;overflow:hidden}
+.ac-tabs{display:flex;border-bottom:1px solid var(--border)}
+.ac-tab{flex:1;min-height:44px;background:none;border:0;border-bottom:2px solid transparent;color:var(--text-secondary);font:inherit;font-weight:600;font-size:.875rem;cursor:pointer}
+.ac-tab.is-active{color:var(--text-primary);border-bottom-color:var(--brand)}
+.ac-tab:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px}
+.ac-tab-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--danger,#b91c1c);vertical-align:middle}
+.ac-tab-dot[hidden]{display:none}
+.ac-shared-note{padding:12px 14px;margin:0;font-size:.875rem;color:var(--text-secondary)}
 .ac-body{max-height:340px;overflow:auto}
-.ac-item{display:flex;align-items:center;gap:10px;padding:11px 14px;text-decoration:none;color:var(--text-primary,#0f172a);border-bottom:1px solid var(--border-color,#f4f6fb)}
-.ac-item:hover{background:var(--bg-subtle,#f8fafc)}
-.ac-item i{color:var(--brand,#2563eb);width:18px;text-align:center}
-.ac-item .ac-count{margin-left:auto;background:var(--bg-subtle,#eef2ff);color:var(--brand,#3730a3);border-radius:999px;font-size:.72rem;font-weight:800;padding:1px 8px}
-.ac-empty{padding:18px 14px;color:var(--text-muted,#94a3b8);font-size:.86rem;text-align:center}
-.ac-subhead{padding:9px 14px 5px;font-size:.72rem;font-weight:800;letter-spacing:.04em;color:var(--text-muted,#94a3b8);border-top:1px solid var(--border-color,#eef2f7)}
-.ac-foot{display:block;text-align:center;padding:10px 14px;font-weight:700;font-size:.84rem;text-decoration:none;color:var(--brand,#2563eb);border-top:1px solid var(--border-color,#eef2f7)}
-.ac-foot:hover{background:var(--bg-subtle,#f8fafc)}
-.ac-note{display:flex;align-items:center;gap:10px;padding:10px 14px;text-decoration:none;color:var(--text-primary,#0f172a);border-bottom:1px solid var(--border-color,#f4f6fb)}
-.ac-note:hover{background:var(--bg-subtle,#f8fafc)}
-.ac-note.is-unread{background:rgba(185,147,31,.06)}
-.ac-note i{color:var(--brand,#2563eb);width:18px;text-align:center}
-.ac-note .ac-note-t{font-size:.86rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.ac-item{display:flex;align-items:center;gap:10px;padding:11px 14px;min-height:44px;text-decoration:none;color:var(--text-primary);border-bottom:1px solid var(--border)}
+.ac-item:hover{background:var(--bg-subtle)}
+.ac-item i{color:var(--brand-text);width:18px;text-align:center}
+.ac-item .ac-count,.ac-note .ac-count{margin-left:auto;background:var(--bg-subtle);color:var(--brand-text);border-radius:999px;font-size:.75rem;font-weight:800;padding:1px 8px}
+.ac-empty{padding:18px 14px;color:var(--text-muted);font-size:.875rem;text-align:center}
+.ac-foot{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:10px 14px;font-weight:700;font-size:.875rem;text-decoration:none;color:var(--brand-text);border-top:1px solid var(--border)}
+.ac-foot:hover{background:var(--bg-subtle)}
+.ac-note{display:flex;align-items:center;gap:10px;padding:10px 14px;min-height:44px;text-decoration:none;color:var(--text-primary);border-bottom:1px solid var(--border)}
+.ac-note:hover{background:var(--bg-subtle)}
+.ac-note.is-unread{background:var(--brand-subtle)}
+.ac-note i{color:var(--brand-text);width:18px;text-align:center}
+.ac-note .ac-note-t{font-size:.875rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .ac-note .ac-count{margin-left:0}
-.ac-note .ac-when{font-size:.72rem;color:var(--text-muted,#64748b);white-space:nowrap}
-.ac-note.sev-critique i{color:#b91c1c}
-.ac-note.sev-echeance i{color:#b45309}
-.ac-note.sev-favorable i{color:#15803d}
-.ac-day{padding:7px 14px 3px;font-size:.7rem;font-weight:700;color:var(--text-muted,#64748b);background:var(--bg-subtle,#f8fafc)}
+.ac-note .ac-when{font-size:.75rem;color:var(--text-muted);white-space:nowrap}
+.ac-note.sev-critique i{color:var(--danger,#b91c1c)}
+.ac-note.sev-echeance i{color:var(--warning,#b45309)}
+.ac-note.sev-favorable i{color:var(--success,#15803d)}
+.ac-day{padding:7px 14px 3px;font-size:.75rem;font-weight:700;color:var(--text-muted);background:var(--bg-subtle)}
 </style>
 <script nonce="<%= cspNonce %>">
-function toggleActionCenter(){
-  var d=document.getElementById('acDropdown');
-  if(!d)return; d.hidden=!d.hidden;
-}
-// Keyboard activation of the account menu (role="button" on a div). Wired by
-// csp-actions.js via data-on-keydown — no inline handler (CSP).
-function topbarUserKey(event){
-  if(event && (event.key==='Enter'||event.key===' ')){ event.preventDefault(); if(typeof toggleUserMenu==='function') toggleUserMenu(); }
-}
-document.addEventListener('click',function(e){
-  var ac=document.getElementById('actionCenter'), d=document.getElementById('acDropdown');
-  if(ac && d && !ac.contains(e.target)) d.hidden=true;
-});
+// Bell content: the person's actions (first five) and recent notifications, the
+// counts in the accessible name, and a light refresh (every 60 s while the tab
+// is visible, and when the tab comes back). A shared-computer session
+// (data-kiosk="1") gets counts only: no list is painted.
 (function(){
-  var acCaughtUp = <%- JSON.stringify(__('chrome:ac_caught_up')) %>;
-  var acNoneRecent = <%- JSON.stringify(__('chrome:notifications_none_recent')) %>;
-  var badge=document.getElementById('acBadge');
-  var pendingCount=0, unreadCount=0;
-  // Full 5-character escaper. The old textContent->innerHTML trick escapes & < >
-  // but NOT quotes, and this helper feeds href="..." and class="..." attributes:
-  // a value holding a double quote closed the attribute and added its own.
+  var S = <%- include('./json-script', { v: {
+    caughtUp: __('chrome:ac_caught_up'),
+    noneRecent: __('chrome:notifications_none_recent'),
+    unavailable: __('chrome:hdr_tasks_unavailable'),
+    name: __('chrome:hdr_bell_name'),
+    tasks: __('chrome:hdr_bell_aria_count'),
+    unreadZero: __('chrome:hdr_bell_unread_zero'),
+    unreadOne: __('chrome:hdr_bell_unread_one'),
+    unreadOther: __('chrome:hdr_bell_unread_other')
+  } }) %>;
+  if (!S || typeof S !== 'object') S = {};
+  function T(k){ return (S && typeof S[k] === 'string') ? S[k] : ''; }
+  function $(id){ return document.getElementById(id); }
+  var bell=$('acBell');
+  var kiosk = !!(bell && bell.getAttribute && bell.getAttribute('data-kiosk') === '1');
+  var badge=$('acBadge'), dot=$('acDot'), tabDot=$('acTabDot'), tabN=$('acTabTasksN'), sharedN=$('acSharedUnreadN');
+  var body = kiosk ? null : $('acBody');
+  var tasksOn = !!tabN;
+  var actionCount=0, unreadCount=0, lastFull=0, lastActions=0;
+  // Full 5-character escaper: this helper feeds href="..." and class="..."
+  // attributes, so a quote must not close the attribute.
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   // Action links are app-relative paths. Anything else (javascript:, //host,
   // https://elsewhere) is refused rather than rendered as a live link.
   function safeHref(h){h=String(h==null?'':h);return (h.charAt(0)==='/'&&h.charAt(1)!=='/'&&h.charAt(1)!=='\\')?h:'#';}
-  function paintBadge(){ var t=pendingCount+unreadCount; if(t>0){ badge.textContent=t>99?'99+':t; badge.hidden=false; } else { badge.hidden=true; } }
-  // 1) Live pending actions (Action Center).
-  fetch('/api/my-actions',{headers:{'Accept':'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(j){
-    if(!j)return;
-    var body=document.getElementById('acBody');
-    pendingCount = j.total||0; paintBadge();
-    if(!j.items||!j.items.length){ body.innerHTML='<div class="ac-empty">'+esc(acCaughtUp)+'</div>'; return; }
-    body.innerHTML=j.items.map(function(i){
-      return '<a class="ac-item" href="'+esc(safeHref(i.href))+'"><i class="fas '+esc(i.icon||'fa-circle-dot')+'"></i><span>'+esc(i.label)+'</span><span class="ac-count">'+esc(i.count)+'</span></a>';
-    }).join('');
-  }).catch(function(){});
-  // 2) Recent notifications (in-app inbox).
-  fetch('/api/notifications',{headers:{'Accept':'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(j){
-    if(!j)return;
-    var box=document.getElementById('acNotifs');
-    unreadCount = j.unread||0; paintBadge();
-    if(!j.items||!j.items.length){ box.innerHTML='<div class="ac-empty">'+esc(acNoneRecent)+'</div>'; return; }
-    // Grouped by day (today, yesterday, this week, older), the server's labels;
-    // identical items of one day arrive merged with their count.
-    var groups=j.groups||{}, last=null;
-    box.innerHTML=j.items.slice(0,8).map(function(n){
-      var head='';
-      if(n.group!==last){ last=n.group; head='<div class="ac-day">'+esc(groups[n.group]||'')+'</div>'; }
-      var href=(typeof n.href==='string'&&n.href.indexOf('/notifications/')===0)?n.href:'/notifications/'+encodeURIComponent(n.id)+'/go';
-      return head+'<a class="ac-note'+(n.read?'':' is-unread')+' sev-'+esc(n.severity||'info')+'" href="'+esc(safeHref(href))+'"><i class="fas '+esc(n.icon||'fa-bell')+'"></i><span class="ac-note-t">'+esc(n.title)+'</span>'+(n.count>1?'<span class="ac-count">×'+esc(n.count)+'</span>':'')+'<span class="ac-when" title="'+esc(n.exact||'')+'">'+esc(n.rel||'')+'</span></a>';
-    }).join('');
-  }).catch(function(){});
+  function fill(s,n){ return String(s||'').replace('{{count}}', String(n)); }
+  // The number is the count of THINGS TO DO; unread notifications are a dot.
+  // Both are in the bell's accessible name (badge and dot are aria-hidden).
+  function paint(){
+    var shown = actionCount>99?'99+':String(actionCount);
+    if(badge){ if(actionCount>0){ badge.textContent=shown; badge.hidden=false; } else { badge.hidden=true; } }
+    if(dot) dot.hidden = !(unreadCount>0);
+    if(tabDot) tabDot.hidden = !(unreadCount>0);
+    if(tabN) tabN.textContent = actionCount>0 ? '('+shown+')' : '';
+    if(sharedN) sharedN.textContent = unreadCount>0 ? '('+(unreadCount>99?'99+':unreadCount)+')' : '';
+    var name = T('name') || 'Notifications';
+    name += ', ' + (unreadCount>0 ? fill(unreadCount===1 ? T('unreadOne') : T('unreadOther'), unreadCount) : T('unreadZero'));
+    if(tasksOn && actionCount>0) name += ', ' + fill(T('tasks'), actionCount);
+    if(bell && bell.setAttribute) bell.setAttribute('aria-label', name);
+  }
+  function getJson(url){ return fetch(url,{headers:{'Accept':'application/json'},credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}); }
+  function loadActions(){
+    if(!tasksOn) return;
+    lastActions = Date.now();
+    getJson('/api/my-actions').then(function(j){
+      if(!j){ if(body) body.innerHTML='<div class="ac-empty">'+esc(T('unavailable'))+'</div>'; return; }
+      actionCount = Number(j.total)||0; paint();
+      // The « À traiter » rail badge (public/js/nav-rail.js) shows the same number.
+      try { document.dispatchEvent(new CustomEvent('nav:actions-count', { detail: { count: actionCount } })); } catch(_){}
+      if(!body) return;
+      var items=(j.items||[]).slice(0,5);
+      if(!items.length){ body.innerHTML='<div class="ac-empty">'+esc(j.complete===false?T('unavailable'):T('caughtUp'))+'</div>'; return; }
+      body.innerHTML=items.map(function(i){
+        return '<a class="ac-item" href="'+esc(safeHref(i.href))+'"><i class="fas '+esc(i.icon||'fa-circle-dot')+'" aria-hidden="true"></i><span>'+esc(i.label)+'</span><span class="ac-count">'+esc(i.count)+'</span></a>';
+      }).join('');
+    }).catch(function(){ if(body) body.innerHTML='<div class="ac-empty">'+esc(T('unavailable'))+'</div>'; });
+  }
+  function loadNotifs(full){
+    var wantList = full && !kiosk;
+    if(wantList) lastFull = Date.now();
+    getJson('/api/notifications').then(function(j){
+      var box = kiosk ? null : $('acNotifs');
+      if(!j){ if(box && wantList) box.innerHTML='<div class="ac-empty">'+esc(T('unavailable'))+'</div>'; return; }
+      if(j.unread !== null && j.unread !== undefined){ unreadCount = Number(j.unread)||0; paint(); }
+      if(!box || !wantList) return;
+      if(!j.items||!j.items.length){ box.innerHTML='<div class="ac-empty">'+esc(T('noneRecent'))+'</div>'; return; }
+      // Grouped by day (today, yesterday, this week, older), the server's labels;
+      // identical items of one day arrive merged with their count.
+      var groups=j.groups||{}, last=null;
+      box.innerHTML=j.items.slice(0,8).map(function(n){
+        var head='';
+        if(n.group!==last){ last=n.group; head='<div class="ac-day">'+esc(groups[n.group]||'')+'</div>'; }
+        var href=(typeof n.href==='string'&&n.href.indexOf('/notifications/')===0)?n.href:'/notifications/'+encodeURIComponent(n.id)+'/go';
+        return head+'<a class="ac-note'+(n.read?'':' is-unread')+' sev-'+esc(n.severity||'info')+'" href="'+esc(safeHref(href))+'"><i class="fas '+esc(n.icon||'fa-bell')+'" aria-hidden="true"></i><span class="ac-note-t">'+esc(n.title)+'</span>'+(n.count>1?'<span class="ac-count">×'+esc(n.count)+'</span>':'')+'<span class="ac-when" title="'+esc(n.exact||'')+'">'+esc(n.rel||'')+'</span></a>';
+      }).join('');
+    }).catch(function(){});
+  }
+  paint();
+  loadActions();
+  loadNotifs(true);
+  function visible(){ return !document.visibilityState || document.visibilityState === 'visible'; }
+  if (typeof setInterval === 'function') setInterval(function(){ if(visible()) loadNotifs(false); }, 60000);
+  function onReturn(){
+    if(!visible()) return;
+    loadNotifs(false);
+    if(Date.now()-lastActions > 30000) loadActions();
+  }
+  if (document.addEventListener) document.addEventListener('visibilitychange', onReturn);
+  if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('focus', onReturn);
+  // Opening the bell refreshes a list older than 30 s (relative times stay true).
+  if (bell && bell.addEventListener) bell.addEventListener('click', function(){ if(!kiosk && Date.now()-lastFull > 30000) loadNotifs(true); });
+  // A page that changed read states can ask for a repaint.
+  if (document.addEventListener) document.addEventListener('notif:changed', function(){ loadNotifs(true); });
+})();
+</script>
+<script nonce="<%= cspNonce %>">
+// Header behaviour: bell panel (tabs) and account menu. One popup open at a time.
+(function(){
+  function $(id){ return document.getElementById(id); }
+  // Shortcut hint: ⌘ K on Apple keyboards, Ctrl K elsewhere.
+  try { if(/Mac|iPhone|iPad|iPod/.test(navigator.platform||'')){ var k=$('hdrSearchKbd'); if(k) k.textContent='⌘ K'; } } catch(_){}
+
+  var bell=$('acBell'), panel=$('acDropdown');
+  var accBtn=$('hdrAccountBtn'), menu=$('userDropdown');
+
+  // ---- bell panel ---------------------------------------------------------
+  function tabs(){ return panel ? Array.prototype.slice.call(panel.querySelectorAll('[role="tab"]')) : []; }
+  function selectTab(tab, focus){
+    tabs().forEach(function(t){
+      var on = t===tab;
+      t.classList.toggle('is-active', on);
+      t.setAttribute('aria-selected', on?'true':'false');
+      t.setAttribute('tabindex', on?'0':'-1');
+      var p=$(t.getAttribute('aria-controls')); if(p) p.hidden=!on;
+    });
+    if(focus && tab) tab.focus();
+  }
+  function bellOpen(){ return panel && !panel.hidden; }
+  function openBell(){
+    closeMenu(false);
+    panel.hidden=false; bell.setAttribute('aria-expanded','true');
+    var cur=tabs().filter(function(t){ return t.getAttribute('aria-selected')==='true'; })[0] || tabs()[0]
+      || panel.querySelector('a[href]'); // shared-computer panel: no tabs, two links
+    if(cur) cur.focus();
+  }
+  function closeBell(returnFocus){
+    if(!bellOpen()) return;
+    panel.hidden=true; bell.setAttribute('aria-expanded','false');
+    if(returnFocus) bell.focus();
+  }
+  if(bell && panel){
+    bell.addEventListener('click', function(){ bellOpen() ? closeBell(false) : openBell(); });
+    tabs().forEach(function(t){ t.addEventListener('click', function(){ selectTab(t, true); }); });
+    panel.addEventListener('keydown', function(e){
+      if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); closeBell(true); return; }
+      var list=tabs(), i=list.indexOf(document.activeElement);
+      if(i<0) return;
+      var n=null;
+      if(e.key==='ArrowRight') n=list[(i+1)%list.length];
+      else if(e.key==='ArrowLeft') n=list[(i-1+list.length)%list.length];
+      else if(e.key==='Home') n=list[0];
+      else if(e.key==='End') n=list[list.length-1];
+      if(n){ e.preventDefault(); selectTab(n, true); }
+    });
+  }
+
+  // ---- account menu -------------------------------------------------------
+  function items(){ return menu ? Array.prototype.slice.call(menu.querySelectorAll('[role="menuitem"]')) : []; }
+  function menuOpen(){ return menu && menu.classList.contains('show'); }
+  function openMenu(which){
+    closeBell(false);
+    menu.classList.add('show'); accBtn.setAttribute('aria-expanded','true');
+    var list=items(); if(!list.length) return;
+    (which==='last' ? list[list.length-1] : list[0]).focus();
+  }
+  function closeMenu(returnFocus){
+    if(!menuOpen()) return;
+    menu.classList.remove('show'); accBtn.setAttribute('aria-expanded','false');
+    if(returnFocus) accBtn.focus();
+  }
+  if(accBtn && menu){
+    accBtn.addEventListener('click', function(){ menuOpen() ? closeMenu(false) : openMenu('first'); });
+    accBtn.addEventListener('keydown', function(e){
+      if(e.key==='ArrowDown'){ e.preventDefault(); openMenu('first'); }
+      else if(e.key==='ArrowUp'){ e.preventDefault(); openMenu('last'); }
+      else if(e.key==='Escape' && menuOpen()){ e.preventDefault(); closeMenu(true); }
+    });
+    menu.addEventListener('keydown', function(e){
+      var list=items(), i=list.indexOf(document.activeElement), n=null;
+      if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); closeMenu(true); return; }
+      if(e.key==='Tab'){ closeMenu(false); return; }
+      if(e.key==='ArrowDown') n=list[(i+1)%list.length];
+      else if(e.key==='ArrowUp') n=list[(i-1+list.length)%list.length];
+      else if(e.key==='Home') n=list[0];
+      else if(e.key==='End') n=list[list.length-1];
+      if(n){ e.preventDefault(); n.focus(); }
+    });
+  }
+
+  // A click anywhere else closes whichever popup is open.
+  document.addEventListener('click', function(e){
+    var ac=$('actionCenter');
+    if(ac && !ac.contains(e.target)) closeBell(false);
+    if(accBtn && menu && !accBtn.contains(e.target) && !menu.contains(e.target)) closeMenu(false);
+  });
+  // Escape with the focus elsewhere (e.g. after a mouse click) still closes them.
+  document.addEventListener('keydown', function(e){
+    if(e.key!=='Escape') return;
+    if(bellOpen()) closeBell(panel.contains(document.activeElement));
+    if(menuOpen()) closeMenu(menu.contains(document.activeElement));
+  });
 })();
 </script>

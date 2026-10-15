@@ -297,15 +297,16 @@ describe('L5C-12 — the 403 page names a real, contactable person', () => {
     });
 });
 
-describe('L6-21 — every sidebar destination has contextual help', () => {
-    test('the diff between sidebar hrefs and help.js entries is empty', () => {
-        const sidebar = read('views/partials/sidebar.ejs');
+describe('L6-21 — every rail destination has contextual help', () => {
+    test('the diff between navigation hrefs and help.js entries is empty', () => {
+        const NAV = require('../../src/config/navigation');
         const help = read('public/js/help.js');
         const hrefs = [
             ...new Set(
-                [...sidebar.matchAll(/href="(\/[^"<%]*)"/g)]
-                    .map((m) => m[1])
-                    .filter((h) => !h.startsWith('/lang/'))
+                [...Object.values(NAV.CATALOGUE), ...NAV.ACCOUNT_MENU]
+                    .map((d) => d.href)
+                    .filter(Boolean)
+                    .map((h) => h.split(/[?#]/)[0])
             ),
         ];
         const keys = new Set([...help.matchAll(/^\s{8}'(\/[^']*)':\s*\{/gm)].map((m) => m[1]));
@@ -332,28 +333,32 @@ describe('L6-21 — every sidebar destination has contextual help', () => {
 });
 
 describe('L6-31 — the rail is cut by task and gated on real capabilities', () => {
-    const sidebar = read('views/partials/sidebar.ejs');
+    const NAV = require('../../src/config/navigation');
+    const config = read('src/config/navigation.js');
 
-    test('the four groups exist and the two old ones are gone', () => {
-        for (const k of [
-            'section_accounts',
-            'section_campaigns',
-            'section_data',
-            'section_settings',
-            'section_help',
-        ]) {
-            expect(sidebar).toContain(`chrome:${k}`);
+    test('the sections exist in both locales and the two old ones are gone', () => {
+        const keys = new Set();
+        for (const tree of Object.values(NAV.SECTIONS))
+            for (const k of Object.keys(tree)) keys.add(k);
+        expect(keys.size).toBeGreaterThan(8);
+        for (const k of keys) {
             expect(FR_CHROME[k]).toBeTruthy();
             expect(EN_CHROME[k]).toBeTruthy();
         }
-        expect(sidebar).not.toContain('chrome:section_administration');
-        expect(sidebar).not.toContain('chrome:section_configuration');
-        // the 13-link wall is gone, so nothing needs to open folded except Talents
-        expect(sidebar).toMatch(/CLOSED_BY_DEFAULT = \['section_talent'\]/);
+        expect(keys.has('section_administration')).toBe(false);
+        expect(keys.has('section_configuration')).toBe(false);
+        // the person's own space, the framework and the instance open folded
+        expect(NAV.CLOSED_BY_DEFAULT).toEqual([
+            'section_my_space',
+            'section_reference',
+            'section_system',
+        ]);
     });
 
     test('entries are gated through can(), never a hand-written role list', () => {
-        expect(sidebar).toMatch(/const _can = \(s\) => \(typeof can === 'function'\) && can\(s\)/);
+        expect(config).toMatch(
+            /const can = \(s\) => typeof L\.can === 'function' && !!L\.can\(s\)/
+        );
         for (const slug of [
             'manage_invitations',
             'manage_onboarding',
@@ -368,11 +373,12 @@ describe('L6-31 — the rail is cut by task and gated on real capabilities', () 
             'view_app_settings',
             'view_employees',
         ]) {
-            expect(sidebar).toContain(`_can('${slug}')`);
+            expect(config).toContain(`can('${slug}')`);
         }
     });
 
     test('the pages that had no way in are linked (L1-10, L4-20)', () => {
+        const hrefs = new Set(Object.values(NAV.CATALOGUE).map((d) => d.href));
         for (const href of [
             '/admin/delegation',
             '/setup',
@@ -381,7 +387,7 @@ describe('L6-31 — the rail is cut by task and gated on real capabilities', () 
             '/guide',
             '/about',
         ]) {
-            expect(sidebar).toContain(`href="${href}"`);
+            expect(hrefs.has(href)).toBe(true);
         }
     });
 });

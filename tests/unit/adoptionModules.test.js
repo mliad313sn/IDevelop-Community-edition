@@ -338,6 +338,7 @@ describe('the sidebar hides the menus of modules that are off', () => {
                 sqlConsoleEnabled: false,
                 featureLocalContent: !!appModules.localContent,
                 currentPath: '/nowhere',
+                navConfig: require('../../src/config/navigation'),
                 __: (k) => k,
                 cspNonce: 'n',
                 csrfToken: 't',

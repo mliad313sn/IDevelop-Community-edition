@@ -694,6 +694,12 @@ const requireSuperAdmin = (req, res, next) => {
             'superadmin_required',
             'Access denied. SuperAdmin privileges required.'
         );
+    // A SIGNED-IN person opening a SuperAdmin-only PAGE (health, maintenance,
+    // sessions, SSO, API keys, notifications, HRIS…) gets the explanatory 403
+    // page — the one every other permission guard renders — instead of a bounce
+    // to /dashboard with a toast that says nothing about what was hit or who can
+    // help. Form posts keep the redirect below: the write endpoints rely on it.
+    if (isDocumentGet(req)) return requireSuperAdminPage(req, res, next);
     req.flash(
         'error',
         req.t

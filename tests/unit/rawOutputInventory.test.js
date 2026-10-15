@@ -195,7 +195,9 @@ const CLIENT_SINKS = {
     'views/pages/talent/career-path.ejs': 1, // esc() on skill and domain names
     'views/pages/talent/nine-box-console.ejs': 8, // esc() on names and labels (re-audit X4)
     'views/partials/command-palette.ejs': 2, // ids and static icons; labels set as text
-    'views/partials/header.ejs': 4, // esc(safeHref()) / esc() on labels and titles
+    // bell: actions list, notes list and their three empty / unavailable states;
+    // every value through esc() (5-character escaper), links through safeHref()
+    'views/partials/header.ejs': 7,
 };
 
 describe('A. unescaped EJS outputs are inventoried and reviewed', () => {
