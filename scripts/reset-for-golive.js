@@ -80,6 +80,7 @@ const KEEP = new Set([
     // employees (identity + core profile)
     'employees',
     'employee_demographics',
+    'dei_consents',
     // admin accounts + authentication + identity + delegation of authority
     'admins',
     'admin_scopes',
