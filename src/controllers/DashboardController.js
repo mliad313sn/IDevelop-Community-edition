@@ -1,6 +1,7 @@
 const DashboardService = require('../services/DashboardService');
 const db = require('../config/database');
 const RBACService = require('../services/RBACService');
+const { queryId, queryEnum } = require('../utils/queryParams');
 
 const _n = (v) => Number(v) || 0;
 const BAND = { low: 0, medium: 1, high: 2 };
@@ -279,7 +280,14 @@ class DashboardController {
     async getReadinessByGroup(req, res) {
         try {
             const filters = this._buildFilters(req);
-            const groupBy = req.query.groupBy || 'site'; // default?
+            // An unknown grouping is the caller's error (400), not a thrown 500.
+            const g = queryEnum(
+                req.query.groupBy,
+                ['site', 'department', 'service', 'role'],
+                'site'
+            );
+            if (!g.ok) return res.status(400).json({ error: 'invalid groupBy' });
+            const groupBy = g.value;
             const data = await DashboardService.getReadinessByGroup(groupBy, filters);
             res.json(data);
         } catch (err) {
@@ -369,6 +377,12 @@ class DashboardController {
     async getEmployeeList(req, res) {
         try {
             const filters = this._buildFilters(req);
+            // Ids are whole numbers or absent: text used to reach a bigint
+            // comparison and answer 500.
+            const supervisor = queryId(req.query.supervisorId);
+            const role = queryId(req.query.roleId);
+            if (!supervisor.ok || !role.ok)
+                return res.status(400).json({ error: 'invalid supervisorId or roleId' });
             const options = {
                 search: req.query.search,
                 // Clamped (audit SA-11): an unbounded ?pageSize= asked the database
@@ -378,8 +392,8 @@ class DashboardController {
                 pageSize: Math.min(Math.max(parseInt(req.query.pageSize, 10) || 25, 1), 200),
                 sortBy: req.query.sortBy,
                 sortDir: req.query.sortDir,
-                supervisorId: req.query.supervisorId,
-                roleId: req.query.roleId ? parseInt(req.query.roleId) : null,
+                supervisorId: supervisor.value,
+                roleId: role.value,
             };
             // Note: Trend data is now included in getOverviewKPIs automatically via Service update?
             // Yes, Service.getExecutiveData now includes `trend`.
@@ -440,7 +454,9 @@ class DashboardController {
     async getDomainHeatmap(req, res) {
         try {
             const filters = this._buildFilters(req);
-            const groupBy = req.query.groupBy || 'site';
+            const g = queryEnum(req.query.groupBy, ['site', 'service'], 'site');
+            if (!g.ok) return res.status(400).json({ error: 'invalid groupBy' });
+            const groupBy = g.value;
             const data = await DashboardService.getCapabilityMapData(filters, groupBy);
             res.json(data.heatmap); // Extract heatmap array
         } catch (err) {
