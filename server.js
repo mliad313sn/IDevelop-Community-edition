@@ -1000,7 +1000,7 @@ async function startServer() {
                     'APP_KEY looks weak/default — rotate it with: NEW_APP_KEY=<strong> node scripts/rotate-app-key.js --commit (then set it in .env). Do NOT change APP_KEY without this tool.'
                 );
             }
-            if (appConfig.apiKeyRefused) warnings.push(appConfig.apiKeyRefused);
+            if (appConfig.legacySharedKeyNotice) warnings.push(appConfig.legacySharedKeyNotice);
             const admin = await db.get('SELECT password_hash FROM admins WHERE username = ?', [
                 'admin',
             ]);

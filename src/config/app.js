@@ -113,7 +113,7 @@ module.exports = {
     // Legacy shared API key or null. NEVER falls back to APP_KEY (see above).
     apiKey: _legacy.key,
     // Why an explicitly-set API_KEY was refused (surfaced in the boot warnings).
-    apiKeyRefused: _legacy.refused,
+    legacySharedKeyNotice: _legacy.refused,
     // The weak-secret rule, for tests and other checks.
     isWeakSecret,
 };
