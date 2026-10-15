@@ -373,18 +373,22 @@ const CATEGORIES = [
             },
             {
                 id: 'outbound-minimisation',
-                fr: 'Données sortantes réduites : les webhooks ne transmettent qu’une liste fermée d’événements, limités aux identifiants, dates et à un lien (9-box, plans d’amélioration, risque de départ et vie privée ne sortent jamais ; feedback 360°, entretiens individuels et SIRH seulement sur décision d’un super-administrateur) ; l’API exclut les personnes sorties et effacées pour tout appelant ; un rapport programmé ne va qu’à des comptes habilités pour son périmètre, sous forme de lien vers une copie conservée dans l’application (90 jours par défaut, vidée à l’effacement d’une personne), jamais en pièce jointe.',
-                en: 'Minimised outbound data: webhooks carry only a closed list of events, limited to ids, dates and a link (9-box, improvement plans, flight risk and privacy never leave; 360° feedback, one-to-ones and HRIS only when a super-administrator opts in); the API excludes leavers and erased people for every caller; a scheduled report goes only to accounts cleared for its scope, as a link to a copy kept in the app (90 days by default, emptied when a person in it is erased), never as an attachment.',
+                fr: 'Données sortantes réduites : les webhooks ne transmettent qu’une liste fermée d’événements, limités aux identifiants, dates et à un lien (9-box, plans d’amélioration, risque de départ et vie privée ne sortent jamais ; feedback 360°, entretiens individuels et SIRH seulement sur décision d’un super-administrateur) ; l’API exclut les personnes sorties et effacées pour tout appelant ; un rapport programmé ne va qu’à des comptes habilités pour son périmètre, sous forme de lien vers une copie conservée dans l’application (90 jours par défaut, vidée à l’effacement d’une personne), jamais en pièce jointe ; l’objet d’un e-mail de notification ne porte ni nom, ni note, ni décision, et aucun e-mail ne part vers une personne sortie ou effacée.',
+                en: 'Minimised outbound data: webhooks carry only a closed list of events, limited to ids, dates and a link (9-box, improvement plans, flight risk and privacy never leave; 360° feedback, one-to-ones and HRIS only when a super-administrator opts in); the API excludes leavers and erased people for every caller; a scheduled report goes only to accounts cleared for its scope, as a link to a copy kept in the app (90 days by default, emptied when a person in it is erased), never as an attachment; a notification e-mail subject carries no name, rating or decision, and no e-mail goes to a leaver or an erased person.',
                 evidence: [
                     'src/services/WebhookService.js',
                     'src/api/v1/repository.js',
                     'src/jobs/report-scheduler.js',
                     'db/postgres/172_report_schedule_recipients.sql',
+                    'src/services/notificationCatalogue.js',
+                    'db/postgres/182_notification_delivery.sql',
                 ],
                 tests: [
                     'webhookEmittableEvents.test.js',
                     'apiV1ActivePopulation-db.test.js',
                     'reportScheduleAccounts-db.test.js',
+                    'notificationCatalogue.test.js',
+                    'notificationDelivery-db.test.js',
                 ],
             },
             {
