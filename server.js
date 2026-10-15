@@ -603,7 +603,11 @@ app.use(async (req, res, next) => {
     // already stored (overwrite=false), so it is stable across a session's requests.
     try {
         const gen = req.app.get('csrfGenerate');
-        res.locals.csrfToken = gen && req.session ? gen(req) : '';
+        // An anonymous visitor gets a token (hence a stored session) only on a
+        // page that renders a form: /login, /forgot-password, /reset-password,
+        // /signup and the SSO pages (httpHardening.mayMintCsrfToken).
+        res.locals.csrfToken =
+            gen && req.session && httpHardening.mayMintCsrfToken(req) ? gen(req) : '';
     } catch (error) {
         // If CSRF token generation fails, log but don't crash
         console.error('CSRF token generation error:', error);
