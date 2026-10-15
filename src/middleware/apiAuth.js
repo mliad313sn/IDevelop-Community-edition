@@ -193,7 +193,10 @@ const requireApiKey = async (req, res, next) => {
         // resolved to a local, RBAC-scoped principal. Skipped entirely when Entra
         // bearer auth is not configured. Only JWT-shaped bearers are considered.
         const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-        if (bearer && sso.looksLikeJwt(bearer) && sso.isEntraBearerEnabled()) {
+        // authenticateEntraBearer itself ignores a bearer that is not JWT-shaped,
+        // so the attempt does not hinge on the client's header; only the refusal
+        // of a rejected JWT does.
+        if (sso.isEntraBearerEnabled()) {
             const principal = await sso.authenticateEntraBearer(req);
             if (principal) {
                 const entraScope = principal.apiScope || 'entra.bearer';
@@ -206,9 +209,10 @@ const requireApiKey = async (req, res, next) => {
                 req.user = principal;
                 return next();
             }
-            return res.status(401).json({
-                error: 'Entra bearer token was rejected or is not linked to a IDevelop account',
-            });
+            if (sso.looksLikeJwt(bearer))
+                return res.status(401).json({
+                    error: 'Entra bearer token was rejected or is not linked to a IDevelop account',
+                });
         }
 
         // An OPAQUE bearer token is an API key too: SCIM clients (Entra
@@ -360,8 +364,8 @@ function metricsAccessAllowed(req) {
     const token = String(process.env.METRICS_TOKEN || '').trim();
     if (token) {
         const auth = String((req.headers && req.headers.authorization) || '');
-        const m = /^Bearer\s+(.+)$/i.exec(auth);
-        if (m && safeEqual(m[1].trim(), token)) return true;
+        const presented = auth.slice(0, 7).toLowerCase() === 'bearer ' ? auth.slice(7).trim() : '';
+        if (presented && safeEqual(presented, token)) return true;
     }
     return isLoopbackUnforwarded(req) || metricsAllowListed(req);
 }

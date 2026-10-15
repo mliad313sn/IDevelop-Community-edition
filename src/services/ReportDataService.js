@@ -511,17 +511,20 @@ class ReportDataService {
                 rows: rows.map((r) => {
                     const total = n2(r.totalCt);
                     const never = n2(r.neverCt);
-                    const out = {
-                        [dimName]: r.label == null ? '—' : r.label,
-                        [metName]: num(r.value),
-                    };
+                    // Column names come from the request: build the row in a Map.
+                    const out = new Map([
+                        [dimName, r.label == null ? '—' : r.label],
+                        [metName, num(r.value)],
+                    ]);
                     if (schema.statusCol) {
-                        out[covCol] =
+                        out.set(
+                            covCol,
                             total > 0 && never >= total
                                 ? L(t, 'rb_status_never_assessed', 'Never assessed')
-                                : `${total - never} / ${total}`;
+                                : `${total - never} / ${total}`
+                        );
                     }
-                    return out;
+                    return Object.fromEntries(out);
                 }),
             };
         }

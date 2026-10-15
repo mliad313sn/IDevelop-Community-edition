@@ -338,12 +338,12 @@ IDENT_PAIRS.sort((a, b) => b[0].length - a[0].length);
 function rewriteSqliteFunctions(sql) {
     let out = sql;
     // strftime('%Y-%m', col) → to_char(col, 'YYYY-MM')
-    out = out.replace(/strftime\s*\(\s*'%Y-%m'\s*,\s*([^)]+)\s*\)/gi, "to_char($1, 'YYYY-MM')");
-    out = out.replace(
-        /strftime\s*\(\s*'%Y-%m-%d'\s*,\s*([^)]+)\s*\)/gi,
-        "to_char($1, 'YYYY-MM-DD')"
-    );
-    out = out.replace(/strftime\s*\(\s*'%Y'\s*,\s*([^)]+)\s*\)/gi, "to_char($1, 'YYYY')");
+    // The column is captured up to the closing parenthesis and trimmed in the
+    // replacer: a `\s*` next to `[^)]+` would backtrack on long runs of spaces.
+    const toChar = (fmt) => (_, col) => `to_char(${col.trim()}, '${fmt}')`;
+    out = out.replace(/strftime\s*\(\s*'%Y-%m'\s*,([^)]+)\)/gi, toChar('YYYY-MM'));
+    out = out.replace(/strftime\s*\(\s*'%Y-%m-%d'\s*,([^)]+)\)/gi, toChar('YYYY-MM-DD'));
+    out = out.replace(/strftime\s*\(\s*'%Y'\s*,([^)]+)\)/gi, toChar('YYYY'));
     // datetime('now', '-7 days') → now - interval '7 days'
     out = out.replace(
         /datetime\s*\(\s*'now'\s*,\s*'-(\d+)\s+(day|days|month|months|year|years)'\s*\)/gi,

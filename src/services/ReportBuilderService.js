@@ -17,6 +17,12 @@ function ownCol(fieldMapping, field) {
     return typeof v === 'string' ? v : null;
 }
 
+/** The mapping's own key equal to `field` (never the caller's string), or null. */
+function ownKey(fieldMapping, field) {
+    if (!ownCol(fieldMapping, field)) return null;
+    return Object.keys(fieldMapping).find((k) => k === field) || null;
+}
+
 class ReportBuilderService {
     /**
      * Get available data sources for report building
@@ -291,7 +297,9 @@ class ReportBuilderService {
         const known = (Array.isArray(selectedFields) ? selectedFields : []).filter((f) =>
             ownCol(fieldMapping, f)
         );
-        return known.map((f) => `${ownCol(fieldMapping, f)} AS "${f}"`).join(', ');
+        return known
+            .map((f) => `${ownCol(fieldMapping, f)} AS "${ownKey(fieldMapping, f)}"`)
+            .join(', ');
     }
 
     /** Whitelisted GROUP BY expression list (drops unknown fields). */
@@ -328,7 +336,7 @@ class ReportBuilderService {
         );
         const cols = knownSel.length ? knownSel : [Object.keys(fieldMapping)[0]];
         const selectFields = cols
-            .map((field) => `${ownCol(fieldMapping, field)} AS ${field}`)
+            .map((field) => `${ownCol(fieldMapping, field)} AS ${ownKey(fieldMapping, field)}`)
             .join(', ');
 
         let query = `
@@ -410,7 +418,7 @@ class ReportBuilderService {
         );
         const cols = knownSel.length ? knownSel : [Object.keys(fieldMapping)[0]];
         const selectFields = cols
-            .map((field) => `${ownCol(fieldMapping, field)} AS ${field}`)
+            .map((field) => `${ownCol(fieldMapping, field)} AS ${ownKey(fieldMapping, field)}`)
             .join(', ');
 
         let query = `
@@ -560,7 +568,7 @@ class ReportBuilderService {
         }
 
         const selectFields = cols
-            .map((field) => `${ownCol(fieldMapping, field)} AS ${field}`)
+            .map((field) => `${ownCol(fieldMapping, field)} AS ${ownKey(fieldMapping, field)}`)
             .join(', ');
 
         let query = `
@@ -629,7 +637,7 @@ class ReportBuilderService {
         );
         const cols = knownSel.length ? knownSel : [Object.keys(fieldMapping)[0]];
         const selectFields = cols
-            .map((field) => `${ownCol(fieldMapping, field)} AS ${field}`)
+            .map((field) => `${ownCol(fieldMapping, field)} AS ${ownKey(fieldMapping, field)}`)
             .join(', ');
 
         let query = `
@@ -696,7 +704,7 @@ class ReportBuilderService {
         const safeFields = (selectedFields || []).filter((f) => ownCol(fieldMapping, f));
         const cols = safeFields.length ? safeFields : ['roleName'];
         const selectFields = cols
-            .map((field) => `${ownCol(fieldMapping, field)} AS ${field}`)
+            .map((field) => `${ownCol(fieldMapping, field)} AS ${ownKey(fieldMapping, field)}`)
             .join(', ');
 
         // Scope the employee COUNT to the caller's RBAC scope — this source previously
@@ -781,7 +789,7 @@ class ReportBuilderService {
         );
         const cols = knownSel.length ? knownSel : [Object.keys(fieldMapping)[0]];
         const selectFields = cols
-            .map((field) => `${ownCol(fieldMapping, field)} AS ${field}`)
+            .map((field) => `${ownCol(fieldMapping, field)} AS ${ownKey(fieldMapping, field)}`)
             .join(', ');
 
         // The scope belongs in the JOIN, not the WHERE — same as the role report
