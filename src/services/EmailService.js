@@ -4,6 +4,14 @@ const PRODUCT = require('../config/product');
 const AppSettingsModel = require('../models/AppSettingsModel');
 const LogService = require('./LogService');
 
+/** Ids only: an address in the audit log is masked ("a***@domain"), never stored whole. */
+function maskAddress(v) {
+    return String(v || '')
+        .split(',')
+        .map((x) => x.trim().replace(/^(.)[^@]*(@.*)$/, '$1***$2'))
+        .join(', ');
+}
+
 let nodemailer;
 try {
     nodemailer = require('nodemailer');
@@ -207,8 +215,8 @@ class EmailService {
                 entityType: 'appSetting',
                 category: 'security',
                 details: h
-                    ? `Plaintext SMTP relay allowed for ${h} by ${actor.username || actor.id} at ${at}. Reason: ${why}`
-                    : `Plaintext SMTP relay withdrawn by ${actor.username || actor.id} at ${at}. Reason: ${why}`,
+                    ? `Plaintext SMTP relay allowed for ${h} by admin:${Number(actor.id)} at ${at}. Reason: ${why}`
+                    : `Plaintext SMTP relay withdrawn by admin:${Number(actor.id)} at ${at}. Reason: ${why}`,
                 severity: 'warning',
             });
         } catch (_) {
@@ -342,7 +350,7 @@ class EmailService {
                     adminId: null,
                     action: 'EMAIL_FAILED',
                     entityType: 'email',
-                    details: `Email to ${to} failed: ${this._explain(error, cfg)}`,
+                    details: `Email to ${maskAddress(to)} failed: ${this._explain(error, cfg)}`,
                 });
             } catch {
                 /* ignore */

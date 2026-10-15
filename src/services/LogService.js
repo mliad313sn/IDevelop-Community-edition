@@ -122,15 +122,158 @@ function adminIdFor(data, actorRef) {
     return /^admin:/i.test(actorRef) ? id : null;
 }
 
+/* ---------------------------------------------------------------------------
+ * IDS ONLY in the audit log.
+ *
+ * The audit log is immutable and kept for years, so it must not carry names,
+ * e-mail addresses or login names in free text: the id is the key and the name
+ * is resolved AT VIEW TIME (SystemLogModel.resolvePeople), where an erased
+ * person reads "Erased person #id" in the reader's language.
+ *
+ * Two central guards, whatever the caller wrote:
+ *  1. every e-mail address in `details` becomes `[e-mail]`;
+ *  2. the identifiers of the row's own subjects — the actor (actorRef /
+ *     adminId), the entity when it is a person (employee / admin), and any
+ *     ref listed in `data.subjects` — are replaced by their ref
+ *     (`employee:84`, `admin:3`): full name (both orders), login, e-mail.
+ * Callers still pass ids rather than names (fixed where they did not).
+ * ------------------------------------------------------------------------- */
+// A LINEAR e-mail pattern. An unbounded, unanchored one restarts at every
+// character of a long local-part run: an 80 KB request path or free-text reason
+// would block the event loop for seconds, anonymously through the
+// CSRF-rejection audit. The look-behind lets a match start only where a
+// local-part run starts, and every quantifier is bounded (RFC 5321 sizes), so
+// the scan is linear.
+const EMAIL_RE =
+    /(?<![\w.%+'-])[\w.%+'-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}/g;
+// …and no logged string is longer than this, cut BEFORE any scrubbing (~4 KB).
+const MAX_LOGGED_STRING = 4096;
+function capLoggedString(s) {
+    return s.length > MAX_LOGGED_STRING ? `${s.slice(0, MAX_LOGGED_STRING)} […]` : s;
+}
+const IDENT_TTL_MS = 5 * 60 * 1000;
+const IDENT_CACHE_MAX = 500;
+const _identCache = new Map(); // ref → { at, needles }
+
+// Escapes only syntax characters: the result is used with the `u` flag, where an
+// identity escape such as `\-` is a SyntaxError (hyphenated names).
+function escapeRegExp(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+}
+
+/** Identifiers worth scrubbing: ≥ 3 characters, at least one letter, not already a pseudonym. */
+function usableNeedle(s) {
+    const t = String(s == null ? '' : s).trim();
+    return t.length >= 3 && /\p{L}/u.test(t) && !/^erased/i.test(t) ? t : null;
+}
+
+/** The person refs a row is about: `employee:<id>` / `admin:<id>`. */
+function subjectRefsOf(data, actorRef, adminId, entityType) {
+    const refs = new Set();
+    const m = /^(employee|manager|supervisor|admin):(\d+)$/.exec(actorRef || '');
+    if (m) refs.add(`${m[1] === 'admin' ? 'admin' : 'employee'}:${m[2]}`);
+    if (adminId != null && Number(adminId) > 0) refs.add(`admin:${Number(adminId)}`);
+    const eid = Number(data.entityId);
+    if (Number.isInteger(eid) && eid > 0) {
+        if (entityType === 'employee') refs.add(`employee:${eid}`);
+        else if (entityType === 'admin') refs.add(`admin:${eid}`);
+    }
+    for (const r of Array.isArray(data.subjects) ? data.subjects : []) {
+        const s = /^(employee|manager|supervisor|admin):(\d+)$/.exec(String(r || '').trim());
+        if (s) refs.add(`${s[1] === 'admin' ? 'admin' : 'employee'}:${s[2]}`);
+    }
+    return [...refs];
+}
+
+/** Names / login / e-mail of one person ref, from the database (cached 5 min). */
+async function identifiersOf(ref) {
+    const hit = _identCache.get(ref);
+    if (hit && Date.now() - hit.at < IDENT_TTL_MS) return hit.needles;
+    const [type, id] = ref.split(':');
+    const db = require('../config/database');
+    let row = null;
+    if (type === 'employee')
+        row = await db.get(
+            'SELECT first_name, last_name, email, username FROM employees WHERE id = ?',
+            [Number(id)]
+        );
+    else if (type === 'admin')
+        row = await db.get('SELECT username, email FROM admins WHERE id = ?', [Number(id)]);
+    const needles = [];
+    if (row) {
+        const f = String(row.firstName ?? row.first_name ?? '').trim();
+        const l = String(row.lastName ?? row.last_name ?? '').trim();
+        if (f && l) needles.push(`${f} ${l}`, `${l} ${f}`);
+        needles.push(row.email, row.username);
+    }
+    const out = [...new Set(needles.map(usableNeedle).filter(Boolean))].sort(
+        (a, b) => b.length - a.length
+    );
+    if (_identCache.size >= IDENT_CACHE_MAX) _identCache.clear();
+    _identCache.set(ref, { at: Date.now(), needles: out });
+    return out;
+}
+
+/** Apply `fn` to every string inside `v` (keys untouched), depth-bounded. */
+function mapStrings(v, fn, depth = 0) {
+    if (typeof v === 'string') return fn(v);
+    if (depth > 8 || v == null || typeof v !== 'object') return v;
+    if (Array.isArray(v)) return v.map((x) => mapStrings(x, fn, depth + 1));
+    if (v instanceof Date) return v;
+    const out = {};
+    for (const [k, x] of Object.entries(v)) out[k] = mapStrings(x, fn, depth + 1);
+    return out;
+}
+
+/**
+ * `details` with the subjects' identifiers replaced by their ref and every
+ * other e-mail address masked. `subjects`: [{ ref, needles }].
+ */
+function scrubDetails(details, subjects = []) {
+    if (details == null) return details;
+    const rules = [];
+    for (const s of subjects)
+        for (const n of s.needles || [])
+            rules.push({
+                re: new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRegExp(n)}(?![\\p{L}\\p{N}_])`, 'giu'),
+                to: s.ref,
+            });
+    return mapStrings(details, (str) => {
+        let out = capLoggedString(str);
+        for (const r of rules) out = out.replace(r.re, r.to);
+        return out.replace(EMAIL_RE, '[e-mail]');
+    });
+}
+
+/** The row's subjects with their identifiers; a failed lookup scrubs e-mails only. */
+async function subjectsFor(details, refs) {
+    if (details == null || !refs.length) return [];
+    const out = [];
+    for (const ref of refs) {
+        try {
+            out.push({ ref, needles: await identifiersOf(ref) });
+        } catch (_) {
+            /* no database here (unit test) or no such person: e-mails are still masked */
+        }
+    }
+    return out;
+}
+
 class LogService {
     async log(data) {
         const actorRef = normalizeActorRef(data.actorRef);
+        const entityType = normalizeEntityType(data.entityType);
+        const adminId = adminIdFor(data, actorRef);
+        const details = scrubDetails(
+            data.details || null,
+            await subjectsFor(data.details, subjectRefsOf(data, actorRef, adminId, entityType))
+        );
         const base = {
-            adminId: adminIdFor(data, actorRef),
+            adminId,
             action: data.action,
-            entityType: normalizeEntityType(data.entityType),
+            entityType,
             entityId: data.entityId || null,
-            details: data.details || null,
+            details: details || null,
             ipAddress: data.ipAddress || null,
             userAgent: data.userAgent || null,
             // Observability facets. Every row is classified: an explicit
@@ -185,5 +328,10 @@ service.normalizeSeverity = normalizeSeverity;
 service.categoryFor = categoryFor;
 service.severityFor = severityFor;
 service.ENTITY_CANONICAL = ENTITY_CANONICAL;
+service.scrubDetails = scrubDetails;
+service.EMAIL_RE = EMAIL_RE;
+service.MAX_LOGGED_STRING = MAX_LOGGED_STRING;
+service.subjectRefsOf = subjectRefsOf;
+service._identCache = _identCache;
 
 module.exports = service;

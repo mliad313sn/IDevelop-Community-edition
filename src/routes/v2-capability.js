@@ -1198,33 +1198,16 @@ router.get(
     '/audit/verify',
     requireSuperAdmin,
     ah(async (req, res) => {
-        // Recompute each hashed row from the prior row's hash + payload; any mismatch
-        // = the append-only audit log was tampered with (even via direct DB access).
-        const bad = await db.all(
-            `WITH chk AS (
-           SELECT id,
-             row_hash, prev_hash,
-             LAG(row_hash) OVER (ORDER BY id) AS expected_prev,
-             encode(digest(
-               coalesce(LAG(row_hash) OVER (ORDER BY id), '') || '|' ||
-               coalesce(admin_id::text, '') || '|' || coalesce(action, '') || '|' ||
-               coalesce(entity_type, '') || '|' || coalesce(entity_id::text, '') || '|' ||
-               coalesce(details::text, '') || '|' || coalesce(created_at::text, ''), 'sha256'), 'hex') AS recomputed
-           FROM system_logs WHERE row_hash IS NOT NULL
-         )
-         SELECT id FROM chk
-         WHERE row_hash <> recomputed OR (prev_hash IS DISTINCT FROM expected_prev AND id <> (SELECT MIN(id) FROM system_logs WHERE row_hash IS NOT NULL))
-         ORDER BY id LIMIT 10`
-        );
-        const total = await db.get(
-            'SELECT COUNT(*) AS n FROM system_logs WHERE row_hash IS NOT NULL'
-        );
-        res.json({
-            ok: true,
-            hashedRows: Number(total.n),
-            intact: bad.length === 0,
-            brokenAt: bad.map((r) => Number(r.id)),
-        });
+        // ONE verifier, in the database (fn_system_logs_verify, migration 170).
+        // It follows hash LINKS, not id order (an id-order check flags the
+        // historic concurrent-insert race as tampering), accepts a row changed
+        // by an erasure ONLY when a later chained AUDIT_REDACTION entry vouches
+        // for its original hash and its current content, and a gap ONLY where
+        // a chained AUDIT_PURGE entry recorded it. Anything else — an edited,
+        // deleted or inserted row — is reported in brokenAt.
+        const v = await require('../services/AuditRetentionService').verify(10);
+        res.set('Cache-Control', 'no-store');
+        res.json({ ok: true, ...v });
     })
 );
 

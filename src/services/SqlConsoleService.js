@@ -700,6 +700,19 @@ class SqlConsoleService {
             if (SRR_ASSIGN.test(noComment) || SRR_SETCONFIG.test(noComment)) {
                 return 'session_replication_role cannot be changed from the SQL console — it would switch off the append-only triggers for the whole session.';
             }
+            // 1b') The audit log's redaction / purge path (migration 170) is opened
+            //      by transaction-local `idevelop.audit_*` settings that only the
+            //      database's own functions set. Assigning one by hand is refused
+            //      here too (the database still demands a vouching chained entry).
+            //      Calling the redaction or purge functions directly is refused as
+            //      well: a purge with a shorter window than auditLogRetentionYears
+            //      would be an attested, but unauthorised, deletion.
+            if (
+                /\bset(?:\s+(?:local|session))?\s+"?idevelop\.audit_/i.test(noComment) ||
+                /\b_?fn_system_logs_(?:purge|redact)\w*\s*\(/i.test(noComment)
+            ) {
+                return 'the audit-log redaction and purge paths cannot be used from the SQL console — they are opened only by the erasure and the retention job.';
+            }
             // 1c) The event trigger added by migration 120 is what refuses DROP TABLE on
             //     an append-only table at the database level. Turning it off from here
             //     would re-open exactly the hole it closes.

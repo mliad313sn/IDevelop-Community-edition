@@ -361,8 +361,8 @@ class OnboardingCredentialService {
             entityType: 'employee',
             entityId: employeeId,
             details:
-                `Login credentials issued${welcome ? ' (welcome invitation)' : ''} for employee ${employee.employeeNumber} (username ${username}); ` +
-                `onboarding email ${result.sent ? 'sent to ' + employee.email : 'NOT sent (' + (result.error || result.skipped || 'email disabled') + ')'}`,
+                `Login credentials issued${welcome ? ' (welcome invitation)' : ''} for employee:${Number(employeeId)} (number ${employee.employeeNumber}); ` +
+                `onboarding email ${result.sent ? 'sent' : 'NOT sent (' + (result.error || result.skipped || 'email disabled') + ')'}`,
             ipAddress: req && req.ip,
             userAgent: req && req.get && req.get('user-agent'),
         });

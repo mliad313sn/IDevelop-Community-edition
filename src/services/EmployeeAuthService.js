@@ -69,7 +69,8 @@ class EmployeeAuthService {
                 await dummyCompare(password);
                 await LogService.log({
                     action: 'EMPLOYEE_LOGIN_FAILED',
-                    details: `Login by e-mail refused: the address is shared by several employee accounts (username required): ${identifier}`,
+                    // Ids only: the typed address is fingerprinted, never stored.
+                    details: `Login by e-mail refused: the address is shared by several employee accounts (username required): ${require('./AuditRetentionService').fingerprint(identifier)}`,
                     ipAddress: req.ip,
                     userAgent: req.get('user-agent'),
                 });
@@ -105,8 +106,8 @@ class EmployeeAuthService {
                 await this._logFailed(
                     employee,
                     employee
-                        ? `Failed login attempt for employee username: ${username} (login disabled)`
-                        : `Failed login attempt for employee username: ${username}`,
+                        ? `Failed login attempt for employee #${employee.id} (login disabled)`
+                        : `Failed login attempt for an unknown employee identifier (${require('./AuditRetentionService').fingerprint(username)})`,
                     req
                 );
             }
@@ -126,7 +127,7 @@ class EmployeeAuthService {
         if (!isValid) {
             await this._logFailed(
                 employee,
-                `Failed login attempt for employee username: ${username}`,
+                `Failed login attempt for employee #${employee.id} (wrong password)`,
                 req
             );
             return { success: false, message: 'Invalid credentials' };
@@ -159,7 +160,7 @@ class EmployeeAuthService {
                 if (ageDays > expiryDays) {
                     await this._logFailed(
                         employee,
-                        `Expired invitation credential refused for employee: ${username} (invited ${String(employee.invitedAt).slice(0, 10)}, expiry ${expiryDays}d)`,
+                        `Expired invitation credential refused for employee #${employee.id} (invited ${String(employee.invitedAt).slice(0, 10)}, expiry ${expiryDays}d)`,
                         req
                     );
                     parkRefusal(identifier, 'INVITATION_EXPIRED');
@@ -179,7 +180,7 @@ class EmployeeAuthService {
         if (String(employee.authPolicy || employee.auth_policy || 'any') === 'sso_only') {
             await this._logFailed(
                 employee,
-                `Password login refused by auth policy (sso_only) for employee: ${username}`,
+                `Password login refused by auth policy (sso_only) for employee #${employee.id}`,
                 req
             );
             return {
@@ -199,7 +200,8 @@ class EmployeeAuthService {
             entityType: 'employee',
             entityId: Number(employee.id),
             actorRef: `employee:${employee.id}`,
-            details: `Employee logged in: ${username} (${employee.firstName} ${employee.lastName})`,
+            // Ids only: the name is resolved when the log is READ.
+            details: `Employee #${employee.id} logged in`,
             ipAddress: req.ip,
             userAgent: req.get('user-agent'),
         });

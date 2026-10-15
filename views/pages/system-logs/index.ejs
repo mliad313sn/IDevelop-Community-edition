@@ -19,8 +19,14 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
     <div class="page-actions">
         <a href="/system-logs/export?format=csv<%= _xq %>" class="btn btn-secondary" title="<%= __('syslogs:log_export_filtered_title') %>"><%= __('syslogs:export_csv') %></a>
         <a href="/system-logs/export?format=json<%= _xq %>" class="btn btn-secondary" title="<%= __('syslogs:log_export_filtered_title') %>"><%= __('syslogs:export_json') %></a>
+        <% if (typeof user !== 'undefined' && user && user.role === 'superadmin') { %>
+        <button type="button" class="btn btn-secondary" id="sl-verify-btn" title="<%= __('syslogs:verify_title') %>" data-on-click="SL.verifyChain"><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('syslogs:verify_btn') %></button>
+        <% } %>
     </div>
 </div>
+<% if (typeof user !== 'undefined' && user && user.role === 'superadmin') { %>
+<p id="sl-verify-out" class="sl-verify" role="status" aria-live="polite" hidden></p>
+<% } %>
 
 <div class="sl-tabs" role="tablist" aria-label="<%= __('syslogs:views_label') %>">
     <button class="btn btn-primary" id="sl-tab-entries-btn" role="tab" aria-selected="true" aria-controls="sl-tab-entries" data-on-click="SL.tab" data-args='["entries"]'><i class="fas fa-list" aria-hidden="true"></i> <%= __('syslogs:tab_entries') %></button>
@@ -94,11 +100,12 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
         <% logs.forEach(function(log) { var det = log.details == null ? '' : (typeof log.details === 'object' ? JSON.stringify(log.details) : String(log.details)); %>
         <tr>
             <td><%= _fd(log.createdAt) %></td>
-            <td><%= log.username || log.actorRef || log.actor_ref || __('syslogs:system') %></td>
+            <%# Rows store ids; the name is resolved on read (SystemLogModel.resolvePeople). %>
+            <td><% if (log.actorErasedId != null) { %><em class="sl-erased"><%= __('syslogs:erased_person', { id: log.actorErasedId }) %></em><% } else { %><%= log.username || log.actorName || log.actorRef || log.actor_ref || __('syslogs:system') %><% if (log.actorRef && (log.username || log.actorName)) { %> <small class="sl-ref"><%= log.actorRef %></small><% } %><% } %></td>
             <td><span class="badge badge-info"><%= log.action %></span></td>
             <td><%= log.category || '—' %></td>
             <td><% if (log.severity) { %><span class="sl-sev sl-sev-<%= log.severity %>"><%= __('syslogs:log_sev_' + log.severity, { defaultValue: log.severity }) %></span><% } else { %>—<% } %></td>
-            <td><% if (log.entityType) { %><%= log.entityType %><%= log.entityId != null ? ' #' + log.entityId : '' %><% } else { %>—<% } %></td>
+            <td><% if (log.entityType) { %><%= log.entityType %><%= log.entityId != null ? ' #' + log.entityId : '' %><% if (log.subjectErasedId != null) { %> <em class="sl-erased"><%= __('syslogs:erased_person', { id: log.subjectErasedId }) %></em><% } else if (log.subjectName) { %> <small class="sl-ref"><%= log.subjectName %></small><% } %><% } else { %>—<% } %></td>
             <td><% if (log.statusCode) { %><span class="sl-sc sl-sc-<%= String(log.statusCode).charAt(0) %>"><%= log.statusCode %></span><% } else { %>—<% } %></td>
             <td class="<%= log.latencyMs != null && log.latencyMs >= 1500 ? 'sl-slow' : '' %>"><%= log.latencyMs != null ? log.latencyMs + 'ms' : '—' %></td>
             <td class="log-details" title="<%= det %>"><%= det || '—' %></td>
@@ -207,7 +214,24 @@ const SL = {
     fails: <%- JSON.stringify(__('syslogs:js_fails')) %>,
     noTrail: <%- JSON.stringify(__('syslogs:js_no_trail')) %>,
     anomalyPrefix: <%- JSON.stringify(__('syslogs:js_anomaly_prefix')) %>,
-    anomalySuffix: <%- JSON.stringify(__('syslogs:js_anomaly_suffix')) %>
+    anomalySuffix: <%- JSON.stringify(__('syslogs:js_anomaly_suffix')) %>,
+    verifyRunning: <%- JSON.stringify(__('syslogs:verify_running')) %>,
+    verifyOk: <%- JSON.stringify(__('syslogs:verify_ok')) %>,
+    verifyBroken: <%- JSON.stringify(__('syslogs:verify_broken')) %>
+  },
+  // The one chain verifier (fn_system_logs_verify): accepts attested erasures
+  // and sealed purges, flags any other change. SuperAdmin only (server-side too).
+  async verifyChain(){
+    const out=document.getElementById('sl-verify-out'); if(!out) return;
+    out.hidden=false; out.className='sl-verify'; out.textContent=this.t.verifyRunning;
+    try{
+      const r=await fetch('/v2/cap/audit/verify',{headers:{'Accept':'application/json'}});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error||this.t.loadFailed);
+      const fill=(s)=>String(s).replace('{rows}',d.hashedRows).replace('{redacted}',d.redactedRows||0)
+        .replace('{seals}',d.seals||0).replace('{ids}',(d.brokenAt||[]).join(', '));
+      out.className='sl-verify '+(d.intact?'sl-verify-ok':'sl-verify-bad');
+      out.textContent=fill(d.intact?this.t.verifyOk:this.t.verifyBroken);
+    }catch(e){ out.className='sl-verify sl-verify-bad'; out.textContent=this.t.loadFailed+' '+(e.message||''); }
   },
   tab(which){
     document.getElementById('sl-tab-entries').style.display   = which==='entries'?'':'none';
@@ -326,6 +350,11 @@ window.SL = SL;
 
 /* Analytics tab */
 .sl-tabs { display:flex; gap:8px; margin: 4px 0 18px; }
+.sl-erased { color: var(--text-secondary); font-style: italic; }
+.sl-ref { color: var(--text-secondary); font-size: .75rem; }
+.sl-verify { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-light); }
+.sl-verify-ok { border-color: var(--success, #10b981); }
+.sl-verify-bad { border-color: var(--danger, #dc2626); font-weight: 600; }
 .sl-controls { display:flex; align-items:center; gap:10px; margin-bottom:14px; color:var(--text-secondary); font-size:.85rem; }
 .sl-controls select { padding:6px 8px; background:var(--bg-subtle); color:var(--text-primary); border:1px solid var(--border-light); border-radius:var(--radius-sm); }
 .sl-status { color:var(--text-muted); }

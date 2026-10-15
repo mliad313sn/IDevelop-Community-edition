@@ -644,7 +644,15 @@ const SUBJECT_DATA_REGISTRY = [
         'the erasure’s own receipt, re-applied after any restore'
     ),
     keep('retention_ledger', 'subject_id', 'record of what the retention purge did (ids only)'),
-    keep('system_logs', 'actor_ref', IMMUTABLE),
+    // The refs stay; the person's names, login and e-mail inside `details` are
+    // replaced by their ref through the chained, vouched redaction of migration
+    // 170 (AuditRetentionService.redactErasedSubject, run by DSRService.erase).
+    keep(
+        'system_logs',
+        'actor_ref',
+        IMMUTABLE +
+            '; free-text identifiers in details are redacted to the ref by a chained AUDIT_REDACTION entry'
+    ),
     keep('job_runs', 'actor_ref', ACTOR),
 ];
 

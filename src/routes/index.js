@@ -3065,7 +3065,7 @@ router.post(
             action: 'AUTH_POLICY_SET',
             entityType: 'admin',
             entityId: admin.id,
-            details: `Authentication policy for admin ${admin.username} set to '${policy}'`,
+            details: `Authentication policy for admin:${Number(admin.id)} set to '${policy}'`,
             ipAddress: req.ip,
             userAgent: req.get('user-agent'),
         });

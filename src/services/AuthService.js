@@ -18,7 +18,8 @@ class AuthService {
                 await dummyCompare(password);
                 await LogService.log({
                     action: 'LOGIN_FAILED',
-                    details: `Login by e-mail refused: the address is shared by several admin accounts (username required): ${username}`,
+                    // Ids only: a typed identifier is fingerprinted, never stored.
+                    details: `Login by e-mail refused: the address is shared by several admin accounts (username required): ${require('./AuditRetentionService').fingerprint(username)}`,
                     ipAddress: req.ip,
                     userAgent: req.get('user-agent'),
                 });
@@ -36,12 +37,22 @@ class AuthService {
 
         if (!admin || !admin.isActive) {
             await dummyCompare(password); // same cost as a real wrong password
-            await LogService.log({
-                action: 'LOGIN_FAILED',
-                details: `Failed login attempt for username: ${username}`,
-                ipAddress: req.ip,
-                userAgent: req.get('user-agent'),
-            });
+            // An identifier unknown to the ADMIN table is not yet a failure: the
+            // sign-in strategy goes on to the employee table, and an ordinary
+            // employee sign-in (even a successful one) used to leave a spurious
+            // "unknown identifier" row here. The failure is written once, by
+            // EmployeeAuthService, only when BOTH lookups miss. A real but
+            // inactive admin account is still recorded here.
+            if (admin) {
+                await LogService.log({
+                    action: 'LOGIN_FAILED',
+                    entityType: 'admin',
+                    entityId: Number(admin.id),
+                    details: `Failed login attempt for admin #${admin.id} (account inactive)`,
+                    ipAddress: req.ip,
+                    userAgent: req.get('user-agent'),
+                });
+            }
             return { success: false, message: 'Invalid credentials' };
         }
 
@@ -53,7 +64,9 @@ class AuthService {
                 await dummyCompare(password);
                 await LogService.log({
                     action: 'LOGIN_FAILED',
-                    details: `Login attempt for locked account: ${username}`,
+                    entityType: 'admin',
+                    entityId: Number(admin.id),
+                    details: `Login attempt for locked account admin #${admin.id}`,
                     ipAddress: req.ip,
                     userAgent: req.get('user-agent'),
                 });
@@ -73,7 +86,9 @@ class AuthService {
         if (!isValid) {
             await LogService.log({
                 action: 'LOGIN_FAILED',
-                details: `Failed login attempt for username: ${username}`,
+                entityType: 'admin',
+                entityId: Number(admin.id),
+                details: `Failed login attempt for admin #${admin.id} (wrong password)`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -93,7 +108,7 @@ class AuthService {
         await LogService.log({
             adminId: admin.id,
             action: 'LOGIN_SUCCESS',
-            details: `User logged in: ${username}`,
+            details: `Admin #${admin.id} logged in`,
             ipAddress: req.ip,
             userAgent: req.get('user-agent'),
         });
