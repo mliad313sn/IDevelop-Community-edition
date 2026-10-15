@@ -149,5 +149,7 @@
   "svr_err_round_not_reviewable": "Cette auto-évaluation n’attend plus de revue : elle ne peut pas être décidée ici.",
   "svr_err_complete_failed": "La revue n’a pas pu être enregistrée. Veuillez réessayer.",
   "saw_err_arbitrate_reject_reason": "Un motif est obligatoire pour rejeter une évaluation en arbitrage.",
-  "saw_err_arbitrate_no_dispute": "Une évaluation ne peut être mise en arbitrage que si une contestation est ouverte sur sa revue."
+  "saw_err_arbitrate_no_dispute": "Une évaluation ne peut être mise en arbitrage que si une contestation est ouverte sur sa revue.",
+  "saw_err_reset_reason_required": "Un motif est obligatoire pour réinitialiser une évaluation.",
+  "saw_err_cannot_reset": "Une évaluation à l’état « {{state}} » ne peut pas être réinitialisée."
 }

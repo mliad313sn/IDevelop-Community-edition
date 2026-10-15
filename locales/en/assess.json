@@ -149,5 +149,7 @@
   "svr_err_round_not_reviewable": "This self-assessment is no longer awaiting review: it cannot be decided here.",
   "svr_err_complete_failed": "The review could not be saved. Please try again.",
   "saw_err_arbitrate_reject_reason": "A reason is required to reject an assessment in arbitration.",
-  "saw_err_arbitrate_no_dispute": "An assessment can only be placed in arbitration while a dispute is open on its review."
+  "saw_err_arbitrate_no_dispute": "An assessment can only be placed in arbitration while a dispute is open on its review.",
+  "saw_err_reset_reason_required": "A reason is required to reset an assessment.",
+  "saw_err_cannot_reset": "An assessment in the “{{state}}” state cannot be reset."
 }

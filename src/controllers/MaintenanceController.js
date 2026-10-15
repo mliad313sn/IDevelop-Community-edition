@@ -308,6 +308,52 @@ class MaintenanceController {
         }
     }
 
+    /** Reset one assessment, or a whole employee × campaign, for redo. */
+    async resetAssessment(req, res) {
+        try {
+            const b = req.body || {};
+            const out = await MaintenanceService.resetAssessment(
+                req.user,
+                {
+                    employeeId: b.employeeId,
+                    cycleId: b.cycleId,
+                    assessmentId: b.assessmentId,
+                    reason: b.reason,
+                    confirmNumber: b.confirmNumber,
+                },
+                req
+            );
+            res.json(out);
+        } catch (e) {
+            // A workflow refusal (stale state, cannot reset from this state)
+            // carries its catalogue key: answered in the reader's language.
+            if (e && !e.userMessage && !e.gate && e.i18n && e.i18n.key) {
+                const { sayError, domainStatus } = require('../utils/apiErrors');
+                const status =
+                    e.status ||
+                    (e.code === 'STALE_STATE' ? 409 : domainStatus(String(e.message || '')));
+                return res
+                    .status(status)
+                    .json({ ok: false, error: sayError(req, e), code: e.code || null });
+            }
+            return fail(req, res, e);
+        }
+    }
+
+    /** The campaigns a person has assessments in, for the reset form. */
+    async resetCandidates(req, res) {
+        try {
+            res.json({
+                ok: true,
+                campaigns: await MaintenanceService.resetCandidates(req.user, {
+                    employeeId: req.query.employeeId,
+                }),
+            });
+        } catch (e) {
+            return fail(req, res, e);
+        }
+    }
+
     async withdrawReview(req, res) {
         try {
             const out = await MaintenanceService.withdrawReview(

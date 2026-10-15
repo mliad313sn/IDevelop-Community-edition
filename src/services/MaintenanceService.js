@@ -80,6 +80,9 @@ function refuse(code) {
  * role-shaped check: this bypasses a governance control, so it is gated on the
  * one identity that is accountable for the instance.
  */
+/** A SAVEPOINT when a transaction is open, a plain call otherwise. */
+const savepoint = (fn) => (typeof db.runInSavepoint === 'function' ? db.runInSavepoint(fn) : fn());
+
 function assertSuperAdmin(user) {
     if (!RBACService.isSuperAdmin(user)) throw refuse('maintenance_superadmin_only');
 }
@@ -126,11 +129,15 @@ const MaintenanceService = {
     async _movement(employeeId, kind, fromLabel, toLabel, user, note) {
         if (!employeeId) return;
         try {
-            await db.run(
-                `INSERT INTO employee_movements
-                     (employee_id, kind, from_label, to_label, actor_ref, source, note)
-                 VALUES (?, ?, ?, ?, ?, 'maintenance', ?)`,
-                [employeeId, kind, fromLabel, toLabel, this._actorRef(user), note]
+            // In a SAVEPOINT: when called from inside the action's transaction, a
+            // failed insert must not abort it.
+            await savepoint(() =>
+                db.run(
+                    `INSERT INTO employee_movements
+                         (employee_id, kind, from_label, to_label, actor_ref, source, note)
+                     VALUES (?, ?, ?, ?, ?, 'maintenance', ?)`,
+                    [employeeId, kind, fromLabel, toLabel, this._actorRef(user), note]
+                )
             );
         } catch (e) {
             console.error('[MaintenanceService] movement row failed:', e && e.message);
@@ -139,23 +146,27 @@ const MaintenanceService = {
 
     async _audit(user, req, action, entityType, entityId, details) {
         try {
-            await LogService.log({
-                adminId: user.id,
-                action,
-                entityType,
-                entityId,
-                details,
-                // A bypassed control is worth surfacing. 'warn', not 'warning':
-                // this was the ONE writer of a second spelling, so its rows were
-                // invisible to "Problèmes uniquement" and to the severity filter
-                //.
-                severity: 'warn',
-                category: 'maintenance',
-                actorRef: this._actorRef(user),
-                requestId: req && req.id ? req.id : null,
-                ipAddress: req && req.ip ? req.ip : null,
-                userAgent: req && req.get ? req.get('user-agent') : null,
-            });
+            // In a SAVEPOINT for the same reason: an audit line written from
+            // inside a transaction must not abort it if the log write fails.
+            await savepoint(() =>
+                LogService.log({
+                    adminId: user.id,
+                    action,
+                    entityType,
+                    entityId,
+                    details,
+                    // A bypassed control is worth surfacing. 'warn', not 'warning':
+                    // this was the ONE writer of a second spelling, so its rows were
+                    // invisible to "Problèmes uniquement" and to the severity filter
+                    //.
+                    severity: 'warn',
+                    category: 'maintenance',
+                    actorRef: this._actorRef(user),
+                    requestId: req && req.id ? req.id : null,
+                    ipAddress: req && req.ip ? req.ip : null,
+                    userAgent: req && req.get ? req.get('user-agent') : null,
+                })
+            );
         } catch (e) {
             console.error('[MaintenanceService] audit failed:', e && e.message);
         }
@@ -625,6 +636,200 @@ const MaintenanceService = {
             employeeId: sa.employeeId,
             newState: 'changes_requested',
         };
+    },
+
+    /**
+     * Reset an assessment for redo: the SuperAdmin gives the employee and their
+     * supervisor or manager the chance to do it again (SA-42).
+     *
+     * Scope: one row (`assessmentId`), or the whole employee × campaign
+     * (`employeeId` + `cycleId`: every current row of that person in that
+     * campaign). The whole-campaign case also needs `confirmNumber`, the
+     * person's employee number typed again, as for an erasure.
+     *
+     * Campaign gate: `CycleService.assertCycleWritable(cycleId, { allowReview:
+     * false })`. A closed or locked campaign is refused (409, the gate's own
+     * sentence), exactly as for reopenAssessment.
+     *
+     * Effect, in one transaction: each row goes through
+     * SelfAssessmentWorkflowService.resetForRedo (back to the draft pair,
+     * stamps lifted, review back to pending, open dispute or change request
+     * closed, self-rating kept as prefill, official level untouched). Cancelled
+     * rows are skipped and reported; drafts are left as they are. For the whole
+     * campaign, cycle_participants.submitted_at goes back to NULL (started_at
+     * kept). One movement row (kind 'assessment_reset') and one
+     * MAINT_RESET_ASSESSMENT audit line (ids only) commit with it. The employee
+     * and the reviewer(s) get a neutral in-app notice, without the reason.
+     * Nothing is deleted.
+     */
+    async resetAssessment(
+        user,
+        { employeeId, cycleId, assessmentId, reason, confirmNumber } = {},
+        req = null
+    ) {
+        assertSuperAdmin(user);
+        const why = assertReason(reason);
+        const one = assessmentId != null && String(assessmentId).trim() !== '';
+        let rows;
+        let empId;
+        let cycId;
+        if (one) {
+            const id = Number(assessmentId);
+            if (!Number.isInteger(id) || id <= 0) throw refuse('maintenance_invalid_id');
+            const sa = await db.get(
+                `SELECT id, employee_id AS "employeeId", cycle_id AS "cycleId"
+                   FROM self_assessments WHERE id = ?`,
+                [id]
+            );
+            if (!sa) throw refuse('maintenance_assessment_not_found');
+            rows = [{ id: Number(sa.id) }];
+            empId = Number(sa.employeeId);
+            cycId = sa.cycleId != null ? Number(sa.cycleId) : null;
+        } else {
+            empId = Number(employeeId);
+            if (!Number.isInteger(empId) || empId <= 0) throw refuse('maintenance_pick_employee');
+            cycId = Number(cycleId);
+            if (!Number.isInteger(cycId) || cycId <= 0)
+                throw refuse('maintenance_reset_pick_cycle');
+            const emp = await db.get('SELECT id, employee_number FROM employees WHERE id = ?', [
+                empId,
+            ]);
+            if (!emp) throw refuse('maintenance_employee_not_found');
+            if (String(confirmNumber || '').trim() !== String(emp.employeeNumber || '').trim())
+                throw refuse('maintenance_reset_confirm_mismatch');
+            rows = await db.all(
+                `SELECT id FROM self_assessments WHERE employee_id = ? AND cycle_id = ? ORDER BY id`,
+                [empId, cycId]
+            );
+            if (!rows.length) throw refuse('maintenance_reset_nothing');
+        }
+        try {
+            await require('./CycleService').assertCycleWritable(cycId, {
+                allowReview: false,
+                t: req && req.t,
+            });
+        } catch (e) {
+            if (e && e.gate) {
+                e.status = 409;
+                e.expose = true;
+            }
+            throw e;
+        }
+
+        const WF = require('./SelfAssessmentWorkflowService');
+        const out = await db.runTransaction(
+            async () => {
+                await this._tagActor(user);
+                const reset = [];
+                const skipped = [];
+                const reviewers = new Set();
+                let closedDisputes = [];
+                let closedRequests = [];
+                for (const r of rows) {
+                    const res = await WF.resetForRedo(Number(r.id), user, why, req);
+                    if (res.skipped) {
+                        skipped.push({ id: res.id, reason: res.skipped });
+                        continue;
+                    }
+                    reset.push(res.id);
+                    if (res.reviewerId != null) reviewers.add(res.reviewerId);
+                    closedDisputes = closedDisputes.concat(res.closedDisputes || []);
+                    closedRequests = closedRequests.concat(res.closedRequests || []);
+                }
+                if (!reset.length) {
+                    const e = refuse('maintenance_reset_nothing');
+                    e.skipped = skipped;
+                    throw e;
+                }
+                if (!one) {
+                    await db.run(
+                        `UPDATE cycle_participants SET submitted_at = NULL
+                          WHERE employee_id = ? AND cycle_id = ?`,
+                        [empId, cycId]
+                    );
+                }
+                // A reset is not a cancellation: the assessment goes back to be
+                // redone, so the person's history has its own kind (migration 181).
+                await this._movement(
+                    empId,
+                    'assessment_reset',
+                    `${reset.length} assessment(s)`,
+                    'reset for redo',
+                    user,
+                    why
+                );
+                await this._audit(
+                    user,
+                    req,
+                    'MAINT_RESET_ASSESSMENT',
+                    'self_assessments',
+                    one ? reset[0] : empId,
+                    `Reset for redo: employee ${empId}, campaign ${cycId == null ? 'none' : cycId}, ` +
+                        `${one ? 'one assessment' : 'whole campaign'}; reset ids [${reset.join(',')}]` +
+                        (skipped.length
+                            ? `; skipped ${skipped.map((x) => `${x.id}:${x.reason}`).join(',')}`
+                            : '') +
+                        (closedDisputes.length
+                            ? `; disputes closed [${closedDisputes.join(',')}]`
+                            : '') +
+                        (closedRequests.length
+                            ? `; change requests closed [${closedRequests.join(',')}]`
+                            : '') +
+                        ` — official skill levels unchanged — ${OVERRIDE_NOTE}. Reason: ${why}`
+                );
+                // Neutral notices (no reason text), in the app, contained.
+                const notify = (userId, kind, link) =>
+                    savepoint(() =>
+                        require('./NotificationService').notify({
+                            userType: 'employee',
+                            userId,
+                            kind,
+                            category: 'workflow',
+                            payload: { link, count: reset.length },
+                        })
+                    ).catch(() => null);
+                await notify(empId, 'sa.reset_for_redo', '/employee/self-assessment');
+                for (const rid of reviewers) {
+                    if (Number(rid) !== empId)
+                        await notify(
+                            Number(rid),
+                            'sa.review_reset',
+                            '/supervisor/self-assessment-reviews'
+                        );
+                }
+                return { reset, skipped, closedDisputes, closedRequests };
+            },
+            { actorRef: this._actorRef(user) }
+        );
+        return {
+            ok: true,
+            employeeId: empId,
+            cycleId: cycId,
+            scope: one ? 'assessment' : 'campaign',
+            ...out,
+            officialLevelsUnchanged: true,
+        };
+    },
+
+    /**
+     * The campaigns one person has assessments in, with how many rows a reset
+     * would touch (for the panel's employee × campaign form). SuperAdmin only.
+     */
+    async resetCandidates(user, { employeeId } = {}) {
+        assertSuperAdmin(user);
+        const empId = Number(employeeId);
+        if (!Number.isInteger(empId) || empId <= 0) throw refuse('maintenance_pick_employee');
+        return db.all(
+            `SELECT c.id, c.code, c.label, c.status::text AS "status",
+                    COUNT(*)::int AS "rows",
+                    COUNT(*) FILTER (WHERE sa.workflow_state <> 'draft' AND sa.cancelled_at IS NULL)::int AS "resettable"
+               FROM self_assessments sa
+               JOIN assessment_cycles c ON c.id = sa.cycle_id
+              WHERE sa.employee_id = ?
+              GROUP BY c.id, c.code, c.label, c.status
+              ORDER BY c.id DESC`,
+            [empId]
+        );
     },
 
     /**

@@ -605,6 +605,9 @@ class NotificationService {
             //  / M-05 — the five kinds shipped by the cancellation and
             // request-for-change work with NO catalogue entry at all.
             'sa.cancelled': 'A self-assessment was cancelled',
+            // SA-42: a SuperAdmin reset an assessment so it can be redone.
+            'sa.reset_for_redo': 'Resume your assessment',
+            'sa.review_reset': 'An assessment needs reviewing again',
             'sa.change_request_raised': 'A request for change awaits your decision',
             // the SUBJECT of a request raised by someone else was told
             // nothing at all; only the decider was written to.
@@ -720,6 +723,22 @@ class NotificationService {
             //      aucune revue n'a été décidée (supervisor_reviews n'est pas touchée),
             //      donc l'atterrissage est « où en est mon dossier » et non la page des
             //      décisions de revue.
+            // SA-42: a SuperAdmin reset the assessment for redo. The person may
+            // do it again and their reviewer will see it again. No reason and no
+            // name in the title or the body.
+            'sa.reset_for_redo': {
+                icon: 'fa-rotate-left',
+                link: '/employee/self-assessment',
+                title: { fr: 'Reprenez votre évaluation', en: 'Resume your assessment' },
+            },
+            'sa.review_reset': {
+                icon: 'fa-rotate-left',
+                link: '/supervisor/self-assessment-reviews',
+                title: {
+                    fr: 'Une évaluation est à revoir',
+                    en: 'An assessment needs reviewing again',
+                },
+            },
             'sa.cancelled': {
                 icon: 'fa-ban',
                 link: '/employee/assessment-status',
@@ -1533,6 +1552,7 @@ class NotificationService {
         return {
             // Time-boxed obligation / security / SLA → immediate email
             'sa.changes_requested': 'immediate',
+            'sa.reset_for_redo': 'immediate',
             'sa.rejected': 'immediate',
             'mc.submitted': 'immediate',
             'mc.rejected': 'immediate',
@@ -1549,6 +1569,7 @@ class NotificationService {
             'cycle.escalation': 'immediate',
             // Informational / engagement → daily digest only (no standalone email)
             'sa.submitted': 'digest',
+            'sa.review_reset': 'digest',
             'sa.approved': 'digest',
             'sa.manager_validated': 'digest',
             'mc.approved': 'digest',
@@ -1962,6 +1983,14 @@ class NotificationService {
             //      Comme toutes les autres : phrases STATIQUES, rien du payload n'y est
             //      interpolé. Le motif écrit par le décideur est rendu dans le centre de
             //      notifications (voir present), jamais dans un e-mail.
+            'sa.reset_for_redo': {
+                fr: 'Votre évaluation a été rouverte : vous pouvez la reprendre.',
+                en: 'Your assessment has been reopened: you can resume it.',
+            },
+            'sa.review_reset': {
+                fr: 'Une évaluation de votre équipe a été rouverte et attend de nouveau votre revue.',
+                en: 'An assessment in your team has been reopened and is waiting for your review again.',
+            },
             'sa.cancelled': {
                 fr: "Une auto-évaluation vous concernant a été annulée par votre responsable. Le motif et la suite à donner sont consultables dans l'application.",
                 en: 'A self-assessment concerning you was cancelled by your manager. The reason and what happens next are available in the app.',

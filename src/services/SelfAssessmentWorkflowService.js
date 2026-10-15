@@ -52,6 +52,20 @@ const VALID_STATES = [
  * verrouillage. Une campagne CLOSE refuse les deux.
  */
 const REVIEW_WRITE_STATES = ['under_review', 'reviewed', 'arbitration', 'approved', 'rejected'];
+/**
+ * Reset for redo (SuperAdmin maintenance): the states a SuperAdmin may send
+ * back to the draft pair. A draft is left as it is, and a cancelled row
+ * (cancelled_at set) is skipped.
+ */
+const RESETTABLE_STATES = [
+    'submitted',
+    'under_review',
+    'reviewed',
+    'approved',
+    'rejected',
+    'changes_requested',
+    'arbitration',
+];
 
 /**
  * ATTACHER LE CATALOGUE À UN REFUS (constat M-02).
@@ -674,6 +688,137 @@ class SelfAssessmentWorkflowService {
         );
         await this._notifyEmployee(sa, 'sa.changes_requested', { comment: comment || null });
         return this.getAssessment(selfAssessmentId);
+    }
+
+    /**
+     * Reset for redo: the SuperAdmin gives the employee and their supervisor or
+     * manager the chance to do one assessment again. Called only by
+     * MaintenanceService.resetAssessment, which owns the SuperAdmin check, the
+     * mandatory reason, the campaign gate and the enclosing transaction; this
+     * method owns the dual state machine.
+     *
+     * Per row, nothing is deleted:
+     *   - status and workflow_state go back to the draft pair; the approval
+     *     stamp, the review stamp and the finalised lock (locked_state back to
+     *     'provisional') are lifted;
+     *   - the employee's previous self-rating and notes are kept: they prefill
+     *     the redo and stay editable;
+     *   - the official level (skill_assessments) is not touched: it stays as
+     *     last decided until a new approval replaces it;
+     *   - the supervisor_reviews row goes back to 'pending' with its decision,
+     *     rating, gap and dates cleared; the cleared values travel in the event
+     *     detail (`priorReview`);
+     *   - an open dispute (open or escalated) is closed 'resolved', named to the
+     *     SuperAdmin who reset it, with the employee's words untouched; a
+     *     pending change request is closed 'withdrawn' with decision_reason
+     *     'reset_by_superadmin';
+     *   - one self_assessment_events row 'reset_for_redo' (superadminOverride,
+     *     from_state, reason, priorReview, closed dispute and request ids).
+     *
+     * Returns `{ id, employeeId, fromState, reviewerId, closedDisputes,
+     * closedRequests }`, or `{ id, skipped }` for a cancelled row or a draft.
+     */
+    async resetForRedo(selfAssessmentId, user, reason, req = null) {
+        const why = String(reason == null ? '' : reason).trim();
+        if (!why)
+            throw say(
+                new Error('A reason is required to reset an assessment.'),
+                'assess:saw_err_reset_reason_required'
+            );
+        if (!RBACService.isSuperAdmin(user))
+            throw say(
+                new Error('Not authorized: SuperAdmin only'),
+                'assess:saw_err_superadmin_only'
+            );
+        const sa = await db.get(
+            `SELECT id, employee_id AS "employeeId", skill_id AS "skillId", cycle_id AS "cycleId",
+                    workflow_state AS "workflowState", status::text AS "status",
+                    cancelled_at AS "cancelledAt"
+               FROM self_assessment_rounds WHERE id = ? AND superseded_at IS NULL`,
+            [selfAssessmentId]
+        );
+        if (!sa) throw say(new Error('Self-assessment not found'), 'assess:acr_err_sa_not_found');
+        if (sa.cancelledAt != null) return { id: Number(sa.id), skipped: 'cancelled' };
+        if (sa.workflowState === 'draft') return { id: Number(sa.id), skipped: 'draft' };
+        if (!RESETTABLE_STATES.includes(sa.workflowState))
+            throw say(
+                new Error(`Cannot reset from '${sa.workflowState}'`),
+                'assess:saw_err_cannot_reset',
+                { stateRaw: sa.workflowState }
+            );
+        const auth = {
+            isAdmin: true,
+            actorType: 'admin',
+            _userId: user && user.id != null ? user.id : null,
+        };
+        const prior = await db.get(
+            `SELECT id, status, decision, recommendation, supervisor_rated_level AS "supervisorRatedLevel",
+                    gap, gap_reason AS "gapReason", reviewed_by AS "reviewedBy", reviewed_at AS "reviewedAt",
+                    decided_at AS "decidedAt"
+               FROM supervisor_reviews WHERE self_assessment_id = ?`,
+            [selfAssessmentId]
+        );
+        // guardFrom = the states checked above: a concurrent transition wins
+        // (STALE_STATE) instead of being silently overwritten.
+        await this._setState(
+            selfAssessmentId,
+            'draft',
+            {
+                status: 'draft',
+                approved_by: null,
+                approved_by_ref: null,
+                approved_at: null,
+                reviewed_at: null,
+                reviewed_by: null,
+                reviewed_by_ref: null,
+                locked_state: 'provisional',
+            },
+            RESETTABLE_STATES,
+            { cycleId: sa.cycleId, req }
+        );
+        let closedDisputes = [];
+        if (prior) {
+            const ds = await db.all(
+                `UPDATE assessment_disputes
+                    SET state = 'resolved', resolved_at = now(), decided_by_admin_id = ?
+                  WHERE supervisor_review_id = ? AND state IN ('open', 'escalated')
+                  RETURNING id`,
+                [user && user.id != null ? user.id : null, prior.id]
+            );
+            closedDisputes = (ds || []).map((r) => Number(r.id));
+            await db.run(
+                `UPDATE supervisor_reviews
+                    SET status = 'pending', decision = NULL, recommendation = NULL, decided_at = NULL,
+                        supervisor_rated_level = NULL, gap = NULL, gap_reason = NULL, reviewed_at = NULL
+                  WHERE id = ?`,
+                [prior.id]
+            );
+        }
+        const crs = await db.all(
+            `UPDATE assessment_change_requests
+                SET status = 'withdrawn', decided_by_ref = ?, decided_by_role = 'admin',
+                    decided_at = now(), decision_reason = 'reset_by_superadmin', updated_at = now()
+              WHERE self_assessment_id = ? AND status = 'pending'
+              RETURNING id`,
+            [this._actorRef(auth, user) || 'admin:0', selfAssessmentId]
+        );
+        const closedRequests = (crs || []).map((r) => Number(r.id));
+        await this._event(selfAssessmentId, auth, 'reset_for_redo', sa.workflowState, 'draft', {
+            superadminOverride: true,
+            reason: why,
+            priorReview: prior || null,
+            closedDisputes,
+            closedRequests,
+            officialLevelUnchanged: true,
+        });
+        return {
+            id: Number(sa.id),
+            employeeId: Number(sa.employeeId),
+            fromState: sa.workflowState,
+            reviewerId: prior && prior.reviewedBy != null ? Number(prior.reviewedBy) : null,
+            closedDisputes,
+            closedRequests,
+        };
     }
 
     /**

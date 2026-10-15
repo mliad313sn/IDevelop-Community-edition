@@ -1243,6 +1243,16 @@ router.post(
     _ahAR(MaintenanceController.reopenAssessment.bind(MaintenanceController))
 );
 router.post(
+    '/admin/maintenance/reset-assessment',
+    requireSuperAdmin,
+    _ahAR(MaintenanceController.resetAssessment.bind(MaintenanceController))
+);
+router.get(
+    '/admin/maintenance/reset-assessment/campaigns',
+    requireSuperAdmin,
+    _ahAR(MaintenanceController.resetCandidates.bind(MaintenanceController))
+);
+router.post(
     '/admin/maintenance/withdraw-review',
     requireSuperAdmin,
     _ahAR(MaintenanceController.withdrawReview.bind(MaintenanceController))
