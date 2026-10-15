@@ -3711,5 +3711,21 @@
   "set_desc_kioskIdleMinutes": "Délai d’inactivité d’une session « Poste partagé » (1 à 30 min, 5 par défaut). Il ne peut que raccourcir le délai normal (sessionIdleMinutes), jamais l’allonger ; la durée maximale de session reste inchangée.",
   "set_err_cidrs": "« {{key}} » doit être une liste d’adresses IP ou de plages CIDR (ex. 10.20.0.0/16), séparées par des virgules ou des espaces.",
   "set_hint_cidrs": "Adresses IP ou plages CIDR, séparées par des virgules ou des espaces (ex. 10.20.0.0/16, 192.168.5.12)",
-  "sso_f_strict": "Strict : exiger aussi que toute la réponse SAML soit signée (recommandé ; Entra : « Signer la réponse et l’assertion SAML »). Désactivé : l’assertion signée suffit (Entra : « Signer l’assertion SAML »)."
+  "sso_f_strict": "Strict : exiger aussi que toute la réponse SAML soit signée (recommandé ; Entra : « Signer la réponse et l’assertion SAML »). Désactivé : l’assertion signée suffit (Entra : « Signer l’assertion SAML »).",
+  "set_sensitive_consequence_kioskModeEnabled": "Activer propose la case « Poste partagé » à la connexion et place les adresses déclarées en mode poste partagé (déconnexion à la fermeture de l’onglet, inactivité courte). Désactiver retire la case et ignore les plages d’adresses ; aucune donnée n’est supprimée.",
+  "set_sensitive_on_kioskModeEnabled": "Activer le mode poste partagé",
+  "set_sensitive_off_kioskModeEnabled": "Désactiver le mode poste partagé",
+  "set_sensitive_consequence_mfaRequiredForPrivileged": "Activer impose la double authentification à tous les rôles d’administration : un administrateur non inscrit est dirigé vers la configuration à sa prochaine connexion. Désactiver ne l’impose plus (le super administrateur la garde toujours).",
+  "set_sensitive_on_mfaRequiredForPrivileged": "Imposer la double authentification aux administrateurs",
+  "set_sensitive_off_mfaRequiredForPrivileged": "Ne plus l’imposer aux administrateurs",
+  "set_sensitive_consequence_mfaRequiredForManagers": "Activer impose la double authentification aux managers connectés par mot de passe local ; un manager non inscrit est dirigé vers la configuration à sa prochaine connexion. Désactiver ne l’impose plus.",
+  "set_sensitive_on_mfaRequiredForManagers": "Imposer la double authentification aux managers",
+  "set_sensitive_off_mfaRequiredForManagers": "Ne plus l’imposer aux managers",
+  "set_sensitive_consequence_featureLocalContent": "Activer (le module Contenu local) affiche le champ Nationalité sur les fiches, le rapport Contenu local et la dimension nationalité des analyses de diversité et de biais à tous les administrateurs habilités. Désactiver masque et refuse tout cela sans rien supprimer.",
+  "set_sensitive_on_featureLocalContent": "Activer la nationalité",
+  "set_sensitive_off_featureLocalContent": "Désactiver la nationalité",
+  "set_sensitive_band_title": "Réglages sensibles",
+  "set_sensitive_band_intro": "Ces interrupteurs décident si des données sensibles sont collectées et comment les personnes se connectent. Chaque ligne dit ce que fait l’activation ou la désactivation, et chaque changement demande une confirmation.",
+  "set_lc_toggle_confirm": "Vous activez des fonctions qui traitent la nationalité des collaborateurs : champ Nationalité sur les fiches, rapport Contenu local et analyses par nationalité (diversité, détection de biais). La nationalité est une donnée sensible : vérifiez que ce traitement repose sur une base légale et qu’il est mentionné dans la notice d’information. Confirmer ?",
+  "set_lc_toggle_confirm_title": "Activer la nationalité et le contenu local"
 }

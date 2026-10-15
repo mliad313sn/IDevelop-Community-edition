@@ -31,5 +31,6 @@
   "edp_sign_coach": "Coach / mentor",
   "edp_sign_hr": "Partenaire RH",
   "choose_placeholder": "— Choisir —",
-  "choose_required_fields": "Choisissez une valeur pour chaque champ obligatoire (*)."
+  "choose_required_fields": "Choisissez une valeur pour chaque champ obligatoire (*).",
+  "sensitive_setting": "Réglage sensible"
 }

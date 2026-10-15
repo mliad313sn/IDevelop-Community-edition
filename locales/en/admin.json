@@ -3711,5 +3711,21 @@
   "set_desc_kioskIdleMinutes": "Inactivity window of a “Shared computer” session (1 to 30 min, default 5). It can only shorten the normal window (sessionIdleMinutes), never lengthen it; the maximum session lifetime is unchanged.",
   "set_err_cidrs": "\"{{key}}\" must be a list of IP addresses or CIDR ranges (e.g. 10.20.0.0/16), separated by commas or spaces.",
   "set_hint_cidrs": "IP addresses or CIDR ranges, separated by commas or spaces (e.g. 10.20.0.0/16, 192.168.5.12)",
-  "sso_f_strict": "Strict: also require the whole SAML response to be signed (recommended; Entra: “Sign SAML response and assertion”). Off: the signed assertion is enough (Entra: “Sign SAML assertion”)."
+  "sso_f_strict": "Strict: also require the whole SAML response to be signed (recommended; Entra: “Sign SAML response and assertion”). Off: the signed assertion is enough (Entra: “Sign SAML assertion”).",
+  "set_sensitive_consequence_kioskModeEnabled": "Switching on offers the “Shared computer” box at sign-in and puts the declared addresses in shared-computer mode (sign-out when the tab closes, short idle timeout). Switching off removes the box and ignores the address ranges; nothing is deleted.",
+  "set_sensitive_on_kioskModeEnabled": "Switch shared-computer mode on",
+  "set_sensitive_off_kioskModeEnabled": "Switch shared-computer mode off",
+  "set_sensitive_consequence_mfaRequiredForPrivileged": "Switching on requires two-factor authentication for every administration role: an administrator not yet enrolled is sent to the set-up at the next sign-in. Switching off no longer requires it (the super administrator always keeps it).",
+  "set_sensitive_on_mfaRequiredForPrivileged": "Require two-factor authentication for administrators",
+  "set_sensitive_off_mfaRequiredForPrivileged": "Stop requiring it for administrators",
+  "set_sensitive_consequence_mfaRequiredForManagers": "Switching on requires two-factor authentication for managers who sign in with a local password; a manager not yet enrolled is sent to the set-up at the next sign-in. Switching off no longer requires it.",
+  "set_sensitive_on_mfaRequiredForManagers": "Require two-factor authentication for managers",
+  "set_sensitive_off_mfaRequiredForManagers": "Stop requiring it for managers",
+  "set_sensitive_consequence_featureLocalContent": "Switching on (the Local content module) shows the Nationality field on employee records, the Local content report and the nationality dimension of the diversity and bias analytics to every entitled administrator. Switching off hides and refuses all of it and deletes nothing.",
+  "set_sensitive_on_featureLocalContent": "Switch nationality on",
+  "set_sensitive_off_featureLocalContent": "Switch nationality off",
+  "set_sensitive_band_title": "Sensitive settings",
+  "set_sensitive_band_intro": "These switches decide whether sensitive data is collected and how people sign in. Each row says what switching it on or off does, and every change asks for confirmation.",
+  "set_lc_toggle_confirm": "You are switching on features that process employees' nationality: the Nationality field on employee records, the Local content report and nationality-based analytics (diversity, bias detection). Nationality is sensitive data: make sure this processing rests on a legal basis and is mentioned in the privacy notice. Confirm?",
+  "set_lc_toggle_confirm_title": "Switch nationality and local content on"
 }

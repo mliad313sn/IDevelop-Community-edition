@@ -4128,3 +4128,33 @@ textarea.form-control {
     margin-left: auto;
     min-height: 44px;
 }
+
+/* ── App settings: the sensitive-settings band (nationality, shared computer, MFA) ── */
+.settings-sensitive-band {
+    border: 1px solid var(--amber);
+    border-left-width: 4px;
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    background: var(--warning-bg);
+}
+
+.setting-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-left: var(--space-1);
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--amber-text);
+    border: 1px solid var(--amber);
+    white-space: nowrap;
+}
+
+.setting-consequence {
+    margin: var(--space-1) 0 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    max-width: 48ch;
+}
