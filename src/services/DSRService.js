@@ -410,7 +410,18 @@ const REDACTED_ON_ERASURE = [
         key: 'notifications',
         table: 'notifications',
         deleted: true,
-        erased: ['id', 'kind', 'payload', 'created_at', 'read_at'],
+        erased: [
+            'id',
+            'channel',
+            'kind',
+            'payload',
+            'created_at',
+            'read_at',
+            'sent_at',
+            'email_status',
+            'email_attempts',
+            'last_error',
+        ],
         kept: [],
     },
     // HRIS LINKS: the person's identifier in the HR system. Deleted.
@@ -882,7 +893,9 @@ class DSRService {
         );
         await q(
             'notifications',
-            `SELECT id, kind, payload, created_at, read_at FROM notifications
+            `SELECT id, channel, kind, payload, created_at, read_at, sent_at,
+                    email_status, email_attempts, last_error
+               FROM notifications
               WHERE user_id = ? AND user_type::text IN ('employee', 'manager') ORDER BY id`,
             [employeeId]
         );
@@ -1410,7 +1423,7 @@ class DSRService {
                 `UPDATE notifications
                     SET payload = (payload - 'name' - 'employee' - 'employeeName' - 'email'
                                    - 'comment' - 'reason' - 'gapReason' - 'title' - 'request'
-                                   - 'outcome') || '{"subjectErased": true}'::jsonb
+                                   - 'outcome' - '__pendingEmail') || '{"subjectErased": true}'::jsonb
                   WHERE payload->>'employeeId' = ?::text
                      OR (? <> '' AND lower(payload->>'email') = ?)`,
                 [String(employeeId), origEmail, origEmail]

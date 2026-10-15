@@ -133,14 +133,17 @@ const SUBJECT_DATA_REGISTRY = [
         export: false,
         exportWhy: 'channel settings, no content about the person',
     },
-    // The person's OWN notifications go; those sent to OTHER people about them
-    // are stripped of name, e-mail and free text by a custom statement.
+    // The person's OWN notifications go (in-app and e-mail rows alike, with
+    // their delivery state: email_status, email_attempts, next_attempt_at,
+    // last_error, migration 182); those sent to OTHER people about them are
+    // stripped of name, e-mail, free text and any held e-mail body by a custom
+    // statement.
     red('notifications', 'user_id', 'notifications'),
     {
         scope: 'notifications about the subject sent to others',
         table: 'notifications',
         treatment: 'custom',
-        why: 'payload naming the subject (employeeId / e-mail) stripped of name, e-mail and free text; the recipient keeps the notice',
+        why: 'payload naming the subject (employeeId / e-mail) stripped of name, e-mail, free text and any held e-mail body (__pendingEmail, migration 182); the recipient keeps the notice',
         export: false,
         exportWhy: 'addressed to other people',
     },

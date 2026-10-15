@@ -105,6 +105,8 @@ const CATALOG = {
     copilotAllowedPrivateHosts: { optional: true },
     copilotTransferRecord: { readOnly: true },
     appBaseUrl: { kind: 'url', optional: true },
+    // Migration 182: one language per e-mail; this one when the recipient's is unknown.
+    mailDefaultLanguage: { enum: ['fr', 'en'] },
     invitationExpiryDays: { min: 0, max: 3650, integer: true },
     'onboarding.allowedDomains': { kind: 'domains', optional: true },
     copilotProvider: {
@@ -628,6 +630,14 @@ class AppSettingsModel {
                 value: '',
                 type: 'string',
                 description: 'From address for outgoing emails (e.g. no-reply@yourcompany.com)',
+                category: 'email',
+            },
+            {
+                key: 'mailDefaultLanguage',
+                value: 'fr',
+                type: 'string',
+                description:
+                    'Language of e-mails when the recipient’s own language is not known: fr or en. Every e-mail is written in one language.',
                 category: 'email',
             },
             // ---- Per-domain email triggers (category: emailEvents) ----
