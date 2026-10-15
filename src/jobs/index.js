@@ -99,6 +99,14 @@ const TICKS = [
         fn: () => require('./kpi-alerts').tick(),
     }, // KPI threshold alerts: one claimed pass a day after KPI_ALERTS_HOUR (migration 186)
     {
+        name: 'persona-digest.tick',
+        cron: '26 * * * *',
+        everyMin: 60,
+        keep: 30,
+        bootRun: false,
+        fn: () => require('./persona-digest').tick(),
+    }, // « What changed » summaries: nothing unless personaDigestsEnabled (migration 187)
+    {
         name: 'manager-digest.tick',
         cron: '20 * * * *',
         everyMin: 60,

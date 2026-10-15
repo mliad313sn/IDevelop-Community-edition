@@ -186,6 +186,8 @@ const CATALOG = {
     // rule of their own are declared. deptBriefHour is a UTC hour — the brief
     // reads ONE clock for the gate, the bucket and the period bounds.
     deptBriefWeeklyEnabled: { type: 'boolean' },
+    // « What changed » digests (migration 187): OPT-IN, off by default.
+    personaDigestsEnabled: { type: 'boolean' },
     deptBriefMonthlyEnabled: { type: 'boolean' },
     deptBriefQuarterlyEnabled: { type: 'boolean' },
     deptBriefYearlyEnabled: { type: 'boolean' },
@@ -893,6 +895,18 @@ class AppSettingsModel {
             // database) is loaded, validated… and never displayed.
             // initializeDefaults never overwrites an existing row, so changing
             // one of these defaults after a deployment takes a migration.
+            // « What changed » digests (PersonaDigestService, migration 187).
+            // Opt-in on every install: off until an administrator switches it
+            // on. The weekly manager digest and the department digests are
+            // not affected either way.
+            {
+                key: 'personaDigestsEnabled',
+                value: 'false',
+                type: 'boolean',
+                description:
+                    'Send the « What changed » summaries: administrators get the movements of their scope and what is left to do, employees their next step in the app. Off by default; each person chooses the frequency under My summaries. The manager and department digests are not affected.',
+                category: 'jobs',
+            },
             {
                 key: 'deptBriefWeeklyEnabled',
                 value: 'true',

@@ -74,6 +74,19 @@
                 <li><span class="ds-brief-mark<%= l.tone ? ' ds-brief-mark--' + l.tone : '' %>" aria-hidden="true"><%= l.tone ? _toneMark[l.tone] : '·' %></span><span><%= l.text %></span></li>
                 <% }); %>
             </ul>
+            <% var _ch = screen.changed; if (_ch && _ch.line) { %>
+            <div class="ds-changed" id="ds-changed" data-state="<%= _ch.state %>">
+                <h3 class="ds-changed-h"><%= __('dash:nar_title') %></h3>
+                <p class="ds-changed-line"><%= _ch.line %></p>
+                <% if (_ch.sentences && _ch.sentences.length) { %>
+                <ul>
+                    <% _ch.sentences.forEach(function (x) { %>
+                    <li><span class="ds-brief-mark ds-brief-mark--<%= x.polarity === 'better' ? 'good' : 'risk' %>" aria-hidden="true"><%= x.polarity === 'better' ? '▲' : '▼' %></span><span class="sr-only-ds"><%= __('dash:nar_' + x.polarity) %>: </span><span><%= x.text %><% if (x.href) { %> <a href="<%= x.href %>"><%= __('dash:nar_see_list') %></a><% } %></span></li>
+                    <% }); %>
+                </ul>
+                <% } %>
+            </div>
+            <% } %>
         </section>
         <% } %>
 

@@ -2523,6 +2523,17 @@ router.get('/kpi/targets', requireAdmin, (req, res, next) =>
 router.post('/kpi/targets', requirePermission('manage_kpi_targets'), (req, res, next) =>
     require('../controllers/KpiTargetController').save(req, res, next)
 );
+// « My summaries » (migration 187): every signed-in account reads its OWN
+// archived « What changed » summaries and sets its frequency.
+router.get('/digests', requireAuth, (req, res, next) =>
+    require('../controllers/DigestController').list(req, res, next)
+);
+router.post('/digests/preferences', requireAuth, (req, res, next) =>
+    require('../controllers/DigestController').savePrefs(req, res, next)
+);
+router.get('/digests/:id', requireAuth, (req, res, next) =>
+    require('../controllers/DigestController').show(req, res, next)
+);
 
 // Skill Matrix — manager/admin only
 router.get('/skill-matrix', requireManagerOrAdmin, SkillMatrixController.index);

@@ -100,7 +100,10 @@ describe('migration 159 repairs untouched rows only', () => {
             .filter((k) => !['smtpSecure', 'emailOnAuth'].includes(k))
             // Added after 159 and only ever seeded through the fixed setValue
             // (asserted OFF by sharedComputerLoginView.test.js).
-            .filter((k) => !['kioskModeEnabled'].includes(k));
+            .filter((k) => !['kioskModeEnabled'].includes(k))
+            // Migration 187 (opt-in « What changed » summaries): added after 159,
+            // seeded through the fixed setValue (asserted OFF above).
+            .filter((k) => !['personaDigestsEnabled'].includes(k));
         for (const k of off) expect([k, sql.includes(`'${k}'`)]).toEqual([k, true]);
         expect(sql).toMatch(/updated_by IS NULL/);
     });

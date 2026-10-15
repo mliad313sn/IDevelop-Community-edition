@@ -257,15 +257,21 @@ function scopeLabel(ctx, t) {
 
 /**
  * The recorded snapshot scope that matches the reader's population exactly,
- * or null. kpi_snapshots holds the organisation and each site: a reader sees
- * a movement only when their population IS one of them (a partial view of a
- * site never borrows the site's history).
+ * or null. kpi_snapshots holds the organisation, each site and (migration
+ * 187) each department: a reader sees a movement only when their population
+ * IS one of them (a partial view of a unit never borrows the unit's history).
  */
 async function snapshotScope(ctx) {
     const s = ctx.scope || {};
-    if (s.department !== undefined) return null;
     if (s.site === 'none') return null;
     const Kpi = K();
+    if (s.department !== undefined) {
+        if (s.site !== undefined) return null; // no row is « this department within this site »
+        const sys = await Kpi.resolvePopulation({ system: true, departmentId: s.department });
+        return sys.ids.length && sys.ids.length === ctx.pop.ids.length
+            ? { scopeType: 'department', scopeId: s.department }
+            : null;
+    }
     if (s.site !== undefined) {
         const sys = await Kpi.resolvePopulation({ system: true, siteId: s.site });
         return sys.ids.length === ctx.pop.ids.length
@@ -716,6 +722,31 @@ function briefLines(ind, mv, fmt, t, dateFmt) {
     return lines.slice(0, 4);
 }
 
+/**
+ * « What changed » over 30 days (NarrativeService) for the snapshot scope that
+ * IS the reader's population, or null: sentences only about what this
+ * reader's dashboard shows (capabilities, modules), each linked to its list
+ * when the reader may open it. Never a name.
+ */
+async function whatChanged(ctx, lang) {
+    try {
+        const sc = await snapshotScope(ctx);
+        if (!sc) return null;
+        return await require('./NarrativeService').whatChanged(
+            { type: sc.scopeType, id: sc.scopeId },
+            {
+                days: 30,
+                capabilities: ctx.caps,
+                flags: ctx.flags,
+                locale: lang === 'en' ? 'en' : 'fr',
+                hrefOf: (kpi, part) => drillHref(ctx, kpi, part),
+            }
+        );
+    } catch (_) {
+        return null;
+    }
+}
+
 /** « What is left to set up »: unconfigured areas, each with a link the reader may follow. */
 async function setupItems(ctx, ind) {
     const items = [];
@@ -771,6 +802,7 @@ async function firstScreen(ctx, { t, fmt, dateFmt } = {}) {
         current = null;
     }
     const mv = current ? await movements(ctx, current) : { since: null, values: {}, series: [] };
+    const changed = await whatChanged(ctx, (fmt && fmt.lang) || 'fr');
     const all = ['K9', 'K8', 'K1', 'VAL', 'K6', 'K11', 'K3', 'K16', 'K4', 'K7']
         .filter((k) => has(ind, k))
         .map((k) => tileOf(ctx, k, ind, mv, t))
@@ -782,6 +814,7 @@ async function firstScreen(ctx, { t, fmt, dateFmt } = {}) {
         tiles,
         more: all.filter((x) => !shown.has(x.kpi)),
         brief: briefLines(ind, mv, fmt, t, dateFmt),
+        changed,
         since: mv.since,
         coverage: ind.K3 ? ind.K3.value : null,
         setup: await setupItems(ctx, ind),
@@ -1759,6 +1792,7 @@ module.exports = {
     tileOf,
     firstRow,
     briefLines,
+    whatChanged,
     setupItems,
     firstScreen,
     movements,

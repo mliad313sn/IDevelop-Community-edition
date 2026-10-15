@@ -3792,5 +3792,7 @@
   "maint_err_maintenance_reset_nothing": "Nothing to reset: no submitted, reviewed, approved or rejected assessment (drafts stay as they are, cancelled ones are skipped).",
   "maint_err_maintenance_reset_confirm_mismatch": "The employee number typed does not match: nothing was reset.",
   "mv_kind_assessment_reset": "Self-assessment reset for redo (maintenance)",
-  "apik_feed_readiness_v2": "role readiness per person, four states (ready, not ready, partially assessed, not assessed): the same figure as the reports"
+  "apik_feed_readiness_v2": "role readiness per person, four states (ready, not ready, partially assessed, not assessed): the same figure as the reports",
+  "set_name_personaDigestsEnabled": "« What changed » summaries",
+  "set_desc_personaDigestsEnabled": "Send the « What changed » summaries: to administrators, the movements of their scope and what is left to do; to employees, their next step in the app. Off by default; each person chooses the frequency under « My summaries ». The manager and department digests do not change."
 }

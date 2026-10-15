@@ -43,6 +43,10 @@
 .ds-brief-mark--risk { color: var(--viz-risk); }
 .ds-brief-mark--warn { color: var(--viz-warn); }
 .ds-brief-mark--good { color: var(--viz-good); }
+/* « What changed » inside the band (NarrativeService): fixed sentences, never a name */
+.ds-changed { margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.ds-changed-h { margin: 0 0 0.25rem; font-size: 1rem; }
+.ds-changed-line { margin: 0 0 0.4rem; font-size: 0.875rem; color: var(--text-secondary); }
 
 .ds-clearance { margin: 0; font-size: 0.875rem; color: var(--text-secondary); }
 .ds-clearance i { margin-right: 0.35rem; }
