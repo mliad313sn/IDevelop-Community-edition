@@ -1,5 +1,6 @@
 'use strict';
 
+const { containedUploadPath } = require('../utils/uploadTempPath');
 const fs = require('fs');
 const path = require('path');
 const db = require('../config/database');
@@ -33,7 +34,9 @@ class EvidenceService {
             UPLOADS_DIR,
             `${selfAssessmentId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`
         );
-        fs.renameSync(file.path, dest);
+        const src = containedUploadPath(file && file.path);
+        if (!src) throw new Error('The upload is not where uploads are kept.');
+        fs.renameSync(src, dest);
 
         // Insert pending row
         const { lastID } = await db.run(

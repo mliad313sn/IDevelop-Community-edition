@@ -72,16 +72,19 @@ function normalizeSeverity(sev) {
  * as the backfill in db/postgres/112_system_logs_normalisation.sql (the unit
  * test pins both), so old and new rows classify alike.
  */
+
+/** Actions filed under « security »: prefixes, exact names, suffixes, anywhere. */
+const SECURITY_ACTIONS = [
+    /^(?:LOGIN|MFA_|PASSWORD_|SESSION|API_KEY|SSO_)/,
+    /^(?:ACCOUNT_LOCKED|IP_BLOCKED|ACCESS_DENIED)$/,
+    /RATE_LIMITED$/,
+    /(?:LOGOUT|UNAUTH|TAMPER)/,
+];
 function categoryFor(action) {
     const a = String(action || '').toUpperCase();
     if (/^HTTP_/.test(a)) return 'http';
     if (/^MAINT_/.test(a)) return 'maintenance';
-    if (
-        /^LOGIN|LOGOUT|^(ACCOUNT_LOCKED|IP_BLOCKED|ACCESS_DENIED)$|RATE_LIMITED$|^MFA_|^PASSWORD_|^SESSION|^API_KEY|^SSO_|UNAUTH|TAMPER/.test(
-            a
-        )
-    )
-        return 'security';
+    if (SECURITY_ACTIONS.some((re) => re.test(a))) return 'security';
     if (/^SERVER_ERROR|_ERROR$/.test(a)) return 'system';
     return 'audit';
 }

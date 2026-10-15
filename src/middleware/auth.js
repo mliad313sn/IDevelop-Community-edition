@@ -686,7 +686,8 @@ const requireSuperAdmin = (req, res, next) => {
         );
     // An anonymous PAGE navigation goes to /login and comes back after it (it
     // used to bounce via /dashboard, whose own guard then lost the path).
-    if (!req.isAuthenticated() && isDocumentGet(req))
+    // (bounceToLogin itself remembers only a page navigation.)
+    if (!req.isAuthenticated())
         return bounceToLogin(
             req,
             res,

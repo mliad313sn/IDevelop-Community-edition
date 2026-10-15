@@ -12,6 +12,7 @@
  *
  * @module services/OnboardingService
  */
+const { plainEmail } = require('../utils/plainEmail');
 const bcrypt = require('bcrypt');
 const db = require('../config/database');
 const AppSettingsModel = require('../models/AppSettingsModel');
@@ -186,20 +187,6 @@ function passwordCode(errors) {
             joined
         );
     return composition ? 'onbx_su_password_policy' : 'onbx_su_password_weak';
-}
-
-/**
- * local@domain.tld with one "@", no white space, and a dot inside the domain.
- * Checked by splitting rather than by one regex, so a long hostile string
- * cannot make the check backtrack (js/polynomial-redos).
- */
-function plainEmail(email) {
-    if (!email || email.length > 254 || /\s/.test(email)) return false;
-    const at = email.indexOf('@');
-    if (at < 1 || at !== email.lastIndexOf('@')) return false;
-    const domain = email.slice(at + 1);
-    const dot = domain.lastIndexOf('.');
-    return dot > 0 && dot < domain.length - 1;
 }
 
 async function createFromSignup({ email, firstName, lastName, password }) {

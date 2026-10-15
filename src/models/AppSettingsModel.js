@@ -1,3 +1,4 @@
+const { plainEmail } = require('../utils/plainEmail');
 const PRODUCT = require('../config/product');
 const db = require('../config/database');
 const { TtlCache } = require('../utils/ttlCache');
@@ -217,7 +218,6 @@ const CATALOG = {
 
 const RE = {
     url: /^https?:\/\/[^\s/$.?#][^\s]*$/i,
-    email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
     host: /^[a-z0-9.-]+$/i,
     domain: /^[a-z0-9.-]+\.[a-z]{2,}$/i,
 };
@@ -299,7 +299,7 @@ function validate(key, storedType, raw) {
     }
     if (s === '' && rule.optional) return { ok: true, value: '' };
     if (rule.kind === 'url' && !RE.url.test(s)) return { ok: false, code: 'url', params: { key } };
-    if (rule.kind === 'email' && !RE.email.test(s))
+    if (rule.kind === 'email' && !plainEmail(s))
         return { ok: false, code: 'email', params: { key } };
     if (rule.kind === 'host' && !RE.host.test(s))
         return { ok: false, code: 'host', params: { key } };

@@ -294,6 +294,15 @@ PR #14 (`claude/friendly-hawking-9iv6qf`) turned the CodeQL check red with 46 ne
 
     A maintainer dismisses these two alerts as « won't fix » in code scanning, with a link to this section. A rule-wide exclusion would also hide a real injection elsewhere, so the rule stays on.
 
+### Accepted by design (high, dismissed as « won't fix »): the first-run password
+
+- **`js/clear-text-logging`** (`src/services/AuthService.js`, the first-run banner). On a brand-new install with no `BOOTSTRAP_ADMIN_PASSWORD` set, the app generates a random SuperAdmin password and prints it once to the server console, because that console is the only channel the installer has. The controls:
+    - printed only when the password was generated, never when the operator supplied one;
+    - printed once, on the run that creates the account, and never again;
+    - the account must change it at first sign-in (`forcePasswordChange`), so the printed value is good for exactly one sign-in.
+
+    A maintainer dismisses this alert as « won't fix » with a link to this section.
+
 ### Accepted (alert left open, medium)
 
 - **`js/sensitive-get-query`** (`src/middleware/apiAuth.js` `presentedApiKey`, `src/api/v1/index.js` `discoveryAllowed`). The `?apiKey=` query parameter is a deliberate legacy path for Power BI `Web.Contents` feeds. It is honoured only for a key that carries the per-key `allow_query_key` flag (migration 163, off by default for new keys), or for the env shared key with `API_KEY_QUERY_STRING=1`. Any other key in the URL is refused with `api_key_in_url_refused`. `discoveryAllowed` only tests that a credential is present. Moving the key out of `req.query` without dropping the flag would just hide the same data flow, so the alert stays visible as the record of this accepted risk. It is a medium (warning) alert and does not fail the check. Retire the flag once the last legacy feed sends `X-API-Key`.

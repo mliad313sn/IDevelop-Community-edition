@@ -17,9 +17,11 @@ const REGISTRY = {
     mypath: MyPathConnector,
 };
 
+const CONNECTORS = new Map(Object.entries(REGISTRY));
+
 function getConnector(provider, config = {}) {
-    const Ctor = REGISTRY[String(provider || '').toLowerCase()];
-    if (!Ctor) throw new Error(`Unknown LMS provider: ${provider}`);
+    const Ctor = CONNECTORS.get(String(provider || '').toLowerCase());
+    if (typeof Ctor !== 'function') throw new Error(`Unknown LMS provider: ${provider}`);
     return new Ctor(config);
 }
 

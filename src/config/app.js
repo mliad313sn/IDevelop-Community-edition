@@ -17,8 +17,11 @@ const env = process.env.NODE_ENV || 'development';
 // because a digit run looks like a year: the year test now applies only to
 // values that are NOT random-looking, and only as a standalone number. The
 // dictionary words cannot occur in hex and are kept for every value.
-const WEAK_WORDS =
-    /change|default|example|sample|placeholder|secret-key|password|please|test\b|dev\b/i;
+const WEAK_WORDS = /change|default|example|sample|placeholder|secret-key|password|please/i;
+// The short words also turn up by chance in random base64 (about one value in
+// a few hundred holds "dev" or "test" at a word edge), so they count only for
+// values that do not look random.
+const WEAK_SHORT = /test\b|dev\b/i;
 const YEAR_TOKEN = /(?:^|\D)20\d\d(?:\D|$)/;
 function randomLooking(p) {
     const hex = /^[0-9a-f]{48,}$/i.test(p);
@@ -32,7 +35,8 @@ function randomLooking(p) {
 }
 function isWeakSecret(p) {
     const s = String(p || '');
-    return s.length < 24 || WEAK_WORDS.test(s) || (!randomLooking(s) && YEAR_TOKEN.test(s));
+    if (s.length < 24 || WEAK_WORDS.test(s)) return true;
+    return !randomLooking(s) && (WEAK_SHORT.test(s) || YEAR_TOKEN.test(s));
 }
 
 function assertStrong(name, val) {

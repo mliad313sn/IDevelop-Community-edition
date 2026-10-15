@@ -18,6 +18,7 @@
  *     append-only and the view picks the latest non-revoked row.
  */
 
+const { containedUploadPath } = require('../utils/uploadTempPath');
 const fs = require('fs');
 const path = require('path');
 const db = require('../config/database');
@@ -182,7 +183,9 @@ class CertificationService {
             UPLOADS_DIR,
             `cert-${certId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`
         );
-        fs.renameSync(file.path, dest);
+        const src = containedUploadPath(file && file.path);
+        if (!src) throw new Error('The upload is not where uploads are kept.');
+        fs.renameSync(src, dest);
         await db.run(
             `UPDATE employee_certifications
                 SET file_uri = ?, original_name = ?, mime = ?, size_bytes = ?, av_status = 'pending', updated_at = now()
