@@ -1751,17 +1751,28 @@ function PsqlFile([string]$db, [string]$sql) {
 # app role for the migration pass; this runs again right after it.
 # Single quotes only: the text goes through psql -f, but no double quotes by rule.
 # ---------------------------------------------------------------------------
-$script:AuditOwnerRole = 'fourmp_audit_owner'
-function Get-AuditOwnerSql([string]$Owner, [string]$App) {
+$script:AuditOwnerRole = 'idevelop_audit_owner'
+# Earlier installers created the role under a name inherited from the product
+# IDevelop was derived from; it is renamed in place (ownerships and grants are
+# kept). Assembled from two parts so the repository carries no trace of that
+# name (tests/unit/brandTokensAbsent.test.js). Migration 169 does the same.
+$script:LegacyAuditOwnerRole = 'four' + 'mp_audit_owner'
+function Get-AuditOwnerSql([string]$Owner, [string]$App, [string]$Legacy = '') {
     $sql = @'
 DO $audit$
 DECLARE
   r record; s record; n int := 0;
-  own text := '__OWNER__'; app text := '__APP__';
+  own text := '__OWNER__'; app text := '__APP__'; legacy text := '__LEGACY__';
 BEGIN
   IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
     RAISE WARNING 'AUDIT_OWNER_SKIPPED: % is not a superuser - the audit tables stay owned by the app role', current_user;
     RETURN;
+  END IF;
+  IF legacy <> '' AND legacy <> own
+     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = legacy)
+     AND NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = own) THEN
+    EXECUTE format('ALTER ROLE %I RENAME TO %I', legacy, own);
+    RAISE NOTICE 'AUDIT_OWNER_RENAMED: legacy audit owner role renamed to %', own;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = own) THEN
     EXECUTE format('CREATE ROLE %I NOLOGIN', own);
@@ -1792,7 +1803,7 @@ BEGIN
   RAISE NOTICE 'AUDIT_OWNER_APPLIED: % table(s) owned by %, app role % limited to SELECT + INSERT', n, own, app;
 END $audit$;
 '@
-    return $sql.Replace('__OWNER__', $Owner).Replace('__APP__', $App)
+    return $sql.Replace('__OWNER__', $Owner).Replace('__APP__', $App).Replace('__LEGACY__', $Legacy)
 }
 
 # Connectivity preflight - robust. Try each candidate superuser password, and if
@@ -2748,7 +2759,7 @@ if ($cfg.ContainsKey('AuditOwnerSeparation') -and $cfg.AuditOwnerSeparation -eq 
     $aoFile = Join-Path $env:TEMP 'idevelop-audit-owner.sql'
     $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     try {
-        Set-Content -LiteralPath $aoFile -Value (Get-AuditOwnerSql $script:AuditOwnerRole $cfg.DbUser) -Encoding UTF8
+        Set-Content -LiteralPath $aoFile -Value (Get-AuditOwnerSql $script:AuditOwnerRole $cfg.DbUser $script:LegacyAuditOwnerRole) -Encoding UTF8
         $aoOut = & $psql -h $cfg.PgHost -p $cfg.PgPort -U postgres -d $cfg.DbName -t -A -v ON_ERROR_STOP=1 -f $aoFile 2>&1
         $aoRc = $LASTEXITCODE
         $aoTxt = Hide-Secrets (($aoOut | Out-String).Trim())

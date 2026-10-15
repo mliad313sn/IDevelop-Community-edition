@@ -58,6 +58,7 @@ const DENY = new Set([
     'f364d4ade58c230576008c670265186055a064361f82ec661f909c400b6fc57d',
     'b822288b0b187717435aaebeea4062fd626b7e56e967cd6d0f4cd22d859d20f2',
     '7ed08692c9f41f23f1dca0c0efd832d80f1397accb3042cceaef1d4af6e44f7c',
+    '62e0ef530a98abd3d7bc5f2a71ce8fe4950df84771058689d871ccd2cedf536f',
 ]);
 
 const SKIP_DIRS = new Set([

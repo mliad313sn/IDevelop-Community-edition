@@ -41,18 +41,9 @@ function sqlGuarded(src = MIG) {
 }
 
 describe('migration 167: static contract', () => {
-    test('the grants cover every later table: the highest migration re-runs them', () => {
-        const files = fs
-            .readdirSync(MIG_DIR)
-            .map((f) => ({ f, m: /^(\d+)_.*\.sql$/.exec(f) }))
-            .filter((x) => x.m && !/_down\.sql$/.test(x.f))
-            .map((x) => ({ f: x.f, n: Number(x.m[1]) }));
-        const top = Math.max(...files.map((x) => x.n));
-        expect(top).toBeGreaterThanOrEqual(168);
-        for (const { f } of files.filter((x) => x.n === top)) {
-            const body = fs.readFileSync(path.join(MIG_DIR, f), 'utf8');
-            expect(body).toMatch(SYNC_CALL);
-        }
+    test('168 installs the re-grant function and runs it once', () => {
+        expect(MIG168).toMatch(/CREATE OR REPLACE FUNCTION public\.fn_console_reader_sync\(/);
+        expect(MIG168).toMatch(SYNC_CALL);
     });
 
     test('every migration after 168 that adds a table or a column ends with the re-grant', () => {

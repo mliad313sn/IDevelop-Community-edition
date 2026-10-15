@@ -57,7 +57,7 @@
     # tables (system_logs, assessment_history, review_signatures,
     # self_assessment_events... - every table with an append-only or hash-chain
     # trigger) and their guard functions are owned by the NOLOGIN role
-    # fourmp_audit_owner; the app role keeps SELECT + INSERT only, so it can no
+    # idevelop_audit_owner; the app role keeps SELECT + INSERT only, so it can no
     # longer disable, drop or rewrite the guards. OFF by default in this release:
     # while it is on, four SuperAdmin tools that suspend those triggers as the app
     # role are refused by PostgreSQL (Danger-Zone database cleanup, data reset,
