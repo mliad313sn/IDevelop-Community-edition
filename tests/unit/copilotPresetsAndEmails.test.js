@@ -178,13 +178,15 @@ describe('welcome invitation email', () => {
         const mail = await OnboardingCredentialService._welcomeEmail({
             employee: { id: 5, firstName: 'Awa', lastName: 'Costé', employeeNumber: 'EMP005' },
             username: 'awa.coste',
-            tempPassword: 'Tmp#12345678',
+            link: 'https://hr.example.test/reset-password?token=TOKEN-1&setup=1',
+            expiresAt: new Date(Date.now() + 72 * 3600 * 1000),
             branding: { appName: 'MinesRH' },
         });
         expect(mail.subject).toContain('MinesRH');
         for (const needle of [
             'awa.coste',
-            'Tmp#12345678',
+            'reset-password?token=TOKEN-1&amp;setup=1',
+            'Définir mon mot de passe',
             'EMP005',
             'HSE Officer',
             'Mine A',
@@ -194,5 +196,9 @@ describe('welcome invitation email', () => {
         }
         expect(mail.html).toContain('En tant que manager'); // manager-adapted expectations
         expect(mail.text).toContain('awa.coste');
+        // Never a password in the welcome mail (SA-37).
+        expect(`${mail.html}\n${mail.text}`).not.toMatch(
+            /mot de passe temporaire|temporary password/i
+        );
     });
 });

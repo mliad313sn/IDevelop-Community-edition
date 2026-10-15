@@ -449,7 +449,7 @@
   "help_emp_manual_intro": "Everything you can do from your own space, in the order it comes up.",
   "help_e1_title": "1. Your first sign-in",
   "help_e1_login_t": "Sign in:",
-  "help_e1_login_d": "use the username and temporary password your administrator sent you (or your company button if single sign-on is enabled).",
+  "help_e1_login_d": "open the \"Set my password\" link you received by e-mail (valid 72 hours), or use the temporary password your administrator handed you (or your company button if single sign-on is enabled).",
   "help_e1_pwd_t": "Change your password:",
   "help_e1_pwd_d": "you are asked to change it on first sign-in. Pick one only you know.",
   "help_e2_title": "2. Your self-assessment",

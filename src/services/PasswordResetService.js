@@ -272,6 +272,29 @@ class PasswordResetService {
     }
 
     /**
+     * Mint the one-time « set my password » link of an invitation (SA-37). It is
+     * an ordinary reset token with a longer life: sha256 at rest, claimed once
+     * by consume(), refused by validate() once used or expired. Any outstanding
+     * unused token of the account is burnt first, so one link is live at a time.
+     * Returns null when the account may not set a password by link right now
+     * (SSO enforced, see resetAllowed); the caller falls back to the handover.
+     * @returns {Promise<{rawToken:string, expiresAt:Date}|null>}
+     */
+    async issueSetupToken(subjectType, subjectId, { ttlHours = 72, requestIp = null } = {}) {
+        if (!(await this.resetAllowed(subjectType, subjectId))) return null;
+        const hours = Math.min(Math.max(Number(ttlHours) || 72, 1), 24 * 7);
+        await this.invalidateOutstanding(subjectType, subjectId);
+        const rawToken = crypto.randomBytes(32).toString('base64url');
+        const expiresAt = new Date(Date.now() + hours * 3600_000);
+        await db.run(
+            `INSERT INTO password_reset_tokens (subject_type, subject_id, token_hash, expires_at, request_ip)
+             VALUES (?, ?, ?, ?, ?)`,
+            [subjectType, Number(subjectId), sha256(rawToken), expiresAt.toISOString(), requestIp]
+        );
+        return { rawToken, expiresAt };
+    }
+
+    /**
      * Burn every OUTSTANDING (unused) reset token of one account. Throws on a DB
      * error so a caller that must fail closed can.
      * @returns {Promise<number>} tokens invalidated

@@ -229,6 +229,30 @@ function returnToApi() {
     }
 }
 
+/**
+ * SA-37: a set-password or reset link that was already used, has expired or
+ * never existed answers 410 Gone, on the « forgot password » page where a new
+ * link can be requested, with one neutral sentence (no account is named).
+ */
+async function linkGone(req, res) {
+    let emailEnabled = false;
+    try {
+        emailEnabled = await require('../services/EmailService').isEnabled();
+    } catch (_) {
+        emailEnabled = false;
+    }
+    res.locals.errors = [
+        req.t
+            ? req.t('auth:link_gone')
+            : 'This link has expired or has already been used. Request a new one below, or contact your administrator.',
+    ];
+    return res.status(410).render('pages/auth/forgot-password', {
+        layout: false,
+        title: req.t ? req.t('auth:forgot_title') : 'Reset your password',
+        emailEnabled,
+    });
+}
+
 function homeFor(userType) {
     if (userType === 'employee') return '/employee/dashboard';
     if (userType === 'manager') return '/supervisor/dashboard';
@@ -1133,21 +1157,25 @@ class AuthController {
 
     async showResetPassword(req, res) {
         const token = (req.query.token || '').toString();
+        // An invitation link (SA-37) reads « Set my password »; same form, same token.
+        const setup = String((req.query && req.query.setup) || '') === '1';
         try {
             const PasswordResetService = require('../services/PasswordResetService');
-            if (!(await PasswordResetService.validate(token))) {
-                req.flash(
-                    'error',
-                    req.t
-                        ? req.t('flash:reset_link_invalid')
-                        : 'That reset link is invalid or has expired. Please request a new one.'
-                );
-                return res.redirect('/forgot-password');
-            }
+            // A used, expired or unknown link is gone: 410 on the page where a
+            // new one can be requested.
+            if (!(await PasswordResetService.validate(token))) return linkGone(req, res);
+            const title = setup
+                ? req.t
+                    ? req.t('auth:setup_title')
+                    : 'Set my password'
+                : req.t
+                  ? req.t('auth:reset_title')
+                  : 'Choose a new password';
             res.render('pages/auth/reset-password', {
                 layout: false, // full standalone page, like /login
-                title: req.t ? req.t('auth:reset_title') : 'Choose a new password',
+                title,
                 token,
+                setup,
             });
         } catch (e) {
             console.error('Show reset password error:', e);
@@ -1165,18 +1193,12 @@ class AuthController {
         const token = (req.body.token || '').toString();
         const password = (req.body.password || '').toString();
         const passwordConfirm = (req.body.passwordConfirm || '').toString();
-        const back = `/reset-password?token=${encodeURIComponent(token)}`;
+        const setup = String((req.body && req.body.setup) || '') === '1';
+        // Fixed relative path; only the URI-encoded token and a constant flag vary.
+        const back = `/reset-password?token=${encodeURIComponent(token)}${setup ? '&setup=1' : ''}`;
         try {
             const PasswordResetService = require('../services/PasswordResetService');
-            if (!(await PasswordResetService.validate(token))) {
-                req.flash(
-                    'error',
-                    req.t
-                        ? req.t('flash:reset_link_invalid')
-                        : 'That reset link is invalid or has expired. Please request a new one.'
-                );
-                return res.redirect('/forgot-password');
-            }
+            if (!(await PasswordResetService.validate(token))) return linkGone(req, res);
             if (!password || password !== passwordConfirm) {
                 req.flash(
                     'error',
@@ -1193,15 +1215,8 @@ class AuthController {
             }
 
             const result = await PasswordResetService.consume(token, password);
-            if (!result.ok) {
-                req.flash(
-                    'error',
-                    req.t
-                        ? req.t('flash:reset_link_invalid')
-                        : 'That reset link is invalid or has expired. Please request a new one.'
-                );
-                return res.redirect('/forgot-password');
-            }
+            // Lost the race to another use of the same link: gone too.
+            if (!result.ok) return linkGone(req, res);
             authAudit(
                 req,
                 'PASSWORD_RESET_COMPLETED',

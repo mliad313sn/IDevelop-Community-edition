@@ -928,7 +928,7 @@ class InvitationController {
         });
     }
 
-    /** Render the welcome email exactly as it will be sent — password masked. */
+    /** Render the welcome email exactly as it will be sent — link placeholder, never a token. */
     async preview(req, res) {
         const employeeId = Number(req.params.id);
         const ids = await scopedEmployeeIds(req.user);
@@ -946,7 +946,11 @@ class InvitationController {
         const mail = await OnboardingCredentialService._welcomeEmail({
             employee,
             username: employee.username || tr(req, 'admin:acc_preview_username_generated'),
-            tempPassword: '••••••••••••',
+            // A preview never mints a token: the button points at a placeholder.
+            link: '#',
+            expiresAt: new Date(
+                Date.now() + OnboardingCredentialService.SETUP_TTL_HOURS * 3600_000
+            ),
             branding,
         });
         res.setHeader('Content-Type', 'text/html; charset=utf-8');

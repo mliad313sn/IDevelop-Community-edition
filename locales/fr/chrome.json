@@ -449,7 +449,7 @@
   "help_emp_manual_intro": "Tout ce que vous pouvez faire depuis votre espace, dans l’ordre où cela se présente.",
   "help_e1_title": "1. Votre première connexion",
   "help_e1_login_t": "Se connecter :",
-  "help_e1_login_d": "utilisez l’identifiant et le mot de passe temporaire reçus de votre administrateur (ou le bouton de votre entreprise si l’authentification unique est active).",
+  "help_e1_login_d": "ouvrez le lien « Définir mon mot de passe » reçu par e-mail (valable 72 heures), ou utilisez le mot de passe temporaire remis par votre administrateur (ou le bouton de votre entreprise si l’authentification unique est active).",
   "help_e1_pwd_t": "Changer votre mot de passe :",
   "help_e1_pwd_d": "le changement est demandé dès la première connexion. Choisissez-en un que vous seul connaissez.",
   "help_e2_title": "2. Votre auto-évaluation",
