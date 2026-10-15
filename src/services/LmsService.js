@@ -853,11 +853,11 @@ class LmsService {
         await db.withActor(user, async () => {
             for (const p of proposals) {
                 await db.run(
-                    `INSERT INTO skill_assessments (employee_id, skill_id, current_level, assessed_by, notes)
-                     VALUES (?, ?, ?, ?, 'Set from a supervisor-validated training completion')
+                    `INSERT INTO skill_assessments (employee_id, skill_id, current_level, assessed_by, notes, validation)
+                     VALUES (?, ?, ?, ?, 'Set from a supervisor-validated training completion', 'manager_validated')
                      ON CONFLICT (employee_id, skill_id) DO UPDATE SET
                        current_level = EXCLUDED.current_level, assessed_by = EXCLUDED.assessed_by,
-                       assessed_at = now(), notes = EXCLUDED.notes`,
+                       assessed_at = now(), notes = EXCLUDED.notes, validation = EXCLUDED.validation`,
                     [c.employeeId, p.skillId, p.to, adminId]
                 );
                 raised.push(p);

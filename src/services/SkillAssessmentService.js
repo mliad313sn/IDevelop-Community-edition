@@ -33,6 +33,9 @@ class SkillAssessmentService {
             currentLevel,
             assessedBy,
             notes,
+            // An official level entered by an assessor (assessments page, skill
+            // matrix) is validated by that person.
+            validation: 'manager_validated',
         });
 
         // Log the action

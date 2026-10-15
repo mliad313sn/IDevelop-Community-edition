@@ -1188,6 +1188,8 @@ class SelfAssessmentWorkflowService {
                     level != null
                         ? 'Set from supervisor-validated rating'
                         : 'Set from approved self-assessment',
+                // Promoted by an approval: a reviewer decided this level.
+                validation: 'manager_validated',
             });
         } catch (_) {
             /* never block an approval on the skill-profile update */

@@ -482,6 +482,7 @@ class SelfAssessmentService {
                             : gap === 0
                               ? 'Validated by supervisor review (confirmed self-rating).'
                               : `Validated by supervisor review. Gap: ${gap > 0 ? '+' : ''}${gap}`,
+                    validation: 'manager_validated',
                 });
             }
         });

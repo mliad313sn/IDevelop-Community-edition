@@ -69,12 +69,13 @@ class ActionEffectivenessService {
                 assessedByAdminId != null
             ) {
                 await db.run(
-                    `INSERT INTO skill_assessments (employee_id, skill_id, current_level, assessed_by, notes)
-                     VALUES (?, ?, ?, ?, 'auto: action close uplift')
+                    `INSERT INTO skill_assessments (employee_id, skill_id, current_level, assessed_by, notes, validation)
+                     VALUES (?, ?, ?, ?, 'auto: action close uplift', 'manager_validated')
                      ON CONFLICT (employee_id, skill_id) DO UPDATE
                         SET current_level = EXCLUDED.current_level,
                             assessed_by   = EXCLUDED.assessed_by,
-                            assessed_at   = now()`,
+                            assessed_at   = now(),
+                            validation    = EXCLUDED.validation`,
                     [employeeId, link.skillId, postRating, assessedByAdminId]
                 );
                 officialUpdated = true;
