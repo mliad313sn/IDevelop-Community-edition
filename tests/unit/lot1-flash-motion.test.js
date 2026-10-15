@@ -493,7 +493,9 @@ describe('Source guards — the code, not its layout', () => {
     const flash = read('views/partials/flash.ejs');
     const uif = read('public/js/ui-feedback.js');
     const style = read('public/css/style.css');
-    const sa = read('views/pages/employee/self-assessment.ejs');
+    // the page CSS moved to public/css/self-assessment.css (design tokens)
+    const sa =
+        read('views/pages/employee/self-assessment.ejs') + read('public/css/self-assessment.css');
     const dashCss = read('public/css/dashboard.css');
     const dashJs = read('public/js/dashboard-tabs.js');
     const dashEjs = read('views/pages/dashboard/index.ejs');

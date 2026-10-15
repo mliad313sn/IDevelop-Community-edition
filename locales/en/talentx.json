@@ -134,7 +134,6 @@
   "nb_no_employees": "No employees in your scope.",
   "nb_due_title": "Re-assess at least every {n} months",
   "nb_due": "⏰ Due",
-  "nb_mo_ago": "{n} mo ago",
   "nb_not_assessed": "— not assessed —",
   "nb_reassess": "Re-assess",
   "nb_count": "{shown} of {total} employees",
@@ -622,7 +621,6 @@
   "sar_author_supervisor": "Supervisor",
   "sar_author_admin": "Admin",
   "dsp_note_required": "A resolution note is required.",
-  "sar_rate_lbl": "Reviewer rating:",
   "sar_rate_title": "Your rating (0–4) — becomes the official level on approval",
   "ac_sa_review": "Self-assessments to review",
   "ac_pip_activate": "Improvement plans (PIP) to activate",
@@ -1282,5 +1280,16 @@
   "nb_mv_err_justification_copy": "This reason is word for word the previous one for this person: explain this change.",
   "legacy_write_retired": "This former 9-box write is retired. Place or move a person, with a justification, in the 9-box: /talent/nine-box.",
   "ct_remove_reason_prompt": "Why is this successor removed from the bench? The entry is kept with your reason and the removal is audited.",
-  "lc_err_jm_requested": "Request sent: an administrator will decide."
+  "lc_err_jm_requested": "Request sent: an administrator will decide.",
+  "nb_ago_today": "today",
+  "nb_ago_days_one": "{n} day ago",
+  "nb_ago_days_other": "{n} days ago",
+  "nb_ago_weeks_one": "{n} week ago",
+  "nb_ago_weeks_other": "{n} weeks ago",
+  "nb_ago_months_one": "{n} month ago",
+  "nb_ago_months_other": "{n} months ago",
+  "sar_rate_my": "My rating",
+  "sar_done_section": "Already handled ({n})",
+  "sar_filters_label": "Filters",
+  "sar_thread_input_label": "Your comment"
 }

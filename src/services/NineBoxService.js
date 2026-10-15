@@ -19,6 +19,7 @@ const LogService = require('./LogService');
 const RBACService = require('./RBACService');
 const GovernanceService = require('./GovernanceService');
 const DevelopmentTriggerService = require('./DevelopmentTriggerService');
+const { agoBucket, daysBetween } = require('../utils/agoBucket');
 
 const BAND = { low: 0, medium: 1, high: 2 };
 // Labels + colour categories keyed by `${potential}-${performance}` (see the
@@ -2077,6 +2078,9 @@ class NineBoxService {
                 // The date of the last real DECISION, not of the last edit.
                 lastAssessedAt: approvedAt,
                 monthsSince: monthsSince == null ? null : Math.round(monthsSince * 10) / 10,
+                // « il y a 3 semaines », never « il y a 0,8 mois »: the unit a
+                // person would use (utils/agoBucket), labelled by the console.
+                sinceAgo: approvedAt ? agoBucket(daysBetween(approvedAt, now)) : null,
                 dueForReassessment: due,
                 cadenceMonths: cadence,
             };

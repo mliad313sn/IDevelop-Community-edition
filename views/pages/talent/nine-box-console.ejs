@@ -114,7 +114,16 @@ const NB_T = {
   noEmployees: <%- JSON.stringify(__('talentx:nb_no_employees')) %>,
   dueTitle: <%- JSON.stringify(__('talentx:nb_due_title')) %>,
   due: <%- JSON.stringify(__('talentx:nb_due')) %>,
-  moAgo: <%- JSON.stringify(__('talentx:nb_mo_ago')) %>,
+  // « il y a 3 semaines », never « il y a 0,8 mois » (utils/agoBucket picks the unit)
+  ago: {
+    today: <%- JSON.stringify(__('talentx:nb_ago_today')) %>,
+    days_one: <%- JSON.stringify(__('talentx:nb_ago_days_one')) %>,
+    days_other: <%- JSON.stringify(__('talentx:nb_ago_days_other')) %>,
+    weeks_one: <%- JSON.stringify(__('talentx:nb_ago_weeks_one')) %>,
+    weeks_other: <%- JSON.stringify(__('talentx:nb_ago_weeks_other')) %>,
+    months_one: <%- JSON.stringify(__('talentx:nb_ago_months_one')) %>,
+    months_other: <%- JSON.stringify(__('talentx:nb_ago_months_other')) %>
+  },
   notAssessed: <%- JSON.stringify(__('talentx:nb_not_assessed')) %>,
   open: <%- JSON.stringify(__('talentx:open')) %>,
   reassess: <%- JSON.stringify(__('talentx:nb_reassess')) %>,
@@ -243,6 +252,12 @@ const NB = {
     });
     const body = document.getElementById('nb-roster-body');
     if(!rows.length){ body.innerHTML='<tr><td style="padding:1rem;color:#94a3b8" colspan="5">'+NB_T.noEmployees+'</td></tr>'; document.getElementById('nb-roster-count').textContent=''; return; }
+    // One plural rule per language: French takes the singular below 2.
+    const agoText = (a) => {
+      if (a.unit === 'today') return NB_T.ago.today;
+      const one = NB_LANG === 'fr' ? a.n < 2 : a.n === 1;
+      return String(NB_T.ago[a.unit + (one ? '_one' : '_other')] || '').replace('{n}', a.n);
+    };
     body.innerHTML = rows.map(e=>{
       const p = e.placement;
       // The name is carried on a data-name attribute (HTML-escaped) and read
@@ -254,7 +269,7 @@ const NB = {
       const nmAttr = esc(e.firstName + ' ' + e.lastName);
       const dueBadge = e.dueForReassessment
         ? '<span class="nb-due" title="'+NB_T.dueTitle.replace('{n}', e.cadenceMonths)+'">'+NB_T.due+'</span>'
-        : (e.monthsSince!=null?'<span style="color:#94a3b8;font-size:.75rem">'+NB_T.moAgo.replace('{n}', e.monthsSince)+'</span>':'');
+        : (e.sinceAgo?'<span class="nb-ago text-muted">'+esc(agoText(e.sinceAgo))+'</span>':'');
       // A DRAFT IS A PROPOSAL, NOT A POSITION.
       // The badge used to show whichever row was touched last — so an unapproved
       // draft was rendered exactly like an approved placement, with no marker, while
@@ -684,6 +699,7 @@ NB.loadRoster();
 .nb-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .nb-table-scroll > table{min-width:640px}
 .nb-due{background:#fee2e2;color:#b91c1c;border-radius:999px;padding:2px 9px;font-size:.75rem;font-weight:800}
+.nb-ago{font-size:.75rem}
 /* A proposal must never look like a decision. Solid = approved position;
    dashed + ◌ = a draft / under-review proposal. Colour alone is not the signal —
    the shape of the border and the ◌ glyph carry it too. */

@@ -510,5 +510,6 @@
   "next_safety_expiring": "A requirement of your safety clearance expires soon.",
   "next_safety_expiring_cta": "See my safety clearance",
   "next_results": "Nothing waits for you: see where you stand.",
-  "next_results_cta": "See my results"
+  "next_results_cta": "See my results",
+  "sa_tools_summary": "Filters and tools"
 }

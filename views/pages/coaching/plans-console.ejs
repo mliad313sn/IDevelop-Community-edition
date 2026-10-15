@@ -3,76 +3,120 @@
   <p class="text-muted"><%= __('coaching:cm_intro') %></p>
 </div>
 
-<div class="nb-tabs" style="display:flex;gap:.5rem;margin-bottom:1rem">
-  <button class="btn btn-primary" id="cp-tab-roster" data-on-click="CP.show" data-args='["roster"]'><%= __('coaching:tab_my_people') %></button>
-  <button class="btn btn-secondary" id="cp-tab-plans" data-on-click="CP.show" data-args='["plans"]'><%= __('coaching:tab_plans') %></button>
+<%# The console on IDevelop's tokens: no inline style; each table sits in a
+    .table-wrapper and becomes labelled cards on a phone (the card's
+    overflow:hidden clipped it at 390 px); the « Start a plan » dialog is a
+    native <dialog> (Escape, focus kept inside, focus back to the opener), every
+    label points at its control and the required marker is drawn by the design
+    system; validating a plan asks first, with a verb on the button. %>
+<div class="cp-tabs" role="tablist" aria-label="<%= __('coaching:cm_title') %>">
+  <button type="button" class="btn btn-primary" id="cp-tab-roster" role="tab" aria-selected="true" aria-controls="cp-roster-panel" data-on-click="CP.show" data-args='["roster"]'><%= __('coaching:tab_my_people') %></button>
+  <button type="button" class="btn btn-secondary" id="cp-tab-plans" role="tab" aria-selected="false" aria-controls="cp-plans-panel" data-on-click="CP.show" data-args='["plans"]'><%= __('coaching:tab_plans') %></button>
 </div>
 
 <!-- ROSTER -->
-<div id="cp-roster-panel" class="card" style="padding:0;overflow:hidden">
-  <div style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem;border-bottom:1px solid #eee">
-    <strong><%= __('coaching:roster_heading') %></strong>
-    <input id="cp-search" class="form-control" placeholder="<%= __('coaching:search_placeholder') %>" style="max-width:280px" data-on-input="CP.renderRoster" data-args='[]'>
+<section id="cp-roster-panel" class="card cp-panel" role="tabpanel" aria-labelledby="cp-tab-roster">
+  <div class="cp-panel-head">
+    <h2 class="cp-panel-title"><%= __('coaching:roster_heading') %></h2>
+    <label class="sr-only" for="cp-search"><%= __('coaching:filter_label') %></label>
+    <input id="cp-search" type="search" class="form-control cp-search" placeholder="<%= __('coaching:search_placeholder') %>" data-on-input="CP.renderRoster" data-args='[]'>
   </div>
-  <table style="width:100%;border-collapse:collapse;font-size:.92rem">
-    <thead><tr style="text-align:left;background:#f8fafc;color:#64748b;font-size:.78rem;">
-      <th style="padding:.5rem .75rem"><%= __('common:employee') %></th><th style="padding:.5rem"><%= __('coaching:th_role') %></th>
-      <th style="padding:.5rem"><%= __('coaching:th_service_site') %></th><th style="padding:.5rem"><%= __('coaching:th_active_plans') %></th>
-      <th style="padding:.5rem;text-align:right"><%= __('coaching:th_action') %></th>
-    </tr></thead>
-    <tbody id="cp-roster-body"><tr><td style="padding:1rem"><%= __('coaching:loading') %></td></tr></tbody>
-  </table>
-  <div style="padding:.5rem .75rem;color:#94a3b8;font-size:.8rem" id="cp-roster-count"></div>
-</div>
-
-<!-- PLANS -->
-<div id="cp-plans-panel" style="display:none">
-  <div class="card" id="cp-monitor" style="padding:1rem;margin-bottom:1rem"><strong><%= __('coaching:monitor') %></strong> <span id="cp-monitor-body"><%= __('coaching:loading') %></span></div>
-  <div class="card" style="padding:0">
-    <table class="table" id="cp-table">
-      <thead><tr><th><%= __('common:employee') %></th><th><%= __('coaching:kind') %></th><th><%= __('common:title') %></th><th><%= __('coaching:th_context') %></th><th><%= __('coaching:th_target') %></th><th><%= __('coaching:th_state') %></th><th><%= __('coaching:th_progress') %></th><th><%= __('common:actions') %></th></tr></thead>
-      <tbody><tr><td colspan="8"><%= __('coaching:loading') %></td></tr></tbody>
+  <div class="table-wrapper">
+    <table class="table table-cards" id="cp-roster">
+      <thead><tr>
+        <th scope="col"><%= __('common:employee') %></th>
+        <th scope="col"><%= __('coaching:th_role') %></th>
+        <th scope="col"><%= __('coaching:th_service_site') %></th>
+        <th scope="col"><%= __('coaching:th_active_plans') %></th>
+        <th scope="col" class="col-actions"><%= __('coaching:th_action') %></th>
+      </tr></thead>
+      <tbody id="cp-roster-body"><tr><td colspan="5"><%- include('../../partials/skeleton', { rows: 3, cols: 4, table: true }) %></td></tr></tbody>
     </table>
   </div>
-</div>
+  <p class="cp-count text-muted" id="cp-roster-count" aria-live="polite"></p>
+</section>
 
-<!-- CREATE PLAN MODAL -->
-<div id="cp-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:1000;align-items:center;justify-content:center">
-  <div class="card" style="width:460px;max-width:92vw;padding:1.25rem">
-    <h3 style="margin-top:0"><%= __('coaching:modal_title_prefix') %> <span id="cp-modal-name"></span></h3>
+<!-- PLANS -->
+<section id="cp-plans-panel" role="tabpanel" aria-labelledby="cp-tab-plans" hidden>
+  <div class="card cp-panel cp-monitor" id="cp-monitor"><h2 class="cp-panel-title"><%= __('coaching:monitor') %></h2> <span id="cp-monitor-body"><%- include('../../partials/skeleton', { rows: 1, compact: true }) %></span></div>
+  <div class="card cp-panel">
+    <div class="table-wrapper">
+      <table class="table table-cards" id="cp-table">
+        <thead><tr>
+          <th scope="col"><%= __('common:employee') %></th>
+          <th scope="col"><%= __('coaching:kind') %></th>
+          <th scope="col"><%= __('common:title') %></th>
+          <th scope="col"><%= __('coaching:th_context') %></th>
+          <th scope="col"><%= __('coaching:th_target') %></th>
+          <th scope="col"><%= __('coaching:th_state') %></th>
+          <th scope="col"><%= __('coaching:th_progress') %></th>
+          <th scope="col" class="col-actions"><%= __('common:actions') %></th>
+        </tr></thead>
+        <tbody><tr><td colspan="8"><%- include('../../partials/skeleton', { rows: 3, cols: 5, table: true }) %></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- CREATE PLAN DIALOG -->
+<dialog id="cp-modal" class="cp-dialog" aria-labelledby="cp-modal-title">
+  <form method="dialog" class="cp-dialog-body" id="cp-form" novalidate>
+    <div class="cp-dialog-head">
+      <h2 id="cp-modal-title"><%= __('coaching:modal_title_prefix') %> <span id="cp-modal-name"></span></h2>
+      <button type="button" class="btn btn-secondary cp-dialog-close" data-on-click="CP.closeModal" data-args='[]' aria-label="<%= __('coaching:modal_close') %>"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+    </div>
     <input type="hidden" id="cp-emp">
-    <div style="margin:.5rem 0"><label><%= __('coaching:type') %></label>
-      <select id="cp-kind" class="form-control">
+    <%- include('../../partials/form-legend') %>
+    <div class="form-field">
+      <label class="form-field-label" for="cp-kind"><%= __('coaching:type') %></label>
+      <select id="cp-kind" class="form-control" aria-describedby="cp-kind-hint">
         <option value="coaching"><%= __('coaching:kind_coaching') %></option>
         <option value="mentoring"><%= __('coaching:kind_mentoring') %></option>
       </select>
-      <div class="cp-fieldhint"><%= __('coaching:kind_hint') %></div>
+      <p class="form-field-hint" id="cp-kind-hint"><%= __('coaching:kind_hint') %></p>
     </div>
-    <div style="margin:.5rem 0"><label><%= __('coaching:context_label') %> * <small style="color:#94a3b8"><%= __('coaching:context_help_small') %></small></label>
-      <select id="cp-context" class="form-control"><option value=""><%= __('coaching:context_loading') %></option></select>
-      <div id="cp-context-hint" class="cp-fieldhint"><%= __('coaching:context_hint') %></div></div>
-    <div id="cp-error" class="cp-error" hidden></div>
-    <div style="margin:.5rem 0"><label><%= __('coaching:title_label') %> *</label><input id="cp-title" class="form-control" placeholder="<%= __('coaching:title_ph') %>"></div>
-    <div style="margin:.5rem 0"><label><%= __('coaching:objective_label') %></label><input id="cp-obj" class="form-control" placeholder="<%= __('coaching:objective_ph') %>"></div>
-    <div style="margin:.5rem 0"><label><%= __('coaching:outcome_label') %></label><input id="cp-out" class="form-control" placeholder="<%= __('coaching:outcome_ph') %>"></div>
-    <div style="margin:.5rem 0"><label><%= __('coaching:target_date_label') %></label><input id="cp-target" class="form-control" type="date"></div>
-    <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.75rem">
-      <button class="btn btn-secondary" data-on-click="CP.closeModal" data-args='[]'><%= __('common:cancel') %></button>
-      <button class="btn btn-primary" data-on-click="CP.create" data-args='[]'><%= __('coaching:create_plan') %></button>
+    <div class="form-field">
+      <label class="form-field-label is-required" for="cp-context"><%= __('coaching:context_label') %></label>
+      <select id="cp-context" class="form-control" required aria-describedby="cp-context-hint cp-error"><option value=""><%= __('coaching:context_loading') %></option></select>
+      <p id="cp-context-hint" class="form-field-hint"><%= __('coaching:context_help_small') %> <%= __('coaching:context_hint') %></p>
     </div>
-  </div>
-</div>
+    <p id="cp-error" class="form-field-error" role="alert" hidden></p>
+    <div class="form-field"><label class="form-field-label is-required" for="cp-title"><%= __('coaching:title_label') %></label><input id="cp-title" class="form-control" required maxlength="200" placeholder="<%= __('coaching:title_ph') %>" aria-describedby="cp-error"></div>
+    <div class="form-field"><label class="form-field-label" for="cp-obj"><%= __('coaching:objective_label') %></label><input id="cp-obj" class="form-control" placeholder="<%= __('coaching:objective_ph') %>"></div>
+    <div class="form-field"><label class="form-field-label" for="cp-out"><%= __('coaching:outcome_label') %></label><input id="cp-out" class="form-control" placeholder="<%= __('coaching:outcome_ph') %>"></div>
+    <div class="form-field"><label class="form-field-label" for="cp-target"><%= __('coaching:target_date_label') %></label><input id="cp-target" class="form-control" type="date"></div>
+    <div class="cp-dialog-foot">
+      <button type="button" class="btn btn-secondary" data-on-click="CP.closeModal" data-args='[]'><%= __('coaching:cancel_dialog') %></button>
+      <button type="button" class="btn btn-primary" data-on-click="CP.create" data-args='[]'><%= __('coaching:create_plan') %></button>
+    </div>
+  </form>
+</dialog>
 
-<div id="cp-toasts" class="cp-toast-container" aria-live="assertive"></div>
-
-<style>
-.cp-fieldhint{color:#94a3b8;font-size:.78rem;margin-top:4px}
-.cp-error{margin:.25rem 0 .5rem;padding:9px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#b91c1c;font-size:.85rem}
-.cp-invalid{border:2px solid #ef4444 !important;outline:none;box-shadow:0 0 0 3px rgba(239,68,68,.15)}
-.cp-toast-container{position:fixed;top:18px;right:18px;z-index:2000;display:flex;flex-direction:column;gap:10px}
-.cp-toast{min-width:240px;max-width:380px;padding:12px 16px;border-radius:10px;color:#fff;font-size:.9rem;box-shadow:0 8px 24px rgba(2,32,71,.18);opacity:0;transform:translateY(-8px);transition:opacity .25s,transform .25s}
-.cp-toast.show{opacity:1;transform:translateY(0)}
-.cp-toast-success{background:#15803d}.cp-toast-error{background:#b91c1c}.cp-toast-info{background:#1d4ed8}
+<style nonce="<%= cspNonce %>">
+.cp-tabs{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-4)}
+.cp-tabs .btn{min-height:44px}
+.cp-panel{padding:0}
+.cp-panel-head{display:flex;flex-wrap:wrap;gap:var(--space-3);justify-content:space-between;align-items:center;padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border)}
+.cp-panel-title{margin:0;font-size:1rem}
+.cp-search{max-width:280px;min-height:44px}
+.cp-count{margin:0;padding:var(--space-2) var(--space-4);font-size:.8rem}
+.cp-monitor{padding:var(--space-4);margin-bottom:var(--space-4);display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
+.cp-monitor .cp-panel-title{margin-right:var(--space-2)}
+.cp-sub{display:block;color:var(--text-muted);font-size:.78rem}
+.cp-empty{padding:var(--space-4)}
+#cp-roster .col-actions .btn,#cp-table .col-actions .btn{min-height:44px}
+.cp-dialog{border:1px solid var(--border);border-radius:var(--radius-lg);padding:0;width:min(480px,calc(100vw - 2 * var(--space-4)));max-height:calc(100vh - 2 * var(--space-4));background:var(--bg-card);color:var(--text-primary);box-shadow:var(--shadow-lg)}
+.cp-dialog::backdrop{background:rgba(0,0,0,.55)}
+.cp-dialog-body{padding:var(--space-5)}
+.cp-dialog-head{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--space-3);margin-bottom:var(--space-3)}
+.cp-dialog-head h2{margin:0;font-size:1.1rem}
+.cp-dialog-close{min-width:44px;min-height:44px;justify-content:center}
+.cp-dialog-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-4)}
+.cp-dialog-foot .btn{min-height:44px}
+@media (max-width:767.98px){
+  .cp-search{max-width:none;width:100%}
+  .cp-dialog-foot .btn{flex:1 1 auto;justify-content:center}
+}
 </style>
 
 <%# UNE SEULE discipline de reseau pour toute l application :
@@ -119,6 +163,8 @@ const CP_T = {
   noPlans: <%- JSON.stringify(__('coaching:no_plans')) %>,
   promptSessionNote: <%- JSON.stringify(__('coaching:prompt_session_note')) %>,
   btnNote: <%- JSON.stringify(__('coaching:btn_note')) %>,
+  confirmValidate: <%- include('../../partials/json-script', { v: { title: __('coaching:confirm_validate_title'), body: __('coaching:confirm_validate_body'), yes: __('coaching:confirm_validate_yes'), no: __('common:cancel') } }) %>,
+  th: <%- include('../../partials/json-script', { v: { employee: __('common:employee'), role: __('coaching:th_role'), serviceSite: __('coaching:th_service_site'), activePlans: __('coaching:th_active_plans'), kind: __('coaching:kind'), title: __('common:title'), context: __('coaching:th_context'), target: __('coaching:th_target'), state: __('coaching:th_state'), progress: __('coaching:th_progress'), actions: __('common:actions') } }) %>,
   btnValidate: <%- JSON.stringify(__('coaching:btn_validate')) %>,
   btnCancel: <%- JSON.stringify(__('coaching:btn_cancel')) %>,
   monitorOverdue: <%- JSON.stringify(__('coaching:monitor_overdue')) %>,
@@ -139,16 +185,19 @@ const CP = {
   // Mesure du 16/09/2026 : create enchainait sur un toast VERT « Plan de coaching cree » pendant que coaching_plans restait a 0 avant / 0 apres.
   async api(p,m,b){ try { return await SAConsoleNet.call(p,m,b); } catch(e){ this.toast(e.message,'error'); throw e; } },
 
-  toast(msg,type){const c=document.getElementById('cp-toasts');const t=document.createElement('div');t.className='cp-toast cp-toast-'+(type||'info');t.textContent=msg;c.appendChild(t);requestAnimationFrame(()=>t.classList.add('show'));setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300);},type==='error'?5000:3000);},
-  fieldError(msg,focusId){const e=document.getElementById('cp-error');e.textContent=msg;e.hidden=false;if(focusId){const f=document.getElementById(focusId);if(f){f.classList.add('cp-invalid');f.focus();f.addEventListener('change',()=>f.classList.remove('cp-invalid'),{once:true});}}},
-  clearError(){const e=document.getElementById('cp-error');e.hidden=true;e.textContent='';['cp-context','cp-title'].forEach(id=>{const f=document.getElementById(id);if(f)f.classList.remove('cp-invalid');});},
+  // The ONE toast of the product (public/js/ui-feedback.js).
+  toast(msg,type){ if (typeof window.toast === 'function') window.toast(msg, type || 'info'); },
+  fieldError(msg,focusId){const e=document.getElementById('cp-error');e.textContent=msg;e.hidden=false;if(focusId){const f=document.getElementById(focusId);if(f){f.setAttribute('aria-invalid','true');f.focus();f.addEventListener('change',()=>f.removeAttribute('aria-invalid'),{once:true});}}},
+  clearError(){const e=document.getElementById('cp-error');e.hidden=true;e.textContent='';['cp-context','cp-title'].forEach(id=>{const f=document.getElementById(id);if(f)f.removeAttribute('aria-invalid');});},
 
   show(which){
-    document.getElementById('cp-roster-panel').style.display = which==='roster'?'':'none';
-    document.getElementById('cp-plans-panel').style.display  = which==='plans'?'':'none';
-    document.getElementById('cp-tab-roster').className='btn '+(which==='roster'?'btn-primary':'btn-secondary');
-    document.getElementById('cp-tab-plans').className ='btn '+(which==='plans'?'btn-primary':'btn-secondary');
-    if(which==='plans') this.load();
+    const roster = which==='roster';
+    document.getElementById('cp-roster-panel').hidden = !roster;
+    document.getElementById('cp-plans-panel').hidden  = roster;
+    const tr=document.getElementById('cp-tab-roster'), tp=document.getElementById('cp-tab-plans');
+    tr.className='btn '+(roster?'btn-primary':'btn-secondary'); tr.setAttribute('aria-selected', roster?'true':'false');
+    tp.className='btn '+(roster?'btn-secondary':'btn-primary'); tp.setAttribute('aria-selected', roster?'false':'true');
+    if(!roster) this.load();
   },
 
   // roster
@@ -157,13 +206,14 @@ const CP = {
     const q=(document.getElementById('cp-search').value||'').toLowerCase();
     const rows=this.roster.filter(e=>!q||((e.firstName+' '+e.lastName+' '+(e.roleName||'')+' '+(e.serviceName||'')+' '+(e.employeeNumber||'')).toLowerCase().includes(q)));
     const body=document.getElementById('cp-roster-body');
-    if(!rows.length){ body.innerHTML='<tr><td style="padding:1rem;color:#94a3b8" colspan="5">'+esc(CP_T.noEmployees)+'</td></tr>'; document.getElementById('cp-roster-count').textContent=''; return; }
-    body.innerHTML=rows.map(e=>'<tr style="border-top:1px solid #f1f5f9">'+
-      '<td style="padding:.5rem .75rem"><strong>'+esc(e.firstName+" "+e.lastName)+'</strong><div style="color:#94a3b8;font-size:.78rem">'+esc(e.employeeNumber||'')+'</div></td>'+
-      '<td style="padding:.5rem">'+esc(e.roleName||'—')+'</td>'+
-      '<td style="padding:.5rem;color:#64748b">'+esc((e.serviceName||'—')+' · '+(e.siteName||'—'))+'</td>'+
-      '<td style="padding:.5rem">'+(e.planCount?('<span class="badge" style="background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:999px;font-size:.78rem">'+e.planCount+' '+esc(CP_T.activeSuffix)+'</span>'):'<span style="color:var(--text-muted)">'+esc(CP_T.none)+'</span>')+'</td>'+
-      '<td style="padding:.5rem;text-align:right;white-space:nowrap">'+
+    const T=CP_T.th;
+    if(!rows.length){ body.innerHTML='<tr><td class="text-muted cp-empty" colspan="5">'+esc(CP_T.noEmployees)+'</td></tr>'; document.getElementById('cp-roster-count').textContent=''; return; }
+    body.innerHTML=rows.map(e=>'<tr>'+
+      '<td data-label="'+esc(T.employee)+'"><strong>'+esc(e.firstName+" "+e.lastName)+'</strong><span class="cp-sub">'+esc(e.employeeNumber||'')+'</span></td>'+
+      '<td data-label="'+esc(T.role)+'">'+esc(e.roleName||'—')+'</td>'+
+      '<td data-label="'+esc(T.serviceSite)+'" class="text-muted">'+esc((e.serviceName||'—')+' · '+(e.siteName||'—'))+'</td>'+
+      '<td data-label="'+esc(T.activePlans)+'">'+(e.planCount?cpBadge('info', CP_T.activeSuffix, e.planCount):'<span class="text-muted">'+esc(CP_T.none)+'</span>')+'</td>'+
+      '<td class="col-actions" data-label="'+esc(T.actions)+'">'+
         '<button class="btn btn-sm btn-primary" data-emp="'+esc(e.employeeId)+'" data-name="'+esc(e.firstName+" "+e.lastName)+'"'+cpOn('click','CP.startBtn',['$el'])+'><i class="fas fa-people-arrows" aria-hidden="true"></i> '+esc(CP_T.startPlan)+'</button>'+
       '</td></tr>').join('');
     document.getElementById('cp-roster-count').textContent=CP_T.rosterCount.replace('{{shown}}',rows.length).replace('{{total}}',this.roster.length);
@@ -176,9 +226,10 @@ const CP = {
   // compiled: a first name  x');alert(1);//  ran for every manager opening this
   // page, and O'Brien threw a SyntaxError. Never put a value in a JS string
   // inside an HTML attribute.
-  startBtn(btn){ this.start(Number(btn.dataset.emp),'coaching',btn.dataset.name||''); },
+  startBtn(btn){ this._opener = btn; this.start(Number(btn.dataset.emp),'coaching',btn.dataset.name||''); },
 
-  // modal
+  // dialog: a native <dialog>; showModal() keeps the focus inside, Escape
+  // closes it (the `cancel` event), the focus goes back to the opener.
   start(empId,kind,name){
     document.getElementById('cp-emp').value=empId;
     document.getElementById('cp-kind').value=kind||'coaching';
@@ -186,7 +237,9 @@ const CP = {
     ['cp-title','cp-obj','cp-out','cp-target'].forEach(id=>document.getElementById(id).value='');
     this.clearError();
     this.loadContext(empId);
-    document.getElementById('cp-modal').style.display='flex';
+    const dlg=document.getElementById('cp-modal');
+    if(typeof dlg.showModal==='function'){ if(!dlg.open) dlg.showModal(); } else { dlg.setAttribute('open',''); }
+    const first=document.getElementById('cp-kind'); if(first) first.focus();
   },
   async loadContext(empId){
     const sel=document.getElementById('cp-context');
@@ -202,13 +255,13 @@ const CP = {
       sel.innerHTML=html;
     }catch(e){ sel.innerHTML='<option value="">'+esc(CP_T.ctxFailed)+'</option>'; }
   },
-  closeModal(){ this.clearError(); document.getElementById('cp-modal').style.display='none'; },
+  closeModal(){ this.clearError(); const dlg=document.getElementById('cp-modal'); if(dlg.open && typeof dlg.close==='function') dlg.close(); else dlg.removeAttribute('open'); },
   async create(){
     this.clearError();
     const ctxRaw=document.getElementById('cp-context').value;
     if(!ctxRaw){this.fieldError(CP_T.errPickContext,'cp-context');return;}
     const body={employeeId:Number(document.getElementById('cp-emp').value),kind:document.getElementById('cp-kind').value,title:document.getElementById('cp-title').value,objective:document.getElementById('cp-obj').value,expectedOutcome:document.getElementById('cp-out').value,targetDate:document.getElementById('cp-target').value||null};
-    if(!body.title){this.fieldError(CP_T.errTitleRequired,'cp-title');return;}
+    if(!body.title.trim()){this.fieldError(CP_T.errTitleRequired,'cp-title');return;}
     const sep=ctxRaw.indexOf(':');const contextType=ctxRaw.slice(0,sep);const ctxId=Number(ctxRaw.slice(sep+1));
     body.contextType=contextType;
     if(contextType==='idp')body.idpId=ctxId; else if(contextType==='pip')body.pipId=ctxId; else if(contextType==='skill_gap')body.skillId=ctxId;
@@ -227,7 +280,15 @@ const CP = {
   async act(id,action,kind){
     const ask=window.promptDialog;
     if(action==='session'){const n=await ask(CP_T.promptSessionNote);if(n!==null&&n.trim())await this.api('/api/coaching/'+id+'/session','POST',{note:n});}
-    if(action==='validate')await this.api('/api/coaching/'+id+'/validate','POST',{});
+    if(action==='validate'){
+      // A validation closes the plan: it is confirmed first, with a verb on the button.
+      const C=CP_T.confirmValidate;
+      const ok=typeof window.confirmDialog==='function'
+        ? await window.confirmDialog({ title:C.title, body:C.body, confirmLabel:C.yes, cancelLabel:C.no })
+        : false;
+      if(!ok) return;
+      await this.api('/api/coaching/'+id+'/validate','POST',{});
+    }
     if(action==='cancel'){
       // Cancellation is a governed action (two-person rule): request it, a local
       // admin approves it in the Cancellations queue. Reason is mandatory.
@@ -239,27 +300,41 @@ const CP = {
       // sur une regle des DEUX PERSONNES ou cancellation_requests restait a 0.
       // La preuve, ici, c est le `ok:true` du controleur.
       if(!SAConsoleNet.confirmed(r,'ok')){ this.toast(SAConsoleNet.t('err_format'),'error'); return; }
-      (window.toast||this.toast.bind(this))(CP_T.cancelRequested,'success');
+      this.toast(CP_T.cancelRequested,'success');
     }
     await this.load(); await this.loadRoster();
   },
-  badge(s){const c={draft:'#888',active:'#1b56b8',completed:'#0f8a3c',cancelled:'#b00020'}[s]||'#555';return '<span style="padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:'+c+'">'+esc(this.lbl(CP_T.st,s))+'</span>';},
+  // The shared status badge: an icon and a text, never colour alone.
+  badge(s,n){ return cpBadge(s, this.lbl(CP_T.st,s), n==null?null:n); },
   async load(){
     const [q,m]=await Promise.all([this.api('/api/coaching/queue'),this.api('/api/coaching/monitor')]);
     const tb=document.querySelector('#cp-table tbody');
-    tb.innerHTML=q.items.length?q.items.map(p=>'<tr><td>'+esc((p.firstName||'')+' '+(p.lastName||''))+'</td><td>'+esc(this.lbl(CP_T.kind,p.kind))+'</td><td>'+esc(p.title)+'</td><td>'+(p.contextLabel?'<span style="background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:999px;font-size:.78rem">'+esc(p.contextLabel)+'</span>':'<span style="color:var(--text-muted)">—</span>')+'</td><td>'+(p.targetDate?String(p.targetDate).slice(0,10):'-')+'</td><td>'+this.badge(p.state)+'</td><td>'+p.progress+'%</td><td>'+
+    const T=CP_T.th;
+    tb.innerHTML=q.items.length?q.items.map(p=>'<tr><td data-label="'+esc(T.employee)+'">'+esc((p.firstName||'')+' '+(p.lastName||''))+'</td><td data-label="'+esc(T.kind)+'">'+esc(this.lbl(CP_T.kind,p.kind))+'</td><td data-label="'+esc(T.title)+'">'+esc(p.title)+'</td><td data-label="'+esc(T.context)+'">'+(p.contextLabel?cpBadge('info', p.contextLabel, null, {text:true}):'<span class="text-muted">—</span>')+'</td><td data-label="'+esc(T.target)+'">'+(p.targetDate?esc(String(p.targetDate).slice(0,10)):'—')+'</td><td data-label="'+esc(T.state)+'">'+this.badge(p.state)+'</td><td data-label="'+esc(T.progress)+'">'+Number(p.progress)+' %</td><td class="col-actions" data-label="'+esc(T.actions)+'">'+
       '<button class="btn btn-sm btn-secondary"'+cpOn('click','CP.act',[p.id,'session'])+'>'+esc(CP_T.btnNote)+'</button> '+
       (p.state==='active'?'<button class="btn btn-sm btn-success"'+cpOn('click','CP.act',[p.id,'validate'])+'>'+esc(CP_T.btnValidate)+'</button> <button class="btn btn-sm btn-danger" data-kind="'+((p.kind==='mentoring'||p.kind==='mentor')?'mentoring':'coaching')+'"'+cpOn('click','CP.cancelBtn',['$el',Number(p.id)])+'>'+esc(CP_T.btnCancel)+'</button>':'')+
       '</td></tr>').join(''):'<tr><td colspan="8"><em>'+esc(CP_T.noPlans)+'</em></td></tr>';
-    document.getElementById('cp-monitor-body').innerHTML=(m.monitor.byState||[]).map(s=>this.badge(s.state)+' '+s.n).join(' &nbsp; ')+' &nbsp; | '+esc(CP_T.monitorOverdue)+': '+m.monitor.overdue.length;
+    document.getElementById('cp-monitor-body').innerHTML=(m.monitor.byState||[]).map(s=>this.badge(s.state, Number(s.n))).join(' ')+' <span aria-hidden="true">|</span> '+esc(CP_T.monitorOverdue)+': '+Number(m.monitor.overdue.length);
   }
 };
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+// The shared status badge (public/js/status-badge.js, every value escaped); a
+// plain escaped chip if the script did not load.
+function cpBadge(tone,label,n,opts){
+  if(window.StatusBadge && typeof window.StatusBadge.html==='function') return window.StatusBadge.html(tone,label,n,opts);
+  return '<span class="badge">'+esc(label)+(n!=null?' '+esc(n):'')+'</span>';
+}
 // CSP: no inline handlers — built controls are wired by public/js/csp-actions.js.
 function cpOn(type,fn,args){ return ' data-on-'+type+'="'+fn+'" data-args="'+esc(JSON.stringify(args||[]))+'"'; }
 // csp-actions.js resolves handlers on window and calls them with `this` = the
 // element; CP is a top-level const (not on window) and its methods use `this`.
 Object.keys(CP).forEach(function(k){ const d=Object.getOwnPropertyDescriptor(CP,k); if(d && typeof d.value==='function') CP[k]=d.value.bind(CP); });
 window.CP = CP;
+// A click on the backdrop (the dialog element itself, outside its form)
+// closes it; on close the focus goes back to the button that opened it.
+(function(){ const dlg=document.getElementById('cp-modal'); if(!dlg) return;
+  dlg.addEventListener('click', function(ev){ if(ev.target===dlg) CP.closeModal(); });
+  dlg.addEventListener('close', function(){ CP.clearError(); if(CP._opener && typeof CP._opener.focus==='function') CP._opener.focus(); });
+})();
 CP.loadRoster();
 </script>

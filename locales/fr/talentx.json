@@ -134,7 +134,6 @@
   "nb_no_employees": "Aucun collaborateur dans votre périmètre.",
   "nb_due_title": "Réévaluer au moins tous les {n} mois",
   "nb_due": "⏰ À échéance",
-  "nb_mo_ago": "il y a {n} mois",
   "nb_not_assessed": "— non évalué —",
   "nb_reassess": "Réévaluer",
   "nb_count": "{shown} sur {total} collaborateurs",
@@ -622,7 +621,6 @@
   "sar_author_supervisor": "Superviseur",
   "sar_author_admin": "Administrateur",
   "dsp_note_required": "Une note de résolution est obligatoire.",
-  "sar_rate_lbl": "Note resp. :",
   "sar_rate_title": "Votre évaluation (0–4) — devient le niveau officiel à l’approbation",
   "ac_sa_review": "Auto-évaluations à réviser",
   "ac_pip_activate": "Plans d'amélioration (PAP) à activer",
@@ -1282,5 +1280,16 @@
   "nb_mv_err_justification_copy": "Ce motif reprend mot pour mot le précédent pour cette personne : expliquez ce changement-ci.",
   "legacy_write_retired": "Cette ancienne écriture de la 9-box est retirée. Positionnez ou déplacez une personne, avec une justification, dans la 9-box : /talent/nine-box.",
   "ct_remove_reason_prompt": "Pourquoi retirer ce successeur du vivier ? La ligne est conservée avec votre motif et le retrait est journalisé.",
-  "lc_err_jm_requested": "Demande envoyée : un administrateur décidera."
+  "lc_err_jm_requested": "Demande envoyée : un administrateur décidera.",
+  "nb_ago_today": "aujourd’hui",
+  "nb_ago_days_one": "il y a {n} jour",
+  "nb_ago_days_other": "il y a {n} jours",
+  "nb_ago_weeks_one": "il y a {n} semaine",
+  "nb_ago_weeks_other": "il y a {n} semaines",
+  "nb_ago_months_one": "il y a {n} mois",
+  "nb_ago_months_other": "il y a {n} mois",
+  "sar_rate_my": "Ma note",
+  "sar_done_section": "Déjà traitées ({n})",
+  "sar_filters_label": "Filtres",
+  "sar_thread_input_label": "Votre commentaire"
 }

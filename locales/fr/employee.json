@@ -510,5 +510,6 @@
   "next_safety_expiring": "Une exigence de votre aptitude sécurité arrive à échéance.",
   "next_safety_expiring_cta": "Voir mon aptitude sécurité",
   "next_results": "Rien ne vous attend : voyez où vous en êtes.",
-  "next_results_cta": "Voir mes résultats"
+  "next_results_cta": "Voir mes résultats",
+  "sa_tools_summary": "Filtres et outils"
 }
