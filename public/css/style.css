@@ -2053,6 +2053,30 @@ a.sidebar-user:focus-visible {
     color: var(--text-primary);
 }
 
+/* Readiness report scope bar and the KPI definitions page. */
+.dr-scope {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.dr-scope select {
+    width: auto;
+    max-width: 100%;
+}
+
+.kpi-glossary-entry dt {
+    font-weight: 600;
+    margin-top: 0.75rem;
+}
+
+.kpi-glossary-entry dd {
+    margin-left: 0;
+    overflow-wrap: anywhere;
+}
+
 /* ── Error Page ───────────────────────────────────────────────────── */
 .error-page {
     text-align: center;

@@ -73,6 +73,16 @@
           },
           "isReady": {
             "type": "boolean",
+            "nullable": true,
+            "deprecated": true
+          },
+          "readinessState": {
+            "type": "string",
+            "nullable": true,
+            "enum": ["ready", "not_ready", "partial", "not_assessed", "no_requirement"]
+          },
+          "readyForRole": {
+            "type": "boolean",
             "nullable": true
           },
           "totalRequired": {

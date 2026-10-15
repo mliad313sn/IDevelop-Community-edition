@@ -79,6 +79,26 @@ const SkillsRepository = {
  */
 const ACTIVE_POP = ' AND e.is_active = true AND e.erased_at IS NULL';
 
+/**
+ * The K1 four-state status of the given people: the ONE K1 function
+ * (KpiService.k1RoleReady) decides, so the API can never call a person nobody
+ * finished assessing "not ready". The ids are already cleared by the caller;
+ * the KPI population rule (active, not erased) applies again.
+ * @returns {Promise<Map<number, string>>} employeeId -> state code
+ */
+async function k1States(ids) {
+    const out = new Map();
+    if (!ids.length) return out;
+    const KpiService = require('../../services/KpiService');
+    const k1 = await KpiService.k1RoleReady({ system: true, employeeIds: ids });
+    for (const [st, list] of Object.entries(k1.drillByState || {})) {
+        for (const id of list || []) out.set(Number(id), st);
+    }
+    return out;
+}
+/** isReady from a K1 state: true only for ready, false only for not_ready, else null. */
+const readyOf = (state) => (state === 'ready' ? true : state === 'not_ready' ? false : null);
+
 const ReadinessRepository = {
     /**
      * RBAC-scoped list of per-employee role readiness.
@@ -110,7 +130,10 @@ const ReadinessRepository = {
               LIMIT ? OFFSET ?`,
             [...sc.params, clampLimit(limit), clampOffset(offset)]
         );
-        return rows.map(this._mapReadiness);
+        const states = await k1States(rows.map((r) => Number(r.employeeId)));
+        return rows.map((r) =>
+            ReadinessRepository._mapReadiness(r, states.get(Number(r.employeeId)))
+        );
     },
 
     /** Canonical readiness projection — one definition, used by every read below. */
@@ -154,14 +177,15 @@ const ReadinessRepository = {
             [employeeId]
         );
         if (!r) return null;
+        const states = await k1States([Number(employeeId)]);
         return {
-            ...ReadinessRepository._mapReadiness(r),
+            ...ReadinessRepository._mapReadiness(r, states.get(Number(employeeId))),
             criticalTotal: int(r.criticalTotal),
             criticalMet: int(r.criticalMet),
         };
     },
 
-    _mapReadiness(r) {
+    _mapReadiness(r, state) {
         return {
             employeeId: int(r.employeeId),
             employeeName: r.employeeName,
@@ -170,7 +194,18 @@ const ReadinessRepository = {
             roleName: r.roleName,
             // The canonical number. null — never 0 — when nothing was assessed.
             readinessPercent: num(r.readinessPercent),
+            // The legacy flag, unchanged inside /api/v1 (a breaking change
+            // goes to a new version): readiness over every requirement and
+            // every critical skill met. Deprecated: read readinessState.
             isReady: bool(r.isReady),
+            // K1 four-state (ready | not_ready | partial | not_assessed |
+            // no_requirement), the one rule of the reports and of the Power
+            // BI feed v2. A person outside the KPI population (a leaver read
+            // by id) has no state: null.
+            readinessState: state || null,
+            // true only for "ready", false only for "not_ready", null for a
+            // person without a verdict (never "not ready" for the unassessed).
+            readyForRole: readyOf(state),
             totalRequired: int(r.totalRequired),
             skillsMet: int(r.skillsMet),
             // Coverage always travels with the score.

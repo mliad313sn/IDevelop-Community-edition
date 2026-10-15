@@ -2579,7 +2579,7 @@
   "apik_powerbi_intro": "Dans Power BI Desktop, utilisez <strong>Obtenir les données → Flux OData</strong> avec l’une des URL ci-dessous, et ajoutez l’en-tête <code>X-API-Key : &lt;votre clé&gt;</code> (Éditeur avancé / Web.Contents). Chaque flux ne renvoie que les données que le profil de la clé est habilité à voir.",
   "apik_feed_employees": "annuaire des personnes (selon le périmètre)",
   "apik_feed_assessments": "évaluations et écarts de compétences (selon le périmètre)",
-  "apik_feed_readiness": "adéquation au poste par personne (selon le périmètre)",
+  "apik_feed_readiness": "adéquation au poste par personne (selon le périmètre), version 1 : obsolète, conservée une version ; passez à la version 2",
   "apik_feed_organization": "sites / départements / services (selon le périmètre)",
   "mcq_intro": "Règle des quatre yeux : ces actions sensibles ont été demandées par un administrateur et doivent être approuvées par un autre. L’initiateur ne peut jamais approuver sa propre demande.",
   "mcq_all_states": "Tous les états",
@@ -3786,5 +3786,6 @@
   "maint_err_maintenance_reset_pick_cycle": "Choisissez la campagne à réinitialiser.",
   "maint_err_maintenance_reset_nothing": "Rien à réinitialiser : aucune évaluation soumise, revue, approuvée ou rejetée (les brouillons restent tels quels, les évaluations annulées sont ignorées).",
   "maint_err_maintenance_reset_confirm_mismatch": "Le matricule saisi ne correspond pas : rien n’a été réinitialisé.",
-  "mv_kind_assessment_reset": "Auto-évaluation remise à refaire (maintenance)"
+  "mv_kind_assessment_reset": "Auto-évaluation remise à refaire (maintenance)",
+  "apik_feed_readiness_v2": "préparation au poste par personne, en quatre états (prêt, non prêt, partiellement évalué, non évalué) : le même chiffre que les rapports"
 }

@@ -2579,7 +2579,7 @@
   "apik_powerbi_intro": "In Power BI Desktop use <strong>Get Data → OData feed</strong> with one of the URLs below, and add a header <code>X-API-Key: &lt;your key&gt;</code> (Advanced editor / Web.Contents). Each feed returns only the data the key’s profile is cleared to see.",
   "apik_feed_employees": "people directory (scoped)",
   "apik_feed_assessments": "skill assessments + gaps (scoped)",
-  "apik_feed_readiness": "role-readiness per person (scoped)",
+  "apik_feed_readiness": "role readiness per person (scoped), version 1: deprecated, kept for one release; move to version 2",
   "apik_feed_organization": "sites / departments / services (scoped)",
   "mcq_intro": "Two-person rule: these sensitive actions were requested by one administrator and must be approved by another. A maker can never approve their own request.",
   "mcq_all_states": "All states",
@@ -3786,5 +3786,6 @@
   "maint_err_maintenance_reset_pick_cycle": "Pick the campaign to reset.",
   "maint_err_maintenance_reset_nothing": "Nothing to reset: no submitted, reviewed, approved or rejected assessment (drafts stay as they are, cancelled ones are skipped).",
   "maint_err_maintenance_reset_confirm_mismatch": "The employee number typed does not match: nothing was reset.",
-  "mv_kind_assessment_reset": "Self-assessment reset for redo (maintenance)"
+  "mv_kind_assessment_reset": "Self-assessment reset for redo (maintenance)",
+  "apik_feed_readiness_v2": "role readiness per person, four states (ready, not ready, partially assessed, not assessed): the same figure as the reports"
 }

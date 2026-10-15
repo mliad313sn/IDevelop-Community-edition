@@ -54,7 +54,10 @@ jest.mock('../../src/services/LogService', () => ({ log: jest.fn() }));
 const SUPER = { id: 1, userType: 'admin', role: 'superadmin' };
 const lastSql = (fn) => String(fn.mock.calls[fn.mock.calls.length - 1][0]);
 const mockRes = () => {
-    const r = { code: 200 };
+    const r = { code: 200, headers: {} };
+    r.setHeader = (k, v) => {
+        r.headers[k] = v;
+    };
     r.status = (c) => {
         r.code = c;
         return r;
