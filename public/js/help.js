@@ -2853,38 +2853,70 @@ document.addEventListener('DOMContentLoaded', () => {
                 "Rapport de préparation (vue prête à l'emploi)"
             ),
             why: L(
-                '<strong>Process:</strong> The pre-built answer to "who is ready for their role?" — readiness % per person/role against the threshold set in Settings, with the distribution across the population. No configuration needed; for custom columns use the Report Builder.',
-                '<strong>Processus :</strong> la réponse préconstruite à « qui est prêt pour son poste ? » — % de préparation par personne/poste face au seuil défini dans les Paramètres, avec la répartition sur la population. Aucune configuration requise ; pour des colonnes personnalisées, utilisez le Générateur de rapports.'
+                '<strong>Process:</strong> The pre-built answer to "who is ready for their role?". Each person has one of four states: <strong>Ready</strong> (every required skill assessed, readiness at or above the threshold of the Settings, every critical skill met), <strong>Not ready</strong>, <strong>Partially assessed</strong> or <strong>Not assessed</strong>. The rate is Ready ÷ (Ready + Not ready); the two other states are counts beside it, never a failure. The same figure appears in the report builder, the API and the Power BI feed.',
+                "<strong>Processus :</strong> la réponse préconstruite à « qui est prêt pour son poste ? ». Chaque personne a l'un de quatre états : <strong>Prêt</strong> (toutes les compétences requises évaluées, préparation au moins égale au seuil des Paramètres, toutes les compétences critiques atteintes), <strong>Non prêt</strong>, <strong>Partiellement évalué</strong> ou <strong>Non évalué</strong>. Le taux est Prêts ÷ (Prêts + Non prêts) ; les deux autres états sont des effectifs à côté, jamais un échec. Le même chiffre apparaît dans le générateur de rapports, l'API et le flux Power BI."
             ),
             steps: [
                 {
                     text: L(
-                        'Filter to your <strong>site/department</strong>, read the distribution, then the individuals below the bar.',
-                        'Filtrez sur votre <strong>site/département</strong>, lisez la répartition, puis les individus sous la barre.'
+                        'Choose a <strong>site</strong> of your perimeter, read the rate « of N with a verdict · coverage Y % », then the reason given on each row.',
+                        'Choisissez un <strong>site</strong> de votre périmètre, lisez le taux « sur N ayant un verdict · couverture Y % », puis le motif donné sur chaque ligne.'
                     ),
                 },
                 {
                     text: L(
-                        'For each low-readiness person, jump to their profile → <strong>Development</strong> to see the plan (or the absence of one).',
-                        'Pour chaque personne à faible préparation, allez à sa fiche → <strong>Développement</strong> pour voir le plan (ou son absence).'
+                        'For « Partially assessed » and « Not assessed », the action is to finish the assessment, not to train.',
+                        "Pour « Partiellement évalué » et « Non évalué », l'action est de terminer l'évaluation, pas de former."
                     ),
                 },
                 {
                     text: L(
-                        '<strong>Export</strong> for the management review pack.',
-                        '<strong>Exportez</strong> pour le dossier de revue de direction.'
+                        '<strong>Export</strong> (CSV or JSON) for the management review pack.',
+                        '<strong>Exportez</strong> (CSV ou JSON) pour le dossier de revue de direction.'
                     ),
                 },
             ],
             practices: [
                 L(
-                    'Readiness moves after assessment cycles — date your exports so period-over-period comparisons are honest.',
-                    "La préparation bouge après les cycles d'évaluation — datez vos exports pour que les comparaisons d'une période à l'autre soient honnêtes."
+                    'Below 5 people with a verdict the rate is not shown, only the counts: do not compare a small team with a percentage.',
+                    "En dessous de 5 personnes ayant un verdict, le taux n'est pas affiché, seulement les effectifs : ne comparez pas une petite équipe à un pourcentage."
                 ),
             ],
             value: L(
-                'The single number leadership asks for, computed the same way every time.',
-                'Le chiffre unique que réclame la direction, calculé de la même façon à chaque fois.'
+                'The single number leadership asks for, computed the same way everywhere.',
+                'Le chiffre unique que réclame la direction, calculé de la même façon partout.'
+            ),
+        },
+
+        '/kpi/glossary': {
+            title: L('How is it calculated?', 'Comment est-ce calculé ?'),
+            why: L(
+                '<strong>Process:</strong> The definition of every indicator: what it counts, what it divides by, who is included or left out, its thresholds and who owns it. One definition is used by the reports, the report builder, the API, Power BI and the daily history. Indicators of a module switched off for your organisation are not listed.',
+                "<strong>Processus :</strong> la définition de chaque indicateur : ce qu'il compte, par quoi il divise, qui est inclus ou exclu, ses seuils et son responsable. Une seule définition sert aux rapports, au générateur de rapports, à l'API, à Power BI et à l'historique quotidien. Les indicateurs d'un module désactivé pour votre organisation ne sont pas listés."
+            ),
+            steps: [
+                {
+                    text: L(
+                        'Open the indicator from the list at the top; each one has its own anchor, so you can share a link to it.',
+                        "Ouvrez l'indicateur depuis la liste en haut ; chacun a sa propre ancre, vous pouvez donc partager un lien vers lui."
+                    ),
+                },
+                {
+                    text: L(
+                        '« See the list » opens the page that lists the people or items behind the figure, when your access allows it.',
+                        '« Voir la liste » ouvre la page qui liste les personnes ou éléments derrière le chiffre, quand vos accès le permettent.'
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'When two figures seem to disagree, compare their definitions here first: a different denominator explains most gaps.',
+                    "Quand deux chiffres semblent se contredire, comparez d'abord leurs définitions ici : un dénominateur différent explique la plupart des écarts."
+                ),
+            ],
+            value: L(
+                'Figures people trust, because everyone can read how they are made.',
+                'Des chiffres auxquels on se fie, parce que chacun peut lire comment ils sont faits.'
             ),
         },
 

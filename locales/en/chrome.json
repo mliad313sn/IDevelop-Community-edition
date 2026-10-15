@@ -788,5 +788,7 @@
   "toast_warn": "Warning",
   "toast_info": "Information",
   "uif_reason_label": "Reason",
-  "tbl_scroll_hint": "Scroll →"
+  "tbl_scroll_hint": "Scroll →",
+  "nav_kpi_glossary": "Indicator definitions",
+  "nav_kpi_glossary_title": "How each indicator is calculated"
 }
