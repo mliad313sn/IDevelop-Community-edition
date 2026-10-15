@@ -139,7 +139,14 @@ function makeValidatedApiCredential(deps = {}) {
     const getSso = deps.sso || (() => require('../config/sso'));
     const getApiKeys = deps.apiKeys || (() => require('../services/ApiKeyService'));
     const getApiAuth = deps.apiAuth || (() => require('./apiAuth'));
+    const lmsWebhook =
+        deps.lmsWebhook || ((req) => require('./lmsWebhookCredential').lmsWebhookCredential(req));
     return async function validatedApiCredential(req) {
+        // The public LMS completion webhook (server-to-server JSON, no Origin):
+        // its per-provider secret, once it VALIDATES, is the machine credential.
+        // null = not the webhook path; otherwise the secret's verdict is final.
+        const lms = await lmsWebhook(req);
+        if (lms !== null) return lms;
         const h = req.headers || {};
         const bearer = String(h.authorization || '').replace(/^Bearer\s+/i, '');
         const apiAuth = getApiAuth();
