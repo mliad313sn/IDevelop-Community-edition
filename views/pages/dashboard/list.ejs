@@ -1,0 +1,57 @@
+<%#
+  The list behind a figure (/dashboard/list): the exact population behind a
+  count of the dashboard, counted by site and by role (by skill for single
+  holders) — never a name. « Open the list with names » goes to the page that
+  holds the names, printed only when the reader's navigation offers it.
+  Refused (403) when the reader may not open the list of that block.
+  Locals: ctx, list (DashboardHomeService.drillList), refused, back, scopeLabel.
+-%><%
+  var _F = numFmt;
+  var L = list || null;
+-%>
+<link rel="stylesheet" href="/css/dashboard.css?v=<%= assetVersion %>">
+<div class="ds-page" id="ds-list">
+    <div class="ds-header page-header">
+        <div>
+            <h1><%= __('dash:d3_list_title') %></h1>
+            <p><%= __('viz:scope.viewing', { scope: scopeLabel }) %></p>
+        </div>
+        <div class="ds-actions"><a class="btn btn-secondary btn-sm" href="<%= back %>"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('dash:d3_list_back') %></a></div>
+    </div>
+
+    <% if (refused) { %>
+        <div class="card hz-callout" role="alert"><p><strong><%= __('dash:d3_scope_refused_title') %></strong> <%= __('dash:d3_scope_refused_text') %></p></div>
+    <% } else if (!L || L.forbidden) { %>
+        <section class="ds-card" id="ds-list-forbidden">
+            <%- include('../../partials/empty-state', { icon: 'fa-lock', title: __('dash:d3_list_forbidden_title'), text: __('dash:d3_list_forbidden_text') }) %>
+        </section>
+    <% } else { %>
+        <section class="ds-card" id="ds-list-count" data-drill-count="<%= L.count %>" data-drill-kind="<%= L.kind %>">
+            <h2><%= L.kpi === 'DOM' ? __('viz:heat.rows_attain') : __('dash:d3_part_' + L.kpi + '_' + L.part) %></h2>
+            <p class="ds-count"><%= __('dash:d3_list_count_' + L.kind, { count: L.count, n: _F.num(L.count, 0) }) %></p>
+            <% if (L.plans !== undefined) { %><p class="ds-note"><%= __('dash:d3_list_plans', { n: _F.num(L.plans, 0) }) %></p><% } %>
+            <p class="ds-sub"><%= __('dash:d3_list_intro') %></p>
+            <% if (L.moduleHref) { %>
+                <p><a class="btn btn-primary btn-sm" href="<%= L.moduleHref %>" id="ds-list-open"><i class="fas fa-list" aria-hidden="true"></i> <%= __('dash:d3_list_open') %></a></p>
+            <% } else { %>
+                <p class="ds-note"><%= __('dash:d3_list_no_page') %></p>
+            <% } %>
+        </section>
+        <% if (!L.count) { %>
+            <p class="ds-note"><%= __('dash:d3_list_empty') %></p>
+        <% } %>
+        <div class="ds-pair">
+            <% [['bySite', 'd3_list_by_site'], ['byRole', 'd3_list_by_role'], ['bySkill', 'd3_list_by_skill']].forEach(function (g) { var rows = L.groups[g[0]]; if (!rows || !rows.length) return; %>
+            <section class="ds-card" data-group="<%= g[0] %>">
+                <h3><%= __('dash:' + g[1]) %></h3>
+                <div class="ds-table-wrap"><table class="ds-table">
+                    <thead><tr><th scope="col"><%= g[0] === 'bySite' ? __('dash:d3_col_site') : (g[0] === 'bySkill' ? __('dash:d3_col_skill') : __('dash:d3_list_by_role')) %></th><th scope="col" class="num"><%= __('dash:d3_col_count') %></th></tr></thead>
+                    <tbody>
+                    <% rows.forEach(function (r) { %><tr data-drill-row><th scope="row"><%= r.none ? (g[0] === 'bySite' ? __('viz:no_site') : __('dash:d3_list_no_role')) : (r.label || '—') %></th><td class="num"><%= _F.num(r.count, 0) %></td></tr><% }); %>
+                    </tbody>
+                </table></div>
+            </section>
+            <% }); %>
+        </div>
+    <% } %>
+</div>

@@ -123,5 +123,26 @@
     "col_subdomain": "Sub-domain",
     "coverage": "Assessed / required",
     "aria": "Radar: demonstrated against required level by sub-domain"
+  },
+  "tile": {
+    "of": "{{a}} of {{b}}",
+    "pts": "pts",
+    "delta_since": "Movement since {{date}}",
+    "delta_better": "better",
+    "delta_worse": "worse",
+    "delta_same": "unchanged",
+    "as_of": "Data as of {{date}}",
+    "how": "How is it calculated?",
+    "spark": "Trend over the last months"
+  },
+  "scope": {
+    "viewing": "You are viewing: {{scope}}",
+    "people_one": "{{n}} person",
+    "people_other": "{{n}} people",
+    "coverage": "{{pct}} of required skills assessed to date",
+    "coverage_none": "required skills assessed: not measured yet",
+    "coverage_low": "Less than half assessed",
+    "as_of": "Data as of {{date}}",
+    "change": "Change site or department"
   }
 }

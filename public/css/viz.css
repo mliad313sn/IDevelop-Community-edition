@@ -365,6 +365,56 @@ polyline.viz-radar-line { fill: none; }
 .viz-radar-key--0 { background: var(--viz-measure); }
 .viz-radar-key--1 { background: var(--viz-required); }
 
+/* ---- KPI tile (views/partials/kpi-tile.ejs) ------------------------------ */
+.viz-kpi {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.9rem 1rem;
+    background: var(--viz-surface);
+    border: 1px solid var(--border, rgba(242, 241, 250, 0.08));
+    border-radius: var(--radius-lg, 18px);
+    color: var(--viz-text);
+    min-width: 0;
+}
+.viz-kpi-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.4rem; }
+.viz-kpi-label { margin: 0; font-size: 0.9375rem; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.viz-kpi-value { margin: 0; font-size: 1.75rem; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.viz-kpi-value--unmeasured { display: flex; align-items: center; gap: 0.5rem; font-size: 1rem; font-weight: 600; color: var(--viz-unmeasured); }
+.viz-kpi-hatch { display: inline-block; width: 1.4rem; height: 1rem; border-radius: 4px; border: 1px solid var(--viz-unmeasured); }
+.viz-kpi-value--small { font-size: 1.35rem; }
+.viz-kpi-note,
+.viz-kpi-sub,
+.viz-kpi-empty { margin: 0; font-size: 0.8125rem; color: var(--viz-text-dim); }
+.viz-delta { font-size: 0.875rem; font-weight: 600; white-space: nowrap; }
+.viz-delta--better { color: var(--viz-good); }
+.viz-delta--worse { color: var(--viz-warn); }
+.viz-delta--same { color: var(--viz-neutral); }
+.viz-kpi-spark polyline { stroke: var(--viz-measure); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.viz-kpi-extra { margin: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; font-size: 0.8125rem; }
+.viz-kpi-extra div { display: inline-flex; gap: 0.3rem; }
+.viz-kpi-extra dt { color: var(--viz-text-dim); }
+.viz-kpi-extra dd { margin: 0; font-weight: 600; }
+.viz-kpi-foot { margin-top: auto; display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; font-size: 0.8125rem; }
+.viz-kpi-drill,
+.viz-kpi-how { display: inline-flex; align-items: center; min-height: 32px; }
+.viz-kpi-asof { color: var(--viz-text-dim); }
+
+/* ---- Scope bar (views/partials/scope-bar.ejs) ---------------------------- */
+.viz-scope { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.875rem; }
+.viz-scope-line { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; }
+.viz-scope-what { font-weight: 600; }
+.viz-scope-sep { color: var(--viz-text-dim); }
+.viz-scope-cov--none,
+.viz-scope-asof { color: var(--viz-text-dim); }
+.viz-scope-edit { margin: 0; }
+.viz-scope-form > summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; color: var(--brand-text, var(--brand)); font-weight: 600; }
+.viz-scope-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 0.75rem; }
+.viz-scope-field { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; flex: 1 1 12rem; }
+.viz-scope-field select { min-height: 44px; max-width: 100%; }
+.viz-scope-fields .btn { min-height: 44px; }
+.viz-scope-note { margin: 0.4rem 0 0; color: var(--viz-text-dim); font-size: 0.8125rem; }
+
 /* ==========================================================================
    Print: every grid in full, every chart as its snapshot, no buttons.
    ========================================================================== */
@@ -374,8 +424,10 @@ polyline.viz-radar-line { fill: none; }
     .vh .vh-list,
     .vh .vh-tip { display: none !important; }
     .viz-chart,
+    .viz-kpi,
     .vh,
     .db-list { break-inside: avoid; page-break-inside: avoid; }
+    .viz-scope-form { display: none !important; }
     .vh-c,
     .vh-sw,
     .viz-hatch,

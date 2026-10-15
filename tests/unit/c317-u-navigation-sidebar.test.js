@@ -323,7 +323,8 @@ const ORPHANS = [
 ];
 const ADDED = {
     employee: ['/safety-gate/me'],
-    manager: ['/tasks', ...ORPHANS, '/safety-gate', '/safety-gate/me'],
+    // « My team » (wave 12 D3): the named roster that left the manager's dashboard
+    manager: ['/tasks', ...ORPHANS, '/safety-gate', '/safety-gate/me', '/supervisor/team'],
     localadmin_ops: ['/tasks', ...ORPHANS, '/safety-gate'],
     localadmin_people: ['/tasks', ...ORPHANS],
     localadmin_none: ['/tasks', ...ORPHANS],

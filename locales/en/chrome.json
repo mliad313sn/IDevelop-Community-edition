@@ -790,5 +790,7 @@
   "uif_reason_label": "Reason",
   "tbl_scroll_hint": "Scroll →",
   "nav_kpi_glossary": "Indicator definitions",
-  "nav_kpi_glossary_title": "How each indicator is calculated"
+  "nav_kpi_glossary_title": "How each indicator is calculated",
+  "nav_team_roster": "My team",
+  "nav_team_roster_title": "One row per person who reports to you"
 }

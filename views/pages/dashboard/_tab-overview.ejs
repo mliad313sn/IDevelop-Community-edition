@@ -1,0 +1,88 @@
+<%#
+  « Overview »: the overall health score (its areas in words), the role-ready
+  rate over time — recorded snapshots solid, the reconstructed estimate dashed
+  and never used for a movement — and the sites at a glance.
+  Locals: P (tabModel 'overview'), units.
+-%><%
+  var _F = numFmt;
+  var _num = function (v) { return v !== null && v !== undefined && isFinite(Number(v)); };
+  var _chip = { good: '✓', warn: '!', risk: '▲' };
+  var _st = { compliant: 'good', watch: 'warn', at_risk: 'risk' };
+  var G = P.gauge || {};
+  // the trend: months of the reconstruction, the recorded months on the same axis
+  var _rec = new Map((P.recorded || []).map(function (p) { return [p.month, p]; }));
+  var _months = (P.reconstructed || []).map(function (p) { return p.month; });
+  (P.recorded || []).forEach(function (p) { if (_months.indexOf(p.month) < 0) _months.push(p.month); });
+  _months.sort();
+  var _est = new Map((P.reconstructed || []).map(function (p) { return [p.month, p]; }));
+  // the axis starts at the first month with a value
+  var _first = _months.findIndex(function (m) { var a = _rec.get(m), b = _est.get(m); return (a && _num(a.K1)) || (b && (_num(b.K1) || _num(b.K3))); });
+  var _axis = _first < 0 ? [] : _months.slice(_first);
+  var _series = [
+      { key: 'k1_recorded', label: __('dash:d3_ov_trend_recorded'), data: _axis.map(function (m) { var a = _rec.get(m); return a && _num(a.K1) ? a.K1 : null; }) },
+      { key: 'k1_est', label: __('dash:d3_ov_trend_reconstructed'), data: _axis.map(function (m) { var b = _est.get(m); return b && _num(b.K1) ? b.K1 : null; }), dashed: true },
+      { key: 'k3_est', label: __('dash:d3_ov_trend_cov_reconstructed'), data: _axis.map(function (m) { var b = _est.get(m); return b && _num(b.K3) ? b.K3 : null; }), dashed: true }
+  ].filter(function (s) { return s.data.some(_num); });
+-%>
+<div class="ds-pair">
+    <section class="ds-card" id="ds-health" aria-labelledby="ds-health-h">
+        <h3 id="ds-health-h"><%= __('dash:d3_ov_gauge_title') %></h3>
+        <p class="ds-sub"><%= __('dash:d3_ov_gauge_sub') %></p>
+        <%- include('_gauge', { G: G, threshold: P.threshold }) %>
+        <h4 class="sr-only-ds"><%= __('dash:d3_ov_axes') %></h4>
+        <ul class="ds-axes" id="ds-health-axes">
+            <% ((P.profile && P.profile.axes) || []).forEach(function (a) { %>
+            <li data-axis="<%= a.key %>">
+                <span><%= __('dash:d3_ov_axis_' + a.key) %> <span class="ds-axis-state">(<%= __('dash:d3_ov_weight', { w: a.weight }) %>)</span></span>
+                <% if (a.state === 'measured') { %>
+                    <span><strong><%= _F.pct(a.value, 1) %></strong><% if (_st[a.status]) { %> <span class="viz-chip viz-chip--<%= _st[a.status] %>"><span class="viz-chip-icon" aria-hidden="true"><%= _chip[_st[a.status]] %></span><span><%= __('viz:status.' + _st[a.status]) %></span></span><% } %></span>
+                <% } else { %>
+                    <span class="ds-axis-state"><%= __('dash:d3_ov_axis_' + a.state) %></span>
+                <% } %>
+            </li>
+            <% }); %>
+        </ul>
+    </section>
+
+    <section class="ds-card" id="ds-trend-block" aria-labelledby="ds-trend-h">
+        <h3 id="ds-trend-h"><%= __('dash:d3_ov_trend_title') %></h3>
+        <% if (!_series.length) { %>
+            <p class="ds-note"><%= __('dash:d3_ov_trend_none') %></p>
+        <% } else { %>
+        <%- include('../../partials/viz/chart', { vizChart: {
+            id: 'ds-trend',
+            title: __('dash:d3_ov_trend_title'),
+            subtitle: __('dash:d3_ov_trend_sub'),
+            config: { kind: 'line', unit: 'pct', decimals: 1, labels: _axis, series: _series, min: 0, max: 100, threshold: { value: P.threshold, kind: 'threshold' }, endLabels: true },
+            mobileList: false,
+            height: 260
+        } }) %>
+        <% } %>
+    </section>
+</div>
+
+<% if (P.sites && P.sites.length) { %>
+<section class="ds-card" id="ds-status-table" aria-labelledby="ds-sites-h">
+    <h3 id="ds-sites-h"><%= __('dash:d3_ov_sites_title') %></h3>
+    <p class="ds-sub"><%= __('dash:d3_ov_sites_sub') %></p>
+    <div class="ds-table-wrap"><table class="ds-table">
+        <thead><tr>
+            <th scope="col"><%= __('dash:d3_col_site') %></th>
+            <th scope="col" class="num"><%= __('dash:d3_col_k1') %></th>
+            <% if (P.sites.some(function (r) { return r.k8; })) { %><th scope="col" class="num"><%= __('dash:d3_col_k8') %></th><% } %>
+            <% if (P.sites.some(function (r) { return r.k9; })) { %><th scope="col" class="num"><%= __('dash:d3_col_k9') %></th><% } %>
+        </tr></thead>
+        <tbody>
+        <% var _hasK8 = P.sites.some(function (r) { return r.k8; }), _hasK9 = P.sites.some(function (r) { return r.k9; }); %>
+        <% P.sites.forEach(function (r) { %>
+            <tr data-rank="<%= r.rank %>">
+                <th scope="row"><%= r.noSite ? __('viz:no_site') : r.siteName %></th>
+                <td class="num"><%- include('_kpi-cell', { r: r.k1, unit: 'pct' }) %></td>
+                <% if (_hasK8) { %><td class="num"><%- include('_kpi-cell', { r: r.k8, unit: 'count' }) %></td><% } %>
+                <% if (_hasK9) { %><td class="num"><%- include('_kpi-cell', { r: r.k9, unit: 'pct' }) %></td><% } %>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+</section>
+<% } %>

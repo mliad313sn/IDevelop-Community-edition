@@ -1,0 +1,91 @@
+<%#
+  « Role readiness »: the K1-K4 tiles (above, from _panel), how readiness is
+  spread (bell curve ‖ K1 by unit), one unit compared with the whole scope
+  (pillar radar + its widest measured skill gaps), the pillar heatmap.
+  Locals: P (tabModel 'readiness'), units.
+-%><%
+  var _F = numFmt;
+  var _num = function (v) { return v !== null && v !== undefined && isFinite(Number(v)); };
+  var _unitName = units[P.groupUnit] || '';
+  var _st = { compliant: 'good', watch: 'warn', at_risk: 'risk' };
+  var _rows = (P.byGroup && P.byGroup.rows) || [];
+  var _noneLabel = P.groupUnit === 'site' ? __('viz:no_site') : __('dash:d3_no_department');
+  var C = P.compare || null;
+-%>
+<h3 class="ds-section-h"><%= __('dash:d3_rd_h_distribution') %></h3>
+<div class="ds-pair">
+    <%- include('_bell', { B: P.bell, D: P.distribution }) %>
+    <% if (_rows.length) { %>
+    <%- include('../../partials/viz/chart', { vizChart: {
+        id: 'ds-groups',
+        title: __('dash:d3_rd_h_groups', { unit: _unitName }),
+        subtitle: __('dash:d3_rd_groups_sub'),
+        config: {
+            kind: 'hbar', unit: 'pct', decimals: 1, colorBy: 'status',
+            labels: _rows.map(function (r) { return r.none ? _noneLabel : (r.label || '—'); }),
+            series: [{ key: 'k1', label: __('kpi:k1_name'), data: _rows.map(function (r) { return r.value; }), n: _rows.map(function (r) { return r.denominator; }), status: _rows.map(function (r) { return _st[r.status] || (r.unmeasured ? 'unmeasured' : null); }) }],
+            threshold: { value: P.threshold, kind: 'threshold' }, min: 0, max: 100
+        },
+        height: Math.max(160, 40 * _rows.length + 60)
+    } }) %>
+    <% } %>
+</div>
+
+<% if (C) { %>
+<h3 class="ds-section-h"><%= __('dash:d3_rd_h_compare') %></h3>
+<section class="ds-card" id="ds-compare" aria-labelledby="ds-compare-h">
+    <h4 class="sr-only-ds" id="ds-compare-h"><%= __('dash:d3_rd_h_compare') %></h4>
+    <form method="get" action="/dashboard" class="viz-scope-fields" id="ds-compare-form">
+        <input type="hidden" name="tab" value="readiness">
+        <% if (ctx.scope.site !== undefined) { %><input type="hidden" name="site" value="<%= ctx.scope.site %>"><% } %>
+        <% if (ctx.scope.department !== undefined) { %><input type="hidden" name="department" value="<%= ctx.scope.department %>"><% } %>
+        <label class="viz-scope-field"><span><%= __('dash:d3_rd_cmp_pick') %></span>
+            <select name="compare">
+                <% C.options.forEach(function (o) { %><option value="<%= o.id %>"<%= o.id === C.id ? ' selected' : '' %>><%= o.label %></option><% }); %>
+            </select>
+        </label>
+        <button type="submit" class="btn btn-sm btn-secondary"><%= __('dash:d3_rd_cmp_show') %></button>
+    </form>
+    <% if (C.isDefault) { %><p class="ds-note" id="ds-compare-default"><%= __('dash:d3_rd_cmp_default') %></p><% } %>
+    <div class="ds-pair">
+        <%- include('../../partials/viz/chart', { vizChart: {
+            id: 'ds-compare-radar',
+            title: __('dash:d3_rd_cmp_radar'),
+            subtitle: __('dash:d3_rd_cmp_radar_sub', { label: C.label || '', n: _F.num(C.people, 0) }),
+            config: {
+                kind: 'radar', unit: 'level', decimals: 1, min: 0, max: 4,
+                labels: C.axes.map(function (a) { return a.label || '—'; }),
+                axisN: C.axes.map(function (a) { return a.axisN; }),
+                series: [
+                    { key: 'scope', label: __('dash:d3_rd_cmp_scope'), data: C.axes.map(function (a) { return a.ref; }) },
+                    { key: 'unit', label: C.label || '', data: C.axes.map(function (a) { return a.unit; }) },
+                    { key: 'required', label: __('dash:d3_rd_cmp_required'), data: C.axes.map(function (a) { return a.required; }), dashed: true }
+                ],
+                requiredLabel: __('dash:d3_rd_cmp_required')
+            },
+            mobileList: false,
+            height: 300
+        } }) %>
+        <div>
+            <h4><%= __('dash:d3_rd_cmp_gaps') %></h4>
+            <% if (C.gaps.length < 3) { %>
+                <p class="ds-note" id="ds-compare-few"><%= __('dash:d3_rd_cmp_gaps_few') %></p>
+            <% } else { %>
+            <div class="ds-table-wrap"><table class="ds-table" id="ds-compare-gaps">
+                <thead><tr><th scope="col"><%= __('dash:d3_col_skill') %></th><th scope="col" class="num"><%= __('dash:d3_col_gap') %></th><th scope="col" class="num"><%= __('dash:d3_col_people') %></th></tr></thead>
+                <tbody>
+                <% C.gaps.forEach(function (g) { %><tr><th scope="row"><%= g.label %></th><td class="num"><%= _F.level(g.gap) %></td><td class="num"><%= _F.num(g.n, 0) %></td></tr><% }); %>
+                </tbody>
+            </table></div>
+            <% } %>
+        </div>
+    </div>
+</section>
+<% } %>
+
+<% if (P.pillarHeat && !P.pillarHeat.empty && (P.pillarHeat.rows || []).some(function (r) { return (r.cells || []).some(function (c) { return c.state === 'ok'; }); })) { %>
+<h3 class="ds-section-h"><%= __('dash:d3_rd_h_heat', { unit: _unitName }) %></h3>
+<section class="ds-card" id="ds-pillar-heat">
+    <%- include('../../partials/viz/heat', { H: P.pillarHeat, heatId: 'ds-heat-pillar', heatTitle: __('dash:d3_rd_h_heat', { unit: _unitName }), noneLabel: _noneLabel, topRows: 10 }) %>
+</section>
+<% } %>

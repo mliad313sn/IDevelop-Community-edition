@@ -498,21 +498,20 @@ router.get(
     requireEmployeeOrManager,
     EmployeePortalController.myCertifications
 );
-// "My team": one row per DIRECT report (TeamRosterService scopes on the
-// reporting line of the person behind the account). A failure to read it
-// leaves `team` null, which the page says, rather than an empty team.
-router.get('/supervisor/dashboard', requireManager, async (req, res) => {
-    let team = null;
-    try {
-        team = await require('../services/TeamRosterService').forManager(req.user);
-    } catch (_) {
-        team = null;
-    }
-    res.render('pages/supervisor/dashboard', {
-        title: req.t ? req.t('chrome:mgr_workspace_title') : 'Manager workspace',
-        team,
-    });
-});
+// The manager's « Dashboard »: their team in counts (no name); the named
+// roster is « My team » (/supervisor/team, TeamRosterService: one row per
+// DIRECT report).
+{
+    const DashboardHomeController = require('../controllers/DashboardHomeController');
+    const ahome = require('../utils/asyncHandler');
+    router.get(
+        '/supervisor/dashboard',
+        requireManager,
+        rbacMiddleware,
+        ahome(DashboardHomeController.teamHome)
+    );
+    router.get('/supervisor/team', requireManager, ahome(DashboardHomeController.teamRoster));
+}
 
 // Managers are employees too — let them complete their own self-assessment.
 router.get(

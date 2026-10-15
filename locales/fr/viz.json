@@ -123,5 +123,26 @@
     "col_subdomain": "Sous-domaine",
     "coverage": "Évaluées / requises",
     "aria": "Radar : niveau démontré face au niveau requis, par sous-domaine"
+  },
+  "tile": {
+    "of": "{{a}} sur {{b}}",
+    "pts": "pts",
+    "delta_since": "Évolution depuis le {{date}}",
+    "delta_better": "en mieux",
+    "delta_worse": "en moins bien",
+    "delta_same": "stable",
+    "as_of": "Données au {{date}}",
+    "how": "Comment est-ce calculé ?",
+    "spark": "Tendance des derniers mois"
+  },
+  "scope": {
+    "viewing": "Vous voyez : {{scope}}",
+    "people_one": "{{n}} personne",
+    "people_other": "{{n}} personnes",
+    "coverage": "{{pct}} des compétences exigées évaluées à ce jour",
+    "coverage_none": "compétences évaluées : pas encore mesuré",
+    "coverage_low": "Moins de la moitié évaluée",
+    "as_of": "Données au {{date}}",
+    "change": "Changer de site ou de département"
   }
 }

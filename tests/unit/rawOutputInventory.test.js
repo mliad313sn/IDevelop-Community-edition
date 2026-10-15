@@ -188,7 +188,6 @@ const CLIENT_SINKS = {
     'views/pages/qualified/index.ejs': 2, // cleared; items built with DOM text
     'views/pages/reports/dept-analytics.ejs': 2, // static skeleton, text set after
     'views/pages/safety-gate/config.ejs': 2, // cleared; items built with DOM text
-    'views/pages/supervisor/dashboard.ejs': 2, // esc() on labels, hrefs and icons
     'views/pages/supervisor/self-assessment-review.ejs': 16, // escapeHtml() / esc()
     'views/pages/system-logs/index.ejs': 7, // this.esc() on routes, kinds, labels
     'views/pages/talent/career-path.ejs': 1, // esc() on skill and domain names

@@ -790,5 +790,7 @@
   "uif_reason_label": "Motif",
   "tbl_scroll_hint": "Faites défiler →",
   "nav_kpi_glossary": "Définition des indicateurs",
-  "nav_kpi_glossary_title": "Comment chaque indicateur est calculé"
+  "nav_kpi_glossary_title": "Comment chaque indicateur est calculé",
+  "nav_team_roster": "Mon équipe",
+  "nav_team_roster_title": "Une ligne par personne qui vous est rattachée"
 }

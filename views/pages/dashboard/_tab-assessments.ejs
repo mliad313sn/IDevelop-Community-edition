@@ -1,0 +1,57 @@
+<%#
+  « Assessments »: coverage (tile, from _panel), how recent the evidence is,
+  the current campaign's progress (campaigns module) and what waits for
+  validation. Counts only.
+  Locals: P (tabModel 'assessments').
+-%><%
+  var _F = numFmt;
+  var Fr = P.freshness || null;
+  var b = (Fr && Fr.breakdown) || null;
+  var Cp = P.campaign || null;
+  var cb = (Cp && Cp.breakdown) || {};
+  var V = P.validations || null;
+-%>
+<section class="ds-card" id="ds-freshness" aria-labelledby="ds-fresh-h">
+    <h3 id="ds-fresh-h"><%= __('dash:d3_as_fresh_title') %></h3>
+    <% if (!b || !b.expected) { %>
+        <p class="ds-note"><%= __('viz:unmeasured') %></p>
+    <% } else { %>
+        <p class="ds-sub"><%= __('dash:d3_as_fresh_sub', { fresh: _F.num(b.fresh, 0), expected: _F.num(b.expected, 0), stale: _F.num(b.stale, 0), unassessed: _F.num(b.unassessed, 0) }) %></p>
+        <% if ((Fr.bySite || []).length > 1) { %>
+        <div class="ds-table-wrap"><table class="ds-table">
+            <thead><tr><th scope="col"><%= __('dash:d3_col_site') %></th><th scope="col" class="num"><%= __('dash:d3_col_people') %></th><th scope="col" class="num">&lt; 12</th><th scope="col" class="num">&ge; 12</th></tr></thead>
+            <tbody>
+            <% Fr.bySite.forEach(function (r) { %><tr><th scope="row"><%= r.noSite ? __('viz:no_site') : r.siteName %></th><td class="num"><%= _F.num(r.people, 0) %></td><td class="num"><%= _F.num(r.fresh, 0) %></td><td class="num"><%= _F.num(r.stale, 0) %></td></tr><% }); %>
+            </tbody>
+        </table></div>
+        <% } %>
+    <% } %>
+</section>
+
+<% if (P.blocks.indexOf('campaign') >= 0) { %>
+<section class="ds-card" id="ds-funnel" aria-labelledby="ds-funnel-h">
+    <h3 id="ds-funnel-h"><%= __('dash:d3_as_campaign_title') %></h3>
+    <% if (!Cp) { %>
+        <p class="ds-note"><%= __('dash:d3_as_no_campaign') %></p>
+    <% } else { %>
+        <p class="ds-sub"><%= Cp.campaign && (Cp.campaign.code || Cp.campaign.name) ? (Cp.campaign.code || Cp.campaign.name) : '' %></p>
+        <ol class="ds-steps">
+            <li><strong><%= _F.num(cb.invited, 0) %></strong><span><%= __('dash:d3_as_invited') %></span></li>
+            <li><strong><%= cb.started === null || cb.started === undefined ? '—' : _F.num(cb.started, 0) %></strong><span><%= __('dash:d3_as_started') %><%= cb.started === null || cb.started === undefined ? ' (' + __('dash:d3_as_steps_untracked') + ')' : '' %></span></li>
+            <li><strong><%= cb.submitted === null || cb.submitted === undefined ? '—' : _F.num(cb.submitted, 0) %></strong><span><%= __('dash:d3_as_submitted') %></span></li>
+            <li><strong><%= _F.num(cb.validated, 0) %></strong><span><%= __('dash:d3_as_validated') %></span></li>
+        </ol>
+    <% } %>
+</section>
+<% } %>
+
+<% if (V) { %>
+<section class="ds-card" id="ds-validations" aria-labelledby="ds-val-h">
+    <h3 id="ds-val-h"><%= __('dash:d3_as_val_title') %></h3>
+    <% if (!V.waiting.length) { %>
+        <p class="ds-note"><%= __('dash:d3_as_val_none') %></p>
+    <% } else { %>
+        <p><%= __('dash:d3_as_val_text', { n: _F.num(V.waiting.length, 0), late: _F.num(V.overdue.length, 0) }) %></p>
+    <% } %>
+</section>
+<% } %>

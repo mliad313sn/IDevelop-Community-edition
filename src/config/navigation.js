@@ -148,6 +148,12 @@ const CATALOGUE = {
         icon: 'fa-address-book',
     },
     skill_matrix: { label: 'nav_skill_matrix', href: '/skill-matrix', icon: 'fa-border-all' },
+    team_roster: {
+        label: 'nav_team_roster',
+        title: 'nav_team_roster_title',
+        href: '/supervisor/team',
+        icon: 'fa-users',
+    },
     gap: {
         label: 'nav_gap_analysis',
         title: 'nav_gap_analysis_title',
@@ -701,6 +707,8 @@ function gates(c) {
 
         employees: gPeople,
         skill_matrix: gPeople,
+        // « My team »: the named roster behind the manager's dashboard
+        team_roster: isMgr && c.ws('nav:team'),
         gap: gTeam,
         org_chart: gTalent,
         accounts: wsAdm && can('manage_invitations'),
@@ -838,7 +846,7 @@ const REPORTS = [
 
 const SECTIONS = {
     manager: {
-        section_my_team: [['employees', ['skill_matrix']], 'gap', 'org_chart'],
+        section_my_team: ['team_roster', ['employees', ['skill_matrix']], 'gap', 'org_chart'],
         section_assessments: ['sa_reviews', 'acr', 'post_reviews', 'disputes'],
         section_talent: TALENT_MGR,
         section_safety: [
