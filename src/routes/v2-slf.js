@@ -175,6 +175,7 @@ router.get(
 // extension (magic bytes; OOXML [Content_Types].xml; zip-bomb caps). ASVS 12.2.1.
 const upload = multer({
     dest: path.resolve('tmp'),
+    preservePath: true, // the upload guard refuses a client name carrying a path
     limits: { fileSize: 10 * 1024 * 1024, files: 1 },
     fileFilter: extensionFilter(['.pdf', '.jpg', '.jpeg', '.png', '.docx', '.xlsx']),
 });

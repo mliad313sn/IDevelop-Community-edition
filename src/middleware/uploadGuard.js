@@ -16,6 +16,22 @@
  *    A mismatch is a 400 and the temp file is removed. The verified canonical
  *    MIME replaces the one the browser sent.
  *
+ * 3. Refuses a client file name carrying a folder path, a control character or
+ *    more than 200 characters (UPLOAD_BAD_NAME). Every multer instance runs
+ *    with `preservePath: true`, so the guard sees the name the client sent; the
+ *    disk name is always server-generated, the client name is display text.
+ * 4. Runs the ANTIVIRUS GATE (App Setting `uploadAvScan`, on by default) on
+ *    every file that passed the content check, before the route sees it:
+ *      - a threat: refused (422 UPLOAD_REJECTED_AV), the temp file deleted,
+ *        UPLOAD_REJECTED_AV audited;
+ *      - no scanner verdict while a scan is REQUIRED (`requireMalwareScan`, read
+ *        through MalwareScanService.requireScan): refused (503
+ *        UPLOAD_AV_UNAVAILABLE), fail-closed, audited;
+ *      - no scanner verdict otherwise: accepted and marked `not_scanned`, one
+ *        WARN per process and an UPLOAD_NOT_SCANNED audit row.
+ *    The verdict rides on the file (`file.avScan`), so the evidence and
+ *    certificate services record it instead of scanning the file twice.
+ *
  * Refusals answer JSON to the app's own fetch calls (x-csrf-token header,
  * wantsJson, or `json: true` for endpoints that only ever answer JSON). A native
  * form post goes back to its page with a flash message, or through the error
@@ -55,6 +71,18 @@ const MESSAGES = {
         'compliance:upload_err_zip_too_large',
         'The file expands to more data than can be imported safely. Split it into smaller files.',
     ],
+    UPLOAD_BAD_NAME: [
+        'compliance:upload_err_bad_name',
+        'This file name cannot be accepted: it must not contain a folder path or control characters, and must be 200 characters or fewer.',
+    ],
+    UPLOAD_REJECTED_AV: [
+        'compliance:upload_err_av',
+        'The antivirus found a threat in this file. The file was refused and deleted.',
+    ],
+    UPLOAD_AV_UNAVAILABLE: [
+        'compliance:upload_err_av_unavailable',
+        'No antivirus is available to check this file, and every upload must be scanned.',
+    ],
 };
 
 function say(req, code) {
@@ -62,6 +90,173 @@ function say(req, code) {
     if (!req || typeof req.t !== 'function') return fallback;
     const s = req.t(key, { defaultValue: fallback });
     return !s || s === key || s === key.split(':').pop() ? fallback : s;
+}
+
+/** Longest client file name accepted (characters). */
+const MAX_NAME_LENGTH = 200;
+
+/**
+ * True when the client's file name is refused: empty, longer than
+ * MAX_NAME_LENGTH, carrying a folder separator or a control character, or
+ * made of dots only. A character loop, no pattern that could backtrack.
+ */
+function badName(name) {
+    const s = typeof name === 'string' ? name : '';
+    if (!s || s.length > MAX_NAME_LENGTH) return true;
+    let dotsOnly = true;
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        // C0 controls, DEL, '/' and '\'
+        if (c < 0x20 || c === 0x7f || c === 0x2f || c === 0x5c) return true;
+        if (c !== 0x2e && c !== 0x20) dotsOnly = false;
+    }
+    return dotsOnly;
+}
+
+// ---------------------------------------------------------------------------
+// Antivirus gate
+// ---------------------------------------------------------------------------
+
+let _warnedNotScanned = false;
+
+/** Off only on an explicit false; anything else (absent row, unreadable) is on. */
+function isOff(v) {
+    return v === false || v === 'false' || v === 0 || v === '0';
+}
+
+// Seams the unit tests replace (scanner, settings, audit).
+const _deps = {
+    scanFile: (p) => require('../services/MalwareScanService').scanFile(p),
+    scanBuffer: (b) => require('../services/MalwareScanService').scanBuffer(b),
+    requireScan: () => require('../services/MalwareScanService').requireScan(),
+    enabled: async () => {
+        try {
+            const v = await require('../models/AppSettingsModel').getValue('uploadAvScan', true);
+            return !isOff(v);
+        } catch (_) {
+            return true;
+        }
+    },
+    audit: (row) => require('../services/LogService').log(row),
+};
+
+function actorOf(req) {
+    const u = req && req.user;
+    if (!u || u.id == null) return {};
+    return u.userType === 'admin'
+        ? { adminId: u.id, actorRef: `admin:${u.id}` }
+        : { actorRef: `employee:${u.id}` };
+}
+
+/** One audit row about an upload: ids, kind and size, never the client file name. */
+function auditUpload(req, action, detail) {
+    try {
+        return Promise.resolve(
+            _deps.audit({
+                ...actorOf(req),
+                action,
+                entityType: 'upload',
+                details: JSON.stringify(detail),
+                severity: 'warn',
+                category: 'security',
+                route: req && req.originalUrl ? String(req.originalUrl).split('?')[0] : null,
+                httpMethod: (req && req.method) || null,
+                ipAddress: (req && req.ip) || null,
+                userAgent: req && typeof req.get === 'function' ? req.get('user-agent') : null,
+            })
+        ).catch(() => {});
+    } catch (_) {
+        return Promise.resolve();
+    }
+}
+
+/**
+ * Scan one multer file: { av: 'clean'|'infected'|'unavailable', engine, signature?, error? }.
+ * A disk upload is scanned where multer put it (only inside an upload temp
+ * directory); a memory-storage upload through a private copy the scanner
+ * service writes and removes (MalwareScanService.scanBuffer).
+ */
+async function scanOne(f) {
+    const target = f && f.path ? containedUploadPath(f.path) : null;
+    try {
+        let r;
+        if (target) r = await _deps.scanFile(target);
+        else if (f && !f.path && Buffer.isBuffer(f.buffer)) r = await _deps.scanBuffer(f.buffer);
+        else return { av: 'unavailable', engine: null, error: 'no file to scan' };
+        r = r || {};
+        if (r.verdict === 'clean') return { av: 'clean', engine: r.engine || null };
+        if (r.verdict === 'infected')
+            return { av: 'infected', engine: r.engine || null, signature: r.signature };
+        // multer wrote this file a moment ago: gone now means a real-time host
+        // antivirus removed it. That is a detection.
+        if (r.verdict === 'missing')
+            return { av: 'infected', engine: 'host', signature: 'removed by host antivirus' };
+        return {
+            av: 'unavailable',
+            engine: null,
+            error: (r.errors || []).join(' | ') || 'no scanner',
+        };
+    } catch (e) {
+        return { av: 'unavailable', engine: null, error: (e && e.message) || 'scan failed' };
+    }
+}
+
+/** Is a scan required right now (requireMalwareScan)? Errors read as not required. */
+async function scanRequired() {
+    try {
+        return Boolean(await _deps.requireScan());
+    } catch (_) {
+        return false;
+    }
+}
+
+/**
+ * The antivirus gate over every received file. Resolves null (go on) or
+ * { status, code } (refuse). One rule: a threat is refused; no verdict is
+ * refused only while a scan is required, else accepted as not scanned.
+ */
+async function avGate(req, files) {
+    if (!files.length) return null;
+    if (!(await _deps.enabled())) {
+        for (const f of files) f.avScan = { av: 'off', engine: null };
+        return null;
+    }
+    for (const f of files) {
+        const r = await scanOne(f);
+        const detail = {
+            av: r.av,
+            engine: r.engine || null,
+            field: f.fieldname || null,
+            kind: f.verifiedKind || null,
+            size: f.size != null ? f.size : null,
+        };
+        if (r.av === 'infected') {
+            f.avScan = r;
+            await auditUpload(req, 'UPLOAD_REJECTED_AV', {
+                ...detail,
+                signature: String(r.signature || '').slice(0, 200),
+            });
+            return { status: 422, code: 'UPLOAD_REJECTED_AV' };
+        }
+        if (r.av !== 'unavailable') {
+            f.avScan = r;
+            continue;
+        }
+        if (await scanRequired()) {
+            f.avScan = r;
+            await auditUpload(req, 'UPLOAD_REFUSED_NOT_SCANNED', detail);
+            return { status: 503, code: 'UPLOAD_AV_UNAVAILABLE' };
+        }
+        f.avScan = { av: 'not_scanned', engine: null };
+        if (!_warnedNotScanned) {
+            _warnedNotScanned = true;
+            console.warn(
+                '[upload-av] no antivirus verdict: uploads are accepted and marked not scanned (warned once per process).'
+            );
+        }
+        await auditUpload(req, 'UPLOAD_NOT_SCANNED', { ...detail, av: 'not_scanned' });
+    }
+    return null;
 }
 
 function allFiles(req) {
@@ -163,6 +358,10 @@ function guardUpload(multerMiddleware, { kinds, zipLimits, json = false } = {}) 
             const files = allFiles(req);
             try {
                 for (const f of files) {
+                    if (badName(f.originalname)) {
+                        removeTemp(files);
+                        return refuse(req, res, next, 400, 'UPLOAD_BAD_NAME', json);
+                    }
                     const r = await checkFile(f, kinds, zipLimits);
                     if (!r.ok) {
                         removeTemp(files);
@@ -170,6 +369,11 @@ function guardUpload(multerMiddleware, { kinds, zipLimits, json = false } = {}) 
                     }
                     f.mimetype = r.mime;
                     f.verifiedKind = r.kind;
+                }
+                const avRefusal = await avGate(req, files);
+                if (avRefusal) {
+                    removeTemp(files);
+                    return refuse(req, res, next, avRefusal.status, avRefusal.code, json);
                 }
             } catch (e) {
                 removeTemp(files);
@@ -182,4 +386,19 @@ function guardUpload(multerMiddleware, { kinds, zipLimits, json = false } = {}) 
     return guardedUpload;
 }
 
-module.exports = { guardUpload, typeNotAllowed, extensionFilter, MESSAGES };
+module.exports = {
+    guardUpload,
+    typeNotAllowed,
+    extensionFilter,
+    badName,
+    MAX_NAME_LENGTH,
+    MESSAGES,
+    __test: {
+        deps: _deps,
+        avGate,
+        resetWarn() {
+            _warnedNotScanned = false;
+        },
+        warned: () => _warnedNotScanned,
+    },
+};

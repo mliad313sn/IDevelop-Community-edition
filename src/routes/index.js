@@ -1160,6 +1160,7 @@ const _hris = (fn) => _ahAR(fn.bind(HrisSyncController));
 const _ug = require('../middleware/uploadGuard');
 const _hrisUpload = require('multer')({
     storage: require('multer').memoryStorage(),
+    preservePath: true, // the upload guard refuses a client name carrying a path
     limits: { fileSize: 25 * 1024 * 1024, files: 1 },
     fileFilter: _ug.extensionFilter(['.csv', '.tsv', '.txt']),
 });
@@ -1806,6 +1807,7 @@ router.post(
 const SkillQualityController = require('../controllers/SkillQualityController');
 const _sqUpload = require('multer')({
     storage: require('multer').memoryStorage(),
+    preservePath: true, // the upload guard refuses a client name carrying a path
     limits: { fileSize: 5 * 1024 * 1024, files: 1 },
     fileFilter: _ug.extensionFilter(['.xlsx']),
 });
@@ -1840,6 +1842,7 @@ router.post('/framework/proposals/:id/reject', _sqManage, SkillQualityController
 const FrameworkLibraryController = require('../controllers/FrameworkLibraryController');
 const _libUpload = require('multer')({
     storage: require('multer').memoryStorage(),
+    preservePath: true, // the upload guard refuses a client name carrying a path
     limits: {
         fileSize: (Number(process.env.ESCO_UPLOAD_MAX_MB) || 30) * 1024 * 1024,
         files: 5,
@@ -1951,6 +1954,7 @@ router.post(
 // White-label branding (logo/favicon are small images → dedicated multer instance).
 const brandUpload = require('multer')({
     dest: require('path').join(__dirname, '../../tmp'),
+    preservePath: true, // the upload guard refuses a client name carrying a path
     fileFilter: _ug.extensionFilter(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico']),
     limits: { fileSize: 512 * 1024 },
 });
@@ -2161,6 +2165,7 @@ if (!fs.existsSync(tmpDir)) {
 // Configure multer for Excel / JSON file uploads (guarded, see _ug above).
 const _rawUpload = multer({
     dest: tmpDir,
+    preservePath: true, // the upload guard refuses a client name carrying a path
     fileFilter: _ug.extensionFilter(['.xlsx', '.xls', '.json']),
     limits: {
         fileSize: 10 * 1024 * 1024, // 10MB limit
@@ -3183,6 +3188,7 @@ const ComplianceController = require('../controllers/ComplianceController');
 // the certificate recorded WITHOUT its evidence, with nothing said.
 const _cmulRaw = require('multer')({
     dest: require('path').resolve('tmp'),
+    preservePath: true, // the upload guard refuses a client name carrying a path
     limits: { fileSize: 10 * 1024 * 1024, files: 1 },
     fileFilter: _ug.extensionFilter(['.pdf', '.jpg', '.jpeg', '.png', '.docx', '.xlsx']),
 });
