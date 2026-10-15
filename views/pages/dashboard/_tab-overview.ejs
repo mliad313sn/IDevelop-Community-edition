@@ -44,9 +44,9 @@
         </ul>
     </section>
 
-    <section class="ds-card" id="ds-trend-block" aria-labelledby="ds-trend-h">
-        <h3 id="ds-trend-h"><%= __('dash:d3_ov_trend_title') %></h3>
+    <section class="ds-card" id="ds-trend-block" aria-label="<%= __('dash:d3_ov_trend_title') %>">
         <% if (!_series.length) { %>
+            <h3><%= __('dash:d3_ov_trend_title') %></h3>
             <p class="ds-note"><%= __('dash:d3_ov_trend_none') %></p>
         <% } else { %>
         <%- include('../../partials/viz/chart', { vizChart: {
