@@ -238,7 +238,7 @@ const arExcClass = {
           }
           if (cell) { cell.firstChild.textContent = T.labels[decision] || decision; cell.lastChild.textContent = new Date().toLocaleDateString(<%- include('../../partials/json-script', { v: typeof lang !== 'undefined' ? lang : 'fr' }) %>) + ' · ' + T.by; }
           // "À révoquer" is a decision to act on: open the account.
-          if (decision === 'revoke') { say(T.revoke, 'warn'); window.setTimeout(function () { window.location.href = '/admins/' + id; }, 900); }
+          if (decision === 'revoke') { say(T.revoke, 'warn'); var adminId = parseInt(id, 10); if (adminId > 0) window.setTimeout(function () { window.location.assign('/admins/' + String(adminId)); }, 900); }
         } else { say((j && j.error) || T.err, 'error'); btn.disabled = false; }
       }).catch(function () { say(T.err, 'error'); btn.disabled = false; });
   });
