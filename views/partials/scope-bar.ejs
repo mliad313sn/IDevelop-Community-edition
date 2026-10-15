@@ -41,7 +41,7 @@
         <% if (_when) { %><span class="viz-scope-sep" aria-hidden="true">·</span><span class="viz-scope-asof"><%= __('viz:scope.as_of', { date: _when }) %></span><% } %>
     </p>
     <% if (_s.editHref) { %><p class="viz-scope-edit"><a href="<%= _s.editHref %>"><%= __('viz:scope.change') %></a></p><% } %>
-    <% if (_f && ((_f.sites || []).length + (_f.departments || []).length) > 1) { %>
+    <% if (_f && ((_f.sites || []).length + (_f.noSite ? 1 : 0) > 1 || (_f.departments || []).length > 1)) { %>
     <details class="viz-scope-form"<%= _f.open ? ' open' : '' %>>
         <summary><%= __('viz:scope.change') %></summary>
         <form method="get" action="<%= _f.action || '' %>" class="viz-scope-fields">

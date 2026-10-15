@@ -5,8 +5,8 @@
  * manager's home (/supervisor/dashboard), the lists behind the figures
  * (/dashboard/list) and the board pack (/exec/board-pack).
  *
- * ONE dashboard, adapted to the reader's clearance: there is no persona
- * switch. What a reader sees follows from three things only:
+ * ONE dashboard, adapted to the reader's clearance: there is no switch
+ * between views of different jobs. What a reader sees follows from three things only:
  *   - the population of their clearance (KpiService.resolvePopulation:
  *     active, not erased, inside RBACService.scopeFilter), narrowed by the
  *     scope bar (a site or a department of that population);
