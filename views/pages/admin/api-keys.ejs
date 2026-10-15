@@ -12,8 +12,8 @@
 <div class="card" style="padding:1rem;margin-bottom:1rem">
   <h3 style="margin-top:0"><%= __('admin:apik_create_h3') %></h3>
   <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
-    <div><label for="ak-label"><%= __('admin:apik_label') %> *</label><br><input id="ak-label" class="form-control" placeholder="<%= __('admin:apik_label_ph') %>"></div>
-    <div><label for="ak-owner"><%= __('admin:apik_profile') %> *</label><br>
+    <div><label for="ak-label" class="required"><%= __('admin:apik_label') %></label><br><input id="ak-label" class="form-control" placeholder="<%= __('admin:apik_label_ph') %>"></div>
+    <div><label for="ak-owner" class="required"><%= __('admin:apik_profile') %></label><br>
       <select id="ak-owner" class="form-control">
         <option value=""><%= __('admin:apik_profile_full_org') %></option>
         <% (admins||[]).forEach(function(a){ %>

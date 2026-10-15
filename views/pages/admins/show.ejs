@@ -69,7 +69,7 @@
             <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>">
 
             <div class="form-group">
-                <label for="admUsername"><%= __('admin:username') %> *</label>
+                <label for="admUsername" class="required"><%= __('admin:username') %></label>
                 <input type="text" name="username" id="admUsername" value="<%= v('username', admin.username) %>" required>
             </div>
 
@@ -99,7 +99,7 @@
                 </div>
             <% } else { %>
             <div class="form-group">
-                <label for="role-selector"><%= __('admin:role_account') %> *</label>
+                <label for="role-selector" class="required"><%= __('admin:role_account') %></label>
                 <select name="role" id="role-selector" required data-on-change="onRoleChange" data-args='["$value"]'>
                     <% const roleNow = v('role', admin.role); %>
                     <% if ((typeof granterIsSuper === 'undefined' || granterIsSuper) || admin.role==='superadmin') { %>

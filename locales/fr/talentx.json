@@ -465,7 +465,7 @@
   "lc_leftover_nat_plans": "{{n}} plan(s) de nationalisation à décider",
   "lc_status": "Statut",
   "lc_reverted": "Annulé",
-  "lc_revert": "Annuler",
+  "lc_revert": "Annuler l’événement",
   "lc_revert_hint": "Annuler cet événement s'il a été enregistré par erreur (super admin uniquement)",
   "lc_revert_confirm": "Annuler cet événement ? Ses effets seront défaits : le compte d'un départ est réactivé et le nettoyage RGPD en attente supprimé ; les évaluations provisoires non modifiées d'une arrivée sont supprimées ; le plan de passation auto-créé est annulé. L'événement reste dans la liste, marqué comme annulé.",
   "lc_revert_note": "Note facultative (pourquoi cette annulation ?) :",

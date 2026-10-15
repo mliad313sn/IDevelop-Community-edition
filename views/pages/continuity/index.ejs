@@ -157,7 +157,7 @@
   <h3 style="margin-top:0" id="designate-heading"><%= __('talentx:ct_designate_heading') %></h3>
   <p id="crit-hint" class="text-muted" role="status" style="display:none;margin:.15rem 0 .6rem"><%= __('talentx:succ_role_preselected') %></p>
   <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
-    <div><label for="crit-role"><%= __('talentx:role') %> *</label><br>
+    <div><label for="crit-role" class="required"><%= __('talentx:role') %></label><br>
       <select id="crit-role" class="form-control" data-searchable>
         <option value=""><%= __('talentx:cp_select') %></option>
         <% (roles||[]).forEach(function(r){ %><option value="<%= r.id %>"><%= r.name %></option><% }); %>
@@ -180,7 +180,7 @@
 <div class="card" style="padding:1rem;margin-bottom:1rem">
   <h3 style="margin-top:0"><%= __('talentx:ct_open_plan_heading') %></h3>
   <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
-    <div><label for="plan-role"><%= __('talentx:role') %> *</label><br>
+    <div><label for="plan-role" class="required"><%= __('talentx:role') %></label><br>
       <select id="plan-role" class="form-control" data-searchable>
         <option value=""><%= __('talentx:cp_select') %></option>
         <% (roles||[]).forEach(function(r){ %><option value="<%= r.id %>"><%= r.name %></option><% }); %>
@@ -235,7 +235,7 @@
     <button class="btn btn-sm btn-secondary" data-on-click="CONT.loadHandover" data-args='[]'><%= __('talentx:refresh') %></button>
   </div>
   <div style="padding:.75rem 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;border-bottom:1px solid rgba(148,163,184,.15)">
-    <div><label for="ho-out"><%= __('talentx:ct_outgoing') %> *</label><br>
+    <div><label for="ho-out" class="required"><%= __('talentx:ct_outgoing') %></label><br>
       <select id="ho-out" class="form-control"><option value=""><%= __('talentx:cp_select') %></option>
         <% (employees||[]).forEach(function(e){ %><option value="<%= e.id %>"><%= e.name %></option><% }); %>
       </select></div>

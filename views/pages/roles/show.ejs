@@ -63,7 +63,10 @@ const LEVEL_LABELS = [
         </div>
         <strong><%= __('admin:description') %>:</strong>
         <div>
-            <%= role.description || ('<em>' + __('admin:no_description_provided') + '</em>') %>
+            <%# The placeholder is markup, never printed text: built inside an
+                escaped output, its tags were escaped and the page read the
+                placeholder wrapped in literal em tags. %>
+            <% if (role.description) { %><%= role.description %><% } else { %><em><%= __('admin:no_description_provided') %></em><% } %>
         </div>
     </div>
 </div>

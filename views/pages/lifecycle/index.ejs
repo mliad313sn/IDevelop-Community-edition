@@ -27,7 +27,7 @@
   <h3 style="margin-top:0"><%= __('talentx:lc_record_heading') %></h3>
   <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end">
     <div style="flex:1 1 18rem">
-      <label for="lc-emp"><%= __('talentx:employee') %> *</label><br>
+      <label for="lc-emp" class="required"><%= __('talentx:employee') %></label><br>
       <input id="lc-emp" list="lc-emp-list" class="form-control" autocomplete="off" placeholder="<%= __('talentx:lc_pick_employee_ph') %>">
       <datalist id="lc-emp-list">
         <% (employees||[]).forEach(function(e){ %>
@@ -36,7 +36,7 @@
       </datalist>
     </div>
     <div>
-      <label for="lc-kind"><%= __('talentx:lc_event') %> *</label><br>
+      <label for="lc-kind" class="required"><%= __('talentx:lc_event') %></label><br>
       <select id="lc-kind" class="form-control">
         <option value="joiner"><%= __('talentx:lc_joiner') %></option>
         <option value="mover"><%= __('talentx:lc_mover') %></option>

@@ -753,9 +753,11 @@ var ROLEC = (window.ChartTheme && window.ChartTheme.ROLE) || { neutralFillSoft: 
       </tbody>
     </table>
   </div>
+  <% if (journal.canOpenLog) { %>
   <p style="margin:.6rem 0 0">
     <a class="btn btn-sm btn-secondary" href="/system-logs?employeeId=<%= employee.id %>&amp;excludeHttp=1"><%= __('admin:ops_journal_more') %></a>
   </p>
+  <% } %>
   <% } %>
 </div>
 <% } %>

@@ -465,7 +465,7 @@
   "lc_leftover_nat_plans": "{{n}} nationalisation plan(s) to decide",
   "lc_status": "Status",
   "lc_reverted": "Reverted",
-  "lc_revert": "Revert",
+  "lc_revert": "Cancel the event",
   "lc_revert_hint": "Undo this event if it was recorded by mistake (super admin only)",
   "lc_revert_confirm": "Revert this event? Its effects will be undone: a leaver's account is reactivated and the pending PII cleanup removed; a joiner's untouched provisional assessments are deleted; the auto-created handover plan is cancelled. The event stays in the list, marked as reverted.",
   "lc_revert_note": "Optional note (why is this being reverted?):",

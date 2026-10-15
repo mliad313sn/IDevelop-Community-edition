@@ -5,7 +5,7 @@
 
 <div class="card" style="padding:1rem;margin-bottom:1rem">
   <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end">
-    <div><label><%= __('talentx:employee') %> *</label><br>
+    <div><label class="required"><%= __('talentx:employee') %></label><br>
       <select id="cp-emp" class="form-control" style="min-width:240px">
         <option value=""><%= __('talentx:cp_select') %></option>
         <% (employees||[]).forEach(function(e){ %>
@@ -13,7 +13,7 @@
         <% }); %>
       </select>
     </div>
-    <div><label><%= __('talentx:cp_target_role_label') %> *</label><br>
+    <div><label class="required"><%= __('talentx:cp_target_role_label') %></label><br>
       <select id="cp-role" class="form-control" style="min-width:240px">
         <option value=""><%= __('talentx:cp_select') %></option>
         <% (roles||[]).forEach(function(r){ %>

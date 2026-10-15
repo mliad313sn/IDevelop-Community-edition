@@ -20,7 +20,7 @@
   "f_to": "To",
   "problems_only": "Problems only",
   "filter_btn": "Filter",
-  "clear_btn": "Clear",
+  "clear_btn": "Reset filters",
   "total_entries": "Total Log Entries:",
   "filtered": " (filtered)",
   "th_datetime": "Date/Time",

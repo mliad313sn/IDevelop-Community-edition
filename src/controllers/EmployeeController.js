@@ -530,7 +530,14 @@ class EmployeeController {
                     ).catch(() => []),
                     SystemLogModel.countFiltered(f, scope).catch(() => null),
                 ]);
-                journal = { rows, total };
+                // « See everything in the system log » only when the reader may
+                // open the system log (view_system_logs): a local admin without
+                // it was sent to the 403 page.
+                journal = {
+                    rows,
+                    total,
+                    canOpenLog: RBACService.hasPermission(req.user, 'view_system_logs'),
+                };
             }
             // ---- end SECTION operations --------------------------------------------------
 

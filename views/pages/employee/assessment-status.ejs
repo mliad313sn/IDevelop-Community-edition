@@ -129,6 +129,7 @@ var campHeaderKey = campOpen ? 'loop_campaign_header'
     page. Charge AVANT le script de la page (non differe) pour que SAConsoleNet
     existe au premier appel. %>
 <script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script src="/js/status-badge.js?v=<%= assetVersion %>"></script>
 <script nonce="<%= cspNonce %>">
 SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
   err_session: __('talentx:sar_err_session'),
@@ -148,7 +149,6 @@ SAConsoleNet.configure(<%- include('../../partials/json-script', { v: {
 } }) %>);
 const MY = {
   current: null,
-  STATES: { draft:'#5f6570', submitted:'#1b56b8', under_review:'#a15400', changes_requested:'#c62828', reviewed:'#1b7e3a', arbitration:'#7a3cc4', approved:'#0f8a3c', rejected:'#b00020' },
   LABELS: {
     draft: <%- JSON.stringify(__('employee:state_draft')) %>,
     submitted: <%- JSON.stringify(__('employee:state_submitted')) %>,
@@ -176,7 +176,8 @@ const MY = {
   // valait `{}` : le test `if(!r.ok||j.ok===false)` ne voyait rien.
   // Sur un refus, l ecran de suivi affichait un etat VIDE comme s il etait mesure.
   async api(p,m,b){ try { return await SAConsoleNet.call(p,m,b); } catch(e){ (window.toast||alert)(e.message,'error'); throw e; } },
-  badge(s){ return '<span style="padding:2px 8px;border-radius:10px;color:#fff;font-size:.8em;background:'+(this.STATES[s]||'#555')+'">'+(this.LABELS[s]||s)+'</span>'; },
+  // The shared status badge: an icon and a text (escaped), never colour alone.
+  badge(s){ return sbBadge(s, this.LABELS[s]||s); },
   closeThread(){ document.getElementById('my-thread').style.display='none'; },
   async openThread(id){ this.current=id; const j=await this.api('/api/self-assessment/'+id+'/thread');
     document.getElementById('my-thread').style.display='block';
@@ -186,6 +187,12 @@ const MY = {
     tb.innerHTML = j.items.length ? j.items.map(it=>{ var cr = it.workflowState==='changes_requested'; return '<tr'+(cr?' style="background:rgba(198,40,40,.08)"':'')+'><td>'+esc(it.skillName||('#'+it.skillId))+(cr?' <span style="color:#c62828;font-weight:600;font-size:.8em">· '+esc(this.I18N.actionNeeded)+'</span>':'')+'</td><td>'+it.selfRatedLevel+'</td><td>'+this.badge(it.workflowState)+'</td><td>'+it.commentCount+'</td><td><button class="btn btn-sm" data-on-click="MY.openThread" data-args="'+esc(JSON.stringify([it.id]))+'">'+esc(this.I18N.discussRespond)+'</button>'+(cr?' <a class="btn btn-sm btn-primary" href="/employee/self-assessment">'+esc(this.I18N.reviseResubmit)+'</a>':'')+'</td></tr>'; }).join('') : '<tr><td colspan="5"><em>'+esc(this.I18N.noAssessments)+'</em></td></tr>'; }
 };
 function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// The shared status badge (public/js/status-badge.js, every value escaped); a
+// plain escaped chip if the script did not load.
+function sbBadge(tone,label,n){
+  if(window.StatusBadge && typeof window.StatusBadge.html==='function') return window.StatusBadge.html(tone,label,n);
+  return '<span class="badge">'+esc(label)+(n!=null?' '+esc(n):'')+'</span>';
+}
 // CSP: buttons are wired by csp-actions.js (data-on-click: MY.<method>), which
 // calls with this = the element; the methods use this.*, so each is bound to MY.
 Object.keys(MY).forEach(function(k){ if(typeof MY[k]==='function') MY[k]=MY[k].bind(MY); });

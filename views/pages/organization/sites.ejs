@@ -55,7 +55,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
     <p style="opacity:.85; margin-top:-.25rem;"><%= __('admin:geo_help') %></p>
     <form action="/organization/countries" method="POST" style="display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end;">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-        <div class="form-group" style="margin:0;"><label for="site-f1-name"><%= __('admin:lc_country') %> *</label><input id="site-f1-name" type="text" name="name" required></div>
+        <div class="form-group" style="margin:0;"><label for="site-f1-name" class="required"><%= __('admin:lc_country') %></label><input id="site-f1-name" type="text" name="name" required></div>
         <div class="form-group" style="margin:0;"><label for="site-f1-code"><%= __('admin:code') %></label><input id="site-f1-code" type="text" name="code" style="max-width:100px;"></div>
         <div class="form-group" style="margin:0;"><label for="site-f1-regionName"><%= __('admin:geo_region') %></label><input id="site-f1-regionName" type="text" name="regionName"></div>
         <button type="submit" class="btn btn-primary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:geo_add') %></button>
@@ -82,7 +82,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
         <form action="/organization/sites" method="POST">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <div class="form-group">
-                <label for="site-f2-name"><%= __('admin:name') %> *</label>
+                <label for="site-f2-name" class="required"><%= __('admin:name') %></label>
                 <input id="site-f2-name" type="text" name="name" required value="<%= dc('name') %>">
             </div>
             <div class="form-group">
@@ -116,7 +116,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
         <form id="editForm" method="POST">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <div class="form-group">
-                <label for="editName"><%= __('admin:name') %> *</label>
+                <label for="editName" class="required"><%= __('admin:name') %></label>
                 <input type="text" name="name" id="editName" required>
             </div>
             <div class="form-group">

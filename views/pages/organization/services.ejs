@@ -59,7 +59,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
         <form action="/organization/services" method="POST">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <div class="form-group">
-                <label for="svc-f1-departmentId"><%= __('admin:department') %> *</label>
+                <label for="svc-f1-departmentId" class="required"><%= __('admin:department') %></label>
                 <select id="svc-f1-departmentId" name="departmentId" required>
                     <option value=""><%= __('admin:select_department') %></option>
                     <% departments.forEach(function(dept) { %>
@@ -68,7 +68,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
                 </select>
             </div>
             <div class="form-group">
-                <label for="svc-f1-name"><%= __('admin:name') %> *</label>
+                <label for="svc-f1-name" class="required"><%= __('admin:name') %></label>
                 <input id="svc-f1-name" type="text" name="name" required value="<%= dc('name') %>">
             </div>
             <div class="form-group">
@@ -93,7 +93,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
         <form id="editForm" method="POST">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <div class="form-group">
-                <label for="editDepartmentId"><%= __('admin:department') %> *</label>
+                <label for="editDepartmentId" class="required"><%= __('admin:department') %></label>
                 <select name="departmentId" id="editDepartmentId" required>
                     <option value=""><%= __('admin:select_department') %></option>
                     <% departments.forEach(function(dept) { %>
@@ -102,7 +102,7 @@ const dc = function (k) { return isCreateDraft && d[k] != null ? String(d[k]) : 
                 </select>
             </div>
             <div class="form-group">
-                <label for="editName"><%= __('admin:name') %> *</label>
+                <label for="editName" class="required"><%= __('admin:name') %></label>
                 <input type="text" name="name" id="editName" required>
             </div>
             <div class="form-group">

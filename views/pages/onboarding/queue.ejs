@@ -90,28 +90,28 @@
                         <input id="onb-<%= r.id %>-f2-lastName" type="text" name="lastName" class="form-control" value="<%= pd ? (pd.lastName || '') : (r.lastName || '') %>" required>
                     </div>
                     <div class="form-group">
-                        <label for="onb-<%= r.id %>-f2-siteId"><%= __('admin:site') %> *</label>
+                        <label for="onb-<%= r.id %>-f2-siteId" class="required"><%= __('admin:site') %></label>
                         <select id="onb-<%= r.id %>-f2-siteId" name="siteId" class="form-control" required data-cascade="site">
                             <option value=""><%= __('admin:select_option') %></option>
                             <% (sites || []).forEach(s => { %><option value="<%= s.id %>" <%= pd && String(pd.siteId) === String(s.id) ? 'selected' : '' %>><%= s.name %></option><% }); %>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="onb-<%= r.id %>-f2-departmentId"><%= __('admin:department') %> *</label>
+                        <label for="onb-<%= r.id %>-f2-departmentId" class="required"><%= __('admin:department') %></label>
                         <select id="onb-<%= r.id %>-f2-departmentId" name="departmentId" class="form-control" required data-cascade="department">
                             <option value=""><%= __('admin:select_option') %></option>
                             <% (departments || []).forEach(d => { %><option value="<%= d.id %>" data-site-id="<%= d.siteId || '' %>" <%= pd && String(pd.departmentId) === String(d.id) ? 'selected' : '' %>><%= d.name %><%= d.siteId && siteName[String(d.siteId)] ? ' (' + siteName[String(d.siteId)] + ')' : '' %></option><% }); %>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="onb-<%= r.id %>-f2-serviceId"><%= __('admin:service') %> *</label>
+                        <label for="onb-<%= r.id %>-f2-serviceId" class="required"><%= __('admin:service') %></label>
                         <select id="onb-<%= r.id %>-f2-serviceId" name="serviceId" class="form-control" required data-cascade="service">
                             <option value=""><%= __('admin:select_option') %></option>
                             <% (services || []).forEach(sv => { %><option value="<%= sv.id %>" data-department-id="<%= sv.departmentId || '' %>" data-site-id="<%= sv.departmentId && departments && (departments.find(function(d){return String(d.id)===String(sv.departmentId);})||{}).siteId || '' %>" <%= pd && String(pd.serviceId) === String(sv.id) ? 'selected' : '' %>><%= sv.name %><%= sv.departmentId && deptName[String(sv.departmentId)] ? ' (' + deptName[String(sv.departmentId)] + ')' : '' %></option><% }); %>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="onb-<%= r.id %>-f2-roleId"><%= __('admin:role') %> *</label>
+                        <label for="onb-<%= r.id %>-f2-roleId" class="required"><%= __('admin:role') %></label>
                         <select id="onb-<%= r.id %>-f2-roleId" name="roleId" class="form-control" required>
                             <option value=""><%= __('admin:select_option') %></option>
                             <% (roles || []).forEach(ro => { %><option value="<%= ro.id %>" <%= pd && String(pd.roleId) === String(ro.id) ? 'selected' : '' %>><%= ro.name %></option><% }); %>

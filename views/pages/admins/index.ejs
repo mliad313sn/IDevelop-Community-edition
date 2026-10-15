@@ -74,7 +74,8 @@ const exportQs = (function () {
 <div class="tri-banner" role="status">
     <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
     <span><%= __('admin:tri_banner_powerless', { n: summary.scopedButPowerless }) %></span>
-    <a href="/admin/access-review" class="tri-banner-cta"><%= __('admin:tri_banner_cta') %></a>
+    <%# The access review is SuperAdmin-only: no link a local admin cannot open. %>
+    <% if (user && user.role === 'superadmin') { %><a href="/admin/access-review" class="tri-banner-cta"><%= __('admin:tri_banner_cta') %></a><% } %>
 </div>
 <% } %>
 
@@ -154,9 +155,15 @@ const exportQs = (function () {
     <% } %>
 </form>
 
-<form action="/admin/admin-accounts/bulk" method="POST" id="tri-bulk-form">
-<input type="hidden" name="_csrf" value="<%= csrfToken %>">
+<%# The bulk form holds ONLY its bar: the row checkboxes join it through the
+    form="tri-bulk-form" attribute. The rows carry their own forms (unlock,
+    extend, deactivate, reactivate), and a <form> inside another <form> is
+    dropped by the HTML parser: the row's closing tag then closed the bulk
+    form, so a row button posted the BULK form, and every checkbox after the
+    first row with an action left the selection. %>
 <div class="table-wrapper">
+    <form action="/admin/admin-accounts/bulk" method="POST" id="tri-bulk-form">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <%# Bulk bar: one confirmed batch, every account guarded individually. %>
     <div class="tri-bulk" id="tri-bulk-bar" hidden>
         <span class="tri-bulk-count" id="tri-bulk-count">0</span>
@@ -173,6 +180,7 @@ const exportQs = (function () {
         </select>
         <button type="submit" class="btn btn-primary btn-sm" id="tri-bulk-submit"><%= __('admin:adm_bulk_apply') %></button>
     </div>
+    </form>
     <table class="table" id="admins-table">
         <thead>
             <tr>
@@ -215,7 +223,7 @@ const exportQs = (function () {
                 %>
                 <tr class="<%= admin.isActive ? '' : 'tri-row-inactive' %>" data-state="<%= states.join(' ') %>" data-id="<%= admin.id %>">
                     <td class="tri-col-check">
-                        <% if (actionable) { %><input type="checkbox" name="ids" value="<%= admin.id %>" class="tri-row-check" aria-label="<%= admin.username %>"><% } %>
+                        <% if (actionable) { %><input type="checkbox" name="ids" value="<%= admin.id %>" class="tri-row-check" form="tri-bulk-form" aria-label="<%= admin.username %>"><% } %>
                     </td>
                     <td>
                         <strong><%= admin.username %></strong>
@@ -334,7 +342,6 @@ const exportQs = (function () {
     </div>
     <% } %>
 </div>
-</form>
 
 <style>
   .tri-header-actions{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end}

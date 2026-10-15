@@ -52,16 +52,16 @@
     <h3 id="nb-modal-title" style="margin-top:0"><%= __('talentx:nb_assess') %> <span id="nb-modal-name"></span></h3>
     <input type="hidden" id="nb-emp">
     <div style="display:flex;gap:.75rem;margin:.5rem 0;flex-wrap:wrap">
-      <div style="flex:1 1 140px"><label for="nb-perf"><%= __('talentx:performance') %> *</label>
+      <div style="flex:1 1 140px"><label for="nb-perf" class="required"><%= __('talentx:performance') %></label>
         <select id="nb-perf" class="form-control" required aria-required="true"><option value="" selected disabled><%= __('common:choose_placeholder') %></option><option value="low"><%= __('talentx:low') %></option><option value="medium"><%= __('talentx:medium') %></option><option value="high"><%= __('talentx:high') %></option></select></div>
-      <div style="flex:1 1 140px"><label for="nb-pot"><%= __('talentx:potential') %> *</label>
+      <div style="flex:1 1 140px"><label for="nb-pot" class="required"><%= __('talentx:potential') %></label>
         <select id="nb-pot" class="form-control" required aria-required="true"><option value="" selected disabled><%= __('common:choose_placeholder') %></option><option value="low"><%= __('talentx:low') %></option><option value="medium"><%= __('talentx:medium') %></option><option value="high"><%= __('talentx:high') %></option></select></div>
     </div>
     <p id="nb-required-msg" role="alert" style="display:none;margin:.2rem 0;font-size:.82rem;color:var(--red-text)"><%= __('common:choose_required_fields') %></p>
     <%# where the person comes from, and WHY the box changes. %>
     <div id="nb-prev" class="nb-prev-box" aria-live="polite"></div>
     <div id="nb-just-wrap" style="display:none;margin:.5rem 0">
-      <label for="nb-just"><%= __('talentx:nb_mv_justification_prompt') %> *</label>
+      <label for="nb-just" class="required"><%= __('talentx:nb_mv_justification_prompt') %></label>
       <textarea id="nb-just" class="form-control" rows="3" aria-describedby="nb-just-hint" aria-required="true"></textarea>
       <p id="nb-just-hint" style="font-size:.78rem;color:var(--text-muted,#64748b);margin:.2rem 0"><%= __('talentx:nb_mv_justification_hint', { min: 20 }) %></p>
       <p id="nb-just-msg" role="alert" style="display:none;margin:.2rem 0;font-size:.82rem;color:var(--red-text)"><%= __('talentx:nb_mv_justification_short', { min: 20 }) %></p>

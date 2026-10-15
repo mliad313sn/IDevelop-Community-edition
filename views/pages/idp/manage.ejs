@@ -47,7 +47,7 @@
                             </th>
                             <td class="text-muted" style="font-size:.9em"><%= [p.siteName, p.departmentName].filter(Boolean).join(' / ') || '—' %></td>
                             <td>
-                                <span class="badge <%= badge[p.status] || 'badge-secondary' %>"><%= statusLabel[p.status] || p.status %></span>
+                                <%- include('../../partials/status-badge', { state: p.status, label: statusLabel[p.status] || p.status }) %>
                                 <% if (p.status === 'active' && p.endsOn && new Date(p.endsOn) < new Date()) { %>
                                     <span class="badge badge-danger" title="<%= __('idp:overdue_title') %>"><%= __('idp:overdue') %></span>
                                 <% } %>
