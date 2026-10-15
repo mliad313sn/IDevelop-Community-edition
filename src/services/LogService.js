@@ -85,7 +85,7 @@ function categoryFor(action) {
     if (/^HTTP_/.test(a)) return 'http';
     if (/^MAINT_/.test(a)) return 'maintenance';
     if (SECURITY_ACTIONS.some((re) => re.test(a))) return 'security';
-    if (/^SERVER_ERROR|_ERROR$/.test(a)) return 'system';
+    if (a.startsWith('SERVER_ERROR') || a.endsWith('_ERROR')) return 'system';
     return 'audit';
 }
 
