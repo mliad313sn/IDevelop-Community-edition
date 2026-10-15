@@ -495,5 +495,20 @@
   "line_admin_tag": "administrateur",
   "line_admin_title": "Aucun superviseur actif : la personne est rattachée à un compte d’administration désigné manager.",
   "line_inactive_tag": "inactif",
-  "line_inactive_title": "Le superviseur enregistré n’est plus actif et aucun manager actif ne prend le relais."
+  "line_inactive_title": "Le superviseur enregistré n’est plus actif et aucun manager actif ne prend le relais.",
+  "next_title": "Prochaine étape",
+  "next_sa_fix": "Votre auto-évaluation vous a été renvoyée : corrigez-la et soumettez-la de nouveau.",
+  "next_sa_fix_cta": "Corriger mon auto-évaluation",
+  "next_sa_continue": "Votre auto-évaluation est commencée : terminez-la et soumettez-la.",
+  "next_sa_continue_cta": "Continuer mon auto-évaluation",
+  "next_sa_start": "Votre auto-évaluation vous attend.",
+  "next_sa_start_cta": "Commencer mon auto-évaluation",
+  "next_change_answered": "Une modification que vous avez demandée sur votre évaluation a reçu une réponse.",
+  "next_change_answered_cta": "Voir la réponse",
+  "next_safety_blocked": "Votre aptitude sécurité est bloquée : voyez ce qui manque.",
+  "next_safety_blocked_cta": "Voir mon aptitude sécurité",
+  "next_safety_expiring": "Une exigence de votre aptitude sécurité arrive à échéance.",
+  "next_safety_expiring_cta": "Voir mon aptitude sécurité",
+  "next_results": "Rien ne vous attend : voyez où vous en êtes.",
+  "next_results_cta": "Voir mes résultats"
 }

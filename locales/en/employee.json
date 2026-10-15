@@ -495,5 +495,20 @@
   "line_admin_tag": "administrator",
   "line_admin_title": "No active supervisor: this person reports to an administration account named as their manager.",
   "line_inactive_tag": "inactive",
-  "line_inactive_title": "The recorded supervisor is no longer active and no active manager takes over."
+  "line_inactive_title": "The recorded supervisor is no longer active and no active manager takes over.",
+  "next_title": "Next step",
+  "next_sa_fix": "Your self-assessment was sent back to you: correct it and submit it again.",
+  "next_sa_fix_cta": "Correct my self-assessment",
+  "next_sa_continue": "Your self-assessment is started: finish it and submit it.",
+  "next_sa_continue_cta": "Continue my self-assessment",
+  "next_sa_start": "Your self-assessment is waiting for you.",
+  "next_sa_start_cta": "Start my self-assessment",
+  "next_change_answered": "A change you asked for on your assessment was answered.",
+  "next_change_answered_cta": "See the answer",
+  "next_safety_blocked": "Your safety clearance is blocked: see what is missing.",
+  "next_safety_blocked_cta": "See my safety clearance",
+  "next_safety_expiring": "A requirement of your safety clearance expires soon.",
+  "next_safety_expiring_cta": "See my safety clearance",
+  "next_results": "Nothing waits for you: see where you stand.",
+  "next_results_cta": "See my results"
 }

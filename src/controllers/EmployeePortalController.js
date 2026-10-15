@@ -240,11 +240,19 @@ class EmployeePortalController {
         } catch (_) {
             /* optional */
         }
+        // « Next step »: the ONE thing to do now, from the person's own data
+        let nextStep = null;
+        try {
+            nextStep = await require('../services/EmployeeHomeService').nextStep(employeeId);
+        } catch (_) {
+            nextStep = null;
+        }
         res.render('pages/employee/dashboard', {
             title: req.t ? req.t('employee:dashboard_title') : 'My workspace',
             employee,
             snapshot,
             targetGap,
+            nextStep,
         });
     }
 

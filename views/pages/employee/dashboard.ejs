@@ -3,6 +3,16 @@
     <p><%= __('employee:dash_purpose') %><% if (employee && employee.roleName) { %> — <strong><%= employee.roleName %></strong><% } %></p>
 </div>
 
+<%# Wave 12 (D3) — « Next step »: the ONE thing to do now (EmployeeHomeService),
+    from the person's own data; the destination is a fixed path. %>
+<% if (typeof nextStep !== 'undefined' && nextStep) { %>
+<section class="card emp-next" id="empNext" aria-labelledby="empNextH">
+    <h2 id="empNextH" class="emp-section-h"><i class="fas fa-arrow-right" aria-hidden="true"></i> <%= __('employee:next_title') %></h2>
+    <p class="emp-sub"><%= __('employee:next_' + nextStep.key) %></p>
+    <a class="btn btn-primary" href="<%= nextStep.href %>"><%= __('employee:next_' + nextStep.key + '_cta') %></a>
+</section>
+<% } %>
+
 <%# 3.23.18 (UX-03) — « À faire ». The rail's first entry lands here, so the page
     opens on what is waiting for the person, read from the SAME source as the
     bell (/api/my-actions), before the overview. Without JavaScript, or if the
