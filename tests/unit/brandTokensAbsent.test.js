@@ -103,8 +103,14 @@ const isGenerated = (rel) => rel === 'package-lock.json';
 // data: URIs are random base64 and can spell anything by chance.
 const B64 = /data:[^;,]+;base64,[A-Za-z0-9+/=]+/g;
 
+// Local agent worktrees are full copies of the tree (their own scan covers them).
+const SKIP_PATHS = new Set([path.join('.claude', 'worktrees')]);
+
 function walk(dir, out = []) {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        // A symlink (e.g. a linked node_modules) is not a file of this repository.
+        if (e.isSymbolicLink()) continue;
+        if (SKIP_PATHS.has(path.relative(ROOT, path.join(dir, e.name)))) continue;
         if (e.isDirectory()) {
             if (!SKIP_DIRS.has(e.name)) walk(path.join(dir, e.name), out);
         } else if (SCAN_EXT.has(path.extname(e.name).toLowerCase())) {

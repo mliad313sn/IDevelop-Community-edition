@@ -632,7 +632,7 @@ class AppSettingsController {
 
             // Always invalidate first so the test reflects the latest saved config.
             EmailService.invalidate();
-            const verify = await EmailService.verify();
+            const verify = await EmailService.checkConnection();
             if (!verify.ok) {
                 try {
                     await AppSettingsModel.setValue(

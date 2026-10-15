@@ -63,7 +63,9 @@ const apiAuth = async (req, res, next) => {
     // passport-azure-ad. Only a JWT-shaped bearer is considered here; opaque
     // bearers fall through to the API-key path below. When Entra bearer auth is
     // not configured this whole block is skipped (isEntraBearerEnabled → false).
-    if (bearer && sso.looksLikeJwt(bearer) && sso.isEntraBearerEnabled()) {
+    // authenticateEntraBearer ignores a bearer that is not JWT-shaped, so the
+    // attempt does not hinge on the client's header; only the refusal does.
+    if (sso.isEntraBearerEnabled()) {
         const principal = await sso.authenticateEntraBearer(req);
         if (principal) {
             req.user = principal;
@@ -71,10 +73,11 @@ const apiAuth = async (req, res, next) => {
         }
         // A JWT was presented but rejected/unlinked — it is NOT an API key, so
         // don't retry it as one; fail explicitly.
-        return res.status(401).json({
-            error: 'invalid_token',
-            hint: 'Entra bearer token was rejected or is not linked to a IDevelop account',
-        });
+        if (bearer && sso.looksLikeJwt(bearer))
+            return res.status(401).json({
+                error: 'invalid_token',
+                hint: 'Entra bearer token was rejected or is not linked to a IDevelop account',
+            });
     }
 
     // Header first; `?apiKey=` only for a key with the legacy flag (migration 163).

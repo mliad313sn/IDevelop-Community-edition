@@ -388,8 +388,8 @@ class EmailService {
         }
     }
 
-    /** Verify SMTP credentials/connectivity (used by the "send test" action). */
-    async verify() {
+    /** Check SMTP credentials/connectivity (used by the "send test" action). */
+    async checkConnection() {
         if (!nodemailer) return { ok: false, error: 'nodemailer not installed' };
         const cfg = await this.getConfig();
         if (!cfg.host) return { ok: false, error: 'SMTP host is not configured' };
@@ -401,6 +401,11 @@ class EmailService {
         } catch (error) {
             return { ok: false, error: this._explain(error, cfg) };
         }
+    }
+
+    /** Older name of checkConnection(), kept for callers and tests. */
+    async verify() {
+        return this.checkConnection();
     }
 
     /**

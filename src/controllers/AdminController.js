@@ -77,7 +77,7 @@ function _t(req, key, params, fallback) {
  * accounts are declared to be the same human — so its own login is not a
  * collision with itself.
  */
-async function _employeeLoginExists(username, exceptEmployeeId = null) {
+async function _employeeUsernameTaken(username, exceptEmployeeId = null) {
     if (!username) return false;
     try {
         const EmployeeModel = require('../models/EmployeeModel');
@@ -1436,7 +1436,7 @@ class AdminController {
             // the detail of their own team). Giving an existing person an
             // administration access is "Grant admin access", which LINKS the two
             // accounts (admins.linked_employee_id) instead of shadowing one.
-            if (await _employeeLoginExists(username)) {
+            if (await _employeeUsernameTaken(username)) {
                 req.flash(
                     'error',
                     _t(
@@ -1621,7 +1621,7 @@ class AdminController {
                 // case and keeps its own username.
                 const wanted = req.body.username.trim();
                 const linkedTo = admin.linkedEmployeeId || admin.linked_employee_id || null;
-                if (await _employeeLoginExists(wanted, linkedTo)) {
+                if (await _employeeUsernameTaken(wanted, linkedTo)) {
                     req.flash(
                         'error',
                         _t(
@@ -2903,6 +2903,6 @@ module.exports._internals = {
     scopeRowsFromBody: _scopeRowsFromBody,
     containsScope: _containsScope,
     canManageTargetAdmin: _canManageTargetAdmin,
-    employeeLoginExists: _employeeLoginExists,
+    employeeLoginExists: _employeeUsernameTaken,
     LIST_SORT,
 };

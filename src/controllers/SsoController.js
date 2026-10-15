@@ -50,7 +50,7 @@ function subjectRef(user) {
     return `${t}:${Number(user.id)}`;
 }
 
-function authAudit(req, action, details, adminId = null) {
+function recordAccountEvent(req, action, details, adminId = null) {
     try {
         LogService.log({
             adminId,
@@ -126,7 +126,7 @@ class SsoController {
         if (!isTest && req.isAuthenticated && req.isAuthenticated()) {
             return res.redirect(homeFor(req.user && req.user.userType));
         }
-        authAudit(req, 'SSO_INITIATE', `Single sign-on requested via ${provider.key}`);
+        recordAccountEvent(req, 'SSO_INITIATE', `Single sign-on requested via ${provider.key}`);
         passport.authenticate(provider.strategyName, provider.authOptions)(req, res, next);
     }
 
@@ -152,7 +152,7 @@ class SsoController {
                         code: samlRefusalCode(err),
                         detail: String(err.message || err),
                     });
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'SSO_TEST_SIGNIN',
                         `${provider.key}: test sign-in refused (${err.message || err})`
@@ -161,7 +161,7 @@ class SsoController {
                         `/app-settings/sso/test-result/${encodeURIComponent(t.nonce)}`
                     );
                 }
-                authAudit(
+                recordAccountEvent(
                     req,
                     'SSO_ERROR',
                     `SSO sign-in error via ${provider.key}: ${err.message || err} [${samlRefusalCode(err)}]`
@@ -171,7 +171,7 @@ class SsoController {
             if (!user) {
                 // A test sign-in from the SSO settings: show the diagnostic, never log in.
                 if (info && info.test) {
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'SSO_TEST_SIGNIN',
                         `${provider.key}: test sign-in completed (no session created)`
@@ -183,7 +183,7 @@ class SsoController {
                 // Auto-onboarded: an unknown identity that we parked as a pending
                 // request — send to the holding page, not a denial.
                 if (info && info.onboarding) {
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'SSO_ONBOARDING',
                         `${provider.key}: identity parked for onboarding`
@@ -197,7 +197,7 @@ class SsoController {
                 // parsed as `((info && info.message) || req.t) ? …`: it always
                 // dropped the reason, and called req.t when it was undefined.)
                 const reason = (info && (info.code || info.message)) || 'unknown';
-                authAudit(req, 'SSO_DENIED', `${provider.key}: ${reason}`);
+                recordAccountEvent(req, 'SSO_DENIED', `${provider.key}: ${reason}`);
                 if (reason === 'superadmin_sso_forbidden')
                     alertSuperadminSso(info && info.adminId, `${provider.key}: ${reason}`);
                 if (reason === 'sso_not_linked') {
@@ -237,7 +237,7 @@ class SsoController {
             // Per-user authentication policy (migration 55): 'local_only'
             // refuses SSO for this account even though the identity resolves.
             if (String(user.authPolicy || user.auth_policy || 'any') === 'local_only') {
-                authAudit(
+                recordAccountEvent(
                     req,
                     'SSO_DENIED',
                     `${provider.key}: account ${subjectRef(user)} is restricted to local password sign-in (auth policy local_only)`
@@ -285,7 +285,7 @@ class SsoController {
                             : null;
                     if (why) {
                         // Not offered; the person still signs in as themselves.
-                        authAudit(
+                        recordAccountEvent(
                             req,
                             'SSO_DENIED',
                             `${provider.key}: ${why} — employee #${user.id} not offered admin account(s) #${candidates.map((c) => c.id).join(', #')} (link method ${ctx.linkMethod || 'unknown'})`
@@ -512,7 +512,7 @@ function flashAndLogin(req, res, key, fallback, to = '/login') {
 }
 
 function deny(req, res, providerKey, reason, detail = '', adminId = null) {
-    authAudit(
+    recordAccountEvent(
         req,
         'SSO_DENIED',
         `${providerKey}: ${reason}${detail ? ` — ${detail}` : ''}`,
@@ -563,7 +563,7 @@ function alertSuperadminSso(adminId, detail) {
 
 function failed(req, res, providerKey, err) {
     console.error(`SSO sign-in error [${providerKey}]:`, err);
-    authAudit(
+    recordAccountEvent(
         req,
         'SSO_ERROR',
         `SSO sign-in error via ${providerKey}: ${(err && err.message) || err}`
@@ -613,7 +613,7 @@ function establish(
                 }
                 if (init) init(req.session);
                 for (const [action, details, adminId] of audits)
-                    authAudit(req, action, details, adminId);
+                    recordAccountEvent(req, action, details, adminId);
                 Promise.resolve(after && after())
                     .catch(() => {})
                     .then(() => {
@@ -646,7 +646,7 @@ function startChoice(req, res, data) {
                 nonce: crypto.randomBytes(24).toString('base64url'),
                 at: Date.now(),
             };
-            authAudit(
+            recordAccountEvent(
                 req,
                 'SSO_CHOOSER',
                 `${data.provider}: employee #${data.employeeId} is the linked person of admin account(s) #${data.adminIds.join(', #')} — account choice offered`
@@ -722,7 +722,7 @@ async function finishAdmin(
     const mode = await AdminSso.secondFactor(admin.id, mfaAsserted);
     const viaEmployeeId = method === 'linked-person' ? employeeId : null;
     if (mode === 'local' || mode === 'code') {
-        authAudit(
+        recordAccountEvent(
             req,
             mode === 'local' ? 'MFA_CHALLENGE' : 'MFA_ENROL_CODE_REQUESTED',
             `${mode === 'local' ? 'MFA code' : 'One-time enrolment code'} requested for admin:${admin.id} (first factor: SSO via ${provider}, ${method})`,
@@ -828,7 +828,7 @@ async function submitEnrolCode(req, res) {
         const r = await AdminSso.consumeEnrolCode(p.id, req.body && req.body.code);
         if (!r.ok) {
             p.fails = Number(p.fails || 0) + 1;
-            authAudit(
+            recordAccountEvent(
                 req,
                 'MFA_ENROL_CODE_FAILED',
                 `Wrong enrolment code for admin #${p.id} (${r.reason})`,

@@ -19,7 +19,7 @@ function actorRefOf(u) {
 // Audit an authentication/security event to system_logs (best-effort; never throws).
 // Records WHO acted: admin_id for admins, actor_ref for employees/managers (explicit
 // actorRef wins; otherwise derived from req.user when it is already established).
-function authAudit(req, action, details, adminId = null, actorRef = null) {
+function recordAccountEvent(req, action, details, adminId = null, actorRef = null) {
     try {
         LogService.log({
             adminId,
@@ -466,7 +466,7 @@ class AuthController {
                 );
                 if (!user || !superOk) {
                     if (user && !superOk)
-                        authAudit(
+                        recordAccountEvent(
                             req,
                             'LOGIN_BLOCKED',
                             `password_login_blocked_sso_enforced: ${user.userType} #${user.id}`,
@@ -483,7 +483,7 @@ class AuthController {
                 // unattributed LOGIN_FAILED row only repeated the same keystrokes.
                 // The passport-level failure (no strategy answer at all) is kept.
                 if (!info || !info.message)
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'LOGIN_FAILED',
                         `Failed login for ${require('../services/AuditRetentionService').fingerprint(attempted)}: no strategy answer`
@@ -571,7 +571,7 @@ class AuthController {
                     // factor. The sign-in is refused with the generic error and the
                     // reason is logged.
                     console.error('Login MFA lookup failed, sign-in refused:', e && e.message);
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'LOGIN_MFA_CHECK_FAILED',
                         `MFA state of ${user.userType} #${user.id} could not be read; sign-in refused (fail closed)`,
@@ -586,7 +586,7 @@ class AuthController {
                 }
 
                 if (mfaActive) {
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'MFA_CHALLENGE',
                         `MFA code requested for ${user.userType} #${user.id}`,
@@ -653,7 +653,7 @@ class AuthController {
                             'Type:',
                             user.userType
                         );
-                        authAudit(
+                        recordAccountEvent(
                             req,
                             'LOGIN_SUCCESS',
                             `${user.userType} #${user.id} signed in${kioskMode.isShared(req) ? ' (shared device)' : ''}`,
@@ -724,7 +724,7 @@ class AuthController {
                 (await MfaService.consumeBackupCode({ userType, userId: pending.id, code }));
             const ok = totpOk || backupOk;
             if (!ok) {
-                authAudit(
+                recordAccountEvent(
                     req,
                     'MFA_FAILED',
                     `Invalid MFA code for ${pending.userType} #${pending.id}`,
@@ -745,7 +745,7 @@ class AuthController {
                 pending.fails = (pending.fails || 0) + 1;
                 req.session.mfaPending = pending;
                 if (pending.fails >= 5) {
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'MFA_LOCKED',
                         `Too many invalid MFA codes for ${pending.userType} #${pending.id}`,
@@ -811,7 +811,7 @@ class AuthController {
                 !AdminSsoGate.passwordAllowedWhileEnforced(user)
             ) {
                 delete req.session.mfaPending;
-                authAudit(
+                recordAccountEvent(
                     req,
                     'LOGIN_BLOCKED',
                     `password_login_blocked_sso_enforced: ${user.userType} #${user.id} at the MFA step`,
@@ -832,7 +832,7 @@ class AuthController {
                       : null;
                 if (reason) {
                     delete req.session.mfaPending;
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'SSO_DENIED',
                         `${pending.provider || 'sso'}: ${reason} — admin #${pending.id} at the MFA step`,
@@ -911,7 +911,7 @@ class AuthController {
                             pending.method || 'direct',
                             'local'
                         ))
-                            authAudit(req, action, details, adminId);
+                            recordAccountEvent(req, action, details, adminId);
                         if (pending.method === 'direct')
                             require('../services/SsoService')
                                 .stampAdminIdentityUse(pending.provider, pending.mapped, user.id)
@@ -922,7 +922,7 @@ class AuthController {
                                 returnToApi().returnTarget(pending.returnTo, homeFor(user.userType))
                         );
                     }
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'LOGIN_SUCCESS',
                         `${user.userType} #${user.id} signed in (MFA verified)`,
@@ -964,7 +964,7 @@ class AuthController {
         const kioskMode = require('../middleware/sessionActivity');
         const wasShared = kioskMode.isShared(req);
         if (u)
-            authAudit(
+            recordAccountEvent(
                 req,
                 'LOGOUT',
                 `${u.userType || 'user'} #${u.id} signed out${wasShared ? ' (shared device)' : ''}`,
@@ -1147,14 +1147,14 @@ class AuthController {
                             `Enable Settings -> Email (SMTP), or use an admin-initiated reset.`
                     );
                 }
-                authAudit(
+                recordAccountEvent(
                     req,
                     'PASSWORD_RESET_REQUESTED',
                     `Reset requested for ${result.subjectType} #${result.subjectId}${resets.length > 1 ? ` — shared address, ${resets.length} accounts served` : ''}`
                 );
             }
             if (!resets.length) {
-                authAudit(
+                recordAccountEvent(
                     req,
                     'PASSWORD_RESET_REQUESTED',
                     `Reset requested for unknown/no-email ${require('../services/AuditRetentionService').fingerprint(identifier)} (no link issued)`
@@ -1229,7 +1229,7 @@ class AuthController {
             const result = await PasswordResetService.consume(token, password);
             // Lost the race to another use of the same link: gone too.
             if (!result.ok) return linkGone(req, res);
-            authAudit(
+            recordAccountEvent(
                 req,
                 'PASSWORD_RESET_COMPLETED',
                 `Password reset via link for ${result.subjectType} #${result.subjectId}`,
@@ -1353,7 +1353,7 @@ class AuthController {
                         T
                     );
                     if (refusal) {
-                        authAudit(
+                        recordAccountEvent(
                             req,
                             'PROFILE_EMAIL_CHANGE_REFUSED',
                             `Own e-mail change refused for admin #${me.id} (re-authentication failed)`,
@@ -1384,7 +1384,7 @@ class AuthController {
                     );
                 }
                 if (emailAdvisory) req.flash('warning', emailAdvisory);
-                authAudit(
+                recordAccountEvent(
                     req,
                     'ADMIN_PROFILE_UPDATED',
                     // Ids only: neither address goes into the immutable log.
@@ -1434,7 +1434,7 @@ class AuthController {
                     T
                 );
                 if (refusal) {
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'PROFILE_EMAIL_CHANGE_REFUSED',
                         'Own e-mail change refused (re-authentication failed)'
@@ -1466,7 +1466,7 @@ class AuthController {
                 );
             }
             if (emailAdvisory) req.flash('warning', emailAdvisory);
-            authAudit(
+            recordAccountEvent(
                 req,
                 'PROFILE_UPDATED',
                 `Own contact details updated${emailChanged ? ' (e-mail address changed)' : ''}`
@@ -1527,7 +1527,7 @@ class AuthController {
                 )
             );
             const n = counts.reduce((a, b) => a + (Number(b) || 0), 0);
-            authAudit(
+            recordAccountEvent(
                 req,
                 'SESSIONS_REVOKED_OTHERS',
                 `Signed out ${n} other session(s)`,
@@ -1604,7 +1604,7 @@ class AuthController {
             }
             const SessionService = require('../services/SessionService');
             const n = await SessionService.revokeBySid(sid);
-            authAudit(
+            recordAccountEvent(
                 req,
                 'SESSION_FORCE_CLOSED',
                 `Admin closed session ${sid.slice(0, 8)}… (${n} removed)`,
@@ -1682,7 +1682,7 @@ class AuthController {
                         )
                     );
                     const n = counts.reduce((a, b) => a + (Number(b) || 0), 0);
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'PASSWORD_CHANGED',
                         `Password changed; ${n} other session(s) signed out`,
