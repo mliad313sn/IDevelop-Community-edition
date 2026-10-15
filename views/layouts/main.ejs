@@ -30,6 +30,8 @@
     <!-- Accessibility & polish layer (loaded last so it refines the theme) -->
     <link rel="stylesheet" href="/css/a11y-polish.css?v=<%= assetVersion %>">
     <link rel="stylesheet" href="/css/horizon.css?v=<%= assetVersion %>">
+    <!-- Data-visualisation layer: charts, heatmaps, radars, gap bars (Open Horizon tokens) -->
+    <link rel="stylesheet" href="/css/viz.css?v=<%= assetVersion %>">
     <% if (_brand.accentCss) { %>
     <!-- White-label accent: overrides the gold token family with the customer's brand color -->
     <style nonce="<%= cspNonce %>"><%- _brand.accentCss %></style>

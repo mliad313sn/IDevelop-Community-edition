@@ -150,7 +150,6 @@ const JSON_DATA_REVIEWED = {
  * reauditXssSinks and c317-C-dom-xss run the riskiest ones.
  */
 const CLIENT_SINKS = {
-    'public/js/chart-theme.js': 1, // esc(message)
     'public/js/dashboard.js': 33, // esc() on every label; fragments are server-rendered EJS
     'public/js/help.js': 1, // static help content; titles escaped
     'public/js/main.js': 2, // static icons / spinner

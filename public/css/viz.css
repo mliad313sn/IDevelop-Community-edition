@@ -1,0 +1,395 @@
+/* =====================================================================
+   viz.css — IDevelop's data-visualisation layer, on the Open Horizon tokens.
+
+   One stylesheet for every chart, heatmap, radar and gap bar:
+     • the --viz-* tokens (status, categories, measure, grid) of the two
+       modes: Dusk (dark, the :root default) and Daylight
+       (:root[data-theme='light']). Colour themes (data-palette: Iris,
+       Meadow, Sunrise, Ocean) change the brand accent only: a status or a
+       measure keeps its colour whatever the palette, so a figure never
+       changes meaning with the user's colour choice;
+     • "Not measured" is a hatch (--viz-hatch), never a colour and never 0;
+     • every status is text + icon, never colour alone;
+     • nothing under 12 px; phones (< 480 px) get sorted lists instead of
+       canvases; print shows every grid and every chart as a picture.
+   Contrast (tests/unit/vizTokens.test.js, vizHeatContrast.test.js): every
+   mark >= 3:1 on every surface of its mode, status and text tokens >= 4.5:1,
+   the ink of every heatmap step >= 4.5:1 on its own cell.
+   KEEP IN SYNC with VIZ_FALLBACK in public/js/chart-theme.js (tested).
+   ===================================================================== */
+
+:root {
+    --viz-good: #4CC38A;
+    --viz-warn: #F2A65A;
+    --viz-risk: #FF8A80;
+    --viz-unmeasured: #A9A7C4;
+    --viz-neutral: #B9B7D2;
+    --viz-focus: #A99FFF;
+    --viz-target: #F2F1FA;
+    --viz-grid: #3A3860;
+    --viz-cat-1: #5FB4E8;
+    --viz-cat-2: #3CC4B4;
+    --viz-cat-3: #E08CC0;
+    --viz-cat-4: #D4B23C;
+    --viz-cat-5: #9CC75A;
+    --viz-cat-6: #A3ABC6;
+    --viz-measure: #A99FFF;
+    --viz-measure-hi: #C9C3FF;
+    --viz-measure-fill-a: rgba(169, 159, 255, 0.3);
+    --viz-measure-fill-b: rgba(169, 159, 255, 0.04);
+    --viz-required: #F2F1FA;
+
+    --viz-surface: var(--bg-card, #23213F);
+    --viz-text: var(--text-primary, #F2F1FA);
+    --viz-text-dim: var(--text-secondary, #C4C2DA);
+    --viz-track: rgba(242, 241, 250, 0.08);
+    --viz-hatch: repeating-linear-gradient(45deg, var(--viz-unmeasured) 0 1.5px, transparent 1.5px 6px);
+}
+
+:root[data-theme='light'] {
+    --viz-good: #1F7A56;
+    --viz-warn: #A3490B;
+    --viz-risk: #C62828;
+    --viz-unmeasured: #63617D;
+    --viz-neutral: #514F6B;
+    --viz-focus: #5B4BE0;
+    --viz-target: #1F1D3A;
+    --viz-grid: #E4E2F0;
+    --viz-cat-1: #187EAA;
+    --viz-cat-2: #12807F;
+    --viz-cat-3: #A8457F;
+    --viz-cat-4: #7A6A10;
+    --viz-cat-5: #557024;
+    --viz-cat-6: #5A6280;
+    --viz-measure: #5B4BE0;
+    --viz-measure-hi: #7C6CFF;
+    --viz-measure-fill-a: rgba(91, 75, 224, 0.2);
+    --viz-measure-fill-b: rgba(91, 75, 224, 0.02);
+    --viz-required: #1F1D3A;
+
+    --viz-surface: var(--bg-card, #FFFFFF);
+    --viz-text: var(--text-primary, #1F1D3A);
+    --viz-text-dim: var(--text-secondary, #514F6B);
+    --viz-track: rgba(31, 29, 58, 0.07);
+}
+
+/* ---- "Not measured" is never a colour alone ---------------------------- */
+.viz-hatch {
+    background-color: transparent;
+    background-image: var(--viz-hatch);
+}
+
+/* Visually hidden, read by screen readers (live regions, captions, cell text). */
+.viz-live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* ---- Status chip: text + icon ------------------------------------------ */
+.viz-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    padding: 0.1em 0.6em;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+    background: transparent;
+}
+.viz-chip-icon { font-size: 0.8125rem; }
+.viz-chip--good { color: var(--viz-good); }
+.viz-chip--warn { color: var(--viz-warn); }
+.viz-chip--risk { color: var(--viz-risk); }
+.viz-chip--neutral { color: var(--viz-neutral); }
+.viz-chip--unmeasured { color: var(--viz-unmeasured); border-style: dashed; }
+
+/* ---- Chart card ----------------------------------------------------------- */
+.viz-chart {
+    margin: 0;
+    padding: 1rem 1.1rem;
+    background: var(--viz-surface);
+    border: 1px solid var(--border, rgba(242, 241, 250, 0.08));
+    border-radius: var(--radius-lg, 18px);
+    box-shadow: var(--shadow-sm, none);
+    color: var(--viz-text);
+    min-width: 0;
+}
+.viz-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.6rem; }
+.viz-title { margin: 0; font-size: 1rem; font-weight: 700; }
+.viz-subtitle { margin: 0.15rem 0 0; font-size: 0.8125rem; color: var(--viz-text-dim); }
+.viz-canvas-wrap { position: relative; height: 280px; width: 100%; }
+.viz-canvas-wrap canvas:focus-visible { outline: 2px solid var(--focus-ring, var(--brand)); outline-offset: 2px; border-radius: 6px; }
+.viz-print-img { display: none; }
+
+/* « Show data »: the accessible table of every chart. */
+.viz-data { margin-top: 0.6rem; }
+.viz-data-toggle { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 36px; cursor: pointer; list-style: none; }
+.viz-data-toggle::-webkit-details-marker { display: none; }
+.viz-count { display: inline-grid; place-items: center; min-width: 1.5rem; padding: 0 0.4rem; border-radius: 999px; background: var(--brand-dim, rgba(124, 108, 255, 0.12)); font-size: 0.75rem; font-weight: 700; }
+.viz-table-wrap { margin-top: 0.75rem; overflow-x: auto; position: relative; }
+.viz-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+.viz-table th,
+.viz-table td { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border, rgba(242, 241, 250, 0.08)); text-align: left; }
+.viz-table td.viz-num,
+.viz-table th.viz-num { text-align: right; }
+.viz-table .viz-unmeasured-cell { color: var(--viz-unmeasured); font-style: italic; }
+.viz-footer { margin-top: 0.6rem; font-size: 0.8125rem; color: var(--viz-text-dim); display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
+
+/* Sorted list (phones under 480 px, or no Chart.js): label · value · bar · n · status. */
+.viz-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.viz-list-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'label value' 'bar bar' 'meta chip';
+    gap: 0.25rem 0.5rem;
+    align-items: center;
+    min-height: 44px;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--border, rgba(242, 241, 250, 0.08));
+    font-size: 1rem;
+}
+.viz-list-label { grid-area: label; overflow-wrap: anywhere; }
+.viz-list-value { grid-area: value; font-weight: 700; font-variant-numeric: tabular-nums; }
+.viz-list-meta { grid-area: meta; font-size: 0.875rem; color: var(--viz-text-dim); }
+.viz-list-item .viz-chip { grid-area: chip; justify-self: end; }
+.viz-list-bar { grid-area: bar; display: block; height: 8px; border-radius: 4px; background: var(--viz-track); overflow: hidden; }
+.viz-list-fill { display: block; height: 100%; border-radius: 4px; background: var(--viz-measure); }
+.viz-list-fill--risk { background: var(--viz-risk); }
+.viz-list-fill--warn { box-shadow: inset -4px 0 0 var(--viz-warn); }
+.viz-list-fill--unmeasured { width: 100%; background-color: transparent; background-image: var(--viz-hatch); }
+
+/* The script sets data-viz-mode: "chart", "list" (< 480 px or no Chart.js) or
+   "table" (a radar on a phone opens on its data). Without JS a phone gets the list. */
+.viz-chart[data-viz-mode='list'] .viz-canvas-wrap { display: none; }
+.viz-chart[data-viz-mode='chart'] .viz-list { display: none; }
+.viz-chart:not([data-viz-mode]) .viz-list { display: none; }
+.viz-chart[data-viz-mode='table'] .viz-canvas-wrap,
+.viz-chart[data-viz-mode='table'] .viz-list { display: none; }
+
+@media (max-width: 479.98px) {
+    .viz-chart { padding: 0.8rem; }
+    .viz-chart:not([data-viz-mode]) .viz-canvas-wrap { display: none; }
+    .viz-chart:not([data-viz-mode]) .viz-list { display: flex; }
+    .viz-data-toggle { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .viz-chart *,
+    .vh * { transition: none !important; animation: none !important; }
+}
+
+/* ==========================================================================
+   Heatmap (.vh-*): one component for every grid of the product.
+   One scale: orange (IDevelop's spark) = how far BELOW the requirement, the
+   salience growing with the gap; blue (the Ocean hue) = above it; the
+   neutral surface = at the requirement. The value and the ▼ marker are
+   always printed in the cell; "Not measured" is hatched and "< 5" outlined,
+   neither is ever coloured. Levels 0-4 (benchmark matrices) use the
+   sequential blue scale.
+   ========================================================================== */
+:root {
+    --vh-below-3: #FF8A66; --vh-ink-below-3: #18172C;
+    --vh-below-2: #B5532F; --vh-ink-below-2: #FFFFFF;
+    --vh-below-1: #55303C; --vh-ink-below-1: #F2F1FA;
+    --vh-at: #2C2A4D; --vh-ink-at: #F2F1FA;
+    --vh-above-1: #264474; --vh-ink-above-1: #F2F1FA;
+    --vh-above-2: #4A84D0; --vh-ink-above-2: #18172C;
+    --vh-seq-0: #2C2A4D; --vh-ink-seq-0: #C4C2DA;
+    --vh-seq-1: #264474; --vh-ink-seq-1: #F2F1FA;
+    --vh-seq-2: #2F5C98; --vh-ink-seq-2: #FFFFFF;
+    --vh-seq-3: #4A84D0; --vh-ink-seq-3: #18172C;
+    --vh-seq-4: #8BBBFF; --vh-ink-seq-4: #18172C;
+    --vh-edge: rgba(242, 241, 250, 0.14);
+    --vh-masked-border: rgba(242, 241, 250, 0.32);
+    --vh-tip-bg: #F2F1FA;
+    --vh-tip-ink: #1F1D3A;
+}
+:root[data-theme='light'] {
+    --vh-below-3: #C2410C; --vh-ink-below-3: #FFFFFF;
+    --vh-below-2: #F2946E; --vh-ink-below-2: #1F1D3A;
+    --vh-below-1: #FFDCCD; --vh-ink-below-1: #1F1D3A;
+    --vh-at: #F1EFF9; --vh-ink-at: #1F1D3A;
+    --vh-above-1: #D5E4F7; --vh-ink-above-1: #1F1D3A;
+    --vh-above-2: #79A9E3; --vh-ink-above-2: #1F1D3A;
+    --vh-seq-0: #F1EFF9; --vh-ink-seq-0: #514F6B;
+    --vh-seq-1: #DCE8F8; --vh-ink-seq-1: #1F1D3A;
+    --vh-seq-2: #A8C7EE; --vh-ink-seq-2: #1F1D3A;
+    --vh-seq-3: #3570BC; --vh-ink-seq-3: #FFFFFF;
+    --vh-seq-4: #1D5FB3; --vh-ink-seq-4: #FFFFFF;
+    --vh-edge: rgba(31, 29, 58, 0.12);
+    --vh-masked-border: rgba(31, 29, 58, 0.36);
+    --vh-tip-bg: #1F1D3A;
+    --vh-tip-ink: #FFFFFF;
+}
+.vh { margin: 0; position: relative; min-width: 0; max-width: 100%; }
+.vh-head { margin-bottom: 8px; }
+.vh-title { margin: 0; font-size: 1rem; font-weight: 700; }
+.vh-tk { margin: 6px 0 8px; font-weight: 600; }
+.vh-scroll { position: relative; width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; }
+.vh-grid { border-collapse: separate; border-spacing: 4px; width: 100%; table-layout: fixed; font-variant-numeric: tabular-nums; }
+.vh-corner,
+.vh-rowh { text-align: left; font: 600 0.875rem/1.25 var(--font-body, inherit); width: 14rem; padding: 0 8px 0 0; overflow-wrap: anywhere; }
+.vh-corner { color: var(--viz-text-dim); font-size: 0.8125rem; vertical-align: bottom; }
+.vh-colh { font: 600 0.8125rem/1.2 var(--font-body, inherit); color: var(--viz-text-dim); text-align: center; vertical-align: bottom; padding: 0 2px 4px; overflow-wrap: normal; hyphens: auto; }
+.vh-colt { display: block; }
+.vh-coln { display: block; font-weight: 400; font-size: 0.75rem; }
+.vh-colh--pooled { font-style: italic; cursor: help; }
+.vh-c { height: 56px; border-radius: 10px; text-align: center; vertical-align: middle; padding: 4px; background: var(--vh-at); color: var(--vh-ink-at); }
+.vh-c:has(.vh-drill) { cursor: pointer; }
+.vh-drill,
+.vh-drill:hover { display: block; color: inherit; text-decoration: none; }
+.vh-c[data-bin='below-3'], .vh-sw[data-bin='below-3'] { background: var(--vh-below-3); color: var(--vh-ink-below-3); }
+.vh-c[data-bin='below-2'], .vh-sw[data-bin='below-2'] { background: var(--vh-below-2); color: var(--vh-ink-below-2); }
+.vh-c[data-bin='below-1'], .vh-sw[data-bin='below-1'] { background: var(--vh-below-1); color: var(--vh-ink-below-1); }
+.vh-c[data-bin='at'], .vh-sw[data-bin='at'] { background: var(--vh-at); color: var(--vh-ink-at); }
+.vh-c[data-bin='above-1'], .vh-sw[data-bin='above-1'] { background: var(--vh-above-1); color: var(--vh-ink-above-1); }
+.vh-c[data-bin='above-2'], .vh-sw[data-bin='above-2'] { background: var(--vh-above-2); color: var(--vh-ink-above-2); }
+.vh-c[data-bin='below-1'], .vh-c[data-bin='at'], .vh-c[data-bin='above-1'],
+.vh-sw[data-bin='below-1'], .vh-sw[data-bin='at'], .vh-sw[data-bin='above-1'] { box-shadow: inset 0 0 0 1px var(--vh-edge); }
+.vh-c[data-bin^='seq-'], .vh-sw[data-bin^='seq-'] { box-shadow: inset 0 0 0 1px var(--vh-edge); }
+.vh-c[data-bin='seq-0'], .vh-sw[data-bin='seq-0'] { background: var(--vh-seq-0); color: var(--vh-ink-seq-0); }
+.vh-c[data-bin='seq-1'], .vh-sw[data-bin='seq-1'] { background: var(--vh-seq-1); color: var(--vh-ink-seq-1); }
+.vh-c[data-bin='seq-2'], .vh-sw[data-bin='seq-2'] { background: var(--vh-seq-2); color: var(--vh-ink-seq-2); }
+.vh-c[data-bin='seq-3'], .vh-sw[data-bin='seq-3'] { background: var(--vh-seq-3); color: var(--vh-ink-seq-3); }
+.vh-c[data-bin='seq-4'], .vh-sw[data-bin='seq-4'] { background: var(--vh-seq-4); color: var(--vh-ink-seq-4); }
+.vh-v { display: block; font: 700 0.9375rem/1.15 var(--font-body, inherit); }
+.vh-v--sm { font: 600 0.75rem/1.2 var(--font-body, inherit); }
+.vh-n { display: block; font: 400 0.75rem/1.2 var(--font-body, inherit); }
+.vh-mk { font-size: 0.75rem; margin-left: 2px; }
+.vh-c--masked { background: transparent; color: var(--viz-text-dim); box-shadow: inset 0 0 0 1px var(--vh-masked-border); }
+.vh-c--masked .vh-v { font: 600 0.8125rem/1 var(--font-body, inherit); }
+/* the hatch must win over the .vh-c background (same specificity, later rule) */
+.vh-c--unmeasured,
+.vh-c.viz-hatch { background-color: transparent; background-image: var(--viz-hatch); color: var(--viz-text); box-shadow: inset 0 0 0 1px var(--vh-edge); }
+/* a word on a hatch sits on a plain surface chip, so the hatch never cuts through it */
+.vh-c--unmeasured .vh-v,
+.vh-c--unmeasured .bm-na { display: inline-block; padding: 1px 6px; border-radius: 6px; background: var(--viz-surface); color: var(--viz-text); }
+.vh-c--na { background: transparent; color: var(--viz-text-dim); }
+.vh-grid .vh-marg { border-left: 2px solid transparent; }
+.vh-grid td.vh-marg .vh-v,
+.vh-margrow .vh-v,
+.vh-margrow th { font-weight: 800; }
+.vh-c:focus-visible { outline: 3px solid var(--focus-ring, var(--brand)); outline-offset: 1px; }
+.vh-tip { position: absolute; z-index: var(--z-popover); max-width: 280px; padding: 10px 12px; border-radius: 12px; background: var(--vh-tip-bg); color: var(--vh-tip-ink); font-size: 0.8125rem; line-height: 1.35; white-space: pre-line; box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.25)); pointer-events: none; }
+.vh-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 10px 0 4px; font-size: 0.8125rem; color: var(--viz-text-dim); }
+.vh-key { display: inline-flex; align-items: center; gap: 6px; }
+.vh-sw { display: inline-block; width: 18px; height: 12px; border-radius: 3px; flex: 0 0 auto; }
+.vh-sw--masked { box-shadow: inset 0 0 0 1px var(--vh-masked-border); }
+.vh-sw.viz-hatch { box-shadow: inset 0 0 0 1px var(--vh-edge); }
+.vh-note { margin: 4px 0; font-size: 0.8125rem; color: var(--viz-text-dim); }
+.vh-more { margin-top: 6px; }
+.vh-more > summary { cursor: pointer; display: inline-flex; min-height: 36px; align-items: center; }
+.vh-list,
+.vh-showgrid { display: none; }
+.vh-list { list-style: none; margin: 0; padding: 0; flex-direction: column; gap: 6px; }
+.vh-item { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; grid-template-areas: 'sw t v' 'sw m m'; gap: 2px 8px; align-items: center; min-height: 44px; padding: 6px 4px; border-bottom: 1px solid var(--vh-edge); }
+.vh-item .vh-sw { grid-area: sw; align-self: start; margin-top: 4px; }
+.vh-item-t { grid-area: t; font-weight: 600; overflow-wrap: anywhere; }
+.vh-item-v { grid-area: v; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vh-item-m { grid-area: m; font-size: 0.8125rem; color: var(--viz-text-dim); }
+.vh .vh-list--only { display: flex; }
+/* tablet: the grid stays, narrower row labels, n only in the tooltip and table */
+@media (min-width: 600px) and (max-width: 1023.98px) {
+    .vh-corner,
+    .vh-rowh { width: 10rem; }
+    .vh-v { font-size: 0.875rem; }
+    .vh-c .vh-n,
+    .vh-coln { display: none; }
+}
+/* phone: the 10 cells furthest behind as a list; the full grid on demand
+   (scrolls inside its own box, row labels stay in view) */
+@media (max-width: 599.98px) {
+    .vh .vh-scroll,
+    .vh .vh-more { display: none; }
+    .vh .vh-list { display: flex; }
+    .vh .vh-showgrid { display: block; margin: 8px 0; }
+    .vh .vh-showgrid .btn { min-height: 44px; }
+    .vh.vh--grid-open .vh-scroll,
+    .vh.vh--grid-open .vh-more { display: block; }
+    .vh.vh--grid-open .vh-grid { width: auto; min-width: 100%; table-layout: auto; }
+    .vh.vh--grid-open .vh-rowh,
+    .vh.vh--grid-open .vh-corner { position: sticky; left: 0; z-index: 1; background: var(--viz-surface); width: 8rem; min-width: 8rem; }
+    .vh.vh--grid-open .vh-c { min-width: 4.5rem; }
+}
+
+/* ==========================================================================
+   Gap bars (dumbbell): demonstrated ● against required ◆ per row, 0 to 4.
+   A row nobody measured is a hatched track saying "Not measured".
+   ========================================================================== */
+.db-legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8125rem; margin: 0.25rem 0 0.5rem; color: var(--viz-text-dim); }
+.db-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.db-row { display: grid; grid-template-columns: minmax(7rem, 34%) minmax(0, 1fr) auto; gap: 0.6rem; align-items: center; font-size: 0.875rem; min-height: 32px; }
+.db-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--viz-text); }
+.db-track { position: relative; height: 18px; border-radius: 9px; background: var(--viz-track); }
+.db-track--unmeasured { background-color: transparent; background-image: var(--viz-hatch); }
+.db-bar { position: absolute; top: 7px; height: 4px; border-radius: 2px; background: var(--viz-neutral); }
+.db-bar--short { background: var(--viz-warn); }
+.db-dot,
+.db-req { position: absolute; top: 50%; width: 12px; height: 12px; margin-left: -6px; margin-top: -6px; }
+.db-dot { border-radius: 50%; background: var(--viz-measure); border: 2px solid var(--viz-surface); }
+.db-req { transform: rotate(45deg); background: var(--viz-required); border: 2px solid var(--viz-surface); }
+.db-legend .db-dot,
+.db-legend .db-req { position: static; display: inline-block; margin: 0 0.35rem 0 0; vertical-align: middle; }
+.db-val { font-variant-numeric: tabular-nums; color: var(--viz-text-dim); white-space: nowrap; font-size: 0.8125rem; }
+.db-un { font-style: italic; }
+.db-widest { font-size: 0.8125rem; margin: 0.4rem 0 0; color: var(--viz-text-dim); }
+@media (max-width: 479.98px) {
+    .db-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .db-track { grid-column: 1 / -1; }
+}
+
+/* ==========================================================================
+   Profile radar: the canvas on screen, a server-drawn SVG on paper.
+   ========================================================================== */
+.prof-radar-canvas { position: relative; height: 340px; }
+.prof-radar-unmeasured { margin: 0.4rem 0 0; font-size: 0.8125rem; color: var(--viz-text-dim); }
+.viz-radar-print { display: none; }
+.viz-radar-svg { width: 100%; max-width: 360px; height: auto; }
+.viz-radar-grid { fill: none; stroke: var(--viz-grid); stroke-width: 1; }
+.viz-radar-axis { stroke: var(--viz-grid); stroke-width: 1; }
+.viz-radar-label { fill: var(--viz-text); font: 600 12px/1 var(--font-body, sans-serif); }
+.viz-radar-line { fill: none; stroke-width: 2; }
+.viz-radar-line--0 { stroke: var(--viz-measure); fill: var(--viz-measure); }
+.viz-radar-line--1 { stroke: var(--viz-required); fill: var(--viz-required); }
+polyline.viz-radar-line { fill: none; }
+.viz-radar-line--dashed { stroke-dasharray: 5 4; }
+.viz-radar-key { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 4px; }
+.viz-radar-key--0 { background: var(--viz-measure); }
+.viz-radar-key--1 { background: var(--viz-required); }
+
+/* ==========================================================================
+   Print: every grid in full, every chart as its snapshot, no buttons.
+   ========================================================================== */
+@media print {
+    .viz-data-toggle,
+    .vh .vh-showgrid,
+    .vh .vh-list,
+    .vh .vh-tip { display: none !important; }
+    .viz-chart,
+    .vh,
+    .db-list { break-inside: avoid; page-break-inside: avoid; }
+    .vh-c,
+    .vh-sw,
+    .viz-hatch,
+    .db-track,
+    .db-dot,
+    .db-req,
+    .db-bar { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .vh .vh-scroll,
+    .vh .vh-more { display: block !important; overflow: visible; }
+    .vh .vh-more > summary { display: none; }
+    .vh .vh-c .vh-n,
+    .vh .vh-coln { display: block; }
+    .viz-canvas-wrap canvas { display: none !important; }
+    .viz-print-img { display: block; width: 100%; height: auto; }
+    .viz-radar-print { display: block; }
+    .viz-radar-screen { display: none; }
+}

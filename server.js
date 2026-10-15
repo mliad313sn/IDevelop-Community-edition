@@ -679,6 +679,9 @@ app.use(async (req, res, next) => {
         // Les vues qui écrivaient `new Date(x).toISOString.slice(0,10)` — le motif
         // que src/utils/dateFormat.js nomme lui-même « live defect » — passent par ici.
         res.locals.fmtPeriodBound = (d) => fmtPeriodBound(d);
+        // numbers in the reader's language (« 66,7 % » / "66.7%"); the charts'
+        // browser mirror is public/js/fmt.js
+        res.locals.numFmt = require('./src/utils/kpiFormat').forLang(lang);
         res.locals.enumLabel = (a, b) =>
             Object.prototype.hasOwnProperty.call(KINDS, a)
                 ? enumLabel(a, b, req.t, lang)
