@@ -25,6 +25,8 @@
   var _title = (typeof heatTitle !== 'undefined' && heatTitle) ? heatTitle : null;
   var _sub = (typeof heatSubtitle !== 'undefined' && heatSubtitle) ? heatSubtitle : null;
   var _none = (typeof noneLabel !== 'undefined' && noneLabel) ? noneLabel : __('viz:no_site');
+  // the label separator in the reader's typography (res.locals.colon: « : » / ":")
+  var _colon = (typeof colon !== 'undefined' && colon) ? colon : ((typeof lang !== 'undefined' && lang === 'en') ? ':' : ' :');
   var _top = (typeof topRows !== 'undefined' && topRows) ? Number(topRows) : ((_H && _H.topRows) || 0);
   var _kind = _H && _H.kind ? _H.kind : 'attain';
   var _BINS = { attain: ['below-3', 'below-2', 'below-1', 'at', 'above-1', 'above-2'], deficit: ['below-3', 'below-2', 'below-1', 'at'], coverage: ['below-3', 'below-2', 'below-1', 'at'] }[_kind] || [];
@@ -99,7 +101,7 @@
         var colText = colLabel(cols[j]);
         var lines = tipLines(c);
         var tip = r.label + ' — ' + colText + '\n' + lines.join('\n');
-        var spoken = r.label + ', ' + colText + ' : ' + valueText(c) + (c.below ? ' ▼' : '') + '. ' + lines.join('. ');
+        var spoken = r.label + ', ' + colText + _colon + ' ' + valueText(c) + (c.below ? ' ▼' : '') + '. ' + lines.join('. ');
         var _tab = (c.state === 'ok' && !_entry.done) ? '0' : '-1'; if (_tab === '0') _entry.done = true;
         var nt = nText(c); %><td role="gridcell" tabindex="<%= _tab %>" class="<%= cellCls(c, extraCls) %>"<% if (c.state === 'ok') { %> data-bin="<%= c.bin %>"<% if (c.below) { %> data-below="1"<% } %><% } %> data-tip="<%= tip %>"><% if (c.href && c.state === 'ok') { %><a class="vh-drill" href="<%= c.href %>" tabindex="-1" aria-hidden="true"><% } %><span class="vh-v<%= c.state === 'unmeasured' ? ' vh-v--sm' : '' %>" aria-hidden="true"><%= valueText(c) %><% if (c.below) { %><span class="vh-mk">▼</span><% } %></span><% if (nt) { %><span class="vh-n" aria-hidden="true"><%= nt %></span><% } %><% if (c.href && c.state === 'ok') { %></a><% } %><span class="viz-live"><%= spoken %></span></td><% }; %>
     <% var gridTable = function (rows, first, tid) { _entry.done = false; %>

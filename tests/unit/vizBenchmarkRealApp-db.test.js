@@ -185,12 +185,17 @@ d('benchmark pages on the viz layer (real app, Chromium)', () => {
 
     test('an unassessed requirement is a hatched « Not assessed » cell, never level 0', async () => {
         if (!roleId) return;
-        const unassessed = await db.get(
-            `SELECT COUNT(*)::int AS n FROM v_employee_skill_gaps g
-               JOIN employees e ON e.id = g.employee_id
-              WHERE g.role_id = ? AND g.is_assessed = 0 AND e.is_active = true`,
-            [roleId]
+        // the page's own data: every occupant x requirement cell nobody assessed
+        const { domains } = await require('../../src/models/BenchmarkModel').getRoleOccupants(
+            roleId,
+            {}
         );
+        let n = 0;
+        for (const dd of domains)
+            for (const sd of dd.subs)
+                for (const sk of sd.skills)
+                    for (const c of Object.values(sk.cells)) if (!c.assessed) n++;
+        const unassessed = { n };
         const { ctx, page } = await open(`/benchmark/role/${roleId}`, {
             width: 1280,
             lang: 'en',
