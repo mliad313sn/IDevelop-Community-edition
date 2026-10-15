@@ -117,7 +117,135 @@ const SMART_TEMPLATES = {
         `validé par le superviseur, via la pratique opérationnelle et 1 session de formation.`,
 };
 
+// The seeded action title was English whatever the plan's language ("X —
+// close gap to L3" on a French plan). Written at creation in the plan's locale,
+// the same rule as SMART_TEMPLATES above (the service has a locale, not req.t).
+const ACTION_TITLE = {
+    en: (skill, required) => `${skill} — reach level ${required}`,
+    fr: (skill, required) => `${skill} — atteindre le niveau ${required}`,
+};
+const ACTION_TYPES = [
+    'training',
+    'coaching',
+    'mentoring',
+    'on_the_job',
+    'self_study',
+    'certification',
+    'stretch',
+];
+
 class IDPService {
+    static ACTION_TYPES = ACTION_TYPES;
+    static ACTION_TITLE = ACTION_TITLE;
+
+    /**
+     * Add an objective to a plan from its detail page. The page used to be a
+     * dead end: nothing could be added once the draft existed. Same authority
+     * as every other move (planAuthority: the direct line or an in-scope
+     * admin, never the subject), on a draft or active plan only; every add is
+     * journalled.
+     */
+    static async addObjective({ idpId, user, smartText, skillId = null, dueOn = null }) {
+        const text = String(smartText == null ? '' : smartText)
+            .trim()
+            .slice(0, 2000);
+        if (!text)
+            throw lifecycleError(
+                'IDP_TEXT_REQUIRED',
+                400,
+                'Text required',
+                'idp:err_text_required'
+            );
+        const plan = await IDPService._loadPlan(idpId);
+        await IDPService._assertAuthority(user, plan);
+        IDPService._assertOpen(plan);
+        const due = /^\d{4}-\d{2}-\d{2}$/.test(String(dueOn || '')) ? String(dueOn) : null;
+        const skill = Number(skillId) || null;
+        let id = null;
+        await db.runTransaction(async () => {
+            const r = await db.get(
+                `INSERT INTO idp_objectives (idp_id, skill_id, smart_text, due_on, priority, state)
+                 VALUES (?, ?, ?, ?, 'medium', 'pending') RETURNING id`,
+                [plan.id, skill, text, due]
+            );
+            id = r ? Number(r.id) : null;
+            await IDPService._planEvent(
+                plan.id,
+                id,
+                'objective_added',
+                null,
+                'pending',
+                user,
+                null,
+                { skillId: skill }
+            );
+        });
+        return { objectiveId: Number(id), idpId: Number(plan.id) };
+    }
+
+    /** Add an action to a plan, optionally linked to one of ITS objectives. */
+    static async addAction({
+        idpId,
+        user,
+        title,
+        type = DEFAULT_TYPE,
+        description = null,
+        objectiveId = null,
+    }) {
+        const text = String(title == null ? '' : title)
+            .trim()
+            .slice(0, 500);
+        if (!text)
+            throw lifecycleError(
+                'IDP_TEXT_REQUIRED',
+                400,
+                'Text required',
+                'idp:err_text_required'
+            );
+        const kind = ACTION_TYPES.includes(String(type)) ? String(type) : DEFAULT_TYPE;
+        const plan = await IDPService._loadPlan(idpId);
+        await IDPService._assertAuthority(user, plan);
+        IDPService._assertOpen(plan);
+        // An objective id only counts when it belongs to THIS plan.
+        let obj = null;
+        if (Number(objectiveId)) {
+            const row = await db.get('SELECT id FROM idp_objectives WHERE id = ? AND idp_id = ?', [
+                Number(objectiveId),
+                plan.id,
+            ]);
+            obj = row ? Number(row.id) : null;
+        }
+        const desc = String(description == null ? '' : description)
+            .trim()
+            .slice(0, 2000);
+        let id = null;
+        await db.runTransaction(async () => {
+            const r = await db.get(
+                `INSERT INTO idp_actions (idp_id, objective_id, type, title, description, status)
+                 VALUES (?, ?, ?, ?, ?, 'pending') RETURNING id`,
+                [plan.id, obj, kind, text, desc || null]
+            );
+            id = r ? Number(r.id) : null;
+            await IDPService._planEvent(plan.id, obj, 'action_added', null, 'pending', user, null, {
+                actionId: Number(id),
+                type: kind,
+            });
+        });
+        return { actionId: Number(id), idpId: Number(plan.id) };
+    }
+
+    static _assertOpen(plan) {
+        if (!['draft', 'active'].includes(String(plan.status))) {
+            throw lifecycleError(
+                'IDP_NOT_OPEN',
+                409,
+                `Only a draft or active plan takes new objectives (this one is '${plan.status}').`,
+                'idp:err_not_open',
+                { status: plan.status }
+            );
+        }
+    }
+
     static async generateDrafts(cycleId, { locale = 'fr', dueDays = DEFAULT_DUE_DAYS } = {}) {
         const template = SMART_TEMPLATES[locale] || SMART_TEMPLATES.fr;
         // ONE date for the whole run: the text the employee reads and the date the
@@ -278,7 +406,7 @@ class IDPService {
                     idpId,
                     obj.lastID,
                     DEFAULT_TYPE,
-                    `${g.skillName} — close gap to L${g.requiredLevel}`,
+                    (ACTION_TITLE[locale] || ACTION_TITLE.fr)(g.skillName, g.requiredLevel),
                 ]
             );
             await db.run(`INSERT INTO action_skill_links (action_id, skill_id) VALUES (?, ?)`, [
@@ -479,7 +607,7 @@ class IDPService {
                             idpId,
                             obj.lastID,
                             DEFAULT_TYPE,
-                            `${g.skillName} — close gap to L${g.requiredLevel}`,
+                            (ACTION_TITLE[locale] || ACTION_TITLE.fr)(g.skillName, g.requiredLevel),
                         ]
                     );
                     await db.run(

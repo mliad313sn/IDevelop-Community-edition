@@ -212,7 +212,10 @@ router.post(
                 employeeId,
                 priority,
                 skillIds,
-                locale: req.getLocale ? req.getLocale() : 'fr',
+                // The seeded objectives and actions are written in the reader's
+                // language (req.getLocale does not exist here: every plan came
+                // out in French).
+                locale: String(req.language || 'fr').slice(0, 2) === 'en' ? 'en' : 'fr',
             }));
         } catch (e) {
             // One open plan per person (uq_idp_open_per_employee): a 409 with a
@@ -288,12 +291,34 @@ router.get(
         } catch (_) {
             canManagePlan = false;
         }
+        // The page is "Development plan for <name>": a module page behind its own
+        // permission (canAccessIdp above), so the name is allowed here. The
+        // skills of the person's role feed the "Add an objective" picker.
+        const subject = await EmployeeModel.findById(plan.employeeId);
+        const subjectName = subject
+            ? [subject.firstName, subject.lastName].filter(Boolean).join(' ')
+            : '#' + plan.employeeId;
+        let roleSkills = [];
+        if (canManagePlan && subject && subject.roleId) {
+            roleSkills = await db.all(
+                `SELECT s.id, s.name FROM role_skill_requirements rsr
+                   JOIN skills s ON s.id = rsr.skill_id
+                  WHERE rsr.role_id = ? ORDER BY s.name`,
+                [subject.roleId]
+            );
+        }
         res.render('pages/idp/detail', {
             plan,
             objectives,
             actions,
             canManagePlan,
-            title: (req.t ? req.t('idp:title') : 'Individual Development Plans') + ' #' + plan.id,
+            viewerIsSubject,
+            subjectName,
+            roleSkills,
+            actionTypes: IDPService.ACTION_TYPES,
+            title: req.t
+                ? req.t('idp:detail_title_short', { name: subjectName })
+                : 'IDP for ' + subjectName,
         });
     })
 );

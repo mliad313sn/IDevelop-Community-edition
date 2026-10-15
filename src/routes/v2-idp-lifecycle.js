@@ -105,6 +105,54 @@ router.post(
     )
 );
 
+// The plan detail offered no way to ADD an objective or an action (a dead end).
+// Two plain HTML forms on the detail page post here; authority, state and
+// journalling live in IDPService.addObjective / addAction.
+router.post(
+    '/:id(\\d+)/objectives',
+    requireAuth,
+    handle(
+        async (req) => ({
+            result: await IDPService.addObjective({
+                idpId: Number(req.params.id),
+                user: req.user,
+                smartText: req.body && req.body.smartText,
+                skillId: req.body && req.body.skillId,
+                dueOn: req.body && req.body.dueOn,
+            }),
+            back: planPage(req) + '#idp-objectives',
+        }),
+        {
+            successKey: 'idp:flash_objective_added',
+            successFallback: 'Objective added.',
+            backTo: planPage,
+        }
+    )
+);
+
+router.post(
+    '/:id(\\d+)/actions',
+    requireAuth,
+    handle(
+        async (req) => ({
+            result: await IDPService.addAction({
+                idpId: Number(req.params.id),
+                user: req.user,
+                title: req.body && req.body.title,
+                type: req.body && req.body.type,
+                description: req.body && req.body.description,
+                objectiveId: req.body && req.body.objectiveId,
+            }),
+            back: planPage(req) + '#idp-actions',
+        }),
+        {
+            successKey: 'idp:flash_action_added',
+            successFallback: 'Action added.',
+            backTo: planPage,
+        }
+    )
+);
+
 // The objective's plan is resolved by the service; the redirect needs it too.
 async function planOfObjective(objectiveId) {
     const db = require('../config/database');

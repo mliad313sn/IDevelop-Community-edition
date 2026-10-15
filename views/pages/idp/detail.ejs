@@ -21,19 +21,30 @@
     const closeReason = pick(plan, 'closeReason', 'close_reason');
     // The app's date helper (res.locals.fmtDate, locale-aware) — never a raw ISO date (E-13).
     const fmtDay = (d) => (d ? locals.fmtDate(d) : '-');
+    // Objectives and actions can be added from this page while the plan is open,
+    // by whoever may move it (the server applies the same rule).
+    const planOpen = plan.status === 'draft' || plan.status === 'active';
+    const canAdd = canAct && planOpen;
+    // The person's name is allowed on this module page (permission-gated by the
+    // route); the action type is said in words.
+    const name = (typeof subjectName !== 'undefined' && subjectName) ? subjectName : ('#' + planEmployeeId);
+    const skills = (typeof roleSkills !== 'undefined' && Array.isArray(roleSkills)) ? roleSkills : [];
+    const types = (typeof actionTypes !== 'undefined' && Array.isArray(actionTypes) && actionTypes.length)
+        ? actionTypes : ['training', 'coaching', 'mentoring', 'on_the_job', 'self_study', 'certification', 'stretch'];
+    const typeLabel = (t) => (types.includes(String(t)) ? __('idp:act_' + t) : (t || '—'));
 %>
 <div class="page-header">
-    <h1><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('idp:title') %> #<%= plan.id %></h1>
+    <h1><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('idp:detail_title', { name: name }) %></h1>
     <p><strong><%= __('idp:status') %>:</strong> <%= statusLabel[plan.status] || plan.status %></p>
     <% if (closedAt) { %>
         <p class="text-muted"><%= __('idp:closed_on') %> <%= fmtDay(closedAt) %><% if (closeReason) { %> — <%= __('idp:close_reason') %><%= colon %> <%= closeReason %><% } %></p>
     <% } %>
 </div>
 
-<div class="card" style="padding:1.25rem">
+<div class="card" style="padding:1.25rem" id="idp-objectives">
     <h2><%= __('idp:objectives') %></h2>
     <% if (!objectives.length) { %>
-        <p class="text-muted"><%= __('idp:no_objectives') %></p>
+        <%- include('../../partials/empty-state', { icon: 'fa-bullseye', title: __('idp:no_objectives'), text: canAdd ? __('idp:objectives_empty_msg') : '', ctaHref: canAdd ? '#idp-add-objective' : '', ctaLabel: __('idp:add_objective') }) %>
     <% } %>
     <ul style="list-style:none;padding-left:0">
         <% objectives.forEach(function(o){ var oText = String(pick(o, 'smartText', 'smart_text') || '').slice(0, 80); %>
@@ -59,22 +70,88 @@
             </li>
         <% }); %>
     </ul>
+
+    <% if (canAdd) { %>
+    <details id="idp-add-objective" style="margin-top:.75rem">
+        <summary class="btn btn-secondary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('idp:add_objective') %></summary>
+        <form method="post" action="/v2/idp/<%= plan.id %>/objectives" style="margin-top:.75rem">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="form-group">
+                <label for="idp-obj-text"><%= __('idp:objective_text') %></label>
+                <textarea id="idp-obj-text" name="smartText" rows="3" required maxlength="2000" class="form-control"></textarea>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:1rem">
+                <div class="form-group" style="flex:1 1 16rem">
+                    <label for="idp-obj-skill"><%= __('idp:objective_skill') %></label>
+                    <select id="idp-obj-skill" name="skillId" class="form-control">
+                        <option value=""><%= __('idp:objective_skill_none') %></option>
+                        <% skills.forEach(function (sk) { %><option value="<%= sk.id %>"><%= sk.name %></option><% }); %>
+                    </select>
+                </div>
+                <div class="form-group" style="flex:0 1 12rem">
+                    <label for="idp-obj-due"><%= __('idp:due_on') %></label>
+                    <input id="idp-obj-due" name="dueOn" type="date" class="form-control">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary"><%= __('idp:add_objective') %></button>
+        </form>
+    </details>
+    <% } %>
 </div>
 
-<div class="card" style="padding:1.25rem">
+<div class="card" style="padding:1.25rem" id="idp-actions">
     <h2><%= __('idp:actions') %></h2>
+    <% if (!actions.length) { %>
+        <%- include('../../partials/empty-state', { icon: 'fa-list-check', title: __('idp:actions_empty_title'), text: canAdd ? __('idp:actions_empty_msg') : '', ctaHref: canAdd ? '#idp-add-action' : '', ctaLabel: __('idp:add_action') }) %>
+    <% } else { %>
+    <div class="table-wrapper">
     <table class="table">
-        <thead><tr><th><%= __('common:title') %></th><th><%= __('idp:action_type') %></th><th><%= __('common:status') %></th></tr></thead>
+        <thead><tr><th scope="col"><%= __('common:title') %></th><th scope="col"><%= __('idp:action_type') %></th><th scope="col"><%= __('common:status') %></th></tr></thead>
         <tbody>
             <% actions.forEach(function(a){ %>
                 <tr>
-                    <td><%= a.title %></td>
-                    <td><%= a.type %></td>
+                    <td><%= a.title %><% if (a.description) { %><div class="text-muted" style="font-size:.85em"><%= a.description %></div><% } %></td>
+                    <td><%= typeLabel(a.type) %></td>
                     <td><%= objLabel[a.status] || statusLabel[a.status] || a.status %></td>
                 </tr>
             <% }); %>
         </tbody>
     </table>
+    </div>
+    <% } %>
+
+    <% if (canAdd) { %>
+    <details id="idp-add-action" style="margin-top:.75rem">
+        <summary class="btn btn-secondary"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('idp:add_action') %></summary>
+        <form method="post" action="/v2/idp/<%= plan.id %>/actions" style="margin-top:.75rem">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="form-group">
+                <label for="idp-act-title"><%= __('idp:action_title') %></label>
+                <input id="idp-act-title" name="title" type="text" required maxlength="500" class="form-control">
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:1rem">
+                <div class="form-group" style="flex:0 1 14rem">
+                    <label for="idp-act-type"><%= __('idp:action_type') %></label>
+                    <select id="idp-act-type" name="type" class="form-control">
+                        <% types.forEach(function (t) { %><option value="<%= t %>"><%= __('idp:act_' + t) %></option><% }); %>
+                    </select>
+                </div>
+                <div class="form-group" style="flex:1 1 16rem">
+                    <label for="idp-act-obj"><%= __('idp:action_objective') %></label>
+                    <select id="idp-act-obj" name="objectiveId" class="form-control">
+                        <option value=""><%= __('idp:action_objective_none') %></option>
+                        <% objectives.forEach(function (o) { %><option value="<%= o.id %>"><%= String(pick(o, 'smartText', 'smart_text') || '').slice(0, 70) %></option><% }); %>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="idp-act-desc"><%= __('idp:action_description') %></label>
+                <textarea id="idp-act-desc" name="description" rows="2" maxlength="2000" class="form-control"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary"><%= __('idp:add_action') %></button>
+        </form>
+    </details>
+    <% } %>
 </div>
 
 <%# Signing is a DRAFT-only act (IDPService.signOff refuses anything else with
