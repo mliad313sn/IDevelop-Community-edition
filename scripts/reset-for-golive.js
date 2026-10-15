@@ -116,6 +116,10 @@ const KEEP = new Set([
     // SA-38: the recipient accounts of a schedule are part of its configuration.
     'report_schedule_recipients',
     'notification_preferences',
+    // Migration 183: each person's notification settings and category grid are
+    // their own choices, kept like notification_preferences.
+    'notification_user_settings',
+    'notification_category_prefs',
     'webhook_subscriptions',
     'lms_integrations',
     // HRIS sync (migration 160): the connector settings and the value mappings

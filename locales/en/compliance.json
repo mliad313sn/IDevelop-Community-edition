@@ -413,6 +413,8 @@
   "cat_lmsCompletions": "Completed training",
   "cat_plannedAbsences": "Planned absences",
   "cat_notifications": "Notifications received",
+  "cat_notificationSettings": "Notification settings (summary, e-mail language, calendar)",
+  "cat_notificationCategoryPrefs": "Notification categories received by e-mail",
   "cat_hrisLinks": "Identifier in the HR system",
   "av_engine_on": "Uploaded evidence is scanned by {{engine}}.",
   "cat_deiConsents": "Diversity data consents",

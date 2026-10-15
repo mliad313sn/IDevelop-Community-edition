@@ -133,9 +133,15 @@ const SUBJECT_DATA_REGISTRY = [
         export: false,
         exportWhy: 'channel settings, no content about the person',
     },
+    // Migration 183: the person's own notification settings (summary cadence
+    // and step-down, e-mail language, .ics switch) and their category × e-mail
+    // grid. About the person only: exported, then gone with them.
+    red('notification_user_settings', 'user_id', 'notificationSettings'),
+    red('notification_category_prefs', 'user_id', 'notificationCategoryPrefs'),
     // The person's OWN notifications go (in-app and e-mail rows alike, with
     // their delivery state: email_status, email_attempts, next_attempt_at,
-    // last_error, migration 182); those sent to OTHER people about them are
+    // last_error, migration 182, and their measurement: event_id, ref_type,
+    // ref_id, opened_at, acted_at, migration 183); those sent to OTHER people about them are
     // stripped of name, e-mail, free text and any held e-mail body by a custom
     // statement.
     red('notifications', 'user_id', 'notifications'),
