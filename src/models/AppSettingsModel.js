@@ -140,6 +140,9 @@ const CATALOG = {
     // Tri-state: 'auto' = required as soon as a scanner is detected
     // (MalwareScanService.requireScan reads anything but true/false as auto).
     requireMalwareScan: { enum: ['auto', 'true', 'false'] },
+    // Comma list of feedback360 / oneonone / hris.sync kinds or families that
+    // webhooks may carry (WebhookService.parseOptIn ignores anything else).
+    webhookOptInEvents: { optional: true },
     // Self-service "my data" downloads per person per hour (PrivacyService).
     privacySelfExportPerHour: { min: 1, max: 100, integer: true },
     cycleAutoLock: { type: 'boolean' },
@@ -1030,6 +1033,17 @@ class AppSettingsModel {
                 type: 'string',
                 description:
                     'auto (default): an antivirus scan of uploads is required as soon as a scanner (ClamAV or Microsoft Defender) is detected. true: an upload that could not be scanned is held and never served. false: files are served even without a scan (marked as not scanned, restricted access).',
+                category: 'security',
+            },
+            {
+                // Security-class (SuperAdmin only, utils/securitySettings). Read by
+                // WebhookService.emit: the 360° feedback, one-to-one and HRIS sync
+                // kinds never leave unless listed here.
+                key: 'webhookOptInEvents',
+                value: '',
+                type: 'string',
+                description:
+                    'Extra notification kinds that outgoing webhooks may carry, comma-separated: a kind (feedback360.released) or a family (feedback360.*, oneonone.*, hris.sync.*). Empty (default): none of them leaves. Payloads stay limited to ids, dates and a link.',
                 category: 'security',
             },
             {

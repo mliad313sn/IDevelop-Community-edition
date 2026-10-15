@@ -65,6 +65,8 @@ const SECURITY_KEY_PATTERNS = [
     /^smtp/i,
     // HRIS synchronisation: who is placed, moved or deprovisioned automatically.
     /^hris/i,
+    // Which notification kinds may leave the application through webhooks.
+    /^webhook/i,
 ];
 
 /** @returns {boolean} true when the setting is security-class. */

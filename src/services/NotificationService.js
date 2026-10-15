@@ -134,7 +134,21 @@ class NotificationService {
         // 0) Fan the event out to any external webhook subscribers (best-effort,
         //    non-blocking) — makes the platform event-driven for integration.
         try {
-            require('./WebhookService').emit(kind, { userType, userId, category, payload });
+            // Only allow-listed kinds leave (WebhookService.isEmittable), and their
+            // payload is reduced to ids, dates and an in-app link: no figure, no
+            // name, no free text ever reaches a subscriber or a chat channel.
+            const Hook = require('./WebhookService');
+            Promise.resolve(
+                Hook.emit(kind, {
+                    userType,
+                    userId,
+                    category,
+                    payload:
+                        typeof Hook.minimisePayload === 'function'
+                            ? Hook.minimisePayload(payload)
+                            : {},
+                })
+            ).catch(() => {});
         } catch (_) {
             /* never block */
         }
