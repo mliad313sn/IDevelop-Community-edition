@@ -37,16 +37,22 @@ class AuthService {
 
         if (!admin || !admin.isActive) {
             await dummyCompare(password); // same cost as a real wrong password
-            await LogService.log({
-                action: 'LOGIN_FAILED',
-                entityType: admin ? 'admin' : null,
-                entityId: admin ? Number(admin.id) : null,
-                details: admin
-                    ? `Failed login attempt for admin #${admin.id} (account inactive)`
-                    : `Failed login attempt for an unknown identifier (${require('./AuditRetentionService').fingerprint(username)})`,
-                ipAddress: req.ip,
-                userAgent: req.get('user-agent'),
-            });
+            // An identifier unknown to the ADMIN table is not yet a failure: the
+            // sign-in strategy goes on to the employee table, and an ordinary
+            // employee sign-in (even a successful one) used to leave a spurious
+            // "unknown identifier" row here. The failure is written once, by
+            // EmployeeAuthService, only when BOTH lookups miss. A real but
+            // inactive admin account is still recorded here.
+            if (admin) {
+                await LogService.log({
+                    action: 'LOGIN_FAILED',
+                    entityType: 'admin',
+                    entityId: Number(admin.id),
+                    details: `Failed login attempt for admin #${admin.id} (account inactive)`,
+                    ipAddress: req.ip,
+                    userAgent: req.get('user-agent'),
+                });
+            }
             return { success: false, message: 'Invalid credentials' };
         }
 
