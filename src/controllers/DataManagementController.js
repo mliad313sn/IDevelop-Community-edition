@@ -1,3 +1,4 @@
+const { containedUploadPath } = require('../utils/uploadTempPath');
 const { csvCell } = require('../utils/csvSafe');
 const EmployeeModel = require('../models/EmployeeModel');
 const SkillAssessmentModel = require('../models/SkillAssessmentModel');
@@ -2211,7 +2212,9 @@ class DataManagementController {
                 });
             }
 
-            const preview = await SkillMatrixWorkbookService.preview(req.file.path, format);
+            const upload = containedUploadPath(req.file.path);
+            if (!upload) return res.status(400).json({ success: false, message: 'Bad upload.' });
+            const preview = await SkillMatrixWorkbookService.preview(upload, format);
 
             require('fs').unlink(req.file.path, () => {});
             res.json({ success: true, preview });
@@ -2240,11 +2243,9 @@ class DataManagementController {
                     .json({ error: 'Unsupported file type. Use .xlsx, .json, .xml or .csv' });
             }
 
-            const result = await SkillMatrixWorkbookService.import(
-                req.file.path,
-                req.user.id,
-                format
-            );
+            const upload = containedUploadPath(req.file.path);
+            if (!upload) return res.status(400).json({ error: 'Bad upload.' });
+            const result = await SkillMatrixWorkbookService.import(upload, req.user.id, format);
 
             require('fs').unlink(req.file.path, () => {});
 
