@@ -231,6 +231,14 @@ class AppSettingsController {
                         ),
                     },
                     {
+                        name: 'BACKUP_KEY_MODE / BACKUP_OFFHOST_DIR',
+                        value: `${e.BACKUP_KEY_MODE || autoDetect} / ${e.BACKUP_OFFHOST_DIR || T('env_v_unset', '(unset)')}`,
+                        note: T(
+                            'env_note_BACKUP_ENCRYPTION',
+                            'Backup encryption key store, and the off-host copy folder'
+                        ),
+                    },
+                    {
                         name: 'SQL_CONSOLE_BACKUP_DIR',
                         value:
                             e.SQL_CONSOLE_BACKUP_DIR ||

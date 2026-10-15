@@ -312,6 +312,7 @@ $productScripts = @(
     'set-admin-password.js',   # installer (fresh DB admin password) + PostgresDatabase
     'reapply-erasures.js',     # Manage -Restore: re-apply erasure tombstones after a restore
     'rotate-app-key.js',       # server.js points the operator at it (APP_KEY rotation)
+    'backup-key.js',           # backup encryption key: init, export, import, verify, pipe (docs/BACKUPS.md)
     'seed-cert-policies.js',   # apply a default certification policy (dry-run + --commit)
     'seed-starter-framework.js', # optional generic starter capability framework (npm run db:seed:starter)
     'import-esco.js',          # ESCO CSV -> framework JSON for seed-starter-framework --file (npm run import:esco)

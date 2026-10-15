@@ -7,6 +7,10 @@ const { execFile } = require('child_process');
 const db = require('../config/database');
 const DatabaseCleanupService = require('./DatabaseCleanupService');
 const LogService = require('./LogService');
+const BackupCrypto = require('./BackupCryptoService');
+
+/** File suffix of an encrypted restore point (SA-39); a legacy one ends in ".dump". */
+const ENC_DUMP = '.dump' + BackupCrypto.ENC_EXT;
 
 /**
  * SqlConsoleService — powers the super-admin-only SQL toolbox:
@@ -1766,9 +1770,40 @@ class SqlConsoleService {
      * there; nothing read it. Returns null when pg_restore cannot read the file.
      */
     async _dumpDatabaseName(file) {
-        const r = await this._execFile(this._pgBin('pg_restore'), ['-l', file], {});
+        // An encrypted point is listed from its decrypted stream (stdin), never
+        // decrypted to disk.
+        const r = BackupCrypto.isEncryptedFile(file)
+            ? await this._pgRestoreFromEncrypted(['-l'], file, {})
+            : await this._execFile(this._pgBin('pg_restore'), ['-l', file], {});
         const m = /^;\s*dbname:\s*(\S+)\s*$/m.exec(r.stdout);
         return m ? m[1] : null;
+    }
+
+    /** pg_restore <args> with the decrypted restore point on stdin. Same result shape as _execFile. */
+    async _pgRestoreFromEncrypted(args, file, env) {
+        const r = await BackupCrypto.spawnWithPlainStdin(this._pgBin('pg_restore'), args, file, {
+            env,
+        });
+        if (r.streamError)
+            return {
+                code: r.code || 1,
+                stdout: r.stdout,
+                stderr: `decryption failed: ${r.streamError.message}. ${r.stderr}`,
+            };
+        return { code: r.code, stdout: r.stdout, stderr: r.stderr };
+    }
+
+    /** pg_dump to stdout, encrypted on the fly into `file` (+ manifest). Same result shape as _execFile. */
+    async _pgDumpEncrypted(args, file, env) {
+        const r = await BackupCrypto.spawnToEncryptedFile(this._pgBin('pg_dump'), args, file, {
+            env: { ...process.env, ...env },
+            kind: 'sql-restore-point',
+        });
+        return {
+            code: r.ok ? 0 : r.code || 1,
+            stderr: r.ok ? '' : String(r.error || r.stderr),
+            plainBytes: r.plainBytes,
+        };
     }
 
     _execFile(bin, args, env) {
@@ -1787,15 +1822,27 @@ class SqlConsoleService {
         });
     }
 
-    /** pg_dump the whole live DB to a custom-format file. Returns { name, file, sizeBytes }. */
+    /**
+     * pg_dump the whole live DB to an ENCRYPTED custom-format file (SA-39):
+     * restore points are full HR dumps too, so they are encrypted on the fly
+     * (".dump.enc" + manifest) and never written in clear. No key means no
+     * restore point, and therefore no destructive script: the caller refuses.
+     * Returns { name, file, sizeBytes, database, encrypted }.
+     */
     async createRestorePoint(label = 'sql-console', opts = {}) {
         const c = this._connInfo();
         const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
         const name = `${label}-${stamp}-${Math.random().toString(36).slice(2, 6)}`;
         const dir = this._restoreDir();
-        const file = path.join(dir, `${name}.dump`);
-        const r = await this._execFile(
-            this._pgBin('pg_dump'),
+        const file = path.join(dir, name + ENC_DUMP);
+        try {
+            await BackupCrypto.getCurrentKey();
+        } catch (e) {
+            throw new Error(
+                `Restore point failed: backup encryption key unavailable (${e.message}).`
+            );
+        }
+        const r = await this._pgDumpEncrypted(
             [
                 '-h',
                 c.host,
@@ -1808,17 +1855,27 @@ class SqlConsoleService {
                 '-Fc',
                 '--no-owner',
                 '--no-privileges',
-                '-f',
-                file,
             ],
+            file,
             { PGPASSWORD: c.password }
         );
         if (r.code !== 0)
             throw new Error(
                 `Restore point failed (pg_dump exit ${r.code}): ${r.stderr.slice(0, 500)}`
             );
-        const sizeBytes = fs.statSync(file).size;
-        if (!sizeBytes) throw new Error('Restore point failed: empty dump file.');
+        const sizeBytes = r.plainBytes ? fs.statSync(file).size : 0;
+        if (!sizeBytes) {
+            for (const p of [file, BackupCrypto.manifestPath(file)]) {
+                try {
+                    fs.unlinkSync(p);
+                } catch (_) {
+                    /* ignore */
+                }
+            }
+            throw new Error('Restore point failed: empty dump file.');
+        }
+        for (const p of [file, BackupCrypto.manifestPath(file)])
+            await require('../jobs/db-backup').restrictFileAcl(p);
         // The identity lives next to the dump so the LIST can show it without paying
         // a pg_restore spawn per file; the dump header stays the authority and is
         // what a revert actually verifies.
@@ -1833,6 +1890,7 @@ class SqlConsoleService {
                         label,
                         createdAt: new Date().toISOString(),
                         sizeBytes,
+                        encrypted: true,
                     },
                     null,
                     2
@@ -1843,7 +1901,7 @@ class SqlConsoleService {
             /* a missing sidecar degrades the list to "unknown", never to a wrong answer */
         }
         this._pruneRestorePoints(20, opts.protect || null);
-        return { name, file, sizeBytes, database: c.dbname };
+        return { name, file, sizeBytes, database: c.dbname, encrypted: true };
     }
 
     /**
@@ -1864,9 +1922,11 @@ class SqlConsoleService {
                 return [];
             }
             return files
-                .filter((f) => f.endsWith('.dump'))
+                .filter((f) => f.endsWith('.dump') || f.endsWith(ENC_DUMP))
                 .map((f) => {
-                    const name = f.replace(/\.dump$/, '');
+                    // ".dump.enc" = encrypted; ".dump" = legacy plaintext, flagged.
+                    const encrypted = f.endsWith(ENC_DUMP);
+                    const name = f.slice(0, -(encrypted ? ENC_DUMP : '.dump').length);
                     const st = fs.statSync(path.join(dir, f));
                     const side = this._readSidecar(dir, name);
                     return {
@@ -1876,6 +1936,7 @@ class SqlConsoleService {
                         // null = not recorded. Never invented, never shown as this database.
                         database: (side && side.database) || null,
                         scope,
+                        encrypted,
                     };
                 });
         };
@@ -1892,21 +1953,27 @@ class SqlConsoleService {
         // A bare file name only: no separator, no "..", nothing outside the folder.
         name = path.basename(String(name));
         if (!/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(name)) return null;
+        // Encrypted (".dump.enc") first, then the legacy plaintext ".dump"; each
+        // candidate must resolve INSIDE its folder.
         const inside = (dir) => {
             const root = path.resolve(dir);
-            const file = path.resolve(root, name + '.dump');
-            return file.startsWith(root + path.sep) && fs.existsSync(file) ? file : null;
+            for (const ext of [ENC_DUMP, '.dump']) {
+                const file = path.resolve(root, name + ext);
+                if (file.startsWith(root + path.sep) && fs.existsSync(file))
+                    return { file, encrypted: ext === ENC_DUMP };
+            }
+            return null;
         };
         const mine = inside(this._restoreDir({ create: false }));
-        if (mine)
-            return { file: mine, dir: this._restoreDir({ create: false }), scope: 'database' };
+        if (mine) return { ...mine, dir: this._restoreDir({ create: false }), scope: 'database' };
         const legacy = inside(this._restoreBaseDir());
-        if (legacy) return { file: legacy, dir: this._restoreBaseDir(), scope: 'legacy' };
+        if (legacy) return { ...legacy, dir: this._restoreBaseDir(), scope: 'legacy' };
         return null;
     }
 
     _pruneRestorePoints(keep, protectName = null) {
-        // Restore points are full UNENCRYPTED DB dumps (all PII). Cap by BOTH count
+        // Restore points are full DB dumps (all PII; encrypted since SA-39, older
+        // ones are not). Cap by BOTH count
         // and AGE so old copies don't linger at rest: keep the newest `keep`, and
         // additionally delete anything older than SQL_CONSOLE_RESTORE_MAX_AGE_DAYS
         // (default 7 — they are short-lived safety nets, not archives).
@@ -1927,12 +1994,17 @@ class SqlConsoleService {
         doomed.delete(protectName);
         for (const rp of doomed.values()) {
             const dir = dirOf(rp);
-            try {
-                fs.unlinkSync(path.join(dir, rp.name + '.dump'));
-            } catch (_) {}
-            try {
-                fs.unlinkSync(this._sidecarPath(dir, rp.name));
-            } catch (_) {}
+            const enc = path.join(dir, rp.name + ENC_DUMP);
+            for (const p of [
+                path.join(dir, rp.name + '.dump'),
+                enc,
+                BackupCrypto.manifestPath(enc),
+                this._sidecarPath(dir, rp.name),
+            ]) {
+                try {
+                    fs.unlinkSync(p);
+                } catch (_) {}
+            }
         }
     }
 
@@ -2260,6 +2332,14 @@ class SqlConsoleService {
             client.release();
         }
 
+        // --- 1a. IS THIS FILE INTACT? (SA-39) -----------------------------------
+        // The SHA-256 manifest is checked, and an encrypted point is decrypted end
+        // to end with every chunk authenticated, BEFORE anything else reads it. A
+        // mismatch, or a key this server does not hold, refuses the revert. A
+        // legacy plaintext point (no manifest) is still allowed, with a warning
+        // carried into the result and the audit trail.
+        const integrity = await BackupCrypto.assertRestorable(file);
+
         // --- 1b. WHERE DOES THIS FILE COME FROM? -------------------------------
         // The restore-point folder used to be shared by every instance on the
         // machine and the listing carried no database at all, so the wrong file was
@@ -2334,25 +2414,27 @@ class SqlConsoleService {
         let r;
         let restored = 'absent';
         try {
-            r = await this._execFile(
-                this._pgBin('pg_restore'),
-                [
-                    '-h',
-                    c.host,
-                    '-p',
-                    c.port,
-                    '-U',
-                    c.user,
-                    '-d',
-                    c.dbname,
-                    '--clean',
-                    '--if-exists',
-                    '--no-owner',
-                    '--no-privileges',
-                    file,
-                ],
-                { PGPASSWORD: c.password }
-            );
+            const restoreArgs = [
+                '-h',
+                c.host,
+                '-p',
+                c.port,
+                '-U',
+                c.user,
+                '-d',
+                c.dbname,
+                '--clean',
+                '--if-exists',
+                '--no-owner',
+                '--no-privileges',
+            ];
+            // Encrypted: the decrypted stream goes to pg_restore's stdin, so no
+            // plaintext copy of the database is ever written to disk.
+            r = integrity.encrypted
+                ? await this._pgRestoreFromEncrypted(restoreArgs, file, { PGPASSWORD: c.password })
+                : await this._execFile(this._pgBin('pg_restore'), restoreArgs.concat([file]), {
+                      PGPASSWORD: c.password,
+                  });
         } finally {
             if (lifted === 'disabled') restored = await this._setDropGuard(true);
         }
@@ -2436,6 +2518,21 @@ class SqlConsoleService {
                 userAgent: actor.userAgent || null,
             });
         }
+        // A legacy UNENCRYPTED point was restored (no integrity manifest): said in
+        // the result and in the audit trail.
+        if (integrity.warning) {
+            guardWarning.push(integrity.warning);
+            await LogService.log({
+                adminId: actor.adminId || null,
+                action: 'SQL_CONSOLE_REVERT_UNENCRYPTED_POINT',
+                entityType: 'database',
+                details: integrity.warning,
+                severity: 'warn',
+                category: 'security',
+                ipAddress: actor.ipAddress || null,
+                userAgent: actor.userAgent || null,
+            });
+        }
 
         // 3.23.18: a revert rolls the database back past later erasures — re-apply
         // every erasure tombstone so an erased person never comes back. A failure
@@ -2456,6 +2553,7 @@ class SqlConsoleService {
             name,
             database: c.dbname,
             verifiedOrigin: origin,
+            encrypted: integrity.encrypted,
             erasuresReapplied: erasures,
             preRevertRestorePoint: preRevert ? preRevert.name : null,
             warnings: guardWarning.concat(

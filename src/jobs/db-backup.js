@@ -20,11 +20,24 @@
  *   3. <cwd>/backups/auto (the historic fallback, e.g. a Linux dev box).
  * The file PATH and SIZE are recorded with the status, and a 0-byte dump is a
  * FAILURE (the file is removed), never an "ok (0.0 MB)".
+ *
+ * ENCRYPTED (SA-39). pg_dump writes to stdout and the stream is encrypted on
+ * the fly (BackupCryptoService: AES-256-GCM stream, DPAPI-held or
+ * APP_KEY-derived master key) into "<db>-<stamp>.dump.enc" plus
+ * "<file>.manifest.json" (SHA-256, size, key id, app version, HMAC). No key
+ * means no backup (fail closed, alerted), never a clear dump. Each new backup
+ * is then verified (manifest, every chunk authenticated, `pg_restore --list` on
+ * the decrypted stream; nothing is written in clear), the key of EVERY backup on
+ * disk is checked to still be held by this server, and, when BACKUP_OFFHOST_DIR
+ * is set, the backup is copied there. A copy or key-check failure alerts; it
+ * never fails the local backup. Older plaintext ".dump" files stay as they are,
+ * are listed with `encrypted: false` and rotate out under the same retention.
  */
 
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+const Crypto = require('../services/BackupCryptoService');
 
 // Hour/keep are runtime-tunable from App Settings (category "jobs"), read per
 // tick with the env var (then the historic default) as fallback.
@@ -109,6 +122,142 @@ function findPgDump() {
     return 'pg_dump';
 }
 
+/** pg_restore next to the pg_dump in use (same major version), else PATH. */
+function findPgRestore() {
+    const dump = findPgDump();
+    if (dump !== 'pg_dump') {
+        const p = path.join(
+            path.dirname(dump),
+            /\.exe$/i.test(dump) ? 'pg_restore.exe' : 'pg_restore'
+        );
+        if (fs.existsSync(p)) return p;
+    }
+    return 'pg_restore';
+}
+
+/** A backup file this job wrote: legacy plaintext `.dump` or encrypted `.dump.enc`. */
+function isBackupName(f, dbName) {
+    return (
+        f.startsWith(dbName + '-') && (f.endsWith('.dump') || f.endsWith('.dump' + Crypto.ENC_EXT))
+    );
+}
+
+/** Remove a backup and everything that travels with it (manifest, partial). */
+function removeBackup(file) {
+    for (const p of [file, file + '.partial', Crypto.manifestPath(file)]) {
+        try {
+            if (fs.existsSync(p)) fs.unlinkSync(p);
+        } catch {
+            /* ignore */
+        }
+    }
+}
+
+/**
+ * Verification of a backup: the manifest must match, every chunk must
+ * authenticate, then the DECRYPTED stream is fed to `pg_restore --list` on its
+ * stdin (no plaintext file). Returns { ok, detail }. Never throws.
+ */
+async function verifyBackup(file) {
+    try {
+        const m = await Crypto.verifyManifest(file);
+        if (!m.ok) return { ok: false, detail: 'manifest: ' + String(m.reason).slice(0, 300) };
+        // Every chunk authenticates (pg_restore --list stops reading after the TOC).
+        const d = await Crypto.verifyDecrypt(file);
+        if (!d.ok) return { ok: false, detail: 'decryption: ' + String(d.reason).slice(0, 300) };
+        const r = await Crypto.spawnWithPlainStdin(findPgRestore(), ['--list'], file);
+        if (r.streamError)
+            return {
+                ok: false,
+                detail: 'decryption: ' + String(r.streamError.message).slice(0, 300),
+            };
+        if (r.code !== 0)
+            return {
+                ok: false,
+                detail: `pg_restore --list exit ${r.code}: ${r.stderr.trim().slice(0, 200)}`,
+            };
+        const entries = (/TOC Entries:\s*(\d+)/.exec(r.stdout) || [])[1];
+        if (!entries)
+            return { ok: false, detail: 'pg_restore --list printed no table of contents' };
+        return { ok: true, detail: `${entries} TOC entries` };
+    } catch (e) {
+        return { ok: false, detail: String(e.message).slice(0, 200) };
+    }
+}
+
+/**
+ * Is the key of every encrypted backup on disk still held by this server? A
+ * backup whose key is gone cannot be restored here: that is reported loudly
+ * (alert + status) with the ids of the missing keys on the day it happens, not
+ * on the day someone needs the backup. Returns { ok, checked, missing: [{keyId, files}] }.
+ */
+async function checkBackupKeys(files) {
+    const byKey = new Map();
+    for (const f of files) {
+        if (!f.encrypted) continue;
+        const id = Crypto.keyIdOfFile(f.file);
+        if (!id) continue;
+        if (!byKey.has(id)) byKey.set(id, []);
+        byKey.get(id).push(f.name);
+    }
+    const missing = [];
+    for (const [keyId, names] of byKey) {
+        let key = null;
+        try {
+            key = await Crypto.findKey(keyId);
+        } catch {
+            key = null;
+        }
+        if (!key) missing.push({ keyId, files: names });
+    }
+    return { ok: missing.length === 0, checked: byKey.size, missing };
+}
+
+/**
+ * Off-host target: BACKUP_OFFHOST_DIR (a mounted network folder or a UNC path),
+ * set by the operator in the environment; '' = not set. It is not an App
+ * Setting on purpose: where the whole HR database is copied is an operator
+ * decision, not something to change from a browser. It must be absolute and
+ * must not be the backup folder or inside it.
+ */
+function offHostDir() {
+    const v = String(process.env.BACKUP_OFFHOST_DIR || '').trim();
+    if (!v || !path.isAbsolute(v)) return '';
+    const target = path.resolve(v);
+    const local = path.resolve(backupDir());
+    if (target === local || target.startsWith(local + path.sep)) return '';
+    return target;
+}
+
+/**
+ * Copy the encrypted backup and its manifest to the off-host folder, check the
+ * copy against the manifest, apply the same retention there. A failure is
+ * REPORTED (alert + status) and never fails the local backup.
+ */
+async function copyOffHost(file, dbName, keep, target) {
+    try {
+        fs.mkdirSync(target, { recursive: true });
+        const dest = path.join(target, path.basename(file));
+        fs.copyFileSync(file, dest);
+        fs.copyFileSync(Crypto.manifestPath(file), Crypto.manifestPath(dest));
+        const m = await Crypto.verifyManifest(dest);
+        if (!m.ok) return { ok: false, detail: 'copy does not match its manifest: ' + m.reason };
+        try {
+            fs.readdirSync(target)
+                .filter((f) => isBackupName(f, dbName))
+                .sort()
+                .reverse()
+                .slice(keep)
+                .forEach((f) => removeBackup(path.join(target, f)));
+        } catch {
+            /* retention best-effort */
+        }
+        return { ok: true, detail: dest };
+    } catch (e) {
+        return { ok: false, detail: String(e.message).slice(0, 200) };
+    }
+}
+
 function dbNameFromUrl() {
     try {
         return new URL(process.env.DATABASE_URL).pathname.replace(/^\//, '') || 'postgres';
@@ -144,8 +293,12 @@ async function tick({ force = false } = {}) {
     const dbName = url.pathname.replace(/^\//, '') || 'postgres';
     const DIR = backupDir();
     const stamp = force ? `${today}T${now.toISOString().slice(11, 19).replace(/:/g, '')}` : today;
-    const file = path.join(DIR, `${dbName}-${stamp}.dump`);
-    if (!force && fs.existsSync(file)) return { done: false, skipped: 'already_today' };
+    // Every new backup is encrypted (".dump.enc" + manifest). A legacy plaintext
+    // ".dump" of the same day still counts for idempotence.
+    const legacyFile = path.join(DIR, `${dbName}-${stamp}.dump`);
+    const file = legacyFile + Crypto.ENC_EXT;
+    if (!force && (fs.existsSync(file) || fs.existsSync(legacyFile)))
+        return { done: false, skipped: 'already_today' };
 
     fs.mkdirSync(DIR, { recursive: true });
 
@@ -159,60 +312,74 @@ async function tick({ force = false } = {}) {
         '-d',
         dbName,
         '-F',
-        'c', // compressed custom format (pg_restore-able)
-        '-f',
-        file,
+        'c', // compressed custom format (pg_restore-able), on stdout, encrypted on the fly
     ];
     const env = { ...process.env, PGPASSWORD: decodeURIComponent(url.password || '') };
 
-    let status = await new Promise((resolve) => {
-        execFile(findPgDump(), args, { env, timeout: 10 * 60 * 1000 }, (err) => {
-            resolve(err ? 'failed: ' + String(err.message).slice(0, 160) : 'ok');
+    // The key first: no key means no backup at all, never one written in clear.
+    let status = 'ok';
+    let plainBytes = 0;
+    try {
+        await Crypto.getCurrentKey();
+    } catch (e) {
+        status = 'failed: backup encryption key unavailable: ' + String(e.message).slice(0, 160);
+    }
+    if (status === 'ok') {
+        const r = await Crypto.spawnToEncryptedFile(findPgDump(), args, file, {
+            env,
+            kind: 'db-backup',
+            timeoutMs: 10 * 60 * 1000,
         });
-    });
+        status = r.ok ? 'ok' : 'failed: ' + String(r.error).slice(0, 160);
+        plainBytes = r.plainBytes;
+    }
 
-    // A 0-byte dump is not a backup (one sat in the folder, counted as
-    // a success). Treat it as a failure and remove it so idempotence cannot
-    // false-positive on it tomorrow.
+    // A 0-byte dump is not a backup (one sat in the folder, counted as a
+    // success). Treat it as a failure and remove it so idempotence cannot
+    // false-positive on it tomorrow. An empty pg_dump output still yields an
+    // encrypted header, so the PLAINTEXT byte count is what decides.
     let size = 0;
     if (status === 'ok') {
         try {
-            size = fs.statSync(file).size;
+            size = plainBytes ? fs.statSync(file).size : 0;
         } catch {
             size = 0;
         }
         if (!size) status = 'failed: empty dump file';
     }
 
+    let verify = null;
+    let offHost = null;
+    let keys = null;
     if (status !== 'ok') {
         // Remove a partial file so tomorrow's idempotence check doesn't false-positive.
-        try {
-            if (fs.existsSync(file)) fs.unlinkSync(file);
-        } catch {
-            /* ignore */
-        }
+        removeBackup(file);
     } else {
         // S-01: the dump holds the whole database - not for BUILTIN\Users.
-        const acl = await restrictFileAcl(file);
-        if (!acl.ok)
-            console.warn(`[db-backup] could not restrict the ACL of ${file}: ${acl.detail}`);
-        // Retention: keep the newest KEEP dumps for this database.
+        for (const p of [file, Crypto.manifestPath(file)]) {
+            const acl = await restrictFileAcl(p);
+            if (!acl.ok)
+                console.warn(`[db-backup] could not restrict the ACL of ${p}: ${acl.detail}`);
+        }
+        // Retention: keep the newest KEEP backups (legacy plaintext or encrypted)
+        // for this database; the manifest goes with its file.
         try {
-            const files = fs
-                .readdirSync(DIR)
-                .filter((f) => f.startsWith(dbName + '-') && f.endsWith('.dump'))
+            fs.readdirSync(DIR)
+                .filter((f) => isBackupName(f, dbName))
                 .sort()
-                .reverse();
-            files.slice(keep).forEach((f) => {
-                try {
-                    fs.unlinkSync(path.join(DIR, f));
-                } catch {
-                    /* ignore */
-                }
-            });
+                .reverse()
+                .slice(keep)
+                .forEach((f) => removeBackup(path.join(DIR, f)));
         } catch {
             /* retention best-effort */
         }
+        // Verification of the new backup: manifest, every chunk, pg_restore --list.
+        verify = await verifyBackup(file);
+        // Every encrypted backup still on disk must still have its key here.
+        keys = await checkBackupKeys(listBackups());
+        // Optional off-host copy (never fails the local backup).
+        const target = offHostDir();
+        if (target) offHost = await copyOffHost(file, dbName, keep, target);
     }
 
     try {
@@ -245,24 +412,88 @@ async function tick({ force = false } = {}) {
             'Size in bytes of the last successful DB backup',
             'ops'
         );
+        if (verify) {
+            await AppSettingsModel.setValue(
+                'backupLastVerify',
+                `${verify.ok ? 'ok' : 'failed'} ${now.toISOString()} ${path.basename(file)}: ${verify.detail}`.slice(
+                    0,
+                    400
+                ),
+                'string',
+                'Last backup verification (manifest, decryption, pg_restore --list)',
+                'ops'
+            );
+        }
+        if (keys) {
+            await AppSettingsModel.setValue(
+                'backupKeyCheck',
+                (keys.ok
+                    ? `ok ${now.toISOString()}: ${keys.checked} key(s) held`
+                    : `failed ${now.toISOString()}: key(s) not held here: ${keys.missing
+                          .map((m) => `${m.keyId} (${m.files.length} file(s))`)
+                          .join(', ')}`
+                ).slice(0, 400),
+                'string',
+                'Last check that every backup on disk can still be decrypted here',
+                'ops'
+            );
+        }
+        if (offHost) {
+            await AppSettingsModel.setValue(
+                'backupOffHostLastStatus',
+                `${offHost.ok ? 'ok' : 'failed'} ${now.toISOString()}: ${offHost.detail}`.slice(
+                    0,
+                    400
+                ),
+                'string',
+                'Last off-host backup copy outcome',
+                'ops'
+            );
+        }
     } catch {
         /* status write best-effort */
     }
 
-    if (status !== 'ok') {
-        // Same day de-duplication as every ops alert (JobRunService.alert).
+    // Same day de-duplication as every ops alert (JobRunService.alert).
+    const alert = async (kind, key, payload) => {
         try {
-            await require('../services/JobRunService').alert(
-                'ops.backup_stale',
-                `backup-failed:${today}`,
-                { status, link: '/admin/health' }
-            );
+            await require('../services/JobRunService').alert(kind, key, {
+                ...payload,
+                link: '/admin/health',
+            });
         } catch {
             /* best-effort */
         }
-    }
+    };
+    if (status !== 'ok') await alert('ops.backup_stale', `backup-failed:${today}`, { status });
+    if (verify && !verify.ok)
+        await alert('ops.job_failed', `backup-verify:${today}`, {
+            tick: 'db-backup.verify',
+            error: 'failed: ' + verify.detail,
+        });
+    if (keys && !keys.ok)
+        await alert('ops.job_failed', `backup-keys:${today}`, {
+            tick: 'db-backup.keys',
+            error:
+                'backups this server cannot decrypt: key(s) ' +
+                keys.missing.map((m) => m.keyId).join(', '),
+        });
+    if (offHost && !offHost.ok)
+        await alert('ops.job_failed', `backup-offhost:${today}`, {
+            tick: 'db-backup.offhost',
+            error: 'failed: ' + offHost.detail,
+        });
 
-    return { done: status === 'ok', status, file: status === 'ok' ? file : null, sizeBytes: size };
+    return {
+        done: status === 'ok',
+        status,
+        file: status === 'ok' ? file : null,
+        sizeBytes: size,
+        encrypted: status === 'ok',
+        verify,
+        keys,
+        offHost,
+    };
 }
 
 /** Files in the backup directory for THIS database, newest first. */
@@ -272,15 +503,21 @@ function listBackups() {
     try {
         return fs
             .readdirSync(DIR)
-            .filter((f) => f.startsWith(dbName + '-') && f.endsWith('.dump'))
+            .filter((f) => isBackupName(f, dbName))
             .map((f) => {
-                const st = fs.statSync(path.join(DIR, f));
+                const file = path.join(DIR, f);
+                const st = fs.statSync(file);
+                // A legacy plaintext dump is kept as-is and FLAGGED, never hidden.
+                const encrypted = f.endsWith(Crypto.ENC_EXT);
                 return {
                     name: f,
-                    file: path.join(DIR, f),
+                    file,
                     sizeBytes: st.size,
                     modifiedAt: st.mtime.toISOString(),
                     empty: st.size === 0,
+                    encrypted,
+                    hasManifest: fs.existsSync(Crypto.manifestPath(file)),
+                    keyId: encrypted ? Crypto.keyIdOfFile(file) : null,
                 };
             })
             .sort((a, b) => (a.name < b.name ? 1 : -1));
@@ -353,7 +590,31 @@ async function status(now = Date.now()) {
         disk: diskSpace(),
         nextRunAt: nextRun,
         stale,
+        // SA-39: encryption, verification, key availability, off-host copy.
+        plaintextCount: files.filter((f) => !f.encrypted).length,
+        unreadableCount: unreadableCount(files),
+        encryption: Crypto.keyStatus(),
+        lastVerify: (await get('backupLastVerify', null)) || null,
+        lastKeyCheck: (await get('backupKeyCheck', null)) || null,
+        offHost: {
+            dir: offHostDir() || null,
+            lastStatus: (await get('backupOffHostLastStatus', null)) || null,
+        },
     };
+}
+
+/**
+ * Encrypted files whose key this server does not hold. Read-only (key ids
+ * only, nothing unwrapped, no DPAPI call): each of them CANNOT be restored here.
+ */
+function unreadableCount(files) {
+    let known;
+    try {
+        known = Crypto.knownKeyIds();
+    } catch {
+        return null;
+    }
+    return files.filter((f) => f.encrypted && !(f.keyId && known.has(f.keyId))).length;
 }
 
 module.exports = {
@@ -363,5 +624,10 @@ module.exports = {
     backupDir,
     diskSpace,
     restrictFileAcl,
+    verifyBackup,
+    checkBackupKeys,
+    copyOffHost,
+    offHostDir,
+    isBackupName,
     STALE_AFTER_MS,
 };

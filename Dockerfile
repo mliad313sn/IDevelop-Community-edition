@@ -39,7 +39,8 @@ ENV NODE_ENV=production \
     QUARANTINE_DIR=/app/data/uploads/_quarantine \
     BACKUP_DIR=/app/data/backups/auto \
     AUDIT_ANCHOR_DIR=/app/data/audit-anchors \
-    SQL_CONSOLE_BACKUP_DIR=/app/data/sql-restore-points
+    SQL_CONSOLE_BACKUP_DIR=/app/data/sql-restore-points \
+    BACKUP_KEYRING_FILE=/app/data/keys/backup-keyring.json
 WORKDIR /app
 # tini for correct PID-1 signal handling (graceful shutdown). Fixed UID/GID so
 # volume ownership and compose tmpfs mounts (uid=10001) are predictable.
@@ -58,6 +59,7 @@ COPY . .
 # AI_Engine_Docs/tmp is the data-import staging folder (ephemeral).
 RUN mkdir -p /app/data/tmp /app/data/logs /app/data/uploads/_quarantine \
              /app/data/backups/auto /app/data/audit-anchors /app/data/sql-restore-points \
+             /app/data/keys \
              /app/AI_Engine_Docs/tmp \
     && ln -s /app/data/tmp /app/tmp \
     && ln -s /app/data/logs /app/logs \
