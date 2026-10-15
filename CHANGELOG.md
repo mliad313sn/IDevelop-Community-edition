@@ -101,6 +101,17 @@ project uses [Semantic Versioning](https://semver.org/).
   development dependency (SA-26).
 - Webhook-family settings (`webhook*`) are security-class (SuperAdmin only).
 
+### Talent and workflow (authority, resets, decisions with reasons)
+
+- **Workflow decisions only by their authority** (SA-42). The former `/v2/talent` rating and placement writes answer 410 and point to the 9-box console. A performance improvement plan is proposed, activated, closed or withdrawn only by the person's direct manager, a SuperAdmin or an administrator whose clearance covers the person; supervisors and managers higher up the line read it. Activation is journaled with its author, and « met » or « not met » only closes a plan that ran: a plan that never started is withdrawn with a reason. The former supervisor console decides only a pending review on an assessment still awaiting review, with a level from 0 to 4; a cancelled or rejected assessment is never revived. Requesting changes and withdrawing a review save everything together. An arbitrated rejection needs a reason, putting an assessment in arbitration needs an open dispute, and the person is told the outcome.
+- **« Reset the assessment »** (SuperAdmin maintenance panel, migration 181). One assessment, or a whole employee × campaign, goes back to draft with the previous answer prefilled, and its review goes back to pending, so the person and their reviewer do it again. The official level does not change until a new approval. A reason is required; a whole campaign also needs the person's employee number typed again; a closed or locked campaign is refused. An open dispute or change request is closed. Nothing is deleted; the history shows « Self-assessment reset for redo » and the audit log `MAINT_RESET_ASSESSMENT`.
+- **Nothing deleted, every decision says who, when and why** (migration 180, SA-43). A successor is removed with a reason instead of deleted, and stays off the bench until someone names them again; band overrides, incumbent changes and plan archives are audited. Coverage rules and planned absences are deactivated with a reason. An LMS uplift decision records who decided, when and why, and a decline needs a reason. Recording an arrival or a move needs the employee-edit right and a reason; without the right it becomes a request an administrator decides.
+- **Survey results only once closed.** While a survey is open its owner sees whether the anonymity floor is reached, never a count or a result.
+- **Flight risk** is read only by the person's manager or a holder of the retention-risk permission; a handover's incoming person must be in the caller's scope.
+- **Development plan page.** The plan's authority adds objectives and actions from the page; empty lists say what to do next; the page says whose plan it is and names the action types in words. A plan created from the page is written in the reader's language (it was always French, with English action titles).
+- **Export-only data page** (SA-44). An auditor, a read-only viewer or a local admin who may export but not import opens « Import & export » on the export blocks only, instead of being sent back to the dashboard.
+- **Upgrade:** migrations 180 and 181 are additive. Existing successors, absences and rules stay active; the ones deleted before the upgrade cannot be recovered. `v_continuity_coverage` is recreated with the same columns, counting active successors only. Integrations that called the former `/v2/talent` rating or placement routes get 410. Supervisors lose the PIP buttons' effect (403) where they are not the person's manager. Supervisors and HR who decline an uplift, cancel an absence, remove a successor or deactivate a rule are now asked for a reason. The new reason columns are in the erasure registry and the personal-data export.
+
 ### Talent data (9-box movements, coaching signatures, data fixes)
 
 - **9-box movements** (migration 175, SA-41). Each placement records the person's previous approved placement and the direction of the move: first placement, unchanged, moved up, moved down or sideways, judged on the two axes. A box change needs a written reason of at least 20 characters, a real sentence and not a copy of the person's previous reason, at submission, at approval, when a reviewer changes a submitted box and at calibration. The console shows « before → now », the previous placement in the assess dialog and, on request, where each person came from on the grid. A new **9-box movements** page (from the console) gives the counts by direction, the box-to-box matrix, filters by campaign, site, department and direction, and a CSV.
@@ -301,6 +312,13 @@ project uses [Semantic Versioning](https://semver.org/).
   **Migration 173** makes a copy's content emptiable (`purged_at`,
   `purge_reason`) and seeds `reportRunRetentionDays`. Both re-grant the console
   reader.
+- **Migration 180** adds the successor state and removal columns, the LMS
+  decision trail (`decided_by_ref`, `decided_at`, `decision_reason`), and the
+  deactivation reason of coverage rules and planned absences, with CHECKs that a
+  removal, a decline and a cancellation carry a reason; recreates
+  `v_continuity_coverage` over active successors (same columns). Re-grants the
+  console reader. **Migration 181** widens `employee_movements.kind` with
+  `assessment_reset`, keeping every former value.
 
 ### Tests
 
