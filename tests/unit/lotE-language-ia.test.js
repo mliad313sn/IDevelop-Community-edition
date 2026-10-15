@@ -8,7 +8,7 @@
  *     (L6-09), on /about (L4-15) or in the session-device description (L6-12);
  *   - every native confirm()/prompt() is gone from views/** (L6-19);
  *   - /admins/:id* only matches a numeric id (L6-24);
- *   - /account/my-access and /action-center redirect (L5C-07);
+ *   - /account/my-access and /action-center redirect (L5C-07; the latter to /tasks);
  *   - /setup is SuperAdmin-only (L5C-08) and its banner follows it;
  *   - the 403 page names contactable SuperAdmins by DISPLAY NAME, never a demo
  *     login and never an e-mail (L5C-12);
@@ -251,9 +251,12 @@ describe('L6-24 / L5C-07 / L5C-08 — routes', () => {
         expect(routes).toMatch(
             /router\.get\(\s*'\/account\/my-access'[\s\S]{0,120}redirect\(302, '\/mon-acces'\)/
         );
+        // /action-center now leads to « À traiter » (or the person's home).
         expect(routes).toMatch(
-            /router\.get\(\s*'\/action-center'[\s\S]{0,120}redirect\(302, '\/notifications'\)/
+            /router\.get\(\s*'\/action-center',[\s\S]{0,160}TasksController'\)\.legacyActionCenter/
         );
+        const tasks = read('src/controllers/TasksController.js');
+        expect(tasks).toMatch(/res\.redirect\(301, '\/tasks'\)/);
     });
 
     test('/setup is SuperAdmin-only and answers with the explanatory 403', () => {

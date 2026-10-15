@@ -743,6 +743,9 @@ router.get(
     asyncHandler(TalentActionsController.careerPathData)
 );
 router.get('/api/my-actions', requireAuth, asyncHandler(TalentActionsController.myActions));
+// « À traiter »: the grouped list behind the bell (same collector). Managers and
+// admins who can act; everyone else is sent to their own home page.
+router.get('/tasks', requireAuth, asyncHandler(require('../controllers/TasksController').page));
 // AI companion (help panel « Assistant » tab) — every signed-in user; the
 // router carries its own requireAuth, rate limit and companion.enabled switch.
 router.use('/api/companion', require('./companion'));
@@ -3786,9 +3789,14 @@ router.post(
 // `/account/my-access` is the English spelling of « Mon accès » used throughout
 // the documentation; the page itself lives at /mon-acces.
 router.get('/account/my-access', requireAuth, (req, res) => res.redirect(302, '/mon-acces'));
-// `/action-center` is the old name of the merged Action Center + bell; the
-// Notification Centre replaced it (v3.22.56/.57) and is the page people mean.
-router.get('/action-center', requireAuth, (req, res) => res.redirect(302, '/notifications'));
+// `/action-center` is the old name of the action list: managers and admins who
+// can act get a permanent redirect to « À traiter »; employees keep their
+// dashboard (their to-do list), read-only accounts their own home.
+router.get(
+    '/action-center',
+    requireAuth,
+    require('../controllers/TasksController').legacyActionCenter
+);
 // ---- end SECTION ux ----------------------------------------------------------------
 
 module.exports = router;
