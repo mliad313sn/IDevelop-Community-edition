@@ -865,18 +865,19 @@ const PROFILES = [
             },
             {
                 icon: '🏠',
-                img: 'mgr-01-supervisor-dashboard',
+                img: null,
+                imgRetired: 'mgr-01-supervisor-dashboard',
                 title: {
-                    fr: 'Mon équipe — votre page d’accueil de manager',
-                    en: 'My Team — your manager home',
+                    fr: 'Tableau de bord — votre équipe en chiffres',
+                    en: 'Dashboard — your team in figures',
                 },
                 where: {
                     fr: 'Tableau de bord, première entrée du menu (/supervisor/dashboard)',
                     en: 'Dashboard, the first menu entry (/supervisor/dashboard)',
                 },
                 what: {
-                    fr: 'La page « qu’est-ce qui m’attend aujourd’hui ? ». Un bandeau « Ce qui requiert votre attention » (le 2026-09-02 : « Vous êtes à jour — aucune action requise pour le moment ») puis quatre raccourcis : File d’attente des revues, Analyse des écarts, Coaching, et votre propre auto-évaluation. Le chemin est /supervisor/dashboard : /manager/dashboard n’existe pas (404).',
-                    en: 'The "what needs me today?" page. A "What needs you" strip (on 2026-09-02: "You are all caught up — nothing needs your action right now") then four shortcuts: reviews queue, gap analysis, coaching, and your own self-assessment. The path is /supervisor/dashboard: /manager/dashboard does not exist (404).',
+                    fr: 'Votre équipe en chiffres, sans aucun nom : « En bref », les indicateurs (préparation au poste avec le nombre de « non prêts », auto-évaluations à valider, habilitations, plans en cours), les personnes par état de préparation et les prochaines étapes avec leur nombre (« Valider des auto-évaluations (3) »…), puis les écarts les plus fréquents. Les noms sont sur <b>« Mon équipe »</b> (/supervisor/team) : une ligne par personne rattachée, son état de revue, sa préparation, ses écarts critiques et la prochaine étape. Le tableau de bord de l’organisation, limité à votre équipe, reste sous Rapports → Indicateurs.',
+                    en: 'Your team in figures, with no name: « In brief », the indicators (role readiness with the number « not ready », self-assessments to validate, certificates, plans in progress), people by readiness state and the next steps with their counts (“Validate self-assessments (3)”…), then the most frequent gaps. The names are on <b>“My team”</b> (/supervisor/team): one row per person who reports to you, their review state, readiness, critical gaps and next step. The organisation dashboard, limited to your team, stays under Reports → Indicators.',
                 },
             },
             {
@@ -918,48 +919,33 @@ const PROFILES = [
                 img: null,
                 imgRetired: 'mgr-04-dashboard-executive',
                 title: {
-                    fr: 'Tableau de bord des capacités — Vue exécutive',
-                    en: 'Workforce Capability Dashboard — Executive overview',
+                    fr: 'Le tableau de bord — des chiffres, des onglets, des listes',
+                    en: 'The dashboard — figures, tabs, lists',
                 },
                 where: {
-                    fr: 'PRINCIPAL → Tableau de bord (/dashboard), onglet « Vue exécutive »',
-                    en: 'MAIN → Dashboard (/dashboard), "Executive overview" tab',
+                    fr: 'Tableau de bord (/dashboard) ; pour un manager : Rapports → Indicateurs',
+                    en: 'Dashboard (/dashboard); for a manager: Reports → Indicators',
                 },
                 what: {
-                    fr: 'Le cockpit, limité à vos collaborateurs. Filtres Site / Département / Service puis Appliquer. Le 2026-09-02 : <b>Indice de santé 81 « Sain »</b> (Préparation 25 % → 72, Couverture 15 % → 100, Conformité 25 % → 100, Dotation 15 % → 18, Fraîcheur 20 % → 100) ; <b>71,7 % de maîtrise moyenne « sur les 189 exigences évaluées de 189 (100 %) »</b> ; <b>7 / 15 prêts pour le poste</b> ; <b>1 écart critique</b> (employé mesuré sous 50 %) ; <b>« — » en conformité critique</b> ; <b>9 postes à risque</b> (titulaire unique) ; <b>189 / 189 exigences évaluées, 0 jamais évaluée</b>. L’encadré « Comment lire ceci » le dit explicitement : « Les 0 jamais évaluées sont un angle mort, pas un niveau 0 ». Cinq onglets : Vue exécutive, Priorités de formation, Développement des talents, Cartographie des capacités, Comparateur. L’échelle affichée en pied de page est <b>0 Aucune connaissance · 1 Notions de base · 2 Performance guidée · 3 Autonome · 4 Expert / peut former</b>.',
-                    en: 'The cockpit, scoped to your people. Site / Department / Service filters then Apply. On 2026-09-02: <b>Health index 81 "Healthy"</b> (Readiness 25% → 72, Coverage 15% → 100, Compliance 25% → 100, Staffing 15% → 18, Freshness 20% → 100); <b>71.7% average proficiency "over the 189 of 189 requirements assessed (100%)"</b>; <b>7 / 15 role-ready</b>; <b>1 critical gap</b> (measured below 50%); <b>"—" critical compliance</b>; <b>9 roles at risk</b> (single occupant); <b>189 / 189 requirements assessed, 0 never assessed</b>. The "How to read this" note says it outright: "The 0 never assessed are a blind spot, not a level 0". Five tabs: Executive overview, Training priorities, Talent development, Capability map, Comparator. The scale printed in the footer is <b>0 No knowledge · 1 Basic awareness · 2 Guided performance · 3 Autonomous · 4 Expert / can teach</b>.',
+                    fr: 'Un seul tableau de bord, adapté à vos droits. En haut, la <b>barre de périmètre</b> : « Vous voyez : Tout mon périmètre · 31 personnes · 75,0 % des compétences exigées évaluées » ; « Changer de site ou de département » ne propose que les unités de votre propre population, et votre choix est mémorisé pour votre compte, jamais sur l’ordinateur. Puis <b>« En bref »</b>, quelques phrases en chiffres, et une rangée d’indicateurs (les plus à risque d’abord) avec leur statut en mot et en icône, leur évolution depuis un relevé de même définition et « Voir la liste (n) ». Aucune personne n’est nommée sur la page : « Voir la liste » ouvre la population derrière le chiffre, comptée par site et par poste, et « Ouvrir la liste nominative » mène à la page qui tient les noms, si votre menu vous la propose. Une ligne « Non visible avec vos droits » dit ce que votre habilitation ne montre pas ; une carte « Ce qui reste à paramétrer » liste ce qui empêche de mesurer. Les <b>onglets</b> (Vue d’ensemble, Préparation aux postes, Sécurité et habilitations, Talents, Relève, Développement, Évaluations) se chargent à l’ouverture ; un onglet dont le module est désactivé n’apparaît pas. « Tout imprimer » met chaque onglet sur papier ; « Dossier de comité » est la version imprimable pour un comité, sans aucun nom.',
+                    en: 'One dashboard, adapted to your rights. At the top, the <b>scope bar</b>: “You are viewing: All of my scope · 31 people · 75.0% of required skills assessed”; “Change site or department” offers only the units of your own population, and your choice is remembered for your account, never on the computer. Then <b>“In brief”</b>, a few sentences in figures, and a row of indicators (the most at risk first) with their status in a word and an icon, their movement since a snapshot of the same definition and “See the list (n)”. No person is named on the page: “See the list” opens the population behind the figure, counted by site and role, and “Open the list with names” leads to the page that holds the names, when your menu offers it. A “Not visible with your rights” line says what your clearance does not show; a “What is left to set up” card lists what prevents measuring. The <b>tabs</b> (Overview, Role readiness, Safety and certifications, Talent, Succession, Development, Assessments) load when you open them; a tab whose module is switched off is not shown. “Print everything” puts every tab on paper; “Board pack” is the printable version for a committee, with no name at all.',
                 },
             },
             {
-                icon: '🎯',
-                img: 'mgr-05-dashboard-training',
+                icon: '🧭',
+                img: null,
+                imgRetired: 'mgr-05-dashboard-training',
                 title: {
-                    fr: 'Priorités de formation — impact et dette de mesure',
-                    en: 'Training priorities — impact and measurement debt',
+                    fr: 'Lire les onglets honnêtement',
+                    en: 'Reading the tabs honestly',
                 },
                 where: {
-                    fr: 'Tableau de bord → onglet « Priorités de formation »',
-                    en: 'Dashboard → "Training priorities" tab',
+                    fr: 'Tableau de bord → onglets',
+                    en: 'Dashboard → tabs',
                 },
                 what: {
-                    fr: 'Le top 15 des compétences par score d’impact (écart × collaborateurs), avec les colonnes <b>Employés concernés · Jamais évalué · Points d’écart · Écart moyen · Score d’impact</b>. Le 2026-09-02, 13 lignes : Ways of Working & Operating Model Design (10 concernés, 18 points, 1,8 de moyenne, impact 18), Business Problem Framing & Value Orientation (12, 15, 1,3, impact 18), Adoption, Change & Stakeholder Management (10, 15, 1,5, 15), Data Governance & Quality (10, 13, 1,3, 13), Data Platform & Cloud Operations (9, 13, 1,4, 11,7)… <b>La colonne « Jamais évalué » est à 0 sur toutes les lignes</b> et reste séparée des points d’écart : une compétence non mesurée ne gonfle jamais un besoin de formation.',
-                    en: 'The top 15 skills by impact score (gap × people), with columns <b>Employees affected · Never assessed · Gap points · Average gap · Impact score</b>. On 2026-09-02, 13 rows: Ways of Working & Operating Model Design (10 affected, 18 points, 1.8 avg, impact 18), Business Problem Framing & Value Orientation (12, 15, 1.3, impact 18), Adoption, Change & Stakeholder Management (10, 15, 1.5, 15), Data Governance & Quality (10, 13, 1.3, 13), Data Platform & Cloud Operations (9, 13, 1.4, 11.7)… <b>The "Never assessed" column is 0 on every row</b> and stays separate from the gap points: an unmeasured skill never inflates a training need.',
-                },
-            },
-            {
-                icon: '🗺️',
-                img: 'mgr-05c-dashboard-capability',
-                title: {
-                    fr: 'Cartographie des capacités et dotation par poste',
-                    en: 'Capability map and staffing by role',
-                },
-                where: {
-                    fr: 'Tableau de bord → onglet « Cartographie des capacités »',
-                    en: 'Dashboard → "Capability map" tab',
-                },
-                what: {
-                    fr: 'Une carte thermique des domaines regroupable par Site / Département / Service — pour ce périmètre : 3. Digital, Data & Work Tools 1,8 ; 5. Business Acumen 1,9 ; 6. People Management 1,9 (site Riverside) — puis une « Vue de la dotation par poste » : Confirmed Data Engineer 1 personne / 82,6 % ⚠️, Confirmed Soft/ML Engineer 1 / 77,3 % ⚠️, Data Architect 1 / 63,9 % ⚠️, Data Governance Lead 1 / 56,3 % ⚠️, Junior Data Scientist 1 / 100 % ⚠️, Senior Data Engineer 1 / 50 % ⚠️, UX/UI Designer 1 / 30 % ⚠️, Confirmed Data Scientist 2 / 92,1 % ✓, Data Platform Lead 2 / 61,8 % ⚠️, Data Product Lead 2 / 82 % ✓, Senior Data Scientist 2 / 71,7 % ⚠️. Le ⚠️ marque un poste à titulaire unique, y compris quand la préparation est de 100 % : c’est un risque de continuité, pas un défaut de compétence.',
-                    en: 'A domain heatmap groupable by Site / Department / Service — for this scope: 3. Digital, Data & Work Tools 1.8; 5. Business Acumen 1.9; 6. People Management 1.9 (Riverside site) — then a "Staffing by role" view: Confirmed Data Engineer 1 person / 82.6% ⚠️, Confirmed Soft/ML Engineer 1 / 77.3% ⚠️, Data Architect 1 / 63.9% ⚠️, Data Governance Lead 1 / 56.3% ⚠️, Junior Data Scientist 1 / 100% ⚠️, Senior Data Engineer 1 / 50% ⚠️, UX/UI Designer 1 / 30% ⚠️, Confirmed Data Scientist 2 / 92.1% ✓, Data Platform Lead 2 / 61.8% ⚠️, Data Product Lead 2 / 82% ✓, Senior Data Scientist 2 / 71.7% ⚠️. The ⚠️ flags a single-occupant role, even at 100% readiness: that is a continuity risk, not a competency failure.',
+                    fr: '<b>Vue d’ensemble</b> : le score global de santé est la moyenne pondérée des seuls domaines mesurés (préparation 30, couverture 15, compétences critiques 25, relève 15, évaluations récentes 15) ; il se dit « partiel » quand un domaine manque et n’apparaît pas sous 3 domaines mesurés. La courbe en trait plein est enregistrée chaque jour ; la courbe en pointillés est <b>reconstituée</b> à partir des dates d’évaluation pour les personnes d’aujourd’hui : une estimation, jamais utilisée pour une évolution. <b>Préparation aux postes</b> : la répartition (courbe de référence à partir de 20 personnes, une référence et non un objectif), la préparation par site ou département, une unité comparée à tout le périmètre (par défaut la plus basse, 5 personnes au moins) et la carte thermique des piliers. Les cellules de moins de 5 personnes sont masquées ; « Non mesuré » n’est jamais un zéro. <b>Talents</b> : les positions approuvées de la grille 9 cases, les cases de moins de 5 regroupées.',
+                    en: '<b>Overview</b>: the overall health score is the weighted mean of the measured areas only (readiness 30, coverage 15, critical skills 25, succession 15, recent assessments 15); it says “partial” when an area is missing and does not appear below 3 measured areas. The solid line is recorded every day; the dashed line is <b>reconstructed</b> from assessment dates for today’s people: an estimate, never used for a movement. <b>Role readiness</b>: the distribution (reference curve from 20 people, a reference and not a target), readiness by site or department, one unit compared with the whole scope (by default the lowest, with 5 people at least) and the pillar heatmap. Cells of fewer than 5 people are masked; “Not measured” is never a zero. <b>Talent</b>: the approved 9-box positions, cells of fewer than 5 grouped.',
                 },
             },
             {
@@ -1683,15 +1669,16 @@ const PROFILES = [
             },
             {
                 icon: '📈',
-                img: 'la-01-dashboard',
+                img: null,
+                imgRetired: 'la-01-dashboard',
                 title: {
-                    fr: 'Votre tableau de bord — les mêmes analyses, recalculées sur votre périmètre',
-                    en: 'Your dashboard — the same analytics, recomputed on your scope',
+                    fr: 'Votre tableau de bord — les mêmes indicateurs, calculés sur votre périmètre',
+                    en: 'Your dashboard — the same indicators, computed on your scope',
                 },
                 where: { fr: 'Tableau de bord (accueil)', en: 'Dashboard (home)' },
                 what: {
-                    fr: 'Ce n’est pas le tableau de bord de l’organisation filtré à l’affichage : les chiffres sont <b>recalculés</b> sur votre population. Pour le périmètre <i>Site : Riverside</i> : <b>Score de santé 74 — Modéré</b> (contre 80 org-wide), <b>81,7 % de maîtrise</b> « over the 972 of 1,824 requirements assessed (53,3 %) », <b>25 / 36 prêts au poste</b> « of 36 employees measured », <b>852 exigences jamais évaluées</b>, <b>21 postes à risque</b>. Le sélecteur de site ne propose <b>qu’Riverside</b> et le sélecteur de service ne liste que les services du site. Les cinq priorités de formation sont celles d’Riverside, pas celles du groupe. Une phrase honnête accompagne la courbe quand l’historique manque : « <b>No recorded history for this scope</b> (snapshots exist per site and org-wide) » — l’absence d’historique est dite, pas arrondie à zéro.',
-                    en: 'This is not the org dashboard filtered at display time: the figures are <b>recomputed</b> on your population. For the <i>Site: Riverside</i> scope: <b>Health score 74 — Modéré</b> (against 80 org-wide), <b>81.7 % proficiency</b> "over the 972 of 1,824 requirements assessed (53.3 %)", <b>25 / 36 role-ready</b> "of 36 employees measured", <b>852 requirements never assessed</b>, <b>21 roles at risk</b>. The site selector offers <b>Riverside only</b> and the service selector lists only that site\'s services. The top-five training priorities are Riverside\'s, not the group\'s. An honest sentence accompanies the trend chart when history is missing: "<b>No recorded history for this scope</b> (snapshots exist per site and org-wide)".',
+                    fr: 'Ce n’est pas le tableau de bord de l’organisation filtré à l’affichage : chaque chiffre est <b>calculé</b> sur votre population (les personnes actives de votre périmètre), avec les mêmes définitions que les rapports. La barre de périmètre ne propose que les sites et départements où travaillent des personnes de votre périmètre ; une autre valeur dans l’adresse est refusée et le dit. Les onglets et les listes suivent vos droits : sans droit sur la conformité, l’onglet Sécurité et habilitations n’apparaît pas et la ligne « Non visible avec vos droits » le dit ; sans droit sur les personnes, les chiffres restent visibles mais « Voir la liste » ne s’affiche pas.',
+                    en: 'This is not the organisation dashboard filtered at display time: every figure is <b>computed</b> on your population (the active people of your scope), with the same definitions as the reports. The scope bar offers only the sites and departments where people of your scope work; another value in the address is refused, and the page says so. Tabs and lists follow your rights: without a compliance right the Safety and certifications tab is not shown and the “Not visible with your rights” line says so; without a people right the figures stay visible but “See the list” is not offered.',
                 },
             },
             {

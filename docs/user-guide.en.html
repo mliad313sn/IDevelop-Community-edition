@@ -524,14 +524,14 @@ footer{color:var(--mut);font-size:12.5px;text-align:center;margin:22px 0}
     </div>
   </article><article class="feat">
     <header class="feat-h"><span class="feat-ic">🏠</span>
-      <div><h3>My Team — your manager home</h3>
+      <div><h3>Dashboard — your team in figures</h3>
       <div class="feat-where">Where: Dashboard, the first menu entry (/supervisor/dashboard)</div></div></header>
     <div class="feat-body">
       <div class="feat-text">
-        <p class="feat-what">The "what needs me today?" page. A "What needs you" strip (on 2026-09-02: "You are all caught up — nothing needs your action right now") then four shortcuts: reviews queue, gap analysis, coaching, and your own self-assessment. The path is /supervisor/dashboard: /manager/dashboard does not exist (404).</p>
+        <p class="feat-what">Your team in figures, with no name: « In brief », the indicators (role readiness with the number « not ready », self-assessments to validate, certificates, plans in progress), people by readiness state and the next steps with their counts (“Validate self-assessments (3)”…), then the most frequent gaps. The names are on <b>“My team”</b> (/supervisor/team): one row per person who reports to you, their review state, readiness, critical gaps and next step. The organisation dashboard, limited to your team, stays under Reports → Indicators.</p>
         
         
-        
+        <div class="shot-gap">🔒 Screenshot withheld — the original showed real colleagues by name. It returns once re-taken on invented data.</div>
       </div>
       
     </div>
@@ -563,11 +563,11 @@ footer{color:var(--mut);font-size:12.5px;text-align:center;margin:22px 0}
     </div>
   </article><article class="feat">
     <header class="feat-h"><span class="feat-ic">📊</span>
-      <div><h3>Workforce Capability Dashboard — Executive overview</h3>
-      <div class="feat-where">Where: MAIN → Dashboard (/dashboard), "Executive overview" tab</div></div></header>
+      <div><h3>The dashboard — figures, tabs, lists</h3>
+      <div class="feat-where">Where: Dashboard (/dashboard); for a manager: Reports → Indicators</div></div></header>
     <div class="feat-body">
       <div class="feat-text">
-        <p class="feat-what">The cockpit, scoped to your people. Site / Department / Service filters then Apply. On 2026-09-02: <b>Health index 81 "Healthy"</b> (Readiness 25% → 72, Coverage 15% → 100, Compliance 25% → 100, Staffing 15% → 18, Freshness 20% → 100); <b>71.7% average proficiency "over the 189 of 189 requirements assessed (100%)"</b>; <b>7 / 15 role-ready</b>; <b>1 critical gap</b> (measured below 50%); <b>"—" critical compliance</b>; <b>9 roles at risk</b> (single occupant); <b>189 / 189 requirements assessed, 0 never assessed</b>. The "How to read this" note says it outright: "The 0 never assessed are a blind spot, not a level 0". Five tabs: Executive overview, Training priorities, Talent development, Capability map, Comparator. The scale printed in the footer is <b>0 No knowledge · 1 Basic awareness · 2 Guided performance · 3 Autonomous · 4 Expert / can teach</b>.</p>
+        <p class="feat-what">One dashboard, adapted to your rights. At the top, the <b>scope bar</b>: “You are viewing: All of my scope · 31 people · 75.0% of required skills assessed”; “Change site or department” offers only the units of your own population, and your choice is remembered for your account, never on the computer. Then <b>“In brief”</b>, a few sentences in figures, and a row of indicators (the most at risk first) with their status in a word and an icon, their movement since a snapshot of the same definition and “See the list (n)”. No person is named on the page: “See the list” opens the population behind the figure, counted by site and role, and “Open the list with names” leads to the page that holds the names, when your menu offers it. A “Not visible with your rights” line says what your clearance does not show; a “What is left to set up” card lists what prevents measuring. The <b>tabs</b> (Overview, Role readiness, Safety and certifications, Talent, Succession, Development, Assessments) load when you open them; a tab whose module is switched off is not shown. “Print everything” puts every tab on paper; “Board pack” is the printable version for a committee, with no name at all.</p>
         
         
         <div class="shot-gap">🔒 Screenshot withheld — the original showed real colleagues by name. It returns once re-taken on invented data.</div>
@@ -575,28 +575,15 @@ footer{color:var(--mut);font-size:12.5px;text-align:center;margin:22px 0}
       
     </div>
   </article><article class="feat">
-    <header class="feat-h"><span class="feat-ic">🎯</span>
-      <div><h3>Training priorities — impact and measurement debt</h3>
-      <div class="feat-where">Where: Dashboard → "Training priorities" tab</div></div></header>
+    <header class="feat-h"><span class="feat-ic">🧭</span>
+      <div><h3>Reading the tabs honestly</h3>
+      <div class="feat-where">Where: Dashboard → tabs</div></div></header>
     <div class="feat-body">
       <div class="feat-text">
-        <p class="feat-what">The top 15 skills by impact score (gap × people), with columns <b>Employees affected · Never assessed · Gap points · Average gap · Impact score</b>. On 2026-09-02, 13 rows: Ways of Working & Operating Model Design (10 affected, 18 points, 1.8 avg, impact 18), Business Problem Framing & Value Orientation (12, 15, 1.3, impact 18), Adoption, Change & Stakeholder Management (10, 15, 1.5, 15), Data Governance & Quality (10, 13, 1.3, 13), Data Platform & Cloud Operations (9, 13, 1.4, 11.7)… <b>The "Never assessed" column is 0 on every row</b> and stays separate from the gap points: an unmeasured skill never inflates a training need.</p>
+        <p class="feat-what"><b>Overview</b>: the overall health score is the weighted mean of the measured areas only (readiness 30, coverage 15, critical skills 25, succession 15, recent assessments 15); it says “partial” when an area is missing and does not appear below 3 measured areas. The solid line is recorded every day; the dashed line is <b>reconstructed</b> from assessment dates for today’s people: an estimate, never used for a movement. <b>Role readiness</b>: the distribution (reference curve from 20 people, a reference and not a target), readiness by site or department, one unit compared with the whole scope (by default the lowest, with 5 people at least) and the pillar heatmap. Cells of fewer than 5 people are masked; “Not measured” is never a zero. <b>Talent</b>: the approved 9-box positions, cells of fewer than 5 grouped.</p>
         
         
-        
-      </div>
-      
-    </div>
-  </article><article class="feat">
-    <header class="feat-h"><span class="feat-ic">🗺️</span>
-      <div><h3>Capability map and staffing by role</h3>
-      <div class="feat-where">Where: Dashboard → "Capability map" tab</div></div></header>
-    <div class="feat-body">
-      <div class="feat-text">
-        <p class="feat-what">A domain heatmap groupable by Site / Department / Service — for this scope: 3. Digital, Data & Work Tools 1.8; 5. Business Acumen 1.9; 6. People Management 1.9 (Riverside site) — then a "Staffing by role" view: Confirmed Data Engineer 1 person / 82.6% ⚠️, Confirmed Soft/ML Engineer 1 / 77.3% ⚠️, Data Architect 1 / 63.9% ⚠️, Data Governance Lead 1 / 56.3% ⚠️, Junior Data Scientist 1 / 100% ⚠️, Senior Data Engineer 1 / 50% ⚠️, UX/UI Designer 1 / 30% ⚠️, Confirmed Data Scientist 2 / 92.1% ✓, Data Platform Lead 2 / 61.8% ⚠️, Data Product Lead 2 / 82% ✓, Senior Data Scientist 2 / 71.7% ⚠️. The ⚠️ flags a single-occupant role, even at 100% readiness: that is a continuity risk, not a competency failure.</p>
-        
-        
-        
+        <div class="shot-gap">🔒 Screenshot withheld — the original showed real colleagues by name. It returns once re-taken on invented data.</div>
       </div>
       
     </div>
@@ -1160,14 +1147,14 @@ footer{color:var(--mut);font-size:12.5px;text-align:center;margin:22px 0}
     </div>
   </article><article class="feat">
     <header class="feat-h"><span class="feat-ic">📈</span>
-      <div><h3>Your dashboard — the same analytics, recomputed on your scope</h3>
+      <div><h3>Your dashboard — the same indicators, computed on your scope</h3>
       <div class="feat-where">Where: Dashboard (home)</div></div></header>
     <div class="feat-body">
       <div class="feat-text">
-        <p class="feat-what">This is not the org dashboard filtered at display time: the figures are <b>recomputed</b> on your population. For the <i>Site: Riverside</i> scope: <b>Health score 74 — Modéré</b> (against 80 org-wide), <b>81.7 % proficiency</b> "over the 972 of 1,824 requirements assessed (53.3 %)", <b>25 / 36 role-ready</b> "of 36 employees measured", <b>852 requirements never assessed</b>, <b>21 roles at risk</b>. The site selector offers <b>Riverside only</b> and the service selector lists only that site's services. The top-five training priorities are Riverside's, not the group's. An honest sentence accompanies the trend chart when history is missing: "<b>No recorded history for this scope</b> (snapshots exist per site and org-wide)".</p>
+        <p class="feat-what">This is not the organisation dashboard filtered at display time: every figure is <b>computed</b> on your population (the active people of your scope), with the same definitions as the reports. The scope bar offers only the sites and departments where people of your scope work; another value in the address is refused, and the page says so. Tabs and lists follow your rights: without a compliance right the Safety and certifications tab is not shown and the “Not visible with your rights” line says so; without a people right the figures stay visible but “See the list” is not offered.</p>
         
         
-        
+        <div class="shot-gap">🔒 Screenshot withheld — the original showed real colleagues by name. It returns once re-taken on invented data.</div>
       </div>
       
     </div>
