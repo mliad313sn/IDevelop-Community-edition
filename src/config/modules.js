@@ -146,6 +146,9 @@ const CORE_PREFIXES = Object.freeze([
     '/reports/readiness',
     '/reports/gaps',
     '/reports/dept-analytics',
+    // Indicator definitions: core, but module-aware (an indicator whose module
+    // is off is not listed).
+    '/kpi/glossary',
     '/v2/slf',
     '/v2/uam',
     '/v2/cap/dsr',

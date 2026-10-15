@@ -102,6 +102,9 @@ class ReportBuilderService {
                         type: 'number',
                     },
                     { id: 'isReady', name: 'Is Ready', type: 'boolean' },
+                    // K1 four-state (KpiService): ready | not_ready | partial |
+                    // not_assessed | no_requirement
+                    { id: 'readinessState', name: 'Readiness state (K1)', type: 'text' },
                     // Provenance (migration 71): never_assessed | self_only | assessed,
                     // plus the assessed/expected denominator behind every score.
                     { id: 'assessmentStatus', name: 'Assessment Status', type: 'text' },
@@ -518,8 +521,23 @@ class ReportBuilderService {
             readinessPercent: 'c.readiness_assessed_only',
             readinessAllRequirements:
                 'CASE WHEN COALESCE(c.assessed_skills, 0) = 0 THEN NULL ELSE v.readiness END',
-            isReady:
-                'CASE WHEN COALESCE(c.assessed_skills, 0) = 0 THEN NULL ELSE v.is_role_ready END',
+            // K1 four-state (KpiService.classifyReadiness): isReady is 1 only
+            // for "Ready" (every requirement assessed, at the threshold, every
+            // critical met), 0 only for "Not ready" (a known critical fail, or
+            // fully assessed and below), NULL for "Partially assessed" and
+            // "Not assessed": a person nobody finished assessing is never
+            // exported as not ready. c326-DR-reconciliation-db.test.js holds
+            // this SQL equal to KpiService.k1RoleReady person by person.
+            isReady: `CASE WHEN COALESCE(c.critical_assessed, 0) > COALESCE(v.critical_met, 0) THEN 0
+                          WHEN COALESCE(c.assessed_skills, 0) > 0 AND COALESCE(c.never_assessed_skills, 0) = 0
+                               THEN v.is_role_ready
+                          ELSE NULL END`,
+            readinessState: `CASE WHEN COALESCE(v.total_required, 0) = 0 THEN 'no_requirement'
+                                 WHEN COALESCE(c.critical_assessed, 0) > COALESCE(v.critical_met, 0) THEN 'not_ready'
+                                 WHEN COALESCE(c.assessed_skills, 0) = 0 THEN 'not_assessed'
+                                 WHEN COALESCE(c.never_assessed_skills, 0) > 0 THEN 'partial'
+                                 WHEN v.is_role_ready = 1 THEN 'ready'
+                                 ELSE 'not_ready' END`,
             // The coverage denominator travels with the report so "40 %" can
             // never be read without "…of the 12 requirements out of 96 that
             // anyone actually assessed".
@@ -553,6 +571,7 @@ class ReportBuilderService {
             'readinessAssessedOnly',
             'readinessAllRequirements',
             'isReady',
+            'readinessState',
         ];
         const COVERAGE_FIELDS = [
             'assessedSkills',
@@ -576,7 +595,7 @@ class ReportBuilderService {
             FROM v_employee_readiness v
             LEFT JOIN employees emp ON emp.id = v.employee_id
             LEFT JOIN v_employee_assessment_coverage c ON c.employee_id = v.employee_id
-            WHERE 1=1
+            WHERE emp.is_active = true AND emp.erased_at IS NULL AND emp.cancelled_at IS NULL
         `;
         const params = [];
 
@@ -1150,6 +1169,156 @@ class ReportBuilderService {
      *
      * Response shape is unchanged: [{ id, name }].
      */
+    /**
+     * K1 Role-ready report rows. The four-state status of every person comes
+     * from KpiService.k1RoleReady (drillByState), the ONE K1 function, so
+     * /reports/readiness, its CSV and JSON, the Power BI readiness feed (v2)
+     * and the builder strip can never disagree. Each row also carries the
+     * facts that EXPLAIN its status ("Not ready: critical skill not met").
+     * A never-assessed person is "Not assessed", never "Not ready".
+     *
+     * @param {object} scope KpiService scope ({ viewer, siteId?, departmentId?, employeeIds? })
+     * @returns {Promise<{k1, threshold, rows, population}>}
+     */
+    async k1Report(scope) {
+        const KpiService = require('./KpiService');
+        const pop = await KpiService.resolvePopulation(scope);
+        const s = { ...(scope || {}), __population: pop };
+        const k1 = await KpiService.k1RoleReady(s);
+        const threshold =
+            k1.threshold != null ? k1.threshold : await KpiService.readinessThreshold();
+        const stateOf = new Map();
+        for (const [st, list] of Object.entries(k1.drillByState || {})) {
+            for (const id of list || []) stateOf.set(Number(id), st);
+        }
+        const rows = [];
+        if (pop.ids.length) {
+            // A CTE on purpose: the compat layer (expandGroupBy) rewrites the
+            // FIRST GROUP BY of a plain SELECT with the OUTER select list; it
+            // leaves a WITH alone.
+            const details = await db.all(
+                `WITH f AS (
+                        SELECT g.employee_id,
+                               COUNT(*)::int AS total_req,
+                               SUM(g.is_assessed)::int AS assessed,
+                               SUM(CASE WHEN g.is_assessed = 1 AND g.is_met = 1 THEN 1 ELSE 0 END)::int AS met_assessed,
+                               SUM(LEAST(g.actual_level, g.required_level))::int AS pts_gained,
+                               SUM(g.required_level)::int AS pts_req,
+                               SUM(CASE WHEN g.is_assessed = 1 THEN LEAST(g.actual_level, g.required_level) ELSE 0 END)::int AS pts_gained_a,
+                               SUM(CASE WHEN g.is_assessed = 1 THEN g.required_level ELSE 0 END)::int AS pts_req_a,
+                               SUM(CASE WHEN g.is_critical THEN 1 ELSE 0 END)::int AS crit_total,
+                               SUM(CASE WHEN g.is_critical AND g.is_assessed = 1 THEN 1 ELSE 0 END)::int AS crit_assessed,
+                               SUM(CASE WHEN g.is_critical AND g.is_assessed = 1 AND g.is_met = 1 THEN 1 ELSE 0 END)::int AS crit_met
+                          FROM v_employee_skill_gaps g
+                         WHERE g.employee_id = ANY(?)
+                         GROUP BY g.employee_id
+                 )
+                 SELECT e.id AS "employeeId", e.employee_number AS "employeeNumber",
+                        e.first_name AS "firstName", e.last_name AS "lastName",
+                        r.name AS "roleName", st.name AS "siteName", d.name AS "departmentName",
+                        sv.name AS "serviceName", e.site_id AS "siteId", e.department_id AS "departmentId",
+                        e.service_id AS "serviceId", e.role_id AS "roleId",
+                        f.total_req AS "totalReq", f.assessed AS "assessed", f.met_assessed AS "metAssessed",
+                        f.pts_gained AS "ptsGained", f.pts_req AS "ptsReq",
+                        f.pts_gained_a AS "ptsGainedAssessed", f.pts_req_a AS "ptsReqAssessed",
+                        f.crit_total AS "critTotal", f.crit_assessed AS "critAssessed", f.crit_met AS "critMet"
+                   FROM employees e
+                   LEFT JOIN roles r ON r.id = e.role_id
+                   LEFT JOIN sites st ON st.id = e.site_id
+                   LEFT JOIN departments d ON d.id = e.department_id
+                   LEFT JOIN services sv ON sv.id = e.service_id
+                   LEFT JOIN f ON f.employee_id = e.id
+                  WHERE e.id = ANY(?)
+                  ORDER BY e.last_name, e.first_name, e.id`,
+                [pop.ids, pop.ids]
+            );
+            const n = (v) => (v === null || v === undefined ? 0 : Number(v) || 0);
+            for (const d of details || []) {
+                const facts =
+                    d.totalReq == null
+                        ? null
+                        : {
+                              totalReq: n(d.totalReq),
+                              assessed: n(d.assessed),
+                              ptsGained: n(d.ptsGained),
+                              ptsReq: n(d.ptsReq),
+                              ptsGainedAssessed: n(d.ptsGainedAssessed),
+                              ptsReqAssessed: n(d.ptsReqAssessed),
+                              critTotal: n(d.critTotal),
+                              critAssessed: n(d.critAssessed),
+                              critMet: n(d.critMet),
+                          };
+                const cls = KpiService.classifyReadiness(facts, threshold);
+                const id = Number(d.employeeId);
+                const state = stateOf.get(id) || cls.state;
+                const critFailed = facts ? facts.critAssessed - facts.critMet : 0;
+                let reason = null;
+                if (state === 'not_ready')
+                    reason = critFailed > 0 ? 'critical_not_met' : 'below_threshold';
+                else if (state === 'partial') reason = 'partial';
+                else if (state === 'not_assessed') reason = 'never_assessed';
+                else if (state === 'no_requirement') reason = 'no_requirement';
+                const assessed = facts ? facts.assessed : 0;
+                rows.push({
+                    employee: {
+                        id,
+                        employeeNumber: d.employeeNumber,
+                        firstName: d.firstName,
+                        lastName: d.lastName,
+                        roleName: d.roleName,
+                        siteName: d.siteName,
+                        departmentName: d.departmentName,
+                        serviceName: d.serviceName,
+                        siteId: d.siteId == null ? null : Number(d.siteId),
+                        departmentId: d.departmentId == null ? null : Number(d.departmentId),
+                        serviceId: d.serviceId == null ? null : Number(d.serviceId),
+                        roleId: d.roleId == null ? null : Number(d.roleId),
+                    },
+                    state,
+                    reason,
+                    // The assessed-only figure; null (never 0) when nothing was assessed.
+                    readinessPercent: assessed > 0 ? cls.readinessAssessed : null,
+                    readinessAllRequirements: assessed > 0 ? cls.readiness : null,
+                    totalRequired: facts ? facts.totalReq : 0,
+                    assessedRequired: assessed,
+                    neverAssessedRequired: facts ? facts.totalReq - assessed : 0,
+                    skillsMet: assessed > 0 ? n(d.metAssessed) : null,
+                    skillsNotMet: assessed > 0 ? assessed - n(d.metAssessed) : null,
+                    criticalTotal: facts ? facts.critTotal : 0,
+                    criticalAssessed: facts ? facts.critAssessed : 0,
+                    criticalMet: facts ? facts.critMet : 0,
+                    criticalNotMet: critFailed,
+                    coveragePercent:
+                        facts && facts.totalReq > 0
+                            ? Math.round((1000 * assessed) / facts.totalReq) / 10
+                            : null,
+                });
+            }
+        }
+        return { k1, threshold, rows, population: pop.ids.length };
+    }
+
+    /**
+     * Sites of the reader's population: the only site filter values a report
+     * may offer or accept. "No site" comes as { id: 'none' } when someone in
+     * the perimeter has no site.
+     */
+    async perimeterSites(user) {
+        const KpiService = require('./KpiService');
+        const pop = await KpiService.resolvePopulation({ viewer: user });
+        const seen = new Map();
+        let none = false;
+        for (const r of pop.rows) {
+            if (r.siteId == null) none = true;
+            else if (!seen.has(r.siteId)) seen.set(r.siteId, r.siteName || `#${r.siteId}`);
+        }
+        const out = [...seen.entries()]
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        if (none) out.push({ id: 'none', name: null, noSite: true });
+        return out;
+    }
+
     async getReferenceData(source, user) {
         // `user` is REQUIRED. No unscoped fallback: a missing/unknown identity
         // resolves to an empty scope (scopedEmployeeIds returns []), which fails

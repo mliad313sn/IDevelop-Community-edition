@@ -61,13 +61,15 @@ class SelfAssessmentService {
         const current = await SelfAssessmentModel.findCurrentRound(employeeId, skillId);
         if (!current) {
             // First ever measurement of this competency for this person.
-            return await SelfAssessmentModel.openRound({
+            const created = await SelfAssessmentModel.openRound({
                 employeeId,
                 skillId,
                 selfRatedLevel,
                 notes: notes || null,
                 cycleId,
             });
+            await this._stampParticipant(employeeId, cycleId, 'started');
+            return created;
         }
         const keepId = Number(current.id);
 
@@ -97,6 +99,7 @@ class SelfAssessmentService {
                   WHERE id = ?`,
                 [selfRatedLevel, notes || null, cycleId, keepId]
             );
+            await this._stampParticipant(employeeId, cycleId, 'started');
             return { id: keepId };
         }
 
@@ -161,6 +164,7 @@ class SelfAssessmentService {
                 ]
             );
         });
+        await this._stampParticipant(employeeId, cycleId, 'started');
         return {
             id: Number(opened.id),
             reopened: true,
@@ -169,6 +173,39 @@ class SelfAssessmentService {
             previousId: keepId,
             round: Number(opened.roundNo ?? opened.round_no),
         };
+    }
+
+    /**
+     * The campaign funnel on the ROSTER (cycle_participants): `started_at` the
+     * first time the person saves a rating in the campaign, `submitted_at` the
+     * first time they submit (a submit also implies started). COALESCE keeps
+     * the FIRST date: a later save or re-submit never moves it. Only the
+     * employee's own save and submit paths call this, and only an OPEN
+     * campaign is stamped (a re-submit that sweeps rows of a closed campaign
+     * never invents a date for it). A person not on the roster is untouched.
+     * Campaigns run before this release carry no stamps: the KPI module reads
+     * them as "steps not tracked" (KpiService.k11CurrentCampaign).
+     */
+    async _stampParticipant(employeeId, cycleIds, step) {
+        const ids = [
+            ...new Set(
+                (Array.isArray(cycleIds) ? cycleIds : [cycleIds])
+                    .filter((x) => x !== null && x !== undefined && x !== '')
+                    .map(Number)
+                    .filter(Number.isFinite)
+            ),
+        ];
+        if (!ids.length) return;
+        const sets =
+            step === 'submitted'
+                ? 'started_at = COALESCE(started_at, now()), submitted_at = COALESCE(submitted_at, now())'
+                : 'started_at = COALESCE(started_at, now())';
+        await db.run(
+            `UPDATE cycle_participants SET ${sets}
+              WHERE employee_id = ? AND cycle_id = ANY(?) AND excluded_at IS NULL
+                AND cycle_id IN (SELECT id FROM assessment_cycles WHERE status = 'open')`,
+            [employeeId, ids]
+        );
     }
 
     async submitSelfAssessment(employeeId, req = null) {
@@ -220,6 +257,14 @@ class SelfAssessmentService {
             if (!assessments.length) {
                 throw new Error('Nothing to submit — please rate at least one skill first.');
             }
+
+            // The campaign funnel: the participant SUBMITTED (first submission;
+            // COALESCE keeps the first date on a re-submit).
+            await this._stampParticipant(
+                employeeId,
+                assessments.map((a) => a.cycleId ?? a.cycle_id),
+                'submitted'
+            );
 
             // Record who the assessment is now WITH (employee → reviewer movement).
             // No supervisor/manager → leave current_reviewer_id NULL (the admin

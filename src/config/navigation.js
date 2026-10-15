@@ -402,6 +402,13 @@ const CATALOGUE = {
         icon: 'fa-gauge-high',
     },
     benchmark: { label: 'nav_benchmark', href: '/benchmark', icon: 'fa-table-cells' },
+    // The indicator definitions of the KPI module (KpiGlossaryController).
+    kpi_glossary: {
+        label: 'nav_kpi_glossary',
+        title: 'nav_kpi_glossary_title',
+        href: '/kpi/glossary',
+        icon: 'fa-calculator',
+    },
     site_exposure: {
         label: 'exec:se_title',
         title: 'exec:se_subtitle',
@@ -742,6 +749,9 @@ function gates(c) {
         dept_brief: gTools,
         gaps_report: gTools,
         readiness: gTools,
+        // Route requireManagerOrAdmin, like the reports; the page itself
+        // leaves out the indicators of a module that is off.
+        kpi_glossary: gTools,
         benchmark: gMainDash,
         site_exposure: gMainDash,
         board_pack: gMainDash,
@@ -821,6 +831,7 @@ const REPORTS = [
     'dept_brief',
     'gaps_report',
     'readiness',
+    'kpi_glossary',
     'benchmark',
     'local_content',
 ];
@@ -873,6 +884,7 @@ const SECTIONS = {
             'dept_brief',
             'gaps_report',
             'readiness',
+            'kpi_glossary',
             'benchmark',
             'site_exposure',
             'board_pack',

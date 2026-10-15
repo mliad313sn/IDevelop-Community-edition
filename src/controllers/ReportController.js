@@ -8,6 +8,47 @@ const LogService = require('../services/LogService');
 const { csvCell } = require('../utils/csvSafe');
 const { personNameSql } = require('../utils/personName');
 const { wantsJson } = require('../utils/wantsJson');
+const kpiFormat = require('../utils/kpiFormat');
+
+/**
+ * English fallbacks of the K1 vocabulary, used when no translator is at hand
+ * (a Power BI key call). The kpi / reports locale keys win when one is.
+ */
+const STATE_EN = Object.freeze({
+    ready: 'Ready',
+    not_ready: 'Not ready',
+    partial: 'Partially assessed',
+    not_assessed: 'Not assessed',
+    no_requirement: 'No requirement defined for the role',
+});
+const REASON_EN = Object.freeze({
+    critical_not_met: 'Critical skill not met',
+    below_threshold: 'Below the readiness threshold',
+    partial: 'Assessment incomplete',
+    never_assessed: 'No skill assessed',
+    no_requirement: 'No requirement defined for the role',
+});
+const fallbackOf = (table, key) =>
+    Object.prototype.hasOwnProperty.call(table, key) ? table[key] : String(key);
+
+/** t(key) with a fallback when the key is missing or no translator exists. */
+function labeler(req) {
+    const t = req && typeof req.t === 'function' ? req.t : null;
+    return (key, fallback, vars) => {
+        if (!t) return fallback;
+        let s;
+        try {
+            s = vars ? t(key, vars) : t(key);
+        } catch (_) {
+            return fallback;
+        }
+        const bare = String(key).split(':').pop();
+        return s && s !== key && s !== bare ? s : fallback;
+    };
+}
+
+/** The Power BI readiness feed versions (decision: versioned, old shape kept one release). */
+const READINESS_FEED_V2 = '/api/powerbi/v2/readiness';
 
 // Make a CSV open correctly in French Excel: prepend a UTF-8 BOM (accented
 // names render, no mojibake) and a `sep=,` hint line (Excel then parses the
@@ -45,6 +86,8 @@ class ReportController {
         this.powerbIEmployees = this.powerbIEmployees.bind(this);
         this.powerbIAssessments = this.powerbIAssessments.bind(this);
         this.powerbIReadiness = this.powerbIReadiness.bind(this);
+        this.powerbIReadinessV2 = this.powerbIReadinessV2.bind(this);
+        this.readiness = this.readiness.bind(this);
         this.powerbIOrganization = this.powerbIOrganization.bind(this);
         this._odata = this._odata.bind(this);
         this.powerbINineBox = this.powerbINineBox.bind(this);
@@ -810,6 +853,8 @@ class ReportController {
                 sortOrder: req.body.sortOrder || 'desc',
                 limit: req.body.limit || 20,
                 _filters: req.body.filters || null,
+                // the reader's language, for the numbers of the KPI strip
+                _lang: res.locals && res.locals.lang === 'en' ? 'en' : 'fr',
             };
             // req.t travels with the request so KPI labels / provenance wording
             // ("Jamais évalué") come back in the caller's locale, FR first.
@@ -821,25 +866,60 @@ class ReportController {
         }
     }
 
-    // Existing report methods
+    /**
+     * /reports/readiness — K1 Role-ready rate.
+     *
+     * Every figure comes from KpiService.k1RoleReady through
+     * ReportBuilderService.k1Report: the headline % is Ready ÷ (Ready + Not
+     * ready) "of N assessed, coverage Y %", "Partially assessed" and "Not
+     * assessed" are counts beside it, and each row's status IS its K1 state,
+     * with the reason that explains it. Population: active, not erased,
+     * inside the reader's clearance.
+     *
+     * Filter: ?site=<id|none>. Only a site of the reader's own population is
+     * accepted; any other value is REJECTED (400, filter not applied), never
+     * answered with an empty "0 of 0".
+     */
     async readiness(req, res) {
         try {
-            const organizationalReadiness = await ReadinessService.getOrganizationalReadiness(
-                req.user
-            );
+            const t = typeof req.t === 'function' ? req.t : null;
+            const sites = await ReportBuilderService.perimeterSites(req.user);
+            const raw = req.query.site;
+            let siteId;
+            let filterError = null;
+            if (raw !== undefined && raw !== '') {
+                const hit = sites.find((s) => String(s.id) === String(raw));
+                if (!hit) filterError = 'out_of_perimeter';
+                else siteId = hit.id;
+            }
+            const format = req.query.format === 'json' || req.query.format === 'csv';
+            if (filterError && (format || wantsJson(req))) {
+                return res.status(400).json({
+                    success: false,
+                    code: filterError,
+                    error: t ? t('reports:dr_filter_out_of_perimeter') : filterError,
+                });
+            }
+            const scope = { viewer: req.user };
+            if (siteId !== undefined) scope.siteId = siteId;
+            const report = await ReportBuilderService.k1Report(scope);
 
             if (req.query.format === 'json') {
-                return res.json(organizationalReadiness);
+                return res.json(this._readinessJson(report));
             }
 
             if (req.query.format === 'csv') {
-                const csv = this.generateReadinessCSV(organizationalReadiness);
+                const csv = this.generateReadinessCSV(report, t);
                 return sendCsv(res, 'readiness-report.csv', csv);
             }
 
-            res.render('pages/reports/readiness', {
+            res.status(filterError ? 400 : 200).render('pages/reports/readiness', {
                 title: req.t ? req.t('chrome:pt_readiness_report') : 'Readiness Report',
-                organizationalReadiness,
+                report,
+                sites,
+                selectedSite: siteId === undefined ? '' : String(siteId),
+                filterError,
+                kf: kpiFormat.forLang(res.locals && res.locals.lang),
             });
         } catch (error) {
             console.error('Readiness report error:', error);
@@ -849,6 +929,32 @@ class ReportController {
             );
             res.redirect('/dashboard');
         }
+    }
+
+    /** JSON form of the K1 report (same figures as the page and the CSV). */
+    _readinessJson(report) {
+        const k1 = report.k1 || {};
+        const b = k1.breakdown || {};
+        return {
+            kpi: 'K1',
+            contract: require('../services/KpiService').CONTRACT_VERSION,
+            value: k1.value == null ? null : k1.value,
+            status: k1.status || null,
+            numerator: k1.numerator == null ? null : k1.numerator,
+            denominator: k1.denominator == null ? null : k1.denominator,
+            coverage: k1.coverage == null ? null : k1.coverage,
+            threshold: report.threshold,
+            population: report.population,
+            breakdown: {
+                ready: b.ready || 0,
+                notReady: b.notReady || 0,
+                partial: b.partial || 0,
+                notAssessed: b.notAssessed || 0,
+                noRequirement: b.noRequirement || 0,
+            },
+            asOf: k1.asOf || null,
+            rows: report.rows,
+        };
     }
 
     async gaps(req, res) {
@@ -884,58 +990,59 @@ class ReportController {
         }
     }
 
-    generateReadinessCSV(data) {
+    /**
+     * Readiness CSV: one row per person of the K1 report, headers in the
+     * reader's language (English labels when no translator is at hand), the
+     * K1 state and its reason as words. "Skills Not Met" is a MEASURED
+     * shortfall only; a never-assessed requirement is its own column;
+     * "Readiness %" is blank (never 0) when nothing was assessed.
+     * @param {{rows:Array}} report ReportBuilderService.k1Report output
+     * @param {Function} [t] req.t
+     */
+    generateReadinessCSV(report, t) {
+        const T = labeler({ t });
         const headers = [
-            'Employee Number',
-            'First Name',
-            'Last Name',
-            'Role',
-            'Site',
-            'Department',
-            'Service',
-            'Total Required',
-            'Skills Assessed',
-            'Skills Met',
-            'Skills Not Met',
-            'Never Assessed',
-            'Critical Skills Met',
-            'Critical Skills Total',
-            'Coverage %',
-            'Readiness %',
-            'Is Ready',
+            T('reports:dr_csv_employee_number', 'Employee Number'),
+            T('reports:dr_csv_first_name', 'First Name'),
+            T('reports:dr_csv_last_name', 'Last Name'),
+            T('reports:dr_csv_role', 'Role'),
+            T('reports:dr_csv_site', 'Site'),
+            T('reports:dr_csv_department', 'Department'),
+            T('reports:dr_csv_service', 'Service'),
+            T('reports:dr_csv_total_required', 'Total Required'),
+            T('reports:dr_csv_assessed', 'Skills Assessed'),
+            T('reports:dr_csv_met', 'Skills Met'),
+            T('reports:dr_csv_not_met', 'Skills Not Met'),
+            T('reports:dr_csv_never_assessed', 'Never Assessed'),
+            T('reports:dr_csv_critical_met', 'Critical Skills Met'),
+            T('reports:dr_csv_critical_total', 'Critical Skills Total'),
+            T('reports:dr_csv_coverage', 'Coverage %'),
+            T('reports:dr_csv_readiness', 'Readiness %'),
+            T('reports:dr_csv_state', 'Status'),
+            T('reports:dr_csv_reason', 'Reason'),
         ];
-
-        const rows = data.readinessData.map((rd) => {
-            // "Skills Not Met" must be a MEASURED shortfall, never a never-assessed
-            // requirement. The old CSV set it to totalRequired - skillsMet, which
-            // counted every un-rated requirement as a failure: 853 of 1544 "not
-            // met" on this org were skills nobody had ever assessed, and a
-            // never-assessed employee's row read "152 not met, 0% , not ready" for
-            // skills no one had looked at. Split the three states apart, from the
-            // same honest primitives the rest of the platform uses, and leave
-            // Readiness % blank (not 0) when nothing was assessed.
-            const measuredNotMet = (rd.gaps || []).filter((g) => g.isAssessed).length;
-            const assessedMet = Number(rd.assessedRequired || 0) - measuredNotMet;
-            return [
-                rd.employee.employeeNumber,
-                rd.employee.firstName,
-                rd.employee.lastName,
-                rd.employee.roleName,
-                rd.employee.siteName,
-                rd.employee.departmentName,
-                rd.employee.serviceName,
-                rd.totalRequired,
-                rd.assessedRequired,
-                assessedMet,
-                measuredNotMet,
-                rd.neverAssessedRequired,
-                rd.criticalSkillsMet,
-                rd.criticalSkillsTotal,
-                rd.coveragePercent == null ? '' : rd.coveragePercent,
-                rd.readinessPercent == null ? '' : rd.readinessPercent,
-                rd.isReady ? 'Yes' : 'No',
-            ];
-        });
+        const stateLabel = (st) => T(`kpi:state_${st}`, fallbackOf(STATE_EN, st));
+        const reasonLabel = (r) => (r ? T(`reports:dr_reason_${r}`, fallbackOf(REASON_EN, r)) : '');
+        const rows = ((report && report.rows) || []).map((rd) => [
+            rd.employee.employeeNumber,
+            rd.employee.firstName,
+            rd.employee.lastName,
+            rd.employee.roleName,
+            rd.employee.siteName,
+            rd.employee.departmentName,
+            rd.employee.serviceName,
+            rd.totalRequired,
+            rd.assessedRequired,
+            rd.skillsMet == null ? 0 : rd.skillsMet,
+            rd.skillsNotMet == null ? 0 : rd.skillsNotMet,
+            rd.neverAssessedRequired,
+            rd.criticalMet,
+            rd.criticalTotal,
+            rd.coveragePercent == null ? '' : rd.coveragePercent,
+            rd.readinessPercent == null ? '' : rd.readinessPercent,
+            stateLabel(rd.state),
+            reasonLabel(rd.reason),
+        ]);
 
         // csvCell quotes commas/quotes/newlines AND neutralizes leading =,+,-,@ so a
         // malicious employee/skill name can't corrupt columns or execute as a formula.
@@ -1082,7 +1189,17 @@ class ReportController {
         }
     }
 
+    /**
+     * Power BI readiness feed, VERSION 1 (deprecated, kept for one release).
+     * Same columns and values as before the KPI module: IsReady is the legacy
+     * "readiness over all requirements and every critical met" flag. It
+     * answers with `Deprecation: true` and a `Link` to its successor
+     * (READINESS_FEED_V2), where IsReady follows the K1 four-state rule.
+     */
     async powerbIReadiness(req, res) {
+        res.setHeader('X-IDevelop-Feed-Version', '1');
+        res.setHeader('Deprecation', 'true');
+        res.setHeader('Link', `<${READINESS_FEED_V2}>; rel="successor-version"`);
         try {
             const organizationalReadiness = await ReadinessService.getOrganizationalReadiness(
                 req.user
@@ -1134,6 +1251,70 @@ class ReportController {
             });
         } catch (error) {
             console.error('Power BI readiness API error:', error);
+            res.status(500).json({ error: 'Error retrieving readiness data' });
+        }
+    }
+
+    /**
+     * Power BI readiness feed, VERSION 2 — K1 four-state. One row per person
+     * of the key owner's population (active, not erased, inside clearance).
+     * ReadinessState is the K1 code (ready | not_ready | partial |
+     * not_assessed | no_requirement), so
+     *   count(ready) ÷ (count(ready) + count(not_ready)) = K1 everywhere else.
+     * IsReady is true only for "ready", false only for "not_ready", null
+     * otherwise: a person nobody finished assessing is never "not ready".
+     * ReadinessReason is a code too; ReadinessStatus and ReadinessReasonLabel
+     * are the labels in the caller's language (English without a translator).
+     */
+    async powerbIReadinessV2(req, res) {
+        res.setHeader('X-IDevelop-Feed-Version', '2');
+        try {
+            const report = await ReportBuilderService.k1Report({ viewer: req.user });
+            const T = labeler(req);
+            const KpiService = require('../services/KpiService');
+            const value = report.rows.map((rd) => {
+                const measured = rd.assessedRequired > 0;
+                return {
+                    EmployeeID: rd.employee.id,
+                    EmployeeNumber: rd.employee.employeeNumber,
+                    EmployeeName: `${rd.employee.firstName} ${rd.employee.lastName}`,
+                    Site: rd.employee.siteName,
+                    SiteID: rd.employee.siteId,
+                    Department: rd.employee.departmentName,
+                    DepartmentID: rd.employee.departmentId,
+                    Service: rd.employee.serviceName,
+                    ServiceID: rd.employee.serviceId,
+                    Role: rd.employee.roleName,
+                    RoleID: rd.employee.roleId,
+                    TotalRequiredSkills: rd.totalRequired,
+                    AssessedRequiredSkills: rd.assessedRequired,
+                    NeverAssessedSkills: rd.neverAssessedRequired,
+                    CoveragePercent: rd.coveragePercent,
+                    SkillsMet: measured ? rd.skillsMet : null,
+                    SkillsNotMet: measured ? rd.skillsNotMet : null,
+                    CriticalSkillsMet: rd.criticalMet,
+                    CriticalSkillsTotal: rd.criticalTotal,
+                    ReadinessPercent: rd.readinessPercent,
+                    ReadinessState: rd.state,
+                    IsReady: rd.state === 'ready' ? true : rd.state === 'not_ready' ? false : null,
+                    ReadinessStatus: T(`kpi:state_${rd.state}`, fallbackOf(STATE_EN, rd.state)),
+                    ReadinessReason: rd.reason || null,
+                    ReadinessReasonLabel: rd.reason
+                        ? T(`reports:dr_reason_${rd.reason}`, fallbackOf(REASON_EN, rd.reason))
+                        : null,
+                    ReadinessCategory: this.getReadinessCategory(
+                        measured ? rd.readinessPercent : null
+                    ),
+                };
+            });
+            res.json({
+                '@odata.context': `${req.protocol}://${req.get('host')}${READINESS_FEED_V2}`,
+                feedVersion: 2,
+                kpiContract: KpiService.CONTRACT_VERSION,
+                value,
+            });
+        } catch (error) {
+            console.error('Power BI readiness (v2) API error:', error && error.message);
             res.status(500).json({ error: 'Error retrieving readiness data' });
         }
     }

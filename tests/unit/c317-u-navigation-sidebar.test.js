@@ -309,7 +309,9 @@ const BEFORE = {
  *  - the SuperAdmin's instance pages: modules, HRIS sync, the notification
  *    catalogue and effectiveness (requireSuperAdmin / requireSuperAdminPage);
  *  - training to approve (/v2/lms/uplifts, development module): managers and
- *    configure_lms holders.
+ *    configure_lms holders;
+ *  - the indicator definitions (/kpi/glossary, KPI module): a new page with
+ *    the reports' gate (requireManagerOrAdmin).
  */
 const ORPHANS = [
     '/talent/nine-box/movements',
@@ -317,6 +319,7 @@ const ORPHANS = [
     '/reports/dept-brief',
     '/reports/gaps',
     '/reports/readiness',
+    '/kpi/glossary',
 ];
 const ADDED = {
     employee: ['/safety-gate/me'],

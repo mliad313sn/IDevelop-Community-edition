@@ -369,6 +369,10 @@ const { requireRecentAuth } = require('../middleware/recentAuth');
 router.get('/api/powerbi/employees', requireApiKey, ReportController.powerbIEmployees);
 router.get('/api/powerbi/assessments', requireApiKey, ReportController.powerbIAssessments);
 router.get('/api/powerbi/readiness', requireApiKey, ReportController.powerbIReadiness);
+// Version 2 of the readiness feed: K1 four-state (ReadinessState, IsReady null
+// for a person without a verdict). Version 1 above keeps its shape for one
+// release and answers with Deprecation / Link successor headers.
+router.get('/api/powerbi/v2/readiness', requireApiKey, ReportController.powerbIReadinessV2);
 router.get('/api/powerbi/organization', requireApiKey, ReportController.powerbIOrganization);
 router.get('/api/powerbi/ninebox', requireApiKey, ReportController.powerbINineBox);
 router.get('/api/powerbi/pips', requireApiKey, ReportController.powerbIPips);
@@ -2506,6 +2510,11 @@ router.post(
 );
 router.get('/reports/readiness', requireManagerOrAdmin, ReportController.readiness);
 router.get('/reports/gaps', requireManagerOrAdmin, ReportController.gaps);
+// « How is it calculated? »: the indicator definitions (KPI module). Same
+// audience as the reports; module-aware (KpiGlossaryController).
+router.get('/kpi/glossary', requireManagerOrAdmin, (req, res, next) =>
+    require('../controllers/KpiGlossaryController').page(req, res, next)
+);
 
 // Skill Matrix — manager/admin only
 router.get('/skill-matrix', requireManagerOrAdmin, SkillMatrixController.index);

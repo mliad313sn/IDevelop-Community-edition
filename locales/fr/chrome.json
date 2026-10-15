@@ -788,5 +788,7 @@
   "toast_warn": "Attention",
   "toast_info": "Information",
   "uif_reason_label": "Motif",
-  "tbl_scroll_hint": "Faites défiler →"
+  "tbl_scroll_hint": "Faites défiler →",
+  "nav_kpi_glossary": "Définition des indicateurs",
+  "nav_kpi_glossary_title": "Comment chaque indicateur est calculé"
 }

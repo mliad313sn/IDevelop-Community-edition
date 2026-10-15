@@ -37,7 +37,31 @@ const METRICS = [
     'measuredEmployees',
     'soleHolderCount',
     'certsExpiring90d',
+    // KPI module (migration 184)
+    'notReadyCount',
+    'partialCount',
+    'unassessedCount',
+    'criticalUnassessed',
+    'certsExpired',
+    'safetyFitPct',
 ];
+
+/**
+ * Metrics whose definition is the SAME before and after the KPI module
+ * (kpi_snapshots.kpi_contract NULL vs KpiService.CONTRACT_VERSION). IDevelop's
+ * dashboard already computed them the KPI way (assessed-only readiness, real
+ * coverage, critical met over critical assessed, people with an assessed
+ * requirement), and c326-DK-kpi-reconciliation-db.test.js proves both sides
+ * agree. Only these may be compared across a contract change; every other
+ * metric changed meaning (four-state "Ready", K7 critical cells, K8 people
+ * with a REQUIRED certificate) and is compared within one contract only.
+ */
+const CONTRACT_STABLE_METRICS = Object.freeze([
+    'avgReadiness',
+    'assessmentCoverage',
+    'criticalCompliance',
+    'measuredEmployees',
+]);
 
 /** null-preserving number coercion: '' / null / undefined / NaN all stay null. */
 function numOrNull(v) {
@@ -46,8 +70,15 @@ function numOrNull(v) {
     return Number.isFinite(n) ? n : null;
 }
 
+/** The KPI contract the KPI module writes (KpiService.CONTRACT_VERSION). */
+function currentContract() {
+    return require('./KpiService').CONTRACT_VERSION;
+}
+
 const KpiSnapshotService = {
     METRICS,
+    CONTRACT_STABLE_METRICS,
+    currentContract,
 
     /**
      * Capture today's snapshot for one scope. Idempotent per day.
@@ -77,8 +108,11 @@ const KpiSnapshotService = {
                  avg_readiness, avg_readiness_all, assessment_coverage,
                  assessed_requirements, expected_requirements,
                  critical_compliance, role_ready_count, roles_at_risk, roles_unmeasured,
-                 sole_holder_count, no_qualified_count, certs_expiring_90d, measured_signature)
-             VALUES (CURRENT_DATE, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 sole_holder_count, no_qualified_count, certs_expiring_90d, measured_signature,
+                 not_ready_count, partial_count, unassessed_count, critical_unassessed,
+                 certs_expired, safety_fit_pct, kpi_contract)
+             VALUES (CURRENT_DATE, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                     ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (snapshot_date, scope_type, scope_id) DO NOTHING`,
             [
                 type,
@@ -103,6 +137,16 @@ const KpiSnapshotService = {
                 numOrNull(m.certsExpiring90d),
                 // Fingerprint of WHO was measured: null when nobody was.
                 nothingMeasured ? null : m.measuredSignature || null,
+                // KPI module (migration 184). The verdict counts derive from
+                // measurement (NULL when nothing was measured); "Not assessed"
+                // and "Not demonstrated" are facts about the scope.
+                measuredCount(m.notReadyCount),
+                measuredCount(m.partialCount),
+                numOrNull(m.unassessedCount),
+                numOrNull(m.criticalUnassessed),
+                numOrNull(m.certsExpired),
+                numOrNull(m.safetyFitPct),
+                m.kpiContract ? String(m.kpiContract) : null,
             ]
         );
         return { written: Boolean(res && (res.changes === undefined || res.changes > 0)) };
@@ -136,7 +180,14 @@ const KpiSnapshotService = {
                     roles_unmeasured     AS "rolesUnmeasured",
                     sole_holder_count    AS "soleHolderCount",
                     no_qualified_count   AS "noQualifiedCount",
-                    certs_expiring_90d   AS "certsExpiring90d"
+                    certs_expiring_90d   AS "certsExpiring90d",
+                    not_ready_count      AS "notReadyCount",
+                    partial_count        AS "partialCount",
+                    unassessed_count     AS "unassessedCount",
+                    critical_unassessed  AS "criticalUnassessed",
+                    certs_expired        AS "certsExpired",
+                    safety_fit_pct       AS "safetyFitPct",
+                    kpi_contract         AS "kpiContract"
                FROM kpi_snapshots
               WHERE scope_type = ? AND scope_id = ?
                 AND snapshot_date >= CURRENT_DATE - ?::int
@@ -154,6 +205,7 @@ const KpiSnapshotService = {
             avgReadinessAll: numOrNull(r.avgReadinessAll),
             assessmentCoverage: numOrNull(r.assessmentCoverage),
             criticalCompliance: numOrNull(r.criticalCompliance),
+            safetyFitPct: numOrNull(r.safetyFitPct),
         }));
     },
 
@@ -177,8 +229,20 @@ const KpiSnapshotService = {
      * older than MAX_PRIOR_AGE_FACTOR x that, used as the comparison point for
      * a delta. Returns null when there is none — the normal state on a fresh
      * install, and it MUST render as no delta.
+     *
+     * Same contract only by default (migration 184): `contract` null = a row
+     * written before the KPI module; KpiService.CONTRACT_VERSION = a row the
+     * KPI module wrote. `anyContract: true` drops that filter; deltas() uses
+     * it for CONTRACT_STABLE_METRICS only.
      */
-    async priorSnapshot(scopeType = 'org', scopeId = 0, beforeDays = 28) {
+    async priorSnapshot(
+        scopeType = 'org',
+        scopeId = 0,
+        beforeDays = 28,
+        contract = null,
+        { anyContract = false } = {}
+    ) {
+        const days = Math.max(0, Number(beforeDays) || 28);
         const row = await db.get(
             `SELECT snapshot_date        AS "date",
                     measured_employees   AS "measuredEmployees",
@@ -188,18 +252,28 @@ const KpiSnapshotService = {
                     role_ready_count     AS "roleReadyCount",
                     sole_holder_count    AS "soleHolderCount",
                     certs_expiring_90d   AS "certsExpiring90d",
-                    measured_signature   AS "measuredSignature"
+                    measured_signature   AS "measuredSignature",
+                    not_ready_count      AS "notReadyCount",
+                    partial_count        AS "partialCount",
+                    unassessed_count     AS "unassessedCount",
+                    critical_unassessed  AS "criticalUnassessed",
+                    certs_expired        AS "certsExpired",
+                    safety_fit_pct       AS "safetyFitPct",
+                    kpi_contract         AS "kpiContract"
                FROM kpi_snapshots
               WHERE scope_type = ? AND scope_id = ?
                 AND snapshot_date <= CURRENT_DATE - ?::int
                 AND snapshot_date >= CURRENT_DATE - ?::int
+                AND (?::boolean OR kpi_contract IS NOT DISTINCT FROM ?::text)
               ORDER BY snapshot_date DESC
               LIMIT 1`,
             [
                 scopeType,
                 Number(scopeId) || 0,
-                Math.max(0, Number(beforeDays) || 28),
-                Math.max(0, Number(beforeDays) || 28) * this.MAX_PRIOR_AGE_FACTOR,
+                days,
+                days * this.MAX_PRIOR_AGE_FACTOR,
+                anyContract === true,
+                contract ? String(contract) : null,
             ]
         );
         if (!row) return null;
@@ -219,14 +293,29 @@ const KpiSnapshotService = {
      * when there is no prior snapshot, when the prior value is NULL, or when the
      * current value is NULL. The caller renders only the keys that are present.
      *
+     * ONE CONTRACT: `current.kpiContract` (set by KpiService.snapshotMetrics)
+     * picks the rows of the same contract; a caller without it (today's
+     * dashboard) compares with rows written before the KPI module. When no
+     * same-contract row is in the window, only CONTRACT_STABLE_METRICS are
+     * compared with the most recent row of any contract: a metric whose
+     * definition changed never shows a movement across the change.
+     *
      * @returns {Promise<{since: string|null, values: Object}>}
      */
     async deltas(current, scopeType = 'org', scopeId = 0, beforeDays = 28) {
-        const prior = await this.priorSnapshot(scopeType, scopeId, beforeDays);
+        const contract = current && current.kpiContract ? String(current.kpiContract) : null;
+        let prior = await this.priorSnapshot(scopeType, scopeId, beforeDays, contract);
+        let keys = METRICS;
+        if (!prior) {
+            prior = await this.priorSnapshot(scopeType, scopeId, beforeDays, contract, {
+                anyContract: true,
+            });
+            keys = CONTRACT_STABLE_METRICS;
+        }
         if (!prior) return { since: null, values: {}, populationChanged: false };
 
         const values = {};
-        for (const key of METRICS) {
+        for (const key of keys) {
             const now = numOrNull(current ? current[key] : null);
             const then = numOrNull(prior[key]);
             // Both sides must be real numbers. An unmeasured side yields no delta.
