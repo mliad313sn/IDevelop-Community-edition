@@ -10,17 +10,38 @@ const env = process.env.NODE_ENV || 'development';
 // anyone forge/tamper with signed session cookies for any user, so warn-only is not
 // enough — this is fatal at config load. Supports comma-separated key rotation
 // (newest key first); EVERY key must be strong.
+//
+// The "year" test (`20\d\d`) used to run on EVERY value, so about 9 % of random
+// 64-hex secrets (one containing, say, "2047") were refused and a production
+// service boot-looped. A long random hex or base64 value is never guessable
+// because a digit run looks like a year: the year test now applies only to
+// values that are NOT random-looking, and only as a standalone number. The
+// dictionary words cannot occur in hex and are kept for every value.
+const WEAK_WORDS =
+    /change|default|example|sample|placeholder|secret-key|password|please|test\b|dev\b/i;
+const YEAR_TOKEN = /(?:^|\D)20\d\d(?:\D|$)/;
+function randomLooking(p) {
+    const hex = /^[0-9a-f]{48,}$/i.test(p);
+    // base64 of >= 30 random bytes: >= 40 characters mixing upper, lower and digits.
+    const b64 =
+        /^(?:base64:)?[A-Za-z0-9+/_-]{40,}={0,2}$/.test(p) &&
+        /[A-Z]/.test(p) &&
+        /[a-z]/.test(p) &&
+        /\d/.test(p);
+    return (hex || b64) && new Set(p).size >= 12;
+}
+function isWeakSecret(p) {
+    const s = String(p || '');
+    return s.length < 24 || WEAK_WORDS.test(s) || (!randomLooking(s) && YEAR_TOKEN.test(s));
+}
+
 function assertStrong(name, val) {
     const parts = String(val)
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
     for (const p of parts) {
-        const weak =
-            p.length < 24 ||
-            /change|default|example|sample|placeholder|secret-key|password|please|test\b|dev\b|20\d\d/i.test(
-                p
-            );
+        const weak = isWeakSecret(p);
         if (weak) {
             throw new Error(
                 `${name} is set but too weak for production (guessable or <24 chars). Use a long random value, e.g. \`openssl rand -hex 32\`, and rotate old keys via comma-separated ${name}.`
@@ -89,4 +110,6 @@ module.exports = {
     apiKey: _legacy.key,
     // Why an explicitly-set API_KEY was refused (surfaced in the boot warnings).
     apiKeyRefused: _legacy.refused,
+    // The weak-secret rule, for tests and other checks.
+    isWeakSecret,
 };

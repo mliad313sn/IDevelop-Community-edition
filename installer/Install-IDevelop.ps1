@@ -639,9 +639,20 @@ if (-not $NoGui -and [Environment]::UserInteractive -and $Host.Name -ne 'ServerR
 }
 
 function New-Secret([int]$bytes = 32) {
-    $b = New-Object byte[] $bytes
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
-    -join ($b | ForEach-Object { $_.ToString('x2') })
+    # Re-roll a value that contains a "year" digit run (20xx): earlier releases
+    # refused such a SESSION_SECRET as guessable and the service boot-looped
+    # (about 9 % of 64-hex values). The app no longer does, but a secret must be
+    # valid for whichever version reads it.
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        for ($try = 0; $try -lt 64; $try++) {
+            $b = New-Object byte[] $bytes
+            $rng.GetBytes($b)
+            $s = -join ($b | ForEach-Object { $_.ToString('x2') })
+            if ($s -notmatch '20\d\d') { return $s }
+        }
+        return $s
+    } finally { $rng.Dispose() }
 }
 
 # ---------------------------------------------------------------------------
