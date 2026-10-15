@@ -566,5 +566,7 @@
   "notif_family_feedback360": "360° feedback",
   "notif_family_oneonone": "One-to-ones",
   "notif_family_privacy": "Privacy",
-  "notif_family_report": "Scheduled reports"
+  "notif_family_report": "Scheduled reports",
+  "nav_my_safety": "My safety clearance",
+  "nav_my_safety_title": "Your status for safety-critical work, any waiver, and how to contest a block"
 }

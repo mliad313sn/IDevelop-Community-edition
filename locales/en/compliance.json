@@ -416,5 +416,7 @@
   "av_engine_on": "Uploaded evidence is scanned by {{engine}}.",
   "cat_deiConsents": "Diversity data consents",
   "reg_ret_report_copies": "Scheduled report copies (in the app)",
-  "reg_ret_emptied": "Content emptied (also when a person in scope is erased)"
+  "reg_ret_emptied": "Content emptied (also when a person in scope is erased)",
+  "cat_safetyWaivers": "Safety clearance waivers",
+  "cat_safetyContests": "Safety clearance contests"
 }

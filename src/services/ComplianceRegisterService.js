@@ -73,6 +73,8 @@ const DATA_CATEGORIES = [
     { key: 'demographics', group: 'engagement', audience: 'hr_aggregate' },
     { key: 'lifecycleEvents', group: 'employment', audience: 'self_line_hr' },
     { key: 'certifications', group: 'skills', audience: 'self_line_hr' },
+    { key: 'safetyWaivers', group: 'skills', audience: 'self_line_hr' },
+    { key: 'safetyContests', group: 'skills', audience: 'self_line_hr' },
     { key: 'aspirations', group: 'development', audience: 'self_line_hr' },
     { key: 'opportunityApplications', group: 'development', audience: 'self_line_hr' },
     { key: 'lmsEnrollments', group: 'development', audience: 'self_line_hr' },

@@ -587,6 +587,13 @@ class NotificationService {
             'safety.expiring': 'Your safety clearance is expiring soon',
             'safety.blocked.team': 'A team member’s safety clearance is blocked',
             'safety.expiring.team': 'A team member’s safety clearance is expiring soon',
+            // Safety-gate waivers and contests (migration 174)
+            'safety.waiver_granted': 'You are authorised by a safety waiver',
+            'safety.waiver_granted.team': 'A team member is authorised by a safety waiver',
+            'safety.waiver_ended': 'Your safety waiver is over',
+            'safety.waiver_ended.team': 'A team member’s safety waiver is over',
+            'safety.contest.review': 'A safety clearance contest needs your decision',
+            'safety.contest.decided': 'A safety clearance contest has a decision',
             // SA-38: scheduled reports reach accounts in the app, never an attachment.
             'report.schedule_ready': 'Your scheduled report is ready',
             'report.schedule_suspended': 'A report schedule was suspended',
@@ -1236,6 +1243,55 @@ class NotificationService {
                     en: 'A team member’s safety clearance is expiring soon',
                 },
             },
+            // Safety-gate waivers and contests (migration 174).
+            'safety.waiver_granted': {
+                icon: 'fa-user-shield',
+                link: '/safety-gate/me',
+                title: {
+                    fr: 'Vous êtes autorisé(e) par une dérogation de sécurité',
+                    en: 'You are authorised by a safety waiver',
+                },
+            },
+            'safety.waiver_granted.team': {
+                icon: 'fa-user-shield',
+                link: '/safety-gate',
+                title: {
+                    fr: 'Un collaborateur est autorisé par une dérogation de sécurité',
+                    en: 'A team member is authorised by a safety waiver',
+                },
+            },
+            'safety.waiver_ended': {
+                icon: 'fa-user-shield',
+                link: '/safety-gate/me',
+                title: {
+                    fr: 'Votre dérogation de sécurité est terminée',
+                    en: 'Your safety waiver is over',
+                },
+            },
+            'safety.waiver_ended.team': {
+                icon: 'fa-user-shield',
+                link: '/safety-gate',
+                title: {
+                    fr: 'La dérogation de sécurité d’un collaborateur est terminée',
+                    en: 'A team member’s safety waiver is over',
+                },
+            },
+            'safety.contest.review': {
+                icon: 'fa-scale-balanced',
+                link: '/safety-gate#contests',
+                title: {
+                    fr: 'Une contestation d’habilitation sécurité attend votre décision',
+                    en: 'A safety clearance contest needs your decision',
+                },
+            },
+            'safety.contest.decided': {
+                icon: 'fa-scale-balanced',
+                link: '/safety-gate/me',
+                title: {
+                    fr: 'Une contestation d’habilitation sécurité a reçu une décision',
+                    en: 'A safety clearance contest has a decision',
+                },
+            },
             'lifecycle.reports_to_reassign': {
                 icon: 'fa-people-arrows',
                 link: '/v2/continuity',
@@ -1546,6 +1602,12 @@ class NotificationService {
             'safety.expiring': 'immediate',
             'safety.blocked.team': 'immediate',
             'safety.expiring.team': 'immediate',
+            'safety.waiver_granted': 'immediate',
+            'safety.waiver_granted.team': 'immediate',
+            'safety.waiver_ended': 'immediate',
+            'safety.waiver_ended.team': 'immediate',
+            'safety.contest.review': 'immediate',
+            'safety.contest.decided': 'immediate',
             'lifecycle.reports_to_reassign': 'digest',
             'cycle.opened': 'digest',
             'cycle.closed': 'digest',
@@ -2160,6 +2222,30 @@ class NotificationService {
             'safety.expiring.team': {
                 fr: 'Un certificat requis pour un collaborateur de votre équipe arrive à échéance.',
                 en: 'A certificate required for a member of your team is about to expire.',
+            },
+            'safety.waiver_granted': {
+                fr: 'Une dérogation vous autorise pour une durée limitée. À son terme, votre statut calculé s’appliquera de nouveau. Le détail est dans l’application.',
+                en: 'A waiver authorises you for a limited time. When it ends, your computed status applies again. The details are in the app.',
+            },
+            'safety.waiver_granted.team': {
+                fr: 'Une dérogation autorise un collaborateur de votre équipe pour une durée limitée. Le détail est dans l’application.',
+                en: 'A waiver authorises a member of your team for a limited time. The details are in the app.',
+            },
+            'safety.waiver_ended': {
+                fr: 'Votre dérogation de sécurité est terminée : votre statut calculé s’applique de nouveau.',
+                en: 'Your safety waiver is over: your computed status applies again.',
+            },
+            'safety.waiver_ended.team': {
+                fr: 'La dérogation de sécurité d’un collaborateur est terminée : son statut calculé s’applique de nouveau.',
+                en: 'A team member’s safety waiver is over: their computed status applies again.',
+            },
+            'safety.contest.review': {
+                fr: 'Une personne conteste le blocage de son habilitation sécurité. Une décision motivée est attendue.',
+                en: 'Someone is contesting the block on their safety clearance. A decision with a reason is needed.',
+            },
+            'safety.contest.decided': {
+                fr: 'Une décision motivée a été enregistrée sur la contestation d’habilitation sécurité.',
+                en: 'A decision with its reason has been recorded on the safety clearance contest.',
             },
             'lifecycle.reports_to_reassign': {
                 fr: 'Un départ a laissé des collaborateurs sans responsable actif. Désignez-leur un nouveau réviseur.',

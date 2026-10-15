@@ -131,7 +131,8 @@
            myReviews: _at('/employee/supervisor-reviews') || _at('/employee/reviews'),
            acr: _at('/assessment-changes'), progress: _at('/employee/my-progress'),
            okr: _at('/employee/okr'), myCoaching: _at('/employee/my-coaching'),
-           certs: _at('/employee/my-certifications'), growth: _at('/employee/opportunities'),
+           certs: _at('/employee/my-certifications'), mySafety: _at('/safety-gate/me'),
+           growth: _at('/employee/opportunities'),
            learning: _at('/employee/my-learning'), myData: _at('/employee/my-data'),
            myDev: _at('/employee/my-development') || (_at('/v2/idp') && !_at('/v2/idp/manage') && !_at('/v2/idp/new')),
            account: _cp === '/account',
@@ -713,7 +714,7 @@
             </div>
             <% } %>
 
-            <% { const _o = A.status || A.myReviews || (S.acrMine && A.acr) || A.progress || A.certs || A.myData; %>
+            <% { const _o = A.status || A.myReviews || (S.acrMine && A.acr) || A.progress || A.certs || A.mySafety || A.myData; %>
             <div class="sidebar-entry<%= _o ? ' is-open' : '' %>" data-entry-key="my_assessments">
                 <div class="sidebar-entry-row">
                     <a href="/employee/self-assessment" class="sidebar-link <%= _on(A.sa) %>" title="<%= __('chrome:nav_my_assessments_title') %>">
@@ -747,6 +748,12 @@
                     <a href="/employee/my-certifications" class="sidebar-link sidebar-sublink <%= _on(A.certs) %>" title="<%= __('employee:cert_nav_title') %>">
                         <i class="fas fa-id-badge" aria-hidden="true"></i>
                         <span class="sidebar-link-text"><%= __('employee:cert_nav') %></span>
+                    </a>
+                    <%# The person's own safety clearance: the status, a waiver
+                        named as such, and the way to contest a block. %>
+                    <a href="/safety-gate/me" class="sidebar-link sidebar-sublink <%= _on(A.mySafety) %>" title="<%= __('chrome:nav_my_safety_title') %>">
+                        <i class="fas fa-helmet-safety" aria-hidden="true"></i>
+                        <span class="sidebar-link-text"><%= __('chrome:nav_my_safety') %></span>
                     </a>
                     <%# « Mes données » — everything recorded about the person (the
                         assessment file first among it), who sees it, how long it is

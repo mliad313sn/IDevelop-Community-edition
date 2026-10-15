@@ -566,5 +566,7 @@
   "notif_family_feedback360": "Feedback 360°",
   "notif_family_oneonone": "Entretiens individuels",
   "notif_family_privacy": "Confidentialité",
-  "notif_family_report": "Rapports programmés"
+  "notif_family_report": "Rapports programmés",
+  "nav_my_safety": "Mon habilitation sécurité",
+  "nav_my_safety_title": "Votre statut pour les travaux critiques pour la sécurité, une éventuelle dérogation, et comment contester un blocage"
 }

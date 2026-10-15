@@ -253,6 +253,9 @@ const WIPE = new Set([
     'safety_gate_status',
     'safety_gate_status_history',
     'safety_gate_webhook_deliveries',
+    // Waivers and contests (migration 174): decisions taken on pre-go-live data.
+    'safety_gate_waivers',
+    'safety_gate_contests',
     'successors',
     'supervisor_reviews',
     // Who a survey was sent to (migration 147): follows its responses.

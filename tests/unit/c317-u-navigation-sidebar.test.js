@@ -303,9 +303,12 @@ const BEFORE = {
 // Administration → Modules (/admin/modules) is the SuperAdmin's switchboard for
 // the optional modules that replaced the boot-time V2_FEATURES gate — its route
 // is requireSuperAdminPage, so it is a legitimate SuperAdmin-only addition.
+// « Mon habilitation sécurité » (/safety-gate/me) is the person's OWN safety
+// status and contest form: the route serves only an employee or manager session
+// and keys on req.user.id.
 const ALLOWED_ADDITIONS = {
-    employee: ['/account', '/employee/my-data'],
-    manager: ['/employee/my-data'],
+    employee: ['/account', '/employee/my-data', '/safety-gate/me'],
+    manager: ['/employee/my-data', '/safety-gate/me'],
     localadmin_ops: ['/safety-gate'],
     superadmin: ['/safety-gate', '/admin/modules'],
 };

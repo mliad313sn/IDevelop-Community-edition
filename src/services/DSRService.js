@@ -414,6 +414,38 @@ const REDACTED_ON_ERASURE = [
         ],
         kept: [],
     },
+    // SAFETY GATE (migration 174): waivers and contests about the person. The
+    // rows are kept as a safety record; the free text goes on erasure.
+    {
+        key: 'safetyWaivers',
+        table: 'safety_gate_waivers',
+        erased: ['reason', 'ended_reason'],
+        kept: [
+            'id',
+            'skill_id',
+            'granted_via',
+            'state',
+            'starts_at',
+            'expires_at',
+            'ended_at',
+            'renewal_of',
+            'created_at',
+        ],
+    },
+    {
+        key: 'safetyContests',
+        table: 'safety_gate_contests',
+        erased: ['reason', 'decision_reason', 'correction_pointer'],
+        kept: [
+            'id',
+            'contested_as',
+            'status_at_contest',
+            'state',
+            'remedy',
+            'created_at',
+            'decided_at',
+        ],
+    },
     // ASYMÉTRIE INVERSE TRANCHÉE :
     // l'export rendait ces trois catégories et l'effacement n'y touchait PAS.
     // Décision : une note de revue NOMINATIVE est une donnée personnelle du
@@ -849,6 +881,23 @@ class DSRService {
                FROM profiling_objections WHERE employee_id = ? ORDER BY id`,
             [employeeId]
         );
+        // SAFETY GATE (migration 174): the waivers and contests about the
+        // person, with their reasons and the decision. Who granted, ended or
+        // decided is an id reference, not a name.
+        await q(
+            'safetyWaivers',
+            `SELECT id, skill_id, granted_via, reason, state, starts_at, expires_at, ended_at,
+                    ended_reason, renewal_of, created_at
+               FROM safety_gate_waivers WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'safetyContests',
+            `SELECT id, contested_as, reason, status_at_contest, state, decision_reason, remedy,
+                    correction_pointer, created_at, decided_at
+               FROM safety_gate_contests WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
         await q(
             'privacyNoticeAcks',
             `SELECT version, locale, acknowledged_at FROM privacy_notice_acks
@@ -1209,6 +1258,18 @@ class DSRService {
             await inSavepoint(() =>
                 db.run('DELETE FROM privacy_paused_triggers WHERE employee_id = ?', [employeeId])
             ).catch(() => {});
+            // SAFETY GATE (migration 174): the rows stay (a safety record: who
+            // was let through by waiver, when, and what was decided on a
+            // contest); the free text written about the person goes. The
+            // columns are NOT NULL or CHECKed non-empty, so a marker, not NULL.
+            await db.run(
+                `UPDATE safety_gate_waivers SET reason = '[erased]', ended_reason = CASE WHEN ended_reason IS NULL THEN NULL ELSE '[erased]' END WHERE employee_id = ?`,
+                [employeeId]
+            );
+            await db.run(
+                `UPDATE safety_gate_contests SET reason = '[erased]', decision_reason = CASE WHEN decision_reason IS NULL THEN NULL ELSE '[erased]' END, correction_pointer = CASE WHEN correction_pointer IS NULL THEN NULL ELSE '[erased]' END WHERE employee_id = ?`,
+                [employeeId]
+            );
             // A-04, asymétrie inverse TRANCHÉE : ce que l'export restitue déjà et
             // que l'effacement laissait intact — le texte libre écrit SUR la
             // personne, ou PAR elle, dans la revue, le litige et la demande de

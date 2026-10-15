@@ -329,6 +329,14 @@ const SUBJECT_DATA_REGISTRY = [
         'employee_id',
         'clearance history (status and skill codes, no free text): a safety record'
     ),
+    // Waivers and contests (migration 174): the rows stay as a safety record,
+    // the reasons written about the person are replaced by the marker.
+    red('safety_gate_waivers', 'employee_id', 'safetyWaivers'),
+    keep('safety_gate_waivers', 'granted_by_ref', ACTOR),
+    keep('safety_gate_waivers', 'revoked_by_ref', ACTOR),
+    red('safety_gate_contests', 'employee_id', 'safetyContests'),
+    keep('safety_gate_contests', 'contested_by_ref', ACTOR),
+    keep('safety_gate_contests', 'decided_by_ref', ACTOR),
     {
         table: 'safety_gate_webhook_deliveries',
         column: 'employee_id',

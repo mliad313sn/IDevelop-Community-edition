@@ -1,8 +1,15 @@
 <%
+// The human path: waivers and contests. Optional locals, so
+// a caller that renders the page without them still gets a correct page.
+var sgWaived = locals.waived || [];
+var sgWaivers = locals.waivers || [];
+var sgContests = locals.contests || [];
+var hoursMax = locals.hoursMax || 72;
 // UX-6: the kind of a reason is said in WORDS (« Bloquant : » / « Attention : »
 // / « Observation : »), never by colour alone.
 function reasonPrefix(x) {
     if (x.observe) return __('safety:prefix_observe');
+    if (x.waived) return __('safety:prefix_waived');
     return x.blocking ? __('safety:prefix_blocking') : __('safety:prefix_warning');
 }
 function reasonText(x) {
@@ -16,6 +23,8 @@ function reasonText(x) {
             (x.assessedOn ? ' ; ' + __('safety:assessed_on', { date: fmtPeriodBound(x.assessedOn) }) : '') + ')';
     }
     if (x.expiresOn) s += ' (' + __('safety:expires_on', { date: fmtPeriodBound(x.expiresOn) }) + ')';
+    if (x.waived) s += ' — ' + __('safety:status_WAIVED_until', { date: fmtDateTime(x.waiverExpiresAt) });
+    if (x.legallyMandatory) s += ' — ' + __('safety:legal_badge');
     return s;
 }
 %>
@@ -50,6 +59,7 @@ function reasonText(x) {
     <% var observeCount = blocked.filter(function (r) { return r.observeOnly; }).length; %>
     <div class="card sg-kpi sg-kpi-blocked"><strong><%= counts.BLOCKED %></strong><span><%= __('safety:kpi_blocked') %></span>
         <% if (observeCount) { %><span><%= __('safety:kpi_blocked_observe', { count: observeCount }) %></span><% } %></div>
+    <div class="card sg-kpi sg-kpi-waived"><strong><%= sgWaived.length %></strong><span><%= __('safety:kpi_waived') %></span></div>
     <div class="card sg-kpi sg-kpi-expiring"><strong><%= counts.EXPIRING %></strong><span><%= __('safety:kpi_expiring') %></span></div>
     <div class="card sg-kpi sg-kpi-cleared"><strong><%= counts.CLEARED %></strong><span><%= __('safety:kpi_cleared') %></span></div>
     <div class="card sg-kpi"><strong><%= counts.NOT_CONFIGURED %></strong><span><%= __('safety:kpi_not_configured') %></span></div>
@@ -72,10 +82,11 @@ function reasonText(x) {
                 <th><%= __('safety:th_where') %></th>
                 <th><%= __('safety:th_role') %></th>
                 <th><%= __('safety:th_reasons') %></th>
+                <th><%= __('safety:th_human') %></th>
             </tr></thead>
             <tbody>
             <% if (!blocked.length) { %>
-                <tr><td colspan="4" class="text-muted" style="text-align:center;padding:1.2rem;"><%= rulesNone ? __('safety:rules_none') : __('safety:blocked_none') %></td></tr>
+                <tr><td colspan="5" class="text-muted" style="text-align:center;padding:1.2rem;"><%= rulesNone ? __('safety:rules_none') : __('safety:blocked_none') %></td></tr>
             <% } %>
             <% blocked.forEach(function (r) { %>
                 <tr>
@@ -90,6 +101,166 @@ function reasonText(x) {
                             <li class="<%= x.observe ? 'is-observe' : (x.blocking ? 'is-blocking' : 'is-warning') %>"><strong><%= reasonPrefix(x) %></strong> <%= reasonText(x) %></li>
                         <% }); %>
                         </ul>
+                    </td>
+                    <td class="sg-small sg-human">
+                        <% if (r.authority && r.waivable.length) { %>
+                        <details>
+                            <summary><%= __('safety:waiver_grant') %></summary>
+                            <form method="POST" action="/safety-gate/waivers" class="sg-stack">
+                                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                <input type="hidden" name="employeeId" value="<%= r.employeeId %>">
+                                <label for="sg-w-skill-<%= r.employeeId %>"><%= __('safety:waiver_skill') %></label>
+                                <select id="sg-w-skill-<%= r.employeeId %>" name="skillId" class="form-control" required>
+                                    <% var seen = {}; r.waivable.forEach(function (x) { if (seen[x.skillId]) return; seen[x.skillId] = 1; %>
+                                    <option value="<%= x.skillId %>"><%= x.skillName %></option>
+                                    <% }); %>
+                                </select>
+                                <label for="sg-w-hours-<%= r.employeeId %>"><%= __('safety:waiver_hours', { max: hoursMax }) %></label>
+                                <input type="number" id="sg-w-hours-<%= r.employeeId %>" name="hours" class="form-control" min="1" max="<%= hoursMax %>" step="1" value="24" required>
+                                <label for="sg-w-reason-<%= r.employeeId %>"><%= __('safety:waiver_reason') %></label>
+                                <textarea id="sg-w-reason-<%= r.employeeId %>" name="reason" class="form-control" rows="2" maxlength="2000" required></textarea>
+                                <button type="submit" class="btn btn-sm btn-warning"
+                                        aria-label="<%= __('safety:waiver_grant') + ' — ' + r.name %>"
+                                        data-confirm="<%= __('safety:waiver_confirm') %>"><%= __('safety:waiver_grant') %></button>
+                            </form>
+                        </details>
+                        <% } %>
+                        <% if (r.authority && r.legalOnly) { %><div class="sg-sub"><%= __('safety:legal_no_waiver') %></div><% } %>
+                        <% if (r.canContest) { %>
+                        <details>
+                            <summary><%= __('safety:contest_open') %></summary>
+                            <form method="POST" action="/safety-gate/contests" class="sg-stack">
+                                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                <input type="hidden" name="employeeId" value="<%= r.employeeId %>">
+                                <label for="sg-c-reason-<%= r.employeeId %>"><%= __('safety:contest_reason') %></label>
+                                <textarea id="sg-c-reason-<%= r.employeeId %>" name="reason" class="form-control" rows="2" maxlength="2000" required></textarea>
+                                <button type="submit" class="btn btn-sm btn-secondary"
+                                        aria-label="<%= __('safety:contest_submit') + ' — ' + r.name %>"><%= __('safety:contest_submit') %></button>
+                            </form>
+                        </details>
+                        <% } %>
+                        <% if (!r.authority && !r.canContest) { %>—<% } %>
+                    </td>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<h2 class="sg-h2"><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('safety:waived_title') %></h2>
+<p class="help-text"><%= __('safety:waived_intro', { max: hoursMax }) %></p>
+<div class="card" style="padding:0;margin-bottom:1.2rem;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('safety:th_person') %></th>
+                <th><%= __('safety:th_skill') %></th>
+                <th><%= __('safety:th_status') %></th>
+                <th><%= __('safety:th_waiver_reason') %></th>
+                <th><%= __('safety:th_actions') %></th>
+            </tr></thead>
+            <tbody>
+            <% if (!sgWaivers.length) { %>
+                <tr><td colspan="5" class="text-muted" style="text-align:center;padding:1.2rem;"><%= __('safety:waived_none') %></td></tr>
+            <% } %>
+            <% sgWaivers.forEach(function (w) { %>
+                <tr>
+                    <td><a href="/employees/<%= w.employeeId %>"><%= w.name %></a>
+                        <div class="sg-sub"><%= w.employeeNumber %></div></td>
+                    <td class="sg-small"><%= w.skillName %></td>
+                    <td class="sg-small"><strong class="sg-waived"><%= __('safety:status_WAIVED_until', { date: fmtDateTime(w.expiresAt) }) %></strong>
+                        <div class="sg-sub"><%= __('safety:via_' + w.grantVia) %><%= w.isRenewal ? ' · ' + __('safety:waiver_is_renewal') : '' %></div></td>
+                    <td class="sg-small"><%= w.reason %></td>
+                    <td class="sg-small">
+                        <% if (w.authority) { %>
+                        <% if (!w.isRenewal) { %>
+                        <details>
+                            <summary><%= __('safety:waiver_renew') %></summary>
+                            <form method="POST" action="/safety-gate/waivers/<%= w.id %>/renew" class="sg-stack">
+                                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                <label for="sg-r-hours-<%= w.id %>"><%= __('safety:waiver_hours', { max: hoursMax }) %></label>
+                                <input type="number" id="sg-r-hours-<%= w.id %>" name="hours" class="form-control" min="1" max="<%= hoursMax %>" step="1" value="24" required>
+                                <label for="sg-r-reason-<%= w.id %>"><%= __('safety:waiver_reason') %></label>
+                                <textarea id="sg-r-reason-<%= w.id %>" name="reason" class="form-control" rows="2" maxlength="2000" required></textarea>
+                                <button type="submit" class="btn btn-sm btn-warning"
+                                        aria-label="<%= __('safety:waiver_renew') + ' — ' + w.name %>"><%= __('safety:waiver_renew') %></button>
+                            </form>
+                        </details>
+                        <% } else { %><div class="sg-sub"><%= __('safety:waiver_no_more_renewal') %></div><% } %>
+                        <details>
+                            <summary><%= __('safety:waiver_revoke') %></summary>
+                            <form method="POST" action="/safety-gate/waivers/<%= w.id %>/revoke" class="sg-stack">
+                                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                <label for="sg-v-reason-<%= w.id %>"><%= __('safety:waiver_revoke_reason') %></label>
+                                <input type="text" id="sg-v-reason-<%= w.id %>" name="reason" class="form-control" maxlength="2000" required>
+                                <button type="submit" class="btn btn-sm btn-danger"
+                                        aria-label="<%= __('safety:waiver_revoke') + ' — ' + w.name %>"><%= __('safety:waiver_revoke') %></button>
+                            </form>
+                        </details>
+                        <% } else { %>—<% } %>
+                    </td>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<h2 class="sg-h2" id="contests"><i class="fas fa-scale-balanced" aria-hidden="true"></i> <%= __('safety:contests_title') %></h2>
+<div class="card" style="padding:0;margin-bottom:1.2rem;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('safety:th_person') %></th>
+                <th><%= __('safety:th_contested_by') %></th>
+                <th><%= __('safety:th_contest_reason') %></th>
+                <th><%= __('safety:th_date') %></th>
+                <th><%= __('safety:th_decision') %></th>
+            </tr></thead>
+            <tbody>
+            <% if (!sgContests.length) { %>
+                <tr><td colspan="5" class="text-muted" style="text-align:center;padding:1.2rem;"><%= __('safety:contests_none') %></td></tr>
+            <% } %>
+            <% sgContests.forEach(function (c) { %>
+                <tr>
+                    <td><a href="/employees/<%= c.employeeId %>"><%= c.name %></a>
+                        <div class="sg-sub"><%= c.employeeNumber %></div></td>
+                    <td class="sg-small"><%= __('safety:contested_as_' + c.contestedAs) %></td>
+                    <td class="sg-small"><%= c.reason %></td>
+                    <td class="sg-small"><%= fmtDateTime(c.createdAt) %></td>
+                    <td class="sg-small">
+                        <% if (c.canDecide) { %>
+                        <form method="POST" action="/safety-gate/contests/<%= c.id %>/decide" class="sg-stack">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <fieldset class="sg-fieldset">
+                                <legend class="sr-only"><%= __('safety:th_decision') %> — <%= c.name %></legend>
+                                <label class="sg-check"><input type="radio" name="decision" value="upheld" required> <%= __('safety:decision_upheld') %></label>
+                                <label class="sg-check"><input type="radio" name="decision" value="overturned"> <%= __('safety:decision_overturned') %></label>
+                            </fieldset>
+                            <label for="sg-d-reason-<%= c.id %>"><%= __('safety:decision_reason') %></label>
+                            <textarea id="sg-d-reason-<%= c.id %>" name="reason" class="form-control" rows="2" maxlength="2000" required></textarea>
+                            <label for="sg-d-remedy-<%= c.id %>"><%= __('safety:decision_remedy') %></label>
+                            <select id="sg-d-remedy-<%= c.id %>" name="remedy" class="form-control">
+                                <option value=""><%= __('safety:remedy_none') %></option>
+                                <option value="waiver"><%= __('safety:remedy_waiver') %></option>
+                                <option value="data_correction"><%= __('safety:remedy_data_correction') %></option>
+                            </select>
+                            <% if (c.skills && c.skills.length) { %>
+                            <label for="sg-d-skill-<%= c.id %>"><%= __('safety:waiver_skill') %></label>
+                            <select id="sg-d-skill-<%= c.id %>" name="skillId" class="form-control">
+                                <% c.skills.forEach(function (s) { %><option value="<%= s.id %>"><%= s.name %></option><% }); %>
+                            </select>
+                            <% } %>
+                            <label for="sg-d-hours-<%= c.id %>"><%= __('safety:waiver_hours', { max: hoursMax }) %></label>
+                            <input type="number" id="sg-d-hours-<%= c.id %>" name="hours" class="form-control" min="1" max="<%= hoursMax %>" step="1" value="24">
+                            <label for="sg-d-pointer-<%= c.id %>"><%= __('safety:decision_pointer') %></label>
+                            <input type="text" id="sg-d-pointer-<%= c.id %>" name="correctionPointer" class="form-control" maxlength="500"
+                                   placeholder="<%= __('safety:decision_pointer_ph') %>">
+                            <button type="submit" class="btn btn-sm btn-primary"
+                                    aria-label="<%= __('safety:decision_record') + ' — ' + c.name %>"><%= __('safety:decision_record') %></button>
+                        </form>
+                        <% } else { %><%= __('safety:contest_pending') %><% } %>
                     </td>
                 </tr>
             <% }); %>
@@ -156,5 +327,12 @@ function reasonText(x) {
 .sg-reasons li.is-observe{color:var(--text-secondary,#475569)}
 .sg-observe{font-size:.74rem;font-weight:600;color:var(--text-secondary,#475569)}
 .sg-empty{padding:.9rem 1.1rem;margin-bottom:1.2rem;border-left:4px solid var(--warning,#b45309)}
+.sg-kpi-waived strong,.sg-waived{color:var(--warning,#b45309)}
+.sg-human details{margin-bottom:.35rem}
+.sg-human summary{cursor:pointer;font-weight:600}
+.sg-stack{display:flex;flex-direction:column;gap:4px;margin-top:.35rem;min-width:200px}
+.sg-stack label{font-size:.76rem;color:var(--text-muted)}
+.sg-fieldset{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.sg-check{display:inline-flex;align-items:center;gap:5px;font-size:.83rem}
 @media (max-width:640px){ .sg-filters .form-control{flex:1 1 100%;max-width:none} }
 </style>
