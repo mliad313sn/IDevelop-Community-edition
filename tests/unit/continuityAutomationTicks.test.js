@@ -417,7 +417,9 @@ describe('planning-digest — useful, or silent', () => {
         expect(en).not.toMatch(/Certifications à renouveler|Postes critiques/);
         expect(en).toMatch(/<html lang="en"/);
         expect(fr).toMatch(/Chef de quart/); // roles ARE named
-        expect(fr).toMatch(/Kofi N\./); // cert holders ARE named
+        // wave 12 D3: no person is named in a digest — counts and a list link
+        expect(fr).not.toMatch(/Kofi N\./);
+        expect(fr).toMatch(/1 certification\(s\) de 1 personne\(s\)/);
     });
 
     test('the retention section carries a COUNT and never a name', () => {
@@ -436,17 +438,15 @@ describe('planning-digest — useful, or silent', () => {
         expect(html).not.toMatch(/Risque de départ passé en élevé/);
     });
 
-    test('a long cert list is capped in the body but the total is still stated', () => {
+    test('a long cert list is counted, never listed by name (wave 12 D3)', () => {
         const certs = Array.from({ length: 20 }, (_, i) => ({
-            fullName: `P${i}`,
-            skillName: 'S',
-            expiresOn: '2026-09-01',
-            days: i,
+            employeeId: 100 + (i % 10),
+            days: i - 2,
         }));
         const html = pd().__test.renderHtml('Amina', { certs, noBench: [], newlyHigh: 0 }, {});
-        expect(html).toMatch(/8 autre\(s\)/);
-        expect(html).toMatch(/P0/);
-        expect(html).not.toMatch(/>P19</);
+        expect(html).toMatch(/20 certification\(s\) de 10 personne\(s\) : 2 expirée\(s\)/);
+        expect(html).toMatch(/\/compliance/);
+        expect(html).not.toMatch(/<td[^>]*>\s*P\d+/);
     });
 
     test('the plain-text part mirrors the HTML sections', () => {
@@ -465,7 +465,8 @@ describe('planning-digest — useful, or silent', () => {
         const { text } = require('../../src/utils/emailTemplate').renderBlocks(blocks, {
             lang: 'fr',
         });
-        expect(text).toMatch(/Kofi N\./);
+        expect(text).not.toMatch(/Kofi N\./);
+        expect(text).toMatch(/1 certification\(s\) de 1 personne\(s\)/);
         expect(text).toMatch(/Chef de quart/);
         expect(text).toMatch(/Risque de départ passé en élevé ce mois-ci/);
         expect(text).toMatch(/2 personne\(s\) de votre périmètre/);

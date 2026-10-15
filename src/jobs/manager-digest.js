@@ -92,17 +92,16 @@ async function tick() {
             const [reviews, idp, gaps, unmeasured, certs, campaign] = await Promise.all([
                 db.all(
                     `
-                    SELECT e.first_name || ' ' || e.last_name AS name, count(*)::int AS n
-                      FROM self_assessments sa JOIN employees e ON e.id = sa.employee_id
+                    SELECT sa.employee_id AS "employeeId", count(*)::int AS n
+                      FROM self_assessments sa
                      WHERE sa.employee_id IN (${ph}) AND sa.workflow_state IN ('submitted','under_review')
                      GROUP BY 1 ORDER BY n DESC`,
                     ids
                 ),
                 db.all(
                     `
-                    SELECT e.first_name || ' ' || e.last_name AS name, count(*)::int AS n
+                    SELECT p.employee_id AS "employeeId", count(*)::int AS n
                       FROM idp_actions a JOIN idp_plans p ON p.id = a.idp_id
-                      JOIN employees e ON e.id = p.employee_id
                      WHERE p.employee_id IN (${ph}) AND a.status NOT IN ('completed','cancelled')
                        AND p.status IN ('draft','active')
                      GROUP BY 1 ORDER BY n DESC`,
@@ -137,8 +136,7 @@ async function tick() {
                 db
                     .all(
                         `
-                    SELECT cc.full_name AS name, cc.skill_name AS skill,
-                           cc.days_to_expiry::int AS days, cc.expires_on AS "expiresOn"
+                    SELECT cc.employee_id AS "employeeId", cc.days_to_expiry::int AS days
                       FROM v_certification_current cc
                      WHERE cc.employee_id IN (${ph}) AND cc.expires_on IS NOT NULL AND cc.days_to_expiry <= 60
                      ORDER BY cc.days_to_expiry ASC`,
@@ -245,6 +243,8 @@ async function tick() {
                 ])
             );
 
+            // No person is named in a digest (wave 12, D3): counts only, and
+            // a link to the page that holds the list under its own guard.
             if (totals.reviews) {
                 blocks.push(
                     T.section(
@@ -254,22 +254,18 @@ async function tick() {
                     )
                 );
                 blocks.push(
-                    T.table(
-                        [
-                            { fr: 'Collaborateur', en: 'Employee' },
-                            { fr: 'En attente', en: 'Pending' },
-                        ],
-                        reviews.slice(0, 8).map((r) => [r.name, { text: String(r.n), bold: true }])
+                    T.para(
+                        `${totals.reviews} auto-évaluation(s) de ${reviews.length} personne(s) attendent votre revue.`,
+                        `${totals.reviews} self-assessment(s) from ${reviews.length} person(s) wait for your review.`
                     )
                 );
                 blocks.push(
-                    T.para(
-                        'Agir : Équipe → Revues d’auto-évaluation.',
-                        'Act: Team → Self-assessment reviews.'
-                    )
+                    T.button('Voir la liste', 'See the list', '/supervisor/self-assessment-reviews')
                 );
             }
             if (certs.length) {
+                const people = new Set(certs.map((c) => c.employeeId)).size;
+                const soon = certs.filter((c) => c.days <= 30).length;
                 blocks.push(
                     T.section(
                         'Certifications à renouveler (≤60 jours)',
@@ -278,29 +274,12 @@ async function tick() {
                     )
                 );
                 blocks.push(
-                    T.table(
-                        [
-                            { fr: 'Collaborateur', en: 'Employee' },
-                            { fr: 'Certification', en: 'Certification' },
-                            { fr: 'Échéance', en: 'Due' },
-                        ],
-                        certs.slice(0, 8).map((c) => [
-                            c.name,
-                            c.skill,
-                            {
-                                text: `${fmtDate(c.expiresOn)} (${c.days} ${T.pick('j', 'd')})`,
-                                color: c.days <= 30 ? '#b91c1c' : '#b45309',
-                                bold: c.days <= 30,
-                            },
-                        ])
-                    )
-                );
-                blocks.push(
                     T.para(
-                        'Planifiez la revalidation avant la date — une formation de recyclage associée est assignée automatiquement à 60 jours.',
-                        'Schedule the revalidation before the date — a mapped LMS refresher is auto-assigned at 60 days.'
+                        `${certs.length} certification(s) de ${people} personne(s) arrivent à échéance dans les 60 jours, dont ${soon} dans les 30 jours. Planifiez la revalidation avant la date — une formation de recyclage associée est assignée automatiquement à 60 jours.`,
+                        `${certs.length} certification(s) held by ${people} person(s) expire within 60 days, ${soon} of them within 30 days. Schedule the revalidation before the date — a mapped LMS refresher is auto-assigned at 60 days.`
                     )
                 );
+                blocks.push(T.button('Voir la liste', 'See the list', '/compliance'));
             }
             if (breaches.length || predicted.length) {
                 blocks.push(T.section('Couverture de postes', 'Position coverage', '#b91c1c'));
@@ -335,14 +314,12 @@ async function tick() {
                     T.section('Actions de développement ouvertes', 'Open development actions')
                 );
                 blocks.push(
-                    T.table(
-                        [
-                            { fr: 'Collaborateur', en: 'Employee' },
-                            { fr: 'Actions', en: 'Actions' },
-                        ],
-                        idp.slice(0, 8).map((r) => [r.name, String(r.n)])
+                    T.para(
+                        `${totals.idp} action(s) ouvertes dans les plans de ${idp.length} personne(s).`,
+                        `${totals.idp} open action(s) in the plans of ${idp.length} person(s).`
                     )
                 );
+                blocks.push(T.button('Voir la liste', 'See the list', '/tasks'));
             }
             if (totals.gaps) {
                 blocks.push(T.section('Écarts de compétences critiques', 'Critical skill gaps'));

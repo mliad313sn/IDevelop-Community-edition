@@ -36,7 +36,6 @@
 
 const db = require('../config/database');
 const { claim, release, monthBucket } = require('./reminders');
-const { fmtDate } = require('../utils/dateFormat');
 
 const ENV_DOM = Number(process.env.PLANNING_DIGEST_DOM) || 1; // 1st of the month
 const ENV_HOUR = Number(process.env.PLANNING_DIGEST_HOUR) || 7;
@@ -62,8 +61,7 @@ async function collect(managerId, ids) {
     // query" path. A monthly batch has no latency budget worth the risk.
     const certs = await db
         .all(
-            `SELECT cc.full_name AS "fullName", cc.skill_name AS "skillName",
-                cc.expires_on AS "expiresOn", cc.days_to_expiry::int AS "days"
+            `SELECT cc.employee_id AS "employeeId", cc.days_to_expiry::int AS "days"
            FROM v_certification_current cc
           WHERE cc.employee_id IN (${ph})
             AND cc.expires_on IS NOT NULL
@@ -147,39 +145,23 @@ function renderBlocks({ certs, noBench, newlyHigh }, { lang = 'fr', monthLabel =
                 '#b45309'
             )
         );
+        // No person is named in a digest (wave 12, D3): counts by window and a
+        // link to the page that holds the list under its own guard.
+        const expired = certs.filter((c) => Number(c.days) < 0).length;
+        const people = new Set(certs.map((c) => c.employeeId)).size;
         blocks.push(
-            T.table(
-                [
-                    { fr: 'Collaborateur', en: 'Team member' },
-                    { fr: 'Certification', en: 'Certification' },
-                    { fr: 'Échéance', en: 'Expiry' },
-                ],
-                certs.slice(0, 12).map((c) => [
-                    { text: c.fullName, bold: true },
-                    c.skillName,
-                    {
-                        text:
-                            Number(c.days) < 0
-                                ? `${fmtDate(c.expiresOn)} — ${T.pick('expirée', 'expired')}`
-                                : `${fmtDate(c.expiresOn)} — ${c.days} ${T.pick('j', 'd')}`,
-                        color: Number(c.days) <= 30 ? '#b91c1c' : '#b45309',
-                        bold: Number(c.days) <= 30,
-                    },
-                ])
+            T.para(
+                `${certs.length} certification(s) de ${people} personne(s) : ${expired} expirée(s), ${urgentCerts} à 30 jours ou moins.`,
+                `${certs.length} certification(s) held by ${people} person(s): ${expired} expired, ${urgentCerts} within 30 days.`
             )
         );
-        if (certs.length > 12) {
-            blocks.push(
-                T.para(`… et ${certs.length - 12} autre(s).`, `… and ${certs.length - 12} more.`)
-            );
-        }
         blocks.push(
             T.para(
                 "Planifiez la revalidation avant l'échéance : une certification expirée ramène la préparation de la personne à 0 sur cette compétence et peut rompre une règle de couverture.",
                 'Schedule the revalidation before the due date: a lapsed certification drops that person’s readiness to 0 on the skill and can breach a coverage rule.'
             )
         );
-        blocks.push(T.button('Ouvrir la conformité', 'Open compliance', '/compliance'));
+        blocks.push(T.button('Voir la liste', 'See the list', '/compliance'));
     }
 
     if (noBench.length) {
