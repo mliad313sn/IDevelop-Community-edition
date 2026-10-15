@@ -517,10 +517,19 @@ const CATEGORIES = [
             },
             {
                 id: 'backups',
-                fr: 'Sauvegardes quotidiennes avec contrôle d’accès et exercices de restauration.',
-                en: 'Daily backups with access control and restore drills.',
-                evidence: ['scripts/Verify-BackupRestore.ps1'],
+                fr: 'Sauvegardes quotidiennes et points de restauration chiffrés (AES-256-GCM, manifeste signé contrôlé avant toute restauration), vérifiés après chaque sauvegarde, avec contrôle d’accès, copie hors serveur possible et exercices de restauration ; une rotation d’APP_KEY garde les anciennes sauvegardes lisibles.',
+                en: 'Daily backups and restore points encrypted (AES-256-GCM, signed manifest checked before any restore), verified after each backup, with access control, an optional off-host copy and restore drills; an APP_KEY rotation keeps older backups readable.',
+                evidence: [
+                    'src/services/BackupCryptoService.js',
+                    'scripts/backup-key.js',
+                    'scripts/Verify-BackupRestore.ps1',
+                    'docs/BACKUPS.md',
+                ],
                 tests: [
+                    'backupCrypto.test.js',
+                    'backupJobRestore.test.js',
+                    'backupAppKeyRotation.test.js',
+                    'backupKeyringAcl.test.js',
                     'c317-D-ops-security-backup-acl.test.js',
                     'installerRestoreAndPatchProof.test.js',
                 ],

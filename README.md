@@ -257,17 +257,18 @@ _Administration → Modules_, by adoption stage:
 
 Modules can also be switched one by one, without a restart. The essentials:
 
-| Variable                                  | Purpose                                                                                                                       |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                            | PostgreSQL connection string (required)                                                                                       |
-| `SESSION_SECRET`                          | Session signing secret — **required and checked for strength in production**                                                  |
-| `APP_KEY`                                 | At-rest encryption key for stored secrets (MFA seeds, SSO/LMS/SMTP credentials); rotate only with `scripts/rotate-app-key.js` |
-| `REDIS_URL`                               | Optional: BullMQ workers and shared rate-limit store for multi-instance deployments                                           |
-| `V2_FEATURES=1`                           | Legacy: forces every optional module on. Otherwise modules are switched in the app (_Administration → Modules_)               |
-| `SQL_CONSOLE_ENABLED=1`                   | Switches on the super-admin SQL console (off by default — separation of duties; routes answer 404 while off)                  |
-| `APP_BASE_URL`, `TRUSTED_HOSTS`           | Public URL used in e-mails and host-header allow-list                                                                         |
-| `SMTP_*`                                  | Outgoing mail (can also be set in _Settings → Email_)                                                                         |
-| `OIDC_*`, `AZURE_*`, `SAML_*`, `GOOGLE_*` | Single sign-on providers                                                                                                      |
+| Variable                                                       | Purpose                                                                                                                                                                                                  |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                 | PostgreSQL connection string (required)                                                                                                                                                                  |
+| `SESSION_SECRET`                                               | Session signing secret — **required and checked for strength in production**                                                                                                                             |
+| `APP_KEY`                                                      | At-rest encryption key for stored secrets (MFA seeds, SSO/LMS/SMTP credentials) and, on Linux and Docker, for the database backups; keep a copy offline and rotate only with `scripts/rotate-app-key.js` |
+| `BACKUP_KEY_MODE`, `BACKUP_KEYRING_FILE`, `BACKUP_OFFHOST_DIR` | Backup encryption key store and off-host copy folder; see [docs/BACKUPS.md](docs/BACKUPS.md)                                                                                                             |
+| `REDIS_URL`                                                    | Optional: BullMQ workers and shared rate-limit store for multi-instance deployments                                                                                                                      |
+| `V2_FEATURES=1`                                                | Legacy: forces every optional module on. Otherwise modules are switched in the app (_Administration → Modules_)                                                                                          |
+| `SQL_CONSOLE_ENABLED=1`                                        | Switches on the super-admin SQL console (off by default — separation of duties; routes answer 404 while off)                                                                                             |
+| `APP_BASE_URL`, `TRUSTED_HOSTS`                                | Public URL used in e-mails and host-header allow-list                                                                                                                                                    |
+| `SMTP_*`                                                       | Outgoing mail (can also be set in _Settings → Email_)                                                                                                                                                    |
+| `OIDC_*`, `AZURE_*`, `SAML_*`, `GOOGLE_*`                      | Single sign-on providers                                                                                                                                                                                 |
 
 Most business behaviour (readiness threshold, dispute SLAs, notification
 triggers, retention, branding, optional modules) is configured at run time in

@@ -129,6 +129,24 @@ that previously used a Scheduled Task into a real service automatically (mode `A
   is restricted to SYSTEM, Administrators and the service account before the
   service writes its first line.
 
+### The backup encryption key (after install or upgrade)
+
+The application's daily backups and SQL-console restore points are encrypted
+with a key protected by Windows DPAPI on this machine
+(`%ProgramData%\IDevelop\keys`). A DPAPI key cannot leave the machine, so export
+its recovery copy **once** and keep it offline, apart from the backups:
+
+```powershell
+cd "C:\Program Files\IDevelop"
+node scripts\backup-key.js init
+node scripts\backup-key.js export --out D:\offline\idevelop-backup-key.txt
+```
+
+Without it no backup restores on another server. Admin → Instance health warns
+until the key has been exported. Details, restores and failure messages:
+[docs/BACKUPS.md](../docs/BACKUPS.md). `Manage -Backup` still writes its own
+plain SQL dump of the database: keep that folder restricted.
+
 ---
 
 ## Troubleshooting

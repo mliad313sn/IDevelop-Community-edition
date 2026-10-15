@@ -101,6 +101,36 @@ project uses [Semantic Versioning](https://semver.org/).
   development dependency (SA-26).
 - Webhook-family settings (`webhook*`) are security-class (SuperAdmin only).
 
+### Security (encrypted backups)
+
+- **Backups are encrypted** (audit SA-39). The daily database backup and the
+  SQL-console restore points are encrypted as `pg_dump` writes them (AES-256-GCM
+  stream, `<db>-<date>.dump.enc`), with a signed SHA-256 manifest beside each
+  file; no clear copy touches the disk, and no key means no backup rather than a
+  clear one. Every restore checks the manifest and authenticates the whole file
+  first and refuses a changed, truncated or extended one. After each backup the
+  file is verified (`pg_restore --list` on the decrypted stream) and every
+  backup on disk is checked to still have its key here; failures alert the
+  super administrators. Admin → Instance health shows the key, the last
+  verification and key check, the off-host copy, and flags each file « non
+  chiffrée » / "not encrypted".
+- **The key:** DPAPI-protected on Windows (`node scripts/backup-key.js init`,
+  then `export` once and keep the recovery copy offline), derived from
+  `APP_KEY` on Linux and Docker. `scripts/rotate-app-key.js` keeps older
+  backups readable (the old derived key is retired into the keyring before the
+  database is touched; the rotation stops if it cannot be). `backup-key.js`
+  also imports a recovery copy or a previous `APP_KEY`, verifies, encrypts
+  and streams a backup into `pg_restore`. `Verify-BackupRestore.ps1` verifies
+  and restores encrypted backups. Optional off-host copy: `BACKUP_OFFHOST_DIR`.
+  See `docs/BACKUPS.md`.
+- **Upgrade note:** existing plaintext `.dump` files stay where they are, are
+  restorable with a warning and leave through the usual retention. On Windows,
+  run `node scripts/backup-key.js init` and `export --out <file>` once after the
+  upgrade (the first backup creates the key otherwise; the health page warns
+  until it is exported). On Linux and Docker, keep an offline copy of
+  `APP_KEY`, and never change it by hand: older backups would be unreadable
+  until the previous value is imported (`backup-key.js import-app-key`).
+
 ### Security (mail privacy)
 
 - **No password by e-mail** (audit SA-37). An invitation or a credentials resend
