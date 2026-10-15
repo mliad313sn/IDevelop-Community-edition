@@ -806,11 +806,14 @@ class LmsService {
      * the record even where the FK cannot hold them.
      */
     static async decideUplift(user, completionId, decision) {
+        // Every refusal carries a stable `code` (an lms: locale key): the route
+        // answers in the reader's language, never with this English message.
         const id = Number(completionId);
         const accept = decision === 'accept';
         if (!accept && decision !== 'decline') {
             const e = new Error("decision must be 'accept' or 'decline'");
             e.status = 400;
+            e.code = 'upl_err_bad_decision';
             throw e;
         }
         const c = await db.get(
@@ -820,16 +823,19 @@ class LmsService {
         if (!c) {
             const e = new Error('Completion not found');
             e.status = 404;
+            e.code = 'upl_err_not_found';
             throw e;
         }
         if (c.applied === true || c.reviewReason !== 'awaiting_supervisor') {
             const e = new Error('This completion is not awaiting a decision');
             e.status = 409;
+            e.code = 'upl_err_not_pending';
             throw e;
         }
         if (!(await this._mayDecide(user, Number(c.employeeId)))) {
             const e = new Error('Not authorized: supervisor/manager of this employee only');
             e.status = 403;
+            e.code = 'upl_err_forbidden';
             throw e;
         }
 

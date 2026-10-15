@@ -326,9 +326,14 @@ const decide = (decision) =>
             res.json({ ok: true, ...out });
         } catch (e) {
             const status = e && e.status ? e.status : 500;
+            // The refusal is shown to the person in a toast: translate it by its
+            // code (FR/EN), never echo the English service message.
+            const failed = sayText(req, 'lms:upl_failed', 'The decision could not be saved.');
+            const error = status !== 500 && e.code ? sayText(req, 'lms:' + e.code, failed) : failed;
             res.status(status).json({
                 ok: false,
-                error: status === 500 ? 'internal_error' : e.message,
+                error,
+                code: status === 500 ? 'internal_error' : (e && e.code) || undefined,
             });
         }
     });
