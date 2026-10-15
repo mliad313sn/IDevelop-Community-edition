@@ -55,19 +55,6 @@ const TICKS = [
         fn: () => require('../services/NotificationService').releaseSnoozed(),
     },
     {
-        name: 'priority-index.refresh',
-        cron: '0 * * * *',
-        everyMin: 60,
-        keep: 100,
-        fn: () => {
-            try {
-                return require('../services/PriorityIndexService').refresh();
-            } catch {
-                return null;
-            }
-        },
-    }, // service optional
-    {
         name: 'lms.sync.tick',
         cron: '0 * * * *',
         everyMin: 60,
@@ -375,8 +362,8 @@ function boot() {
 // ---------------------------------------------------------------------------
 // Redis-less fallback. The default single-box Windows install has no Redis, so
 // BullMQ stays disabled and the time-based business logic (dispute SLA
-// escalation, LMS catalog/completion sync, snoozed-notification release,
-// priority-index refresh) would otherwise NEVER run. This in-process scheduler
+// escalation, LMS catalog/completion sync, snoozed-notification release)
+// would otherwise NEVER run. This in-process scheduler
 // runs those same ticks via setInterval. Single-instance only — multi-instance
 // deployments MUST use Redis (this would double-run).
 // ---------------------------------------------------------------------------
