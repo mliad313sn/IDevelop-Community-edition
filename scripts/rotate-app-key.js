@@ -27,8 +27,20 @@
  * Without --commit it runs a DRY RUN (re-encrypts in a transaction, verifies,
  * then ROLLS BACK) so you can confirm it works before the real rotation.
  * After a real run: set APP_KEY=<new> in .env and restart the service.
+ *
+ * BACKUPS (SA-39). Where backups are encrypted with a key DERIVED from APP_KEY
+ * (Linux, Docker, BACKUP_KEY_MODE=derived), a new APP_KEY is a new backup key:
+ * every backup made before would become unreadable. So, before the database is
+ * touched, the backup keyring is prepared: the backup key of the CURRENT
+ * APP_KEY is kept as a retired key, every older retired key is re-wrapped under
+ * the NEW APP_KEY, and each wrap is verified. With --commit the keyring is
+ * written BEFORE the database transaction (both keys open it), trimmed to the
+ * new key after the commit, and put back as it was if the transaction fails.
+ * If the keyring cannot be prepared or written, the rotation stops and nothing
+ * is changed. See docs/BACKUPS.md.
  */
 const secretBox = require('../src/utils/secretBox');
+const BackupCrypto = require('../src/services/BackupCryptoService');
 
 /** MfaService's own primitives (the derivations live in ONE place). */
 function mfaCrypto() {
@@ -234,6 +246,25 @@ function summary(counts) {
     return parts.join(', ');
 }
 
+/**
+ * The backup-keyring line of the operator summary: counts only (never a key,
+ * a key id or a path), built from a fresh object like rotationCounts.
+ */
+function backupKeyringSummary(plan) {
+    if (!plan) return 'backup keyring: not prepared';
+    if (!plan.ring)
+        return 'backup keyring: unchanged (no backup key derived from the old APP_KEY here)';
+    const retired = tally(plan.retired);
+    const carried = tally(plan.carried);
+    const unreadable = tally(plan.unreadable);
+    let line =
+        `backup keyring: ${retired} key(s) retired now, ${carried} older key(s) re-wrapped ` +
+        'under the new APP_KEY';
+    if (unreadable)
+        line += `, ${unreadable} entr(y/ies) no APP_KEY opens (backups under them stay unreadable)`;
+    return line;
+}
+
 async function main() {
     require('dotenv').config();
     const db = require('../src/config/database');
@@ -262,6 +293,27 @@ async function main() {
             'WARN: no current APP_KEY was set, so encrypted values used the SESSION_SECRET fallback. Rotating to a real APP_KEY.'
         );
 
+    // Backups first: an APP_KEY the backups cannot follow is refused before
+    // anything changes (SA-39).
+    let ring;
+    try {
+        ring = await BackupCrypto.prepareAppKeyRotation({
+            oldAppKey: keys.oldAppKey,
+            newAppKey: keys.newAppKey,
+            sessionSecret: keys.sessionSecret,
+        });
+        if (COMMIT) await BackupCrypto.commitAppKeyRotation(ring);
+    } catch (e) {
+        console.error(
+            '\n✗ ROTATION REFUSED (nothing changed): the backup keyring could not be prepared or written.'
+        );
+        console.error(`  ${String((e && e.message) || e).slice(0, 300)}`);
+        console.error(
+            '  Rotating now would make every backup encrypted under the current APP_KEY unreadable. See docs/BACKUPS.md.'
+        );
+        process.exit(1);
+    }
+
     await db.connect();
     let factorTally = { done: 0, skipped: 0 };
     let box = {};
@@ -274,15 +326,37 @@ async function main() {
             }
         });
         console.log(`\n✓ COMMITTED. Re-encrypted ${summary(rotationCounts(factorTally, box))}.`);
+        console.log(`  ${backupKeyringSummary(ring)}.`);
+        try {
+            await BackupCrypto.finalizeAppKeyRotation(ring);
+        } catch (e) {
+            // Harmless: the keyring still opens under both keys. Say so.
+            console.warn(
+                `  WARN: the backup keyring was not trimmed to the new APP_KEY (${String((e && e.message) || e).slice(0, 200)}); it still opens under both keys.`
+            );
+        }
         console.log('  NEXT: set APP_KEY to the new value in .env and restart the service.');
+        console.log(
+            '  KEEP the OLD APP_KEY offline as well: it decrypts the backups made before today on any server (node scripts/backup-key.js import-app-key).'
+        );
     } catch (e) {
         if (e.message === '__DRYRUN_ROLLBACK__') {
             console.log(
                 `\n✓ DRY RUN OK (rolled back). Would re-encrypt ${summary(rotationCounts(factorTally, box))}.`
             );
+            console.log(`  Would update the ${backupKeyringSummary(ring)}.`);
             console.log('  Re-run with --commit to apply, then set APP_KEY in .env and restart.');
         } else {
             console.error('\n✗ ROTATION FAILED (rolled back):', e.message);
+            if (COMMIT) {
+                try {
+                    await BackupCrypto.abortAppKeyRotation(ring);
+                } catch (_) {
+                    console.error(
+                        '  The backup keyring could not be put back; it still opens under the current APP_KEY.'
+                    );
+                }
+            }
             await db.close().catch(() => {});
             process.exit(1);
         }
@@ -298,5 +372,6 @@ module.exports = {
     rotateBoxValue,
     rotationCounts,
     summary,
+    backupKeyringSummary,
     COUNTED_STORES,
 };
