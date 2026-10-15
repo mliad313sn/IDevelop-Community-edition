@@ -3398,6 +3398,7 @@ router.get(
     requireApiKey,
     _m55(async (req, res) => {
         const db = require('../config/database');
+        const { sqlDateIso } = require('../utils/dateFormat');
         const { scopedEmployeeIds, scopeClause } = require('../utils/rbacScope');
         const ids = await scopedEmployeeIds(req.user);
         const params = [];
@@ -3420,8 +3421,9 @@ router.get(
                 SkillID: Number(r.skillId),
                 Skill: r.skillName,
                 CertNumber: r.certNumber || null,
-                IssuedOn: r.issuedOn ? new Date(r.issuedOn).toISOString().slice(0, 10) : null,
-                ExpiresOn: r.expiresOn ? new Date(r.expiresOn).toISOString().slice(0, 10) : null,
+                // DATE columns: the stored day, never shifted by the server zone.
+                IssuedOn: sqlDateIso(r.issuedOn),
+                ExpiresOn: sqlDateIso(r.expiresOn),
                 DaysToExpiry: r.daysToExpiry != null ? Number(r.daysToExpiry) : null,
                 Status: r.certStatus,
             }))

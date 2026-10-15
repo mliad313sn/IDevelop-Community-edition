@@ -93,4 +93,33 @@ function fmtPeriodBound(d) {
     return `${pad(x.getUTCDate())}/${pad(x.getUTCMonth() + 1)}/${x.getUTCFullYear()}`;
 }
 
-module.exports = { fmtDate, fmtDateTime, fmtPeriodBound, UNMEASURED };
+/**
+ * The CALENDAR DAY "YYYY-MM-DD" of an instant (default: now) in the app's zone:
+ * APP_TIMEZONE, else the server zone, the same zone fmtDate prints in. For a
+ * daily record keyed by date: the database session's CURRENT_DATE follows
+ * PostgreSQL's TimeZone, which need not be the app's.
+ */
+function appDayIso(d = new Date()) {
+    const x = toDate(d);
+    if (!x) return null;
+    const p = parts(x);
+    return `${p.y}-${p.m}-${p.d}`;
+}
+
+/**
+ * A PostgreSQL DATE column as "YYYY-MM-DD", never shifted by a day. node-pg
+ * parses a DATE into a Date at LOCAL midnight of the server, so
+ * `toISOString().slice(0, 10)` printed the previous day on any server east of
+ * UTC. The local calendar fields of that Date are the stored day; a string
+ * already in ISO form is returned as is.
+ */
+function sqlDateIso(d) {
+    if (d == null || d === '') return null;
+    if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10);
+    const x = toDate(d);
+    if (!x) return null;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+}
+
+module.exports = { fmtDate, fmtDateTime, fmtPeriodBound, appDayIso, sqlDateIso, UNMEASURED };
