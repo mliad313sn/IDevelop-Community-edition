@@ -866,7 +866,6 @@ const PROFILES = [
             {
                 icon: '🏠',
                 img: null,
-                imgRetired: 'mgr-01-supervisor-dashboard',
                 title: {
                     fr: 'Tableau de bord — votre équipe en chiffres',
                     en: 'Dashboard — your team in figures',
@@ -934,7 +933,6 @@ const PROFILES = [
             {
                 icon: '🧭',
                 img: null,
-                imgRetired: 'mgr-05-dashboard-training',
                 title: {
                     fr: 'Lire les onglets honnêtement',
                     en: 'Reading the tabs honestly',
@@ -1670,7 +1668,6 @@ const PROFILES = [
             {
                 icon: '📈',
                 img: null,
-                imgRetired: 'la-01-dashboard',
                 title: {
                     fr: 'Votre tableau de bord — les mêmes indicateurs, calculés sur votre périmètre',
                     en: 'Your dashboard — the same indicators, computed on your scope',
