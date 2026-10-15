@@ -129,9 +129,15 @@ describe('the benchmark views never print a fabricated zero', () => {
         expect(role).toMatch(/rbMeasured === 0 \? '—'/);
     });
 
-    test('an unassessed heat cell shows a dash, not the coalesced 0', () => {
-        expect(role).toMatch(/<%= c\.assessed \? c\.actual : '—' %>/);
+    test('an unassessed heat cell says « Not assessed », hatched, never the coalesced 0', () => {
+        // the assessed branch is the only one that prints a level
+        expect(role).toMatch(/<% if \(c && c\.assessed\) \{/);
+        expect(role).toMatch(
+            /vh-c vh-c--unmeasured viz-hatch bm-unassessed"[\s\S]{0,240}?<span class="bm-na"><%= __\('dash:bm_not_assessed'\) %><\/span><\/td>/
+        );
         expect(role).not.toMatch(/not_assessed_paren'\) %>"><%= c\.actual %><\/td>/);
+        // never coloured as a level (no bm-heat-0 / data-bin on that branch)
+        expect(role).not.toMatch(/bm-heat-/);
     });
 });
 

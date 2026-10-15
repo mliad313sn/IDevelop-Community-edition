@@ -238,7 +238,7 @@
   "assessment_coverage": "Assessment Coverage",
   "occupants_critical_gap": "Occupants w/ Critical Gap",
   "who_has_which_gaps": "Who has which gaps",
-  "who_gaps_sub": "Each occupant's actual level vs the role's required level. Cell = actual (0–4); a red ring = below required.",
+  "who_gaps_sub": "Each occupant's actual level against the role's required level. Cell = actual level (0–4), coloured by how much is missing; ▼ = below the requirement; hatched = not assessed yet.",
   "no_occupants_role": "No occupants (or no assessments in scope) for this role.",
   "req": "Req",
   "req_title": "Required level for this role",
@@ -532,5 +532,12 @@
   "td_nb_cell_title": "{0} (performance {1} / potential {2})",
   "td_lvl_low": "low",
   "td_lvl_medium": "medium",
-  "td_lvl_high": "high"
+  "td_lvl_high": "high",
+  "bm_not_assessed": "Not assessed",
+  "bm_not_assessed_legend": "Not assessed yet (never level 0, never a gap)",
+  "bm_legend_actual": "Actual level against the requirement:",
+  "bm_profile_title": "The role's profile by sub-domain",
+  "bm_profile_sub": "The demonstrated level of the occupants (assessed skills only) against the level the role requires. A sub-domain nobody was assessed on says so: it is never drawn at 0.",
+  "bm_profile_radar": "Demonstrated against required",
+  "bm_cov_scope": "Every site of your scope; the filters above do not narrow it."
 }

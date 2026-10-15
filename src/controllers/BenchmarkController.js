@@ -3,6 +3,48 @@ const BenchmarkModel = require('../models/BenchmarkModel');
 const db = require('../config/database');
 const { csvCell } = require('../utils/csvSafe');
 const { queryId, queryNumber } = require('../utils/queryParams');
+const KpiService = require('../services/KpiService');
+const { coverageHeatModel } = require('../utils/heatModel');
+const { personGapBin } = require('../utils/heatBins');
+
+/**
+ * The role's profile by sub-domain, for the radar and the gap bars: the
+ * required level (mean over the sub-domain's requirements) against the
+ * demonstrated level (mean over the ASSESSED occupant × skill cells only). A
+ * sub-domain nobody was assessed on is null — "Not measured", never 0. Pure.
+ */
+function roleProfileAxes(domains) {
+    const out = [];
+    for (const d of domains || []) {
+        for (const sd of d.subs || []) {
+            let req = 0;
+            let reqN = 0;
+            let act = 0;
+            let assessed = 0;
+            let total = 0;
+            for (const sk of sd.skills || []) {
+                req += Number(sk.required) || 0;
+                reqN++;
+                for (const c of Object.values(sk.cells || {})) {
+                    total++;
+                    if (c && c.assessed) {
+                        act += Number(c.actual) || 0;
+                        assessed++;
+                    }
+                }
+            }
+            if (!reqN) continue;
+            out.push({
+                label: sd.name,
+                required: Math.round((req / reqN) * 10) / 10,
+                actual: assessed ? Math.round((act / assessed) * 10) / 10 : null,
+                assessed,
+                total,
+            });
+        }
+    }
+    return out;
+}
 
 /**
  * Benchmark module — role×skill required-level matrix (how the benchmark varies
@@ -104,6 +146,20 @@ class BenchmarkController {
                 BenchmarkModel.getMatrix(matrixFilters),
                 BenchmarkModel.getFit(filters),
             ]);
+            // Critical-skill coverage by site (KpiService, the reader's clearance;
+            // aggregates only). A failure leaves the rest of the page intact.
+            let coverageHeat = null;
+            if (req.query.format !== 'csv') {
+                try {
+                    const cov = await KpiService.computeBlock('criticalSkillCoverage', {
+                        viewer: req.user,
+                    });
+                    coverageHeat = cov ? coverageHeatModel(cov) : null;
+                } catch (e) {
+                    console.error('Benchmark coverage heatmap error:', e.message);
+                    coverageHeat = null;
+                }
+            }
 
             // CSV export of the benchmark matrix (Pillar, Sub-Domain, Skill, Category, Δ, then one column per role).
             if (req.query.format === 'csv') {
@@ -156,6 +212,7 @@ class BenchmarkController {
                 services,
                 matrix,
                 fit,
+                coverageHeat,
             });
         } catch (err) {
             console.error('Benchmark index error:', err);
@@ -203,6 +260,8 @@ class BenchmarkController {
                 summary,
                 occupants: occ.occupants,
                 domains: occ.domains,
+                profileAxes: roleProfileAxes(occ.domains),
+                personGapBin,
                 candidates,
                 fitHistory: history,
             });
@@ -234,3 +293,4 @@ class BenchmarkController {
 }
 
 module.exports = new BenchmarkController();
+module.exports.roleProfileAxes = roleProfileAxes;

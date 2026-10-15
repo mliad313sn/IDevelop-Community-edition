@@ -238,7 +238,7 @@
   "assessment_coverage": "Couverture des évaluations",
   "occupants_critical_gap": "Titulaires avec écart critique",
   "who_has_which_gaps": "Qui a quels écarts",
-  "who_gaps_sub": "Niveau réel de chaque titulaire vs le niveau requis du poste. Cellule = réel (0–4) ; un anneau rouge = sous le requis.",
+  "who_gaps_sub": "Niveau réel de chaque titulaire face au niveau requis du poste. Cellule = niveau réel (0–4), colorée selon ce qui manque ; ▼ = sous le requis ; hachurée = pas encore évaluée.",
   "no_occupants_role": "Aucun titulaire (ou aucune évaluation dans le périmètre) pour ce poste.",
   "req": "Req.",
   "req_title": "Niveau requis pour ce poste",
@@ -532,5 +532,12 @@
   "td_nb_cell_title": "{0} (performance : {1} / potentiel : {2})",
   "td_lvl_low": "faible",
   "td_lvl_medium": "moyen",
-  "td_lvl_high": "élevé"
+  "td_lvl_high": "élevé",
+  "bm_not_assessed": "Non évalué",
+  "bm_not_assessed_legend": "Pas encore évalué (jamais un niveau 0, jamais un écart)",
+  "bm_legend_actual": "Niveau réel face au niveau requis :",
+  "bm_profile_title": "Le profil du poste par sous-domaine",
+  "bm_profile_sub": "Le niveau démontré par les titulaires (compétences évaluées seulement) face au niveau que le poste requiert. Un sous-domaine sur lequel personne n’est évalué le dit : il n’est jamais tracé à 0.",
+  "bm_profile_radar": "Démontré face au requis",
+  "bm_cov_scope": "Tous les sites de votre périmètre ; les filtres ci-dessus ne le restreignent pas."
 }

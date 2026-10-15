@@ -304,7 +304,12 @@ class BenchmarkModel {
                 sd.skills.push(sk);
                 skMap.set(r.skillId, sk);
             }
-            sk.cells[eid] = { actual, met: actual >= required, assessed: !!r.isAssessed };
+            // A requirement nobody assessed has NO level (the view coalesces it
+            // to 0): actual is null and it is neither met nor a gap — the page
+            // says "Not assessed".
+            sk.cells[eid] = r.isAssessed
+                ? { actual, met: actual >= required, assessed: true }
+                : { actual: null, met: null, assessed: false };
         }
         const occupants = [...occMap.values()]
             .map((o) => ({
