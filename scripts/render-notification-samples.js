@@ -11,7 +11,7 @@
  *
  *   node scripts/render-notification-samples.js [outDir] [--accent=#123456] [--no-logo] [--app="Name"]
  *
- * Default outDir: <os.tmpdir()>/notif-samples. Writes, per sample:
+ * Default outDir: a fresh <os.tmpdir()>/notif-samples-XXXXXX (mkdtemp). Writes, per sample:
  *   <name>.html   the HTML part exactly as sent (logo referenced as cid:…)
  *   <name>.txt    the plain-text part
  *   <name>.json   subject, headers, attachments (metadata), kind, locale
@@ -265,7 +265,11 @@ function esc(s) {
  * any settings store.
  */
 async function main(options = {}) {
-    const outDir = path.resolve(options.outDir || path.join(os.tmpdir(), 'notif-samples'));
+    // Without --out, a fresh private directory (mkdtemp: unique name, mode 0700),
+    // never a fixed, predictable name in the shared temp folder.
+    const outDir = options.outDir
+        ? path.resolve(options.outDir)
+        : fs.mkdtempSync(path.join(os.tmpdir(), 'notif-samples-'));
     const ACCENT = options.accent || T.BRAND_FALLBACK;
     const APP = options.app || 'Démo Talents';
     const WITH_LOGO = options.logo !== false;
