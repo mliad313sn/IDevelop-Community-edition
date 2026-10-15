@@ -577,12 +577,13 @@ class SqlConsoleService {
             .replace(/'[^']*'/g, "''")
             .replace(/\$[a-z0-9_]*\$[\s\S]*?\$[a-z0-9_]*\$/g, ' ');
         const out = new Set();
-        const re = /([a-z_][a-z0-9_$]*(?:\.[a-z_][a-z0-9_$]*)*)\s*\(/g;
+        // Only the identifier right before `(` was ever kept (the last part of a
+        // dotted name), so match just that, and only where an identifier STARTS
+        // (look-behind). The former dotted pattern restarted at every character
+        // of a long identifier run: quadratic, a ReDoS on an 80 KB script.
+        const re = /(?<![a-z0-9_$])([a-z_][a-z0-9_$]*)\s*\(/g;
         let m;
-        while ((m = re.exec(bare)) !== null) {
-            const parts = m[1].split('.');
-            out.add(parts[parts.length - 1]);
-        }
+        while ((m = re.exec(bare)) !== null) out.add(m[1]);
         return [...out];
     }
 
