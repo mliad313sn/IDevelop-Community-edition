@@ -949,6 +949,15 @@ class DSRService {
               WHERE user_type = 'employee' AND user_id = ? ORDER BY category, channel`,
             [employeeId]
         );
+        // The last scope the person chose on the dashboard (migration 185):
+        // ids of a site or department, their own screen preference.
+        await q(
+            'dashboardScope',
+            `SELECT page, scope, updated_at
+               FROM dashboard_scope_prefs
+              WHERE user_type = 'employee' AND user_id = ? ORDER BY page`,
+            [employeeId]
+        );
         await q(
             'hrisLinks',
             'SELECT id, provider, external_id, last_seen_at, created_at FROM hris_links WHERE employee_id = ?',

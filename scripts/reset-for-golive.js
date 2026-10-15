@@ -120,6 +120,9 @@ const KEEP = new Set([
     // their own choices, kept like notification_preferences.
     'notification_user_settings',
     'notification_category_prefs',
+    // Migration 185: each person's last dashboard scope, a screen preference
+    // re-validated on every read, kept like the notification settings.
+    'dashboard_scope_prefs',
     'webhook_subscriptions',
     'lms_integrations',
     // HRIS sync (migration 160): the connector settings and the value mappings
