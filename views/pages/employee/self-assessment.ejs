@@ -498,7 +498,7 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
     const SA_USER_ID = '<%= user && user.id ? user.id : "0" %>';
     // The REAL campaign id, so an offline draft can state which campaign it
     // belongs to and the server can refuse to re-file it into a later one.
-    const SA_CYCLE_ID = '<%= typeof cycle !== "undefined" && cycle && cycle.id ? cycle.id : "" %>';
+    const SA_CYCLE_ID = <%- JSON.stringify(typeof cycle !== "undefined" && cycle && cycle.id != null ? String(cycle.id) : null) %>;
     const SA_I18N = {
         stillZero: <%- JSON.stringify(__('employee:sa_still_zero')) %>,
         allRated: <%- JSON.stringify(__('employee:sa_all_rated')) %>,
@@ -759,8 +759,13 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
 
     selects.forEach((s) => s.addEventListener('change', () => { markAnswered(s); updateProgress(); applyFilter(); }));
 
-    // Persist each rating to the local draft store on change/blur so a network drop
-    // (common on remote sites / mobile) never loses work; sync-indicator.js replays it.
+    // Persist a rating to the local draft store so a network drop (common on
+    // remote sites / mobile) never loses work; sync-indicator.js replays it.
+    // ONLY work that could not reach the server is queued on the device — while
+    // offline, after a failed save, or when the page is left with a save still
+    // pending. A rating the server accepted leaves no local copy (IndexedDB is
+    // readable by the next user of a shared device).
+    const dirty = new Set();
     function cacheDraft(select) {
         if (!window.AppDraftStore) return;
         const row = select.closest('tr');
@@ -774,6 +779,21 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
             });
         } catch (_) { /* best-effort; IndexedDB may be unavailable */ }
     }
+    function queueDirty() {
+        dirty.forEach((s) => cacheDraft(s));
+    }
+    function forgetSaved(sentSkillIds, skipped) {
+        if (!window.AppDraftStore || !window.AppDraftStore.markSyncedFor) return;
+        const refused = new Set((skipped || []).map((x) => String(x && x.skillId)));
+        sentSkillIds.forEach((skillId) => {
+            if (refused.has(String(skillId))) return;
+            window.AppDraftStore.markSyncedFor({ userId: SA_USER_ID, cycleId: SA_CYCLE_ID, skillId })
+                .catch(() => { /* store unavailable */ });
+        });
+        selects.forEach((s) => { if (!refused.has(String(s.dataset.skillId))) dirty.delete(s); });
+    }
+    // Leaving the page with a change not yet sent: keep it on the device.
+    window.addEventListener('pagehide', () => { if (dirty.size) queueDirty(); });
 
     function collect() {
         // Only send skills the employee actually rated. A never-touched <select>
@@ -794,14 +814,17 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
 
     async function post(url, okMsg, opts) {
         const silent = opts && opts.silent;
+        const sent = collect();
         try {
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ assessments: collect() }),
+                body: JSON.stringify({ assessments: sent }),
             });
             const result = await res.json().catch(() => ({}));
             if (res.ok && result.success) {
+                // The server holds these now: no copy stays on the device.
+                forgetSaved(sent.map((a) => a.skillId), result.skipped);
                 // A 200 with a non-empty `skipped` list is a PARTIAL save: the server
                 // declined those rows (already submitted/approved, or a closed
                 // campaign). Reporting a plain success over them is the same lie as
@@ -822,9 +845,13 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
                 // decides; nobody is told their work is safe when it is not.
                 return { ok: true, skipped };
             }
+            // A refusal (4xx) is not a network problem: replaying it would be
+            // refused again. A server error is queued for the replay.
+            if (res.status >= 500) queueDirty();
             if (!silent) toast(SA_I18N.errPrefix + errMessage(result, res.status), 'error');
             return { ok: false, skipped: [] };
         } catch (e) {
+            queueDirty(); // the save did not reach the server: keep it on the device
             if (!silent) toast(SA_I18N.errNetwork, 'error');
             return { ok: false, skipped: [] };
         }
@@ -886,11 +913,18 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
         renderAutosave('pending');
         autosaveTimer = setTimeout(runAutosave, 2500);
     }
+    // A change is queued on the device only while offline; online, the
+    // autosave sends it and a failure queues it (post() above).
+    function noteChange(s) {
+        dirty.add(s);
+        if (!navigator.onLine) cacheDraft(s);
+        scheduleAutosave();
+    }
     selects.forEach((s) => {
-        s.addEventListener('change', () => { cacheDraft(s); scheduleAutosave(); });
+        s.addEventListener('change', () => noteChange(s));
         const row = s.closest('tr');
         const ta = row ? row.querySelector('textarea') : null;
-        if (ta) ta.addEventListener('blur', () => { cacheDraft(s); scheduleAutosave(); });
+        if (ta) ta.addEventListener('blur', () => noteChange(s));
     });
 
     document.getElementById('saveDraftBtn').addEventListener('click', function () {

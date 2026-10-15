@@ -68,6 +68,10 @@ const CATALOG = {
     // by middleware/sessionActivity (SESSION_MAX_HOURS is the fallback).
     sessionTimeout: { min: 1, max: 720, integer: true },
     sessionIdleMinutes: { min: 1, max: 1440, integer: true },
+    // Shared-computer (kiosk) mode — security-class (^kiosk), OFF by default.
+    kioskModeEnabled: { type: 'boolean' },
+    kioskIdleMinutes: { min: 1, max: 30, integer: true },
+    kioskIpRanges: { kind: 'cidrs', optional: true },
     // Read by middleware/rateLimiter.checkAccountLockout.
     maxLoginAttempts: { min: 1, max: 100, integer: true },
     loginLockoutMinutes: { min: 1, max: 10080, integer: true },
@@ -298,6 +302,14 @@ function validate(key, storedType, raw) {
         return { ok: false, code: 'host', params: { key } };
     if (rule.kind === 'domains' && s && !s.split(',').every((d) => RE.domain.test(d.trim())))
         return { ok: false, code: 'domains', params: { key } };
+    // IP addresses / CIDR ranges (kioskIpRanges): one parser with the reader.
+    if (rule.kind === 'cidrs') {
+        const { parseRangeToken } = require('../middleware/sessionActivity');
+        const toks = s.split(/[\s,;]+/).filter(Boolean);
+        if (!toks.every((t) => parseRangeToken(t)))
+            return { ok: false, code: 'cidrs', params: { key } };
+        return { ok: true, value: toks.join(', ') };
+    }
     return { ok: true, value: s };
 }
 
@@ -1080,6 +1092,33 @@ class AppSettingsModel {
                 type: 'number',
                 description:
                     'Sign users out after this many minutes of inactivity (applies to admins and employees; takes effect immediately)',
+                category: 'security',
+            },
+            // ---- Shared-computer (kiosk) mode. SuperAdmin only (security
+            // category + ^kiosk in utils/securitySettings). OFF by default on new
+            // installs AND upgrades (insert-if-absent).
+            {
+                key: 'kioskModeEnabled',
+                value: 'false',
+                type: 'boolean',
+                description:
+                    'Shared-computer mode. OFF (default): the login page has no « Shared computer » box and kioskIpRanges is ignored. ON: the box is offered and addresses in kioskIpRanges are always in shared-computer mode.',
+                category: 'security',
+            },
+            {
+                key: 'kioskIdleMinutes',
+                value: '5',
+                type: 'number',
+                description:
+                    'Inactivity window of a shared-computer session (1-30 min, default 5). It can only shorten sessionIdleMinutes, never lengthen it; the absolute session lifetime is unchanged.',
+                category: 'security',
+            },
+            {
+                key: 'kioskIpRanges',
+                value: '',
+                type: 'string',
+                description:
+                    'IP addresses / CIDR ranges of shared computers (comma or space separated). A sign-in from these addresses is always in shared-computer mode (tab-close sign-out, short idle). Blank = none.',
                 category: 'security',
             },
             // Two-factor policy. Same rows as migration 162 (insert-if-absent, so

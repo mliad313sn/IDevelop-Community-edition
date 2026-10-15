@@ -4081,3 +4081,50 @@ textarea.form-control {
     outline: 2px solid var(--brand);
     outline-offset: 2px;
 }
+
+/* ── Shared computer (kiosk) mode: badge and idle warning (shared-device.js) ── */
+.kiosk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-right: var(--space-2);
+    padding: 2px var(--space-1) 2px var(--space-3);
+    border-radius: var(--radius-pill);
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: var(--brand-dim);
+    border: 1px solid var(--border-active);
+    color: var(--brand-text);
+    white-space: nowrap;
+}
+
+.kiosk-badge .btn {
+    border-radius: var(--radius-pill);
+    font-size: 0.85rem;
+}
+
+.kiosk-badge--floating {
+    position: fixed;
+    top: var(--space-2);
+    right: var(--space-2);
+    z-index: 1100;
+}
+
+.kiosk-idle {
+    position: sticky;
+    top: var(--topbar-height);
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-3);
+    background: var(--warning-bg);
+    color: var(--amber-text);
+    border-left: 3px solid var(--amber);
+    flex-wrap: wrap;
+}
+
+.kiosk-idle .btn {
+    margin-left: auto;
+    min-height: 44px;
+}

@@ -3702,5 +3702,13 @@
   "set_name_webhookOptInEvents": "Additional webhook events (opt-in)",
   "set_desc_webhookOptInEvents": "Extra notification kinds that outgoing webhooks may carry, comma-separated: a kind (feedback360.released) or a family (feedback360.*, oneonone.*, hris.sync.*). Empty (default): none of them leaves. Payloads stay limited to ids, dates and a link.",
   "set_name_privacySelfExportPerHour": "“My data” downloads per hour",
-  "set_desc_privacySelfExportPerHour": "How many “my data” downloads (JSON or printable) one person may make per hour (1 to 100)."
+  "set_desc_privacySelfExportPerHour": "How many “my data” downloads (JSON or printable) one person may make per hour (1 to 100).",
+  "set_name_kioskIpRanges": "Shared computers (IP address ranges)",
+  "set_desc_kioskIpRanges": "Addresses or CIDR ranges (comma or space separated, e.g. 10.20.0.0/16, 192.168.5.12) of shared computers (kiosks, break rooms, shift terminals). A sign-in from these addresses is ALWAYS in “Shared computer” mode: box ticked and locked, sign-out when the tab closes and after kioskIdleMinutes of inactivity. Blank = none.",
+  "set_name_kioskModeEnabled": "Shared-computer mode",
+  "set_desc_kioskModeEnabled": "Switch for the shared-computer (kiosk) mode. Off by default: the login page has no « Shared computer » box and the shared-computer IP ranges are ignored. On: the box is offered and the declared addresses are always in shared-computer mode (sign-out when the tab closes, short inactivity window).",
+  "set_name_kioskIdleMinutes": "Shared computer: sign out after inactivity (minutes)",
+  "set_desc_kioskIdleMinutes": "Inactivity window of a “Shared computer” session (1 to 30 min, default 5). It can only shorten the normal window (sessionIdleMinutes), never lengthen it; the maximum session lifetime is unchanged.",
+  "set_err_cidrs": "\"{{key}}\" must be a list of IP addresses or CIDR ranges (e.g. 10.20.0.0/16), separated by commas or spaces.",
+  "set_hint_cidrs": "IP addresses or CIDR ranges, separated by commas or spaces (e.g. 10.20.0.0/16, 192.168.5.12)"
 }

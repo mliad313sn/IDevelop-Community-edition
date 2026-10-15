@@ -436,6 +436,7 @@
                             email: <%- JSON.stringify(__('admin:set_hint_email')) %>,
                             host: <%- JSON.stringify(__('admin:set_hint_host')) %>,
                             domains: <%- JSON.stringify(__('admin:set_hint_domains')) %>,
+                            cidrs: <%- JSON.stringify(__('admin:set_hint_cidrs')) %>,
                             optional: <%- JSON.stringify(__('admin:set_hint_optional')) %>
                         };
                         function ruleText(rule) {
@@ -450,6 +451,7 @@
                             if (rule.kind === 'email') parts.push(RULE_T.email);
                             if (rule.kind === 'host') parts.push(RULE_T.host);
                             if (rule.kind === 'domains') parts.push(RULE_T.domains);
+                            if (rule.kind === 'cidrs') parts.push(RULE_T.cidrs);
                             if (rule.optional) parts.push(RULE_T.optional);
                             return parts.join(' · ');
                         }

@@ -3702,5 +3702,13 @@
   "set_name_webhookOptInEvents": "Événements webhook supplémentaires (sur option)",
   "set_desc_webhookOptInEvents": "Types de notification supplémentaires que les webhooks sortants peuvent transmettre, séparés par des virgules : un type (feedback360.released) ou une famille (feedback360.*, oneonone.*, hris.sync.*). Vide (par défaut) : aucun ne sort. Le contenu reste limité aux identifiants, aux dates et à un lien.",
   "set_name_privacySelfExportPerHour": "Téléchargements « mes données » par heure",
-  "set_desc_privacySelfExportPerHour": "Nombre de téléchargements « mes données » (JSON ou imprimable) qu’une personne peut faire par heure (de 1 à 100)."
+  "set_desc_privacySelfExportPerHour": "Nombre de téléchargements « mes données » (JSON ou imprimable) qu’une personne peut faire par heure (de 1 à 100).",
+  "set_name_kioskIpRanges": "Postes partagés (plages d’adresses IP)",
+  "set_desc_kioskIpRanges": "Adresses ou plages CIDR (séparées par des virgules ou des espaces, ex. 10.20.0.0/16, 192.168.5.12) des ordinateurs partagés (kiosques, salles de pause, postes de quart). Une connexion depuis ces adresses est TOUJOURS en mode « Poste partagé » : case cochée et verrouillée, déconnexion à la fermeture de l’onglet et après kioskIdleMinutes d’inactivité. Vide = aucune.",
+  "set_name_kioskModeEnabled": "Mode poste partagé",
+  "set_desc_kioskModeEnabled": "Interrupteur du mode « Poste partagé » (ordinateurs partagés, kiosques). Désactivé par défaut : la case « Poste partagé » n’apparaît pas sur la page de connexion et les plages d’adresses IP des postes partagés sont ignorées. Activé : la case est proposée et les adresses déclarées sont toujours en mode poste partagé (déconnexion à la fermeture de l’onglet, inactivité courte).",
+  "set_name_kioskIdleMinutes": "Poste partagé : déconnexion après inactivité (minutes)",
+  "set_desc_kioskIdleMinutes": "Délai d’inactivité d’une session « Poste partagé » (1 à 30 min, 5 par défaut). Il ne peut que raccourcir le délai normal (sessionIdleMinutes), jamais l’allonger ; la durée maximale de session reste inchangée.",
+  "set_err_cidrs": "« {{key}} » doit être une liste d’adresses IP ou de plages CIDR (ex. 10.20.0.0/16), séparées par des virgules ou des espaces.",
+  "set_hint_cidrs": "Adresses IP ou plages CIDR, séparées par des virgules ou des espaces (ex. 10.20.0.0/16, 192.168.5.12)"
 }
