@@ -39,6 +39,7 @@ try {
     const { guardUpload, extensionFilter } = require('../middleware/uploadGuard');
     const rawUpload = multer({
         dest: tmpDir,
+        preservePath: true, // the upload guard refuses a client name carrying a path
         limits: { fileSize: 10 * 1024 * 1024, files: 1 }, // 10MB limit
         fileFilter: extensionFilter([
             '.csv',

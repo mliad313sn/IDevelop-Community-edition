@@ -198,7 +198,8 @@ class CertificationService {
         return require('./MalwareScanService').scanAndRecord(
             'employee_certifications',
             certId,
-            dest
+            dest,
+            file.avScan || null // the upload gate's verdict on this file, if any
         );
     }
 

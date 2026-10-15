@@ -73,6 +73,10 @@ const SECURITY_KEY_PATTERNS = [
     /^hris/i,
     // Which notification kinds may leave the application through webhooks.
     /^webhook/i,
+    // Whether uploads are checked by the antivirus, and whether an unscanned
+    // upload is refused.
+    /^uploadAvScan$/,
+    /^requireMalwareScan$/,
 ];
 
 /** @returns {boolean} true when the setting is security-class. */

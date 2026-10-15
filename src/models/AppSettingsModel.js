@@ -153,6 +153,8 @@ const CATALOG = {
     // Tri-state: 'auto' = required as soon as a scanner is detected
     // (MalwareScanService.requireScan reads anything but true/false as auto).
     requireMalwareScan: { enum: ['auto', 'true', 'false'] },
+    // The antivirus gate on every upload (middleware/uploadGuard). On by default.
+    uploadAvScan: { type: 'boolean' },
     // Comma list of feedback360 / oneonone / hris.sync kinds or families that
     // webhooks may carry (WebhookService.parseOptIn ignores anything else).
     webhookOptInEvents: { optional: true },
@@ -1079,7 +1081,17 @@ class AppSettingsModel {
                 value: 'auto',
                 type: 'string',
                 description:
-                    'auto (default): an antivirus scan of uploads is required as soon as a scanner (ClamAV or Microsoft Defender) is detected. true: an upload that could not be scanned is held and never served. false: files are served even without a scan (marked as not scanned, restricted access).',
+                    'auto (default): an antivirus scan of uploads is required as soon as a scanner (ClamAV or Microsoft Defender) is detected. true: a new upload that cannot be scanned is refused, and a stored file that could not be scanned is held and never served. false: files are accepted and served even without a scan (marked as not scanned, restricted access).',
+                category: 'security',
+            },
+            {
+                // Security-class (SuperAdmin only, utils/securitySettings). Read by
+                // middleware/uploadGuard on every upload; an absent row reads as on.
+                key: 'uploadAvScan',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    'Antivirus check of every uploaded file (ClamAV or Microsoft Defender), before the file is used. On (default): a detected threat is refused, deleted and audited; when no scanner gives a verdict the upload is refused if requireMalwareScan applies, otherwise accepted and audited as not scanned. Off: no check at upload time.',
                 category: 'security',
             },
             {

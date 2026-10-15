@@ -370,51 +370,32 @@
         updateScopeOptions(div.querySelector('select[name*="[type]"]'));
     }
 
+    // Scope names travel as JSON data and are set as option TEXT: a region,
+    // site, department or service name can never become markup or script
+    // here (EJS escaping inside a JavaScript string left a \u003c escape live).
+    const SCOPE_SELECT_LABEL = <%- JSON.stringify(__('admin:select_label')) %>;
+    const SCOPE_OPTIONS = <%- include('../../partials/json-script', { v: {
+        region: ((typeof regions !== 'undefined' && regions) || []).map(function (r) { return { id: r.id, label: r.name }; }),
+        country: (countries || []).map(function (c) { return { id: c.id, label: c.name }; }),
+        site: (sites || []).map(function (s) { return { id: s.id, label: s.name + (s.isActive === false ? ' ' + __('admin:adm_site_inactive_suffix') : '') }; }),
+        department: (departments || []).map(function (d) { return { id: d.id, label: d.siteName + ' - ' + d.name }; }),
+        service: (services || []).map(function (s) { return { id: s.id, label: s.siteName + ' - ' + s.departmentName + ' - ' + s.name }; })
+    } }) %>;
+
+    function fillScopeValues(valueSelect, type, currentValue) {
+        valueSelect.options.length = 0;
+        valueSelect.add(new Option(SCOPE_SELECT_LABEL, ''));
+        (SCOPE_OPTIONS[type] || []).forEach(function (o) {
+            const opt = new Option(o.label, String(o.id));
+            if (currentValue && parseInt(currentValue, 10) === Number(o.id)) opt.selected = true;
+            valueSelect.add(opt);
+        });
+    }
+
     function updateScopeOptions(select) {
-        const type = select.value;
         const valueSelect = select.parentElement.querySelector('select[name*="[value]"]');
-        valueSelect.innerHTML = '<option value="">' + <%- JSON.stringify(__('admin:select_label')) %> + '</option>';
-
-    <% if (typeof regions !== 'undefined' && regions && regions.length > 0) { %>
-    if (type === 'region') {
-        <% regions.forEach(function (r) { %>
-            valueSelect.innerHTML += '<option value="<%= r.id %>"><%= r.name %></option>';
-        <% }); %>
+        fillScopeValues(valueSelect, select.value, null);
     }
-    <% } %>
-
-    <% if (countries && countries.length > 0) { %>
-    if (type === 'country') {
-        <% countries.forEach(function (c) { %>
-            valueSelect.innerHTML += '<option value="<%= c.id %>"><%= c.name %></option>';
-        <% }); %>
-    }
-    <% } %>
-
-    <% if (sites && sites.length > 0) { %>
-    if (type === 'site') {
-        <% sites.forEach(function (site) { %>
-            valueSelect.innerHTML += '<option value="<%= site.id %>"><%= site.name %></option>';
-        <% }); %>
-    }
-    <% } %>
-
-    <% if (departments && departments.length > 0) { %>
-    if (type === 'department') {
-        <% departments.forEach(function (dept) { %>
-                valueSelect.innerHTML += '<option value="<%= dept.id %>"><%= dept.siteName %> - <%= dept.name %></option>';
-        <% }); %>
-    }
-    <% } %>
-
-    <% if (services && services.length > 0) { %>
-    if (type === 'service') {
-        <% services.forEach(function (service) { %>
-                    valueSelect.innerHTML += '<option value="<%= service.id %>"><%= service.siteName %> - <%= service.departmentName %> - <%= service.name %></option>';
-        <% }); %>
-    }
-    <% } %>
-}
 
     // ---- Restore a kept draft ------------------------------------
     // Scopes, duration, profile and the permission grid are JS-built, so they are

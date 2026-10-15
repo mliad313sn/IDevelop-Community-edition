@@ -54,7 +54,8 @@ class EvidenceService {
         const { avStatus } = await require('./MalwareScanService').scanAndRecord(
             'assessment_evidence',
             lastID,
-            dest
+            dest,
+            file.avScan || null // the upload gate's verdict on this file, if any
         );
         return { id: lastID, avStatus };
     }

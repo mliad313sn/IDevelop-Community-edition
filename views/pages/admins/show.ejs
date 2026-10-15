@@ -864,60 +864,35 @@
         updateScopeOptions(div.querySelector('select[name*="[type]"]'));
     }
 
+    // Scope names travel as JSON data and are set as option TEXT: a region,
+    // site, department or service name can never become markup or script
+    // here (EJS escaping inside a JavaScript string left a \u003c escape live).
+    const SCOPE_SELECT_LABEL = <%- JSON.stringify(__('admin:select_label')) %>;
+    const SCOPE_OPTIONS = <%- include('../../partials/json-script', { v: {
+        region: (_regions).map(function (r) { return { id: r.id, label: r.name }; }),
+        country: (countries || []).map(function (c) { return { id: c.id, label: c.name }; }),
+        site: (sites || []).map(function (s) { return { id: s.id, label: s.name + (s.isActive === false ? ' ' + __('admin:adm_site_inactive_suffix') : '') }; }),
+        department: (departments || []).map(function (d) { return { id: d.id, label: d.siteName + ' - ' + d.name }; }),
+        service: (services || []).map(function (s) { return { id: s.id, label: s.siteName + ' - ' + s.departmentName + ' - ' + s.name }; })
+    } }) %>;
+
+    function fillScopeValues(valueSelect, type, currentValue) {
+        valueSelect.options.length = 0;
+        valueSelect.add(new Option(SCOPE_SELECT_LABEL, ''));
+        (SCOPE_OPTIONS[type] || []).forEach(function (o) {
+            const opt = new Option(o.label, String(o.id));
+            if (currentValue && parseInt(currentValue, 10) === Number(o.id)) opt.selected = true;
+            valueSelect.add(opt);
+        });
+    }
+
     function updateScopeOptions(select) {
         const type = select.value;
         const valueSelect = select.parentElement.querySelector('select[name*="[value]"]');
         const initialValue = valueSelect.getAttribute('data-initial-value');
         const scopeValue = select.getAttribute('data-scope-value');
         const currentValue = initialValue || scopeValue;
-
-        valueSelect.innerHTML = '<option value="">' + <%- JSON.stringify(__('admin:select_label')) %> + '</option>';
-
-    <% if (_regions.length > 0) { %>
-    if (type === 'region') {
-        <% _regions.forEach(function (r) { %>
-        var selected = currentValue && parseInt(currentValue) === <%= r.id %> ? 'selected' : '';
-            valueSelect.innerHTML += '<option value="<%= r.id %>" ' + selected + '><%= r.name %></option>';
-        <% }); %>
-    }
-    <% } %>
-
-    <% if (countries && countries.length > 0) { %>
-    if (type === 'country') {
-        <% countries.forEach(function (c) { %>
-        var selected = currentValue && parseInt(currentValue) === <%= c.id %> ? 'selected' : '';
-            valueSelect.innerHTML += '<option value="<%= c.id %>" ' + selected + '><%= c.name %></option>';
-        <% }); %>
-    }
-    <% } %>
-
-    <% if (sites && sites.length > 0) { %>
-    if (type === 'site') {
-        <%# A deactivated site that is already assigned stays offered, flagged. %>
-        <% sites.forEach(function (site) { %>
-        var selected = currentValue && parseInt(currentValue) === <%= site.id %> ? 'selected' : '';
-            valueSelect.innerHTML += '<option value="<%= site.id %>" ' + selected + '><%= site.name %><%= site.isActive === false ? ' ' + __('admin:adm_site_inactive_suffix') : '' %></option>';
-        <% }); %>
-    }
-    <% } %>
-
-    <% if (departments && departments.length > 0) { %>
-    if (type === 'department') {
-        <% departments.forEach(function (dept) { %>
-        var selected = currentValue && parseInt(currentValue) === <%= dept.id %> ? 'selected' : '';
-                valueSelect.innerHTML += '<option value="<%= dept.id %>" ' + selected + '><%= dept.siteName %> - <%= dept.name %></option>';
-        <% }); %>
-    }
-    <% } %>
-
-    <% if (services && services.length > 0) { %>
-    if (type === 'service') {
-        <% services.forEach(function (service) { %>
-        var selected = currentValue && parseInt(currentValue) === <%= service.id %> ? 'selected' : '';
-                    valueSelect.innerHTML += '<option value="<%= service.id %>" ' + selected + '><%= service.siteName %> - <%= service.departmentName %> - <%= service.name %></option>';
-        <% }); %>
-    }
-    <% } %>
+        fillScopeValues(valueSelect, type, currentValue);
 
     // Clear the data attributes after first use
     if (initialValue) {

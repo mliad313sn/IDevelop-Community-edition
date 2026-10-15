@@ -181,10 +181,16 @@ const CATEGORIES = [
             },
             {
                 id: 'xss',
-                fr: 'Échappement systématique des sorties ; les zones à risque XSS sont vérifiées par des tests.',
-                en: 'Output escaped by default; XSS-prone sinks are checked by tests.',
-                evidence: ['views/partials/json-script.ejs'],
-                tests: ['c317-C-dom-xss.test.js', 'reauditXssSinks.test.js'],
+                fr: 'Échappement systématique des sorties ; chaque sortie brute et chaque script qui écrit du HTML sont inventoriés et revus ; le texte enregistré et chaque paramètre d’adresse de chaque page sont vérifiés échappés par des tests sur l’application réelle.',
+                en: 'Output escaped by default; every raw output and every script that writes HTML is inventoried and reviewed; stored text and every query parameter of every page are proven escaped by tests over the real application.',
+                evidence: ['views/partials/json-script.ejs', 'src/utils/queryParams.js'],
+                tests: [
+                    'c317-C-dom-xss.test.js',
+                    'reauditXssSinks.test.js',
+                    'rawOutputInventory.test.js',
+                    'storedTextEscaped-db.test.js',
+                    'queryParamMatrix-db.test.js',
+                ],
             },
             {
                 id: 'injection',
@@ -206,8 +212,8 @@ const CATEGORIES = [
             },
             {
                 id: 'uploads',
-                fr: 'Fichiers importés contrôlés sur chaque route de dépôt : le contenu doit correspondre à l’extension (signature binaire, types OOXML, macros refusées), taille et nombre d’entrées plafonnés (anti « zip bomb »), erreurs d’analyse renvoyées en erreur client ; cellules échappées à l’affichage ; logo SVG servi sous une politique qui interdit tout script.',
-                en: 'Uploaded files checked on every upload route: the content must match the extension (magic bytes, OOXML content types, macros refused), size and entry count capped (zip-bomb protection), parser errors answered as client errors; cell values escaped on display; an SVG logo is served under a policy that forbids any script.',
+                fr: 'Fichiers importés contrôlés sur chaque route de dépôt : le contenu doit correspondre à l’extension (signature binaire, types OOXML, macros refusées), un nom de fichier avec chemin de dossier, caractère de contrôle ou plus de 200 caractères est refusé, taille et nombre d’entrées plafonnés (anti « zip bomb »), erreurs d’analyse renvoyées en erreur client ; cellules échappées à l’affichage ; logo SVG servi sous une politique qui interdit tout script.',
+                en: 'Uploaded files checked on every upload route: the content must match the extension (magic bytes, OOXML content types, macros refused), a file name with a folder path, a control character or more than 200 characters is refused, size and entry count capped (zip-bomb protection), parser errors answered as client errors; cell values escaped on display; an SVG logo is served under a policy that forbids any script.',
                 evidence: [
                     'src/utils/importGuards.js',
                     'src/utils/fileSignature.js',
@@ -219,6 +225,7 @@ const CATEGORIES = [
                     'asvsHeaders.test.js',
                     'uploadFileSignature.test.js',
                     'uploadGuardMounts.test.js',
+                    'uploadNameAndAvMounts.test.js',
                 ],
             },
             {
@@ -574,14 +581,20 @@ const CATEGORIES = [
             },
             {
                 id: 'upload-malware-scan',
-                fr: 'Analyse antivirus des justificatifs déposés : ClamAV (réseau ou socket), sinon Microsoft Defender, sinon fichier marqué « non analysé » sans bloquer l’application ; un fichier non analysé n’est téléchargeable que par son déposant, la ligne hiérarchique et les RH, toujours en pièce jointe ; nouvelle analyse planifiée ; le réglage « analyse exigée » (automatique dès qu’un antivirus est détecté) retient tout fichier non analysé ; l’antivirus en service est affiché sur les pages Santé et Conformité.',
-                en: 'Antivirus scan of uploaded evidence: ClamAV (network or socket), else Microsoft Defender, else the file is marked "not scanned" without blocking the application; an unscanned file is downloadable only by its uploader, the reporting line and HR, always as an attachment; scheduled rescan; the "scan required" setting (automatic once a scanner is detected) holds any unscanned file; the scanner in use is shown on the Health and Compliance pages.',
+                fr: 'Analyse antivirus de chaque fichier déposé avant usage (réglage « uploadAvScan », activé par défaut) : ClamAV (réseau ou socket), sinon Microsoft Defender ; une menace est refusée, supprimée et journalisée ; sans verdict, le dépôt est refusé si l’analyse est exigée, sinon accepté et marqué « non analysé » sans bloquer l’application ; un justificatif non analysé n’est téléchargeable que par son déposant, la ligne hiérarchique et les RH, toujours en pièce jointe ; nouvelle analyse planifiée ; le réglage « analyse exigée » (automatique dès qu’un antivirus est détecté) retient tout fichier non analysé ; l’antivirus en service est affiché sur les pages Santé et Conformité.',
+                en: 'Antivirus scan of every uploaded file before use ("uploadAvScan" setting, on by default): ClamAV (network or socket), else Microsoft Defender; a threat is refused, deleted and logged; with no verdict the upload is refused when a scan is required, otherwise accepted and marked "not scanned" without blocking the application; unscanned evidence is downloadable only by its uploader, the reporting line and HR, always as an attachment; scheduled rescan; the "scan required" setting (automatic once a scanner is detected) holds any unscanned file; the scanner in use is shown on the Health and Compliance pages.',
                 evidence: [
                     'src/services/MalwareScanService.js',
+                    'src/middleware/uploadGuard.js',
                     'db/postgres/164_malware_scan_chain.sql',
                     'src/jobs/index.js',
                 ],
-                tests: ['malwareScanChain.test.js', 'migration164MalwareScan-db.test.js'],
+                tests: [
+                    'malwareScanChain.test.js',
+                    'migration164MalwareScan-db.test.js',
+                    'uploadAvGate.test.js',
+                    'uploadNameAndAvMounts.test.js',
+                ],
             },
             {
                 id: 'installer-integrity',
