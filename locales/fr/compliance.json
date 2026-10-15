@@ -420,5 +420,6 @@
   "absence_reason_prompt": "Pourquoi cette absence planifiée est-elle annulée ? L’absence est conservée avec votre motif ; elle sort des listes et de la prévision.",
   "rule_reason_prompt": "Pourquoi la règle « {name} » est-elle retirée ? Elle est désactivée, pas supprimée : la règle et votre motif sont conservés et journalisés.",
   "err_deactivate_reason_required": "Un motif est obligatoire.",
-  "rule_deactivated": "Règle de couverture désactivée"
+  "rule_deactivated": "Règle de couverture désactivée",
+  "cat_lmsUpliftDecisions": "Décisions sur les niveaux proposés après formation"
 }

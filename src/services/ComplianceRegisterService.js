@@ -79,6 +79,7 @@ const DATA_CATEGORIES = [
     { key: 'opportunityApplications', group: 'development', audience: 'self_line_hr' },
     { key: 'lmsEnrollments', group: 'development', audience: 'self_line_hr' },
     { key: 'lmsCompletions', group: 'development', audience: 'self_line_hr' },
+    { key: 'lmsUpliftDecisions', group: 'development', audience: 'self_line_hr' },
     { key: 'plannedAbsences', group: 'employment', audience: 'self_line_hr' },
     { key: 'notifications', group: 'identity', audience: 'self_admins' },
     { key: 'hrisLinks', group: 'identity', audience: 'self_admins' },

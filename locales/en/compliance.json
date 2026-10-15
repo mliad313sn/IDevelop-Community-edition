@@ -420,5 +420,6 @@
   "absence_reason_prompt": "Why is this planned absence cancelled? The absence is kept with your reason; it leaves the lists and the forecast.",
   "rule_reason_prompt": "Why is the rule “{name}” taken out of use? It is deactivated, not deleted: the rule and your reason are kept and audited.",
   "err_deactivate_reason_required": "A reason is required.",
-  "rule_deactivated": "Coverage rule deactivated"
+  "rule_deactivated": "Coverage rule deactivated",
+  "cat_lmsUpliftDecisions": "Decisions on proposed skill uplifts"
 }
