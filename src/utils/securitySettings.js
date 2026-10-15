@@ -58,6 +58,8 @@ const SECURITY_KEY_PATTERNS = [
     /^retentionPurge/i,
     /^dsr/i,
     /^erasure/i,
+    // How long the audit log is kept before its sealed purge.
+    /^auditLog/i,
     /^kiosk/i,
     /^appBaseUrl$/i,
     /^trustedHosts$/i,

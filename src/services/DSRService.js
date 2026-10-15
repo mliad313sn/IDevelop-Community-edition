@@ -960,6 +960,10 @@ class DSRService {
         const filesToDelete = [];
         const out = await db.runTransaction(async () => {
             const tag = `erased-${employeeId}`;
+            // The person's identifiers as they are NOW, for the audit-log
+            // redaction at the end of this transaction.
+            const AuditRetention = require('./AuditRetentionService');
+            const auditNeedles = await AuditRetention.collectNeedles(employeeId);
             // erasure is at least the LEAVER cascade. A subject
             // still active goes through deprovision first — sessions (both
             // buckets), linked admin accounts, their API keys and sessions, the
@@ -1371,9 +1375,22 @@ class DSRService {
             } catch (_) {
                 /* best-effort */
             }
+            // Pseudonymise the person's names / login / e-mail in the immutable
+            // audit log through the chained, vouched redaction path (migration
+            // 170). Fails the erasure if it fails: an erasure that leaves the
+            // name in the audit log is not complete.
+            const auditRedaction = await AuditRetention.redactErasedSubject(
+                employeeId,
+                auditNeedles,
+                {
+                    actorRef: actorAdminId ? `admin:${actorAdminId}` : null,
+                    reason: reapply ? `${method} (re-applied)` : method,
+                }
+            );
             return {
                 erased: true,
                 employeeId: Number(employeeId),
+                auditRowsRedacted: auditRedaction.rows,
                 linkedAdminsErased: linked.length,
             };
         });

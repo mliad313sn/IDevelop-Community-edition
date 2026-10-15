@@ -122,5 +122,10 @@
   "log_entity_service": "Service",
   "log_entity_skill": "Compétence",
   "log_entity_domain": "Domaine",
-  "erased_person": "Personne effacée #{{id}}"
+  "erased_person": "Personne effacée #{{id}}",
+  "verify_btn": "Vérifier l'intégrité",
+  "verify_title": "Recalcule la chaîne d'empreintes du journal : les effacements (RGPD) et les purges scellées sont acceptés, toute autre modification est signalée.",
+  "verify_running": "Vérification de la chaîne en cours…",
+  "verify_ok": "Chaîne intègre : {rows} lignes vérifiées, dont {redacted} pseudonymisée(s) par un effacement attesté ; {seals} sceau(x) mensuel(s).",
+  "verify_broken": "Chaîne rompue. Lignes à examiner : {ids}. Conservez une copie de la base et comparez-la avec les ancres externes (dossier audit-anchors)."
 }

@@ -213,6 +213,15 @@ const TICKS = [
         keep: 30,
         fn: () => require('./audit-anchor').tick(),
     },
+    // Monthly seals of the audit log, then the sealed purge past
+    // auditLogRetentionYears (default 5). Hourly, self-gated to once a day.
+    {
+        name: 'audit-retention.tick',
+        cron: '43 * * * *',
+        everyMin: 60,
+        keep: 30,
+        fn: () => require('../services/AuditRetentionService').tick(),
+    },
     // 3.23.18: daily-gated retention sweep; report-only until retentionPurgeMode='apply'.
     {
         name: 'retention-purge.tick',

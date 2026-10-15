@@ -137,6 +137,9 @@ const CATALOG = {
     // Blank = follow notificationRetentionDays (read by jobs/telemetry-prune.js).
     unreadNotificationRetentionDays: { min: 0, max: 3650, integer: true, optional: true },
     onboardingRejectedRetentionDays: { min: 0, max: 3650, integer: true },
+    // Audit-log retention by whole sealed months (AuditRetentionService);
+    // ^auditLog in utils/securitySettings → security-class (SuperAdmin only).
+    auditLogRetentionYears: { min: 1, max: 10, integer: true },
     // Tri-state: 'auto' = required as soon as a scanner is detected
     // (MalwareScanService.requireScan reads anything but true/false as auto).
     requireMalwareScan: { enum: ['auto', 'true', 'false'] },
@@ -1023,6 +1026,16 @@ class AppSettingsModel {
                 type: 'number',
                 description:
                     'Days after the decision before a REJECTED self-onboarding request is pseudonymised (name, e-mail, password hash, SSO subject and note removed; the decision, its date and who decided are kept). 0 = keep forever.',
+                category: 'jobs',
+            },
+            {
+                // Read by AuditRetentionService (sealed purge). Also seeded by
+                // migration 170. Security-class via ^auditLog (utils/securitySettings).
+                key: 'auditLogRetentionYears',
+                value: '5',
+                type: 'number',
+                description:
+                    'Years the audit log is kept (1-10, default 5). Older rows are deleted by whole sealed months only; seals, redaction and purge entries and rows about a person under legal hold are always kept.',
                 category: 'jobs',
             },
             {

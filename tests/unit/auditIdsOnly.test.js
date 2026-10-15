@@ -12,7 +12,8 @@
  *  - SystemLogModel.resolvePeople: refs become names at read time, an erased
  *    person reads "Erased person #id" (or the caller's localised label), a
  *    failed lookup leaves the refs.
- *  - AuditRetentionService.fingerprint: keyed, stable for one identifier.
+ *  - AuditRetentionService: retention clamped to 1..10 (default 5), keyed
+ *    fingerprints, the job gated to once a day and a refused purge surfaced.
  */
 
 const mockDb = { get: jest.fn(), all: jest.fn(), run: jest.fn() };
@@ -284,8 +285,17 @@ describe('SystemLogModel.resolvePeople — names at read time', () => {
     });
 });
 
-describe('AuditRetentionService.fingerprint', () => {
+describe('AuditRetentionService', () => {
     const A = require('../../src/services/AuditRetentionService');
+    test('retention clamped to 1..10, default 5', () => {
+        expect(A.clampYears('')).toBe(5);
+        expect(A.clampYears(null)).toBe(5);
+        expect(A.clampYears('abc')).toBe(5);
+        expect(A.clampYears(0)).toBe(1);
+        expect(A.clampYears(25)).toBe(10);
+        expect(A.clampYears('7')).toBe(7);
+    });
+
     test('the fingerprint is keyed: another secret gives another fingerprint', () => {
         const saved = process.env.SESSION_SECRET;
         try {
@@ -306,5 +316,56 @@ describe('AuditRetentionService.fingerprint', () => {
             else process.env.SESSION_SECRET = saved;
         }
         expect(A.fingerprint('')).toBe('fp:none');
+    });
+
+    test('the job runs once a day and re-throws a refused purge after sealing', async () => {
+        const now = new Date('2031-03-02T10:00:00');
+        mockDb.get.mockImplementation(async (sql) => {
+            if (/fn_system_logs_seal/.test(sql)) return { n: 1 };
+            if (/fn_system_logs_purge/.test(sql))
+                throw new Error('AUDIT_PURGE_REFUSED: the audit chain does not verify');
+            return undefined;
+        });
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        await expect(A.tick({ now })).rejects.toThrow(/AUDIT_PURGE_REFUSED/);
+        expect((await A.tick({ now })).skipped).toBe('already_today');
+        const sealCalls = mockDb.get.mock.calls.filter((c) => /fn_system_logs_seal/.test(c[0]));
+        expect(sealCalls.length).toBe(1);
+    });
+
+    test('redaction failure fails the erasure (fail closed)', async () => {
+        mockDb.get.mockRejectedValue(new Error('function fn_system_logs_redact does not exist'));
+        await expect(A.redactErasedSubject(84, ['Nadia FENWICK'])).rejects.toMatchObject({
+            code: 'audit_redaction_failed',
+        });
+    });
+
+    test('verify() flattens the broken lists into brokenAt', async () => {
+        mockDb.get.mockResolvedValue({
+            v: {
+                intact: false,
+                hashedRows: 10,
+                broken: { content: [7], link: [9], fork: [], seal: [7] },
+            },
+        });
+        const v = await A.verify(5);
+        expect(v.intact).toBe(false);
+        expect(v.brokenAt).toEqual([7, 9]);
+    });
+});
+
+describe('the audit-log path is closed to the SQL console', () => {
+    const svc = require('../../src/services/SqlConsoleService');
+    test.each([
+        "SET LOCAL idevelop.audit_path = 'redact'",
+        "set idevelop.audit_redaction_entry = '12'",
+        'SELECT fn_system_logs_purge(1)',
+        "SELECT public._fn_system_logs_redact_flush(1, null, null, '[]', '[]')",
+        "select public.fn_system_logs_redact(1, ARRAY['x'])",
+    ])('%s is refused', (sql) => {
+        expect(svc._auditTamperViolation([sql])).toMatch(/redaction and purge/);
+    });
+    test('the verifier stays callable (read-only)', () => {
+        expect(svc._auditTamperViolation(['SELECT fn_system_logs_verify(5)'])).toBeFalsy();
     });
 });
