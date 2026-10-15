@@ -113,6 +113,8 @@ const KEEP = new Set([
     'app_settings',
     'report_templates',
     'report_schedules',
+    // SA-38: the recipient accounts of a schedule are part of its configuration.
+    'report_schedule_recipients',
     'notification_preferences',
     'webhook_subscriptions',
     'lms_integrations',
@@ -230,6 +232,8 @@ const WIPE = new Set([
     'readiness_snapshots',
     'recognitions',
     'reminder_log',
+    // SA-38: in-app copies of scheduled reports hold pilot data: wiped.
+    'report_schedule_runs',
     'retention_risk',
     'review_signatures',
     'review_summaries',

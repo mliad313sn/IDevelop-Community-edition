@@ -3630,6 +3630,20 @@ router.post(
     requireNumericParam('id'),
     _ahD(ReportController.toggleSchedule.bind(ReportController))
 );
+// SA-38: recipients are accounts; the notice links to an in-app copy whose
+// download re-checks the reader's clearance.
+router.post(
+    '/reports/schedules/:id/recipients',
+    requireManagerOrAdmin,
+    requireNumericParam('id'),
+    _ahD(ReportController.updateScheduleRecipients)
+);
+router.get(
+    '/reports/schedules/runs/:runId',
+    requireManagerOrAdmin,
+    requireNumericParam('runId'),
+    _ahD(ReportController.downloadScheduleRun)
+);
 // ---- end SECTION operations ----------------------------------------------------------------
 
 // ---- SECTION access — Admin accounts & access governance (..25, ) ---------

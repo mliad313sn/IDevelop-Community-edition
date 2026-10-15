@@ -507,15 +507,20 @@ describe('7. a scheduled CSV opens in French Excel like the downloaded one', () 
         expect(ReportBuilderService.excelCsv(null).slice(1)).toBe('sep=,\r\n');
     });
 
-    test('the scheduler attaches the wrapped body, not the raw CSV', () => {
+    test('the scheduler stores the wrapped body as the in-app copy, never an attachment', () => {
         const src = fs.readFileSync(
             path.join(__dirname, '..', '..', 'src', 'jobs', 'report-scheduler.js'),
             'utf8'
         );
         expect(src).toMatch(/ReportBuilderService\.excelCsv\(/);
-        expect(src).toMatch(/contentType: 'text\/csv; charset=utf-8'/);
-        // The old raw attachment is gone.
-        expect(src).not.toMatch(/content: csv \|\| 'no data'/);
+        // SA-38: the copy is kept in the app and served with the same charset.
+        expect(src).toMatch(/INSERT INTO report_schedule_runs/);
+        expect(src).not.toMatch(/attachments:/);
+        const ctl = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'src', 'controllers', 'ReportController.js'),
+            'utf8'
+        );
+        expect(ctl).toMatch(/'Content-Type', 'text\/csv; charset=utf-8'/);
     });
 
     test('the interactive download goes through the SAME helper', () => {

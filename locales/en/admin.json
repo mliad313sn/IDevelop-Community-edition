@@ -387,7 +387,7 @@
   "reason_optional": "Reason (optional)",
   "report_schedules": "Report Schedules",
   "report_builder": "Report Builder",
-  "schedules_help_html": "Email a saved report template automatically on a recurring schedule. Reports run with <strong>your</strong> data scope and are delivered as CSV attachments — ideal for compliance packs, weekly readiness reviews and site briefings.",
+  "schedules_help_html": "Run a saved report template automatically on a recurring schedule. The report runs with <strong>your</strong> data scope; it goes only to <strong>accounts</strong> whose clearance covers it, and the message carries only a <strong>link</strong> to the copy kept in the app, never an attachment. Copies are emptied after <code>reportRunRetentionDays</code> days (90 by default).",
   "new_schedule": "New schedule",
   "no_templates": "No saved report templates yet — build a report and save it as a template first.",
   "template": "Template",
@@ -3728,5 +3728,7 @@
   "set_sensitive_band_intro": "These switches decide whether sensitive data is collected and how people sign in. Each row says what switching it on or off does, and every change asks for confirmation.",
   "set_lc_toggle_confirm": "You are switching on features that process employees' nationality: the Nationality field on employee records, the Local content report and nationality-based analytics (diversity, bias detection). Nationality is sensitive data: make sure this processing rests on a legal basis and is mentioned in the privacy notice. Confirm?",
   "set_lc_toggle_confirm_title": "Switch nationality and local content on",
-  "mv_label_setup_link_emailed": "\"set my password\" link e-mailed"
+  "mv_label_setup_link_emailed": "\"set my password\" link e-mailed",
+  "set_name_reportRunRetentionDays": "Scheduled report copies retention (days)",
+  "set_desc_reportRunRetentionDays": "Days the content of a scheduled report copy is kept (1-365, default 90). Past it the copy is emptied; the row (date, schedule, row count) stays and its link answers \"copy expired\". A copy is also emptied when a person in its scope is erased."
 }

@@ -387,7 +387,7 @@
   "reason_optional": "Motif (facultatif)",
   "report_schedules": "Planifications de rapports",
   "report_builder": "Générateur de rapports",
-  "schedules_help_html": "Envoyez automatiquement par e-mail un modèle de rapport enregistré selon une planification récurrente. Les rapports s’exécutent avec <strong>votre</strong> périmètre de données et sont livrés en pièces jointes CSV — idéal pour les dossiers de conformité, les revues hebdomadaires de préparation et les briefings de site.",
+  "schedules_help_html": "Exécutez automatiquement un modèle de rapport enregistré selon une planification récurrente. Le rapport s’exécute avec <strong>votre</strong> périmètre de données ; il n’est envoyé qu’à des <strong>comptes</strong> dont l’habilitation le couvre, et le message ne contient qu’un <strong>lien</strong> vers la copie conservée dans l’application, jamais de pièce jointe. Les copies sont vidées après <code>reportRunRetentionDays</code> jours (90 par défaut).",
   "new_schedule": "Nouvelle planification",
   "no_templates": "Aucun modèle de rapport enregistré pour le moment — créez un rapport et enregistrez-le d’abord comme modèle.",
   "template": "Modèle",
@@ -3728,5 +3728,7 @@
   "set_sensitive_band_intro": "Ces interrupteurs décident si des données sensibles sont collectées et comment les personnes se connectent. Chaque ligne dit ce que fait l’activation ou la désactivation, et chaque changement demande une confirmation.",
   "set_lc_toggle_confirm": "Vous activez des fonctions qui traitent la nationalité des collaborateurs : champ Nationalité sur les fiches, rapport Contenu local et analyses par nationalité (diversité, détection de biais). La nationalité est une donnée sensible : vérifiez que ce traitement repose sur une base légale et qu’il est mentionné dans la notice d’information. Confirmer ?",
   "set_lc_toggle_confirm_title": "Activer la nationalité et le contenu local",
-  "mv_label_setup_link_emailed": "lien « définir mon mot de passe » envoyé par e-mail"
+  "mv_label_setup_link_emailed": "lien « définir mon mot de passe » envoyé par e-mail",
+  "set_name_reportRunRetentionDays": "Conservation des copies de rapports programmés (jours)",
+  "set_desc_reportRunRetentionDays": "Nombre de jours pendant lesquels le contenu d’une copie de rapport programmé est conservé (1 à 365, 90 par défaut). Passé ce délai la copie est vidée ; la ligne (date, planification, nombre de lignes) reste et son lien répond « copie expirée ». Une copie est aussi vidée quand une personne de son périmètre est effacée."
 }
