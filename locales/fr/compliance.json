@@ -416,6 +416,8 @@
   "cat_notificationSettings": "Réglages de notification (récapitulatif, langue des e-mails, agenda)",
   "cat_notificationCategoryPrefs": "Catégories de notification reçues par e-mail",
   "cat_dashboardScope": "Dernier périmètre choisi sur le tableau de bord (site ou département)",
+  "cat_personaDigests": "Récapitulatifs « Ce qui a changé » archivés (chiffres seuls)",
+  "cat_personaDigestPrefs": "Fréquence du récapitulatif « Ce qui a changé »",
   "cat_hrisLinks": "Identifiant dans le système RH",
   "av_engine_on": "Les justificatifs déposés sont analysés par {{engine}}.",
   "cat_deiConsents": "Consentements aux données de diversité",

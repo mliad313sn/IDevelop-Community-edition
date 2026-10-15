@@ -123,6 +123,11 @@ const KEEP = new Set([
     // Migration 185: each person's last dashboard scope, a screen preference
     // re-validated on every read, kept like the notification settings.
     'dashboard_scope_prefs',
+    // Migration 187: each person's digest cadence, kept like the notification
+    // settings. Migration 186: the KPI targets are governance decisions
+    // (append-only by trigger), kept like the report schedules.
+    'persona_digest_prefs',
+    'kpi_targets',
     'webhook_subscriptions',
     'lms_integrations',
     // HRIS sync (migration 160): the connector settings and the value mappings
@@ -209,6 +214,11 @@ const WIPE = new Set([
     'hris_links',
     'hris_sync_runs',
     'kpi_snapshots',
+    // Migration 186: alert states and transitions follow the figures they
+    // describe. Migration 187: the archived digests follow the notifications.
+    'kpi_alert_states',
+    'kpi_alert_events',
+    'persona_digests',
     // SAML replay protection (migration 145): short-lived operational state.
     'saml_request_cache',
     'saml_assertion_seen',

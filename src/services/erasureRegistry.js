@@ -142,6 +142,11 @@ const SUBJECT_DATA_REGISTRY = [
     // site or department, never free text). Their own screen preference:
     // exported, then gone with them. Administrator rows are not a data subject.
     red('dashboard_scope_prefs', 'user_id', 'dashboardScope'),
+    // Migration 187: the person's archived « What changed » digests (aggregates
+    // and unit ids, never a name) and their digest cadence. About the person
+    // only: exported, then gone with them. Administrator rows are not a subject.
+    red('persona_digests', 'user_id', 'personaDigests'),
+    red('persona_digest_prefs', 'user_id', 'personaDigestPrefs'),
     // The person's OWN notifications go (in-app and e-mail rows alike, with
     // their delivery state: email_status, email_attempts, next_attempt_at,
     // last_error, migration 182, and their measurement: event_id, ref_type,
@@ -718,6 +723,9 @@ const SUBJECT_DATA_REGISTRY = [
             '; free-text identifiers in details are redacted to the ref by a chained AUDIT_REDACTION entry'
     ),
     keep('job_runs', 'actor_ref', ACTOR),
+    // Migration 186: who decided a KPI target ('admin:<id>'). An administrator
+    // account, append-only by trigger; never an employee's own data.
+    keep('kpi_targets', 'set_by_ref', IMMUTABLE + '; the ref names an administrator account'),
 ];
 
 /**
@@ -766,6 +774,8 @@ const TABLES_WITHOUT_SUBJECT_COLUMN = {
     hris_value_mappings: ['config', 'HRIS value to org-unit mappings'],
     idp_actions: ['via', 'actions of the subject’s plans: registry scope entry'],
     idp_objectives: ['via', 'objectives of the subject’s plans: redacted with idpObjectives'],
+    kpi_alert_events: ['aggregate', 'KPI alert transitions per scope, figures only'],
+    kpi_alert_states: ['aggregate', 'current band of each KPI alert rule per scope'],
     kpi_snapshots: ['aggregate', 'KPI figures per scope and day'],
     lms_courses: ['config', 'course catalogue'],
     lms_integrations: ['config', 'LMS connector settings'],

@@ -139,7 +139,15 @@ const REDACTED_ON_ERASURE = [
             'is_account_active',
             'erased_at',
         ],
-        kept: ['id', 'role_id', 'site_id', 'department_id', 'service_id', 'cancelled_at'],
+        kept: [
+            'id',
+            'role_id',
+            'role_start_date',
+            'site_id',
+            'department_id',
+            'service_id',
+            'cancelled_at',
+        ],
     },
     // A-04 — les quatre catégories que l'effacement DÉTRUISAIT sans
     // que l'export les rende jamais, mesurées sur le sujet 138 : `username`
@@ -442,6 +450,32 @@ const REDACTED_ON_ERASURE = [
         erased: ['page', 'scope', 'updated_at'],
         kept: [],
     },
+    // « WHAT CHANGED » DIGESTS (migration 187): the person's archived digests
+    // (aggregates and unit ids, never a name) and their digest cadence. Deleted.
+    {
+        key: 'personaDigests',
+        table: 'persona_digests',
+        deleted: true,
+        erased: [
+            'id',
+            'persona',
+            'cadence',
+            'window_days',
+            'period_key',
+            'state',
+            'payload',
+            'opened_at',
+            'created_at',
+        ],
+        kept: [],
+    },
+    {
+        key: 'personaDigestPrefs',
+        table: 'persona_digest_prefs',
+        deleted: true,
+        erased: ['cadence', 'stepdown_at', 'stepdown_from', 'reactivated_at', 'updated_at'],
+        kept: [],
+    },
     {
         key: 'notificationSettings',
         table: 'notification_user_settings',
@@ -701,7 +735,7 @@ class DSRService {
         // divulguer serait une faille, pas une conformité.
         out.profile = await db
             .get(
-                `SELECT id, employee_number, username, first_name, last_name, email, phone, role_id, site_id, department_id, service_id,
+                `SELECT id, employee_number, username, first_name, last_name, email, phone, role_id, role_start_date, site_id, department_id, service_id,
                     external_id, auth_provider, is_active, is_account_active, cancelled_at, cancel_reason, erased_at
              FROM employees WHERE id = ?`,
                 [employeeId]
@@ -965,6 +999,22 @@ class DSRService {
             `SELECT page, scope, updated_at
                FROM dashboard_scope_prefs
               WHERE user_type = 'employee' AND user_id = ? ORDER BY page`,
+            [employeeId]
+        );
+        // The person's archived « What changed » digests and their cadence
+        // (migration 187): figures and unit ids only.
+        await q(
+            'personaDigests',
+            `SELECT id, persona, cadence, window_days, period_key, state, payload, opened_at, created_at
+               FROM persona_digests
+              WHERE user_type = 'employee' AND user_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'personaDigestPrefs',
+            `SELECT cadence, stepdown_at, stepdown_from, reactivated_at, updated_at
+               FROM persona_digest_prefs
+              WHERE user_type = 'employee' AND user_id = ?`,
             [employeeId]
         );
         await q(
@@ -1471,6 +1521,15 @@ class DSRService {
             // The person's last dashboard scope (migration 185).
             await db.run(
                 "DELETE FROM dashboard_scope_prefs WHERE user_type = 'employee' AND user_id = ?",
+                [employeeId]
+            );
+            // The person's archived digests and their digest cadence (migration 187).
+            await db.run(
+                "DELETE FROM persona_digests WHERE user_type = 'employee' AND user_id = ?",
+                [employeeId]
+            );
+            await db.run(
+                "DELETE FROM persona_digest_prefs WHERE user_type = 'employee' AND user_id = ?",
                 [employeeId]
             );
             // ---- EVERY OTHER REGISTERED COLUMN (erasureRegistry) -----------------

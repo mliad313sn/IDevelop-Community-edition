@@ -85,6 +85,8 @@ const DATA_CATEGORIES = [
     { key: 'notificationSettings', group: 'identity', audience: 'self_admins' },
     { key: 'notificationCategoryPrefs', group: 'identity', audience: 'self_admins' },
     { key: 'dashboardScope', group: 'identity', audience: 'self_admins' },
+    { key: 'personaDigests', group: 'identity', audience: 'self_admins' },
+    { key: 'personaDigestPrefs', group: 'identity', audience: 'self_admins' },
     { key: 'hrisLinks', group: 'identity', audience: 'self_admins' },
     { key: 'profilingObjections', group: 'privacy', audience: 'self_admins' },
     { key: 'privacyNoticeAcks', group: 'privacy', audience: 'self_admins' },

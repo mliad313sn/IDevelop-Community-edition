@@ -416,6 +416,8 @@
   "cat_notificationSettings": "Notification settings (summary, e-mail language, calendar)",
   "cat_notificationCategoryPrefs": "Notification categories received by e-mail",
   "cat_dashboardScope": "Last scope chosen on the dashboard (site or department)",
+  "cat_personaDigests": "Archived « What changed » digests (figures only)",
+  "cat_personaDigestPrefs": "« What changed » digest cadence",
   "cat_hrisLinks": "Identifier in the HR system",
   "av_engine_on": "Uploaded evidence is scanned by {{engine}}.",
   "cat_deiConsents": "Diversity data consents",
