@@ -20,7 +20,8 @@ const session = require('express-session');
 const { buildSessionStore } = require('./src/config/sessionStore');
 const { csrfSync } = require('csrf-sync');
 const helmet = require('helmet');
-const flash = require('express-flash');
+// In-house flash (same req.flash API as express-flash; never creates an anonymous session).
+const flash = require('./src/middleware/flash');
 const expressLayouts = require('express-ejs-layouts');
 const path = require('path');
 const fs = require('fs');
