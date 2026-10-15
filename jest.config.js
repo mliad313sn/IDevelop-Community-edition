@@ -1,8 +1,12 @@
 /** @type {import('jest').Config} */
 module.exports = {
     // The stock node environment plus __nativeRequire for ES-module dependencies
-    // (see tests/helpers/nativeEsmEnvironment.js).
-    testEnvironment: '<rootDir>/tests/helpers/nativeEsmEnvironment.js',
+    // (tests/helpers/nativeEsmEnvironment.js), extended so the suites that hit
+    // the real test database run ONE AT A TIME across workers (a PostgreSQL
+    // advisory lock, tests/helpers/dbSuiteEnvironment.js); unit suites stay
+    // parallel.
+    testEnvironment: '<rootDir>/tests/helpers/dbSuiteEnvironment.js',
+    setupFilesAfterEnv: ['<rootDir>/tests/helpers/dbSuiteLockSetup.js'],
     roots: ['<rootDir>/tests/unit', '<rootDir>/src'],
     testMatch: ['**/?(*.)+(test|spec).js'],
     testPathIgnorePatterns: ['/node_modules/', '/tests/e2e/'],

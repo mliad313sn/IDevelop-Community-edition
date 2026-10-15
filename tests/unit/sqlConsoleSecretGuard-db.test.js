@@ -14,9 +14,10 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 jest.mock('../../src/services/LogService', () => ({ log: jest.fn().mockResolvedValue(undefined) }));
 
+const { isTestDatabaseUrl } = require('../helpers/testDatabase');
 // Only ever the jest database; without it the catalog-backed cases degrade to
 // the lexical guard (a stub pool that fails) and the DB-only cases are skipped.
-const HAS_DB = /idevelop_test|idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''));
+const HAS_DB = isTestDatabaseUrl(process.env.DATABASE_URL);
 if (!HAS_DB) {
     jest.doMock('../../src/config/database', () => ({
         pool: {

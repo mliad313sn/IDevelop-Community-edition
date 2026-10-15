@@ -21,8 +21,9 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 const fs = require('fs');
 
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 // Runs against the opt-in fixture database (see CONTRIBUTING.md).
-const HAS_DB = /idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''));
+const HAS_DB = isFixturesDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 const db = HAS_DB ? require('../../src/config/database') : null;
 const MIGRATION = fs.readFileSync(

@@ -42,7 +42,7 @@ jest.mock('../../src/utils/branding', () => {
 const fs = require('fs');
 const path = require('path');
 const request = require('supertest');
-const { loadApp } = require('../helpers/c318/buildApp');
+const { loadApp, i18nReady } = require('../helpers/c318/buildApp');
 const { isJsonContentType } = require('../../src/middleware/jsonContentType');
 
 jest.setTimeout(60000);
@@ -58,7 +58,7 @@ beforeAll(async () => {
         /* key passthrough */
     }
     app = loadApp();
-    await new Promise((r) => setTimeout(r, 300)); // server.js's own i18n init
+    await i18nReady(); // server.js's own i18n middleware is live
 });
 afterAll(async () => {
     try {

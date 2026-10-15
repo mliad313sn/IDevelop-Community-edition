@@ -24,7 +24,8 @@ const fs = require('fs');
 const path = require('path');
 const request = require('supertest');
 
-const ENABLED = /idevelop_test|idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''));
+const { isTestDatabaseUrl } = require('../helpers/testDatabase');
+const ENABLED = isTestDatabaseUrl(process.env.DATABASE_URL);
 const d = ENABLED ? describe : describe.skip;
 jest.setTimeout(120000);
 
@@ -39,7 +40,7 @@ let localCookie;
 
 d('HRIS admin screen through the real app (rolled back)', () => {
     beforeAll(async () => {
-        const { loadApp, mintSession } = require('../helpers/c318/buildApp');
+        const { loadApp, i18nReady, mintSession } = require('../helpers/c318/buildApp');
         const storeState = require('../helpers/c318/sessionStoreMock').state;
         db = require('../../src/config/database');
         await db.connect();
@@ -50,7 +51,7 @@ d('HRIS admin screen through the real app (rolled back)', () => {
             /* key passthrough */
         }
         app = loadApp();
-        await new Promise((r) => setTimeout(r, 300));
+        await i18nReady(); // server.js's own i18n middleware is live
         const sa = await db.get(
             `SELECT id FROM admins WHERE role = 'superadmin' AND is_active = true ORDER BY id LIMIT 1`
         );
