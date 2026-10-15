@@ -101,7 +101,42 @@ project uses [Semantic Versioning](https://semver.org/).
   development dependency (SA-26).
 - Webhook-family settings (`webhook*`) are security-class (SuperAdmin only).
 
+### Security (audit log)
+
+- **Audit lines carry ids, not names** (audit SA-29). Sign-in, SSO, admin,
+  campaign, onboarding, account-link, e-mail and HRIS lines name people as
+  `employee:<id>` / `admin:<id>`; an unknown identifier typed at sign-in is kept
+  only as a keyed `fp:<10 hex>` fingerprint; a failed e-mail is logged with a
+  masked address. Whatever a caller writes, `LogService` replaces the row's own
+  subjects' names, logins and addresses by their ref, masks every other e-mail
+  address with a linear (ReDoS-safe) pattern and caps each logged string at
+  4 KB. The system-logs page, its CSV/JSON export and the employee journal
+  resolve the names when the log is read; an erased person reads "Erased person
+  #id" in the reader's language. The actor filter still finds a person by name.
+- **Erasure reaches the audit log**: inside the erasure transaction, the
+  person's names, login and addresses (including older addresses recorded
+  against them) are replaced by their ref; a chained `AUDIT_REDACTION` entry
+  vouches for each changed row, which keeps its original hash. The erasure fails
+  if this fails.
+- **Seals, retention and one verifier** (SA-30): one `AUDIT_SEAL` entry per
+  complete month; rows older than `auditLogRetentionYears` (new SuperAdmin
+  setting, 1-10 years, default 5) are deleted by whole sealed months only,
+  never a seal, redaction or purge entry, never a row about a person under
+  legal hold, and only when the chain verifies (`audit-retention.tick`, daily
+  after `AUDIT_RETENTION_HOUR`, default 2). `GET /v2/cap/audit/verify` and the
+  new « Verify integrity » button of the system-logs page (SuperAdmin) use one
+  verifier in the database that follows the hash links: historic forks left by
+  the old id/lock race are reported as benign, any other change is flagged. The
+  chain trigger now draws the row id under its lock.
+- The redaction and purge functions are not executable by `PUBLIC` (so not by
+  the SQL console's read role), and the SQL console refuses them and the
+  `idevelop.audit_*` settings that open the path.
+
 ### Fixed
+
+- An ordinary employee sign-in no longer leaves a spurious "unknown
+  identifier" `LOGIN_FAILED` row; a failure is written once, when both the
+  admin and the employee lookups miss (SA-31).
 
 - A random production secret containing a year-like digit run (about 9 % of
   64-hex values) was refused and the service boot-looped; the year test now
@@ -135,6 +170,12 @@ project uses [Semantic Versioning](https://semver.org/).
   migration that adds a table, a view or a column ends with
   `SELECT public.fn_console_reader_sync();` (checked by a test).
 - **Migration 169** renames a legacy audit-trail owner role.
+- **Migration 170** adds the audit-log redaction, seal, sealed-purge and verify
+  functions (`fn_system_logs_*`), lets `block_mutation()` through only on those
+  vouched paths, draws the chain id under the advisory lock, indexes the chain
+  links and seeds `auditLogRetentionYears`. No existing row is rewritten. It was
+  rehearsed on a populated copy (about 30 000 chained rows over seven years,
+  pre-chain rows and historic forks): the chain verified before and after.
 
 ### Tests
 
@@ -145,6 +186,9 @@ project uses [Semantic Versioning](https://semver.org/).
   never on a substring of `DATABASE_URL`.
 - Real-app suites wait for the server's i18n middleware (`i18nReady()`) instead
   of a fixed sleep; dead skipped placeholders are removed.
+- Audit log: `auditIdsOnly`, `auditSsoIdsOnly`, `auditLoginFailedOnce`,
+  `auditLogLinearScrub`, and the database suites
+  `auditChainRedactionSealPurge-db` and `auditErasureNeedles-db`.
 
 ### Security (CSRF on uploads, SSO notices, security panels)
 
