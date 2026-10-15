@@ -211,7 +211,7 @@ describe('Test sign-in explains refusals too', () => {
         expect(s).toMatch(/SsoTest\.setResult\(testTok\.nonce, \{\s*ok: false,\s*code/);
     });
     test('a library-level rejection (signature, InResponseTo) during a test is reported too', () => {
-        expect(code('src/controllers/SsoController.js')).toMatch(/code: 'sso_saml_invalid'/);
+        expect(code('src/controllers/SsoController.js')).toMatch(/code: samlRefusalCode\(err\),/);
     });
     test('every refusal code has a translated explanation', () => {
         for (const lng of ['fr', 'en']) {

@@ -52,6 +52,36 @@ function authAudit(req, action, details, adminId = null) {
     }
 }
 
+/**
+ * A SAML response refused by the library used to read only "the response was
+ * rejected (signature, certificate, audience or validity)". Maps node-saml's
+ * message to a code that the test-result page and the SSO_ERROR audit line
+ * explain with the next step (admin:ssof_fail_<code>, FR/EN). The usual Entra
+ * cause, a Signing Option that leaves the response envelope unsigned while this
+ * application requires it signed, gets its own name.
+ */
+function samlRefusalCode(err) {
+    const m = String((err && err.message) || err || '');
+    if (/signature/i.test(m)) return 'sso_saml_signature';
+    if (/audience/i.test(m)) return 'sso_saml_audience';
+    if (/issuer/i.test(m)) return 'sso_issuer';
+    // A malformed timestamp ("Error parsing NotBefore: 'x' is not a valid date")
+    // is a broken response, not a clock problem.
+    if (/Error parsing (NotBefore|NotOnOrAfter)/i.test(m)) return 'sso_saml_invalid';
+    // node-saml's time refusals: "SAML assertion not yet valid" (this server's
+    // clock is BEHIND the IdP), "SAML assertion expired: clocks skewed too much" /
+    // "...: assertion too old", "No valid subject confirmation found among those
+    // available in the SAML assertion" (every SubjectConfirmationData out of time).
+    if (
+        /not yet valid|NotBefore|NotOnOrAfter|expired|too early|too old|clock|subject ?confirmation/i.test(
+            m
+        )
+    )
+        return 'sso_saml_clock';
+    if (/InResponseTo/i.test(m)) return 'sso_saml_inresponseto';
+    return 'sso_saml_invalid';
+}
+
 class SsoController {
     /** Kick off the chosen provider's redirect. */
     initiate(req, res, next) {
@@ -106,7 +136,7 @@ class SsoController {
                 if (t) {
                     SsoTest.setResult(t.nonce, {
                         ok: false,
-                        code: 'sso_saml_invalid',
+                        code: samlRefusalCode(err),
                         detail: String(err.message || err),
                     });
                     authAudit(
@@ -121,7 +151,7 @@ class SsoController {
                 authAudit(
                     req,
                     'SSO_ERROR',
-                    `SSO sign-in error via ${provider.key}: ${err.message || err}`
+                    `SSO sign-in error via ${provider.key}: ${err.message || err} [${samlRefusalCode(err)}]`
                 );
                 return flashAndLogin(req, res, 'flash:sso_failed', FB_FAILED);
             }
@@ -898,3 +928,4 @@ controller.issueEnrolCode = async function issueEnrolCode(req, res) {
     return res.redirect(`/admins/${Number(req.params.id)}`);
 };
 module.exports = controller;
+module.exports._samlRefusalCode = samlRefusalCode;
