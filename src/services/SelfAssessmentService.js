@@ -342,9 +342,48 @@ class SelfAssessmentService {
         supervisorNotes = null,
         req = null
     ) {
+        // SA-42: the former supervisor console was the one door that decided a
+        // review without any of the workflow's guards. It completed reviews that
+        // were already decided, revived cancelled or rejected rounds and
+        // overwrote disputed ones. A decision is now accepted only on a review
+        // still waiting ('pending'), on a round still awaiting its supervisor
+        // ('submitted' or 'under_review', checked again atomically below) and
+        // with a level on the 0-4 scale. Each refusal carries an HTTP status and
+        // a catalogue key, so the controller answers 400, 404 or 409 in the
+        // reader's language instead of a generic 500.
+        const refuse = (message, status, key) => {
+            const e = new Error(message);
+            e.status = status;
+            e.i18n = { key };
+            return e;
+        };
+        const level = Number(supervisorRatedLevel);
+        if (
+            supervisorRatedLevel === null ||
+            supervisorRatedLevel === undefined ||
+            supervisorRatedLevel === '' ||
+            !Number.isInteger(level) ||
+            level < 0 ||
+            level > 4
+        ) {
+            throw refuse(
+                'The validated level must be a whole number from 0 to 4.',
+                400,
+                'assess:svr_err_level_range'
+            );
+        }
+        supervisorRatedLevel = level;
+
         const review = await SupervisorReviewModel.findById(reviewId);
         if (!review) {
-            throw new Error('Review not found');
+            throw refuse('Review not found', 404, 'assess:svr_err_review_not_found');
+        }
+        if (String(review.status || '').toLowerCase() !== 'pending') {
+            throw refuse(
+                'This review has already been decided or closed.',
+                409,
+                'assess:svr_err_review_not_pending'
+            );
         }
 
         // THE ROUND THIS REVIEW JUDGED — read from `self_assessment_rounds`, not
@@ -367,13 +406,29 @@ class SelfAssessmentService {
         const selfAssessment = await db.get(
             `SELECT id, employee_id AS "employeeId", skill_id AS "skillId",
                     self_rated_level AS "selfRatedLevel", notes,
-                    superseded_at AS "supersededAt"
+                    superseded_at AS "supersededAt", workflow_state AS "workflowState"
                FROM self_assessment_rounds WHERE id = ?`,
             [review.selfAssessmentId]
         );
         // Still absent → say so in words. Never a TypeError, never a 500.
         if (!selfAssessment) {
-            throw new Error('The self-assessment this review was raised on no longer exists.');
+            throw refuse(
+                'The self-assessment this review was raised on no longer exists.',
+                404,
+                'assess:svr_err_round_missing'
+            );
+        }
+        // Only a round still awaiting its supervisor can be decided here. A
+        // cancelled, rejected, approved, disputed or draft round is refused,
+        // never revived: nothing changes state without its own transition.
+        const REVIEWABLE = ['submitted', 'under_review'];
+        const fromState = selfAssessment.workflowState || null;
+        if (!REVIEWABLE.includes(fromState)) {
+            throw refuse(
+                `This self-assessment is not awaiting review (state: ${fromState}).`,
+                409,
+                'assess:svr_err_round_not_reviewable'
+            );
         }
         const gap = await this.calculateGap(selfAssessment.selfRatedLevel, supervisorRatedLevel);
 
@@ -390,6 +445,30 @@ class SelfAssessmentService {
         // previously left supervisor_reviews='completed' while the assessment
         // stayed in the review queue (dual state-machine desync).
         await db.runTransaction(async () => {
+            // Guarded advance first, the same optimistic guard as the workflow's
+            // `_setState(..., guardFrom)`: the UPDATE only applies while the
+            // round is still 'submitted' or 'under_review'. It targets the rounds
+            // table, not the `self_assessments` view, so a round replaced by a
+            // later campaign can still be decided. The row lock serialises two
+            // concurrent completions: the second one matches no row and is
+            // refused, and nothing is written twice.
+            const advanced = await db.run(
+                `UPDATE self_assessment_rounds
+                    SET status = 'reviewed', workflow_state = 'reviewed',
+                        reviewed_at = now(), reviewed_by = ?
+                  WHERE id = ? AND workflow_state IN ('submitted', 'under_review')`,
+                [review.reviewedBy || null, review.selfAssessmentId]
+            );
+            if ((advanced.changes ?? advanced.rowCount ?? 0) === 0) {
+                const e = refuse(
+                    'The self-assessment this review was raised on could not be updated: it was already actioned.',
+                    409,
+                    'assess:acr_err_stale_state'
+                );
+                e.code = 'STALE_STATE';
+                throw e;
+            }
+
             await SupervisorReviewModel.update(reviewId, {
                 supervisorRatedLevel,
                 gap,
@@ -399,26 +478,12 @@ class SelfAssessmentService {
                 reviewedAt: new Date().toISOString(),
             });
 
-            // Legacy `status` + V2 `workflow_state` MUST advance together — and
-            // they must advance ON THE ROUND THAT WAS JUDGED.
-            // `SelfAssessmentModel.update` writes through the `self_assessments`
-            // VIEW: for a replaced round that UPDATE matched ZERO rows and said
-            // nothing, so the review flipped to 'completed' while the measurement
-            // it decided stayed 'submitted' for ever — the two records disagreeing
-            // about the same fact, silently. A write that touches no row is not a
-            // success: the `changes` check below turns it into a refusal.
-            const advanced = await db.run(
-                `UPDATE self_assessment_rounds
-                    SET status = 'reviewed', workflow_state = 'reviewed',
-                        reviewed_at = now(), reviewed_by = ?
-                  WHERE id = ?`,
-                [review.reviewedBy || null, review.selfAssessmentId]
-            );
-            if ((advanced.changes ?? advanced.rowCount ?? 0) === 0) {
-                throw new Error(
-                    'The self-assessment this review was raised on could not be updated.'
-                );
-            }
+            // Legacy `status` + V2 `workflow_state` advance together, on the
+            // round that was judged (the guarded advance above). Writing through
+            // the `self_assessments` view matched no row for a replaced round,
+            // so the review flipped to 'completed' while the measurement it
+            // decided stayed 'submitted' for ever. A write that touches no row is
+            // not a success: the `changes` check above turns it into a refusal.
 
             // …and so must the AUDIT TRAIL. The V2 workflow writes a
             // self_assessment_events row for every transition; this V1 console
@@ -430,10 +495,13 @@ class SelfAssessmentService {
             await db.run(
                 `INSERT INTO self_assessment_events
                      (self_assessment_id, actor_id, actor_type, action, from_state, to_state, detail)
-                 VALUES (?, ?, 'supervisor', 'review_completed', 'submitted', 'reviewed', ?)`,
+                 VALUES (?, ?, 'supervisor', 'review_completed', ?, 'reviewed', ?)`,
                 [
                     review.selfAssessmentId,
                     review.reviewedBy || null,
+                    // The state the round was really in ('submitted' or
+                    // 'under_review'), not a constant.
+                    fromState,
                     JSON.stringify({
                         supervisorRatedLevel,
                         gap,

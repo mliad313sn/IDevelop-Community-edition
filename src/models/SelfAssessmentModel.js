@@ -54,10 +54,15 @@ class SelfAssessmentModel extends BaseModel {
         // supervisor-review tables, while `workflow_state` drives the V2 review
         // queue (reviewQueue filters workflow_state <> 'draft'). Without the
         // second SET, submissions never appear in the manager's queue.
+        //
+        // `submittedAt` is the FIRST submission of the round: a new submission
+        // after changes were requested, or after a SuperAdmin reset, no longer
+        // overwrites it (COALESCE). Every later submission is dated by its own
+        // self_assessment_events row ('submit'), so nothing is lost.
         return await db.run(
             `
             UPDATE selfAssessments
-            SET status = 'submitted', submittedAt = CURRENT_TIMESTAMP,
+            SET status = 'submitted', submittedAt = COALESCE(submittedAt, CURRENT_TIMESTAMP),
                 workflow_state = CASE WHEN workflow_state IN ('draft', 'changes_requested')
                                       THEN 'submitted' ELSE workflow_state END
             WHERE employeeId = ? AND status = 'draft' AND selfRatedLevel IS NOT NULL

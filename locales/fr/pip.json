@@ -43,5 +43,6 @@
   "tasks_reason_prompt": "Motif écrit (obligatoire) — pourquoi ouvrir un plan d’amélioration pour cette personne ?",
   "tasks_dismiss_prompt": "Motif écrit (obligatoire) — pourquoi aucun plan n’est-il nécessaire ?",
   "withdraw": "Retirer le plan",
-  "withdraw_prompt": "Motif écrit (obligatoire) — pourquoi ce plan est-il retiré ? Un retrait n’est pas un échec."
+  "withdraw_prompt": "Motif écrit (obligatoire) — pourquoi ce plan est-il retiré ? Un retrait n’est pas un échec.",
+  "err_close_not_active": "Ce plan n’a jamais été activé : il ne peut donc pas être clôturé comme atteint ou non atteint. Retirez-le plutôt, avec un motif."
 }

@@ -453,7 +453,19 @@ describe('F3 — a terminal arbitration finalises the supervisor review', () => 
 
     test('a plain hold (no outcome → arbitration) decides nothing on the review', async () => {
         wireWorkflow({ state: 'submitted' });
+        // The neutral "arbitration" outcome only exists to settle an open
+        // dispute: without one it is refused and nothing is written (SA-42).
+        await expect(WF.arbitrate(555, mgrUser, { note: 'looking into it' })).rejects.toThrow(
+            /without an open dispute/
+        );
+        expect(stateUpdate()).toBeUndefined();
+        // With an open dispute on the review, the hold is taken and still decides nothing.
+        const base = mockDb.get.getMockImplementation();
+        mockDb.get.mockImplementation(async (sql, p) =>
+            /FROM assessment_disputes ad/.test(sql) ? { id: 31 } : base(sql, p)
+        );
         await WF.arbitrate(555, mgrUser, { note: 'looking into it' });
+        expect(stateUpdate()[1][0]).toBe('arbitration');
         expect(reviewFinalisation()).toHaveLength(0);
         expect(mockSkill.upsert).not.toHaveBeenCalled();
     });

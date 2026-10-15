@@ -1280,5 +1280,6 @@
   "nb_mv_err_justification_required": "Un changement de case demande un motif écrit d’au moins {{min}} caractères.",
   "nb_mv_employee_line": "Depuis votre positionnement précédent :",
   "nb_mv_err_justification_placeholder": "Écrivez une vraie phrase : des espaces, de la ponctuation ou un même caractère répété ne sont pas un motif.",
-  "nb_mv_err_justification_copy": "Ce motif reprend mot pour mot le précédent pour cette personne : expliquez ce changement-ci."
+  "nb_mv_err_justification_copy": "Ce motif reprend mot pour mot le précédent pour cette personne : expliquez ce changement-ci.",
+  "legacy_write_retired": "Cette ancienne écriture de la 9-box est retirée. Positionnez ou déplacez une personne, avec une justification, dans la 9-box : /talent/nine-box."
 }

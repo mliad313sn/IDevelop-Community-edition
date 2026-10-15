@@ -1280,5 +1280,6 @@
   "nb_mv_err_justification_required": "A box change needs a written reason of at least {{min}} characters.",
   "nb_mv_employee_line": "Since your previous placement:",
   "nb_mv_err_justification_placeholder": "Write a real sentence: spaces, punctuation or one repeated character are not a reason.",
-  "nb_mv_err_justification_copy": "This reason is word for word the previous one for this person: explain this change."
+  "nb_mv_err_justification_copy": "This reason is word for word the previous one for this person: explain this change.",
+  "legacy_write_retired": "This former 9-box write is retired. Place or move a person, with a justification, in the 9-box: /talent/nine-box."
 }

@@ -120,7 +120,8 @@ describe('the V1 console leaves a trail and actually completes (L1-10 + the FK d
     const svc = read('src/services/SelfAssessmentService.js');
 
     test('a workflow event is written', () => {
-        expect(svc).toMatch(/'review_completed', 'submitted', 'reviewed'/);
+        // The trail records the real from-state (SA-42).
+        expect(svc).toMatch(/'review_completed', \?, 'reviewed'/);
         expect(svc).toMatch(/via: 'v1_supervisor_console'/);
     });
 

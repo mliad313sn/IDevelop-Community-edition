@@ -619,43 +619,51 @@ class SelfAssessmentWorkflowService {
         // guardFrom = the source states checked above: a stale request-changes
         // must not pull an assessment another reviewer has since APPROVED back
         // to the employee (measured: approved → changes_requested, status draft).
-        await this._setState(
-            selfAssessmentId,
-            'changes_requested',
-            reopenApproved
-                ? // Un-approve: the approval stamp and the finalised lock go, so the
-                  // cycle roster and the IDP generator stop treating it as decided.
-                  // `approved_by_ref` follows `approved_by`: the approval it named no
-                  // longer stands, and the trail keeps who it was (migration 116).
-                  {
-                      status: 'draft',
-                      approved_by: null,
-                      approved_by_ref: null,
-                      approved_at: null,
-                      locked_state: 'provisional',
-                  }
-                : { status: 'draft' },
-            sources,
-            { cycleId: sa.cycleId, req }
-        );
-        if (comment) await this.addComment(selfAssessmentId, user, comment, null, auth);
-        await db.run(
-            reopenApproved
-                ? // The review that approved it is reopened too, or the supervisor
-                  // console would show a decided review over an assessment that is
-                  // back in the employee's hands.
-                  `UPDATE supervisor_reviews SET decision='request_changes', status='pending', decided_at=now() WHERE self_assessment_id=?`
-                : `UPDATE supervisor_reviews SET decision='request_changes', decided_at=now() WHERE self_assessment_id=?`,
-            [selfAssessmentId]
-        );
-        await this._event(
-            selfAssessmentId,
-            auth,
-            reopenApproved ? 'reopen_after_approval' : 'request_changes',
-            sa.workflowState,
-            'changes_requested',
-            { comment: comment || null, ...(reopenApproved ? { superadminOverride: true } : {}) }
-        );
+        // State, comment, review row and event commit together (SA-42): a failure
+        // half-way left 'changes_requested' with no event, or a review still
+        // 'pending' over an assessment back in the employee's hands.
+        await db.runTransaction(async () => {
+            await this._setState(
+                selfAssessmentId,
+                'changes_requested',
+                reopenApproved
+                    ? // Un-approve: the approval stamp and the finalised lock go, so the
+                      // cycle roster and the IDP generator stop treating it as decided.
+                      // `approved_by_ref` follows `approved_by`: the approval it named no
+                      // longer stands, and the trail keeps who it was (migration 116).
+                      {
+                          status: 'draft',
+                          approved_by: null,
+                          approved_by_ref: null,
+                          approved_at: null,
+                          locked_state: 'provisional',
+                      }
+                    : { status: 'draft' },
+                sources,
+                { cycleId: sa.cycleId, req }
+            );
+            if (comment) await this.addComment(selfAssessmentId, user, comment, null, auth);
+            await db.run(
+                reopenApproved
+                    ? // The review that approved it is reopened too, or the supervisor
+                      // console would show a decided review over an assessment that is
+                      // back in the employee's hands.
+                      `UPDATE supervisor_reviews SET decision='request_changes', status='pending', decided_at=now() WHERE self_assessment_id=?`
+                    : `UPDATE supervisor_reviews SET decision='request_changes', decided_at=now() WHERE self_assessment_id=?`,
+                [selfAssessmentId]
+            );
+            await this._event(
+                selfAssessmentId,
+                auth,
+                reopenApproved ? 'reopen_after_approval' : 'request_changes',
+                sa.workflowState,
+                'changes_requested',
+                {
+                    comment: comment || null,
+                    ...(reopenApproved ? { superadminOverride: true } : {}),
+                }
+            );
+        });
         await this._audit(
             req,
             reopenApproved ? 'SA_REOPENED_AFTER_APPROVAL' : 'SA_REQUEST_CHANGES',
@@ -732,25 +740,34 @@ class SelfAssessmentWorkflowService {
         // Legacy `status` back in lockstep: 'submitted' is what the pending-
         // review queries select on, so the file reappears in the queue. guardFrom
         // = the states checked above (a concurrent approve wins → STALE_STATE).
-        await this._setState(selfAssessmentId, 'submitted', { status: 'submitted' }, WITHDRAWABLE, {
-            cycleId: sa.cycleId,
-            req,
+        // State, review reset and event commit together (SA-42).
+        await db.runTransaction(async () => {
+            await this._setState(
+                selfAssessmentId,
+                'submitted',
+                { status: 'submitted' },
+                WITHDRAWABLE,
+                {
+                    cycleId: sa.cycleId,
+                    req,
+                }
+            );
+            await db.run(
+                `UPDATE supervisor_reviews
+                    SET status = 'pending', decision = NULL, recommendation = NULL, decided_at = NULL,
+                        supervisor_rated_level = NULL, gap = NULL, gap_reason = NULL, reviewed_at = NULL
+                  WHERE self_assessment_id = ?`,
+                [selfAssessmentId]
+            );
+            await this._event(
+                selfAssessmentId,
+                auth,
+                'review_withdrawn',
+                sa.workflowState,
+                'submitted',
+                { superadminOverride: true, reason: why, priorReview: prior || null }
+            );
         });
-        await db.run(
-            `UPDATE supervisor_reviews
-                SET status = 'pending', decision = NULL, recommendation = NULL, decided_at = NULL,
-                    supervisor_rated_level = NULL, gap = NULL, gap_reason = NULL, reviewed_at = NULL
-              WHERE self_assessment_id = ?`,
-            [selfAssessmentId]
-        );
-        await this._event(
-            selfAssessmentId,
-            auth,
-            'review_withdrawn',
-            sa.workflowState,
-            'submitted',
-            { superadminOverride: true, reason: why, priorReview: prior || null }
-        );
         await this._audit(
             req,
             'SA_REVIEW_WITHDRAWN',
@@ -1147,13 +1164,21 @@ class SelfAssessmentWorkflowService {
      * and travels everywhere.
      */
     async _promoteToSkillAssessment(sa, user, auth, level = null) {
+        // Both best-effort blocks run inside a SAVEPOINT (SA-42). They are called
+        // from inside the approval transaction: a failed statement there used to
+        // be swallowed by the catch while PostgreSQL had already aborted the
+        // whole transaction, so every statement after it (event, review
+        // finalisation, commit) failed with "current transaction is aborted".
+        const sp = (fn) => (typeof db.runInSavepoint === 'function' ? db.runInSavepoint(fn) : fn());
         try {
             if (level == null && sa && sa.id != null) {
-                const review = await db.get(
-                    `SELECT supervisor_rated_level AS "lvl" FROM supervisor_reviews
+                const review = await sp(() =>
+                    db.get(
+                        `SELECT supervisor_rated_level AS "lvl" FROM supervisor_reviews
                       WHERE self_assessment_id = ? AND supervisor_rated_level IS NOT NULL
                       ORDER BY id DESC LIMIT 1`,
-                    [sa.id]
+                        [sa.id]
+                    )
                 );
                 if (review && review.lvl != null) level = Number(review.lvl);
             }
@@ -1161,35 +1186,37 @@ class SelfAssessmentWorkflowService {
             /* fall through to the self-rating rather than blocking the approval */
         }
         try {
-            const SkillAssessmentModel = require('../models/SkillAssessmentModel');
-            // skill_assessments.assessed_by references admins(id) — a supervisor/
-            // manager is an EMPLOYEE, so attribute to the acting admin when one is
-            // acting, otherwise to the default system admin.
-            let assessedBy = auth && auth.isAdmin && user && user.id ? user.id : null;
-            if (!assessedBy) {
-                const a =
-                    (await db.get(
-                        "SELECT id FROM admins WHERE username = 'admin' AND is_active = true LIMIT 1"
-                    )) || (await db.get('SELECT id FROM admins ORDER BY id LIMIT 1'));
-                assessedBy = a ? a.id : null;
-            }
-            if (!assessedBy) return; // nothing valid to attribute to — skip, don't fail
-            // Re-validate the 0–4 range at promotion time: a row created by any other
-            // path (import/legacy/direct SQL) must not push an invalid level into the
-            // official skill profile (which feeds readiness, gaps and the 9-box).
-            const lvl = Number(level != null ? level : sa.selfRatedLevel);
-            if (!Number.isInteger(lvl) || lvl < 0 || lvl > 4) return;
-            await SkillAssessmentModel.upsert({
-                employeeId: sa.employeeId,
-                skillId: sa.skillId,
-                currentLevel: lvl,
-                assessedBy,
-                notes:
-                    level != null
-                        ? 'Set from supervisor-validated rating'
-                        : 'Set from approved self-assessment',
-                // Promoted by an approval: a reviewer decided this level.
-                validation: 'manager_validated',
+            await sp(async () => {
+                const SkillAssessmentModel = require('../models/SkillAssessmentModel');
+                // skill_assessments.assessed_by references admins(id) — a supervisor/
+                // manager is an EMPLOYEE, so attribute to the acting admin when one is
+                // acting, otherwise to the default system admin.
+                let assessedBy = auth && auth.isAdmin && user && user.id ? user.id : null;
+                if (!assessedBy) {
+                    const a =
+                        (await db.get(
+                            "SELECT id FROM admins WHERE username = 'admin' AND is_active = true LIMIT 1"
+                        )) || (await db.get('SELECT id FROM admins ORDER BY id LIMIT 1'));
+                    assessedBy = a ? a.id : null;
+                }
+                if (!assessedBy) return; // nothing valid to attribute to — skip, don't fail
+                // Re-validate the 0–4 range at promotion time: a row created by any other
+                // path (import/legacy/direct SQL) must not push an invalid level into the
+                // official skill profile (which feeds readiness, gaps and the 9-box).
+                const lvl = Number(level != null ? level : sa.selfRatedLevel);
+                if (!Number.isInteger(lvl) || lvl < 0 || lvl > 4) return;
+                await SkillAssessmentModel.upsert({
+                    employeeId: sa.employeeId,
+                    skillId: sa.skillId,
+                    currentLevel: lvl,
+                    assessedBy,
+                    notes:
+                        level != null
+                            ? 'Set from supervisor-validated rating'
+                            : 'Set from approved self-assessment',
+                    // Promoted by an approval: a reviewer decided this level.
+                    validation: 'manager_validated',
+                });
             });
         } catch (_) {
             /* never block an approval on the skill-profile update */
@@ -1500,6 +1527,34 @@ class SelfAssessmentWorkflowService {
             );
         const toState =
             outcome === 'approve' ? 'approved' : outcome === 'reject' ? 'rejected' : 'arbitration';
+        // A rejection decided in arbitration is an unfavourable decision: it
+        // carries its reason, as reject() and a refused change request do. The
+        // reason is the arbitration note (SA-42).
+        const why = String(note == null ? '' : note).trim();
+        if (toState === 'rejected' && !why)
+            throw say(
+                new Error('A reason is required to reject an assessment in arbitration.'),
+                'assess:saw_err_arbitrate_reject_reason'
+            );
+        // The neutral outcome ("in arbitration") only exists to settle a dispute.
+        // Without an open dispute (open or escalated) on this assessment's review
+        // it froze the measurement in a disputed state nobody had opened.
+        if (toState === 'arbitration') {
+            const open = await db.get(
+                `SELECT ad.id FROM assessment_disputes ad
+                   JOIN supervisor_reviews sr ON sr.id = ad.supervisor_review_id
+                  WHERE sr.self_assessment_id = ? AND ad.state IN ('open', 'escalated')
+                  LIMIT 1`,
+                [selfAssessmentId]
+            );
+            if (!open)
+                throw say(
+                    new Error(
+                        `Cannot move to arbitration from '${sa.workflowState}' without an open dispute`
+                    ),
+                    'assess:saw_err_arbitrate_no_dispute'
+                );
+        }
         // Une issue « approuvée » est une validation : elle nomme son auteur.
         const actorRef = this._actorRef(auth, user);
         if (toState === 'approved' && !actorRef)
@@ -1539,6 +1594,12 @@ class SelfAssessmentWorkflowService {
             });
         });
         await this._audit(req, 'SA_ARBITRATE', selfAssessmentId, `manager arbitrated → ${toState}`);
+        // The employee learns the outcome of an arbitration that decides their
+        // measurement, as on the approve and reject paths.
+        if (toState === 'approved')
+            await this._notifyEmployee(sa, 'sa.approved', { via: 'arbitration' });
+        else if (toState === 'rejected')
+            await this._notifyEmployee(sa, 'sa.rejected', { reason: why, via: 'arbitration' });
         return this.getAssessment(selfAssessmentId);
     }
 

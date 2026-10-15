@@ -148,7 +148,7 @@ describe('notifications no longer race on the transaction client (L2-5)', () => 
         expect(p).toMatch(/if \(!row\) return false;/);
         const route = read('src/routes/v2-pip.js');
         expect(route).toMatch(
-            /const activated = await PipService\.activate\(Number\(req\.params\.id\)\)/
+            /const activated = await PipService\.activate\(Number\(req\.params\.id\)/
         );
         expect(route).toMatch(/if \(!activated\) \{/);
     });

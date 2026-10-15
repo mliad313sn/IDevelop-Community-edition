@@ -141,5 +141,13 @@
   "saw_err_comment_empty": "A comment cannot be empty.",
   "saw_err_comment_not_authorized": "You are not authorized to comment on this assessment.",
   "saw_err_view_not_authorized": "You are not authorized to view this assessment.",
-  "saw_err_timeline_not_authorized": "You are not authorized to view this timeline."
+  "saw_err_timeline_not_authorized": "You are not authorized to view this timeline.",
+  "svr_err_level_range": "The validated level must be a whole number from 0 to 4.",
+  "svr_err_review_not_found": "This review cannot be found.",
+  "svr_err_review_not_pending": "This review has already been decided or closed.",
+  "svr_err_round_missing": "The self-assessment this review was raised on no longer exists.",
+  "svr_err_round_not_reviewable": "This self-assessment is no longer awaiting review: it cannot be decided here.",
+  "svr_err_complete_failed": "The review could not be saved. Please try again.",
+  "saw_err_arbitrate_reject_reason": "A reason is required to reject an assessment in arbitration.",
+  "saw_err_arbitrate_no_dispute": "An assessment can only be placed in arbitration while a dispute is open on its review."
 }
