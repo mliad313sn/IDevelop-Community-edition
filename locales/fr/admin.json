@@ -3794,5 +3794,9 @@
   "mv_kind_assessment_reset": "Auto-évaluation remise à refaire (maintenance)",
   "apik_feed_readiness_v2": "préparation au poste par personne, en quatre états (prêt, non prêt, partiellement évalué, non évalué) : le même chiffre que les rapports",
   "set_name_personaDigestsEnabled": "Récapitulatifs « Ce qui a changé »",
-  "set_desc_personaDigestsEnabled": "Envoyer les récapitulatifs « Ce qui a changé » : aux administrateurs, les évolutions de leur périmètre et ce qui reste à faire ; aux collaborateurs, leur prochaine étape dans l'application. Désactivé par défaut ; chacun choisit la fréquence dans « Mes récapitulatifs ». Les récapitulatifs manager et département ne changent pas."
+  "set_desc_personaDigestsEnabled": "Envoyer les récapitulatifs « Ce qui a changé » : aux administrateurs, les évolutions de leur périmètre et ce qui reste à faire ; aux collaborateurs, leur prochaine étape dans l'application. Désactivé par défaut ; chacun choisit la fréquence dans « Mes récapitulatifs ». Les récapitulatifs manager et département ne changent pas.",
+  "enum_admin_role_regional_admin": "Administrateur régional (réservé)",
+  "enum_admin_role_country_admin": "Administrateur pays (réservé)",
+  "enum_admin_role_site_admin": "Administrateur de site (réservé)",
+  "enum_admin_role_hr_bp": "Partenaire RH (réservé)"
 }

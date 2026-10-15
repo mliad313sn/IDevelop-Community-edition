@@ -53,7 +53,7 @@
   "se_site": "Site",
   "se_headcount": "Headcount",
   "se_measured": "Measured",
-  "se_readiness": "Readiness",
+  "se_readiness": "Average readiness",
   "se_coverage": "Coverage",
   "se_sole_holders": "Sole holders",
   "se_no_qualified": "No one qualified",

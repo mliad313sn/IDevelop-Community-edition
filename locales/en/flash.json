@@ -401,5 +401,10 @@
   "reauth_required": "This is a sensitive action: confirm your current password (your last sign-in was more than {{minutes}} minutes ago).",
   "reauth_bad_password": "Current password incorrect: the action was not carried out.",
   "reauth_sign_in_again": "This is a sensitive action: sign out, sign in again, then retry within {{minutes}} minutes.",
-  "reauth_locked": "Too many wrong passwords. Try again in {{minutes}} minutes."
+  "reauth_locked": "Too many wrong passwords. Try again in {{minutes}} minutes.",
+  "emp_place_incomplete": "Site, department and service are all required.",
+  "emp_place_inconsistent": "The placement does not fit together: the department must belong to the chosen site and the service to the chosen department.",
+  "idp_activated": "Development plan activated: both signatures are recorded.",
+  "idp_signed_waiting": "Signature recorded. The plan waits for the other party to sign.",
+  "account_reauth_rate_limited": "Too many refused attempts. Try again in {{minutes}} minutes."
 }

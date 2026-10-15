@@ -40,12 +40,19 @@ async function index(req, res) {
           WHERE 1=1 ${sc.clause} ORDER BY i.created_at DESC`,
         sc.params
     );
+    // coaching_plans.progress is NOT NULL DEFAULT 0: a progress is « recorded »
+    // when it is above 0 or somebody saved it (CoachingPlanService.updateProgress
+    // audits COACHING_PROGRESS, under every spelling of the entity type).
+    const logTypes = require('../models/SystemLogModel').entityTypeVariants('coaching_plan');
     const coaching = await db.all(
         `SELECT c.id, c.kind, c.title, c.state, c.progress, c.context_type, c.target_date, c.created_at,
-                e.first_name, e.last_name, e.employee_number
+                e.first_name, e.last_name, e.employee_number,
+                (c.progress > 0 OR EXISTS (SELECT 1 FROM system_logs l
+                    WHERE l.entity_type = ANY(?) AND l.entity_id = c.id
+                      AND l.action = 'COACHING_PROGRESS')) AS "progressRecorded"
            FROM coaching_plans c JOIN employees e ON e.id = c.employee_id
           WHERE 1=1 ${sc.clause} ORDER BY c.created_at DESC`,
-        sc.params
+        [logTypes, ...sc.params]
     );
 
     let bias = [];
@@ -69,17 +76,22 @@ async function index(req, res) {
     const activeCoaching = coaching.filter((c) => c.state === 'active');
     // NULL, not 0, when nothing is active: an average over an empty set is an
     // absence of measurement, and "0 %" on the tile read as "no progress".
-    const avgProgress = activeCoaching.length
-        ? Math.round(
-              activeCoaching.reduce((a, c) => a + num(c.progress), 0) / activeCoaching.length
-          )
+    // Only plans whose progress was RECORDED count: a plan nobody has updated
+    // has no progress yet, it is not 0 %. None recorded gives null.
+    const measured = activeCoaching.filter(
+        (c) => c.progressRecorded === true || c.progressRecorded === 't'
+    );
+    const avgProgress = measured.length
+        ? Math.round(measured.reduce((a, c) => a + num(c.progress), 0) / measured.length)
         : null;
 
     // "Needs attention" — items waiting on a manager action
     const attention = {
         pipsProposed: pips.filter((p) => p.state === 'proposed').length,
         idpsDraft: idps.filter((i) => i.status === 'draft').length,
-        coachingStalled: activeCoaching.filter((c) => num(c.progress) === 0).length,
+        // « stalled » = a RECORDED progress still at 0, never the column
+        // default of a plan nobody has updated yet (that one is not measured).
+        coachingStalled: measured.filter((c) => num(c.progress) === 0).length,
         biasOpen: bias.length,
     };
 

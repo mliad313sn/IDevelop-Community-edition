@@ -34,5 +34,11 @@
   "choose_required_fields": "Choisissez une valeur pour chaque champ obligatoire (*).",
   "sensitive_setting": "Réglage sensible",
   "form_required_legend": "Les champs marqués d'un astérisque sont obligatoires.",
-  "loading_skeleton_sr": "Chargement en cours…"
+  "loading_skeleton_sr": "Chargement en cours…",
+  "av_status_pending": "Analyse antivirus en attente",
+  "av_status_clean": "Fichier sain",
+  "av_status_infected": "Fichier infecté, bloqué",
+  "av_status_quarantined": "Fichier en quarantaine",
+  "av_status_scan_error": "Échec de l’analyse antivirus",
+  "av_status_not_scanned": "Non analysé (aucun antivirus disponible)"
 }

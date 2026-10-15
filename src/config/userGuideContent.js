@@ -2869,8 +2869,8 @@ const GLOSSARY = [
     [
         'Append-only audit trail',
         'Journal en ajout seul',
-        'The audit tables (<code>assessment_history</code>, <code>system_logs</code>, <code>review_signatures</code>) are append-only and SHA-256 hash-chained. The SQL console refuses to modify them, the telemetry pruner never touches the system log, and reverting a restore point does not rewind history: the chain is copied out and re-attached intact, with anything that can no longer attach quarantined rather than silently dropped.',
-        'Les tables d’audit (<code>assessment_history</code>, <code>system_logs</code>, <code>review_signatures</code>) sont en ajout seul et chaînées par hachage SHA-256. La console SQL refuse de les modifier, la purge de télémétrie ne touche jamais le journal système, et revenir à un point de restauration ne réécrit pas l’historique : la chaîne est extraite puis rattachée intacte, ce qui ne peut plus se rattacher étant mis en quarantaine plutôt que supprimé en silence.',
+        'The audit tables (<code>assessment_history</code>, <code>system_logs</code>, <code>review_signatures</code>) are append-only; only the system log (<code>system_logs</code>) is SHA-256 hash-chained. The SQL console refuses to modify them, the telemetry pruner never touches the system log, and reverting a restore point does not rewind history: the chain is copied out and re-attached intact, with anything that can no longer attach quarantined rather than silently dropped.',
+        'Les tables d’audit (<code>assessment_history</code>, <code>system_logs</code>, <code>review_signatures</code>) sont en ajout seul ; seul le journal système (<code>system_logs</code>) est chaîné par hachage SHA-256. La console SQL refuse de les modifier, la purge de télémétrie ne touche jamais le journal système, et revenir à un point de restauration ne réécrit pas l’historique : la chaîne est extraite puis rattachée intacte, ce qui ne peut plus se rattacher étant mis en quarantaine plutôt que supprimé en silence.',
     ],
     [
         'Maker-checker',

@@ -34,5 +34,11 @@
   "choose_required_fields": "Choose a value for every required field (*).",
   "sensitive_setting": "Sensitive setting",
   "form_required_legend": "Fields marked with an asterisk are required.",
-  "loading_skeleton_sr": "Loading…"
+  "loading_skeleton_sr": "Loading…",
+  "av_status_pending": "Virus scan pending",
+  "av_status_clean": "File clean",
+  "av_status_infected": "File infected, blocked",
+  "av_status_quarantined": "File quarantined",
+  "av_status_scan_error": "Virus scan failed",
+  "av_status_not_scanned": "Not scanned (no antivirus available)"
 }

@@ -378,13 +378,48 @@ describe('PO-2 — avg coaching progress is NULL when nothing is active', () => 
             .mockResolvedValueOnce([])
             .mockResolvedValueOnce([])
             .mockResolvedValueOnce([
-                { id: 1, state: 'active', progress: 30 },
-                { id: 2, state: 'active', progress: 50 },
-                { id: 3, state: 'completed', progress: 100 },
+                { id: 1, state: 'active', progress: 30, progressRecorded: true },
+                { id: 2, state: 'active', progress: 50, progressRecorded: true },
+                { id: 3, state: 'completed', progress: 100, progressRecorded: true },
             ]);
         const r = res();
         await Talent.index(req(), r);
         expect(r.locals.summary.avgProgress).toBe(40);
+    });
+
+    test('an active plan whose progress nobody recorded is left out of the average and is not « stalled »', async () => {
+        mockDb.all
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+                { id: 1, state: 'active', progress: 60, progressRecorded: true },
+                { id: 2, state: 'active', progress: 0, progressRecorded: false },
+                { id: 3, state: 'active', progress: 0, progressRecorded: 't' },
+            ]);
+        const r = res();
+        await Talent.index(req(), r);
+        // (60 + 0) / 2 recorded plans, never (60 + 0 + 0) / 3
+        expect(r.locals.summary.avgProgress).toBe(30);
+        expect(r.locals.summary.coachingActive).toBe(3);
+        // only the RECORDED zero is stalled
+        expect(r.locals.attention.coachingStalled).toBe(1);
+        // the coaching query matches every audit spelling of the entity type
+        const [sql, params] = mockDb.all.mock.calls[2];
+        expect(sql).toMatch(/entity_type = ANY\(\?\)/);
+        expect(params[0]).toEqual(expect.arrayContaining(['coaching_plan', 'coachingPlan']));
+    });
+
+    test('active plans with no recorded progress at all → avgProgress null, never 0 %', async () => {
+        mockDb.all
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+                { id: 1, state: 'active', progress: 0, progressRecorded: false },
+            ]);
+        const r = res();
+        await Talent.index(req(), r);
+        expect(r.locals.summary.avgProgress).toBeNull();
+        expect(r.locals.attention.coachingStalled).toBe(0);
     });
 
     const page = (avg) =>

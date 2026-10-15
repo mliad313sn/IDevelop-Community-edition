@@ -707,7 +707,7 @@
   "dsp_err_already_decided_l0": "Cette contestation a déjà été résolue ou escaladée.",
   "dsp_err_already_decided_l1": "Cette contestation a déjà été résolue ou escaladée aux RH.",
   "dsp_err_already_decided_l2": "Cette contestation a déjà été résolue ou finalisée automatiquement.",
-  "ta_avg_progress_none": "Aucun coaching actif — rien à mesurer",
+  "ta_avg_progress_none": "Aucune progression enregistrée sur un coaching actif — rien à mesurer",
   "lc_filter_kind_all": "Tous les événements",
   "lc_filter_state_all": "Tous les états",
   "lc_all_sites": "Tous les sites",

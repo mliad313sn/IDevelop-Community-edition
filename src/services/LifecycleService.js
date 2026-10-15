@@ -1154,8 +1154,11 @@ class LifecycleService {
         };
         const okrs = await safe(() =>
             db.all(
+                // goals.status CHECK: active | at_risk | done | cancelled. The
+                // former NOT IN ('completed', 'archived') named values that do
+                // not exist, so a finished ('done') goal was listed as open.
                 `SELECT id, title FROM goals
-                  WHERE employee_id = ? AND COALESCE(status, 'active') NOT IN ('completed', 'cancelled', 'archived')
+                  WHERE employee_id = ? AND COALESCE(status, 'active') NOT IN ('done', 'cancelled')
                   ORDER BY id LIMIT 50`,
                 [id]
             )

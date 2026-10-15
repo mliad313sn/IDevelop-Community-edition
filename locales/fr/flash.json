@@ -401,5 +401,10 @@
   "reauth_required": "Pour cette action sensible, confirmez votre mot de passe actuel (dernière connexion il y a plus de {{minutes}} minutes).",
   "reauth_bad_password": "Mot de passe actuel incorrect : l’action n’a pas été effectuée.",
   "reauth_sign_in_again": "Pour cette action sensible, déconnectez-vous puis reconnectez-vous, et recommencez dans les {{minutes}} minutes.",
-  "reauth_locked": "Trop de mots de passe incorrects. Réessayez dans {{minutes}} minutes."
+  "reauth_locked": "Trop de mots de passe incorrects. Réessayez dans {{minutes}} minutes.",
+  "emp_place_incomplete": "Le site, le département et le service sont tous obligatoires.",
+  "emp_place_inconsistent": "L’affectation ne tient pas : le département doit appartenir au site choisi et le service au département choisi.",
+  "idp_activated": "Plan de développement activé : les deux signatures sont enregistrées.",
+  "idp_signed_waiting": "Signature enregistrée. Le plan attend la signature de l’autre partie.",
+  "account_reauth_rate_limited": "Trop de tentatives refusées. Réessayez dans {{minutes}} minutes."
 }

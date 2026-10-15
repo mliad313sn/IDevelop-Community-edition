@@ -3794,5 +3794,9 @@
   "mv_kind_assessment_reset": "Self-assessment reset for redo (maintenance)",
   "apik_feed_readiness_v2": "role readiness per person, four states (ready, not ready, partially assessed, not assessed): the same figure as the reports",
   "set_name_personaDigestsEnabled": "« What changed » summaries",
-  "set_desc_personaDigestsEnabled": "Send the « What changed » summaries: to administrators, the movements of their scope and what is left to do; to employees, their next step in the app. Off by default; each person chooses the frequency under « My summaries ». The manager and department digests do not change."
+  "set_desc_personaDigestsEnabled": "Send the « What changed » summaries: to administrators, the movements of their scope and what is left to do; to employees, their next step in the app. Off by default; each person chooses the frequency under « My summaries ». The manager and department digests do not change.",
+  "enum_admin_role_regional_admin": "Regional admin (reserved)",
+  "enum_admin_role_country_admin": "Country admin (reserved)",
+  "enum_admin_role_site_admin": "Site admin (reserved)",
+  "enum_admin_role_hr_bp": "HR business partner (reserved)"
 }

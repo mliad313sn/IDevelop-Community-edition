@@ -707,7 +707,7 @@
   "dsp_err_already_decided_l0": "This dispute was already resolved or escalated.",
   "dsp_err_already_decided_l1": "This dispute was already resolved or escalated to HR.",
   "dsp_err_already_decided_l2": "This dispute was already resolved or auto-finalized.",
-  "ta_avg_progress_none": "No active coaching — nothing to measure",
+  "ta_avg_progress_none": "No progress recorded on an active coaching plan yet — nothing to measure",
   "lc_filter_kind_all": "All events",
   "lc_filter_state_all": "All states",
   "lc_all_sites": "All sites",

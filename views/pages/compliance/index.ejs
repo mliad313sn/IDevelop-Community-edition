@@ -266,7 +266,10 @@
                         <% } else if (c.certStatus === 'expiring') { %><span class="badge badge-warning"><%= c.daysToExpiry %><%= __('compliance:days_left') %></span>
                         <% } else { %><span class="badge badge-success"><%= c.certStatus === 'no_expiry' ? __('compliance:no_expiry') : __('compliance:valid') %></span><% } %>
                     </td>
-                    <td><% if (c.avStatus === 'clean') { %><a href="/compliance/evidence/<%= c.certificationId %>" class="btn btn-sm btn-secondary"><i class="fas fa-paperclip" aria-hidden="true"></i></a><% } else { %>-<% } %></td>
+                    <%# An evidence file that is not « clean » says why, with a status badge:
+                        infected / quarantined = risk, scan_error / not_scanned = warn,
+                        pending = neutral. No evidence at all stays « - ». %>
+                    <td><% if (c.avStatus === 'clean') { %><a href="/compliance/evidence/<%= c.certificationId %>" class="btn btn-sm btn-secondary" aria-label="<%= __('compliance:th_evidence') %>"><i class="fas fa-paperclip" aria-hidden="true"></i></a><% } else if (c.avStatus) { const _avTone = ({ infected: 'risk', quarantined: 'risk', scan_error: 'warn', not_scanned: 'warn', pending: 'neutral' })[c.avStatus] || 'neutral'; %><%- include('../../partials/status-badge', { tone: _avTone, text: true, label: __('common:av_status_' + c.avStatus) }) %><% } else { %>-<% } %></td>
                 </tr>
                 <% }); %>
                 <% if (!expiring.length) { %>
