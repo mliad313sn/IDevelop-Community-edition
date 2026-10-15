@@ -16,15 +16,20 @@ const CATEGORIES = [
         controls: [
             {
                 id: 'passwords',
-                fr: 'Mots de passe hachés avec bcrypt ; 12 caractères minimum, sans règle de composition (NIST 800-63B) ; mots de passe courants ou divulgués refusés hors ligne ; jauge de robustesse ; changement imposé à la première connexion.',
-                en: 'Passwords hashed with bcrypt; 12 characters minimum, no composition rules (NIST 800-63B); common and breached passwords refused offline; a strength meter; a forced change at first sign-in.',
+                fr: 'Mots de passe hachés avec bcrypt ; 12 caractères minimum, sans règle de composition (NIST 800-63B) ; mots de passe courants ou divulgués refusés hors ligne ; jauge de robustesse ; changement imposé à la première connexion ; une invitation envoie un lien « Définir mon mot de passe » à usage unique (72 h), jamais un mot de passe.',
+                en: 'Passwords hashed with bcrypt; 12 characters minimum, no composition rules (NIST 800-63B); common and breached passwords refused offline; a strength meter; a forced change at first sign-in; an invitation sends a one-time "Set my password" link (72 h), never a password.',
                 evidence: [
                     'src/utils/passwordValidator.js',
                     'src/data/common-passwords.txt',
                     'public/js/password-strength.js',
                     'src/middleware/forcePasswordChange.js',
+                    'src/services/OnboardingCredentialService.js',
                 ],
-                tests: ['passwordValidator.test.js', 'passwordResetEligibility.test.js'],
+                tests: [
+                    'passwordValidator.test.js',
+                    'passwordResetEligibility.test.js',
+                    'accountSetupLink.test.js',
+                ],
             },
             {
                 id: 'lockout',
@@ -361,10 +366,19 @@ const CATEGORIES = [
             },
             {
                 id: 'outbound-minimisation',
-                fr: 'Données sortantes réduites : les webhooks ne transmettent qu’une liste fermée d’événements, limités aux identifiants, dates et à un lien (9-box, plans d’amélioration, risque de départ et vie privée ne sortent jamais ; feedback 360°, entretiens individuels et SIRH seulement sur décision d’un super-administrateur) ; l’API exclut les personnes sorties et effacées pour tout appelant.',
-                en: 'Minimised outbound data: webhooks carry only a closed list of events, limited to ids, dates and a link (9-box, improvement plans, flight risk and privacy never leave; 360° feedback, one-to-ones and HRIS only when a super-administrator opts in); the API excludes leavers and erased people for every caller.',
-                evidence: ['src/services/WebhookService.js', 'src/api/v1/repository.js'],
-                tests: ['webhookEmittableEvents.test.js', 'apiV1ActivePopulation-db.test.js'],
+                fr: 'Données sortantes réduites : les webhooks ne transmettent qu’une liste fermée d’événements, limités aux identifiants, dates et à un lien (9-box, plans d’amélioration, risque de départ et vie privée ne sortent jamais ; feedback 360°, entretiens individuels et SIRH seulement sur décision d’un super-administrateur) ; l’API exclut les personnes sorties et effacées pour tout appelant ; un rapport programmé ne va qu’à des comptes habilités pour son périmètre, sous forme de lien vers une copie conservée dans l’application (90 jours par défaut, vidée à l’effacement d’une personne), jamais en pièce jointe.',
+                en: 'Minimised outbound data: webhooks carry only a closed list of events, limited to ids, dates and a link (9-box, improvement plans, flight risk and privacy never leave; 360° feedback, one-to-ones and HRIS only when a super-administrator opts in); the API excludes leavers and erased people for every caller; a scheduled report goes only to accounts cleared for its scope, as a link to a copy kept in the app (90 days by default, emptied when a person in it is erased), never as an attachment.',
+                evidence: [
+                    'src/services/WebhookService.js',
+                    'src/api/v1/repository.js',
+                    'src/jobs/report-scheduler.js',
+                    'db/postgres/172_report_schedule_recipients.sql',
+                ],
+                tests: [
+                    'webhookEmittableEvents.test.js',
+                    'apiV1ActivePopulation-db.test.js',
+                    'reportScheduleAccounts-db.test.js',
+                ],
             },
             {
                 id: 'feedback-privacy',
@@ -593,8 +607,8 @@ const ASVS_L2 = {
     level: 2,
     total: 258,
     pass: 166,
-    fixed: 18,
-    partial: 38,
+    fixed: 19,
+    partial: 37,
     gap: 2,
     na: 29,
     notVerified: 5,

@@ -101,6 +101,30 @@ project uses [Semantic Versioning](https://semver.org/).
   development dependency (SA-26).
 - Webhook-family settings (`webhook*`) are security-class (SuperAdmin only).
 
+### Security (mail privacy)
+
+- **No password by e-mail** (audit SA-37). An invitation or a credentials resend
+  now sends the username and a one-time **Set my password** link, valid 72 hours
+  and usable once; the account holds a random password nobody knows until the
+  person chooses theirs. Sending a new invitation burns the previous link. When
+  nothing can be mailed (no address, e-mail off, a failed send) no link stays
+  live and the temporary password is shown once on the administrator's
+  credentials sheet, as before. A used, expired or unknown reset or
+  set-password link answers 410 on the « forgot password » page.
+- **Scheduled reports go to accounts, as a link** (SA-38). Recipients are chosen
+  among the accounts (administrators and managers) whose clearance covers the
+  report's scope; a typed address is refused. The clearance is checked again at
+  every run and when the copy is downloaded. Each run keeps one in-app copy and
+  the recipients are told in the app and by an e-mail that only links to it;
+  the report is never attached. Copies are emptied after
+  `reportRunRetentionDays` (default 90, 1 to 365, SuperAdmin-only) and when a
+  person in their scope is erased; an emptied copy answers 410.
+- **Upgrade note:** a schedule that e-mailed typed addresses keeps running only
+  when every address matches exactly one active account, which becomes its
+  recipient. Any other is **suspended** and its owner gets an in-app notice;
+  choosing accounts on Reports → Schedules re-enables it. Nothing is deleted:
+  the old addresses stay visible on the row.
+
 ### Security (privacy and sessions)
 
 - **Diversity data is self-declared, with explicit consent** (audit SA-32).
@@ -223,6 +247,12 @@ project uses [Semantic Versioning](https://semver.org/).
   needs-review and HR-review columns of `employee_demographics`; rows that exist
   at upgrade are flagged `legacy_unknown` and leave every statistic. Re-grants
   the console reader.
+- **Migration 172** adds `report_schedule_recipients` and `report_schedule_runs`
+  and the `enabled` / `disabled_reason` columns of `report_schedules`, maps or
+  suspends the schedules that sent to typed addresses (owner told once).
+  **Migration 173** makes a copy's content emptiable (`purged_at`,
+  `purge_reason`) and seeds `reportRunRetentionDays`. Both re-grant the console
+  reader.
 
 ### Tests
 
@@ -240,6 +270,8 @@ project uses [Semantic Versioning](https://semver.org/).
   `nationalitySwitch`, `returnToAfterSignIn`, `anonymousNoSession`,
   `sharedComputerMode`, `sharedComputerLoginView`, `selfAssessmentDraftsWiped`,
   `samlStrictMode` and `sensitiveSettingsBand`.
+- Mail privacy: `accountSetupLink` and the database suite
+  `reportScheduleAccounts-db`.
 
 ### Security (CSRF on uploads, SSO notices, security panels)
 
