@@ -229,7 +229,13 @@ const arExcClass = {
           btn.textContent = T.done;
           // Reflect the attestation in the row without a reload (evidence, not a click).
           var cell = row ? row.querySelector('.ar-attest-cell') : null;
-          if (cell) cell.innerHTML = '<span class="' + (decision === 'revoke' ? 'ar-expiring' : '') + '"></span><div class="text-muted"></div>';
+          if (cell) {
+            var mark = document.createElement('span');
+            if (decision === 'revoke') mark.className = 'ar-expiring';
+            var when = document.createElement('div');
+            when.className = 'text-muted';
+            cell.replaceChildren(mark, when);
+          }
           if (cell) { cell.firstChild.textContent = T.labels[decision] || decision; cell.lastChild.textContent = new Date().toLocaleDateString(<%- include('../../partials/json-script', { v: typeof lang !== 'undefined' ? lang : 'fr' }) %>) + ' · ' + T.by; }
           // "À révoquer" is a decision to act on: open the account.
           if (decision === 'revoke') { say(T.revoke, 'warn'); window.setTimeout(function () { window.location.href = '/admins/' + id; }, 900); }

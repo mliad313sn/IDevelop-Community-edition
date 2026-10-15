@@ -1007,7 +1007,7 @@ async function startServer() {
                 (await bcryptCheck.compare('admin123', admin.passwordHash))
             ) {
                 warnings.push(
-                    "Default super-admin password 'admin123' is still in use — change it now."
+                    'The super-admin still uses the old default password — change it now.'
                 );
             }
             if (warnings.length) {

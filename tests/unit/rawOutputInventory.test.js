@@ -160,7 +160,6 @@ const CLIENT_SINKS = {
     'public/js/status-badge.js': 1, // el(): the markup of html(), every value through esc()
     'public/js/table-search.js': 2, // restores its own button markup / static spinner
     'public/js/ui-feedback.js': 2, // esc() on title and buttons; the message set as text
-    'views/pages/admin/access-review.ejs': 1, // static skeleton, text set after
     'views/pages/admin/modules.ejs': 1, // esc() on module labels
     'views/pages/admin/sso-migration.ejs': 2, // cleared, rows built with DOM
     'views/pages/admins/create.ejs': 2, // static scope skeleton (catalogue JSON); cleared
