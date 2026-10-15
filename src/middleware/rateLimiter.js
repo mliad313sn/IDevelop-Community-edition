@@ -1157,7 +1157,7 @@ function alertIfSuperadmin(identifier, n) {
                 adminId: Number(a.id),
                 action: 'SUPERADMIN_PASSWORD_ATTACK',
                 entityType: 'auth',
-                details: `${n} failed break-glass password attempts on SuperAdmin "${a.username}" (all addresses) — progressive slowdown engaged`,
+                details: `${n} failed break-glass password attempts on SuperAdmin admin:${Number(a.id)} (all addresses) — progressive slowdown engaged`,
             });
         })
         .catch(() => {});

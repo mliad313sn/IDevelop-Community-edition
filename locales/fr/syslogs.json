@@ -121,5 +121,6 @@
   "log_entity_department": "Département",
   "log_entity_service": "Service",
   "log_entity_skill": "Compétence",
-  "log_entity_domain": "Domaine"
+  "log_entity_domain": "Domaine",
+  "erased_person": "Personne effacée #{{id}}"
 }

@@ -42,6 +42,18 @@ function superadminCost() {
     }
     return _superCost;
 }
+/**
+ * Ids only: how an audit line names whoever a typed identifier points at —
+ * `admin:<id>` / `employee:<id>` (resolved to the name when the log is read by
+ * SystemLogModel.resolvePeople), else the keyed `fp:<10 hex>` fingerprint
+ * AuthService and EmployeeAuthService use for an unknown identifier.
+ */
+function auditWho(admin, emp, typed) {
+    if (admin && admin.id != null) return `admin:${Number(admin.id)}`;
+    if (emp && emp.id != null) return `employee:${Number(emp.id)}`;
+    return require('../services/AuditRetentionService').fingerprint(typed);
+}
+
 // Audit a refused/accepted break-glass attempt WITHOUT awaiting it: the time the
 // caller waits must not depend on which branch was taken.
 function authLog(ctx, action, details, adminId = null) {
@@ -125,7 +137,7 @@ async function enforcedPasswordLogin(req, username, password, ctx) {
             authLog(
                 ctx,
                 'LOGIN_SSO_EXCEPTION',
-                `password sign-in for "${String(username || '').slice(0, 64)}" accepted while SSO is enforced — SSO exception set by a SuperAdmin`,
+                `password sign-in for ${auditWho(null, r.employee || emp, username)} accepted while SSO is enforced — SSO exception set by a SuperAdmin`,
                 null
             );
             return [await asPersonPrincipal(r.employee)];
@@ -139,13 +151,15 @@ async function enforcedPasswordLogin(req, username, password, ctx) {
     const dummyCost = superadminCost() || bcryptCost(stored);
     const hash = isSuper && admin.passwordHash ? admin.passwordHash : await dummyHash(dummyCost);
     const match = await bcrypt.compare(String(password || ''), hash).catch(() => false);
-    const name = String(username || '').slice(0, 64);
+    // Ids only: the subject ref when the identifier names an account, else the
+    // short fingerprint — never the identifier as typed.
+    const name = auditWho(admin, emp, username);
 
     if (!isSuper) {
         authLog(
             ctx,
             'LOGIN_BLOCKED',
-            `${admin || emp ? 'password_login_blocked_sso_enforced' : 'password_login_unknown_sso_enforced'}: password sign-in for "${name}" refused — SSO is enforced`,
+            `${admin || emp ? 'password_login_blocked_sso_enforced' : 'password_login_unknown_sso_enforced'}: password sign-in for ${name} refused — SSO is enforced`,
             admin ? admin.id : null
         );
         await noteEnforcedFailure(username, ctx.ip); // the SAME throttle for every identifier
@@ -163,7 +177,7 @@ async function enforcedPasswordLogin(req, username, password, ctx) {
         authLog(
             ctx,
             'LOGIN_FAILED',
-            `${why}: SuperAdmin break-glass sign-in for "${name}" refused`,
+            `${why}: SuperAdmin break-glass sign-in for ${name} refused`,
             admin.id
         );
         if (!match) Promise.resolve(recordLoginAttempt(username, ctx.ip, false)).catch(() => {});
@@ -263,7 +277,7 @@ passport.use(
                                 entityType: 'employee',
                                 entityId: Number(asPerson.employee.id),
                                 actorRef: `employee:${asPerson.employee.id}`,
-                                details: `Identifier "${username}" names BOTH an administration account (#${adminResult.admin.id}, ${adminResult.admin.role}, linked to no employee) and employee #${asPerson.employee.id}, and the password opens both. Signed in as the PERSON; the administration account is unreachable by password until one of the two logins is renamed.`,
+                                details: `One identifier names BOTH an administration account (admin:${Number(adminResult.admin.id)}, ${adminResult.admin.role}, linked to no employee) and employee:${Number(asPerson.employee.id)}, and the password opens both. Signed in as the PERSON; the administration account is unreachable by password until one of the two logins is renamed.`,
                                 ipAddress: ctx.ip,
                                 userAgent: ctx.get('user-agent'),
                             });

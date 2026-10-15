@@ -256,7 +256,7 @@ async function createFromSignup({ email, firstName, lastName, password }) {
         };
 
     const passwordHash = await bcrypt.hash(password, 10);
-    await OnboardingRequestModel.create({
+    const created = await OnboardingRequestModel.create({
         email,
         firstName: firstName || null,
         lastName: lastName || null,
@@ -268,7 +268,10 @@ async function createFromSignup({ email, firstName, lastName, password }) {
     await LogService.log({
         action: 'ONBOARDING_REQUEST',
         entityType: 'onboarding',
-        details: `Signup onboarding request: ${email}`,
+        // Ids only: the applicant's address lives in onboarding_requests
+        // (pseudonymised after the retention window), never in the audit log.
+        entityId: created && created.id ? Number(created.id) : null,
+        details: `Signup onboarding request #${(created && created.id) || '?'}`,
     });
     notifyOnboardingAdmins(email);
     return {
@@ -298,7 +301,7 @@ async function createFromSso({ provider, email, externalId, name, firstName, las
         firstName = s.firstName;
         lastName = s.lastName;
     }
-    await OnboardingRequestModel.create({
+    const created = await OnboardingRequestModel.create({
         email,
         firstName: firstName || null,
         lastName: lastName || null,
@@ -310,7 +313,8 @@ async function createFromSso({ provider, email, externalId, name, firstName, las
     await LogService.log({
         action: 'ONBOARDING_REQUEST',
         entityType: 'onboarding',
-        details: `SSO onboarding request (${provider}): ${email}`,
+        entityId: created && created.id ? Number(created.id) : null,
+        details: `SSO onboarding request #${(created && created.id) || '?'} (${provider})`,
     });
     notifyOnboardingAdmins(email);
     return { created: true };
@@ -584,7 +588,7 @@ async function approve(id, placement, adminId) {
         action: 'ONBOARDING_APPROVED',
         entityType: 'onboarding',
         entityId: id,
-        details: `Placed onboarding request ${reqRow.email} as employee #${employee.id} (${employeeNumber})`,
+        details: `Placed onboarding request #${id} as employee #${employee.id}`,
     });
 
     // CLOSE THE LOOP WITH THE APPLICANT. Approval used to be silent: the account
@@ -697,7 +701,9 @@ async function reject(id, note, adminId) {
         action: 'ONBOARDING_REJECTED',
         entityType: 'onboarding',
         entityId: id,
-        details: `Rejected onboarding request ${reqRow.email}${note ? ' — ' + note : ''}`,
+        // Ids only: no address and no free-text note (it is about the applicant;
+        // the note stays on the request row, which is pseudonymised on schedule).
+        details: `Rejected onboarding request #${id}${note ? ' (note recorded on the request)' : ''}`,
     });
     // Tell the applicant by email (best-effort — no in-app account exists yet;
     // EmailService.send self-skips when SMTP is off, so no extra guard needed).

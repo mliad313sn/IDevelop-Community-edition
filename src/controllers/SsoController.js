@@ -37,6 +37,19 @@ function homeFor(userType) {
     return '/dashboard';
 }
 
+/**
+ * Ids only: the audit text names the person by a REF, never by a username,
+ * e-mail or employee number. SystemLogModel.resolvePeople turns `employee:84`,
+ * `manager:84` or `admin:3` into the name when the log is read (and into
+ * "Erased person #id" after an erasure).
+ */
+function subjectRef(user) {
+    if (!user || user.id == null) return 'unknown';
+    const t =
+        user.userType === 'admin' ? 'admin' : user.userType === 'manager' ? 'manager' : 'employee';
+    return `${t}:${Number(user.id)}`;
+}
+
 function authAudit(req, action, details, adminId = null) {
     try {
         LogService.log({
@@ -224,7 +237,7 @@ class SsoController {
                 authAudit(
                     req,
                     'SSO_DENIED',
-                    `${provider.key}: account "${user.username || user.employeeNumber}" is restricted to local password sign-in (auth policy local_only)`
+                    `${provider.key}: account ${subjectRef(user)} is restricted to local password sign-in (auth policy local_only)`
                 );
                 // UX-3 / EXC (3.23.21): while SSO is enforced a password is open
                 // only to an employee a SuperAdmin listed as an SSO exception —
@@ -283,7 +296,7 @@ class SsoController {
                         audits: [
                             [
                                 'LOGIN_SUCCESS',
-                                `${user.userType} "${user.username || user.employeeNumber}" signed in via SSO (${provider.key})`,
+                                `${subjectRef(user)} signed in via SSO (${provider.key})`,
                                 null,
                             ],
                         ],
@@ -372,7 +385,7 @@ class SsoController {
                     audits: [
                         [
                             'LOGIN_SUCCESS',
-                            `${user.userType} "${user.username || user.employeeNumber}" signed in via SSO (${c.provider}) — chose the employee account`,
+                            `${subjectRef(user)} signed in via SSO (${c.provider}) — chose the employee account`,
                             null,
                         ],
                     ],
@@ -652,32 +665,25 @@ async function adminDirect(req, res, providerKey, user, ctx, relay) {
             res,
             providerKey,
             'admin_sso_disabled',
-            `admin account "${user.username}" attempted SSO — admins must use password + MFA`,
+            `admin account admin:${user.id} attempted SSO — admins must use password + MFA`,
             user.id
         );
     }
     const el = await AdminSso.eligibility(user.id, { skipSwitch: true });
-    if (!el.ok) return deny(req, res, providerKey, el.reason, `admin "${user.username}"`, user.id);
+    if (!el.ok) return deny(req, res, providerKey, el.reason, `admin:${user.id}`, user.id);
     // never on an e-mail-like alias when the assertion carries another stable
     // id; S4: only an identity a SuperAdmin linked (or an onboarding merge).
     if (ctx.aliasMatch === true)
-        return deny(req, res, providerKey, 'admin_uid_alias', `admin "${user.username}"`, user.id);
+        return deny(req, res, providerKey, 'admin_uid_alias', `admin:${user.id}`, user.id);
     if (ctx.unstableUid === true)
-        return deny(
-            req,
-            res,
-            providerKey,
-            'admin_uid_unstable',
-            `admin "${user.username}"`,
-            user.id
-        );
+        return deny(req, res, providerKey, 'admin_uid_unstable', `admin:${user.id}`, user.id);
     if (!AdminSso.isTrustedLinkMethod(ctx.linkMethod))
         return deny(
             req,
             res,
             providerKey,
             'admin_link_untrusted',
-            `admin "${user.username}" (link method ${ctx.linkMethod || 'unknown'})`,
+            `admin:${user.id} (link method ${ctx.linkMethod || 'unknown'})`,
             user.id
         );
     return finishAdmin(req, res, {
@@ -709,21 +715,14 @@ async function finishAdmin(
     // C1a: re-assert on the database role at the last step (fail closed).
     const sa = await AdminSso.assertNotSuperadmin(admin.id);
     if (!sa.ok)
-        return deny(
-            req,
-            res,
-            provider,
-            sa.reason,
-            `admin "${admin.username}" (${method})`,
-            admin.id
-        );
+        return deny(req, res, provider, sa.reason, `admin:${admin.id} (${method})`, admin.id);
     const mode = await AdminSso.secondFactor(admin.id, mfaAsserted);
     const viaEmployeeId = method === 'linked-person' ? employeeId : null;
     if (mode === 'local' || mode === 'code') {
         authAudit(
             req,
             mode === 'local' ? 'MFA_CHALLENGE' : 'MFA_ENROL_CODE_REQUESTED',
-            `${mode === 'local' ? 'MFA code' : 'One-time enrolment code'} requested for admin "${admin.username}" (first factor: SSO via ${provider}, ${method})`,
+            `${mode === 'local' ? 'MFA code' : 'One-time enrolment code'} requested for admin:${admin.id} (first factor: SSO via ${provider}, ${method})`,
             admin.id
         );
         const pending = {
@@ -755,7 +754,7 @@ async function finishAdmin(
             res,
             provider,
             'admin_mfa_required',
-            `admin "${admin.username}" (${method}): no local MFA, no IdP-asserted MFA, no enrolment code`,
+            `admin:${admin.id} (${method}): no local MFA, no IdP-asserted MFA, no enrolment code`,
             admin.id
         );
     }
@@ -888,14 +887,10 @@ function ssoAdminAudits(admin, provider, method, mfa) {
     return [
         [
             'SSO_LOGIN',
-            `admin "${admin.username}" signed in via SSO — provider=${provider} method=${method} mfa=${mfa}`,
+            `admin:${admin.id} signed in via SSO — provider=${provider} method=${method} mfa=${mfa}`,
             Number(admin.id),
         ],
-        [
-            'LOGIN_SUCCESS',
-            `admin "${admin.username}" signed in via SSO (${provider})`,
-            Number(admin.id),
-        ],
+        ['LOGIN_SUCCESS', `admin:${admin.id} signed in via SSO (${provider})`, Number(admin.id)],
     ];
 }
 

@@ -94,11 +94,12 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
         <% logs.forEach(function(log) { var det = log.details == null ? '' : (typeof log.details === 'object' ? JSON.stringify(log.details) : String(log.details)); %>
         <tr>
             <td><%= _fd(log.createdAt) %></td>
-            <td><%= log.username || log.actorRef || log.actor_ref || __('syslogs:system') %></td>
+            <%# Rows store ids; the name is resolved on read (SystemLogModel.resolvePeople). %>
+            <td><% if (log.actorErasedId != null) { %><em class="sl-erased"><%= __('syslogs:erased_person', { id: log.actorErasedId }) %></em><% } else { %><%= log.username || log.actorName || log.actorRef || log.actor_ref || __('syslogs:system') %><% if (log.actorRef && (log.username || log.actorName)) { %> <small class="sl-ref"><%= log.actorRef %></small><% } %><% } %></td>
             <td><span class="badge badge-info"><%= log.action %></span></td>
             <td><%= log.category || '—' %></td>
             <td><% if (log.severity) { %><span class="sl-sev sl-sev-<%= log.severity %>"><%= __('syslogs:log_sev_' + log.severity, { defaultValue: log.severity }) %></span><% } else { %>—<% } %></td>
-            <td><% if (log.entityType) { %><%= log.entityType %><%= log.entityId != null ? ' #' + log.entityId : '' %><% } else { %>—<% } %></td>
+            <td><% if (log.entityType) { %><%= log.entityType %><%= log.entityId != null ? ' #' + log.entityId : '' %><% if (log.subjectErasedId != null) { %> <em class="sl-erased"><%= __('syslogs:erased_person', { id: log.subjectErasedId }) %></em><% } else if (log.subjectName) { %> <small class="sl-ref"><%= log.subjectName %></small><% } %><% } else { %>—<% } %></td>
             <td><% if (log.statusCode) { %><span class="sl-sc sl-sc-<%= String(log.statusCode).charAt(0) %>"><%= log.statusCode %></span><% } else { %>—<% } %></td>
             <td class="<%= log.latencyMs != null && log.latencyMs >= 1500 ? 'sl-slow' : '' %>"><%= log.latencyMs != null ? log.latencyMs + 'ms' : '—' %></td>
             <td class="log-details" title="<%= det %>"><%= det || '—' %></td>
@@ -326,6 +327,8 @@ window.SL = SL;
 
 /* Analytics tab */
 .sl-tabs { display:flex; gap:8px; margin: 4px 0 18px; }
+.sl-erased { color: var(--text-secondary); font-style: italic; }
+.sl-ref { color: var(--text-secondary); font-size: .75rem; }
 .sl-controls { display:flex; align-items:center; gap:10px; margin-bottom:14px; color:var(--text-secondary); font-size:.85rem; }
 .sl-controls select { padding:6px 8px; background:var(--bg-subtle); color:var(--text-primary); border:1px solid var(--border-light); border-radius:var(--radius-sm); }
 .sl-status { color:var(--text-muted); }

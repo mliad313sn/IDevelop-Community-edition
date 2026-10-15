@@ -521,7 +521,13 @@ class EmployeeController {
                     .catch(() => null);
                 const f = { employeeId: Number(id), excludeHttp: true };
                 const [rows, total] = await Promise.all([
-                    SystemLogModel.findFiltered(f, 25, 0, scope).catch(() => []),
+                    SystemLogModel.findFiltered(
+                        f,
+                        25,
+                        0,
+                        scope,
+                        require('./SystemLogController').readOpts(req)
+                    ).catch(() => []),
                     SystemLogModel.countFiltered(f, scope).catch(() => null),
                 ]);
                 journal = { rows, total };
@@ -754,7 +760,7 @@ class EmployeeController {
                 action: 'EMPLOYEE_CREATED',
                 entityType: 'employee',
                 entityId: employee.id,
-                details: `Created employee ${employee.employeeNumber} with login "${username}"`,
+                details: `Created employee:${Number(employee.id)} (number ${employee.employeeNumber}) with a login`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -1492,7 +1498,7 @@ class EmployeeController {
                 entityId: parseInt(id),
                 details:
                     `Set credentials for employee ${id}` +
-                    (updates.username ? ` (username=${updates.username})` : '') +
+                    (updates.username ? ' (username changed)' : '') +
                     (updates.passwordHash ? ' (password changed)' : ''),
                 severity: 'info',
                 category: 'security',

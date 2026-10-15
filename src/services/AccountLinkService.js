@@ -36,6 +36,16 @@ const RBACService = require('../services/RBACService');
 const LogService = require('../services/LogService');
 const { isValidSlug, isWrite } = require('../config/permissions');
 
+/**
+ * Ids only, for the audit text: an IdP uid that is an e-mail address is
+ * fingerprinted (`fp:<10 hex>`); an opaque id (Entra oid, OIDC sub) stays — it
+ * is the forensic key of the link and names nobody by itself.
+ */
+function _uidForAudit(uid) {
+    const s = String(uid == null ? '' : uid);
+    return s.includes('@') ? require('./AuditRetentionService').fingerprint(s) : s;
+}
+
 function _isSuper(actor) {
     return RBACService.isSuperAdmin(actor);
 }
@@ -138,7 +148,7 @@ async function removeIdentity(identityId, actor) {
         action: 'ACCOUNT_SSO_UNLINKED',
         entityType: subjectType,
         entityId: subjectId,
-        details: `Removed ${provider} identity ${uid} from ${subjectType} #${subjectId}`,
+        details: `Removed ${provider} identity ${_uidForAudit(uid)} from ${subjectType}:${Number(subjectId)}`,
     });
     return { ok: true, code: 'alk_identity_removed', message: 'Authentication method removed.' };
 }
@@ -283,7 +293,7 @@ async function linkSsoIdentity(
                 action: 'ACCOUNT_SSO_LINK_REFUSED',
                 entityType: 'admin',
                 entityId: Number(target.id),
-                details: `superadmin_sso_forbidden: SSO identity ${p}:${x} not linked to SuperAdmin "${target.username}"`,
+                details: `superadmin_sso_forbidden: SSO identity ${p}:${_uidForAudit(x)} not linked to SuperAdmin admin:${Number(target.id)}`,
             });
         } catch (_) {
             /* audit best-effort */
@@ -382,7 +392,7 @@ async function linkSsoIdentity(
         action: 'ACCOUNT_SSO_LINKED',
         entityType: targetType,
         entityId: Number(target.id),
-        details: `Linked ${targetType} #${target.id} (${target.username}) to SSO identity ${p}:${x}`,
+        details: `Linked ${targetType}:${Number(target.id)} to SSO identity ${p}:${_uidForAudit(x)}`,
     });
     return {
         ok: true,
@@ -428,7 +438,7 @@ async function unlinkSsoIdentity({ targetType, targetId }, actor) {
         }
     }
     const table = targetType === 'admin' ? 'admins' : 'employees';
-    const prev = `${target.authProvider || target.auth_provider || ''}:${target.externalId || target.external_id || ''}`;
+    const prev = `${target.authProvider || target.auth_provider || ''}:${_uidForAudit(target.externalId || target.external_id || '')}`;
     await db.runTransaction(async () => {
         await db.run('DELETE FROM user_identities WHERE subject_type = ? AND subject_id = ?', [
             targetType,
@@ -444,7 +454,7 @@ async function unlinkSsoIdentity({ targetType, targetId }, actor) {
         action: 'ACCOUNT_SSO_UNLINKED',
         entityType: targetType,
         entityId: Number(target.id),
-        details: `Unlinked ${targetType} #${target.id} (${target.username}) from SSO identity ${prev}`,
+        details: `Unlinked ${targetType}:${Number(target.id)} from SSO identity ${prev}`,
     });
     return {
         ok: true,
@@ -558,7 +568,8 @@ async function mergeOnboardingRequest({ requestId, targetType, targetId }, actor
         action: 'ONBOARDING_MERGED',
         entityType: 'onboarding',
         entityId: reqRow.id,
-        details: `Merged onboarding request ${reqRow.email} into existing ${targetType} #${target.id} (${target.username})`,
+        // Ids only: the request id, never the applicant's e-mail (kept on the request).
+        details: `Merged onboarding request #${Number(reqRow.id)} into existing ${targetType}:${Number(target.id)}`,
     });
     return {
         ok: true,
@@ -682,7 +693,7 @@ async function grantAdminAccess({ employeeId, role, permissions, scopes, accessE
         action: 'ADMIN_ACCESS_GRANTED',
         entityType: 'admin',
         entityId: Number(admin.id),
-        details: `Granted ${wantRole} access to employee #${emp.id} (${emp.username || emp.email}) → admin “${admin.username}” (password + MFA${wantRole === 'superadmin' ? '; SuperAdmin: not linked to the person, never reachable through SSO' : ''})`,
+        details: `Granted ${wantRole} access to employee:${Number(emp.id)} → admin:${Number(admin.id)} (password + MFA${wantRole === 'superadmin' ? '; SuperAdmin: not linked to the person, never reachable through SSO' : ''})`,
     });
     return {
         ok: true,
@@ -793,7 +804,7 @@ async function revokeAdminAccess({ adminId, hardDelete, reason }, actor) {
         action: 'ADMIN_ACCESS_REVOKED',
         entityType: 'admin',
         entityId: id,
-        details: `${hardDelete ? 'Deleted' : 'Deactivated'} admin account “${admin.username}”${admin.linkedEmployeeId || admin.linked_employee_id ? ` (was linked to employee #${admin.linkedEmployeeId || admin.linked_employee_id})` : ''}; reason: ${why}; ${perms.length} grant(s) and ${scopes.length} scope(s) kept and flagged revoked`,
+        details: `${hardDelete ? 'Deleted' : 'Deactivated'} admin account admin:${Number(id)}${admin.linkedEmployeeId || admin.linked_employee_id ? ` (was linked to employee:${Number(admin.linkedEmployeeId || admin.linked_employee_id)})` : ''}; reason: ${why}; ${perms.length} grant(s) and ${scopes.length} scope(s) kept and flagged revoked`,
     });
     return {
         ok: true,

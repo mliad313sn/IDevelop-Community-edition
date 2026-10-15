@@ -412,7 +412,7 @@ class AuthController {
                     authAudit(
                         req,
                         'LOGIN_FAILED',
-                        `Failed login for "${attempted}": no strategy answer`
+                        `Failed login for ${require('../services/AuditRetentionService').fingerprint(attempted)}: no strategy answer`
                     );
                 // an expired invitation is told to the person — it
                 // discloses nothing new (they hold the temporary password) and
@@ -476,7 +476,7 @@ class AuthController {
                     authAudit(
                         req,
                         'LOGIN_MFA_CHECK_FAILED',
-                        `MFA state of ${user.userType} "${user.username || user.employeeNumber || user.id}" could not be read; sign-in refused (fail closed)`,
+                        `MFA state of ${user.userType} #${user.id} could not be read; sign-in refused (fail closed)`,
                         user.userType === 'admin' ? user.id : null,
                         actorRefOf(user)
                     );
@@ -491,7 +491,7 @@ class AuthController {
                     authAudit(
                         req,
                         'MFA_CHALLENGE',
-                        `MFA code requested for ${user.userType} "${user.username || user.employeeNumber}"`,
+                        `MFA code requested for ${user.userType} #${user.id}`,
                         user.userType === 'admin' ? user.id : null
                     );
                     // Rotate the session id at the password→MFA boundary too (not
@@ -547,7 +547,7 @@ class AuthController {
                         authAudit(
                             req,
                             'LOGIN_SUCCESS',
-                            `${user.userType} "${user.username || user.employeeNumber}" signed in`,
+                            `${user.userType} #${user.id} signed in`,
                             user.userType === 'admin' ? user.id : null,
                             actorRefOf(user)
                         );
@@ -811,7 +811,7 @@ class AuthController {
                     authAudit(
                         req,
                         'LOGIN_SUCCESS',
-                        `${user.userType} "${user.username || user.employeeNumber}" signed in (MFA verified)`,
+                        `${user.userType} #${user.id} signed in (MFA verified)`,
                         user.userType === 'admin' ? user.id : null,
                         actorRefOf(user)
                     );
@@ -848,7 +848,7 @@ class AuthController {
             authAudit(
                 req,
                 'LOGOUT',
-                `${u.userType || 'user'} "${u.username || u.employeeNumber || u.id}" signed out`,
+                `${u.userType || 'user'} #${u.id} signed out`,
                 u.userType === 'admin' ? u.id : null
             );
         req.logout((err) => {
@@ -913,6 +913,7 @@ class AuthController {
                                 email: result.email,
                                 name: result.name,
                                 subjectType: result.subjectType,
+                                subjectId: result.subjectId,
                             },
                         ]
                       : [];
@@ -921,6 +922,7 @@ class AuthController {
                 result.email = reset.email;
                 result.name = reset.name;
                 result.subjectType = reset.subjectType;
+                result.subjectId = reset.subjectId;
                 result.accountLine = resets.length > 1 ? reset.name : null;
                 // SECURITY — the reset link carries a single-use credential, so its
                 // origin comes from server-side config (APP_BASE_URL / TRUSTED_HOSTS),
@@ -995,14 +997,14 @@ class AuthController {
                 authAudit(
                     req,
                     'PASSWORD_RESET_REQUESTED',
-                    `Reset requested for ${result.subjectType} ("${identifier}")${resets.length > 1 ? ` — shared address, ${resets.length} accounts served` : ''}`
+                    `Reset requested for ${result.subjectType} #${result.subjectId}${resets.length > 1 ? ` — shared address, ${resets.length} accounts served` : ''}`
                 );
             }
             if (!resets.length) {
                 authAudit(
                     req,
                     'PASSWORD_RESET_REQUESTED',
-                    `Reset requested for unknown/no-email "${identifier}" (no link issued)`
+                    `Reset requested for unknown/no-email ${require('../services/AuditRetentionService').fingerprint(identifier)} (no link issued)`
                 );
             }
         } catch (e) {
@@ -1210,7 +1212,7 @@ class AuthController {
                         authAudit(
                             req,
                             'PROFILE_EMAIL_CHANGE_REFUSED',
-                            `Own e-mail change refused for admin ${me.username} (re-authentication failed)`,
+                            `Own e-mail change refused for admin #${me.id} (re-authentication failed)`,
                             me.id
                         );
                         req.flash('error', refusal);
@@ -1235,7 +1237,8 @@ class AuthController {
                 authAudit(
                     req,
                     'ADMIN_PROFILE_UPDATED',
-                    `Own e-mail updated by admin ${me.username} ("${me.email || ''}" -> "${email}")`,
+                    // Ids only: neither address goes into the immutable log.
+                    `Own e-mail updated by admin #${me.id} (${me.email ? 'address changed' : 'address added'}${email ? '' : ', now empty'})`,
                     me.id
                 );
                 req.flash(
@@ -1315,7 +1318,7 @@ class AuthController {
             authAudit(
                 req,
                 'PROFILE_UPDATED',
-                `Own contact details updated (email "${current.email || ''}" -> "${email}")`
+                `Own contact details updated${emailChanged ? ' (e-mail address changed)' : ''}`
             );
             req.flash('success', T('flash:profile_saved', 'Vos coordonnées ont été enregistrées.'));
             res.redirect('/account');

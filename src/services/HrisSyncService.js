@@ -44,7 +44,14 @@ function code(c, message, status = 400) {
     return e;
 }
 
-async function audit(action, details, { actorRef = null, entityId = null, severity } = {}) {
+// Ids only: a line about one person names them by their ref (`employee:<id>`),
+// never by name, employee number or HRIS id; `subjects` lets LogService scrub
+// that person's identifiers should a value carry one.
+async function audit(
+    action,
+    details,
+    { actorRef = null, entityId = null, severity, subjects = null } = {}
+) {
     try {
         await require('./LogService').log({
             action,
@@ -52,6 +59,7 @@ async function audit(action, details, { actorRef = null, entityId = null, severi
             entityId,
             details,
             actorRef,
+            ...(subjects ? { subjects } : {}),
             ...(severity ? { severity } : {}),
         });
     } catch (_) {
@@ -698,11 +706,11 @@ class HrisSyncService {
             payload: { source, provider },
             actorRef,
         });
-        await audit(
-            'HRIS_JOINER_CREATED',
-            `Employee #${id} (${employeeNumber}) created from ${provider} ${j.externalId || ''}`.trim(),
-            { actorRef, entityId: id }
-        );
+        await audit('HRIS_JOINER_CREATED', `employee:${Number(id)} created from ${provider}`, {
+            actorRef,
+            entityId: id,
+            subjects: [`employee:${Number(id)}`],
+        });
         return id;
     }
 
@@ -814,8 +822,12 @@ class HrisSyncService {
                     );
                     await audit(
                         'HRIS_MOVER_APPLIED',
-                        `Employee #${m.employeeId} updated from ${provider}: ${Object.keys(patch).join(', ')}`,
-                        { actorRef, entityId: m.employeeId }
+                        `employee:${Number(m.employeeId)} updated from ${provider}: ${Object.keys(patch).join(', ')}`,
+                        {
+                            actorRef,
+                            entityId: m.employeeId,
+                            subjects: [`employee:${Number(m.employeeId)}`],
+                        }
                     );
                 });
                 applied.movers++;
@@ -831,8 +843,12 @@ class HrisSyncService {
                     await EmployeeModel.update(u.employeeId, u.profile);
                     await audit(
                         'HRIS_PROFILE_UPDATED',
-                        `Employee #${u.employeeId} profile updated from ${provider}: ${Object.keys(u.profile).join(', ')}`,
-                        { actorRef, entityId: u.employeeId }
+                        `employee:${Number(u.employeeId)} profile updated from ${provider}: ${Object.keys(u.profile).join(', ')}`,
+                        {
+                            actorRef,
+                            entityId: u.employeeId,
+                            subjects: [`employee:${Number(u.employeeId)}`],
+                        }
                     );
                 });
                 applied.updates++;
@@ -856,8 +872,12 @@ class HrisSyncService {
                     });
                     await audit(
                         'HRIS_LEAVER_APPLIED',
-                        `Employee #${l.employeeId} deprovisioned from ${provider} (${l.reason}${l.endDate ? ', ended ' + l.endDate : ''})`,
-                        { actorRef, entityId: l.employeeId }
+                        `employee:${Number(l.employeeId)} deprovisioned from ${provider} (${l.reason}${l.endDate ? ', ended ' + l.endDate : ''})`,
+                        {
+                            actorRef,
+                            entityId: l.employeeId,
+                            subjects: [`employee:${Number(l.employeeId)}`],
+                        }
                     );
                 });
                 applied.leavers++;
