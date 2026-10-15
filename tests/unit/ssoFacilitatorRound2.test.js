@@ -113,10 +113,37 @@ describe('F3 — an undecryptable stored secret never falls back to .env', () =>
 });
 
 describe('F4 / F5 — metadata fetch', () => {
-    test('the pinned lookup answers the {all:true} form Node >= 22 uses', () => {
-        expect(read('src/services/SamlMetadataService.js')).toMatch(
-            /opts && opts\.all\s*\?\s*cb\(null, \[\{ address: pinned\.address, family: pinned\.family \}\]\)/
-        );
+    test('the request connects to the CHECKED address, keeping the name for TLS and Host', async () => {
+        const dns = require('dns');
+        const https = require('https');
+        const { EventEmitter } = require('events');
+        const look = jest
+            .spyOn(dns.promises, 'lookup')
+            .mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+        let seen;
+        const get = jest.spyOn(https, 'get').mockImplementation((opts) => {
+            seen = opts;
+            const req = new EventEmitter();
+            req.destroy = (err) => req.emit('error', err || new Error('destroyed'));
+            setImmediate(() => req.emit('error', new Error('no network in tests')));
+            return req;
+        });
+        try {
+            const Md = require('../../src/services/SamlMetadataService');
+            await Md.fetchMetadata('https://login.example:8443/md?x=1');
+            expect(seen).toMatchObject({
+                host: '93.184.216.34',
+                family: 4,
+                port: 8443,
+                path: '/md?x=1',
+                servername: 'login.example',
+            });
+            expect(seen.headers.Host).toBe('login.example:8443');
+            expect(seen.lookup).toBeUndefined();
+        } finally {
+            look.mockRestore();
+            get.mockRestore();
+        }
     });
     test('special-purpose IPv4/IPv6 forms are private; public addresses are not', () => {
         for (const a of [

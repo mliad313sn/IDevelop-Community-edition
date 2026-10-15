@@ -188,6 +188,20 @@ function passwordCode(errors) {
     return composition ? 'onbx_su_password_policy' : 'onbx_su_password_weak';
 }
 
+/**
+ * local@domain.tld with one "@", no white space, and a dot inside the domain.
+ * Checked by splitting rather than by one regex, so a long hostile string
+ * cannot make the check backtrack (js/polynomial-redos).
+ */
+function plainEmail(email) {
+    if (!email || email.length > 254 || /\s/.test(email)) return false;
+    const at = email.indexOf('@');
+    if (at < 1 || at !== email.lastIndexOf('@')) return false;
+    const domain = email.slice(at + 1);
+    const dot = domain.lastIndexOf('.');
+    return dot > 0 && dot < domain.length - 1;
+}
+
 async function createFromSignup({ email, firstName, lastName, password }) {
     // Every outcome carries a STABLE `code` (+ interpolation `params`); the
     // controller renders it through req.t so the applicant reads their own
@@ -203,7 +217,7 @@ async function createFromSignup({ email, firstName, lastName, password }) {
     email = String(email || '')
         .toLowerCase()
         .trim();
-    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
+    if (!plainEmail(email))
         return {
             ok: false,
             reason: 'email',

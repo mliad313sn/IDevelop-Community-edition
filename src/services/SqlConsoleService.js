@@ -1889,12 +1889,19 @@ class SqlConsoleService {
 
     /** Absolute path of a restore point: this database's folder, else the legacy root. */
     _restorePointFile(name) {
-        const mine = path.join(this._restoreDir({ create: false }), name + '.dump');
-        if (fs.existsSync(mine))
+        // A bare file name only: no separator, no "..", nothing outside the folder.
+        name = path.basename(String(name));
+        if (!/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(name)) return null;
+        const inside = (dir) => {
+            const root = path.resolve(dir);
+            const file = path.resolve(root, name + '.dump');
+            return file.startsWith(root + path.sep) && fs.existsSync(file) ? file : null;
+        };
+        const mine = inside(this._restoreDir({ create: false }));
+        if (mine)
             return { file: mine, dir: this._restoreDir({ create: false }), scope: 'database' };
-        const legacy = path.join(this._restoreBaseDir(), name + '.dump');
-        if (fs.existsSync(legacy))
-            return { file: legacy, dir: this._restoreBaseDir(), scope: 'legacy' };
+        const legacy = inside(this._restoreBaseDir());
+        if (legacy) return { file: legacy, dir: this._restoreBaseDir(), scope: 'legacy' };
         return null;
     }
 

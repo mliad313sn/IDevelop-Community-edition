@@ -220,9 +220,9 @@ function mapStrings(v, fn, depth = 0) {
     if (depth > 8 || v == null || typeof v !== 'object') return v;
     if (Array.isArray(v)) return v.map((x) => mapStrings(x, fn, depth + 1));
     if (v instanceof Date) return v;
-    const out = {};
-    for (const [k, x] of Object.entries(v)) out[k] = mapStrings(x, fn, depth + 1);
-    return out;
+    const out = new Map();
+    for (const [k, x] of Object.entries(v)) out.set(k, mapStrings(x, fn, depth + 1));
+    return Object.fromEntries(out);
 }
 
 /**
