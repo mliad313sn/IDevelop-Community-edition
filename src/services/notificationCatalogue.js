@@ -30,6 +30,8 @@
  *                  one-to-one and HRIS sync kinds, only when a SuperAdmin lists
  *                  them) or 'never'
  *   category       the preference category of the kind (categoryOf)
+ *   KIND_MODULE    the optional module a kind belongs to (moduleOf; null =
+ *                  core): a kind of a module that is off is never emitted
  *
  * Every property is a GETTER returning a fresh object, so a caller mutating one
  * copy never affects another. `describe(kind)` returns the whole declaration of
@@ -152,6 +154,8 @@ const FAMILY_CATEGORY = {
     dept_digest: 'reports',
     dept_brief: 'reports',
     digest: 'reports',
+    // KPI threshold alerts (migration 186); the safety one is mandatory.
+    kpi: 'reports',
     access: 'account',
     account: 'account',
     admin: 'account',
@@ -276,6 +280,16 @@ const catalogue = {
             'cycle.opened': 'An assessment cycle is now open',
             'cycle.closed': 'An assessment cycle has closed',
             'admin.created': 'Your administrator account was created',
+            // KPI threshold alerts (migration 186): no name, no figure.
+            'kpi.alert': 'An indicator needs attention',
+            'kpi.alert.safety': 'A safety indicator needs attention',
+            'kpi.recovered': 'An indicator is back to normal',
+            // « What changed » digests (migration 187): figures only.
+            'digest.persona.executive': 'What changed: your summary',
+            'digest.persona.hr': 'What changed: your summary',
+            'digest.persona.manager': 'What changed in your team',
+            'digest.persona.employee': 'Your next step',
+            'digest.persona.paused': 'Your « What changed » summary was slowed down',
         };
     },
 
@@ -726,6 +740,66 @@ const catalogue = {
                 title: {
                     fr: "Une campagne d'évaluation est clôturée",
                     en: 'An assessment cycle has closed',
+                },
+            },
+            // KPI threshold alerts (migration 186). The link carries the site.
+            'kpi.alert': {
+                icon: 'fa-bullseye',
+                link: '/dashboard',
+                title: {
+                    fr: 'Un indicateur demande votre attention',
+                    en: 'An indicator needs attention',
+                },
+            },
+            'kpi.alert.safety': {
+                icon: 'fa-helmet-safety',
+                link: '/dashboard',
+                title: {
+                    fr: 'Un indicateur de sécurité demande votre attention',
+                    en: 'A safety indicator needs attention',
+                },
+            },
+            'kpi.recovered': {
+                icon: 'fa-circle-check',
+                link: '/dashboard',
+                title: {
+                    fr: 'Un indicateur est revenu à la normale',
+                    en: 'An indicator is back to normal',
+                },
+            },
+            // « What changed » digests (migration 187): the archive page.
+            'digest.persona.executive': {
+                icon: 'fa-newspaper',
+                link: '/digests',
+                title: {
+                    fr: 'Ce qui a changé : votre récapitulatif',
+                    en: 'What changed: your summary',
+                },
+            },
+            'digest.persona.hr': {
+                icon: 'fa-newspaper',
+                link: '/digests',
+                title: {
+                    fr: 'Ce qui a changé : votre récapitulatif',
+                    en: 'What changed: your summary',
+                },
+            },
+            'digest.persona.manager': {
+                icon: 'fa-newspaper',
+                link: '/digests',
+                title: { fr: 'Ce qui a changé dans votre équipe', en: 'What changed in your team' },
+            },
+            'digest.persona.employee': {
+                icon: 'fa-shoe-prints',
+                link: '/digests',
+                title: { fr: 'Votre prochaine étape', en: 'Your next step' },
+            },
+            'digest.persona.paused': {
+                icon: 'fa-pause',
+                link: '/digests',
+                title: {
+                    fr: 'Votre récapitulatif « Ce qui a changé » a été ralenti',
+                    en: 'Your « What changed » summary was slowed down',
                 },
             },
             manager_digest: {
@@ -1270,6 +1344,15 @@ const catalogue = {
             'lifecycle.joiner': 'digest',
             'lifecycle.mover': 'digest',
             'lifecycle.leaver': 'digest',
+            // KPI alerts (migration 186): the daily summary, except the
+            // mandatory safety alert, sent now. « What changed » digests
+            // (migration 187) compose their own mail like manager_digest; the
+            // employee's and the slow-down notice stay in the app.
+            'kpi.alert': 'digest',
+            'kpi.recovered': 'digest',
+            'kpi.alert.safety': 'immediate',
+            'digest.persona.employee': 'none',
+            'digest.persona.paused': 'none',
             'safety.blocked': 'immediate',
             'safety.expiring': 'immediate',
             'safety.blocked.team': 'immediate',
@@ -1360,7 +1443,26 @@ const catalogue = {
      */
     get KIND_SUBTITLE() {
         const n = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+        // KPI alerts: the indicator, its band and its scope (a site's name,
+        // never a person's), from the payload ids; never a figure.
+        const kpiAlert = (p, lang) => {
+            const A = require('./KpiAlertService');
+            if (!p || !/^K[0-9]{1,2}$/.test(String(p.kpi || ''))) return null;
+            return A.sentence(
+                lang,
+                {
+                    kpiId: String(p.kpi),
+                    transition: String(p.transition || 'raised'),
+                    toState: String(p.state || ''),
+                    scopeType: p.scopeType === 'site' ? 'site' : 'org',
+                },
+                p.siteName ? String(p.siteName).slice(0, 120) : null
+            );
+        };
         return {
+            'kpi.alert': kpiAlert,
+            'kpi.alert.safety': kpiAlert,
+            'kpi.recovered': kpiAlert,
             // The announcement carries its date, the invitation its provider: the
             // title alone said nothing to a person with no e-mail.
             'sso.migration_invite': (p, lang) =>
@@ -1786,6 +1888,38 @@ const catalogue = {
             },
 
             // ---- Rollups (these have their own dedicated emails; kept for parity) ----
+            'kpi.alert': {
+                fr: 'Un indicateur est entré dans une zone d’alerte ou s’est dégradé. Le détail est sur le tableau de bord.',
+                en: 'An indicator entered an alert band or got worse. The details are on the dashboard.',
+            },
+            'kpi.alert.safety': {
+                fr: 'Un indicateur de sécurité (certificats requis ou habilitations) est entré dans une zone d’alerte ou s’est dégradé. Le détail est sur le tableau de bord.',
+                en: 'A safety indicator (required certificates or safety clearances) entered an alert band or got worse. The details are on the dashboard.',
+            },
+            'kpi.recovered': {
+                fr: 'Un indicateur est sorti de sa zone d’alerte.',
+                en: 'An indicator left its alert band.',
+            },
+            'digest.persona.executive': {
+                fr: 'Ce qui a changé sur votre périmètre et ce qui reste à faire, en chiffres.',
+                en: 'What changed in your scope and what is left to do, in figures.',
+            },
+            'digest.persona.hr': {
+                fr: 'Ce qui a changé sur votre périmètre et ce qui reste à faire, en chiffres.',
+                en: 'What changed in your scope and what is left to do, in figures.',
+            },
+            'digest.persona.manager': {
+                fr: 'Ce qui a changé dans votre équipe et ce qui reste à faire, en chiffres.',
+                en: 'What changed in your team and what is left to do, in figures.',
+            },
+            'digest.persona.employee': {
+                fr: 'Votre prochaine étape vous attend.',
+                en: 'Your next step is waiting for you.',
+            },
+            'digest.persona.paused': {
+                fr: 'Plusieurs récapitulatifs de suite n’ont pas été ouverts : leur fréquence a été réduite. Vous pouvez la rétablir.',
+                en: 'Several summaries in a row were not opened: they now come less often. You can turn them back on.',
+            },
             manager_digest: {
                 fr: 'Le récapitulatif de votre équipe est disponible.',
                 en: 'The summary for your team is available.',
@@ -1942,6 +2076,7 @@ const catalogue = {
     get KIND_SEVERITY() {
         const by = {
             critique: [
+                'kpi.alert.safety',
                 'safety.blocked',
                 'safety.blocked.team',
                 'coverage.breach',
@@ -1995,6 +2130,7 @@ const catalogue = {
                 'ninebox.submitted',
                 'privacy.objection',
                 'privacy.trigger_paused',
+                'kpi.alert',
                 'ops.job_failed',
                 'ops.smtp_failed',
                 'ops.license',
@@ -2037,6 +2173,7 @@ const catalogue = {
      */
     get MANDATORY() {
         return [
+            'kpi.alert.safety',
             'safety.blocked',
             'safety.expiring',
             'safety.blocked.team',
@@ -2054,6 +2191,24 @@ const catalogue = {
             'security.admin_account_locked',
             'security.account_soft_locked',
         ];
+    },
+
+    /**
+     * The optional module of a kind (config/modules.js), null = core. A kind
+     * of a module that is off is never emitted. Declared for the kinds of the
+     * KPI alerts and the « What changed » digests; an undeclared kind is core.
+     */
+    get KIND_MODULE() {
+        return {
+            'kpi.alert': null,
+            'kpi.alert.safety': null,
+            'kpi.recovered': null,
+            'digest.persona.executive': null,
+            'digest.persona.hr': null,
+            'digest.persona.manager': null,
+            'digest.persona.employee': null,
+            'digest.persona.paused': null,
+        };
     },
 
     /** The webhook defaults (equal to WebhookService.EMITTABLE_EVENTS). */
@@ -2135,6 +2290,12 @@ const catalogue = {
         return catalogue.KIND_SEVERITY[kind] || 'info';
     },
 
+    /** The module of a kind (KIND_MODULE), null = core. */
+    moduleOf(kind) {
+        const m = catalogue.KIND_MODULE;
+        return Object.prototype.hasOwnProperty.call(m, kind) ? m[kind] : null;
+    },
+
     /** 'default' | 'opt-in' | 'never' (decision 8). */
     webhookOf(kind) {
         const k = String(kind || '');
@@ -2153,7 +2314,8 @@ const catalogue = {
     categoryOf(kind) {
         const k = String(kind || '');
         const fam = k.split('.')[0];
-        if (catalogue.isMandatory(k)) return fam === 'safety' ? 'safety' : 'security';
+        if (catalogue.isMandatory(k))
+            return fam === 'safety' || k === 'kpi.alert.safety' ? 'safety' : 'security';
         return FAMILY_CATEGORY[fam] || 'other';
     },
 
@@ -2230,6 +2392,7 @@ const catalogue = {
         return {
             kind,
             category: catalogue.categoryOf(kind),
+            module: catalogue.moduleOf(kind),
             severity: catalogue.severityOf(kind),
             tier: catalogue.tierOf(kind),
             mandatory: catalogue.isMandatory(kind),

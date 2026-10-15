@@ -2514,6 +2514,15 @@ router.get('/reports/gaps', requireManagerOrAdmin, ReportController.gaps);
 router.get('/kpi/glossary', requireManagerOrAdmin, (req, res, next) =>
     require('../controllers/KpiGlossaryController').page(req, res, next)
 );
+// « Indicator targets » (migration 186): read by any administrator account;
+// a decision needs manage_kpi_targets, and KpiTargetService checks the scope
+// (a site inside the clearance; the organisation with an unrestricted one).
+router.get('/kpi/targets', requireAdmin, (req, res, next) =>
+    require('../controllers/KpiTargetController').page(req, res, next)
+);
+router.post('/kpi/targets', requirePermission('manage_kpi_targets'), (req, res, next) =>
+    require('../controllers/KpiTargetController').save(req, res, next)
+);
 
 // Skill Matrix — manager/admin only
 router.get('/skill-matrix', requireManagerOrAdmin, SkillMatrixController.index);

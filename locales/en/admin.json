@@ -1170,6 +1170,10 @@
     "manage_invitations": {
       "label": "Send account invitations",
       "desc": "Open the account/invitations console and send or re-send sign-in invitations — within the assigned scope. Does NOT include resetting an existing password."
+    },
+    "manage_kpi_targets": {
+      "label": "Manage indicator targets",
+      "desc": "Set, change or withdraw the target of an indicator for a site of the assigned scope (the whole organisation needs an unrestricted scope). Every decision is dated, has a reason and is kept."
     }
   },
   "ap_extend_self": "You cannot extend your own access. Ask another administrator to re-certify it.",

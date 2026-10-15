@@ -91,6 +91,14 @@ const TICKS = [
         fn: () => require('./kpi-snapshot').tick(),
     }, // daily executive KPI-strip snapshot, org + per site (idempotent per day) — the ONLY source of the dashboard's "+x since" deltas
     {
+        name: 'kpi-alerts.tick',
+        cron: '14 * * * *',
+        everyMin: 60,
+        keep: 30,
+        bootRun: false,
+        fn: () => require('./kpi-alerts').tick(),
+    }, // KPI threshold alerts: one claimed pass a day after KPI_ALERTS_HOUR (migration 186)
+    {
         name: 'manager-digest.tick',
         cron: '20 * * * *',
         everyMin: 60,

@@ -334,6 +334,17 @@ const PERMISSIONS = [
         description:
             'Post internal opportunities, decide applications (accept/decline) and decide cancellation requests — within the assigned scope.',
     },
+    // Migration 186: the targets of the indicators (KpiTargetService). A site
+    // inside the assigned scope; the whole organisation only with an
+    // unrestricted scope. Read access to the targets page needs no slug.
+    {
+        slug: 'manage_kpi_targets',
+        label: 'Manage indicator targets',
+        group: 'governance',
+        write: true,
+        description:
+            'Set, change or withdraw the target of an indicator for a site of the assigned scope (the whole organisation needs an unrestricted scope). Every decision is dated, has a reason and is kept.',
+    },
     {
         slug: 'manage_surveys',
         label: 'Manage engagement surveys',

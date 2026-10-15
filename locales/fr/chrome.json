@@ -792,5 +792,10 @@
   "nav_kpi_glossary": "Définition des indicateurs",
   "nav_kpi_glossary_title": "Comment chaque indicateur est calculé",
   "nav_team_roster": "Mon équipe",
-  "nav_team_roster_title": "Une ligne par personne qui vous est rattachée"
+  "nav_team_roster_title": "Une ligne par personne qui vous est rattachée",
+  "nav_kpi_targets": "Cibles des indicateurs",
+  "nav_kpi_targets_title": "Les cibles fixées par indicateur et par site, et leur historique",
+  "nav_my_digests": "Mes récapitulatifs",
+  "notif_family_kpi": "Alertes des indicateurs",
+  "notif_family_digest": "Récapitulatifs « Ce qui a changé »"
 }

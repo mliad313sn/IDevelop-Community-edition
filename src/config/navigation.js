@@ -415,6 +415,13 @@ const CATALOGUE = {
         href: '/kpi/glossary',
         icon: 'fa-calculator',
     },
+    // The targets of the indicators and their alerts (KpiTargetController).
+    kpi_targets: {
+        label: 'nav_kpi_targets',
+        title: 'nav_kpi_targets_title',
+        href: '/kpi/targets',
+        icon: 'fa-bullseye',
+    },
     site_exposure: {
         label: 'exec:se_title',
         title: 'exec:se_subtitle',
@@ -551,6 +558,8 @@ const ACCOUNT_MENU = [
         href: '/account/notifications',
         icon: 'fa-bell-concierge',
     },
+    // The archive of the person's « What changed » summaries (DigestController).
+    { id: 'my_digests', label: 'nav_my_digests', href: '/digests', icon: 'fa-newspaper' },
     {
         id: 'change_password',
         label: 'menu_change_password',
@@ -760,6 +769,8 @@ function gates(c) {
         // Route requireManagerOrAdmin, like the reports; the page itself
         // leaves out the indicators of a module that is off.
         kpi_glossary: gTools,
+        // Route requireAdmin (read); a decision needs manage_kpi_targets.
+        kpi_targets: gTools && isAdm,
         benchmark: gMainDash,
         site_exposure: gMainDash,
         board_pack: gMainDash,
@@ -893,6 +904,7 @@ const SECTIONS = {
             'gaps_report',
             'readiness',
             'kpi_glossary',
+            'kpi_targets',
             'benchmark',
             'site_exposure',
             'board_pack',

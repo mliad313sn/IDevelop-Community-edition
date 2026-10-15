@@ -311,7 +311,9 @@ const BEFORE = {
  *  - training to approve (/v2/lms/uplifts, development module): managers and
  *    configure_lms holders;
  *  - the indicator definitions (/kpi/glossary, KPI module): a new page with
- *    the reports' gate (requireManagerOrAdmin).
+ *    the reports' gate (requireManagerOrAdmin);
+ *  - the indicator targets (/kpi/targets, wave 12 D4): a new page for every
+ *    administrator account (requireAdmin; deciding needs manage_kpi_targets).
  */
 const ORPHANS = [
     '/talent/nine-box/movements',
@@ -325,13 +327,14 @@ const ADDED = {
     employee: ['/safety-gate/me'],
     // « My team » (wave 12 D3): the named roster that left the manager's dashboard
     manager: ['/tasks', ...ORPHANS, '/safety-gate', '/safety-gate/me', '/supervisor/team'],
-    localadmin_ops: ['/tasks', ...ORPHANS, '/safety-gate'],
-    localadmin_people: ['/tasks', ...ORPHANS],
-    localadmin_none: ['/tasks', ...ORPHANS],
-    viewer: [...ORPHANS],
+    localadmin_ops: ['/tasks', ...ORPHANS, '/kpi/targets', '/safety-gate'],
+    localadmin_people: ['/tasks', ...ORPHANS, '/kpi/targets'],
+    localadmin_none: ['/tasks', ...ORPHANS, '/kpi/targets'],
+    viewer: [...ORPHANS, '/kpi/targets'],
     superadmin: [
         '/tasks',
         ...ORPHANS,
+        '/kpi/targets',
         '/safety-gate',
         '/safety-gate/config',
         '/admin/modules',
@@ -782,6 +785,7 @@ describe('one account menu', () => {
         expect(emp).toEqual([
             '/account',
             '/account/notifications',
+            '/digests',
             '/change-password',
             '/v2/uam/mfa/manage',
             '/account/sessions',
@@ -807,6 +811,7 @@ describe('one account menu', () => {
         expect(got).toEqual([
             '/account',
             '/account/notifications',
+            '/digests',
             '/change-password',
             '/v2/uam/mfa/manage',
             '/account/sessions',

@@ -792,5 +792,10 @@
   "nav_kpi_glossary": "Indicator definitions",
   "nav_kpi_glossary_title": "How each indicator is calculated",
   "nav_team_roster": "My team",
-  "nav_team_roster_title": "One row per person who reports to you"
+  "nav_team_roster_title": "One row per person who reports to you",
+  "nav_kpi_targets": "Indicator targets",
+  "nav_kpi_targets_title": "The targets set per indicator and site, and their history",
+  "nav_my_digests": "My summaries",
+  "notif_family_kpi": "Indicator alerts",
+  "notif_family_digest": "« What changed » summaries"
 }

@@ -1170,6 +1170,10 @@
     "manage_invitations": {
       "label": "Envoyer des invitations de compte",
       "desc": "Ouvrir la console des comptes / invitations et envoyer ou renvoyer des invitations de connexion — dans le périmètre assigné. N’inclut PAS la réinitialisation d’un mot de passe existant."
+    },
+    "manage_kpi_targets": {
+      "label": "Gérer les cibles des indicateurs",
+      "desc": "Fixer, modifier ou retirer la cible d’un indicateur pour un site de son périmètre (l’organisation entière demande un périmètre sans restriction). Chaque décision est datée, motivée et conservée."
     }
   },
   "ap_extend_self": "Vous ne pouvez pas prolonger votre propre accès. Demandez à un autre administrateur de le recertifier.",
