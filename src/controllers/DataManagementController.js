@@ -1,4 +1,4 @@
-const { containedUploadPath } = require('../utils/uploadTempPath');
+const { containedUploadPath, uploadedPath, discardUpload } = require('../utils/uploadTempPath');
 const { csvCell } = require('../utils/csvSafe');
 const EmployeeModel = require('../models/EmployeeModel');
 const SkillAssessmentModel = require('../models/SkillAssessmentModel');
@@ -990,8 +990,8 @@ class DataManagementController {
             // Read Excel file using exceljs
             const ExcelJS = require('exceljs');
             const workbook = new ExcelJS.Workbook();
-            require('../utils/importGuards').assertSafeXlsxFile(req.file.path); // zip-bomb guard (SA-09)
-            await workbook.xlsx.readFile(req.file.path);
+            require('../utils/importGuards').assertSafeXlsxFile(uploadedPath(req.file)); // zip-bomb guard (SA-09)
+            await workbook.xlsx.readFile(uploadedPath(req.file));
 
             // Parse each sheet
             const data = {
@@ -1086,7 +1086,7 @@ class DataManagementController {
 
             // Clean up uploaded file
             const fs = require('fs');
-            fs.unlinkSync(req.file.path);
+            discardUpload(req.file);
 
             // Import using service
             const results = await ImportExportService.importSkillFramework(data, req.user.id);
@@ -1104,9 +1104,7 @@ class DataManagementController {
             res.json({ success: true, results });
         } catch (error) {
             console.error('Import skill framework error:', error);
-            if (req.file && require('fs').existsSync(req.file.path)) {
-                require('fs').unlinkSync(req.file.path);
-            }
+            discardUpload(req.file);
             res.status(500).json({ error: error.message || 'Error importing skill framework' });
         }
     }
@@ -1122,8 +1120,8 @@ class DataManagementController {
             }
 
             const fs = require('fs');
-            const csvText = fs.readFileSync(req.file.path, 'utf8');
-            fs.unlinkSync(req.file.path); // Clean up temp file
+            const csvText = fs.readFileSync(uploadedPath(req.file), 'utf8');
+            discardUpload(req.file); // Clean up temp file
 
             // Parse CSV
             const lines = csvText.split('\n').filter((l) => l.trim());
@@ -1206,8 +1204,8 @@ class DataManagementController {
             }
 
             const fs = require('fs');
-            const csvText = fs.readFileSync(req.file.path, 'utf8');
-            fs.unlinkSync(req.file.path);
+            const csvText = fs.readFileSync(uploadedPath(req.file), 'utf8');
+            discardUpload(req.file);
 
             const lines = csvText.split('\n').filter((l) => l.trim());
             const data = { domains: [], subDomains: [], skills: [] };
@@ -1298,12 +1296,12 @@ class DataManagementController {
             let data = [];
 
             if (ext === '.json') {
-                const jsonText = fs.readFileSync(req.file.path, 'utf8');
+                const jsonText = fs.readFileSync(uploadedPath(req.file), 'utf8');
                 data = JSON.parse(jsonText);
-                fs.unlinkSync(req.file.path);
+                discardUpload(req.file);
             } else if (ext === '.csv') {
-                const csvText = fs.readFileSync(req.file.path, 'utf8');
-                fs.unlinkSync(req.file.path);
+                const csvText = fs.readFileSync(uploadedPath(req.file), 'utf8');
+                discardUpload(req.file);
 
                 // Parse CSV using service helper
                 const lines = csvText.split('\n').filter((l) => l.trim());
@@ -1330,8 +1328,8 @@ class DataManagementController {
                 // Read Excel file using exceljs
                 const ExcelJS = require('exceljs');
                 const workbook = new ExcelJS.Workbook();
-                require('../utils/importGuards').assertSafeXlsxFile(req.file.path); // zip-bomb guard (SA-09)
-                await workbook.xlsx.readFile(req.file.path);
+                require('../utils/importGuards').assertSafeXlsxFile(uploadedPath(req.file)); // zip-bomb guard (SA-09)
+                await workbook.xlsx.readFile(uploadedPath(req.file));
                 const worksheet = workbook.getWorksheet(1); // First sheet
 
                 if (worksheet) {
@@ -1353,7 +1351,7 @@ class DataManagementController {
                         }
                     });
                 }
-                fs.unlinkSync(req.file.path);
+                discardUpload(req.file);
             }
 
             const results = await ImportExportService.importRoles(data, req.user.id);
@@ -1370,9 +1368,7 @@ class DataManagementController {
             res.json({ success: true, results });
         } catch (error) {
             console.error('Import roles error:', error);
-            if (req.file && require('fs').existsSync(req.file.path)) {
-                require('fs').unlinkSync(req.file.path);
-            }
+            discardUpload(req.file);
             res.status(500).json({ error: error.message || 'Error importing roles' });
         }
     }
@@ -1388,8 +1384,8 @@ class DataManagementController {
             }
 
             const fs = require('fs');
-            const csvText = fs.readFileSync(req.file.path, 'utf8');
-            fs.unlinkSync(req.file.path);
+            const csvText = fs.readFileSync(uploadedPath(req.file), 'utf8');
+            discardUpload(req.file);
 
             const data = ImportExportService.parseCSV(csvText);
             const results = await ImportExportService.importEmployees(data, req.user);
@@ -1421,8 +1417,8 @@ class DataManagementController {
             }
 
             const fs = require('fs');
-            const jsonText = fs.readFileSync(req.file.path, 'utf8');
-            fs.unlinkSync(req.file.path);
+            const jsonText = fs.readFileSync(uploadedPath(req.file), 'utf8');
+            discardUpload(req.file);
 
             const data = JSON.parse(jsonText);
             const results = await ImportExportService.importLocalAdmins(
@@ -1855,16 +1851,16 @@ class DataManagementController {
 
             let result;
             if (ext === '.json') {
-                const jsonText = fs.readFileSync(req.file.path, 'utf8');
+                const jsonText = fs.readFileSync(uploadedPath(req.file), 'utf8');
                 const jsonData = JSON.parse(jsonText);
                 result = await UnifiedImportService.importAssessmentsJSON(jsonData, req.user.id);
             } else {
                 // Assume Excel
-                result = await UnifiedImportService.importAssessments(req.file.path);
+                result = await UnifiedImportService.importAssessments(uploadedPath(req.file));
             }
 
             // Clean up file
-            fs.unlink(req.file.path, () => {});
+            discardUpload(req.file);
 
             await LogService.log({
                 adminId: req.user.id,
@@ -1882,9 +1878,7 @@ class DataManagementController {
             });
         } catch (error) {
             console.error('Import assessments error:', error);
-            if (req.file && require('fs').existsSync(req.file.path)) {
-                require('fs').unlink(req.file.path, () => {});
-            }
+            discardUpload(req.file);
             res.status(500).json({ error: error.message });
         }
     }
@@ -1966,11 +1960,11 @@ class DataManagementController {
             }
 
             // Unified full framework import
-            const result = await UnifiedImportService.importFullFramework(req.file.path);
+            const result = await UnifiedImportService.importFullFramework(uploadedPath(req.file));
 
             // Clean up uploaded file
             const fs = require('fs');
-            fs.unlink(req.file.path, () => {});
+            discardUpload(req.file);
 
             await LogService.log({
                 adminId: req.user.id,
@@ -1991,7 +1985,7 @@ class DataManagementController {
 
             if (req.file) {
                 const fs = require('fs');
-                if (fs.existsSync(req.file.path)) fs.unlink(req.file.path, () => {});
+                discardUpload(req.file);
             }
 
             res.json({
@@ -2012,13 +2006,13 @@ class DataManagementController {
             }
 
             const fs = require('fs');
-            const fileContent = fs.readFileSync(req.file.path, 'utf8');
+            const fileContent = fs.readFileSync(uploadedPath(req.file), 'utf8');
             const jsonData = JSON.parse(fileContent);
 
             const result = await UnifiedJsonService.importSystemFromJson(jsonData, req.user);
 
             // Clean up uploaded file
-            fs.unlink(req.file.path, () => {});
+            discardUpload(req.file);
 
             await LogService.log({
                 adminId: req.user.id,
@@ -2038,7 +2032,7 @@ class DataManagementController {
             console.error('Full system JSON import error:', error);
             if (req.file) {
                 const fs = require('fs');
-                if (fs.existsSync(req.file.path)) fs.unlink(req.file.path, () => {});
+                discardUpload(req.file);
             }
             res.json({
                 success: false,
@@ -2059,8 +2053,8 @@ class DataManagementController {
                 return res.json({ success: false, message: 'No file uploaded' });
             }
             const fs = require('fs');
-            const fileContent = fs.readFileSync(req.file.path, 'utf8');
-            fs.unlink(req.file.path, () => {});
+            const fileContent = fs.readFileSync(uploadedPath(req.file), 'utf8');
+            discardUpload(req.file);
             const jsonData = JSON.parse(fileContent);
             const preview = await UnifiedJsonService.previewSystemFromJson(jsonData);
             res.json({ success: true, preview });
@@ -2068,7 +2062,7 @@ class DataManagementController {
             console.error('Preview system JSON error:', error);
             if (req.file) {
                 const fs = require('fs');
-                if (fs.existsSync(req.file.path)) fs.unlink(req.file.path, () => {});
+                discardUpload(req.file);
             }
             res.json({ success: false, message: error.message });
         }
@@ -2087,8 +2081,8 @@ class DataManagementController {
             // Preview validates file structure
             const ExcelJS = require('exceljs');
             const workbook = new ExcelJS.Workbook();
-            require('../utils/importGuards').assertSafeXlsxFile(req.file.path); // zip-bomb guard (SA-09)
-            await workbook.xlsx.readFile(req.file.path);
+            require('../utils/importGuards').assertSafeXlsxFile(uploadedPath(req.file)); // zip-bomb guard (SA-09)
+            await workbook.xlsx.readFile(uploadedPath(req.file));
 
             // Validate using the SAME sheet-name aliases the importer accepts
             // (importFullFramework's getWorksheet) — the export names its sheets
@@ -2116,7 +2110,7 @@ class DataManagementController {
 
             // Clean up uploaded file
             const fs = require('fs');
-            fs.unlink(req.file.path, () => {});
+            discardUpload(req.file);
 
             res.json({
                 success: true,
@@ -2132,7 +2126,7 @@ class DataManagementController {
             console.error('Preview import error:', error);
             if (req.file) {
                 const fs = require('fs');
-                if (fs.existsSync(req.file.path)) fs.unlink(req.file.path, () => {});
+                discardUpload(req.file);
             }
             res.json({
                 success: false,
@@ -2233,24 +2227,22 @@ class DataManagementController {
             }
             const format = this._smFormat(require('path').extname(req.file.originalname));
             if (!format) {
-                require('fs').unlink(req.file.path, () => {});
+                discardUpload(req.file);
                 return res.json({
                     success: false,
                     message: 'Unsupported file type. Use .xlsx, .json, .xml or .csv',
                 });
             }
 
-            const upload = containedUploadPath(req.file.path);
+            const upload = containedUploadPath(req.file && req.file.path);
             if (!upload) return res.status(400).json({ success: false, message: 'Bad upload.' });
             const preview = await SkillMatrixWorkbookService.preview(upload, format);
 
-            require('fs').unlink(req.file.path, () => {});
+            discardUpload(req.file);
             res.json({ success: true, preview });
         } catch (error) {
             console.error('Preview skill matrix error:', error);
-            if (req.file && require('fs').existsSync(req.file.path)) {
-                require('fs').unlink(req.file.path, () => {});
-            }
+            discardUpload(req.file);
             res.json({ success: false, message: error.message });
         }
     }
@@ -2265,17 +2257,17 @@ class DataManagementController {
             }
             const format = this._smFormat(require('path').extname(req.file.originalname));
             if (!format) {
-                require('fs').unlink(req.file.path, () => {});
+                discardUpload(req.file);
                 return res
                     .status(400)
                     .json({ error: 'Unsupported file type. Use .xlsx, .json, .xml or .csv' });
             }
 
-            const upload = containedUploadPath(req.file.path);
+            const upload = containedUploadPath(req.file && req.file.path);
             if (!upload) return res.status(400).json({ error: 'Bad upload.' });
             const result = await SkillMatrixWorkbookService.import(upload, req.user.id, format);
 
-            require('fs').unlink(req.file.path, () => {});
+            discardUpload(req.file);
 
             await LogService.log({
                 adminId: req.user.id,
@@ -2293,9 +2285,7 @@ class DataManagementController {
             res.json({ success: true, results: result.results });
         } catch (error) {
             console.error('Import skill matrix error:', error);
-            if (req.file && require('fs').existsSync(req.file.path)) {
-                require('fs').unlink(req.file.path, () => {});
-            }
+            discardUpload(req.file);
             res.status(500).json({ error: error.message || 'Error importing skill matrix' });
         }
     }

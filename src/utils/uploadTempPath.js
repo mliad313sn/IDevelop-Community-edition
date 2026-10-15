@@ -11,6 +11,7 @@
  *
  * @module utils/uploadTempPath
  */
+const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
@@ -40,4 +41,26 @@ function containedUploadPath(p) {
     return null;
 }
 
-module.exports = { containedUploadPath, uploadTempDirs };
+/**
+ * The contained path of an uploaded file, for reading it. Throws a 400-class
+ * error when multer's path is not inside an upload temp directory.
+ * @param {{path?: unknown}|undefined} file
+ * @returns {string}
+ */
+function uploadedPath(file) {
+    const p = containedUploadPath(file && file.path);
+    if (!p) {
+        const err = new Error('The upload is not where uploads are kept.');
+        err.status = 400;
+        throw err;
+    }
+    return p;
+}
+
+/** Delete an uploaded temp file, if it is one. Never throws. */
+function discardUpload(file) {
+    const p = containedUploadPath(file && file.path);
+    if (p) fs.unlink(p, () => {});
+}
+
+module.exports = { containedUploadPath, uploadTempDirs, uploadedPath, discardUpload };

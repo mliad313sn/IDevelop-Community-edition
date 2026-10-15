@@ -28,6 +28,7 @@
  * manager the forms they can actually submit and hides the ones they cannot.
  */
 
+const { uploadedPath, discardUpload } = require('../utils/uploadTempPath');
 const fs = require('fs');
 const db = require('../config/database');
 const CertificationService = require('../services/CertificationService');
@@ -224,7 +225,7 @@ class ComplianceController {
             // Scope check: the target employee must be visible to the actor.
             const ids = await scopedEmployeeIds(req.user);
             if (ids !== null && !ids.includes(Number(employeeId))) {
-                if (req.file) fs.unlink(req.file.path, () => {});
+                discardUpload(req.file);
                 return res.status(403).json({ error: 'Employee outside your scope' });
             }
             const cert = await CertificationService.record(
@@ -255,7 +256,7 @@ class ComplianceController {
             );
             res.redirect('/compliance');
         } catch (e) {
-            if (req.file) fs.unlink(req.file.path, () => {});
+            discardUpload(req.file);
             if (this._wantsJson(req)) return res.status(400).json({ error: e.message });
             req.flash(
                 'error',
@@ -345,11 +346,11 @@ class ComplianceController {
         const dryRun = String(req.body.dryRun || '') === '1';
         try {
             const CertificationService = require('../services/CertificationService');
-            const results = await CertificationService.importWorkbook(req.file.path, {
+            const results = await CertificationService.importWorkbook(uploadedPath(req.file), {
                 dryRun,
                 actor: req.user,
             });
-            fs.unlink(req.file.path, () => {});
+            discardUpload(req.file);
             if (!dryRun) {
                 await LogService.log({
                     adminId: req.user.userType === 'admin' ? req.user.id : null,
@@ -362,7 +363,7 @@ class ComplianceController {
             }
             res.json({ success: true, dryRun, results });
         } catch (e) {
-            fs.unlink(req.file.path, () => {});
+            discardUpload(req.file);
             res.status(400).json({ error: e.message });
         }
     }
