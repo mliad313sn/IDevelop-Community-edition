@@ -66,7 +66,8 @@ class DashboardController {
 
     _handleError(res, error, message = 'Internal Server Error') {
         console.error(message, error);
-        res.status(500).json({ error: message, details: error.message });
+        // The database's own error text stays in the server log, never in the response.
+        res.status(500).json({ error: message });
     }
 
     // -------------------------------------------------------------------------
