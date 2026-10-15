@@ -328,7 +328,7 @@ class LifecycleService {
         } catch (e) {
             console.error(
                 '[lifecycle] joiner enrolment failed for employee',
-                employeeId,
+                Number(employeeId),
                 e && e.message
             );
         }
@@ -395,7 +395,7 @@ class LifecycleService {
             } catch (e) {
                 console.error(
                     '[lifecycle] mover shell seeding failed for employee',
-                    employeeId,
+                    Number(employeeId),
                     e && e.message
                 );
             }
@@ -427,7 +427,7 @@ class LifecycleService {
             } catch (e) {
                 console.error(
                     '[lifecycle] nationalisation plan flag FAILED for mover',
-                    employeeId,
+                    Number(employeeId),
                     e && e.message
                 );
             }
@@ -743,7 +743,7 @@ class LifecycleService {
             // retaining admin access is a standing privilege, not a missed notice.
             console.error(
                 '[lifecycle] leaver admin-account revoke FAILED for employee',
-                employeeId,
+                Number(employeeId),
                 e && e.message
             );
         }
@@ -780,7 +780,7 @@ class LifecycleService {
             } catch (e) {
                 console.error(
                     '[lifecycle] nationalisation plan flag FAILED for employee',
-                    employeeId,
+                    Number(employeeId),
                     e && e.message
                 );
             }
@@ -792,7 +792,7 @@ class LifecycleService {
             } catch (e) {
                 console.error(
                     '[lifecycle] leaver plan closure FAILED for employee',
-                    employeeId,
+                    Number(employeeId),
                     e && e.message
                 );
             }
@@ -830,7 +830,7 @@ class LifecycleService {
             } catch (e) {
                 console.error(
                     '[lifecycle] legal hold carry-over FAILED for employee',
-                    employeeId,
+                    Number(employeeId),
                     e && e.message
                 );
             }
