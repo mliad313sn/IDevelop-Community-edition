@@ -590,6 +590,10 @@ app.use((req, res, next) => {
     });
 });
 
+// A free-text reason is at most 2 000 characters, server-side, on every route
+// (urlencoded and JSON bodies; multipart bodies are parsed later by multer).
+app.use(require('./src/utils/validators').reasonLengthGuard);
+
 // Make user and CSRF token available to all views
 app.use(async (req, res, next) => {
     res.locals.user = req.user || null;
