@@ -84,6 +84,9 @@ const CATALOG = {
     mfaGraceStartedAt: { readOnly: true },
     // 3.23.19 (S6, migration 152): extra multi-factor acr values, comma list; blank = built-ins only.
     'sso.mfaAcrValues': { optional: true },
+    // SAML strict mode (whole response signed). Written on the SSO page only
+    // (category 'sso'); security-class through ^saml.
+    samlStrict: { type: 'boolean' },
     // 3.23.20 (C3, migration 153): help contact (free text) + invitation batch size.
     'sso.helpContact': { optional: true },
     'ssoInvite.batchSize': { min: 1, max: 500, integer: true },
@@ -1093,6 +1096,21 @@ class AppSettingsModel {
                 description:
                     'Sign users out after this many minutes of inactivity (applies to admins and employees; takes effect immediately)',
                 category: 'security',
+            },
+            {
+                // SAML strict mode: the whole response must be signed, not only the
+                // assertion. ON by default; an install that relaxed it through the
+                // environment (SAML_WANT_RESPONSE_SIGNED=0) keeps its choice.
+                // Category 'sso': written on the SuperAdmin SSO page only.
+                key: 'samlStrict',
+                value:
+                    String(process.env.SAML_WANT_RESPONSE_SIGNED || '').trim() === '0'
+                        ? 'false'
+                        : 'true',
+                type: 'boolean',
+                description:
+                    'SAML strict mode: require the whole SAML response to be signed as well as the assertion (default ON). OFF accepts an identity provider that signs the assertion only.',
+                category: 'sso',
             },
             // ---- Shared-computer (kiosk) mode. SuperAdmin only (security
             // category + ^kiosk in utils/securitySettings). OFF by default on new

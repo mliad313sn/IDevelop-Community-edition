@@ -3210,7 +3210,7 @@
   "ssof_fail_sso_replay": "cette réponse a déjà été utilisée : relancez le test.",
   "ssof_fail_sso_unparseable": "la réponse du fournisseur est illisible.",
   "ssof_fail_sso_saml_invalid": "la réponse a été rejetée (signature, certificat, audience ou validité). Vérifiez que les métadonnées importées sont celles de cette application et que l’identificateur (Entity ID) est identique des deux côtés.",
-  "ssof_fail_sso_saml_signature": "la signature n’est pas acceptée. Cette application exige que la réponse ET l’assertion soient signées par le certificat importé. Dans Entra : Authentification unique → Certificats SAML → Modifier → « Option de signature » = « Signer la réponse et l’assertion SAML » (SHA-256). Si c’est déjà le cas, réimportez les métadonnées du fournisseur (le certificat a peut-être changé).",
+  "ssof_fail_sso_saml_signature": "la signature n’est pas acceptée. L’assertion doit toujours être signée par le certificat importé ; en mode strict (par défaut), toute la réponse doit l’être aussi. Dans Entra : Authentification unique → Certificats SAML → Modifier → « Option de signature » = « Signer la réponse et l’assertion SAML » (SHA-256), ou désactivez le mode strict sur cette page si votre fournisseur ne signe que l’assertion. Si c’est déjà le cas, réimportez les métadonnées du fournisseur (le certificat a peut-être changé).",
   "ssof_fail_sso_saml_audience": "la réponse est destinée à une autre application (audience). L’« Identificateur (ID d’entité) » doit être identique chez le fournisseur et ici.",
   "ssof_fail_sso_saml_clock": "la réponse est périmée ou pas encore valide. Vérifiez l’heure de ce serveur (synchronisation de l’heure) : un écart de quelques minutes suffit à la refuser.",
   "ssof_fail_sso_saml_inresponseto": "la réponse ne correspond à aucune demande récente de cette application. Relancez la connexion depuis cette page (ou autorisez la connexion lancée depuis le portail du fournisseur).",
@@ -3710,5 +3710,6 @@
   "set_name_kioskIdleMinutes": "Poste partagé : déconnexion après inactivité (minutes)",
   "set_desc_kioskIdleMinutes": "Délai d’inactivité d’une session « Poste partagé » (1 à 30 min, 5 par défaut). Il ne peut que raccourcir le délai normal (sessionIdleMinutes), jamais l’allonger ; la durée maximale de session reste inchangée.",
   "set_err_cidrs": "« {{key}} » doit être une liste d’adresses IP ou de plages CIDR (ex. 10.20.0.0/16), séparées par des virgules ou des espaces.",
-  "set_hint_cidrs": "Adresses IP ou plages CIDR, séparées par des virgules ou des espaces (ex. 10.20.0.0/16, 192.168.5.12)"
+  "set_hint_cidrs": "Adresses IP ou plages CIDR, séparées par des virgules ou des espaces (ex. 10.20.0.0/16, 192.168.5.12)",
+  "sso_f_strict": "Strict : exiger aussi que toute la réponse SAML soit signée (recommandé ; Entra : « Signer la réponse et l’assertion SAML »). Désactivé : l’assertion signée suffit (Entra : « Signer l’assertion SAML »)."
 }
