@@ -412,6 +412,19 @@ footer{color:var(--mut);font-size:12.5px;text-align:center;margin:22px 0}
       </div>
       
     </div>
+  </article><article class="feat">
+    <header class="feat-h"><span class="feat-ic">🦺</span>
+      <div><h3>My safety clearance — status, waiver, contest</h3>
+      <div class="feat-where">Where: My assessments → My safety clearance (/safety-gate/me)</div></div></header>
+    <div class="feat-body">
+      <div class="feat-text">
+        <p class="feat-what">Your status for safety-critical work, worked out from your assessments and certificates, with each reason. If your manager or HSE granted you a waiver, the page says so in words: <b>“Authorised by waiver (until …)”</b> — never “Cleared”. If a block looks wrong, you can <b>contest</b> it; HSE or HR records a decision with its reason, which you read on the same page.</p>
+        <ol><li>Open <b>My safety clearance</b> in the “My assessments” menu.</li><li>Read your status and its reasons (blocking, warning, waived for now).</li><li>If the block is wrong, say why under <b>Contest this block</b> (a certificate never entered, an out-of-date assessment…) then <b>Send the contest</b>.</li><li>Follow the decision under <b>My contests</b>; you are also told in the app.</li></ol>
+        <div class="tip"><span class="tipi">💡</span> A waiver lasts 72 hours at most: when it ends, your computed status comes back. The real way out of a block is still an up-to-date assessment or certificate.</div>
+        
+      </div>
+      
+    </div>
   </article>
   </section><section id="supervisor" class="profile">
     <div class="profile-head" style="--c:#2563eb">
@@ -990,6 +1003,19 @@ footer{color:var(--mut);font-size:12.5px;text-align:center;margin:22px 0}
       </div>
       
     </div>
+  </article><article class="feat">
+    <header class="feat-h"><span class="feat-ic">🦺</span>
+      <div><h3>Safety waivers for your team</h3>
+      <div class="feat-where">Where: Safety clearances (/safety-gate), “Human review” column</div></div></header>
+    <div class="feat-body">
+      <div class="feat-text">
+        <p class="feat-what">When someone you directly manage is blocked by an enforced rule, you can grant them a <b>waiver</b> on one skill: a reason is required, it lasts <b>72 hours at most</b> and can be renewed <b>once</b>. A new waiver is possible only 72 hours after the previous one ended, and no more than <b>144 hours per skill over 30 days</b>. A rule <b>required by law</b> can never be waived. You can also contest a block on the person’s behalf.</p>
+        <ol><li>Open <b>Safety clearances</b> (from “My safety clearance”, “My team’s safety clearances” button).</li><li>On the blocked person’s row, open <b>Grant a waiver</b>: skill, length in hours, reason.</li><li>Follow it under <b>Authorised by waiver</b>: <b>Renew (one time only)</b> or <b>End the waiver now</b>, with a reason.</li></ol>
+        <div class="tip"><span class="tipi">💡</span> The person and their line are told; the e-mail carries no name or reason, the detail stays in the app.</div>
+        
+      </div>
+      
+    </div>
   </article>
   </section><section id="manager" class="profile">
     <div class="profile-head" style="--c:#4f46e5">
@@ -1180,6 +1206,19 @@ footer{color:var(--mut);font-size:12.5px;text-align:center;margin:22px 0}
         <p class="feat-what">The permitted screens open, but on an empty population. Observed: dashboard <b>Score 40 — À risque</b> with "<b>0 / 0 role-ready</b> of 0 employees measured" and average proficiency at "—"; matrix <b>Total Employees 0 · Total Skills 1126 · Ready Employees 0</b>; readiness report <b>0 / 0 / 0 / 0 %</b>; Organization <b>"No sites found"</b>. <b>These zeros describe the scope, not the organisation.</b> The framework itself stays visible: Benchmark shows the 6 pillars, 49 sub-domains, 13 role families and 41 roles, because that is reference data, not people data. A viewer who is meant to read numbers must be given a <b>scope</b>; without one the dashboard is not wrong, it is empty.</p>
         
         
+        
+      </div>
+      
+    </div>
+  </article><article class="feat">
+    <header class="feat-h"><span class="feat-ic">⚖️</span>
+      <div><h3>Contests, waivers and rules required by law (HSE)</h3>
+      <div class="feat-where">Where: Safety clearances (/safety-gate) and its configuration — “manage compliance” permission</div></div></header>
+    <div class="feat-body">
+      <div class="feat-text">
+        <p class="feat-what">Within your scope you can grant, renew or end a waiver like the line, and you <b>decide contests</b>: keep the block, or lift it by a waiver or a data correction — always with a reason, never on a contest about yourself or one you raised. In the configuration, a rule can be marked <b>“required by law”</b>: no waiver lifts it, running ones end, and it is always enforced. Only a SuperAdmin can remove the mark, with a reason. Switching any other rule to observe now needs a reason.</p>
+        <ol><li>Open <b>Safety clearances</b> → <b>Contests waiting for a decision</b>.</li><li>Choose <b>Keep the block</b> or <b>Lift the block</b>, give the reason and, to lift it, how (waiver: skill and length; correction: what must be corrected).</li><li>Click <b>Record the decision</b>: the person is told.</li><li>In the configuration, use <b>Mark as required by law</b> for every certification the law imposes.</li></ol>
+        <div class="tip"><span class="tipi">💡</span> The API and the webhook report a waiver with “waived: true” and its end: an access system that must refuse waived people has to read that field.</div>
         
       </div>
       

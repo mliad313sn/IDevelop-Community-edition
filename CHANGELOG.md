@@ -101,6 +101,15 @@ project uses [Semantic Versioning](https://semver.org/).
   development dependency (SA-26).
 - Webhook-family settings (`webhook*`) are security-class (SuperAdmin only).
 
+### Safety gate (waivers, contests, rules required by law)
+
+- **A human path on the safety-competency gate** (migration 174, SA-40). The person's line manager, or HSE within their scope, can grant a **waiver** on one blocking skill: a reason is required, it lasts 72 hours at most and can be renewed once. It is never granted by the person themselves. A new waiver waits 72 hours after the end of the previous one, and a person can be waived at most 144 hours per skill over any 30 days.
+- **Authorised by waiver, never cleared.** While a waiver runs, the status is WAIVED: « Authorised by waiver (until …) » on the pages, and `cleared: true` with `waived: true` and `waiverExpiresAt` in the API and the webhook. When it ends, the computed status applies at once; the person and their line are told.
+- **Contests.** A person, or their line manager, can contest a block with a reason. HSE or HR records the decision with its reason: block kept, or lifted by a waiver or a data correction. The person is told.
+- **« My safety clearance »** (`/safety-gate/me`): the person's own status, waivers and contests, and the contest form, from the personal menu.
+- **Rules required by law.** A rule can be marked as required by law: no waiver lifts it, running waivers end when it is marked, and it is always enforced. Only a SuperAdmin can remove the mark, with a reason. Switching any other rule to observe now needs a reason.
+- **Upgrade:** additive migration; existing rules are not marked as required by law and keep their mode. The two new tables are in the erasure registry, the personal-data export, the compliance register and the go-live reset.
+
 ### Security (encrypted backups)
 
 - **Backups are encrypted** (audit SA-39). The daily database backup and the

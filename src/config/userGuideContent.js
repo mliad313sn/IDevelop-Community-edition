@@ -685,6 +685,40 @@ const PROFILES = [
                     ],
                 },
             },
+            {
+                icon: '🦺',
+                img: null,
+                title: {
+                    fr: 'Mon habilitation sécurité — statut, dérogation, contestation',
+                    en: 'My safety clearance — status, waiver, contest',
+                },
+                where: {
+                    fr: 'Mes évaluations → Mon habilitation sécurité (/safety-gate/me)',
+                    en: 'My assessments → My safety clearance (/safety-gate/me)',
+                },
+                what: {
+                    fr: 'Votre statut pour les travaux critiques pour la sécurité, établi à partir de vos évaluations et de vos certificats, avec chaque motif. Si votre responsable ou la fonction HSE vous a accordé une dérogation, la page l’écrit en toutes lettres : <b>« Autorisé par dérogation (jusqu’au …) »</b> — jamais « Habilité ». Si un blocage vous semble erroné, vous pouvez le <b>contester</b> ; la fonction HSE ou RH enregistre une décision motivée, que vous lisez sur la même page.',
+                    en: 'Your status for safety-critical work, worked out from your assessments and certificates, with each reason. If your manager or HSE granted you a waiver, the page says so in words: <b>“Authorised by waiver (until …)”</b> — never “Cleared”. If a block looks wrong, you can <b>contest</b> it; HSE or HR records a decision with its reason, which you read on the same page.',
+                },
+                steps: {
+                    fr: [
+                        'Ouvrez <b>Mon habilitation sécurité</b> dans le menu « Mes évaluations ».',
+                        'Lisez votre statut et ses motifs (bloquant, attention, couvert par une dérogation).',
+                        'Si le blocage est erroné, expliquez pourquoi dans <b>Contester ce blocage</b> (un certificat non saisi, une évaluation dépassée…) puis <b>Envoyer la contestation</b>.',
+                        'Suivez la décision dans <b>Mes contestations</b> ; vous êtes aussi prévenu(e) dans l’application.',
+                    ],
+                    en: [
+                        'Open <b>My safety clearance</b> in the “My assessments” menu.',
+                        'Read your status and its reasons (blocking, warning, waived for now).',
+                        'If the block is wrong, say why under <b>Contest this block</b> (a certificate never entered, an out-of-date assessment…) then <b>Send the contest</b>.',
+                        'Follow the decision under <b>My contests</b>; you are also told in the app.',
+                    ],
+                },
+                tip: {
+                    fr: 'Une dérogation ne dure que 72 heures au plus : à son terme, votre statut calculé revient. La vraie sortie d’un blocage reste l’évaluation ou le certificat à jour.',
+                    en: 'A waiver lasts 72 hours at most: when it ends, your computed status comes back. The real way out of a block is still an up-to-date assessment or certificate.',
+                },
+            },
         ],
     },
     {
@@ -1397,6 +1431,38 @@ const PROFILES = [
                     en: 'Your scope is your direct reports, and it is refused visibly outside them. Real tests on 2026-09-02 against another manager’s report (Rachid QUINN, employee 204): the record <code>/employees/204</code> and its edit form <code>/employees/204/edit</code> return <b>HTTP 403 "Access denied"</b>; the APIs <code>/api/v1/employees/204/readiness</code> and <code>/api/v1/employees/204/development</code> return <b>403 {"error":"forbidden"}</b>; a write, <code>POST /api/v1/goals</code> aimed at employee 204, also returns <b>403</b>. The same calls on one of your people (employee 211) return <b>200</b>. Forms follow the same rule: the New IDP selector offers only your 15 people, even when <code>?employeeId=204</code> is forced in the URL. You can neither create an employee (<code>/employees/create</code> → <b>403</b>) nor open the LMS console (<code>/v2/lms</code> → <b>403 "Requires the configure_lms permission"</b>) nor approve a cancellation or a post-approval revision: those decisions belong to an administrator.',
                 },
             },
+            {
+                icon: '🦺',
+                img: null,
+                title: {
+                    fr: 'Dérogations de sécurité pour votre équipe',
+                    en: 'Safety waivers for your team',
+                },
+                where: {
+                    fr: 'Habilitations sécurité (/safety-gate), colonne « Examen humain »',
+                    en: 'Safety clearances (/safety-gate), “Human review” column',
+                },
+                what: {
+                    fr: 'Quand une personne que vous encadrez directement est bloquée par une règle appliquée, vous pouvez lui accorder une <b>dérogation</b> sur une compétence : motif obligatoire, <b>72 heures au plus</b>, renouvelable <b>une seule fois</b>. Une nouvelle dérogation n’est possible que 72 heures après la fin de la précédente, et pas plus de <b>144 heures par compétence sur 30 jours</b>. Une règle <b>exigée par la loi</b> ne peut jamais faire l’objet d’une dérogation. Vous pouvez aussi contester un blocage au nom de la personne.',
+                    en: 'When someone you directly manage is blocked by an enforced rule, you can grant them a <b>waiver</b> on one skill: a reason is required, it lasts <b>72 hours at most</b> and can be renewed <b>once</b>. A new waiver is possible only 72 hours after the previous one ended, and no more than <b>144 hours per skill over 30 days</b>. A rule <b>required by law</b> can never be waived. You can also contest a block on the person’s behalf.',
+                },
+                steps: {
+                    fr: [
+                        'Ouvrez <b>Habilitations sécurité</b> (depuis « Mon habilitation sécurité », bouton « Habilitations sécurité de mon équipe »).',
+                        'Sur la ligne de la personne bloquée, dépliez <b>Accorder une dérogation</b> : compétence, durée en heures, motif.',
+                        'Suivez la dérogation dans <b>Autorisés par dérogation</b> : <b>Renouveler (une seule fois)</b> ou <b>Arrêter la dérogation maintenant</b>, avec un motif.',
+                    ],
+                    en: [
+                        'Open <b>Safety clearances</b> (from “My safety clearance”, “My team’s safety clearances” button).',
+                        'On the blocked person’s row, open <b>Grant a waiver</b>: skill, length in hours, reason.',
+                        'Follow it under <b>Authorised by waiver</b>: <b>Renew (one time only)</b> or <b>End the waiver now</b>, with a reason.',
+                    ],
+                },
+                tip: {
+                    fr: 'La personne et sa hiérarchie sont prévenues ; l’e-mail ne contient ni nom ni motif, le détail reste dans l’application.',
+                    en: 'The person and their line are told; the e-mail carries no name or reason, the detail stays in the app.',
+                },
+            },
         ],
     },
     {
@@ -1630,6 +1696,40 @@ const PROFILES = [
                 what: {
                     fr: 'Les écrans autorisés s’ouvrent, mais sur une population vide. Relevé : tableau de bord <b>Score 40 — À risque</b> avec « <b>0 / 0 prêts au poste</b> of 0 employees measured » et une maîtrise moyenne à « — » ; matrice <b>Total Employees 0 · Total Skills 1126 · Ready Employees 0</b> ; rapport de préparation <b>0 / 0 / 0 / 0 %</b> ; Organisation <b>« No sites found »</b>. <b>Ces zéros décrivent le périmètre, pas l’organisation.</b> Le référentiel, lui, reste visible : le Benchmark affiche les 6 piliers, les 49 sous-domaines, les 13 familles de rôles et les 41 postes, parce que c’est une donnée de référence et non une donnée de personnes. Un lecteur à qui l’on veut faire lire des chiffres doit recevoir un <b>périmètre</b> ; sans lui, le tableau de bord n’est pas faux, il est vide.',
                     en: 'The permitted screens open, but on an empty population. Observed: dashboard <b>Score 40 — À risque</b> with "<b>0 / 0 role-ready</b> of 0 employees measured" and average proficiency at "—"; matrix <b>Total Employees 0 · Total Skills 1126 · Ready Employees 0</b>; readiness report <b>0 / 0 / 0 / 0 %</b>; Organization <b>"No sites found"</b>. <b>These zeros describe the scope, not the organisation.</b> The framework itself stays visible: Benchmark shows the 6 pillars, 49 sub-domains, 13 role families and 41 roles, because that is reference data, not people data. A viewer who is meant to read numbers must be given a <b>scope</b>; without one the dashboard is not wrong, it is empty.',
+                },
+            },
+            {
+                icon: '⚖️',
+                img: null,
+                title: {
+                    fr: 'Contestations, dérogations et règles exigées par la loi (HSE)',
+                    en: 'Contests, waivers and rules required by law (HSE)',
+                },
+                where: {
+                    fr: 'Habilitations sécurité (/safety-gate) et sa configuration — droit « gérer la conformité »',
+                    en: 'Safety clearances (/safety-gate) and its configuration — “manage compliance” permission',
+                },
+                what: {
+                    fr: 'Dans votre périmètre, vous pouvez accorder, renouveler ou arrêter une dérogation comme la hiérarchie, et vous <b>décidez des contestations</b> : maintenir le blocage, ou le lever par une dérogation ou une correction de donnée — toujours avec un motif, jamais sur une contestation qui vous concerne ou que vous avez déposée. En configuration, une règle peut être marquée <b>« exigée par la loi »</b> : aucune dérogation ne la lève, celles en cours s’arrêtent, et elle reste toujours appliquée. Seul un super administrateur peut retirer la marque, avec un motif. Passer une autre règle en observation demande désormais un motif.',
+                    en: 'Within your scope you can grant, renew or end a waiver like the line, and you <b>decide contests</b>: keep the block, or lift it by a waiver or a data correction — always with a reason, never on a contest about yourself or one you raised. In the configuration, a rule can be marked <b>“required by law”</b>: no waiver lifts it, running ones end, and it is always enforced. Only a SuperAdmin can remove the mark, with a reason. Switching any other rule to observe now needs a reason.',
+                },
+                steps: {
+                    fr: [
+                        'Ouvrez <b>Habilitations sécurité</b> → <b>Contestations en attente de décision</b>.',
+                        'Choisissez <b>Maintenir le blocage</b> ou <b>Lever le blocage</b>, donnez le motif, et pour une levée la suite donnée (dérogation : compétence et durée ; correction : ce qui doit être corrigé).',
+                        'Cliquez sur <b>Enregistrer la décision</b> : la personne est prévenue.',
+                        'En configuration, utilisez <b>Marquer comme exigée par la loi</b> pour chaque certification que la loi impose.',
+                    ],
+                    en: [
+                        'Open <b>Safety clearances</b> → <b>Contests waiting for a decision</b>.',
+                        'Choose <b>Keep the block</b> or <b>Lift the block</b>, give the reason and, to lift it, how (waiver: skill and length; correction: what must be corrected).',
+                        'Click <b>Record the decision</b>: the person is told.',
+                        'In the configuration, use <b>Mark as required by law</b> for every certification the law imposes.',
+                    ],
+                },
+                tip: {
+                    fr: 'L’API et le webhook signalent une dérogation par « waived: true » et sa fin : un système d’accès qui doit refuser les personnes sous dérogation doit lire ce champ.',
+                    en: 'The API and the webhook report a waiver with “waived: true” and its end: an access system that must refuse waived people has to read that field.',
                 },
             },
         ],
