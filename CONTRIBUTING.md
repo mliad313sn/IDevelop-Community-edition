@@ -78,13 +78,20 @@ welcome.
   `src/services/erasureRegistry.js` (each employee column with its erasure
   treatment, or the table in `TABLES_WITHOUT_SUBJECT_COLUMN` with the reason).
 - The SQL console reads through the `sqlconsole_reader` role
-  (`167_console_reader_role.sql`), which is granted table by table. A table
-  created by a later migration is not readable from the console until it is
-  granted, so a migration that adds tables must end by repeating the `DO`
-  block of `167_console_reader_role.sql`. A table that holds a secret column
-  must also be added to the lists in that block and to `SECRET_TABLES`,
+  (`167_console_reader_role.sql`), which is granted table by table, and column
+  by column on tables that hold a secret column. A table or a column created
+  by a later migration is not readable from the console until it is granted,
+  so a migration that adds a table, a view or a column must end with
+  `SELECT public.fn_console_reader_sync();` (the re-grant function of
+  `168_console_reader_sync.sql`). A table that holds a secret column must also
+  be added to the lists in that function (and in 167) and to `SECRET_TABLES`,
   `SECRET_COLUMNS` or `GUARDED_TABLES` in `src/services/SqlConsoleService.js`
-  (`migration167ConsoleReaderRole-db.test.js` checks they match).
+  (`migration167ConsoleReaderRole-db.test.js` checks they match, and that
+  every later migration ends with the call).
+- DB-backed test suites guard on the database **name** with
+  `tests/helpers/testDatabase.js` (`isTestDatabaseUrl`, `isFixturesDatabaseUrl`),
+  never on a substring of `DATABASE_URL`. A suite that calls `db.connect()` is
+  serialised with the other DB suites by `tests/helpers/dbSuiteEnvironment.js`.
 
 ## Translations
 
