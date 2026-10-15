@@ -639,7 +639,8 @@ function firstRow(tiles) {
 // ---------------------------------------------------------------------------
 
 /** Up to four sentences, counts only, from the indicators. Pure. */
-function briefLines(ind, mv, fmt, t) {
+function briefLines(ind, mv, fmt, t, dateFmt) {
+    const day = typeof dateFmt === 'function' ? dateFmt : (d) => d;
     const tr = typeof t === 'function' ? t : (k) => k;
     const F = fmt || { num: (v) => String(v), pct: (v) => String(v) + ' %' };
     const lines = [];
@@ -709,7 +710,7 @@ function briefLines(ind, mv, fmt, t) {
             tone: null,
             text: tr('dash:d3_brief_moved', {
                 delta: (mv.values.K1 > 0 ? '+' : '') + F.num(mv.values.K1, 1),
-                since: mv.since,
+                since: day(mv.since),
             }),
         });
     return lines.slice(0, 4);
@@ -760,7 +761,7 @@ async function setupItems(ctx, ind) {
  * The first screen of /dashboard: scope bar, « In brief », the first row of
  * tiles, the clearance line, « What is left to set up ».
  */
-async function firstScreen(ctx, { t, fmt } = {}) {
+async function firstScreen(ctx, { t, fmt, dateFmt } = {}) {
     if (!ctx.caps.pop) return { empty: true, tiles: [], more: [], brief: [], setup: [] };
     const ind = await indicators(ctx);
     let current = null;
@@ -780,7 +781,7 @@ async function firstScreen(ctx, { t, fmt } = {}) {
         empty: false,
         tiles,
         more: all.filter((x) => !shown.has(x.kpi)),
-        brief: briefLines(ind, mv, fmt, t),
+        brief: briefLines(ind, mv, fmt, t, dateFmt),
         since: mv.since,
         coverage: ind.K3 ? ind.K3.value : null,
         setup: await setupItems(ctx, ind),

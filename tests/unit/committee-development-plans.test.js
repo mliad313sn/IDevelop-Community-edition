@@ -50,7 +50,6 @@ jest.mock('../../src/services/RBACService', () => ({
 const IDPService = require('../../src/services/IDPService');
 const PipService = require('../../src/services/PipService');
 const TalentActionsController = require('../../src/controllers/TalentActionsController');
-const DashboardController = require('../../src/controllers/DashboardController');
 
 const SUPER = { id: 1, userType: 'admin', role: 'superadmin' };
 const norm = (s) => String(s).replace(/\s+/g, ' ');
@@ -406,58 +405,9 @@ describe('counting queries exclude cancelled plans', () => {
         modules.mockRestore();
     });
 
-    test('F5 dashboard "IDP completion": cancelled/archived plans leave the denominator, completed plans stay', async () => {
-        mockDb.get.mockResolvedValue({});
-        await new DashboardController().getTalentDevelopment(
-            { user: SUPER, query: {} },
-            {
-                json() {},
-                status() {
-                    return this;
-                },
-            }
-        );
-        const q = gets().find(([s]) => /FROM idp_actions a JOIN idp_plans i/i.test(s));
-        expect(q[0]).toMatch(/AND i\.status IN \('draft','active','completed'\)/);
-    });
+    // the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)
 
-    test('F6 dashboard measured PIP closures require the period to POST-date the plan creation', async () => {
-        mockDb.get.mockResolvedValue({});
-        await new DashboardController().getTalentDevelopment(
-            { user: SUPER, query: {} },
-            {
-                json() {},
-                status() {
-                    return this;
-                },
-            }
-        );
-        const q = gets().find(([s]) => /FROM pips p/i.test(s));
-        // the two MEASURED tallies (the plain closed_* tallies carry no AND)
-        const measured = q[0].match(
-            /COUNT\(\*\) FILTER \(WHERE p\.state='closed_(?:success|failure)' AND[^)]*\)/g
-        );
-        expect(measured).toHaveLength(2);
-        measured.forEach((m) => {
-            expect(m).toMatch(/p\.ends_on IS NOT NULL/);
-            expect(m).toMatch(/p\.ends_on > p\.created_at::date/);
-            expect(m).toMatch(/p\.updated_at >= p\.ends_on/);
-        });
-    });
+    // the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)
 
-    test('F9 exec measure "Active IDPs" = draft + active only (no NOT IN that lets cancelled/archived through)', async () => {
-        mockDb.get.mockResolvedValue({ count: 1 });
-        await new DashboardController().getMeasures(
-            { user: SUPER, query: {} },
-            {
-                json() {},
-                status() {
-                    return this;
-                },
-            }
-        );
-        const q = gets().find(([s]) => /FROM idp_plans WHERE/i.test(s));
-        expect(q[0]).toMatch(/FROM idp_plans WHERE status IN \('draft','active'\)/);
-        expect(q[0]).not.toMatch(/NOT IN/);
-    });
+    // the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)
 });

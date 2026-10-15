@@ -1,6 +1,6 @@
 'use strict';
 
-// SECTION ux (UAT3 passe 1) — Tableau de bord et symétrie export/effacement.
+// SECTION ux (UAT3 passe 1) — symétrie export/effacement.
 //   M-12  la tuile « Mesures effectif & talents » ignorait le FILTRE ACTIF (charge
 //         octet pour octet identique avec et sans filtre, `people 76`, pendant que
 //         `/overview-kpis` passait de 76 à 17) et la phrase de garantie de
@@ -40,173 +40,16 @@ jest.mock('../../src/models/EmployeeModel', () => ({
     findGovernedIds: async () => (mockScopeIds || []).slice(),
 }));
 
-const DashboardController = require('../../src/controllers/DashboardController');
 const DSR = require('../../src/services/DSRService');
 
 const ROOT = path.join(__dirname, '../..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const flat = (s) => String(s).replace(/\s+/g, ' ').trim();
 
-// ---------------------------------------------------------------------------
-// Banc d'essai de /api/dashboard/measures : on capture chaque requête et le
-// tableau d'identifiants qui lui est lié, et on rend un compte reconnaissable.
-// ---------------------------------------------------------------------------
-function runMeasures({ user, query = {}, filterRows = null }) {
-    const seen = [];
-    mockDb.all.mockImplementation(async (sql, params) => {
-        seen.push({ sql: flat(sql), params });
-        // la requête qui résout le filtre de nom vers des personnes
-        if (/FROM employees e LEFT JOIN/i.test(flat(sql)))
-            return (filterRows || []).map((id) => ({ id }));
-        return [];
-    });
-    mockDb.get.mockImplementation(async (sql, params) => {
-        seen.push({ sql: flat(sql), params });
-        return { c: 7 };
-    });
-    const ctl = new DashboardController();
-    let payload = null;
-    const res = {
-        json: (j) => {
-            payload = j;
-        },
-        status: () => res,
-    };
-    const req = { user, query, t: (k) => k };
-    return ctl.getMeasures(req, res).then(() => ({ payload, seen }));
-}
-
-const SUPER = { id: 666, userType: 'admin', role: 'superadmin' };
-const MANAGER = { id: 136, userType: 'employee' };
-
-const find = (seen, re) => seen.filter((s) => re.test(s.sql));
-
-describe('M-12 (a) — la tuile des mesures suit le FILTRE ACTIF', () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-        mockScopeIds = null;
-    });
-
-    test('sans filtre ni périmètre, aucune requête ne porte de liste d’identifiants (charge inchangée)', async () => {
-        const { seen } = await runMeasures({ user: SUPER });
-        expect(find(seen, /FROM employees e LEFT JOIN/i)).toHaveLength(0);
-        expect(seen.every((s) => !s.params || !s.params.length)).toBe(true);
-        // le catalogue reste le catalogue entier
-        expect(find(seen, /^SELECT COUNT\(\*\) FROM sites$/i)).toHaveLength(1);
-    });
-
-    test('un filtre de nom est RÉSOLU vers des personnes puis appliqué à chaque mesure', async () => {
-        const { seen } = await runMeasures({
-            user: SUPER,
-            query: { siteName: 'Riverside', departmentName: 'IT', serviceName: 'Data & Insights' },
-            filterRows: [11, 12, 13],
-        });
-        const resolver = find(seen, /FROM employees e LEFT JOIN/i)[0];
-        expect(resolver).toBeTruthy();
-        expect(resolver.sql).toMatch(/st\.name = \?/);
-        expect(resolver.sql).toMatch(/dp\.name = \?/);
-        expect(resolver.sql).toMatch(/sv\.name = \?/);
-        expect(resolver.params).toEqual(['Riverside', 'IT', 'Data & Insights']);
-        // le filtre est un filtre de PLACEMENT : il ne présume pas de l'état
-        expect(resolver.sql).not.toMatch(/is_active/);
-        const people = find(seen, /FROM employees e WHERE is_active/i)[0];
-        expect(people.sql).toMatch(/e\.id = ANY\(\?\)/);
-        expect(people.params).toEqual([[11, 12, 13]]);
-    });
-
-    test('un filtre n’ÉLARGIT jamais un périmètre : on intersecte, on n’unit pas', async () => {
-        mockScopeIds = [11, 12]; // ce manager gouverne 11 et 12
-        const { seen } = await runMeasures({
-            user: MANAGER,
-            query: { siteName: 'Riverside' },
-            filterRows: [11, 90, 91],
-        });
-        const people = find(seen, /FROM employees e WHERE is_active/i)[0];
-        // 136 (le lecteur lui-même) et 12 sortent par le filtre, 90/91 par le périmètre
-        expect(people.params).toEqual([[11]]);
-    });
-
-    test('un filtre qui ne désigne personne rend une mesure BORNÉE, jamais toute l’organisation', async () => {
-        const { seen } = await runMeasures({
-            user: SUPER,
-            query: { siteName: 'ZZZ' },
-            filterRows: [],
-        });
-        const people = find(seen, /FROM employees e WHERE is_active/i)[0];
-        expect(people.sql).toMatch(/AND 1=0/);
-        expect(people.params).toEqual([]);
-    });
-
-    test('le catalogue de PLACEMENT compte les entrées OCCUPÉES dès qu’un périmètre est actif', async () => {
-        mockScopeIds = [11, 12];
-        const { seen } = await runMeasures({ user: MANAGER });
-        for (const [table, col] of [
-            ['sites', 'site_id'],
-            ['departments', 'department_id'],
-            ['services', 'service_id'],
-            ['roles', 'role_id'],
-        ]) {
-            const q = find(
-                seen,
-                new RegExp(`FROM ${table} t JOIN employees e ON e\\.${col} = t\\.id`, 'i')
-            )[0];
-            expect(q).toBeTruthy();
-            expect(q.sql).toMatch(/COUNT\(DISTINCT t\.id\)/);
-            expect(q.sql).toMatch(/e\.id = ANY\(\?\)/);
-        }
-    });
-});
-
-describe('M-12 (b) — la garantie de périmètre ne porte que sur ce qu’elle tient', () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-        mockScopeIds = null;
-    });
-
-    test('le RÉFÉRENTIEL de compétences n’est JAMAIS restreint, et le dit', async () => {
-        mockScopeIds = [11, 12];
-        const { payload, seen } = await runMeasures({
-            user: MANAGER,
-            query: { siteName: 'Riverside' },
-            filterRows: [11, 12],
-        });
-        // aucune borne sur skills / domains : règle du propriétaire (§3 règle 12)
-        const skills = find(seen, /FROM skills/i)[0];
-        const domains = find(seen, /FROM domains/i)[0];
-        expect(skills.sql).toBe('SELECT COUNT(*) FROM skills');
-        expect(domains.sql).toBe('SELECT COUNT(*) FROM domains');
-        const marked = payload.measures.filter((m) => m.framework).map((m) => m.key);
-        expect(marked).toEqual(['skills', 'domains']);
-        expect(payload.frameworkChip).toBe('dash:measure_framework_chip');
-        expect(payload.frameworkHint).toBe('dash:measure_framework_hint');
-        expect(payload.scoped).toBe(true);
-    });
-
-    test('la phrase des DEUX locales nomme l’exception au lieu de tout promettre', () => {
-        const fr = JSON.parse(read('locales/fr/dash.json'));
-        const en = JSON.parse(read('locales/en/dash.json'));
-        expect(fr.exec_scope_hint).toMatch(/sauf/i);
-        expect(fr.exec_scope_hint).toMatch(/référentiel/i);
-        expect(en.exec_scope_hint).toMatch(/except/i);
-        expect(en.exec_scope_hint).toMatch(/framework/i);
-        for (const k of ['measure_framework_chip', 'measure_framework_hint']) {
-            expect(typeof fr[k]).toBe('string');
-            expect(typeof en[k]).toBe('string');
-            expect(fr[k]).not.toBe(en[k]); // traduit, pas recopié
-        }
-    });
-
-    test('la vue interroge l’API AVEC le filtre et se recharge quand on l’applique ou le remet à zéro', () => {
-        const v = read('views/pages/dashboard.ejs');
-        expect(v).toMatch(/fetch\('\/api\/dashboard\/measures'\s*\+\s*activeQuery\(\)/);
-        expect(v).toMatch(/filter-site[\s\S]{0,80}siteName/);
-        expect(v).toMatch(/btn-apply-filters/);
-        expect(v).toMatch(/btn-reset-filters/);
-        // la carte « référentiel » est rendue, échappée, avec son info-bulle
-        expect(v).toMatch(/measure-chip/);
-        expect(v).toMatch(/m\.framework\s*\?/);
-    });
-});
+// M-12 (the former « measures » tile and its scope sentence) left with the
+// former dashboard page in wave 12 (D3): the dashboard now reads ONE population
+// (KpiService.resolvePopulation) narrowed by a validated scope bar, tested by
+// dashScopePrefs-db.test.js and the dash*.test.js suites.
 
 describe('A-04 — l’export rend TOUT ce que l’effacement détruit', () => {
     const src = () => read('src/services/DSRService.js');

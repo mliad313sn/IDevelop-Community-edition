@@ -109,9 +109,4 @@ describe('the department brief colours a % on the value it prints', () => {
     });
 });
 
-test('dashboard tiles colour on the one-decimal value fmtPct prints', () => {
-    const src = fs.readFileSync(path.join(ROOT, 'public/js/dashboard.js'), 'utf8');
-    const fn = src.slice(src.indexOf('function getColorForValue('));
-    expect(fn.slice(0, 400)).toMatch(/const shown = Number\(Number\(val\)\.toFixed\(1\)\);/);
-    expect(fn.slice(0, 400)).toMatch(/if \(shown >= goodThresh\)/);
-});
+// the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)

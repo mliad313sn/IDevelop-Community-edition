@@ -53,7 +53,7 @@
             id: 'ds-trend',
             title: __('dash:d3_ov_trend_title'),
             subtitle: __('dash:d3_ov_trend_sub'),
-            config: { kind: 'line', unit: 'pct', decimals: 1, labels: _axis, series: _series, min: 0, max: 100, threshold: { value: P.threshold, kind: 'threshold' }, endLabels: true },
+            config: { kind: 'line', unit: 'pct', decimals: 1, labels: _axis.map(typeof monthLabel === 'function' ? monthLabel : String), series: _series, fitAxis: true, threshold: { value: P.threshold, kind: 'threshold' }, endLabels: true },
             mobileList: false,
             height: 260
         } }) %>

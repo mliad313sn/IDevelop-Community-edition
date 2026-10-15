@@ -17,10 +17,6 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const fs = require('fs');
-const ROOT = path.join(__dirname, '../..');
-const norm = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8').replace(/\s+/g, ' ');
-
 const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 // Needs a POPULATED database (several sites, assessed people, reviews): runs
 // only against an opt-in fixture database — see CONTRIBUTING.md.
@@ -73,11 +69,4 @@ suite('Role-Ready is judged over fully-assessed employees', () => {
     });
 });
 
-describe('the Role-Ready card uses the fully-assessed denominator', () => {
-    const js = norm('public/js/dashboard.js');
-    test('the card divides roleReadyCount by fullyMeasured, not measured', () => {
-        expect(js).toMatch(/const fullyMeasured = num\(kpis\.fullyMeasuredEmployees, 0\)/);
-        expect(js).toMatch(/value: `\$\{kpis\.roleReadyCount\} \/ \$\{fullyMeasured\}`/);
-        expect(js).not.toMatch(/value: `\$\{kpis\.roleReadyCount\} \/ \$\{measured\}`/);
-    });
-});
+// the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)

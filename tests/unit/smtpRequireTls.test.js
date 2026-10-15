@@ -213,7 +213,7 @@ describe('the relay routes and the dashboard warning', () => {
     });
     test('the dashboard and the settings page receive the relay status', () => {
         const dash = fs.readFileSync(
-            require.resolve('../../src/controllers/DashboardController.js'),
+            require.resolve('../../src/controllers/DashboardHomeController.js'),
             'utf8'
         );
         expect(dash).toMatch(/plaintextRelayStatus\(\)/);

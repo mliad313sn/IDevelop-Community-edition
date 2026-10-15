@@ -67,7 +67,7 @@ const DashboardHomeController = {
             const t = tr(req);
             const fmt = res.locals.numFmt;
             const printAll = q.print === 'all';
-            const screen = await D.firstScreen(ctx, { t, fmt });
+            const screen = await D.firstScreen(ctx, { t, fmt, dateFmt: res.locals.fmtDate });
             const active = D.resolveTab(q.tab, ctx.tabs);
             const panels = [];
             if (active) {
@@ -232,7 +232,11 @@ const DashboardHomeController = {
                 navVisible: navVisible(res),
             });
             const t = tr(req);
-            const screen = await D.firstScreen(ctx, { t, fmt: res.locals.numFmt });
+            const screen = await D.firstScreen(ctx, {
+                t,
+                fmt: res.locals.numFmt,
+                dateFmt: res.locals.fmtDate,
+            });
             const overview = ctx.tabs.some((x) => x.id === 'overview')
                 ? await D.tabModel(ctx, 'overview', { query: {}, t })
                 : null;

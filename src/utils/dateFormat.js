@@ -122,4 +122,27 @@ function sqlDateIso(d) {
     return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
 }
 
-module.exports = { fmtDate, fmtDateTime, fmtPeriodBound, appDayIso, sqlDateIso, UNMEASURED };
+/**
+ * A calendar month 'YYYY-MM' in the reader's language: « oct. 2026 » /
+ * "Oct 2026". Anything else is returned unchanged (never "Invalid Date").
+ */
+function fmtMonth(ym, lang = 'fr') {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(ym || ''));
+    if (!m) return ym === null || ym === undefined ? UNMEASURED : String(ym);
+    const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1));
+    return d.toLocaleDateString(lang === 'en' ? 'en-GB' : 'fr-FR', {
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+    });
+}
+
+module.exports = {
+    fmtDate,
+    fmtDateTime,
+    fmtPeriodBound,
+    fmtMonth,
+    appDayIso,
+    sqlDateIso,
+    UNMEASURED,
+};

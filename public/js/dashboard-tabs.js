@@ -35,7 +35,12 @@
     if (src.charAt(0) !== '/' || src.charAt(1) === '/') src = '/dashboard/panel';
 
     // the chart scripts a fetched panel may need, in their load order
-    var CHART_SCRIPTS = ['/vendor/chart.umd.min.js', '/js/viz.js', '/js/profile-radar.js'];
+    var CHART_SCRIPTS = [
+        '/vendor/chart.umd.min.js',
+        '/js/chart-axis-fit.js',
+        '/js/viz.js',
+        '/js/profile-radar.js',
+    ];
     var loading = null;
     function loadScript(path) {
         return new Promise(function (resolve, reject) {
@@ -52,6 +57,7 @@
             loading = CHART_SCRIPTS.reduce(function (p, path) {
                 if (path === '/js/viz.js' && window.Viz) return p;
                 if (path === '/vendor/chart.umd.min.js' && window.Chart) return p;
+                if (path === '/js/chart-axis-fit.js' && window.ChartAxisFit) return p;
                 return p.then(function () {
                     return loadScript(path);
                 });

@@ -264,9 +264,10 @@ describe('L6-24 / L5C-07 / L5C-08 — routes', () => {
         const auth = read('src/middleware/auth.js');
         expect(auth).toMatch(/const requireSuperAdminPage = async \(req, res, next\)/);
         expect(auth).toMatch(/superAdminOnly: true/);
-        // and the dashboard banner follows the page, so nobody is nagged to a wall
-        expect(read('src/controllers/DashboardController.js')).toMatch(
-            /userType === 'admin' && req\.user\.role === 'superadmin'/
+        // and the dashboard's getting-started line follows the page, so nobody is
+        // nagged to a wall: SuperAdmin only (DashboardHomeService.setupItems)
+        expect(read('src/services/DashboardHomeService.js')).toMatch(
+            /if \(ctx\.caps\.superAdmin\) \{\s+try \{\s+const AppSettingsModel/
         );
     });
 });
@@ -448,12 +449,15 @@ describe('rule 1 — a measured number, never a placeholder', () => {
             'views/pages/admins/accounts.ejs',
             'views/pages/skill-matrix/index.ejs',
             'views/pages/lifecycle/index.ejs',
-            'views/pages/dashboard.ejs',
             'views/pages/maker-checker/index.ejs',
         ];
         for (const p of pages) {
             expect(`${p}:${/\.length !== 1\) \{ %>/.test(read(p))}`).toBe(`${p}:true`);
         }
+        // the dashboard scope bar offers a site list only when there is a choice
+        expect(read('views/partials/scope-bar.ejs')).toMatch(
+            /if \(\(_f\.sites \|\| \[\]\)\.length \+ \(_f\.noSite \? 1 : 0\) > 1\) \{ %>/
+        );
     });
 
     test('L6-16 — the framework weight is measured, and absent when there is nothing to measure', () => {

@@ -302,8 +302,8 @@ describe('views wired to their controllers', () => {
         expect(s).toMatch(/include\('\.\.\/\.\.\/partials\/copilot-egress-gate'/);
     });
     test('dashboard: the relay warning only', () => {
-        expect(read('views/pages/dashboard.ejs')).toMatch(
-            /include\('\.\.\/partials\/smtp-plaintext-relay', \{ smtpRelay: smtpRelay, showForm: false/
+        expect(read('views/pages/dashboard/index.ejs')).toMatch(
+            /include\('\.\.\/\.\.\/partials\/smtp-plaintext-relay', \{ smtpRelay: smtpRelay, showForm: false/
         );
     });
     test('health: the antivirus tile and section read malwareScan', () => {

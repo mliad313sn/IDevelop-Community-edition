@@ -433,6 +433,15 @@ const REDACTED_ON_ERASURE = [
     // NOTIFICATION SETTINGS (migration 183): the person's own summary cadence
     // and step-down, e-mail language and .ics switch, and their category ×
     // e-mail grid. Deleted.
+    // DASHBOARD SCOPE (migration 185): the last scope the person chose on a
+    // dashboard page (ids of a site or department). Deleted.
+    {
+        key: 'dashboardScope',
+        table: 'dashboard_scope_prefs',
+        deleted: true,
+        erased: ['page', 'scope', 'updated_at'],
+        kept: [],
+    },
     {
         key: 'notificationSettings',
         table: 'notification_user_settings',
@@ -1457,6 +1466,11 @@ class DSRService {
             );
             await db.run(
                 "DELETE FROM notification_category_prefs WHERE user_type = 'employee' AND user_id = ?",
+                [employeeId]
+            );
+            // The person's last dashboard scope (migration 185).
+            await db.run(
+                "DELETE FROM dashboard_scope_prefs WHERE user_type = 'employee' AND user_id = ?",
                 [employeeId]
             );
             // ---- EVERY OTHER REGISTERED COLUMN (erasureRegistry) -----------------

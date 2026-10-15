@@ -16,7 +16,7 @@
  *      600 px of scroll: #saAutosave at y=25, Save/Submit 28/28 px masked.
  *  M4  dashboard.css replayed `fadeIn 0.3s` on every tab switch, cached tab included
  *      (panel.getAnimations() → 1 × fadeIn 300 ms on a re-click).
- *  M5  dashboard.ejs painted « Aucune mesure disponible. » and « Impossible de charger
+ *  M5  the former dashboard.ejs painted « Aucune mesure disponible. » and « Impossible de charger
  *      les mesures. » with class chart-loading: a gold ring spinning (a11y-spin) next
  *      to a text saying there is nothing to load.
  *
@@ -495,8 +495,8 @@ describe('Source guards — the code, not its layout', () => {
     const style = read('public/css/style.css');
     const sa = read('views/pages/employee/self-assessment.ejs');
     const dashCss = read('public/css/dashboard.css');
-    const dashJs = read('public/js/dashboard.js');
-    const dashEjs = read('views/pages/dashboard.ejs');
+    const dashJs = read('public/js/dashboard-tabs.js');
+    const dashEjs = read('views/pages/dashboard/index.ejs');
     const fr = require('../../locales/fr/chrome.json');
     const en = require('../../locales/en/chrome.json');
 
@@ -600,26 +600,16 @@ describe('Source guards — the code, not its layout', () => {
         expect(rule[1]).toMatch(/top:\s*var\(--topbar-height(?:,\s*48px)?\)/);
         expect(rule[1]).not.toMatch(/top:\s*0\b/);
     });
-    test('M4 dashboard: no fade on the base panel; a 100 ms fade only on .tab-fresh; the class follows state.loadedTabs', () => {
-        const base = dashCss.match(/\.tab-panel\s*\{([^}]*)\}/);
-        expect(base).toBeTruthy();
-        expect(base[1]).not.toMatch(/animation/);
-        const fresh = dashCss.match(/\.tab-panel\.active\.tab-fresh\s*\{([^}]*)\}/);
-        expect(fresh).toBeTruthy();
-        expect(fresh[1]).toMatch(/animation:\s*fadeIn\s+var\(--motion-quick,\s*0?\.1s\)/);
-        expect(dashCss).not.toMatch(/fadeIn\s+0?\.3s/);
-        expect(dashJs).toMatch(
-            /classList\.toggle\(\s*'tab-fresh',\s*isTarget\s*&&\s*!state\.loadedTabs\.has\(tabName\)\s*\)/
-        );
+    test('M4 dashboard: a tab switch replays no animation (wave 12 D3 context tabs)', () => {
+        expect(dashCss).not.toMatch(/animation/);
+        expect(dashCss).not.toMatch(/fadeIn/);
+        // a panel already loaded is shown as it is, never fetched or faded again
+        expect(dashJs).toMatch(/getAttribute\('data-loaded'\) === '1'\) return;/);
     });
-    test('M5 dashboard.ejs: a spinner ring only ever sits next to a LOADING text', () => {
-        const lines = dashEjs.split('\n');
-        const ringLines = lines.filter((l) => /chart-loading/.test(l));
-        expect(ringLines.length).toBeGreaterThan(0);
-        ringLines.forEach((l) => expect(l).toMatch(/dash:loading/));
-        const empty = lines.find((l) => /no_measures_available/.test(l));
-        const error = lines.find((l) => /could_not_load_measures/.test(l));
-        expect(empty).toMatch(/class="empty-state"/);
-        expect(error).toMatch(/class="empty-state"\s+role="alert"/);
+    test('M5 dashboard: loading is said in words (aria-busy and a live region), never a lone spinner', () => {
+        expect(dashEjs).not.toMatch(/chart-loading|fa-spinner/);
+        expect(dashEjs).toMatch(/aria-live="polite"/);
+        expect(dashJs).toMatch(/setAttribute\('aria-busy', 'true'\)/);
+        expect(dashJs).toMatch(/live\.textContent = i18n\.loading/);
     });
 });

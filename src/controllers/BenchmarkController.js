@@ -274,22 +274,6 @@ class BenchmarkController {
             res.redirect('/benchmark');
         }
     }
-
-    // JSON fit — used by the dashboard "Benchmark Fit by Role" table.
-    async getFit(req, res) {
-        try {
-            const filters = this._buildFilters(req);
-            if (filters.malformed)
-                return res
-                    .status(400)
-                    .json({ error: 'invalid subDomainId, roleFamilyId or minLevel' });
-            const fit = await BenchmarkModel.getFit(filters);
-            res.json(fit);
-        } catch (err) {
-            console.error('Benchmark fit error:', err);
-            res.status(500).json({ error: 'Error loading benchmark fit' });
-        }
-    }
 }
 
 module.exports = new BenchmarkController();

@@ -75,7 +75,7 @@
         <p class="viz-kpi-value viz-kpi-value--small"><%= __('viz:tile.of', { a: _F.num(_k.numerator, 0), b: _F.num(_den, 0) }) %></p>
         <p class="viz-kpi-note"><%= __('viz:small_n') %></p>
     <% } else { %>
-        <p class="viz-kpi-value"><%= _fmtVal(_k.value) %><% if (_dCls) { %> <span class="viz-delta viz-delta--<%= _dCls %>" title="<%= _k.since ? __('viz:tile.delta_since', { date: _k.since }) : '' %>"><%= _dText %></span><span class="viz-live"> <%= __('viz:tile.delta_' + _dCls) %></span><% } %></p>
+        <p class="viz-kpi-value"><%= _fmtVal(_k.value) %><% if (_dCls) { %> <span class="viz-delta viz-delta--<%= _dCls %>" title="<%= _k.since ? __('viz:tile.delta_since', { date: (typeof fmtDate === 'function' ? fmtDate(_k.since) : _k.since) }) : '' %>"><%= _dText %></span><span class="viz-live"> <%= __('viz:tile.delta_' + _dCls) %></span><% } %></p>
     <% } %>
     <% if (_k.sub && !_unmeasured) { %><p class="viz-kpi-sub"><%= _k.sub %></p><% } %>
     <% if (_runs.length) { %>

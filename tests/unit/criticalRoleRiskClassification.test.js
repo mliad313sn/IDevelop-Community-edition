@@ -124,12 +124,5 @@ describe('both ends of the fix are in place', () => {
         expect(m).toMatch(/END\)::int as qualifiedCount/);
     });
 
-    test('the renderer coerces before comparing', () => {
-        const js = read('public/js/dashboard.js').replace(/\s+/g, ' ');
-        expect(js).toMatch(/const headcount = Number\(r\.headcount\)/);
-        expect(js).toMatch(/const qualifiedCount = Number\(r\.qualifiedCount\)/);
-        // and no branch still reads the raw field
-        expect(js).not.toMatch(/if \(r\.headcount === 0\)/);
-        expect(js).not.toMatch(/r\.qualifiedCount === 0/);
-    });
+    // the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)
 });

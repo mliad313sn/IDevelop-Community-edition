@@ -216,12 +216,13 @@ suite('remembered scope on the real database (rolled back)', () => {
             await S.writePref({ id, userType: 'admin' }, 'dashboard', { site: 4 });
             const DSR = require('../../src/services/DSRService');
             const exp = await DSR.export(id);
-            const Registry = require('../../src/services/erasureRegistry');
-            const e = Registry.SUBJECT_DATA_REGISTRY.find(
-                (x) => x.table === 'dashboard_scope_prefs'
+            // the statement DSRService.erase() runs for this table
+            const src = require('fs').readFileSync(
+                require('path').join(__dirname, '..', '..', 'src', 'services', 'DSRService.js'),
+                'utf8'
             );
-            const { sql, params } = Registry.registryWhere(e, id);
-            await db.run(`DELETE FROM dashboard_scope_prefs WHERE ${sql}`, params);
+            const stmt = src.match(/"(DELETE FROM dashboard_scope_prefs WHERE[^"]+)"/)[1];
+            await db.run(stmt, [id]);
             const left = await db.all(
                 `SELECT user_type AS "t" FROM dashboard_scope_prefs WHERE user_id = ? ORDER BY 1`,
                 [id]

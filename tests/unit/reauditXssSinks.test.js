@@ -45,34 +45,7 @@ const extractEsc = (src) => {
     return new Function(`return (s) => ${src.slice(start, end)};`)();
 };
 
-describe('X1/X2 — dashboard.js skill and expert formatters escape', () => {
-    const src = read('public/js/dashboard.js');
-    const flat = src.replace(/\s+/g, ' ');
-
-    test('the module escaper actually neutralises markup and quotes', () => {
-        const esc = extractEsc(src);
-        expect(typeof esc).toBe('function');
-        const out = esc(PAYLOAD);
-        expect(out).not.toContain('<img');
-        expect(out).toContain('&lt;img');
-        expect(out).toContain('&#39;'); // the apostrophe
-        expect(out).toContain('&amp;');
-    });
-
-    test('X1: the skill-name formatter runs esc on the value', () => {
-        expect(flat).toMatch(
-            /format: \(v, r\) => r\.isCritical \? `\$\{esc\(v\)\} <span class="badge-dot"><\/span>` : esc\(v\)/
-        );
-        // the raw form is gone
-        expect(flat).not.toMatch(/r\.isCritical \? `\$\{v\} <span/);
-    });
-
-    test('X2: the expert-skills formatter escapes (truncate raw, then esc)', () => {
-        expect(flat).toMatch(
-            /format: \(v\) => esc\(v \? \(v\.length > 50 \? v\.substring\(0, 50\) \+ '\.\.\.' : v\) : ''\)/
-        );
-    });
-});
+// the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)
 
 describe('X3 — continuity handover table escapes names', () => {
     const src = read('views/pages/continuity/index.ejs');

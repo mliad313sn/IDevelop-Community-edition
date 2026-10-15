@@ -21,10 +21,6 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const fs = require('fs');
-const ROOT = path.join(__dirname, '../..');
-const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
-
 const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 // Needs a POPULATED database (several sites, assessed people, reviews): runs
 // only against an opt-in fixture database — see CONTRIBUTING.md.
@@ -94,106 +90,4 @@ suite('N6 — unmeasured axes are excluded, not scored 0', () => {
 });
 
 // ---- renderer --------------------------------------------------------------
-describe('N1/N2/N3 — the gauge and bars never print 0 or "null" for the unmeasured', () => {
-    const src = read('public/js/dashboard.js');
-    const extract = (name) => {
-        const s = src.indexOf(`function ${name}(`);
-        let i = src.indexOf('{', s);
-        let d = 0;
-        let e = -1;
-        for (; i < src.length; i++) {
-            if (src[i] === '{') d++;
-            else if (src[i] === '}' && --d === 0) {
-                e = i + 1;
-                break;
-            }
-        }
-        return src.slice(s, e);
-    };
-    const esc = (x) =>
-        String(x == null ? '' : x).replace(
-            /[&<>"']/g,
-            (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
-        );
-    const fmt = (t, ...a) =>
-        String(t == null ? '' : t).replace(/\{(\d+)\}/g, (m, i) =>
-            a[i] == null ? m : String(a[i])
-        );
-    const I18N = {
-        rdNotMeasured: 'NM',
-        rdNotMeasuredTitle: 'Jamais',
-        riskPartial: '{0}/{1} non mesuré',
-    };
-    let el;
-    const document = { getElementById: () => el };
-    const riskStatusLabel = (s) => ({ critical: 'Critique', unknown: '—' })[s] || s;
-    const fns = new Function(
-        'document',
-        'I18N',
-        'esc',
-        'fmt',
-        'riskStatusLabel',
-        `const fmtPct = (v) => v + '%';\n${extract('renderRiskGauge')}\n${extract('measuredAxisCount')}\n${extract('renderRiskBreakdown')}; return { g: renderRiskGauge, b: renderRiskBreakdown };`
-    )(document, I18N, esc, fmt, riskStatusLabel);
-
-    const IA = {
-        score: 0,
-        status: 'critical',
-        measured: true,
-        unmeasured: ['readiness', 'compliance', 'staffing', 'freshness'],
-        breakdown: {
-            readiness: { score: null, weight: 25, measured: false },
-            coverage: { score: 0, weight: 15, measured: true },
-            compliance: { score: null, weight: 25, measured: false },
-            staffing: { score: null, weight: 15, measured: false },
-            freshness: { score: null, weight: 20, measured: false },
-        },
-    };
-
-    test('the breakdown never emits width:null% or a literal "null" value', () => {
-        el = { innerHTML: '' };
-        fns.b('x', IA);
-        expect(el.innerHTML).not.toMatch(/width:\s*null%/);
-        expect(el.innerHTML).not.toMatch(/breakdown-value[^>]*>null</);
-        // four unmeasured axes → four muted rows with an em dash
-        expect((el.innerHTML.match(/is-unmeasured/g) || []).length).toBe(4);
-        expect((el.innerHTML.match(/breakdown-value[^>]*>—</g) || []).length).toBe(4);
-        // the one measured axis keeps its number
-        expect(el.innerHTML).toMatch(/breakdown-value">0</);
-    });
-
-    test('the gauge discloses how many dimensions are unmeasured', () => {
-        el = { innerHTML: '' };
-        fns.g('x', IA);
-        expect(el.innerHTML).toMatch(/gauge-caveat/);
-        expect(el.innerHTML).toMatch(/4\/5 non mesuré/);
-    });
-
-    test('a fully-unmeasured scope shows an em dash, not a red 0', () => {
-        el = { innerHTML: '' };
-        fns.g('x', {
-            score: null,
-            status: 'unknown',
-            measured: false,
-            unmeasured: ['readiness', 'coverage', 'compliance', 'staffing', 'freshness'],
-            breakdown: {},
-        });
-        expect(el.innerHTML).toMatch(/gauge-score[^>]*>—</);
-        expect(el.innerHTML).not.toMatch(/gauge-score[^>]*>0</);
-    });
-
-    test('a genuinely measured gauge is unchanged', () => {
-        el = { innerHTML: '' };
-        fns.g('x', {
-            score: 73,
-            status: 'moderate',
-            measured: true,
-            unmeasured: [],
-            breakdown: {
-                readiness: { score: 82, weight: 25, measured: true },
-            },
-        });
-        expect(el.innerHTML).toMatch(/gauge-score[^>]*>73</);
-        expect(el.innerHTML).not.toMatch(/gauge-caveat/); // nothing unmeasured
-    });
-});
+// the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)

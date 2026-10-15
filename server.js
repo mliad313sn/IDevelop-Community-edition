@@ -43,7 +43,7 @@ const app = express();
 
 // gzip/deflate every compressible response (HTML, CSS, JS, JSON). The app serves
 // plain HTTP internally with no proxy doing this, so style.css (~75 KB) and
-// dashboard.js (~82 KB) were going over the wire uncompressed — gzip cuts those
+// the chart scripts were going over the wire uncompressed — gzip cuts those
 // ~75%, the single biggest reduction in page-open transfer time. Mounted first so
 // it wraps both static assets and rendered pages.
 app.use(compression());
@@ -56,7 +56,13 @@ app.use(compression());
 app.locals.assetVersion = (() => {
     try {
         const h = require('crypto').createHash('sha1').update(require('./package.json').version);
-        for (const f of ['public/js/dashboard.js', 'public/css/style.css', 'public/js/help.js']) {
+        for (const f of [
+            'public/js/dashboard-tabs.js',
+            'public/css/dashboard.css',
+            'public/css/viz.css',
+            'public/css/style.css',
+            'public/js/help.js',
+        ]) {
             try {
                 h.update(fs.readFileSync(path.join(__dirname, f)));
             } catch (_) {
@@ -669,11 +675,18 @@ app.use(async (req, res, next) => {
     // for every server-rendered view. `enumLabel(value)` keeps working; views may
     // also call `enumLabel('cycle_status', value)`.
     {
-        const { fmtDate, fmtDateTime, fmtPeriodBound } = require('./src/utils/dateFormat');
+        const {
+            fmtDate,
+            fmtDateTime,
+            fmtPeriodBound,
+            fmtMonth,
+        } = require('./src/utils/dateFormat');
         const { enumLabel, KINDS } = require('./src/utils/enumLabels');
         const lang = res.locals.lang || 'fr';
         res.locals.fmtDate = (d) => fmtDate(d, lang);
         res.locals.fmtDateTime = (d) => fmtDateTime(d, lang);
+        // a calendar month 'YYYY-MM' (trend axes, the board pack)
+        res.locals.monthLabel = (ym) => fmtMonth(ym, lang);
         // une BORNE DE CALENDRIER (colonne PG `date`,
         // échéance de campagne) se rend en UTC, sinon minuit UTC recule d'un jour.
         // Les vues qui écrivaient `new Date(x).toISOString.slice(0,10)` — le motif

@@ -67,7 +67,6 @@ describe('fitRange — level 0-4', () => {
 
 describe('every progression chart uses the shared fit (source guard)', () => {
     const CHARTS = [
-        { file: 'public/js/dashboard.js', page: 'views/pages/dashboard.ejs' },
         // the role fit trend is a viz line with `fitAxis`: viz.js applies the rule
         { file: 'public/js/viz.js', page: 'views/partials/viz/scripts.ejs' },
         { file: 'views/pages/employees/progress.ejs', page: 'views/pages/employees/progress.ejs' },
@@ -81,6 +80,13 @@ describe('every progression chart uses the shared fit (source guard)', () => {
     });
     test.each(CHARTS)('$page loads chart-axis-fit.js', ({ page }) => {
         expect(read(page)).toMatch(/<script src="\/js\/chart-axis-fit\.js/);
+    });
+    test('the dashboard trend asks the viz layer for the fitted axis', () => {
+        expect(read('views/pages/dashboard/_tab-overview.ejs')).toMatch(
+            /kind: 'line',[\s\S]{0,200}fitAxis: true/
+        );
+        expect(read('views/pages/dashboard/index.ejs')).toMatch(/axisFit: needsChart/);
+        expect(read('public/js/dashboard-tabs.js')).toMatch(/'\/js\/chart-axis-fit\.js'/);
     });
     test('the benchmark role trend asks the viz layer for the fitted axis', () => {
         const role = read('views/pages/benchmark/role.ejs');

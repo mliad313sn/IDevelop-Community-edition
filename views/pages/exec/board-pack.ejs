@@ -65,7 +65,7 @@
   <section class="bp-section" id="bp-kpis">
     <h2><%= __('dash:d3_bp_section_kpi') %></h2>
     <div class="ds-table-wrap"><table class="ds-table">
-      <thead><tr><th scope="col"><%= __('dash:d3_bp_indicator') %></th><th scope="col" class="num"><%= __('dash:d3_bp_value') %></th><th scope="col"><%= __('dash:d3_bp_status') %></th><th scope="col" class="num"><%= __('dash:d3_bp_movement') %><% if (S.since) { %> (<%= __('viz:tile.delta_since', { date: S.since }) %>)<% } %></th></tr></thead>
+      <thead><tr><th scope="col"><%= __('dash:d3_bp_indicator') %></th><th scope="col" class="num"><%= __('dash:d3_bp_value') %></th><th scope="col"><%= __('dash:d3_bp_status') %></th><th scope="col" class="num"><%= __('dash:d3_bp_movement') %><% if (S.since) { %> (<%= __('viz:tile.delta_since', { date: fmtDate(S.since) }) %>)<% } %></th></tr></thead>
       <tbody>
       <% tiles.forEach(function (k) { %>
         <tr data-kpi="<%= k.kpi %>">
@@ -88,7 +88,7 @@
       <div class="ds-table-wrap"><table class="ds-table">
         <thead><tr><th scope="col"><%= __('dash:d3_bp_month') %></th><th scope="col" class="num"><%= __('kpi:k1_name') %></th><th scope="col" class="num"><%= __('kpi:k3_name') %></th></tr></thead>
         <tbody>
-        <% rec.slice(-12).forEach(function (p) { %><tr><th scope="row"><%= p.month %></th><td class="num"><%= _num(p.K1) ? _F.pct(p.K1, 1) : __('viz:unmeasured') %></td><td class="num"><%= _num(p.K3) ? _F.pct(p.K3, 1) : __('viz:unmeasured') %></td></tr><% }); %>
+        <% rec.slice(-12).forEach(function (p) { %><tr><th scope="row"><%= typeof monthLabel === 'function' ? monthLabel(p.month) : p.month %></th><td class="num"><%= _num(p.K1) ? _F.pct(p.K1, 1) : __('viz:unmeasured') %></td><td class="num"><%= _num(p.K3) ? _F.pct(p.K3, 1) : __('viz:unmeasured') %></td></tr><% }); %>
         </tbody>
       </table></div>
     <% } %>

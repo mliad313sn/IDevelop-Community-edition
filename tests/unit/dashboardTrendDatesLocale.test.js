@@ -3,11 +3,10 @@
 /**
  * L1 — the dashboard trend printed ISO YYYY-MM-DD dates on a French-first product.
  *
- * The trend caption ("since 2026-09-21") and the trend chart x-axis labels
- * inserted `series[i].date` — the raw ISO string the API returns — straight into
- * the DOM. window.FMT (public/js/date-format.js, loaded globally by the layout)
- * renders the product's unambiguous dd/MM/yyyy in both languages, but dashboard.js
- * never used it. Both now go through a local fmtDate() wrapper over window.FMT.
+ * window.FMT (public/js/date-format.js, loaded globally by the layout) renders
+ * the product's unambiguous dd/MM/yyyy in both languages. The dashboard is now
+ * rendered on the server (wave 12, D3): its trend axis and the board pack read
+ * months through res.locals.monthLabel, and a movement's date through fmtDate.
  */
 
 const fs = require('fs');
@@ -34,22 +33,24 @@ describe('window.FMT.date renders dd/MM/yyyy, not ISO', () => {
     });
 });
 
-describe('the dashboard trend uses the locale formatter, not raw ISO', () => {
-    const js = norm('public/js/dashboard.js');
+describe('the dashboard prints months and dates in the reader language, never raw ISO', () => {
+    const { fmtMonth } = require('../../src/utils/dateFormat');
 
-    test('a fmtDate helper wraps window.FMT.date', () => {
-        expect(js).toMatch(/function fmtDate\(d\) \{[\s\S]*window\.FMT[\s\S]*\.date/);
+    test('a calendar month reads « oct. 2026 » / "Oct 2026"', () => {
+        expect(fmtMonth('2026-10', 'fr')).toBe('oct. 2026');
+        expect(fmtMonth('2026-10', 'en')).toBe('Oct 2026');
+        expect(fmtMonth('not-a-month', 'fr')).toBe('not-a-month');
     });
 
-    test('the caption and x-axis labels go through fmtDate', () => {
-        expect(js).toMatch(/\.replace\('\{d\}', fmtDate\(series\[0\]\.date\)\)/);
-        // J9 replaced the category axis with a linear time scale; the x-axis tick
-        // callback formats the day timestamp through fmtDate.
-        expect(js).toMatch(
-            /callback: \(v\) => fmtDate\(new Date\(v\)\.toISOString\(\)\.slice\(0, 10\)\)/
+    test('the trend axis, the board pack months and the movement dates go through the formatters', () => {
+        expect(norm('views/pages/dashboard/_tab-overview.ejs')).toMatch(
+            /labels: _axis\.map\(typeof monthLabel === 'function' \? monthLabel : String\)/
         );
-        // the raw-ISO renders are gone
-        expect(js).not.toMatch(/\.replace\('\{d\}', series\[0\]\.date\)/);
-        expect(js).not.toMatch(/labels: series\.map\(\(d\) => d\.date\)/);
+        expect(norm('views/pages/exec/board-pack.ejs')).toMatch(/monthLabel\(p\.month\)/);
+        expect(norm('views/partials/kpi-tile.ejs')).toMatch(/fmtDate\(_k\.since\)/);
+        expect(norm('src/services/DashboardHomeService.js')).toMatch(/since: day\(mv\.since\)/);
+        expect(norm('server.js')).toMatch(
+            /res\.locals\.monthLabel = \(ym\) => fmtMonth\(ym, lang\)/
+        );
     });
 });

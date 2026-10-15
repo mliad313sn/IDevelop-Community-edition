@@ -141,13 +141,7 @@ const SUBJECT_DATA_REGISTRY = [
     // Migration 185: the last scope the person chose on the dashboard (ids of a
     // site or department, never free text). Their own screen preference:
     // exported, then gone with them. Administrator rows are not a data subject.
-    {
-        table: 'dashboard_scope_prefs',
-        column: 'user_id',
-        treatment: 'delete',
-        where: "user_type = 'employee'",
-        export: 'dashboardScope',
-    },
+    red('dashboard_scope_prefs', 'user_id', 'dashboardScope'),
     // The person's OWN notifications go (in-app and e-mail rows alike, with
     // their delivery state: email_status, email_attempts, next_attempt_at,
     // last_error, migration 182, and their measurement: event_id, ref_type,

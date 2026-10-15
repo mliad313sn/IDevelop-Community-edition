@@ -212,7 +212,7 @@ describe('R4 — catalogues', () => {
         const views = [
             'views/pages/compliance/register.ejs',
             'views/pages/employee/my-data.ejs',
-            'views/pages/supervisor/dashboard.ejs',
+            'views/pages/supervisor/team.ejs',
             'views/pages/supervisor/self-assessment-review.ejs',
             'views/partials/sidebar.ejs',
             'src/config/navigation.js',
@@ -253,7 +253,7 @@ describe('R4 — catalogues', () => {
         for (const v of [
             'views/pages/compliance/register.ejs',
             'views/pages/employee/my-data.ejs',
-            'views/pages/supervisor/dashboard.ejs',
+            'views/pages/supervisor/team.ejs',
         ]) {
             expect(read(v)).not.toMatch(/text-transform\s*:\s*uppercase/i);
         }

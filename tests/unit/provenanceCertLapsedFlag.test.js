@@ -19,10 +19,6 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const fs = require('fs');
-const ROOT = path.join(__dirname, '../..');
-const norm = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8').replace(/\s+/g, ' ');
-
 const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 // Needs a POPULATED database (several sites, assessed people, reviews): runs
 // only against an opt-in fixture database — see CONTRIBUTING.md.
@@ -112,32 +108,4 @@ suite('provenance distinguishes a lapsed certificate from a rated 0', () => {
     });
 });
 
-describe('the skill card renders a lapse as its own state, never a scored 0', () => {
-    const js = norm('public/js/dashboard.js');
-
-    test('renderSkillCard branches on certLapsed and uses the lapse label', () => {
-        expect(js).toMatch(/const lapsed = s\.certLapsed === true;/);
-        expect(js).toMatch(/else if \(lapsed\) \{/);
-        expect(js).toMatch(/I18N\.provCertLapsed \|\|/);
-        // the raw rating feeds the caption, not a fabricated 0
-        expect(js).toMatch(/provCertLapsedTitle/);
-        expect(js).toMatch(/s\.ratedLevel/);
-    });
-
-    test('the lapse branch is evaluated before the assessed-zero branch', () => {
-        const lapsedAt = js.indexOf('else if (lapsed)');
-        const zeroAt = js.indexOf('provAssessedZero');
-        expect(lapsedAt).toBeGreaterThan(-1);
-        expect(zeroAt).toBeGreaterThan(-1);
-        expect(lapsedAt).toBeLessThan(zeroAt);
-    });
-
-    test('both locales define the lapse strings', () => {
-        const en = require('../../locales/en/dash.json');
-        const fr = require('../../locales/fr/dash.json');
-        expect(en.prov_cert_lapsed).toBeTruthy();
-        expect(en.prov_cert_lapsed_title).toMatch(/\{0\}/);
-        expect(fr.prov_cert_lapsed).toBeTruthy();
-        expect(fr.prov_cert_lapsed_title).toMatch(/\{0\}/);
-    });
-});
+// the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)

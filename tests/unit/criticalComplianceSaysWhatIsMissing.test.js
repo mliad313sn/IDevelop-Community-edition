@@ -51,31 +51,4 @@ describe('the denominator reaches the client', () => {
     });
 });
 
-describe('the card explains the dash instead of just showing it', () => {
-    const js = read('public/js/dashboard.js');
-    const card = js.slice(js.indexOf('kpiCriticalCompliance'), js.indexOf('kpiRolesAtRisk'));
-
-    test('the value stays an em dash — an unmeasured thing is never a number', () => {
-        expect(card).toMatch(/kpis\.criticalCompliance == null \? '—'/);
-    });
-
-    test('the subtitle names the unmeasured count when there is nothing to measure from', () => {
-        expect(card).toMatch(
-            /kpis\.criticalCompliance == null &&\s*Number\(kpis\.criticalExpectedRequirements\) > 0/
-        );
-        expect(card).toMatch(/rdNotMeasured/);
-        expect(card).toMatch(/criticalAssessedRequirements/);
-        expect(card).toMatch(/criticalExpectedRequirements/);
-    });
-
-    test('with no critical requirement in scope it falls back to the plain subtitle', () => {
-        // 0 of 0 would be a nonsense ratio; that scope simply has no critical
-        // skills and the card should not imply neglected work.
-        expect(card).toMatch(/: I18N\.kpiSafetySkills \|\| 'safety & compliance skills'/);
-    });
-
-    test('the count is escaped and grouped like every other figure on the row', () => {
-        expect(card).toMatch(/esc\(I18N\.rdNotMeasured/);
-        expect(card).toMatch(/grp\(Number\(kpis\.criticalExpectedRequirements\)\)/);
-    });
-});
+// the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)

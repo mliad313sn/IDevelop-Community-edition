@@ -36,10 +36,6 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const fs = require('fs');
-const ROOT = path.join(__dirname, '../..');
-const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
-
 const { isTestDatabaseUrl } = require('../helpers/testDatabase');
 const HAS_DB = isTestDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
@@ -118,41 +114,4 @@ suite('both radar layers describe the same rows', () => {
     });
 });
 
-describe('the consumers rank over measured domains only, and speak French', () => {
-    const js = read('public/js/dashboard.js').replace(/\s+/g, ' ');
-
-    test('top-10 / worst-10 exclude the unmeasured', () => {
-        expect(js).toMatch(
-            /const measuredDomains = \(orgRadar \|\| \[\]\)\.filter\( ?\(d\) => d\.avgActual != null && d\.avgRequired != null ?\)/
-        );
-        expect(js).not.toMatch(/\(b\.avgActual \|\| 0\) - \(a\.avgActual \|\| 0\)/);
-    });
-
-    test('the summary table names them instead of drawing a zero gap', () => {
-        expect(js).toMatch(/const unmeasured = data\.filter/);
-        expect(js).toMatch(/kpi-unmeasured/);
-    });
-
-    test('its headers and status labels are translated', () => {
-        for (const lang of ['fr', 'en']) {
-            const d = JSON.parse(read(`locales/${lang}/dash.json`));
-            for (const k of [
-                'domain',
-                'gap',
-                'status',
-                'status_on_track',
-                'status_critical_gap',
-                'status_needs_focus',
-                'status_exceeds',
-            ]) {
-                expect(d[k]).toBeTruthy();
-            }
-        }
-        const fr = JSON.parse(read('locales/fr/dash.json'));
-        expect(fr.status_critical_gap).toMatch(/critique/i);
-        // and the view injects them
-        const view = read('views/pages/dashboard.ejs');
-        expect(view).toMatch(/statusCriticalGap:/);
-        expect(view).toMatch(/statusNeedsFocus:/);
-    });
-});
+// the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)

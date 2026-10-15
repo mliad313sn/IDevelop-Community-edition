@@ -132,7 +132,6 @@ const JSON_DATA_REVIEWED = {
     // catalogue strings and the colon typography helper
     'views/pages/admin/maintenance.ejs': 1,
     // a locale code chosen between two literals
-    'views/pages/dashboard.ejs': 1,
     // a role id as a string, or ''
     'views/pages/employee/opportunities.ejs': 1,
     // a cycle id as a string, or null
@@ -150,7 +149,6 @@ const JSON_DATA_REVIEWED = {
  * reauditXssSinks and c317-C-dom-xss run the riskiest ones.
  */
 const CLIENT_SINKS = {
-    'public/js/dashboard.js': 33, // esc() on every label; fragments are server-rendered EJS
     'public/js/help.js': 1, // static help content; titles escaped
     'public/js/main.js': 2, // static icons / spinner
     'public/js/rb-renderers.js': 8, // esc() on every label, header and value
@@ -169,7 +167,6 @@ const CLIENT_SINKS = {
     'views/pages/coaching/plans-console.ejs': 7, // esc() on names, titles, labels
     'views/pages/compliance/index.ejs': 2, // numbers; row errors through escH()
     'views/pages/continuity/index.ejs': 6, // esc() on names (re-audit X3)
-    'views/pages/dashboard.ejs': 4, // cleared only
     'views/pages/data-management/index.ejs': 2, // catalogue labels and numbers
     'views/pages/data-management/sql-console.ejs': 15, // esc() on every cell, error and label
     'views/pages/employee/assessment-status.ejs': 2, // esc() on skill names and comments
