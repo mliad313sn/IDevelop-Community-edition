@@ -65,8 +65,8 @@ async function tick() {
 
     const NotificationService = require('../services/NotificationService');
     const { fmtDate } = require('../utils/dateFormat');
-    const lang = await require('../utils/emailTemplate').mailLang();
-    const B = require('../utils/emailTemplate').blocks(lang);
+    // Each mail is written in its recipient's e-mail language, else the site's
+    // (the NotificationService `content` builder below).
     let alerts = 0,
         lmsAssigned = 0;
 
@@ -123,17 +123,18 @@ async function tick() {
                     expiresOn: c.expiresOn,
                     stage,
                 },
-                locale: lang,
-                blocks: [
-                    B.para(
-                        `La certification ${c.skillName} ${label.fr} (échéance ${due}).`,
-                        `The ${c.skillName} certification ${label.en} (due ${due}).`
-                    ),
-                    B.para(
-                        'Planifiez la revalidation avant l’échéance.',
-                        'Schedule the revalidation before the due date.'
-                    ),
-                ],
+                content: (B) => ({
+                    blocks: [
+                        B.para(
+                            `La certification ${c.skillName} ${label.fr} (échéance ${due}).`,
+                            `The ${c.skillName} certification ${label.en} (due ${due}).`
+                        ),
+                        B.para(
+                            'Planifiez la revalidation avant l’échéance.',
+                            'Schedule the revalidation before the due date.'
+                        ),
+                    ],
+                }),
             });
             if (!empResult || empResult.inapp === 'error') {
                 await releaseStage();
@@ -162,13 +163,14 @@ async function tick() {
                         expiresOn: c.expiresOn,
                         stage,
                     },
-                    locale: lang,
-                    blocks: [
-                        B.para(
-                            `${c.fullName} : la certification ${c.skillName} ${label.fr} (échéance ${due}).`,
-                            `${c.fullName}: the ${c.skillName} certification ${label.en} (due ${due}).`
-                        ),
-                    ],
+                    content: (B) => ({
+                        blocks: [
+                            B.para(
+                                `${c.fullName} : la certification ${c.skillName} ${label.fr} (échéance ${due}).`,
+                                `${c.fullName}: the ${c.skillName} certification ${label.en} (due ${due}).`
+                            ),
+                        ],
+                    }),
                 });
             }
             alerts++;

@@ -2403,6 +2403,29 @@ router.post(
     requireSuperAdmin,
     NotificationAdminController.retry.bind(NotificationAdminController)
 );
+// Migration 183: the catalogue of every declared kind (channels, mandatory,
+// 30-day volume, sample mail), the sites' default quiet hours, and the
+// effectiveness of each kind. SuperAdmin only, like the monitor.
+router.get(
+    '/admin/notifications/catalogue',
+    requireSuperAdmin,
+    asyncHandler(NotificationController.catalogue.bind(NotificationController))
+);
+router.get(
+    '/admin/notifications/catalogue/preview',
+    requireSuperAdmin,
+    asyncHandler(NotificationController.cataloguePreview.bind(NotificationController))
+);
+router.post(
+    '/admin/notifications/site-quiet-hours',
+    requireSuperAdmin,
+    asyncHandler(NotificationController.saveSiteQuietHours.bind(NotificationController))
+);
+router.get(
+    '/admin/notifications/metrics',
+    requireSuperAdmin,
+    asyncHandler(NotificationController.metricsPage.bind(NotificationController))
+);
 
 // Reports — manager/admin only
 router.get('/reports/builder', requireManagerOrAdmin, ReportController.builder);

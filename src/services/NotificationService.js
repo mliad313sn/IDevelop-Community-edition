@@ -11,14 +11,31 @@ const catalogue = require('./notificationCatalogue');
  *   is retried for 24 hours, and a person who has left, was voided or was
  *   erased is never written to. Every kind is declared in
  *   ./notificationCatalogue.
+ *
+ *   Each person chooses (migration 183) which categories reach them by
+ *   e-mail, the cadence of their summary, the language of their mails, .ics
+ *   attachments and quiet hours (else their site's). Every event carries an
+ *   event id and the object it is about, so the effectiveness page can tell
+ *   what was opened and acted upon.
  */
 class NotificationService {
-    static async enqueue({ userType, userId, kind, channel, locale, payload }) {
+    static async enqueue({
+        userType,
+        userId,
+        kind,
+        channel,
+        locale,
+        payload,
+        eventId,
+        refType,
+        refId,
+        ignoreQuietHours,
+    }) {
         NotificationService._checkDeclared(kind);
         // One query for BOTH the kind-specific pref and the user's global ('__all__')
         // pref: kind-specific enable/quiet-hours win, else fall back to the global
         // quiet hours set in the preferences UI. (default = enabled, no quiet hours).
-        const prefs = await NotificationService._prefRows(userType, userId, kind, channel);
+        const prefs = (await NotificationService._prefRows(userType, userId, kind, channel)) || [];
         const specific = prefs.find((p) => p.kind === kind && p.channel === channel);
         if (specific && specific.enabled === false) return { skipped: 'disabled' };
 
@@ -27,14 +44,17 @@ class NotificationService {
         // inbox (see listInApp/unreadCount) and the release tick flips it back to
         // 'queued'. Storing the absolute moment (rather than re-deriving it from
         // preferences later) is what makes deferral self-healing: the row still
-        // surfaces on its own even if the scheduler never runs.
-        const releaseAt = NotificationService._releaseAt(
-            NotificationService._quietSource(prefs, kind, channel)
-        );
+        // surfaces on its own even if the scheduler never runs. A person with no
+        // window of their own gets their site's (migration 183).
+        let quiet = NotificationService._quietSource(prefs, kind, channel);
+        if (!NotificationService._window(quiet))
+            quiet = await NotificationService._siteQuiet(userType, userId);
+        const releaseAt = ignoreQuietHours ? null : NotificationService._releaseAt(quiet);
         const state = releaseAt ? 'snoozed' : 'queued';
-        await db.run(
-            `INSERT INTO notifications (user_type, user_id, channel, kind, locale, payload, state, release_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        const r = await db.run(
+            `INSERT INTO notifications (user_type, user_id, channel, kind, locale, payload, state, release_at,
+                                        event_id, ref_type, ref_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 userType,
                 userId,
@@ -47,9 +67,41 @@ class NotificationService {
                 typeof payload === 'string' ? payload : JSON.stringify(payload || {}),
                 state,
                 releaseAt,
+                eventId || null,
+                refType || null,
+                refType && refId != null ? String(refId) : null,
             ]
         );
-        return { state, releaseAt: releaseAt || null };
+        const id = r && Number(r.lastID) > 0 ? Number(r.lastID) : null;
+        return { state, releaseAt: releaseAt || null, id };
+    }
+
+    /**
+     * The SITE default quiet-hours window of a person (migration 183):
+     * employees only, an admin account has no site. Sites carry no time zone,
+     * so the window is read in the server's local time, like the personal one.
+     * null when there is none or it cannot be read.
+     */
+    static async _siteQuiet(userType, userId) {
+        if (userType !== 'employee' || !userId) return null;
+        try {
+            const row = await db.get(
+                `SELECT s.quiet_hours_start, s.quiet_hours_end
+                   FROM employees e JOIN sites s ON s.id = e.site_id
+                  WHERE e.id = ?`,
+                [userId]
+            );
+            return row && NotificationService._window(row) ? row : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /** The quiet window that applies to a person: their own, else their site's. */
+    static async _quietFor(userType, userId) {
+        const own = await NotificationService._quietPref(userType, userId);
+        if (NotificationService._window(own)) return own;
+        return NotificationService._siteQuiet(userType, userId);
     }
 
     /**
@@ -124,6 +176,10 @@ class NotificationService {
      *       // the mail body — same fields as renderEmail(), all optional:
      *       title, intro, blocks, ctaLabel, ctaUrl, preheader, severity,
      *       ignoreQuietHours,
+     *       // or, written for ANY language (the recipient's own, migration 183):
+     *       content: (B) => ({ title, intro, blocks, ctaLabel, ctaUrl, preheader }),
+     *       calendar,      // { type, date | start, end?, uid? } → a content-free .ics
+     *       refType, refId // the object it is about (else from KIND_REF)
      *   })
      *
      * @param {'admin'|'employee'} o.userType  recipient type
@@ -183,8 +239,16 @@ class NotificationService {
             preheader,
             severity,
             ignoreQuietHours,
+            calendar,
+            byLocale,
+            content,
         } = args || {};
         const result = { inapp: null, email: null };
+        // One id per event, shared by its in-app and e-mail rows, and the object
+        // it is about (identifiers only), for the measurements (migration 183).
+        const eventId = NotificationService._newEventId();
+        const ref = NotificationService._refOf(kind, payload, args);
+        result.eventId = eventId;
 
         // 0) Fan the event out to any external webhook subscribers (best-effort,
         //    non-blocking). Only allow-listed kinds leave (WebhookService.isEmittable,
@@ -215,6 +279,7 @@ class NotificationService {
         }
 
         // 1) Always record the in-app notification (drives the digest UI).
+        let inappRow = null;
         try {
             const r = await NotificationService._bestEffort(() =>
                 NotificationService.enqueue({
@@ -224,8 +289,12 @@ class NotificationService {
                     channel: 'inapp',
                     locale,
                     payload,
+                    eventId,
+                    refType: ref.refType,
+                    refId: ref.refId,
                 })
             );
+            inappRow = r || null;
             result.inapp = r && (r.state || r.skipped) ? r.state || r.skipped : 'queued';
         } catch (e) {
             result.inapp = 'error';
@@ -234,8 +303,9 @@ class NotificationService {
         // 2) E-mail — the catalogue tier first. 'none' never e-mails; 'digest'
         //    defers to the daily digest; 'immediate' (or a kind absent from
         //    KIND_POLICY) sends now. A MANDATORY kind (safety, security) is sent
-        //    now whatever its tier, the recipient's own switch and the per-domain
-        //    toggle; the global e-mail switch and SMTP still apply.
+        //    now whatever its tier, the recipient's own switches (global and per
+        //    category) and the per-domain toggle; the global e-mail switch and
+        //    SMTP still apply.
         try {
             const tier = NotificationService._tier(kind);
             const mandatory = NotificationService._isMandatory(kind);
@@ -250,6 +320,15 @@ class NotificationService {
             }
             if (!mandatory && !(await NotificationService._userEmailAllowed(userType, userId))) {
                 result.email = 'user_opt_out';
+                return result;
+            }
+            // The category × channel grid: a category switched off for e-mail
+            // keeps the event in the app only.
+            if (
+                !mandatory &&
+                !(await NotificationService._categoryAllowed(userType, userId, kind, 'email'))
+            ) {
+                result.email = 'category_opt_out';
                 return result;
             }
             const EmailService = require('./EmailService');
@@ -272,6 +351,8 @@ class NotificationService {
                     emailStatus: 'suppressed',
                     attempts: 0,
                     lastError: 'recipient inactive, cancelled or erased',
+                    eventId,
+                    ref,
                 });
                 result.email = 'suppressed';
                 return result;
@@ -280,40 +361,70 @@ class NotificationService {
                 result.email = 'no_address';
                 return result;
             }
-            const lang = await NotificationService._mailLang(locale);
-            const brand = await NotificationService._brand();
-            const rendered = NotificationService._compose(
+            // The recipient's own settings: e-mail language and .ics switch.
+            const settings = await NotificationService._settingsRow(userType, userId);
+            const mail = NotificationService._mailContent(
                 {
-                    kind,
-                    severity,
                     title,
                     intro,
                     blocks,
                     ctaLabel,
                     ctaUrl,
                     preheader,
+                    locale,
+                    byLocale,
+                    content,
+                },
+                settings,
+                await NotificationService._mailLang(locale)
+            );
+            const lang = await NotificationService._mailLang(mail.locale);
+            const brand = await NotificationService._brand();
+            // The button goes through /notifications/:id/go (opened_at) when it
+            // points where the in-app row points and that row is already in the
+            // inbox (a row still inside its quiet window is not).
+            const trackId =
+                inappRow && inappRow.id && inappRow.state === 'queued' ? inappRow.id : null;
+            const rendered = NotificationService._compose(
+                {
+                    kind,
+                    severity,
+                    title: mail.title,
+                    intro: mail.intro,
+                    blocks: mail.blocks,
+                    ctaLabel: mail.ctaLabel,
+                    ctaUrl: mail.ctaUrl,
+                    preheader: mail.preheader,
                     locale: lang,
                     mandatory,
                     payload,
+                    calendar,
                 },
-                { brand, recipientName: recipient.name }
+                {
+                    brand,
+                    recipientName: recipient.name,
+                    icsEnabled: !settings || settings.icsEnabled !== false,
+                    trackId,
+                }
             );
-            // Quiet hours apply to EMAIL too. An immediate-tier mail raised at
-            // 03:00 is written as a deferred email row (rendered NOW and parked
-            // on the row: re-deriving it hours later from the kind alone would
-            // lose the caller's blocks) and sent by the release tick once the
-            // window ends. This is the delivery-audit row, not the in-app inbox
-            // row — the inbox payload written in step 1 is untouched.
+            // Quiet hours apply to EMAIL too (the person's window, else their
+            // site's). An immediate-tier mail raised at 03:00 is written as a
+            // deferred email row (rendered NOW and parked on the row:
+            // re-deriving it hours later from the kind alone would lose the
+            // caller's blocks) and sent by the release tick once the window
+            // ends. This is the delivery-audit row, not the in-app inbox row —
+            // the inbox payload written in step 1 is untouched.
             const releaseAt = ignoreQuietHours
                 ? null
                 : NotificationService._releaseAt(
-                      await NotificationService._quietPref(userType, userId)
+                      await NotificationService._quietFor(userType, userId)
                   );
             if (releaseAt) {
                 try {
                     await db.run(
-                        `INSERT INTO notifications (user_type, user_id, channel, kind, locale, payload, state, release_at)
-                         VALUES (?, ?, 'email', ?, ?, ?, 'snoozed', ?)`,
+                        `INSERT INTO notifications (user_type, user_id, channel, kind, locale, payload, state, release_at,
+                                                    event_id, ref_type, ref_id)
+                         VALUES (?, ?, 'email', ?, ?, ?, 'snoozed', ?, ?, ?, ?)`,
                         [
                             userType,
                             userId,
@@ -325,6 +436,9 @@ class NotificationService {
                                     NotificationService._storable(rendered),
                             }),
                             releaseAt,
+                            eventId,
+                            ref.refType,
+                            ref.refId,
                         ]
                     );
                     await NotificationService._markEmailed(userType, userId, kind);
@@ -355,6 +469,8 @@ class NotificationService {
                 nextAttemptAt: o.nextAttemptAt,
                 lastError: o.error,
                 pending: o.emailStatus === 'retry' ? rendered : null,
+                eventId,
+                ref,
             });
             if (sendResult.sent || o.emailStatus === 'retry') {
                 await NotificationService._markEmailed(userType, userId, kind);
@@ -436,10 +552,24 @@ class NotificationService {
         return out.slice(0, 500);
     }
 
-    /** What a deferred / retried mail keeps on its row (the logo is re-attached at send time). */
+    /**
+     * What a deferred / retried mail keeps on its row. The logo is re-attached
+     * at send time; a small TEXT attachment (the content-free .ics) is kept as
+     * is, since it cannot be rebuilt from the row.
+     */
     static _storable(rendered) {
         const r = rendered || {};
-        return { subject: r.subject, html: r.html, text: r.text, headers: r.headers || {} };
+        const out = { subject: r.subject, html: r.html, text: r.text, headers: r.headers || {} };
+        const kept = (Array.isArray(r.attachments) ? r.attachments : []).filter(
+            (a) => a && !a.cid && typeof a.content === 'string' && a.content.length <= 16384
+        );
+        if (kept.length)
+            out.attachments = kept.map((a) => ({
+                filename: a.filename,
+                content: a.content,
+                contentType: a.contentType,
+            }));
+        return out;
     }
 
     /** The email-channel delivery-audit row (best-effort; never throws). */
@@ -455,6 +585,8 @@ class NotificationService {
         nextAttemptAt,
         lastError,
         pending,
+        eventId,
+        ref,
     }) {
         try {
             const body = {
@@ -466,11 +598,14 @@ class NotificationService {
                       }
                     : {}),
             };
+            const refType = (ref && ref.refType) || null;
+            const refId = refType && ref.refId != null ? String(ref.refId) : null;
             await NotificationService._bestEffort(() =>
                 db.run(
                     `INSERT INTO notifications (user_type, user_id, channel, kind, locale, payload, state, sent_at,
-                                                email_status, email_attempts, next_attempt_at, last_error)
-                     VALUES (?, ?, 'email', ?, ?, ?, ?, ${state === 'sent' ? 'now()' : 'NULL'}, ?, ?, ?, ?)`,
+                                                email_status, email_attempts, next_attempt_at, last_error,
+                                                event_id, ref_type, ref_id)
+                     VALUES (?, ?, 'email', ?, ?, ?, ?, ${state === 'sent' ? 'now()' : 'NULL'}, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         userType,
                         userId,
@@ -482,6 +617,9 @@ class NotificationService {
                         Number(attempts) || 0,
                         nextAttemptAt || null,
                         NotificationService._safeError(lastError),
+                        eventId || null,
+                        refType,
+                        refId,
                     ]
                 )
             );
@@ -681,26 +819,739 @@ class NotificationService {
      * multi-row INSERT instead of N per-user notify calls, so a 4000-employee
      * cycle-open costs a handful of statements and ZERO email attempts. Always
      * in-app only; use for digest-tier informational kinds.
+     *
+     * Quiet hours apply here too: one preferences read per chunk (and one site
+     * read for the people without a window of their own), and a person inside
+     * their window gets the row 'snoozed' until it ends, exactly as enqueue()
+     * would do. Every row gets its own event id and the object it is about.
      */
     static async enqueueBulkInApp({ userType, userIds, kind, locale = 'fr', payload }) {
         const ids = [...new Set((userIds || []).map(Number).filter(Boolean))];
         if (!ids.length) return 0;
         NotificationService._checkDeclared(kind);
         const pl = typeof payload === 'string' ? payload : JSON.stringify(payload || {});
+        let parsed = payload;
+        if (typeof parsed === 'string') {
+            try {
+                parsed = JSON.parse(parsed);
+            } catch (_) {
+                parsed = {};
+            }
+        }
+        const ref = NotificationService._refOf(kind, parsed, {});
         const CHUNK = 500;
+        const now = new Date();
         let n = 0;
         for (let i = 0; i < ids.length; i += CHUNK) {
             const slice = ids.slice(i, i + CHUNK);
-            const values = slice.map(() => "(?, ?, 'inapp', ?, ?, ?, 'queued')").join(',');
+            const quiet = new Map();
+            const own = new Set();
+            try {
+                const prefs =
+                    (await db.all(
+                        `SELECT user_id, quiet_hours_start, quiet_hours_end
+                           FROM notification_preferences
+                          WHERE user_type = ? AND kind = '__all__' AND channel = 'inapp'
+                            AND user_id IN (${slice.map(() => '?').join(',')})`,
+                        [userType, ...slice]
+                    )) || [];
+                for (const p of prefs) {
+                    const uid = Number(p.userId ?? p.user_id);
+                    if (NotificationService._window(p)) own.add(uid);
+                    const at = NotificationService._releaseAt(p, now);
+                    if (at) quiet.set(uid, at);
+                }
+            } catch (_) {
+                /* no preferences readable → deliver now, as before */
+            }
+            const noOwn = slice.filter((uid) => !own.has(uid));
+            if (userType === 'employee' && noOwn.length) {
+                try {
+                    const sites =
+                        (await db.all(
+                            `SELECT e.id AS emp_id, s.quiet_hours_start, s.quiet_hours_end
+                               FROM employees e JOIN sites s ON s.id = e.site_id
+                              WHERE e.id IN (${noOwn.map(() => '?').join(',')})
+                                AND s.quiet_hours_start IS NOT NULL AND s.quiet_hours_end IS NOT NULL`,
+                            noOwn
+                        )) || [];
+                    for (const s of sites) {
+                        const at = NotificationService._releaseAt(s, now);
+                        if (at) quiet.set(Number(s.empId ?? s.emp_id), at);
+                    }
+                } catch (_) {
+                    /* site defaults unreadable → personal windows only */
+                }
+            }
+            // gen_random_uuid() is core since PostgreSQL 13.
+            const values = slice
+                .map(() => "(?, ?, 'inapp', ?, ?, ?, ?, ?, gen_random_uuid(), ?, ?)")
+                .join(',');
             const params = [];
-            for (const uid of slice) params.push(userType, uid, kind, locale, pl);
+            for (const uid of slice) {
+                const at = quiet.get(uid) || null;
+                params.push(
+                    userType,
+                    uid,
+                    kind,
+                    locale,
+                    pl,
+                    at ? 'snoozed' : 'queued',
+                    at,
+                    ref.refType,
+                    ref.refId
+                );
+            }
             await db.run(
-                `INSERT INTO notifications (user_type, user_id, channel, kind, locale, payload, state) VALUES ${values}`,
+                `INSERT INTO notifications (user_type, user_id, channel, kind, locale, payload, state, release_at,
+                                            event_id, ref_type, ref_id) VALUES ${values}`,
                 params
             );
             n += slice.length;
         }
         return n;
+    }
+
+    // ---- Measurement, preferences grid, catalogue page (migration 183) ----------
+
+    /** A fresh event id (uuid v4), or null when the runtime has none. */
+    static _newEventId() {
+        try {
+            return require('crypto').randomUUID();
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /**
+     * The object a kind is about, read from WHITELISTED payload keys when the
+     * emitter did not say it (args.refType / args.refId win). Identifiers only,
+     * never free text.
+     */
+    static get KIND_REF() {
+        return {
+            'cycle.opened': { type: 'cycle', key: 'cycleId' },
+            'cycle.reminder': { type: 'cycle', key: 'cycleId' },
+            'cycle.escalation': { type: 'cycle', key: 'cycleId' },
+            'cycle.closed': { type: 'cycle', key: 'cycleId' },
+            'cert.expiry': { type: 'skill', key: 'skillId' },
+            'cert.expiry.team': { type: 'skill', key: 'skillId' },
+        };
+    }
+
+    static _refOf(kind, payload, args) {
+        const a = args || {};
+        const idOk = (v) =>
+            (Number.isInteger(v) && v > 0) ||
+            (typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v));
+        if (typeof a.refType === 'string' && /^[a-z_]{1,32}$/.test(a.refType) && idOk(a.refId))
+            return { refType: a.refType, refId: String(a.refId) };
+        const m = NotificationService.KIND_REF[kind];
+        const p = payload && typeof payload === 'object' ? payload : {};
+        if (m && idOk(p[m.key])) return { refType: m.type, refId: String(p[m.key]) };
+        return { refType: null, refId: null };
+    }
+
+    /**
+     * Kinds whose « acted upon » is measured: a closing action calls
+     * markActed() for them. For every other kind the figure is « not
+     * measured », never 0 %.
+     */
+    static get ACTED_KINDS() {
+        return [
+            'cycle.opened',
+            'cycle.reminder',
+            'sa.changes_requested',
+            'sa.reset_for_redo',
+            'sa.submitted',
+            'sa.review_reset',
+            'cert.expiry',
+            'succession.review_due',
+        ];
+    }
+
+    /** Preference categories (the grid rows), in display order (catalogue). */
+    static get CATEGORIES() {
+        return catalogue.CATEGORIES;
+    }
+
+    /** Rows that are mandatory as a whole: greyed, cannot be switched off. */
+    static get MANDATORY_CATEGORIES() {
+        return catalogue.MANDATORY_CATEGORIES;
+    }
+
+    /** The grid row of a kind (a mandatory kind sits in its mandatory row). */
+    static categoryOf(kind) {
+        return catalogue.categoryOf(kind);
+    }
+
+    /** The person's settings row, or null when none / unreadable. */
+    static async _settingsRow(userType, userId) {
+        if (!userId) return null;
+        try {
+            const r = await db.get(
+                `SELECT digest_cadence, email_locale, ics_enabled, digest_stepdown_at,
+                        digest_stepdown_from, digest_streak_from
+                   FROM notification_user_settings WHERE user_type = ? AND user_id = ?`,
+                [userType, userId]
+            );
+            if (!r || typeof r !== 'object') return null;
+            const pick = (a, b) => (r[a] !== undefined ? r[a] : r[b]);
+            return {
+                digestCadence: pick('digestCadence', 'digest_cadence') || null,
+                emailLocale: pick('emailLocale', 'email_locale') || null,
+                icsEnabled: pick('icsEnabled', 'ics_enabled') !== false,
+                stepdownAt: pick('digestStepdownAt', 'digest_stepdown_at') || null,
+                stepdownFrom: pick('digestStepdownFrom', 'digest_stepdown_from') || null,
+                streakFrom: pick('digestStreakFrom', 'digest_streak_from') || null,
+            };
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /**
+     * The language of ONE recipient's mails: their own choice (Mon compte →
+     * Notifications), else the site's mail language (mailDefaultLanguage).
+     * For senders that compose a mail per recipient themselves.
+     */
+    static async recipientLang(userType, userId, fallback) {
+        return require('../utils/emailTemplate').recipientLang(userType, userId, fallback);
+    }
+
+    /**
+     * ONE language per mail, the recipient's when it can be honoured:
+     *   - catalogue-worded mail (no title, intro, blocks…): the person's language;
+     *   - `content: (B) => ({ title, intro, blocks, ctaLabel, ctaUrl, preheader })`
+     *     — the emitter writes the mail for any language; B is
+     *     emailTemplate.blocks(lang) for the person's language (else `fallback`);
+     *   - `byLocale: { en: { title, … } }` — the emitter supplied that language;
+     *   - otherwise the emitter wrote fixed text: its language is kept for the
+     *     WHOLE mail, never a French body under English chrome.
+     * `fallback` is the emitter's language or the site's (already resolved).
+     */
+    static _mailContent(content, settings, fallback) {
+        const c = content || {};
+        const nonEmpty = (v) => v != null && String(v).trim() !== '';
+        const userLang = settings && settings.emailLocale ? settings.emailLocale : null;
+        if (typeof c.content === 'function') {
+            const lang = userLang || c.locale || fallback || 'fr';
+            let built = {};
+            try {
+                built = c.content(require('../utils/emailTemplate').blocks(lang)) || {};
+            } catch (_) {
+                built = {};
+            }
+            return {
+                title: built.title,
+                intro: built.intro,
+                blocks: built.blocks,
+                ctaLabel: built.ctaLabel,
+                ctaUrl: built.ctaUrl != null ? built.ctaUrl : c.ctaUrl,
+                preheader: built.preheader,
+                locale: lang,
+            };
+        }
+        const explicit =
+            nonEmpty(c.title) ||
+            nonEmpty(c.intro) ||
+            nonEmpty(c.ctaLabel) ||
+            nonEmpty(c.preheader) ||
+            (Array.isArray(c.blocks) && c.blocks.length > 0);
+        let src = c;
+        let locale = c.locale || fallback || null;
+        if (userLang) {
+            const alt = c.byLocale && typeof c.byLocale === 'object' ? c.byLocale[userLang] : null;
+            if (alt && typeof alt === 'object') {
+                src = { ...c, ...alt };
+                locale = userLang;
+            } else if (!explicit) {
+                locale = userLang;
+            }
+        }
+        return {
+            title: src.title,
+            intro: src.intro,
+            blocks: src.blocks,
+            ctaLabel: src.ctaLabel,
+            ctaUrl: src.ctaUrl,
+            preheader: src.preheader,
+            locale,
+        };
+    }
+
+    /**
+     * Is e-mail ON for the kind's category? No row = the default (on). A
+     * mandatory category is always on. Unreadable ⇒ the default.
+     */
+    static async _categoryAllowed(userType, userId, kind, channel = 'email') {
+        const cat = NotificationService.categoryOf(kind);
+        if (NotificationService.MANDATORY_CATEGORIES.includes(cat)) return true;
+        if (channel !== 'email') return false;
+        try {
+            const r = await db.get(
+                `SELECT enabled FROM notification_category_prefs
+                  WHERE user_type = ? AND user_id = ? AND category = ? AND channel = 'email'`,
+                [userType, userId, cat]
+            );
+            if (!r || typeof r.enabled !== 'boolean') return true;
+            return r.enabled;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * May this kind reach this person on this channel? In-app always; a
+     * mandatory kind always; e-mail = the person's e-mail switch AND the
+     * category switch. Any other channel: no.
+     */
+    static async channelAllowed({ userType, userId, kind, channel }) {
+        if (channel === 'inapp') return true;
+        if (NotificationService._isMandatory(kind)) return true;
+        if (channel !== 'email') return false;
+        if (!(await NotificationService._userEmailAllowed(userType, userId))) return false;
+        return NotificationService._categoryAllowed(userType, userId, kind, 'email');
+    }
+
+    /**
+     * The default summary cadence: daily, the cadence every install had before
+     * migration 183, so an upgrade changes nothing until the person chooses
+     * weekly or never.
+     */
+    static async defaultCadence() {
+        return 'daily';
+    }
+
+    /** The effective summary cadence: the person's choice, else the default. */
+    static async digestCadence(userType, userId) {
+        const s = await NotificationService._settingsRow(userType, userId);
+        if (s && ['daily', 'weekly', 'off'].includes(s.digestCadence)) return s.digestCadence;
+        return NotificationService.defaultCadence(userType, userId);
+    }
+
+    /** Everything the « Mon compte → Notifications » page shows. */
+    static async getPreferenceGrid({ userType, userId }) {
+        const base = await NotificationService.getUserPrefs({ userType, userId });
+        const settings = (await NotificationService._settingsRow(userType, userId)) || {};
+        const dflt = await NotificationService.defaultCadence(userType, userId);
+        let rows = [];
+        try {
+            rows =
+                (await db.all(
+                    `SELECT category, enabled FROM notification_category_prefs
+                      WHERE user_type = ? AND user_id = ? AND channel = 'email'`,
+                    [userType, userId]
+                )) || [];
+        } catch (_) {
+            rows = [];
+        }
+        const off = new Set(rows.filter((r) => r.enabled === false).map((r) => r.category));
+        const categories = NotificationService.CATEGORIES.map((key) => {
+            const mandatory = NotificationService.MANDATORY_CATEGORIES.includes(key);
+            return { key, mandatory, email: mandatory ? true : !off.has(key) };
+        });
+        let siteQuiet = null;
+        const sq = await NotificationService._siteQuiet(userType, userId);
+        if (sq) {
+            const w = NotificationService._window(sq);
+            const hm = (m) =>
+                `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+            siteQuiet = { start: hm(w.start), end: hm(w.end) };
+        }
+        const valid = ['daily', 'weekly', 'off'].includes(settings.digestCadence);
+        return {
+            ...base,
+            categories,
+            digestCadence: valid ? settings.digestCadence : dflt,
+            digestCadenceIsDefault: !valid,
+            defaultCadence: dflt,
+            emailLocale: settings.emailLocale || null,
+            defaultLocale: await NotificationService._mailLang(null),
+            icsEnabled: settings.icsEnabled !== false,
+            stepdownAt: settings.stepdownAt || null,
+            stepdownFrom: settings.stepdownFrom || null,
+            siteQuiet,
+        };
+    }
+
+    /**
+     * Save the grid and the settings. Mandatory rows are never written (they
+     * cannot be switched off), nor any category the catalogue does not know.
+     * Changing the cadence restarts the unopened-summary count and clears a
+     * pending step-down notice.
+     */
+    static async savePreferenceGrid({
+        userType,
+        userId,
+        categories,
+        digestCadence,
+        emailLocale,
+        icsEnabled,
+    }) {
+        // A Map (the controller) or a plain object; only the catalogue's
+        // categories are ever read from it.
+        const get = (k) => {
+            if (categories instanceof Map) return categories.get(k);
+            if (categories && typeof categories === 'object' && Object.hasOwn(categories, k))
+                return categories[k];
+            return null;
+        };
+        for (const key of NotificationService.CATEGORIES) {
+            if (NotificationService.MANDATORY_CATEGORIES.includes(key)) continue;
+            // A category the caller did not mention is left as it is (the
+            // preferences form always sends every one of them).
+            const c = get(key);
+            if (!c || typeof c !== 'object') continue;
+            await db.run(
+                `INSERT INTO notification_category_prefs (user_type, user_id, category, channel, enabled, updated_at)
+                 VALUES (?, ?, ?, 'email', ?, now())
+                 ON CONFLICT (user_type, user_id, category, channel)
+                 DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()`,
+                [userType, userId, key, c.email === true]
+            );
+        }
+        const cadence = ['daily', 'weekly', 'off'].includes(digestCadence) ? digestCadence : null;
+        const lang = ['fr', 'en'].includes(emailLocale) ? emailLocale : null;
+        const before = await NotificationService._settingsRow(userType, userId);
+        const changed = !before || (before.digestCadence || null) !== cadence;
+        await db.run(
+            `INSERT INTO notification_user_settings (user_type, user_id, digest_cadence, email_locale, ics_enabled,
+                                                     digest_streak_from, updated_at)
+             VALUES (?, ?, ?, ?, ?, now(), now())
+             ON CONFLICT (user_type, user_id) DO UPDATE SET
+               digest_cadence = EXCLUDED.digest_cadence,
+               email_locale   = EXCLUDED.email_locale,
+               ics_enabled    = EXCLUDED.ics_enabled,
+               digest_streak_from   = CASE WHEN ? THEN now() ELSE notification_user_settings.digest_streak_from END,
+               digest_stepdown_at   = CASE WHEN ? THEN NULL ELSE notification_user_settings.digest_stepdown_at END,
+               digest_stepdown_from = CASE WHEN ? THEN NULL ELSE notification_user_settings.digest_stepdown_from END,
+               updated_at = now()`,
+            [userType, userId, cadence, lang, icsEnabled !== false, changed, changed, changed]
+        );
+        return true;
+    }
+
+    /** « Turn back on »: the cadence before the step-down, and a fresh count. */
+    static async reactivateDigest({ userType, userId }) {
+        const s = await NotificationService._settingsRow(userType, userId);
+        if (!s || !s.stepdownFrom) return false;
+        await db.run(
+            `UPDATE notification_user_settings
+                SET digest_cadence = digest_stepdown_from, digest_stepdown_at = NULL,
+                    digest_stepdown_from = NULL, digest_streak_from = now(), updated_at = now()
+              WHERE user_type = ? AND user_id = ? AND digest_stepdown_from IS NOT NULL`,
+            [userType, userId]
+        );
+        return true;
+    }
+
+    /** How many summaries in a row left unopened slow the cadence down. */
+    static get DIGEST_STEPDOWN_AFTER() {
+        return 8;
+    }
+
+    /**
+     * EIGHT summaries in a row with nothing opened since (no
+     * /notifications/:id/go by the person after the summary went out) slow the
+     * cadence down one notch: daily → weekly → off. The preferences page then
+     * says so and offers to turn it back on. Only summaries recorded since
+     * migration 183 count (event_id), and only those after the last step-down,
+     * reactivation or cadence change.
+     * → { steppedDown: true, from, to } | { steppedDown: false, unopened? }.
+     */
+    static async digestStepDown({ userType, userId, cadence }) {
+        const current = cadence || (await NotificationService.digestCadence(userType, userId));
+        if (current !== 'daily' && current !== 'weekly') return { steppedDown: false };
+        const s = await NotificationService._settingsRow(userType, userId);
+        let n = 0;
+        try {
+            const r = await db.get(
+                `SELECT COUNT(*)::int AS c FROM notifications d
+                  WHERE d.user_type = ? AND d.user_id = ? AND d.channel = 'email'
+                    AND d.kind = 'digest.daily' AND d.state = 'sent' AND d.event_id IS NOT NULL
+                    AND d.created_at > COALESCE(?::timestamptz, '-infinity'::timestamptz)
+                    AND d.created_at > COALESCE((SELECT max(o.opened_at) FROM notifications o
+                                                  WHERE o.user_type = d.user_type AND o.user_id = d.user_id
+                                                    AND o.channel = 'inapp'), '-infinity'::timestamptz)`,
+                [userType, userId, (s && s.streakFrom) || null]
+            );
+            n = Number(r && (r.c ?? r.count)) || 0;
+        } catch (_) {
+            return { steppedDown: false };
+        }
+        if (n < NotificationService.DIGEST_STEPDOWN_AFTER)
+            return { steppedDown: false, unopened: n };
+        const to = current === 'daily' ? 'weekly' : 'off';
+        await db.run(
+            `INSERT INTO notification_user_settings (user_type, user_id, digest_cadence, digest_stepdown_at,
+                                                     digest_stepdown_from, digest_streak_from, updated_at)
+             VALUES (?, ?, ?, now(), ?, now(), now())
+             ON CONFLICT (user_type, user_id) DO UPDATE SET
+               digest_cadence = EXCLUDED.digest_cadence,
+               digest_stepdown_at = now(),
+               digest_stepdown_from = COALESCE(notification_user_settings.digest_stepdown_from, EXCLUDED.digest_stepdown_from),
+               digest_streak_from = now(),
+               updated_at = now()`,
+            [userType, userId, to, current]
+        );
+        return { steppedDown: true, from: current, to };
+    }
+
+    /**
+     * The owner followed the notification's link (GET /notifications/:id/go).
+     * First open only; scoped to the owner; never called by mark-all-read.
+     */
+    static async markOpened({ id, userType, userId }) {
+        try {
+            const r = await db.run(
+                `UPDATE notifications SET opened_at = now()
+                  WHERE id = ? AND user_type = ? AND user_id = ? AND channel = 'inapp'
+                    AND opened_at IS NULL`,
+                [Number(id), userType, userId]
+            );
+            return !!(r && r.changes > 0);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /**
+     * The action a notification asked for was DONE. Called by the business
+     * services when they close it (self-assessment submitted, review decided,
+     * certificate recorded, successor named):
+     *
+     *   markActed({ refType, refId })                       every open row about that object
+     *   markActed({ refType, refId, userType, userId })     … of that person
+     *   markActed({ userType, userId, kinds })              that person's open rows of those kinds
+     *
+     * Stamps acted_at on still-open rows of the last 90 days, every channel of
+     * the event. Best-effort: never throws, runs in a savepoint (callers are
+     * often inside a transaction). → number of rows stamped.
+     */
+    static async markActed({ refType, refId, userType, userId, kinds } = {}) {
+        const where = ['acted_at IS NULL', "created_at >= now() - interval '90 days'"];
+        const params = [];
+        const hasRef =
+            typeof refType === 'string' &&
+            /^[a-z_]{1,32}$/.test(refType) &&
+            refId != null &&
+            String(refId) !== '';
+        const ks = (Array.isArray(kinds) ? kinds : kinds ? [kinds] : [])
+            .map(String)
+            .filter((k) => catalogue.isDeclared(k))
+            .slice(0, 20);
+        const hasWho = (userType === 'admin' || userType === 'employee') && Number(userId) > 0;
+        if (!hasRef && !(hasWho && ks.length)) return 0;
+        if (hasRef) {
+            where.push('ref_type = ?', 'ref_id = ?');
+            params.push(refType, String(refId).slice(0, 64));
+        }
+        if (hasWho) {
+            where.push('user_type = ?', 'user_id = ?');
+            params.push(userType, Number(userId));
+        }
+        if (ks.length) {
+            where.push(`kind IN (${ks.map(() => '?').join(',')})`);
+            params.push(...ks);
+        }
+        try {
+            const r = await NotificationService._bestEffort(() =>
+                db.run(
+                    `UPDATE notifications SET acted_at = now() WHERE ${where.join(' AND ')}`,
+                    params
+                )
+            );
+            return (r && r.changes) || 0;
+        } catch (_) {
+            return 0;
+        }
+    }
+
+    /** markActed() for a closing hook: fire-and-forget, never throws, never blocks. */
+    static actedQuietly(args) {
+        return Promise.resolve()
+            .then(() => NotificationService.markActed(args))
+            .catch(() => 0);
+    }
+
+    /** Minimum population before a ratio or a median is shown. */
+    static get METRICS_MIN_N() {
+        return 5;
+    }
+
+    /**
+     * The effectiveness of each kind over `days` (default 30): notified,
+     * e-mails sent, opened %, acted %, median time to action, e-mail opt-outs
+     * of its category, « rarely opened » flag. Only measurable rows (event_id,
+     * migration 183) count; people who left, were voided or erased are out of
+     * every figure. A ratio over fewer than 5, or « acted » for a kind no
+     * closing action records, is NOT a measurement: null and the reason, never
+     * 0 %. Aggregates only: no person is named.
+     */
+    static async metrics({ days = 30 } = {}) {
+        const d = Math.min(Math.max(Math.floor(Number(days) || 30), 1), 365);
+        const active = `NOT EXISTS (SELECT 1 FROM employees e
+                                     WHERE n.user_type = 'employee' AND e.id = n.user_id
+                                       AND (e.is_active = false OR e.cancelled_at IS NOT NULL OR e.erased_at IS NOT NULL))`;
+        const rows =
+            (await db.all(
+                // A CTE: the SQL compatibility layer leaves WITH statements alone.
+                `WITH per_kind AS (
+                 SELECT n.kind,
+                        COUNT(*) FILTER (WHERE n.channel = 'inapp')::int AS sent,
+                        COUNT(*) FILTER (WHERE n.channel = 'email' AND n.email_status = 'sent')::int AS emailed,
+                        COUNT(*) FILTER (WHERE n.channel = 'inapp' AND n.opened_at IS NOT NULL)::int AS opened,
+                        COUNT(*) FILTER (WHERE n.channel = 'inapp' AND n.acted_at IS NOT NULL)::int AS acted,
+                        percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (n.acted_at - n.created_at)))
+                            FILTER (WHERE n.channel = 'inapp' AND n.acted_at IS NOT NULL) AS median_s
+                   FROM notifications n
+                  WHERE n.event_id IS NOT NULL
+                    AND n.created_at >= now() - (? || ' days')::interval
+                    AND ${active}
+                  GROUP BY n.kind)
+                 SELECT * FROM per_kind ORDER BY kind`,
+                [String(d)]
+            )) || [];
+        const optOut = new Map();
+        let globalOptOut = null;
+        let stepDowns = null;
+        try {
+            const optRows =
+                (await db.all(
+                    `SELECT p.category, COUNT(*)::int AS c FROM notification_category_prefs p
+                      WHERE p.channel = 'email' AND p.enabled = false
+                        AND NOT EXISTS (SELECT 1 FROM employees e
+                                         WHERE p.user_type = 'employee' AND e.id = p.user_id
+                                           AND (e.is_active = false OR e.cancelled_at IS NOT NULL OR e.erased_at IS NOT NULL))
+                      GROUP BY p.category`
+                )) || [];
+            for (const r of optRows) optOut.set(r.category, Number(r.c) || 0);
+            const g = await db.get(
+                `SELECT COUNT(*)::int AS c FROM notification_preferences p
+                  WHERE p.kind = '__all__' AND p.channel = 'email' AND p.enabled = false
+                    AND NOT EXISTS (SELECT 1 FROM employees e
+                                     WHERE p.user_type::text IN ('employee', 'manager') AND e.id = p.user_id
+                                       AND (e.is_active = false OR e.cancelled_at IS NOT NULL OR e.erased_at IS NOT NULL))`
+            );
+            globalOptOut = Number(g && g.c) || 0;
+            const s = await db.get(
+                `SELECT COUNT(*)::int AS c FROM notification_user_settings WHERE digest_stepdown_at IS NOT NULL`
+            );
+            stepDowns = Number(s && s.c) || 0;
+        } catch (_) {
+            /* the per-kind table still stands */
+        }
+        const MIN = NotificationService.METRICS_MIN_N;
+        const acted = new Set(NotificationService.ACTED_KINDS);
+        const kinds = rows.map((r) => {
+            const sent = Number(r.sent) || 0;
+            const opened = Number(r.opened) || 0;
+            const act = Number(r.acted) || 0;
+            const mandatory = NotificationService._isMandatory(r.kind);
+            const category = NotificationService.categoryOf(r.kind);
+            const openedPct = sent >= MIN ? (opened / sent) * 100 : null;
+            let actedPct = null;
+            let actedReason = null;
+            if (!acted.has(r.kind)) actedReason = 'no_hook';
+            else if (sent < MIN) actedReason = 'small';
+            else actedPct = (act / sent) * 100;
+            const med = r.medianS ?? r.median_s;
+            return {
+                kind: r.kind,
+                category,
+                mandatory,
+                sent,
+                emailed: Number(r.emailed) || 0,
+                opened,
+                openedPct,
+                openedReason: openedPct == null ? 'small' : null,
+                acted: act,
+                actedPct,
+                actedReason,
+                medianHours:
+                    acted.has(r.kind) && act >= MIN && med != null && Number.isFinite(Number(med))
+                        ? Number(med) / 3600
+                        : null,
+                medianReason: !acted.has(r.kind) ? 'no_hook' : act >= MIN ? null : 'small',
+                optOuts: mandatory ? null : optOut.get(category) || 0,
+                lowOpen: !mandatory && openedPct != null && openedPct < 20,
+            };
+        });
+        return { days: d, kinds, globalOptOut, stepDowns, minN: MIN };
+    }
+
+    /**
+     * The catalogue page: one row per declared kind — category, e-mail tier,
+     * mandatory flag, severity, webhook rule, title and subject in the reader's
+     * language, 30-day in-app volume (null when it could not be read, never 0).
+     */
+    static async catalogueRows({ days = 30, lang = 'fr' } = {}) {
+        const l = NotificationService._lang(lang);
+        const vol = new Map();
+        let volumesKnown = false;
+        try {
+            const rows =
+                (await db.all(
+                    `SELECT kind, COUNT(*)::int AS c FROM notifications
+                      WHERE channel = 'inapp' AND created_at >= now() - (? || ' days')::interval
+                      GROUP BY kind`,
+                    [String(Math.min(Math.max(Number(days) || 30, 1), 365))]
+                )) || [];
+            for (const r of rows) vol.set(r.kind, Number(r.c) || 0);
+            volumesKnown = true;
+        } catch (_) {
+            /* volumes unknown: shown as « — », never 0 */
+        }
+        return catalogue.kinds().map((kind) => {
+            const d = catalogue.describe(kind) || {};
+            return {
+                kind,
+                title: (d.title && d.title[l]) || kind,
+                subject: (d.subject && d.subject[l]) || null,
+                family: kind.split('.')[0],
+                category: d.category || 'other',
+                mandatory: !!d.mandatory,
+                tier: d.tier || 'immediate',
+                severity: d.severity || 'info',
+                webhook: d.webhook || 'never',
+                mailOnly: !!d.mailOnly,
+                volume: d.mailOnly ? null : volumesKnown ? vol.get(kind) || 0 : null,
+            };
+        });
+    }
+
+    /** Every active site and its default quiet hours (catalogue page). */
+    static async siteQuietHours() {
+        try {
+            const rows =
+                (await db.all(
+                    `SELECT id, name, quiet_hours_start, quiet_hours_end FROM sites
+                      WHERE is_active = true ORDER BY name`
+                )) || [];
+            // PG returns TIME as 'HH:MM:SS'; <input type="time"> round-trips 'HH:MM'.
+            const hm = (v) => {
+                const m = /^(\d{1,2}):(\d{2})/.exec(String(v || '').slice(0, 8));
+                return m ? `${String(Number(m[1])).padStart(2, '0')}:${m[2]}` : '';
+            };
+            return rows.map((r) => ({
+                id: Number(r.id),
+                name: r.name,
+                start: hm(r.quietHoursStart ?? r.quiet_hours_start),
+                end: hm(r.quietHoursEnd ?? r.quiet_hours_end),
+            }));
+        } catch (_) {
+            return [];
+        }
+    }
+
+    /** Set (or clear, with both ends empty) a site's default quiet hours. */
+    static async setSiteQuietHours({ siteId, start, end }) {
+        const r = await db.run(
+            `UPDATE sites SET quiet_hours_start = ?, quiet_hours_end = ?, updated_at = now() WHERE id = ?`,
+            [start || null, end || null, Number(siteId)]
+        );
+        return !!(r && r.changes > 0);
     }
 
     // ---- Per-user preferences (the user's own "don't invade my mailbox" controls) --
@@ -1058,9 +1909,21 @@ class NotificationService {
      */
     static async renderEmail(spec = {}) {
         const brand = await NotificationService._brand();
-        const locale = await NotificationService._mailLang(spec && spec.locale);
-        const { recipientName, ...rest } = spec || {};
-        return NotificationService._compose({ ...rest, locale }, { brand, recipientName });
+        const { recipientName, recipient, ...rest } = spec || {};
+        // `recipient` ({ userType, userId }) honours that person's .ics switch
+        // and, for a catalogue-worded mail, their e-mail language.
+        let icsEnabled = true;
+        let locale = rest.locale;
+        if (recipient && recipient.userId) {
+            const s = await NotificationService._settingsRow(recipient.userType, recipient.userId);
+            icsEnabled = !s || s.icsEnabled !== false;
+            locale = NotificationService._mailContent(rest, s, rest.locale).locale;
+        }
+        locale = await NotificationService._mailLang(locale);
+        return NotificationService._compose(
+            { ...rest, locale },
+            { brand, recipientName, icsEnabled }
+        );
     }
 
     /** renderEmail blocks → { html, text } (utils/emailTemplate.renderBlocks). */
@@ -1300,6 +2163,11 @@ class NotificationService {
         const mandatory = NotificationService._isMandatory(row.kind);
         if (!mandatory && !(await NotificationService._userEmailAllowed(userType, userId)))
             return { sent: false, skipped: 'user_opt_out' };
+        if (
+            !mandatory &&
+            !(await NotificationService._categoryAllowed(userType, userId, row.kind, 'email'))
+        )
+            return { sent: false, skipped: 'category_opt_out' };
         const recipient = await NotificationService._resolveRecipient(userType, userId);
         if (recipient.emailStatus === 'suppressed') return { sent: false, suppressed: true };
         if (!recipient.email) return { sent: false, skipped: 'no_address' };
@@ -1396,34 +2264,72 @@ class NotificationService {
     }
 
     /**
+     * The campaign-deadline calendar of a summary: the first cycle.opened line
+     * carrying cycleId and closesOn → { type: 'campaign_deadline', date, uid }
+     * (the same uid as the D-7 / D-2 reminders, so a calendar updates ONE
+     * event). null when there is none. Dates and ids only, never caller text.
+     */
+    static _digestCalendar(rows) {
+        for (const r of rows || []) {
+            if (!r || r.kind !== 'cycle.opened') continue;
+            let p = r.payload;
+            if (typeof p === 'string') {
+                try {
+                    p = JSON.parse(p);
+                } catch (_) {
+                    p = null;
+                }
+            }
+            const id = p && Number(p.cycleId);
+            if (!id || !Number.isInteger(id) || id <= 0 || !p.closesOn) continue;
+            const raw = String(p.closesOn).slice(0, 40);
+            let date = null;
+            if (raw.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(raw)) date = raw;
+            else {
+                const d = new Date(raw);
+                if (!Number.isNaN(d.getTime()))
+                    date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            }
+            if (date) return { type: 'campaign_deadline', date, uid: `cycle-${id}-deadline` };
+        }
+        return null;
+    }
+
+    /**
      * Build + send ONE branded rollup email of a user's NEW in-app notifications
-     * — the "no mailbox invasion" batching lever (many events → one daily email).
+     * — the "no mailbox invasion" batching lever (many events → one email).
      *
-     * The lines are the last 24 hours' unread items that are (a) not tier
+     * The lines are the window's unread items (the last 24 hours, or the last
+     * 7 days for a weekly summary: `sinceHours: 168`) that are (a) not tier
      * 'none' — a kind that is never e-mailed is never named in a digest either
      * — and (b) not already e-mailed on their own or listed in an earlier
      * digest; then one line « N actions toujours en attente » for what is older
      * and still unread. No new item ⇒ no mail at all. A person who has left is
      * not written to. Gated by the `digest` email category and the person's own
      * switch. The subject never carries the count.
+     *
+     * Each line goes through /notifications/:id/go, which records that the
+     * person opened it and redirects to the same page: that is how a summary
+     * nobody reads is told from one that is read (no tracking pixel). The
+     * summary itself is recorded as an e-mail row (ids of its lines only), which
+     * the step-down counts. A campaign launch in the summary carries the
+     * deadline .ics unless the person switched .ics off.
      */
-    static async sendDigest({ userType, userId, locale }) {
+    static async sendDigest({ userType, userId, locale, sinceHours = 24 }) {
         const EmailService = require('./EmailService');
         if (!(await EmailService.isCategoryEnabled('digest'))) return { skipped: 'digest_off' };
         // The per-user opt-out governs the digest FIRST. It is the one email a
         // recipient is most likely to want stopped.
         if (!(await NotificationService._userEmailAllowed(userType, userId)))
             return { skipped: 'user_opt_out' };
-        // The window is the LAST 24 HOURS, matching the recipient selection of
-        // personal-digest.js: an unread notification is not re-listed at the top
-        // of every day's summary. The bell and the notification centre still show
-        // everything.
+        const weekly = Number(sinceHours) === 168;
+        const windowH = weekly ? 168 : 24;
         const rows = await NotificationService.listInApp({
             userType,
             userId,
             limit: 100,
             unreadOnly: true,
-            sinceHours: 24,
+            sinceHours: 24 * (weekly ? 7 : 1),
             excludeEmailed: true,
         });
         const fresh = (rows || []).filter(
@@ -1434,7 +2340,11 @@ class NotificationService {
         if (recipient.emailStatus === 'suppressed') return { skipped: 'suppressed' };
         if (!recipient.email) return { skipped: 'no_address' };
         const brand = await NotificationService._brand();
-        const lang = await NotificationService._mailLang(locale);
+        // The person's e-mail language, else the caller's, else the site's.
+        const settings = await NotificationService._settingsRow(userType, userId);
+        const lang = await NotificationService._mailLang(
+            (settings && settings.emailLocale) || locale
+        );
         const D = NotificationService.DIGEST_TEXT[lang];
         // `withReason: false` — no reason, comment or rating leaves the app by
         // e-mail. The reason stays readable in the notification centre, behind
@@ -1442,11 +2352,17 @@ class NotificationService {
         const items = fresh.map((r) => NotificationService.present(r, lang, { withReason: false }));
         const shown = items.slice(0, 20);
         const blocks = [
-            { type: 'links', items: shown.map((i) => ({ text: i.title, href: i.link })) },
+            {
+                type: 'links',
+                items: shown.map((i) => ({
+                    text: i.title,
+                    href: i.id > 0 ? `/notifications/${i.id}/go` : i.link,
+                })),
+            },
         ];
         if (items.length > shown.length)
             blocks.push({ type: 'p', text: D.more(items.length - shown.length) });
-        const outstanding = await NotificationService._outstandingCount(userType, userId);
+        const outstanding = await NotificationService._outstandingCount(userType, userId, windowH);
         if (outstanding > 0)
             blocks.push({
                 type: 'links',
@@ -1455,16 +2371,21 @@ class NotificationService {
         const rendered = NotificationService._compose(
             {
                 kind: 'digest.daily',
-                title: D.title(items.length),
-                intro: D.lead,
+                title: weekly ? D.titleWeek(items.length) : D.title(items.length),
+                intro: weekly ? D.leadWeek : D.lead,
                 blocks,
                 ctaLabel: D.cta,
                 ctaUrl: '/notifications',
                 locale: lang,
                 mandatory: false,
                 severity: 'info',
+                calendar: NotificationService._digestCalendar(fresh),
             },
-            { brand, recipientName: recipient.name }
+            {
+                brand,
+                recipientName: recipient.name,
+                icsEnabled: !settings || settings.icsEnabled !== false,
+            }
         );
         const send = await EmailService.send({
             to: recipient.email,
@@ -1473,6 +2394,26 @@ class NotificationService {
             text: rendered.text,
             attachments: NotificationService._attachmentsOrNone(rendered.attachments),
             headers: rendered.headers,
+        });
+        // The summary itself is recorded: the delivery audit, and what the
+        // step-down counts. The ids of its lines only, no text.
+        await NotificationService._recordEmail({
+            userType,
+            userId,
+            kind: 'digest.daily',
+            locale: lang,
+            payload: {
+                ids: fresh
+                    .map((r) => Number(r.id))
+                    .filter(Boolean)
+                    .slice(0, 100),
+                hours: windowH,
+            },
+            state: send.sent ? 'sent' : 'failed',
+            emailStatus: send.sent ? 'sent' : send.error ? 'abandoned' : 'skipped',
+            attempts: 1,
+            lastError: send.sent ? null : send.error || send.skipped || null,
+            eventId: NotificationService._newEventId(),
         });
         if (send.sent) {
             const ids = fresh.map((r) => Number(r.id)).filter(Boolean);
@@ -1497,14 +2438,15 @@ class NotificationService {
     }
 
     /** Unread, visible, digestible items OLDER than the digest window (« toujours en attente »). */
-    static async _outstandingCount(userType, userId) {
+    static async _outstandingCount(userType, userId, hours = 24) {
+        const h = Number(hours) === 168 ? 168 : 24;
         try {
             const rows =
                 (await db.all(
                     `SELECT kind, COUNT(*)::int AS c FROM notifications
                       WHERE user_type = ? AND user_id = ? AND channel = 'inapp' AND read_at IS NULL
                         AND ${NotificationService.VISIBLE_SQL}
-                        AND created_at < now() - interval '24 hours'
+                        AND created_at < now() - interval '${h} hours'
                       GROUP BY kind`,
                     [userType, userId]
                 )) || [];
@@ -1530,7 +2472,12 @@ class NotificationService {
                     n === 1
                         ? "1 nouveauté pour vous aujourd'hui"
                         : `${num(n, 'fr')} nouveautés pour vous aujourd'hui`,
+                titleWeek: (n) =>
+                    n === 1
+                        ? '1 nouveauté pour vous cette semaine'
+                        : `${num(n, 'fr')} nouveautés pour vous cette semaine`,
                 lead: 'Voici ce qui est arrivé depuis hier.',
+                leadWeek: 'Voici ce qui est arrivé ces sept derniers jours.',
                 more: (n) =>
                     n === 1
                         ? 'Et 1 autre dans le centre de notifications.'
@@ -1549,7 +2496,12 @@ class NotificationService {
                     n === 1
                         ? '1 new item for you today'
                         : `${num(n, 'en')} new items for you today`,
+                titleWeek: (n) =>
+                    n === 1
+                        ? '1 new item for you this week'
+                        : `${num(n, 'en')} new items for you this week`,
                 lead: 'Here is what arrived since yesterday.',
+                leadWeek: 'Here is what arrived over the last seven days.',
                 more: (n) =>
                     n === 1
                         ? 'And 1 more in the notification centre.'

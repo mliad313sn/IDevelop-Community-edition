@@ -1358,8 +1358,7 @@ const SafetyGateService = {
         // ONE language per mail, and the subject is the catalogue's: it never
         // states the clearance status nor names the person (it is read on lock
         // screens). The reasons are in the body, the detail behind the link.
-        const lang = await require('../utils/emailTemplate').mailLang();
-        const B = require('../utils/emailTemplate').blocks(lang);
+        // Each mail is written in its recipient's e-mail language (`content`).
 
         const personResult = await NotificationService.notify({
             userType: 'employee',
@@ -1373,9 +1372,10 @@ const SafetyGateService = {
                 reason: fr,
                 link: '/v2/idp',
             },
-            locale: lang,
-            title: B.pick(head('fr'), head('en')),
-            blocks: [B.para(`${fr}.`, `${en}.`), B.para(L.fr.notif_plan, L.en.notif_plan)],
+            content: (B) => ({
+                title: B.pick(head('fr'), head('en')),
+                blocks: [B.para(`${fr}.`, `${en}.`), B.para(L.fr.notif_plan, L.en.notif_plan)],
+            }),
         });
         sent.push({ userType: 'employee', id: r.employeeId, result: personResult });
 
@@ -1396,9 +1396,10 @@ const SafetyGateService = {
                     reason: `${who} — ${fr}`,
                     link: lineLink,
                 },
-                locale: lang,
-                title: B.pick(head('fr'), head('en')),
-                blocks: [B.para(`${who} — ${fr}.`, `${who} — ${en}.`)],
+                content: (B) => ({
+                    title: B.pick(head('fr'), head('en')),
+                    blocks: [B.para(`${who} — ${fr}.`, `${who} — ${en}.`)],
+                }),
             });
             sent.push({ userType: x.userType, id: x.id, result: res });
         }

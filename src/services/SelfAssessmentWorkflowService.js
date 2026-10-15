@@ -1286,7 +1286,24 @@ class SelfAssessmentWorkflowService {
             recommendation: recommendation || null,
             gapReason: gapReason || null,
         });
+        await this._reviewerActed(user);
         return this.getAssessment(selfAssessmentId);
+    }
+
+    /**
+     * Measurement (migration 183): the reviewer acted on « to review » (a
+     * decision was taken). Best-effort, never throws.
+     */
+    async _reviewerActed(user) {
+        await Promise.resolve()
+            .then(() =>
+                require('./NotificationService').actedQuietly({
+                    userType: user && user.userType === 'admin' ? 'admin' : 'employee',
+                    userId: Number(user && user.id),
+                    kinds: ['sa.submitted', 'sa.review_reset'],
+                })
+            )
+            .catch(() => 0);
     }
 
     /**
@@ -1575,6 +1592,7 @@ class SelfAssessmentWorkflowService {
         });
         await this._audit(req, 'SA_REJECT', selfAssessmentId, `rejected (${auth.actorType})`);
         await this._notifyEmployee(sa, 'sa.rejected', { reason: reason || null });
+        await this._reviewerActed(user);
         return this.getAssessment(selfAssessmentId);
     }
 

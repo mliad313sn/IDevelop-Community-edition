@@ -315,6 +315,23 @@ class SelfAssessmentService {
             /* never block submit on notification */
         }
 
+        // Measurement (migration 183): the campaign reminders and the redo
+        // request this person received were acted upon. Best-effort, never throws.
+        await Promise.resolve()
+            .then(() =>
+                require('./NotificationService').actedQuietly({
+                    userType: 'employee',
+                    userId: Number(employeeId),
+                    kinds: [
+                        'cycle.opened',
+                        'cycle.reminder',
+                        'sa.changes_requested',
+                        'sa.reset_for_redo',
+                    ],
+                })
+            )
+            .catch(() => 0);
+
         return { assessments, reviews };
     }
 
@@ -571,6 +588,19 @@ class SelfAssessmentService {
                 userAgent: req.get('user-agent'),
             });
         }
+
+        // Measurement (migration 183): the reviewer acted on « to review ».
+        // Best-effort, never throws.
+        if (review.reviewedBy)
+            await Promise.resolve()
+                .then(() =>
+                    require('./NotificationService').actedQuietly({
+                        userType: 'employee',
+                        userId: Number(review.reviewedBy),
+                        kinds: ['sa.submitted', 'sa.review_reset'],
+                    })
+                )
+                .catch(() => 0);
 
         return await SupervisorReviewModel.findById(reviewId);
     }

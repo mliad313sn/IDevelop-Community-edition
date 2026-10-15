@@ -1,0 +1,116 @@
+<%#
+    Notification catalogue (migration 183), SuperAdmin. Server-rendered, no
+    script: one row per kind the platform declares (src/services/
+    notificationCatalogue.js), with its channels, who receives it, whether it is
+    mandatory, its severity, its subject (the full sample mail one click away)
+    and its 30-day in-app volume. A volume that could not be read is « — »,
+    never 0. Below: the sites' default quiet hours.
+%>
+<% var _rows = (typeof rows !== 'undefined' && rows) ? rows : [];
+   var _sites = (typeof sites !== 'undefined' && sites) ? sites : [];
+   var _num = (typeof fmt !== 'undefined' && fmt) ? fmt.num : function (n) { return n == null ? '—' : String(n); };
+   var rcpt = function (r) {
+       var parts = r.kind.split('.');
+       if (parts[parts.length - 1] === 'team') return __('chrome:ncat_rcpt_team');
+       return __('chrome:ncat_rcpt_' + r.family, { defaultValue: __('chrome:ncat_rcpt_default') });
+   }; %>
+<div class="page-header">
+    <h1><i class="fas fa-book-open" aria-hidden="true"></i> <%= __('chrome:ncat_title') %></h1>
+</div>
+<p class="text-muted ncat-lead"><%= __('chrome:ncat_subtitle', { n: _num(_rows.length) }) %></p>
+<p class="ncat-links">
+    <a class="btn btn-secondary btn-sm" href="/admin/notifications"><i class="fas fa-envelope-open-text" aria-hidden="true"></i> <%= __('chrome:ncat_link_monitor') %></a>
+    <a class="btn btn-secondary btn-sm" href="/admin/notifications/metrics"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('chrome:nmet_title') %></a>
+    <a class="btn btn-secondary btn-sm" href="#site-quiet"><i class="fas fa-moon" aria-hidden="true"></i> <%= __('chrome:ncat_site_title') %></a>
+</p>
+
+<div class="card ncat-wrap">
+<table class="table ncat-table">
+    <caption class="sr-only"><%= __('chrome:ncat_title') %></caption>
+    <thead>
+        <tr>
+            <th scope="col"><%= __('chrome:ncat_col_kind') %></th>
+            <th scope="col"><%= __('chrome:ncat_col_channels') %></th>
+            <th scope="col"><%= __('chrome:ncat_col_recipients') %></th>
+            <th scope="col"><%= __('chrome:ncat_col_mandatory') %></th>
+            <th scope="col"><%= __('chrome:ncat_col_severity') %></th>
+            <th scope="col"><%= __('chrome:ncat_col_preview') %></th>
+            <th scope="col" class="num"><%= __('chrome:ncat_col_volume') %></th>
+        </tr>
+    </thead>
+    <tbody>
+    <% _rows.forEach(function (r) { %>
+        <tr>
+            <th scope="row">
+                <span class="ncat-title"><%= r.title %></span>
+                <code class="ncat-code"><%= r.kind %></code>
+                <span class="ncat-cat"><%= __('chrome:notif_cat_' + r.category) %></span>
+            </th>
+            <td>
+                <ul class="ncat-ch">
+                    <% if (!r.mailOnly) { %><li><%= __('chrome:notif_prefs_grid_inapp') %></li><% } %>
+                    <li><%= __('chrome:ncat_email_tier', { tier: __('chrome:ncat_tier_' + r.tier) }) %></li>
+                    <li><%= __('chrome:ncat_webhook_' + r.webhook) %></li>
+                </ul>
+            </td>
+            <td><%= rcpt(r) %></td>
+            <td><%= r.mandatory ? __('chrome:notif_prefs_mandatory') : __('chrome:ncat_no') %></td>
+            <td><%= __('chrome:notif_sev_' + r.severity) %></td>
+            <td>
+                <% if (r.subject) { %><span class="ncat-subject"><%= r.subject %></span><% } else { %>—<% } %>
+                <a href="/admin/notifications/catalogue/preview?kind=<%= encodeURIComponent(r.kind) %>&amp;lang=fr" target="_blank" rel="noopener" lang="fr">FR<span class="sr-only"> — <%= __('chrome:ncat_open_preview') %> — <%= r.kind %></span></a>
+                ·
+                <a href="/admin/notifications/catalogue/preview?kind=<%= encodeURIComponent(r.kind) %>&amp;lang=en" target="_blank" rel="noopener" lang="en">EN<span class="sr-only"> — <%= __('chrome:ncat_open_preview') %> — <%= r.kind %></span></a>
+            </td>
+            <td class="num"><%= r.volume == null ? '—' : _num(r.volume) %></td>
+        </tr>
+    <% }); %>
+    </tbody>
+</table>
+</div>
+<p class="text-muted ncat-note"><%= __('chrome:ncat_volume_note') %></p>
+
+<h2 id="site-quiet" class="ncat-h2"><i class="fas fa-moon" aria-hidden="true"></i> <%= __('chrome:ncat_site_title') %></h2>
+<p class="text-muted"><%= __('chrome:ncat_site_hint') %></p>
+<% if (!_sites.length) { %>
+<p class="text-muted"><%= __('chrome:ncat_site_none') %></p>
+<% } else { %>
+<div class="card ncat-wrap">
+<table class="table">
+    <caption class="sr-only"><%= __('chrome:ncat_site_title') %></caption>
+    <thead><tr><th scope="col"><%= __('chrome:ncat_site_col') %></th><th scope="col"><%= __('chrome:notif_prefs_quiet_label') %></th></tr></thead>
+    <tbody>
+    <% _sites.forEach(function (s) { %>
+        <tr>
+            <th scope="row"><%= s.name %></th>
+            <td>
+                <form method="POST" action="/admin/notifications/site-quiet-hours" class="ncat-site-form">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <input type="hidden" name="siteId" value="<%= s.id %>">
+                    <label><%= __('chrome:notif_prefs_quiet_from') %> <input type="time" name="quietStart" value="<%= s.start %>"></label>
+                    <label><%= __('chrome:notif_prefs_quiet_to') %> <input type="time" name="quietEnd" value="<%= s.end %>"></label>
+                    <button type="submit" class="btn btn-secondary btn-sm"><%= __('chrome:notif_prefs_save') %><span class="sr-only"> — <%= s.name %></span></button>
+                </form>
+            </td>
+        </tr>
+    <% }); %>
+    </tbody>
+</table>
+</div>
+<% } %>
+
+<style>
+.ncat-lead{margin-top:-.5rem}
+.ncat-links{display:flex;flex-wrap:wrap;gap:8px}
+.ncat-wrap{padding:0;overflow-x:auto}
+.ncat-table th[scope=row]{font-weight:400;min-width:220px}
+.ncat-title{display:block;font-weight:600}
+.ncat-code{display:block;font-size:.78rem;color:var(--text-muted,#64748b)}
+.ncat-cat{display:inline-block;margin-top:2px;font-size:.78rem;color:var(--text-muted,#64748b)}
+.ncat-ch{margin:0;padding-left:16px;font-size:.85rem}
+.ncat-subject{display:block;font-size:.85rem;margin-bottom:2px}
+.ncat-table td.num,.ncat-table th.num{text-align:right;font-variant-numeric:tabular-nums}
+.ncat-note{font-size:.85rem;margin-top:.5rem}
+.ncat-h2{font-size:1.1rem;margin-top:1.5rem}
+.ncat-site-form{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+</style>
