@@ -1854,6 +1854,459 @@ async function k14TimeToCompetence(scope) {
 }
 
 // ---------------------------------------------------------------------------
+// Dashboard building blocks (not indicators): the aggregates the dashboard
+// blocks draw. Same contract as every K function: the population of the
+// scope (clearance, leavers and erased out), nothing unmeasured folded into
+// 0, fewer than 5 people never get a percentage. Each block reconciles with
+// the indicator it details (`kpi`) and belongs to that indicator's module.
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-block contract: the indicator it details, its module (null = core), and
+ * `list`, the navigation entry holding the list behind it (or null).
+ */
+const BLOCKS = Object.freeze({
+    criticalSkillCoverage: Object.freeze({ kpi: 'K4', module: null, list: 'gaps_report' }),
+    certExpiryCalendar: Object.freeze({ kpi: 'K8', module: null, list: 'compliance' }),
+    assessmentFreshness: Object.freeze({ kpi: 'K3', module: null, list: 'readiness' }),
+    k1ByGroup: Object.freeze({ kpi: 'K1', module: null, list: 'readiness' }),
+    readinessDistribution: Object.freeze({ kpi: 'K2', module: null, list: 'readiness' }),
+});
+
+/** True when the block exists and its module (if any) is on in `flags`. */
+function isBlockAvailable(name, flags) {
+    const b = Object.prototype.hasOwnProperty.call(BLOCKS, name) ? BLOCKS[name] : null;
+    if (!b) return false;
+    if (b.module === null) return true;
+    return !!(flags && flags[b.module] === true);
+}
+
+/** The blocks shown under the given module flags, in declaration order. */
+function availableBlocks(flags) {
+    return Object.keys(BLOCKS).filter((name) => isBlockAvailable(name, flags));
+}
+
+const DAY_MS = 86400000;
+/** Milliseconds of a 'YYYY-MM-DD' calendar day at UTC midnight (null when invalid). */
+function calendarDayMs(key) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(key || ''));
+    return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}
+const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
+
+/**
+ * Critical-skill coverage, critical skills × sites. A cell = (site, skill)
+ * where at least one person of the scope holds a role requiring the skill
+ * as CRITICAL: required = those people, measured = those assessed, available
+ * = those assessed at or above the required level with no lapsed certificate
+ * (v_employee_skill_gaps.is_met, the K7 holder rule). The status of a measured
+ * cell is the K1 band of available ÷ measured, at least « watch » when one
+ * person alone covers a need of two or more; measured 0 ⇒ not measured (never
+ * red, never 0). People without a site form the « No site » column, so the
+ * columns add up to the organisation. Rows: worst first, unmeasured last.
+ */
+async function criticalSkillCoverage(scope) {
+    const pop = await resolvePopulation(scope);
+    const threshold = await readinessThreshold();
+    if (!pop.ids.length) return { emptyScope: true, threshold, sites: [], rows: [] };
+    const rows = await db.all(
+        `SELECT e.site_id AS "siteId", g.skill_id AS "skillId", MAX(g.skill_name) AS "skillName",
+                COUNT(*)::int AS "required",
+                COUNT(*) FILTER (WHERE g.is_assessed = 1)::int AS "measured",
+                COUNT(*) FILTER (WHERE g.is_assessed = 1 AND g.is_met = 1)::int AS "available"
+           FROM v_employee_skill_gaps g
+           JOIN employees e ON e.id = g.employee_id
+          WHERE g.employee_id = ANY(?) AND g.is_critical
+          GROUP BY e.site_id, g.skill_id`,
+        [pop.ids]
+    );
+    const siteNames = new Map();
+    for (const r of pop.rows)
+        siteNames.set(r.siteId === null ? 'none' : String(r.siteId), r.siteName);
+    const siteKeys = new Set();
+    const bySkill = new Map();
+    for (const r of rows || []) {
+        const sk = r.siteId === null || r.siteId === undefined ? 'none' : String(r.siteId);
+        siteKeys.add(sk);
+        const id = Number(r.skillId);
+        if (!bySkill.has(id))
+            bySkill.set(id, { skillId: id, skillName: r.skillName || null, cells: new Map() });
+        const required = Number(r.required) || 0;
+        const measured = Number(r.measured) || 0;
+        const available = Number(r.available) || 0;
+        let status = null;
+        if (measured > 0) {
+            status = P.statusBand(round1((100 * available) / measured), 'K1', { threshold });
+            if (available === 1 && required >= 2 && status === STATUS.COMPLIANT)
+                status = STATUS.WATCH;
+        }
+        bySkill.get(id).cells.set(sk, {
+            siteKey: sk,
+            required,
+            measured,
+            available,
+            unmeasured: measured === 0,
+            status,
+        });
+    }
+    const sites = [...siteKeys]
+        .map((k) => ({
+            siteKey: k,
+            siteId: k === 'none' ? null : Number(k),
+            siteName: siteNames.get(k) || null,
+            noSite: k === 'none',
+        }))
+        .sort((a, b) => {
+            if (a.noSite !== b.noSite) return a.noSite ? 1 : -1;
+            return String(a.siteName || '').localeCompare(String(b.siteName || ''));
+        });
+    const rank = (st) => (st === STATUS.AT_RISK ? 3 : st === STATUS.WATCH ? 2 : st ? 1 : 0);
+    const out = [...bySkill.values()].map((s) => {
+        let req = 0;
+        let mea = 0;
+        let ava = 0;
+        let worst = 0;
+        for (const c of s.cells.values()) {
+            req += c.required;
+            mea += c.measured;
+            ava += c.available;
+            worst = Math.max(worst, rank(c.status));
+        }
+        return {
+            skillId: s.skillId,
+            skillName: s.skillName,
+            required: req,
+            measured: mea,
+            available: ava,
+            ratio: mea ? round1((100 * ava) / mea) : null,
+            worstRank: worst,
+            cells: sites.map((st) => s.cells.get(st.siteKey) || null),
+        };
+    });
+    out.sort((a, b) => {
+        if ((a.ratio === null) !== (b.ratio === null)) return a.ratio === null ? 1 : -1;
+        if (a.worstRank !== b.worstRank) return b.worstRank - a.worstRank;
+        if (a.ratio !== null && a.ratio !== b.ratio) return a.ratio - b.ratio;
+        return String(a.skillName || '').localeCompare(String(b.skillName || ''));
+    });
+    return { emptyScope: false, threshold, sites, rows: out };
+}
+
+/**
+ * The 13-week expiry calendar of the REQUIRED certificates (the K8 rows), by
+ * site: week i covers today + 7i … today + 7i + 6, and the window stops at
+ * today + 90 (the K8 window), so the cells add up to K8's expiring
+ * certificates. Nothing required ⇒ configured: false (never an empty grid of 0).
+ */
+async function certExpiryCalendar(scope) {
+    const WEEKS = 13;
+    const pop = await resolvePopulation(scope);
+    const empty = { configured: false, weeks: [], sites: [], total: 0, people: 0 };
+    if (!pop.ids.length) return { ...empty, emptyScope: true };
+    const today = await dbToday();
+    const rows = await requiredCertRows(pop.ids);
+    if (!rows || !rows.length) return empty;
+    const t0 = calendarDayMs(today);
+    const weeks = [];
+    for (let i = 0; i < WEEKS; i++) {
+        const s = t0 + i * 7 * DAY_MS;
+        const e = Math.min(t0 + (i * 7 + 6) * DAY_MS, t0 + P.CERT_WINDOW_DAYS * DAY_MS);
+        weeks.push({ index: i, start: isoDay(s), end: isoDay(e) });
+    }
+    const siteOf = new Map(pop.rows.map((r) => [r.id, r]));
+    const sites = new Map();
+    const people = new Set();
+    let total = 0;
+    for (const r of rows) {
+        if (r.certId === null || r.certId === undefined || !r.expiresOn) continue;
+        if (P.certWindow(r.expiresOn, today) !== 'within_90d') continue;
+        const d = Math.round((calendarDayMs(r.expiresOn) - t0) / DAY_MS);
+        const w = Math.max(0, Math.min(WEEKS - 1, Math.floor(d / 7)));
+        const pr = siteOf.get(Number(r.employeeId)) || {};
+        const key = pr.siteId === null || pr.siteId === undefined ? 'none' : String(pr.siteId);
+        if (!sites.has(key))
+            sites.set(key, {
+                siteId: key === 'none' ? null : pr.siteId,
+                siteName: pr.siteName || null,
+                noSite: key === 'none',
+                counts: Array(WEEKS).fill(0),
+                total: 0,
+            });
+        const g = sites.get(key);
+        g.counts[w]++;
+        g.total++;
+        total++;
+        people.add(Number(r.employeeId));
+    }
+    const list = [...sites.values()].sort((a, b) => {
+        if (a.noSite !== b.noSite) return a.noSite ? 1 : -1;
+        return (
+            b.total - a.total || String(a.siteName || '').localeCompare(String(b.siteName || ''))
+        );
+    });
+    return { configured: true, today, weeks, sites: list, total, people: people.size };
+}
+
+/** The window of « recent » evidence for assessment freshness, in months. */
+const FRESHNESS_MONTHS = 12;
+
+/**
+ * Assessment freshness: the share of the EXPECTED requirements (the full
+ * requirement set of the scope, as K3) whose latest evidence — an official
+ * assessment, its history or an approved self-assessment — is under 12
+ * months old. « Stale » = assessed requirements whose latest evidence is
+ * older; never-assessed requirements are neither fresh nor stale (K3 counts
+ * them). Fewer than 5 people with requirements ⇒ no %, 'small_n'. bySite:
+ * stale / assessed / expected per site, the « No site » row apart.
+ */
+async function assessmentFreshness(scope) {
+    const pop = await resolvePopulation(scope);
+    const threshold = await readinessThreshold();
+    if (!pop.ids.length) return { ...emptyResult('FRESHNESS', { threshold }), bySite: [] };
+    const rows = await db.all(
+        `WITH req AS (
+             SELECT g.employee_id, g.skill_id, g.is_assessed
+               FROM v_employee_skill_gaps g
+              WHERE g.employee_id = ANY(?)
+         ), ev AS (
+             SELECT r.employee_id, r.is_assessed,
+                    GREATEST(
+                        (SELECT MAX(sa.assessed_at) FROM skill_assessments sa
+                          WHERE sa.employee_id = r.employee_id AND sa.skill_id = r.skill_id),
+                        (SELECT MAX(ah.assessed_at) FROM assessment_history ah
+                          WHERE ah.employee_id = r.employee_id AND ah.skill_id = r.skill_id),
+                        (SELECT MAX(sf.created_at) FROM self_assessments sf
+                          WHERE sf.employee_id = r.employee_id AND sf.skill_id = r.skill_id
+                            AND sf.status = 'approved')
+                    ) AS last_at
+               FROM req r
+         )
+         SELECT e.site_id AS "siteId",
+                COUNT(*)::int AS "expected",
+                COUNT(DISTINCT ev.employee_id)::int AS "people",
+                COALESCE(SUM(ev.is_assessed), 0)::int AS "assessed",
+                COUNT(*) FILTER (WHERE ev.is_assessed = 1
+                                   AND ev.last_at >= CURRENT_DATE - make_interval(months => ?::int))::int AS "fresh",
+                COUNT(*) FILTER (WHERE ev.is_assessed = 1
+                                   AND (ev.last_at IS NULL
+                                        OR ev.last_at < CURRENT_DATE - make_interval(months => ?::int)))::int AS "stale"
+           FROM ev JOIN employees e ON e.id = ev.employee_id
+          GROUP BY e.site_id`,
+        [pop.ids, FRESHNESS_MONTHS, FRESHNESS_MONTHS]
+    );
+    const siteName = new Map(pop.rows.map((r) => [r.siteId, r.siteName]));
+    let expected = 0;
+    let assessed = 0;
+    let fresh = 0;
+    let stale = 0;
+    let people = 0;
+    const bySite = (rows || []).map((r) => {
+        const noSite = r.siteId === null || r.siteId === undefined;
+        const x = {
+            siteId: noSite ? null : Number(r.siteId),
+            siteName: noSite ? null : siteName.get(Number(r.siteId)) || null,
+            noSite,
+            expected: Number(r.expected) || 0,
+            assessed: Number(r.assessed) || 0,
+            fresh: Number(r.fresh) || 0,
+            stale: Number(r.stale) || 0,
+            people: Number(r.people) || 0,
+        };
+        expected += x.expected;
+        assessed += x.assessed;
+        fresh += x.fresh;
+        stale += x.stale;
+        people += x.people;
+        return x;
+    });
+    bySite.sort(
+        (a, b) =>
+            b.stale - a.stale ||
+            (a.noSite === b.noSite ? 0 : a.noSite ? 1 : -1) ||
+            String(a.siteName || '').localeCompare(String(b.siteName || ''))
+    );
+    const r = pctResult('K3', fresh, expected, people, {
+        threshold,
+        extra: {
+            threshold,
+            months: FRESHNESS_MONTHS,
+            breakdown: { fresh, stale, assessed, expected, unassessed: expected - assessed },
+            bySite,
+        },
+    });
+    return { ...r, kpi: 'FRESHNESS', drill: [] };
+}
+
+/**
+ * The org-unit columns a group-by may use. Keys are a closed list: a caller's
+ * value is looked up here, never placed in the SQL text.
+ */
+const GROUP_COLUMNS = Object.freeze({
+    site: Object.freeze({
+        id: 'e.site_id',
+        name: 'st.name',
+        join: 'LEFT JOIN sites st ON st.id = e.site_id',
+    }),
+    department: Object.freeze({
+        id: 'e.department_id',
+        name: 'dp.name',
+        join: 'LEFT JOIN departments dp ON dp.id = e.department_id',
+    }),
+    service: Object.freeze({
+        id: 'e.service_id',
+        name: 'sv.name',
+        join: 'LEFT JOIN services sv ON sv.id = e.service_id',
+    }),
+    role: Object.freeze({
+        id: 'e.role_id',
+        name: 'rl.name',
+        join: 'LEFT JOIN roles rl ON rl.id = e.role_id',
+    }),
+});
+
+/**
+ * K1 by org unit (site | department | service | role) on ONE readiness read:
+ * per group the K1 contract (Ready ÷ (Ready + Not ready), fewer than 5 ⇒
+ * counts, no %), the four state counts and the coverage — so the groups add
+ * up to the organisation's K1 counts. People without the unit form the
+ * « No … » group (key 'none'). Order: worst first, small n next, unmeasured last.
+ */
+async function k1ByGroup(scope, groupBy) {
+    const col = Object.prototype.hasOwnProperty.call(GROUP_COLUMNS, groupBy)
+        ? GROUP_COLUMNS[groupBy]
+        : null;
+    if (!col) throw new Error('KpiService: unknown group');
+    const { pop, threshold, people } = await readinessBundle(scope);
+    if (!pop.ids.length) return { groupBy, threshold, rows: [] };
+    const labels = await db.all(
+        `SELECT e.id AS "id", ${col.id} AS "gid", ${col.name} AS "gname"
+           FROM employees e ${col.join}
+          WHERE e.id = ANY(?)`,
+        [pop.ids]
+    );
+    const gOf = new Map((labels || []).map((r) => [Number(r.id), r]));
+    const groups = new Map();
+    for (const p of people) {
+        const l = gOf.get(p.id) || {};
+        const none = l.gid === null || l.gid === undefined;
+        const key = none ? 'none' : String(l.gid);
+        if (!groups.has(key))
+            groups.set(key, {
+                key,
+                id: none ? null : Number(l.gid),
+                label: l.gname || null,
+                none,
+                people: [],
+            });
+        groups.get(key).people.push(p);
+    }
+    const rows = [...groups.values()].map((g) => {
+        const by = byState(g.people);
+        const ready = by.ready.length;
+        const den = ready + by.not_ready.length;
+        const r = pctResult('K1', ready, den, den, { threshold });
+        return {
+            key: g.key,
+            id: g.id,
+            label: g.label,
+            none: g.none,
+            population: g.people.length,
+            value: r.value,
+            rawValue: r.rawValue,
+            numerator: ready,
+            denominator: den,
+            status: r.status,
+            smallN: r.status === STATUS.SMALL_N,
+            unmeasured: !den,
+            coverage: coverageOf(g.people).pct,
+            counts: {
+                ready,
+                notReady: by.not_ready.length,
+                partial: by.partial.length,
+                notAssessed: by.not_assessed.length,
+                noRequirement: by.no_requirement.length,
+            },
+        };
+    });
+    const tier = (r) => (r.value !== null ? 0 : r.smallN ? 1 : 2);
+    rows.sort(
+        (a, b) =>
+            tier(a) - tier(b) ||
+            (tier(a) === 0 ? a.value - b.value : 0) ||
+            (a.none === b.none ? 0 : a.none ? 1 : -1) ||
+            String(a.label || '').localeCompare(String(b.label || ''))
+    );
+    return { groupBy, threshold, rows };
+}
+
+/** The readiness buckets of the distribution, in points (the last one includes 100). */
+const DISTRIBUTION_BINS = Object.freeze([0, 20, 40, 60, 80, 100]);
+
+/**
+ * The readiness distribution: per person the readiness OVER THE ASSESSED
+ * requirements (readinessAssessed — a never-assessed requirement is not a 0),
+ * bucketed by 20 points. People with requirements and no assessment at all
+ * are the separate « not measured » count; people without a requirement are
+ * counted apart. `values` = the measured readiness values (K2's population).
+ */
+async function readinessDistribution(scope) {
+    const { pop, threshold, people } = await readinessBundle(scope);
+    const bins = DISTRIBUTION_BINS.slice(0, -1).map((from, i) => ({
+        from,
+        to: DISTRIBUTION_BINS[i + 1],
+        count: 0,
+    }));
+    const values = [];
+    let unmeasured = 0;
+    let noRequirement = 0;
+    for (const p of people) {
+        if (p.state === R.NO_REQUIREMENT) {
+            noRequirement++;
+            continue;
+        }
+        if (!p.facts || !p.facts.assessed || p.readinessAssessed === null) {
+            unmeasured++;
+            continue;
+        }
+        const v = Number(p.readinessAssessed);
+        values.push(v);
+        const i = Math.min(bins.length - 1, Math.max(0, Math.floor(v / 20)));
+        bins[i].count++;
+    }
+    return {
+        threshold,
+        population: pop.ids.length,
+        measured: values.length,
+        unmeasured,
+        noRequirement,
+        bins,
+        values,
+    };
+}
+
+const BLOCK_FUNCTIONS = Object.freeze({
+    criticalSkillCoverage,
+    certExpiryCalendar,
+    assessmentFreshness,
+    k1ByGroup,
+    readinessDistribution,
+});
+
+/**
+ * One building block for a scope, module-aware: a block whose module is off
+ * is omitted (null), never computed and never shown as "not measured".
+ */
+async function computeBlock(name, scope, ...args) {
+    const fn = Object.prototype.hasOwnProperty.call(BLOCK_FUNCTIONS, name)
+        ? BLOCK_FUNCTIONS[name]
+        : null;
+    if (!fn) throw new Error('KpiService: unknown block');
+    const flags = (await scopeModules(scope)) || null;
+    if (flags !== null && !isBlockAvailable(name, flags)) return null;
+    return fn(scope, ...args);
+}
+
+// ---------------------------------------------------------------------------
 // Registry, per-site breakdown, snapshot metrics
 // ---------------------------------------------------------------------------
 
@@ -2010,6 +2463,19 @@ module.exports = {
     compute,
     bySite,
     snapshotMetrics,
+    // dashboard building blocks (module-aware)
+    BLOCKS,
+    isBlockAvailable,
+    availableBlocks,
+    computeBlock,
+    criticalSkillCoverage,
+    certExpiryCalendar,
+    assessmentFreshness,
+    k1ByGroup,
+    readinessDistribution,
+    GROUP_COLUMNS,
+    FRESHNESS_MONTHS,
+    DISTRIBUTION_BINS,
     // shared building blocks
     pctResult,
     resolvePopulation,
