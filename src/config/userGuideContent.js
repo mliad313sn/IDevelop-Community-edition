@@ -81,8 +81,8 @@ const PROFILES = [
                     en: 'Your dashboard — readiness, measured gaps and unmeasured skills',
                 },
                 where: {
-                    fr: 'Accueil / Mon espace (première page après connexion)',
-                    en: 'Home / My workspace (landing page after sign-in)',
+                    fr: 'Tableau de bord (première entrée du menu, page après connexion)',
+                    en: 'Dashboard (first menu entry, landing page after sign-in)',
                 },
                 what: {
                     fr: "Votre page d'accueil affiche quatre cartes de synthèse et le détail de vos compétences. Sur le compte de démonstration : <b>89 % PRÉPARATION AU POSTE — 39/49 compétences atteintes</b>, <b>9 ÉCARTS DE COMPÉTENCES · 0 critique(s) · 1 Non mesuré</b>, <b>POSITION 9-BOX : Non positionné</b> (« Aucun positionnement approuvé pour le moment »), et <b>ÉTAT DE L'ÉVALUATION : Non commencé</b>. Le tableau « Mes écarts de compétences » liste chaque compétence du poste avec <b>REQUIS</b>, <b>ACTUEL</b> et <b>ÉCART</b>. Lisez-le attentivement : une ligne à <b>ACTUEL = 0</b> et <b>ÉCART = −1</b> (ex. <i>Training & Mentorship</i>) signifie « évalué, niveau nul » ; une ligne à <b>ACTUEL = —</b> et <b>ÉCART = Non mesuré</b> (ex. <i>Budget & Cost Control</i>) signifie « jamais évaluée ». La seconde <b>n'est pas comptée dans les 9 écarts</b> : le produit ne présente jamais une absence de mesure comme un résultat. La carte « Préparation » ne bouge que sur les compétences réellement mesurées.",
@@ -90,14 +90,14 @@ const PROFILES = [
                 },
                 steps: {
                     fr: [
-                        'Ouvrez <b>Accueil</b> (menu de gauche, « Mon espace »).',
+                        'Ouvrez <b>Tableau de bord</b>, la première entrée du menu de gauche.',
                         "Lisez les quatre cartes : préparation, écarts, position 9-box, état de l'évaluation.",
                         'Dans « Mes écarts de compétences », distinguez <b>−1 / −2</b> (écart mesuré, à combler) de <b>Non mesuré</b> (à faire évaluer).',
                         "Cliquez sur <b>mettre à jour l'auto-évaluation →</b> ou sur le bouton <b>Démarrer mon auto-évaluation</b> pour agir.",
                         "Utilisez les cartes d'actions rapides en bas : <b>Mon auto-évaluation</b>, <b>Mon statut</b>, <b>Revues du superviseur</b>, <b>Plan de développement</b>, <b>Coaching</b>, <b>Mon profil</b>.",
                     ],
                     en: [
-                        'Open <b>Home</b> (left menu, “My Space”).',
+                        'Open <b>Dashboard</b>, the first entry of the left menu.',
                         'Read the four cards: readiness, gaps, 9-box position, assessment state.',
                         'In “My skill gaps”, tell <b>−1 / −2</b> (a measured shortfall to close) apart from <b>Not measured</b> (a skill to get assessed).',
                         'Click <b>update self-assessment →</b> or the <b>Start my self-assessment</b> button to act.',
@@ -737,6 +737,38 @@ const PROFILES = [
         features: [
             {
                 icon: '✅',
+                img: null,
+                title: {
+                    fr: '« À traiter » — tout ce qui attend une action de votre part',
+                    en: '“Tasks” — everything waiting for you to act',
+                },
+                where: {
+                    fr: 'À traiter, deuxième entrée du menu (/tasks) ; la cloche en haut à droite',
+                    en: 'Tasks, the second menu entry (/tasks); the bell at the top right',
+                },
+                what: {
+                    fr: 'Une page regroupe ce qui attend une décision ou une action de votre part : les auto-évaluations à valider, les collaborateurs qui n’ont pas commencé la campagne, les plans à démarrer ou à finaliser, les formations à valider, et vos propres actions (votre auto-évaluation renvoyée, vos actions de développement). Chaque ligne donne le nombre, un verbe (« Valider », « Relancer »…) et un lien vers la page où agir — une page que vous pouvez ouvrir : une ligne dont la page vous serait refusée, ou dont le module est désactivé, n’apparaît pas. Le chiffre de la cloche compte exactement ces actions ; un point signale des notifications non lues, dans le deuxième onglet. Une reconnaissance reçue est listée pour information, jamais comptée. Si une source n’a pas pu être lue, la page le dit au lieu d’afficher « rien à traiter ».',
+                    en: 'One page gathers what is waiting for your decision or action: self-assessments to review, people who have not started the campaign, plans to start or finalise, training to approve, and your own actions (your self-assessment sent back, your development actions). Each line gives the count, a verb (“Review”, “Follow up”…) and a link to the page where you act — a page you can open: a line whose page would refuse you, or whose module is switched off, does not appear. The number on the bell counts exactly these actions; a dot flags unread notifications, in the second tab. Recognition received is listed for information, never counted. If a source could not be read, the page says so instead of showing “nothing to handle”.',
+                },
+                steps: {
+                    fr: [
+                        'Ouvrez <b>À traiter</b> dans le menu, ou la cloche puis <b>Tout voir</b>.',
+                        'Commencez par le haut : les évaluations, puis les plans, les formations et les comptes.',
+                        'Utilisez le bouton de chaque ligne pour ouvrir la page où agir ; la ligne disparaît une fois le travail fait.',
+                    ],
+                    en: [
+                        'Open <b>Tasks</b> in the menu, or the bell then <b>View all</b>.',
+                        'Start at the top: assessments, then plans, training and accounts.',
+                        'Use the button on each line to open the page where you act; the line goes once the work is done.',
+                    ],
+                },
+                tip: {
+                    fr: 'La recherche (bouton « Rechercher… » ou Ctrl K) ne propose que les pages que vous pouvez ouvrir, avec les mêmes noms que le menu.',
+                    en: 'Search (the “Search…” button or Ctrl K) only offers pages you can open, with the same names as the menu.',
+                },
+            },
+            {
+                icon: '✅',
                 img: 'sup-sv-02-sa-reviews',
                 title: { fr: "Revues d'auto-évaluation", en: 'Self-assessment reviews' },
                 where: {
@@ -756,8 +788,8 @@ const PROFILES = [
                     en: 'Detailed review and retained level',
                 },
                 where: {
-                    fr: 'Menu Équipe → « Mon équipe » → Ouvrir une revue (/supervisor/reviews/:id)',
-                    en: 'Team menu → “My Team” → Open a review (/supervisor/reviews/:id)',
+                    fr: 'Évaluations → Revues d’auto-évaluation (/supervisor/self-assessment-reviews ; les anciennes adresses /supervisor/reviews redirigent ici)',
+                    en: 'Assessments → Self-assessment reviews (/supervisor/self-assessment-reviews; the former /supervisor/reviews addresses redirect here)',
                 },
                 what: {
                     fr: "Le superviseur saisit le niveau observé et une note. Mesuré sur la compétence « Adoption, Change & Stakeholder Management » : auto-évaluation 4, niveau superviseur 2 → l'écart est recalculé à −2, la revue passe en « completed », le dossier passe en état Revue, et le NIVEAU OFFICIEL du collaborateur (profil de compétences) passe de 1 à 2 avec la mention « Validated by supervisor review. Gap: -2 ». C'est ce niveau officiel qui alimente la préparation au poste, les écarts, le benchmark et la 9-Box.",
@@ -839,8 +871,8 @@ const PROFILES = [
                     en: 'My Team — your manager home',
                 },
                 where: {
-                    fr: 'ÉQUIPE → Mon équipe (/supervisor/dashboard)',
-                    en: 'TEAM → My Team (/supervisor/dashboard)',
+                    fr: 'Tableau de bord, première entrée du menu (/supervisor/dashboard)',
+                    en: 'Dashboard, the first menu entry (/supervisor/dashboard)',
                 },
                 what: {
                     fr: 'La page « qu’est-ce qui m’attend aujourd’hui ? ». Un bandeau « Ce qui requiert votre attention » (le 2026-09-02 : « Vous êtes à jour — aucune action requise pour le moment ») puis quatre raccourcis : File d’attente des revues, Analyse des écarts, Coaching, et votre propre auto-évaluation. Le chemin est /supervisor/dashboard : /manager/dashboard n’existe pas (404).',
@@ -2823,6 +2855,12 @@ const GLOSSARY = [
 ];
 
 const FAQ = [
+    [
+        'A menu entry I used to see has gone. Where is it?',
+        'Une entrée de menu que je voyais a disparu. Où est-elle ?',
+        'The menu follows your permissions and the modules switched on in Administration → Modules: a page you cannot open, or whose module is off, is not listed — in the menu, the search or the task list. « Dashboard » is always first. Your profile, notification preferences, sessions, personal data and diversity information are in the account menu (your name, top right); notifications are the second tab of the bell. Ask a SuperAdmin if a page you need is missing.',
+        'Le menu suit vos droits et les modules activés dans Administration → Modules : une page que vous ne pouvez pas ouvrir, ou dont le module est désactivé, n’y figure pas — ni dans le menu, ni dans la recherche, ni dans « À traiter ». « Tableau de bord » est toujours en premier. Votre profil, vos préférences de notification, vos sessions, vos données personnelles et vos informations de diversité sont dans le menu du compte (votre nom, en haut à droite) ; les notifications sont le deuxième onglet de la cloche. Demandez à un super-administrateur si une page dont vous avez besoin manque.',
+    ],
     [
         'A skill of mine shows “—” and “Not measured”. Is that a zero?',
         'Une de mes compétences affiche « — » et « Non mesuré ». Est-ce un zéro ?',
