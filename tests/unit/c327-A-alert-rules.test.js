@@ -162,9 +162,9 @@ describe('message', () => {
     });
     test('K8 / K9 use the mandatory safety kind; a recovery uses kpi.recovered', () => {
         const s = S.message({ ...base, kpiId: 'K9', ruleKey: 'K9', toState: 'at_risk' }, 'X', 1);
-        expect(s.kind).toBe('kpi.alert.safety');
-        expect(catalogue.isMandatory('kpi.alert.safety')).toBe(true);
-        expect(catalogue.categoryOf('kpi.alert.safety')).toBe('safety');
+        expect(s.kind).toBe('safety.kpi_alert');
+        expect(catalogue.isMandatory('safety.kpi_alert')).toBe(true);
+        expect(catalogue.categoryOf('safety.kpi_alert')).toBe('safety');
         const r = S.message({ ...base, transition: 'recovered', toState: 'ok' }, 'X', 1);
         expect(r.kind).toBe('kpi.recovered');
         expect(mail(r, 'fr').intro).toMatch(/revenu à la normale/);
@@ -201,9 +201,9 @@ describe('catalogue', () => {
     test('tiers, severity, category, module; every kind titled FR and EN', () => {
         expect(catalogue.tierOf('kpi.alert')).toBe('digest');
         expect(catalogue.tierOf('kpi.recovered')).toBe('digest');
-        expect(catalogue.tierOf('kpi.alert.safety')).toBe('immediate');
+        expect(catalogue.tierOf('safety.kpi_alert')).toBe('immediate');
         expect(catalogue.isMandatory('kpi.alert')).toBe(false);
-        expect(catalogue.severityOf('kpi.alert.safety')).toBe('critique');
+        expect(catalogue.severityOf('safety.kpi_alert')).toBe('critique');
         expect(catalogue.severityOf('kpi.alert')).toBe('action');
         expect(catalogue.categoryOf('kpi.alert')).toBe('reports');
         for (const k of S.KINDS) {

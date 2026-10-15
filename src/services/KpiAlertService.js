@@ -34,7 +34,7 @@
  * nobody). An organisation alert reaches the SuperAdmins.
  *
  * CHANNEL: in the app first. kpi.alert and kpi.recovered go to the daily
- * summary mail; kpi.alert.safety (K8, K9) is mandatory and sent now. The
+ * summary mail; safety.kpi_alert (K8, K9) is mandatory and sent now. The
  * subject is the catalogue's neutral subject (no name, no figure); the
  * figures ride in payload.figures for the bell only, never in a mail. Each
  * mail is written in the recipient's language. Once per recipient:
@@ -48,7 +48,7 @@ const db = require('../config/database');
 const SMALL_N = 5;
 const RETRY_DAYS = 7;
 const KIND_ALERT = 'kpi.alert';
-const KIND_SAFETY = 'kpi.alert.safety';
+const KIND_SAFETY = 'safety.kpi_alert';
 const KIND_RECOVERED = 'kpi.recovered';
 const KINDS = Object.freeze([KIND_ALERT, KIND_SAFETY, KIND_RECOVERED]);
 

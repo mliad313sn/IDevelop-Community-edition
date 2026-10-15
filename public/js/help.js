@@ -2916,6 +2916,70 @@ document.addEventListener('DOMContentLoaded', () => {
             ),
         },
 
+        '/kpi/targets': {
+            title: L('Indicator targets', 'Cibles des indicateurs'),
+            why: L(
+                '<strong>Process:</strong> One target per indicator, for the organisation or a site, from a date, with a reason. A decision is never edited or deleted: a change or a withdrawal adds a line to the history. The daily alerts compare each indicator with its target and its bands.',
+                "<strong>Processus :</strong> une cible par indicateur, pour l'organisation ou un site, à partir d'une date, avec un motif. Une décision n'est jamais modifiée ni effacée : un changement ou un retrait ajoute une ligne à l'historique. Les alertes quotidiennes comparent chaque indicateur à sa cible et à ses seuils."
+            ),
+            steps: [
+                {
+                    text: L(
+                        'Choose the indicator, the scope and the date, type the target (empty withdraws it) and the reason, then record the decision.',
+                        "Choisissez l'indicateur, le périmètre et la date, saisissez la cible (vide pour la retirer) et le motif, puis enregistrez la décision."
+                    ),
+                },
+                {
+                    text: L(
+                        "A site without its own target follows the organisation's; the table says so.",
+                        "Un site sans cible propre suit celle de l'organisation ; le tableau l'indique."
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'Write the reason for the next reader: the history keeps it with the decision.',
+                    "Écrivez le motif pour le prochain lecteur : l'historique le garde avec la décision."
+                ),
+            ],
+            value: L(
+                'Alerts that fire when it matters, against targets everyone can trace.',
+                'Des alertes qui partent quand cela compte, sur des cibles que chacun peut retracer.'
+            ),
+        },
+
+        '/digests': {
+            title: L('My summaries', 'Mes récapitulatifs'),
+            why: L(
+                '<strong>Process:</strong> The « What changed » summaries: the movements of your scope and what is left to do, in figures, or your next step. Each one stays readable here, even without e-mail. They are sent only when your organisation switched them on.',
+                '<strong>Processus :</strong> les récapitulatifs « Ce qui a changé » : les évolutions de votre périmètre et ce qui reste à faire, en chiffres, ou votre prochaine étape. Chacun reste consultable ici, même sans e-mail. Ils ne sont envoyés que si votre organisation les a activés.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        'Choose how often you receive your summary: every day, every week or never.',
+                        'Choisissez la fréquence de votre récapitulatif : chaque jour, chaque semaine ou jamais.'
+                    ),
+                },
+                {
+                    text: L(
+                        'Open a summary from the archive; its links lead to the lists behind the figures.',
+                        "Ouvrez un récapitulatif depuis l'archive ; ses liens mènent aux listes derrière les chiffres."
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'If summaries pile up unread, they slow down on their own; « Restore » puts the frequency back.',
+                    "Si des récapitulatifs s'accumulent sans être lus, ils ralentissent d'eux-mêmes ; « Rétablir » remet la fréquence."
+                ),
+            ],
+            value: L(
+                'What moved, in a few lines, without a name.',
+                'Ce qui a bougé, en quelques lignes, sans un nom.'
+            ),
+        },
+
         '/reports/gaps': {
             title: L('Gaps Report (ready-made view)', "Rapport des écarts (vue prête à l'emploi)"),
             why: L(

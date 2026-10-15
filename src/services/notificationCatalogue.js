@@ -154,7 +154,8 @@ const FAMILY_CATEGORY = {
     dept_digest: 'reports',
     dept_brief: 'reports',
     digest: 'reports',
-    // KPI threshold alerts (migration 186); the safety one is mandatory.
+    // KPI threshold alerts (migration 186); the certificate and safety one is
+    // the mandatory safety.kpi_alert.
     kpi: 'reports',
     access: 'account',
     account: 'account',
@@ -282,7 +283,7 @@ const catalogue = {
             'admin.created': 'Your administrator account was created',
             // KPI threshold alerts (migration 186): no name, no figure.
             'kpi.alert': 'An indicator needs attention',
-            'kpi.alert.safety': 'A safety indicator needs attention',
+            'safety.kpi_alert': 'A safety indicator needs attention',
             'kpi.recovered': 'An indicator is back to normal',
             // « What changed » digests (migration 187): figures only.
             'digest.persona.executive': 'What changed: your summary',
@@ -751,7 +752,7 @@ const catalogue = {
                     en: 'An indicator needs attention',
                 },
             },
-            'kpi.alert.safety': {
+            'safety.kpi_alert': {
                 icon: 'fa-helmet-safety',
                 link: '/dashboard',
                 title: {
@@ -1350,7 +1351,7 @@ const catalogue = {
             // employee's and the slow-down notice stay in the app.
             'kpi.alert': 'digest',
             'kpi.recovered': 'digest',
-            'kpi.alert.safety': 'immediate',
+            'safety.kpi_alert': 'immediate',
             'digest.persona.employee': 'none',
             'digest.persona.paused': 'none',
             'safety.blocked': 'immediate',
@@ -1461,7 +1462,7 @@ const catalogue = {
         };
         return {
             'kpi.alert': kpiAlert,
-            'kpi.alert.safety': kpiAlert,
+            'safety.kpi_alert': kpiAlert,
             'kpi.recovered': kpiAlert,
             // The announcement carries its date, the invitation its provider: the
             // title alone said nothing to a person with no e-mail.
@@ -1892,7 +1893,7 @@ const catalogue = {
                 fr: 'Un indicateur est entré dans une zone d’alerte ou s’est dégradé. Le détail est sur le tableau de bord.',
                 en: 'An indicator entered an alert band or got worse. The details are on the dashboard.',
             },
-            'kpi.alert.safety': {
+            'safety.kpi_alert': {
                 fr: 'Un indicateur de sécurité (certificats requis ou habilitations) est entré dans une zone d’alerte ou s’est dégradé. Le détail est sur le tableau de bord.',
                 en: 'A safety indicator (required certificates or safety clearances) entered an alert band or got worse. The details are on the dashboard.',
             },
@@ -2076,7 +2077,7 @@ const catalogue = {
     get KIND_SEVERITY() {
         const by = {
             critique: [
-                'kpi.alert.safety',
+                'safety.kpi_alert',
                 'safety.blocked',
                 'safety.blocked.team',
                 'coverage.breach',
@@ -2173,7 +2174,7 @@ const catalogue = {
      */
     get MANDATORY() {
         return [
-            'kpi.alert.safety',
+            'safety.kpi_alert',
             'safety.blocked',
             'safety.expiring',
             'safety.blocked.team',
@@ -2201,7 +2202,7 @@ const catalogue = {
     get KIND_MODULE() {
         return {
             'kpi.alert': null,
-            'kpi.alert.safety': null,
+            'safety.kpi_alert': null,
             'kpi.recovered': null,
             'digest.persona.executive': null,
             'digest.persona.hr': null,
@@ -2314,8 +2315,7 @@ const catalogue = {
     categoryOf(kind) {
         const k = String(kind || '');
         const fam = k.split('.')[0];
-        if (catalogue.isMandatory(k))
-            return fam === 'safety' || k === 'kpi.alert.safety' ? 'safety' : 'security';
+        if (catalogue.isMandatory(k)) return fam === 'safety' ? 'safety' : 'security';
         return FAMILY_CATEGORY[fam] || 'other';
     },
 

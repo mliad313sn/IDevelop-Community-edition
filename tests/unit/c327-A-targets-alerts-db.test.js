@@ -234,9 +234,14 @@ suite('KPI targets (rolled back)', () => {
 
 suite('KPI alert engine (rolled back, KpiService stubbed)', () => {
     let spy;
+    // hermetic: targets stored on the database (append-only, they cannot be
+    // removed in the transaction) must not change what the stubbed figures raise
+    let tspy = null;
     afterEach(() => {
         if (spy) spy.mockRestore();
         spy = null;
+        if (tspy) tspy.mockRestore();
+        tspy = null;
         mockFlags = { campaigns: true, development: true, talent: true, mobility: true };
         N.notify.mockReset();
         N.notify.mockResolvedValue({ inapp: 'queued', email: 'digest_deferred' });
@@ -244,6 +249,7 @@ suite('KPI alert engine (rolled back, KpiService stubbed)', () => {
 
     /** Stub bySite: the organisation and one site; K8 expired people driven by `state.k8`. */
     function stub(siteId, state, seen = []) {
+        tspy = jest.spyOn(T, 'targetFor').mockResolvedValue(null);
         spy = jest.spyOn(K, 'bySite').mockImplementation(async (kpiId) => {
             seen.push(kpiId);
             const r = (o) => ({ kpi: kpiId, n: 30, ...o });
@@ -292,7 +298,7 @@ suite('KPI alert engine (rolled back, KpiService stubbed)', () => {
             expect(told).not.toContain(plain.id);
             if (other) expect(told).not.toContain(other.id);
             for (const m of site) {
-                expect(m.kind).toBe('kpi.alert.safety');
+                expect(m.kind).toBe('safety.kpi_alert');
                 expect(m.payload.figures).toMatchObject({ kpi: 'K8', value: 2 });
                 expect(mailText(m)).not.toMatch(/\d/);
             }
