@@ -184,6 +184,12 @@
       </div>
       <div class="nb-axes"><span>← <%= __('employee:nb_axis_perf') %> →</span><span class="nb-yaxis">↑ <%= __('employee:nb_axis_pot') %></span></div>
       <p class="emp-sub" style="margin-top:.5rem"><%= __('employee:nb_placed') %> <%= nb.approvedAt ? new Date(nb.approvedAt).toLocaleDateString(typeof lang !== "undefined" ? lang : undefined) : '' %>. <%= __('employee:nb_performance') %> <strong><%= nbBand(nb.performance) %></strong>, <%= __('employee:nb_potential_lc') %> <strong><%= nbBand(nb.potential) %></strong>.</p>
+      <%# The DIRECTION of the move only: no reason, no calibration note, no
+          previous box. Nothing for a first placement or an undisclosed one. %>
+      <% const NB_MV_GLYPH = { stable: '→', up: '↑', down: '↓', lateral: '↔' };
+         if (nb.movementDirection && NB_MV_GLYPH[nb.movementDirection]) { %>
+      <p class="emp-sub emp-nb-move"><%= __('talentx:nb_mv_employee_line') %> <strong><span aria-hidden="true"><%= NB_MV_GLYPH[nb.movementDirection] %></span> <%= __('talentx:nb_mv_' + nb.movementDirection) %></strong></p>
+      <% } %>
       <%# Explainer: what the box means, how it was decided, and the one next
           step that belongs to the person — the conversation with their manager. %>
       <details class="emp-nb-explain">

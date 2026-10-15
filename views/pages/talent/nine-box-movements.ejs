@@ -1,0 +1,169 @@
+<%#
+  9-BOX MOVEMENTS (migration 175). Server-rendered: no page script,
+  so nothing here needs a CSP exemption. Every decided placement in the reader's
+  scope (same scope as the console), where it came from, the direction and the
+  justification. The direction is always WRITTEN (glyph + word), never colour
+  alone; the matrix is a real <table> with row and column headers.
+%>
+<%
+  const T = (k, o) => __('talentx:' + k, o);
+  const boxName = (n) => (n >= 1 && n <= 9 ? T(boxKeys[n - 1]) : '—');
+  const GLYPH = { first: '★', stable: '→', up: '↑', down: '↓', lateral: '↔' };
+  // Raw output below (<%- dirBadge %>): every piece is escaped here, and `d`
+  // only ever comes from the five known directions.
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const dirBadge = (d) => (GLYPH[d] ? '<span class="mv-dir mv-' + esc(d) + '"><span aria-hidden="true">' + GLYPH[d] + '</span> ' + esc(T('nb_mv_' + d)) + '</span>' : '');
+  const qs = (extra) => {
+    const p = Object.assign({}, filters, extra || {});
+    return Object.keys(p).filter((k) => p[k]).map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(p[k])).join('&');
+  };
+  const sel = (a, b) => (String(a) === String(b) ? ' selected' : '');
+%>
+<div class="page-header">
+  <h1><i class="fas fa-route" aria-hidden="true"></i> <%= T('nb_mv_title') %></h1>
+  <p class="text-muted"><%= T('nb_mv_intro') %></p>
+  <p><a href="/talent/nine-box"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= T('nb_mv_back') %></a></p>
+</div>
+
+<form method="get" action="/talent/nine-box/movements" class="card mv-filters" aria-label="<%= T('nb_mv_apply') %>">
+  <div>
+    <label for="mv-cycle"><%= T('nb_mv_filter_cycle') %></label>
+    <select id="mv-cycle" name="cycle" class="form-control">
+      <option value=""><%= T('nb_mv_filter_all') %></option>
+      <% data.options.cycles.forEach(function (c) { %><option value="<%= c.id %>"<%= sel(filters.cycle, c.id) %>><%= c.name %></option><% }) %>
+      <% if (data.options.hasNoCycle) { %><option value="none"<%= sel(filters.cycle, 'none') %>><%= T('nb_mv_filter_no_cycle') %></option><% } %>
+    </select>
+  </div>
+  <div>
+    <label for="mv-site"><%= T('nb_mv_filter_site') %></label>
+    <select id="mv-site" name="siteId" class="form-control">
+      <option value=""><%= T('nb_mv_filter_all') %></option>
+      <% data.options.sites.forEach(function (s) { %><option value="<%= s.id %>"<%= sel(filters.siteId, s.id) %>><%= s.name %></option><% }) %>
+    </select>
+  </div>
+  <div>
+    <label for="mv-dept"><%= T('nb_mv_filter_department') %></label>
+    <select id="mv-dept" name="departmentId" class="form-control">
+      <option value=""><%= T('nb_mv_filter_all') %></option>
+      <% data.options.departments.forEach(function (d) { %><option value="<%= d.id %>"<%= sel(filters.departmentId, d.id) %>><%= d.name %></option><% }) %>
+    </select>
+  </div>
+  <div>
+    <label for="mv-dir"><%= T('nb_mv_filter_direction') %></label>
+    <select id="mv-dir" name="direction" class="form-control">
+      <option value=""><%= T('nb_mv_filter_all') %></option>
+      <% directions.forEach(function (d) { %><option value="<%= d %>"<%= sel(filters.direction, d) %>><%= GLYPH[d] %> <%= T('nb_mv_' + d) %></option><% }) %>
+    </select>
+  </div>
+  <div class="mv-filter-actions">
+    <button type="submit" class="btn btn-primary"><%= T('nb_mv_apply') %></button>
+    <a class="btn btn-secondary" href="/talent/nine-box/movements"><%= T('nb_mv_reset') %></a>
+    <a class="btn btn-secondary" href="/api/ninebox/movements.csv<%= qs() ? '?' + qs() : '' %>"><i class="fas fa-file-csv" aria-hidden="true"></i> <%= T('nb_mv_export_csv') %></a>
+  </div>
+</form>
+
+<section class="card mv-section" aria-labelledby="mv-counts-h">
+  <h2 id="mv-counts-h"><%= T('nb_mv_counts') %></h2>
+  <p class="text-muted"><%= T('nb_mv_total', { n: data.counts.total }) %></p>
+  <ul class="mv-counts">
+    <% directions.forEach(function (d) { %>
+      <li><a href="/talent/nine-box/movements?<%= qs({ direction: d }) %>"><%- dirBadge(d) %> <strong><%= data.counts[d] %></strong></a></li>
+    <% }) %>
+  </ul>
+  <p class="mv-help"><%= T('nb_mv_dir_help') %></p>
+</section>
+
+<section class="card mv-section" aria-labelledby="mv-matrix-h">
+  <h2 id="mv-matrix-h"><%= T('nb_mv_matrix') %></h2>
+  <div class="mv-scroll">
+    <table class="mv-matrix">
+      <caption class="sr-only"><%= T('nb_mv_matrix') %></caption>
+      <thead>
+        <tr>
+          <th scope="col"><%= T('nb_mv_matrix_corner') %></th>
+          <% for (let to = 1; to <= 9; to++) { %><th scope="col"><%= boxName(to) %></th><% } %>
+        </tr>
+      </thead>
+      <tbody>
+        <% for (let from = 1; from <= 9; from++) { %>
+          <tr>
+            <th scope="row"><%= boxName(from) %></th>
+            <% for (let to = 1; to <= 9; to++) { const n = data.matrix[from - 1][to - 1]; %>
+              <td class="<%= from === to ? 'mv-diag' : '' %><%= n ? ' mv-hit' : '' %>"><%= n ? n : '·' %></td>
+            <% } %>
+          </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+  <p class="mv-help"><%= T('nb_mv_matrix_note') %></p>
+</section>
+
+<section class="card mv-section" aria-labelledby="mv-list-h">
+  <h2 id="mv-list-h"><%= T('nb_mv_list') %></h2>
+  <% if (!data.rows.length) { %>
+    <p class="text-muted"><%= T('nb_mv_empty') %></p>
+  <% } else { %>
+  <div class="mv-scroll">
+    <table class="mv-table">
+      <thead><tr>
+        <th scope="col"><%= T('nb_mv_col_person') %></th>
+        <th scope="col"><%= T('nb_mv_col_cycle') %></th>
+        <th scope="col"><%= T('nb_mv_before_now') %></th>
+        <th scope="col"><%= T('nb_mv_col_direction') %></th>
+        <th scope="col"><%= T('nb_mv_col_justification') %></th>
+        <th scope="col"><%= T('nb_mv_col_by') %></th>
+        <th scope="col"><%= T('nb_mv_col_decided_on') %></th>
+      </tr></thead>
+      <tbody>
+      <% data.rows.forEach(function (r) { const m = r.movement; %>
+        <tr>
+          <td><strong><%= [r.firstName, r.lastName].filter(Boolean).join(' ') %></strong>
+            <div class="mv-sub"><%= [r.employeeNumber, r.siteName, r.departmentName].filter(Boolean).join(' · ') %></div></td>
+          <td><%= r.cycleLabel || T('nb_mv_cycle_none') %></td>
+          <td><%= m.previous ? boxName(m.previous.box) : T('nb_mv_first') %> <span aria-hidden="true">→</span><span class="sr-only">,</span> <strong><%= boxName(r.box) %></strong>
+            <% if (r.status === 'archived') { %><div class="mv-sub"><%= statusLabel('archived') %></div><% } %></td>
+          <td><%- dirBadge(m.direction) %></td>
+          <td>
+            <% if (m.justification) { %>
+              <details><summary><%= T('nb_mv_show_justification') %></summary><p class="mv-just"><%= m.justification %></p></details>
+            <% } else if (m.requiresJustification) { %>
+              <span class="mv-missing"><%= T('nb_mv_not_justified') %></span>
+              <% if (m.backfilled) { %><div class="mv-sub"><%= T('nb_mv_backfilled') %></div><% } %>
+            <% } else { %>—<% } %>
+          </td>
+          <td><%= m.justifiedBy || '—' %><% if (m.justifiedAt) { %><div class="mv-sub"><%= fmtDate(m.justifiedAt) %></div><% } %></td>
+          <td><%= r.approvedAt ? fmtDate(r.approvedAt) : '—' %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</section>
+
+<style>
+/* .card is a column flexbox in the theme: the filter bar is a ROW. */
+.card.mv-filters{display:flex;flex-direction:row;flex-wrap:wrap;gap:.75rem;align-items:flex-end;padding:1rem;margin-bottom:1rem}
+.mv-filters > div{flex:1 1 160px;min-width:0}
+.mv-filters > .mv-filter-actions{display:flex;gap:.5rem;flex-wrap:wrap;flex:2 1 320px}
+.mv-section{padding:1rem;margin-bottom:1rem}
+.mv-section h2{font-size:1.05rem;margin:0 0 .5rem}
+.mv-counts{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:.5rem}
+.mv-counts a{text-decoration:none;color:inherit;display:inline-flex;gap:.4rem;align-items:center;border:1px solid var(--border-color,#e2e8f0);border-radius:999px;padding:.25rem .7rem}
+.mv-help{font-size:.82rem;color:var(--text-muted,#64748b);margin:.5rem 0 0}
+.mv-dir{display:inline-block;border-radius:999px;padding:1px 8px;font-size:.78rem;font-weight:700;border:1px solid currentColor;white-space:nowrap}
+/* Theme tokens (dark + light): colour is the third cue after the glyph and the word. */
+.mv-up{color:var(--emerald-text,#166534)}.mv-down{color:var(--red-text,#b91c1c)}.mv-lateral{color:var(--violet-text,#6d28d9)}.mv-stable{color:var(--text-secondary,#475569)}.mv-first{color:var(--blue-text,#1e40af);border-style:dashed}
+.mv-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.mv-matrix{border-collapse:collapse;font-size:.8rem;min-width:720px}
+.mv-matrix th,.mv-matrix td{border:1px solid var(--border-color,#e2e8f0);padding:.3rem .4rem;text-align:center}
+.mv-matrix th[scope=row]{text-align:left;white-space:nowrap}
+.mv-matrix td.mv-diag{background:var(--bg-elevated,#f8fafc)}
+.mv-matrix td.mv-hit{font-weight:800}
+.mv-table{width:100%;border-collapse:collapse;font-size:.9rem;min-width:820px}
+.mv-table th,.mv-table td{padding:.45rem .5rem;border-top:1px solid var(--border-color,#f1f5f9);text-align:left;vertical-align:top}
+.mv-sub{color:var(--text-muted,#64748b);font-size:.76rem}
+.mv-missing{color:var(--amber-text,#b45309);font-style:italic}
+.mv-just{white-space:pre-wrap;margin:.3rem 0 0}
+</style>

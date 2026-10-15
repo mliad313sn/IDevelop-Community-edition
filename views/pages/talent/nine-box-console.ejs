@@ -5,9 +5,11 @@
   </p>
 </div>
 
-<div class="nb-tabs" style="display:flex;gap:.5rem;margin-bottom:1rem;">
+<div class="nb-tabs" style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem;">
   <button class="btn btn-primary" id="nb-tab-roster" data-on-click="NB.show" data-args='["roster"]'><%= __('talentx:nb_tab_roster') %></button>
   <button class="btn btn-secondary" id="nb-tab-grid" data-on-click="NB.show" data-args='["grid"]'><%= __('talentx:nb_tab_grid') %></button>
+  <%# the movement report (before → now, per cycle). %>
+  <a class="btn btn-secondary" href="/talent/nine-box/movements" style="margin-left:auto"><i class="fas fa-route" aria-hidden="true"></i> <%= __('talentx:nb_mv_link') %></a>
 </div>
 
 <!-- ROSTER -->
@@ -46,7 +48,7 @@
     modal, labelled by its heading, Escape closes it, Tab stays inside, and the
     focus returns to the button that opened it. %>
 <div id="nb-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:1000;align-items:center;justify-content:center">
-  <div class="card" id="nb-modal-box" role="dialog" aria-modal="true" aria-labelledby="nb-modal-title" style="width:420px;max-width:92vw;padding:1.25rem">
+  <div class="card" id="nb-modal-box" role="dialog" aria-modal="true" aria-labelledby="nb-modal-title" style="width:420px;max-width:92vw;max-height:92vh;overflow-y:auto;padding:1.25rem">
     <h3 id="nb-modal-title" style="margin-top:0"><%= __('talentx:nb_assess') %> <span id="nb-modal-name"></span></h3>
     <input type="hidden" id="nb-emp">
     <div style="display:flex;gap:.75rem;margin:.5rem 0;flex-wrap:wrap">
@@ -56,6 +58,14 @@
         <select id="nb-pot" class="form-control" required aria-required="true"><option value="" selected disabled><%= __('common:choose_placeholder') %></option><option value="low"><%= __('talentx:low') %></option><option value="medium"><%= __('talentx:medium') %></option><option value="high"><%= __('talentx:high') %></option></select></div>
     </div>
     <p id="nb-required-msg" role="alert" style="display:none;margin:.2rem 0;font-size:.82rem;color:var(--red-text)"><%= __('common:choose_required_fields') %></p>
+    <%# where the person comes from, and WHY the box changes. %>
+    <div id="nb-prev" class="nb-prev-box" aria-live="polite"></div>
+    <div id="nb-just-wrap" style="display:none;margin:.5rem 0">
+      <label for="nb-just"><%= __('talentx:nb_mv_justification_prompt') %> *</label>
+      <textarea id="nb-just" class="form-control" rows="3" aria-describedby="nb-just-hint" aria-required="true"></textarea>
+      <p id="nb-just-hint" style="font-size:.78rem;color:var(--text-muted,#64748b);margin:.2rem 0"><%= __('talentx:nb_mv_justification_hint', { min: 20 }) %></p>
+      <p id="nb-just-msg" role="alert" style="display:none;margin:.2rem 0;font-size:.82rem;color:var(--red-text)"><%= __('talentx:nb_mv_justification_short', { min: 20 }) %></p>
+    </div>
     <div style="display:flex;gap:.75rem;margin:.5rem 0;flex-wrap:wrap">
       <div style="flex:1 1 140px"><label for="nb-tier"><%= __('talentx:nb_position_in_box') %></label>
         <select id="nb-tier" class="form-control"><option value="1"><%= __('talentx:nb_tier1') %></option><option value="2" selected><%= __('talentx:nb_tier2') %></option><option value="3"><%= __('talentx:nb_tier3') %></option></select></div>
@@ -172,8 +182,33 @@ const NB_T = {
   cellEssential: <%- JSON.stringify(__('talentx:nb_cell_essential')) %>,
   cellEssentialDesc: <%- JSON.stringify(__('talentx:nb_cell_essential_desc')) %>,
   cellTrusted: <%- JSON.stringify(__('talentx:nb_cell_trusted')) %>,
-  cellTrustedDesc: <%- JSON.stringify(__('talentx:nb_cell_trusted_desc')) %>
+  cellTrustedDesc: <%- JSON.stringify(__('talentx:nb_cell_trusted_desc')) %>,
+  <%# movement strings. {name}/{to}/{dir}/{from}/{date} are replaced client-side. %>
+  mv: {
+    first: <%- JSON.stringify(__('talentx:nb_mv_first')) %>,
+    stable: <%- JSON.stringify(__('talentx:nb_mv_stable')) %>,
+    up: <%- JSON.stringify(__('talentx:nb_mv_up')) %>,
+    down: <%- JSON.stringify(__('talentx:nb_mv_down')) %>,
+    lateral: <%- JSON.stringify(__('talentx:nb_mv_lateral')) %>
+  },
+  mvBeforeNow: <%- JSON.stringify(__('talentx:nb_mv_before_now')) %>,
+  mvPrevious: <%- JSON.stringify(__('talentx:nb_mv_previous')) %>,
+  mvPreviousNone: <%- JSON.stringify(__('talentx:nb_mv_previous_none')) %>,
+  mvCycleNone: <%- JSON.stringify(__('talentx:nb_mv_cycle_none')) %>,
+  mvApprovedOn: <%- JSON.stringify(__('talentx:nb_mv_approved_on', { date: '{date}' })) %>,
+  mvJustification: <%- JSON.stringify(__('talentx:nb_mv_justification')) %>,
+  mvPrompt: <%- JSON.stringify(__('talentx:nb_mv_justification_prompt')) %>,
+  mvShort: <%- JSON.stringify(__('talentx:nb_mv_justification_short', { min: 20 })) %>,
+  mvNotJustified: <%- JSON.stringify(__('talentx:nb_mv_not_justified')) %>,
+  mvPlaceholder: <%- JSON.stringify(__('talentx:nb_mv_err_justification_placeholder')) %>,
+  mvBackfilled: <%- JSON.stringify(__('talentx:nb_mv_backfilled')) %>,
+  mvPreview: <%- JSON.stringify(__('talentx:nb_mv_preview')) %>,
+  mvShow: <%- JSON.stringify(__('talentx:nb_mv_show')) %>,
+  mvShowJust: <%- JSON.stringify(__('talentx:nb_mv_show_justification')) %>,
+  mvGhost: <%- JSON.stringify(__('talentx:nb_mv_ghost', { name: '{name}', to: '{to}', dir: '{dir}' })) %>,
+  mvCameFrom: <%- JSON.stringify(__('talentx:nb_mv_came_from', { from: '{from}' })) %>
 };
+const NB_MV_MIN = 20;
 const NB_LANG = <%- include('../../partials/json-script', { v: (typeof lang !== 'undefined' && lang === 'fr') ? 'fr' : 'en' }) %>;
 const NB = {
   POT:['high','medium','low'], PERF:['low','medium','high'],
@@ -234,6 +269,7 @@ const NB = {
         ? '<span class="badge nb-badge'+(e.provisional?' nb-badge-prov':'')+'">'+esc(NB.boxLabelFor(p.box))+'</span> '
             +(e.provisional?provTag(p.status):'')
             +(e.pendingProposal?provTag(e.pendingProposal.status, e.pendingProposal.box):'')+' '+dueBadge
+            +NB.mvHtml(p.movement, p.box)
         : '<span style="color:var(--text-muted)">'+NB_T.notAssessed+'</span> '+dueBadge;
       const action = p
         ? '<button class="btn btn-sm btn-secondary"'+nbOn('click','NB.open',[p.id])+'>'+NB_T.open+'</button> <button class="btn btn-sm '+(e.dueForReassessment?'btn-primary':'btn-secondary')+'" data-emp="'+e.employeeId+'" data-name="'+nmAttr+'"'+nbOn('click','NB.assessBtn',['$el'])+'>'+NB_T.reassess+'</button>'
@@ -268,6 +304,25 @@ const NB = {
     this.suggested = null;
     document.getElementById('nb-sugg').style.display='none';
     document.getElementById('nb-pos-src').textContent='';
+    // Movement: the previous approved placement, and the justification box.
+    this.prev = undefined;
+    document.getElementById('nb-prev').innerHTML='';
+    document.getElementById('nb-just').value='';
+    document.getElementById('nb-just-msg').style.display='none';
+    document.getElementById('nb-just-wrap').style.display='none';
+    this.api('/api/ninebox/employee/'+empId+'/previous').then(j=>{
+      this.prev = j.previous || null;
+      const el=document.getElementById('nb-prev');
+      if(!this.prev){ el.innerHTML='<span class="nb-mv-lbl">'+esc(NB_T.mvPrevious)+'</span> '+esc(NB_T.mvPreviousNone); }
+      else {
+        const p=this.prev;
+        el.innerHTML='<span class="nb-mv-lbl">'+esc(NB_T.mvPrevious)+'</span> <strong>'+esc(this.boxLabelFor(p.box))+'</strong> · '
+          +esc(p.cycleLabel||NB_T.mvCycleNone)+(p.approvedAt?' · '+esc(NB_T.mvApprovedOn.replace('{date}', FMT.date(p.approvedAt))):'');
+      }
+      this._refreshJust();
+    }).catch(()=>{});
+    document.getElementById('nb-perf').onchange = ()=>this._refreshJust();
+    document.getElementById('nb-pot').onchange = ()=>this._refreshJust();
     this._openDialog();
     // Fetch the system suggestion and pre-fill (the manager may accept or readjust).
     this.api('/api/ninebox/employee/'+empId+'/suggest-position').then(j=>{
@@ -295,6 +350,50 @@ const NB = {
     const el=document.getElementById('nb-pos-src');
     if(!this.suggested){ el.textContent=''; return; }
     el.textContent = this._matchesSuggestion() ? NB_T.usingSugg : NB_T.adjusted;
+  },
+
+  // ── Movement (migration 175) ──
+  // Same rule as NineBoxService.movementDirection: band deltas on the two axes.
+  BANDN:{low:0,medium:1,high:2},
+  GLYPH:{first:'★',stable:'→',up:'↑',down:'↓',lateral:'↔'},
+  boxOf(perf,pot){ const b=this.BANDN; return (perf in b && pot in b) ? b[pot]*3+b[perf]+1 : null; },
+  // Shows the justification field when the chosen box differs from the previous
+  // approved one; returns true when a justification is required.
+  _refreshJust(){
+    const perf=document.getElementById('nb-perf').value, pot=document.getElementById('nb-pot').value;
+    const p=this.prev;
+    const need=!!(p && perf && pot && Number(p.box)!==this.boxOf(perf,pot));
+    document.getElementById('nb-just-wrap').style.display=need?'':'none';
+    return need;
+  },
+  dirBadge(d){
+    if(!d||!this.GLYPH[d]) return '';
+    return '<span class="nb-mv-dir nb-mv-'+d+'"><span aria-hidden="true">'+this.GLYPH[d]+'</span> '+esc(NB_T.mv[d])+'</span>';
+  },
+  // "before → now" + direction + the justification (expandable).
+  mvHtml(m, box){
+    if(!m||!m.direction) return '';
+    let h='<div class="nb-mv"><span class="nb-mv-lbl">'+esc(NB_T.mvBeforeNow)+'</span> ';
+    if(m.previous) h+=esc(this.boxLabelFor(m.previous.box))+' <span aria-hidden="true">→</span><span class="sr-only">,</span> '+esc(this.boxLabelFor(box))+' ';
+    h+=this.dirBadge(m.direction);
+    if(m.justification) h+='<details class="nb-mv-just"><summary>'+esc(NB_T.mvShowJust)+'</summary><p>'+esc(m.justification)+'</p></details>';
+    else if(m.requiresJustification) h+=' <span class="nb-mv-missing">'+esc(m.backfilled?NB_T.mvBackfilled:NB_T.mvNotJustified)+'</span>';
+    return h+'</div>';
+  },
+  // Asks for the WHY when the act needs one and none is recorded yet; null = cancelled.
+  async _askJustification(m){
+    const min=(m&&m.minJustification)||NB_MV_MIN;
+    // A refused text is explained in the app's own dialog, which reopens with
+    // the person's text kept: never a native alert().
+    let refusal='', draft='';
+    for(;;){
+      const v=await window.promptDialog(refusal ? refusal+' — '+NB_T.mvPrompt : NB_T.mvPrompt, draft, { multiline:true, required:true });
+      if(v===null) return null;
+      const core=String(v).toLowerCase().replace(/[\s\p{P}\p{S}]/gu,'');
+      if(String(v).trim().length>=min && core && !/^(.)\1*$/u.test(core)) return String(v).trim();
+      draft=String(v);
+      refusal=String(v).trim().length<min ? NB_T.mvShort : NB_T.mvPlaceholder;
+    }
   },
   _prevFocus:null,
   _onKey:null,
@@ -329,8 +428,21 @@ const NB = {
     ['nb-perf','nb-pot'].forEach(id=>{ const s=document.getElementById(id); if(s.value) s.removeAttribute('aria-invalid'); else s.setAttribute('aria-invalid','true'); });
     if(missing.length){ document.getElementById('nb-required-msg').style.display=''; missing[0].focus(); return; }
     document.getElementById('nb-required-msg').style.display='none';
+    // A box change needs its WHY (the server refuses the submission otherwise).
+    const just=document.getElementById('nb-just');
+    const needJust=this._refreshJust();
+    // Same floor as the server: 20 characters, and not only punctuation /
+    // one repeated character. The copy-of-previous check stays server-side.
+    const core=just.value.toLowerCase().replace(/[\s\p{P}\p{S}]/gu,'');
+    if(needJust && (just.value.trim().length<NB_MV_MIN || !core || /^(.)\1*$/u.test(core))){
+      const msg=document.getElementById('nb-just-msg');
+      msg.textContent = just.value.trim().length<NB_MV_MIN ? NB_T.mvShort : NB_T.mvPlaceholder;
+      msg.style.display=''; just.setAttribute('aria-invalid','true'); just.focus(); return;
+    }
+    just.removeAttribute('aria-invalid'); document.getElementById('nb-just-msg').style.display='none';
     const src=this._matchesSuggestion()?'system':'manager';
     const body={employeeId:Number(document.getElementById('nb-emp').value),performance:document.getElementById('nb-perf').value,potential:document.getElementById('nb-pot').value,cellTier:Number(document.getElementById('nb-tier').value),cellTrend:document.getElementById('nb-trend').value,positionSource:src,comments:document.getElementById('nb-comments').value};
+    if(just.value.trim()) body.movementJustification=just.value.trim();
     if(!body.employeeId){alert(NB_T.employeeRequired);return;}
     await this.api('/api/ninebox','POST',body);
     this.closeModal();
@@ -340,10 +452,23 @@ const NB = {
   // ── Detail / workflow ──
   async open(id){const j=await this.api('/api/ninebox/'+id);const ev=j.evaluation;const h=await this.api('/api/ninebox/'+id+'/history');
     const d=document.getElementById('nb-detail');d.style.display='block';d.scrollIntoView({block:'center'});
+    this.cur=ev;
+    const mv=ev.movement;
+    // Movement: the previous placement (box, cycle, date), the direction and the WHY.
+    const mvBlock = mv ? '<div class="nb-mv-detail"><h4 style="margin:.4rem 0">'+esc(NB_T.mvPrevious)+'</h4>'+
+      (mv.previous
+        ? '<p><strong>'+esc(NB.boxLabelFor(mv.previous.box))+'</strong> · '+esc(mv.previous.cycleLabel||NB_T.mvCycleNone)+
+          (mv.previous.approvedAt?' · '+esc(NB_T.mvApprovedOn.replace('{date}', FMT.date(mv.previous.approvedAt))):'')+'</p>'
+        : '<p>'+esc(NB_T.mvPreviousNone)+'</p>')+
+      NB.mvHtml(mv, ev.box)+
+      (mv.justification?'<p class="nb-mv-by">'+esc(NB_T.mvJustification)+' — '+esc(mv.justifiedBy||'')+(mv.justifiedAt?' · '+esc(FMT.date(mv.justifiedAt)):'')+'</p>':'')+
+      (!mv.snapshot?'<p class="nb-mv-by">'+esc(NB_T.mvPreview)+'</p>':'')+
+      '</div>' : '';
     d.innerHTML='<h3>'+esc(NB.boxLabelFor(ev.box))+' — '+esc(window.EL?EL(ev.status):ev.status)+'</h3>'+
       '<p>'+NB_T.performance+': <strong>'+esc(window.EL?EL(ev.performance):ev.performance)+'</strong> · '+NB_T.potential+': <strong>'+esc(window.EL?EL(ev.potential):ev.potential)+'</strong> · '+NB_T.clearance+': '+esc(ev.clearance)+'</p>'+
       '<p>'+NB_T.inboxPos+' <strong>'+NB_T.tierWord+' '+(ev.cellTier||2)+'</strong> · '+NB_T.trendWord+' <strong>'+(ev.cellTrend||'stable')+'</strong> <span style="color:#64748b">('+(ev.positionSource==='system'?NB_T.srcSystem:NB_T.srcManager)+')</span></p>'+
       '<p>'+esc(ev.comments||'')+'</p>'+
+      mvBlock+
       // M-06 — UNE COMMANDE OFFERTE EST UNE COMMANDE QUE L'ON PEUT PASSER.
       // Ces boutons se construisaient sur le seul `ev.status`, si bien qu'un
       // SUPERVISEUR se voyait proposer « Approuver (manager) », « Rejeter »,
@@ -383,7 +508,27 @@ const NB = {
       if(c===null||!String(c).trim())return;
       body.reason=String(c).trim();
     }
-    const res=await this.api('/api/ninebox/'+id+'/'+a,'POST',body);
+    // Submitting or approving a box CHANGE needs its written WHY (migration 175).
+    if((a==='submit'||a==='approve') && this.cur && Number(this.cur.id)===Number(id)){
+      const m=this.cur.movement;
+      if(m && m.requiresJustification && !m.justified){
+        const why=await this._askJustification(m);
+        if(why===null) return;
+        body.movementJustification=why;
+      }
+    }
+    let res;
+    try { res=await this.api('/api/ninebox/'+id+'/'+a,'POST',body); }
+    catch(e){
+      // A stored justification can still be refused (placeholder, copy of
+      // the previous one). The refusal was just shown; offer to write a new one.
+      const m=this.cur && this.cur.movement;
+      if(!((a==='submit'||a==='approve') && m && m.requiresJustification && e && e.status===400)) throw e;
+      const why=await this._askJustification(m);
+      if(why===null) return;
+      body.movementJustification=why;
+      res=await this.api('/api/ninebox/'+id+'/'+a,'POST',body);
+    }
     if(a==='approve'){const t=res&&res.evaluation&&res.evaluation.autoTrigger;
       // a low box no longer opens a plan. Say what actually happened — a task
       // for the manager — instead of announcing a plan nobody decided to open.
@@ -451,25 +596,75 @@ const NB = {
           const ar=this.TRENDARROW[x.cellTrend]||'';
           const st=window.EL?EL(x.status):String(x.status||'');
           const mark=x.provisional?'◌ ':(x.pendingProposal?'• ':'');
-          return '<a class="nb-chip'+(x.provisional?' nb-chip-prov':'')+(x.pendingProposal?' nb-chip-pend':'')+'" href="#"'+nbOn('click','NB.openChip',[x.id])+' title="'+NB_T.tierWord+' '+(x.cellTier||2)+' · '+NB_T.trendWord+' '+(x.cellTrend||'stable')+' · '+esc(st)+'">'+mark+(ar?('<b>'+ar+'</b> '):'')+esc(x.firstName+' '+x.lastName)+'</a>';
+          // "Show movements": the direction glyph + a text alternative
+          // naming the box the person came from (never colour alone).
+          const mv=this.showMoves && x.movement && x.movement.previous && x.movement.direction!=='stable' ? x.movement : null;
+          const mvTxt=mv ? ' <span class="nb-from" aria-hidden="true">'+this.GLYPH[mv.direction]+'</span><span class="sr-only"> — '+esc(NB_T.mv[mv.direction])+', '+esc(NB_T.mvCameFrom.replace('{from}', this.boxLabelFor(mv.previous.box)))+'</span>' : '';
+          return '<a class="nb-chip'+(x.provisional?' nb-chip-prov':'')+(x.pendingProposal?' nb-chip-pend':'')+'" href="#" data-chip-id="'+Number(x.id)+'"'+nbOn('click','NB.openChip',[x.id])+' title="'+NB_T.tierWord+' '+(x.cellTier||2)+' · '+NB_T.trendWord+' '+(x.cellTrend||'stable')+' · '+esc(st)+(mv?' · '+esc(NB_T.mvCameFrom.replace('{from}', this.boxLabelFor(mv.previous.box))):'')+'">'+mark+(ar?('<b>'+ar+'</b> '):'')+esc(x.firstName+' '+x.lastName)+mvTxt+'</a>';
         }).join('')+'</div>').join('')+'</div>'
       : '';
+    // GHOSTS: the people who USED to be in this box and moved elsewhere.
+    const ghosts=this.showMoves ? this.data.filter(x=>{
+      const m=x.movement; if(!m||!m.previous||m.direction==='stable') return false;
+      return this.BOXKEY[Number(m.previous.box)-1]===pot+'-'+perf;
+    }) : [];
+    const ghostHtml=ghosts.length ? '<div class="nb-ghosts">'+ghosts.map(x=>{
+      const nm=x.firstName+' '+x.lastName;
+      const txt=NB_T.mvGhost.replace('{name}', nm).replace('{to}', this.boxLabelFor(x.box)).replace('{dir}', NB_T.mv[x.movement.direction]);
+      return '<span class="nb-ghost" data-ghost-for="'+Number(x.id)+'" title="'+esc(txt)+'"><span aria-hidden="true">◌ '+esc(nm)+' '+this.GLYPH[x.movement.direction]+'</span><span class="sr-only">'+esc(txt)+'</span></span>';
+    }).join('')+'</div>' : '';
     return '<div class="nb-box" style="background:'+c+'">'+
       '<div class="nb-box-h"><span class="nb-box-label">'+esc(meta.label)+'</span><span class="nb-box-count">'+items.length+'</span></div>'+
       '<div class="nb-box-desc">'+esc(meta.desc)+'</div>'+
-      micro+
+      micro+ghostHtml+
     '</div>';
   },
+  showMoves:false,
   async loadGrid(){
     const g=await this.api('/api/ninebox/grid'); this.data=g.placements;
+    this.renderGrid();
+  },
+  toggleMoves(on){ this.showMoves=!!on; this.renderGrid(); },
+  renderGrid(){
     let cells='';
     for(const pot of this.POT){ for(const perf of this.PERF){ cells+=this.cellHtml(pot,perf); } }
     const legend=Object.keys(this.CATS).map(k=>'<span class="nb-leg"><span class="nb-sw" style="background:'+this.CATS[k].c+'"></span>'+esc(this.CATS[k][NB_LANG]||this.CATS[k].en)+'</span>').join('');
     document.getElementById('nb-grid-panel').innerHTML=
+      '<label class="nb-mv-toggle"><input type="checkbox" id="nb-mv-toggle"'+(this.showMoves?' checked':'')+nbOn('change','NB.toggleMoves',['$checked'])+'> '+esc(NB_T.mvShow)+'</label>'+
       '<div class="nb-axis-x">'+NB_T.axisPerf+'</div>'+
       '<div class="nb-grid-wrap"><div class="nb-axis-y">'+NB_T.axisPot+'</div>'+
-        '<div class="nb-grid">'+cells+'</div></div>'+
+        '<div class="nb-grid" id="nb-grid">'+cells+'</div></div>'+
       '<div class="nb-legend">'+legend+'</div>';
+    this.drawArrows();
+  },
+  // Arrows from each ghost (old position) to the person's chip (new position).
+  // Decorative (aria-hidden): the ghost and the chip already carry the text.
+  drawArrows(){
+    const grid=document.getElementById('nb-grid'); if(!grid) return;
+    const old=grid.querySelector('svg.nb-arrows'); if(old) old.remove();
+    if(!this.showMoves) return;
+    const base=grid.getBoundingClientRect();
+    const NS='http://www.w3.org/2000/svg';
+    const svg=document.createElementNS(NS,'svg');
+    svg.setAttribute('class','nb-arrows'); svg.setAttribute('aria-hidden','true');
+    svg.setAttribute('width', String(base.width)); svg.setAttribute('height', String(base.height));
+    svg.innerHTML='<defs><marker id="nb-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0f172a"/></marker></defs>';
+    grid.querySelectorAll('.nb-ghost[data-ghost-for]').forEach(gh=>{
+      const chip=grid.querySelector('.nb-chip[data-chip-id="'+gh.getAttribute('data-ghost-for')+'"]');
+      if(!chip) return;
+      const a=gh.getBoundingClientRect(), b=chip.getBoundingClientRect();
+      // A light halo under a dark dashed line: legible over every cell colour and over the page.
+      [['#ffffff','4.5',null],['#0f172a','2','url(#nb-ah)']].forEach(([stroke,w,marker])=>{
+        const line=document.createElementNS(NS,'line');
+        line.setAttribute('x1', String(a.left+a.width/2-base.left)); line.setAttribute('y1', String(a.top+a.height/2-base.top));
+        line.setAttribute('x2', String(b.left+b.width/2-base.left)); line.setAttribute('y2', String(b.top+b.height/2-base.top));
+        line.setAttribute('stroke',stroke); line.setAttribute('stroke-width',w); line.setAttribute('stroke-dasharray','5 4');
+        line.setAttribute('stroke-opacity', marker ? '1' : '0.75');
+        if(marker) line.setAttribute('marker-end',marker);
+        svg.appendChild(line);
+      });
+    });
+    grid.appendChild(svg);
   }
 };
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -479,6 +674,7 @@ function nbOn(type,fn,args){ return ' data-on-'+type+'="'+fn+'" data-args="'+esc
 // element; NB is a top-level const (not on window) and its methods use `this`.
 Object.keys(NB).forEach(function(k){ const d=Object.getOwnPropertyDescriptor(NB,k); if(d && typeof d.value==='function') NB[k]=d.value.bind(NB); });
 window.NB = NB;
+if (typeof window.addEventListener === 'function') window.addEventListener('resize', function(){ NB.drawArrows(); });
 NB.loadRoster();
 </script>
 
@@ -514,4 +710,25 @@ NB.loadRoster();
 .nb-leg{display:flex;align-items:center;gap:7px;font-size:.85rem;color:var(--ink,#0f172a)}
 .nb-sw{width:16px;height:16px;border-radius:4px;display:inline-block}
 @media(max-width:760px){.nb-box-desc{display:none}.nb-box{min-height:90px}}
+/* Phone width: the tab row wraps, and the grid scrolls inside its own panel
+   instead of widening the page. */
+.nb-tabs > .btn{white-space:normal;max-width:100%}
+#nb-grid-panel{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+/* Movement. Direction = glyph + word; colour is a third cue only. */
+.nb-mv{margin-top:4px;font-size:.78rem;color:var(--text-secondary,#475569)}
+.nb-mv-lbl{font-weight:700;color:var(--text-muted,#64748b);margin-right:2px}
+.nb-mv-dir{display:inline-block;border-radius:999px;padding:0 7px;font-size:.72rem;font-weight:700;border:1px solid currentColor;white-space:nowrap}
+.nb-mv-up{color:var(--emerald-text,#166534)}.nb-mv-down{color:var(--red-text,#b91c1c)}.nb-mv-lateral{color:var(--violet-text,#6d28d9)}.nb-mv-stable{color:var(--text-secondary,#475569)}.nb-mv-first{color:var(--blue-text,#1e40af);border-style:dashed}
+.nb-mv-just summary{cursor:pointer;color:var(--accent,#1d4ed8);font-size:.76rem}
+.nb-mv-just p{white-space:pre-wrap;margin:.2rem 0 0}
+.nb-mv-missing{color:var(--amber-text,#b45309);font-style:italic}
+.nb-mv-by{font-size:.8rem;color:var(--text-muted,#64748b);margin:.2rem 0}
+.nb-prev-box{margin:.4rem 0;padding:6px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:8px;font-size:.84rem}
+.nb-prev-box:empty{display:none}
+.nb-mv-toggle{display:inline-flex;gap:6px;align-items:center;margin:0 0 8px 26px;font-weight:600}
+.nb-grid{position:relative}
+.nb-arrows{position:absolute;inset:0;pointer-events:none;overflow:visible}
+.nb-ghosts{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+.nb-ghost{background:rgba(255,255,255,.35);color:#0f172a;border:1px dashed rgba(15,23,42,.6);border-radius:6px;padding:1px 6px;font-size:.7rem;font-style:italic;white-space:nowrap}
+.nb-from{font-weight:800;margin-left:3px}
 </style>

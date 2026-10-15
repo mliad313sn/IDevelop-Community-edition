@@ -27,7 +27,7 @@ const RBACService = require('../services/RBACService');
  * directement. Le catalogue est partagé (`common:err_not_authorized_employee`)
  * et la phrase anglaise reste la référence par défaut.
  */
-const { sayText } = require('../utils/apiErrors');
+const { sayText, sayError } = require('../utils/apiErrors');
 const notAuthorizedForEmployee = (req) =>
     sayText(req, 'common:err_not_authorized_employee', 'Not authorized for this employee');
 
@@ -294,7 +294,22 @@ router.post(
         // Pass the caller: the write-back, its 9-box events and the PIP/IDP
         // triggers are then attributed to the person who clicked Finalize, not to
         // the session's facilitator by default (and the audit row gets ip/request).
-        const r = await Calib.finalizeCalibration(sid, { user: req.user, req });
+        let r;
+        try {
+            r = await Calib.finalizeCalibration(sid, { user: req.user, req });
+        } catch (e) {
+            // A refused calibration rationale (too short, a placeholder, a copy
+            // of the previous reason: migration 175) is a domain refusal raised
+            // with its catalogue key. The generic error handler would answer
+            // err.message, in English whatever the page; translate it like the
+            // other 9-box refusals. Anything else keeps the generic path.
+            if (e && e.i18n && e.i18n.key && Number(e.status) >= 400 && Number(e.status) < 500) {
+                return res
+                    .status(Number(e.status))
+                    .json({ ok: false, error: sayError(req, e), code: e.code || null });
+            }
+            throw e;
+        }
         if (!r || r.ok === false) {
             return res.status(409).json({
                 ok: false,

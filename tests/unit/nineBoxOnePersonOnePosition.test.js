@@ -250,7 +250,10 @@ describe('AMDEC C1 — one person, one position', () => {
                 potential: 'high',
                 comments: 'UAT-C1 new',
             });
-            await NineBox.approve(USER, fresh.id);
+            // Migration 175: a box change needs its written reason.
+            await NineBox.approve(USER, fresh.id, null, {
+                movementJustification: 'UAT-C1: results and potential confirmed in review',
+            });
             const rows = await db.all(
                 'SELECT id, status FROM nine_box_evaluations WHERE employee_id = ? ORDER BY id',
                 [EMP]
@@ -278,7 +281,10 @@ describe('AMDEC C1 — one person, one position', () => {
                 performance: 'high',
                 potential: 'high',
             });
-            await NineBox.approve(USER, fresh.id);
+            // Migration 175: a box change needs its written reason.
+            await NineBox.approve(USER, fresh.id, null, {
+                movementJustification: 'UAT-C1: results and potential confirmed in review',
+            });
             return NineBox.placementTrend(EMP, USER);
         });
         expect(out.length).toBe(2);

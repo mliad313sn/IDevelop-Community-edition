@@ -225,7 +225,16 @@ const REDACTED_ON_ERASURE = [
         // `disclosure_reason` REJOINT comments/evidence/calibration_notes
         // (résidu A-04) : c'est le motif écrit par un tiers pour divulguer la
         // case au sujet, du texte libre sur la personne comme les trois autres.
-        erased: ['comments', 'evidence', 'calibration_notes', 'disclosure_reason'],
+        // The written reason of a 9-box move (migration 175) is free text by a
+        // third party about the person, like the four above. The movement
+        // record itself (previous box, direction, dates) is kept.
+        erased: [
+            'comments',
+            'evidence',
+            'calibration_notes',
+            'disclosure_reason',
+            'movement_justification',
+        ],
         kept: [
             'id',
             'performance',
@@ -235,6 +244,10 @@ const REDACTED_ON_ERASURE = [
             'status',
             'disclosed_to_employee',
             'disclosed_at',
+            'previous_box',
+            'movement_direction',
+            'movement_justified_at',
+            'approved_at',
             'created_at',
         ],
     },
@@ -712,7 +725,8 @@ class DSRService {
             'nineBox',
             `SELECT id, performance, potential, box, box_label, comments, evidence,
                     calibration_notes, status, disclosed_to_employee, disclosed_at, disclosure_reason,
-                    created_at
+                    previous_box, movement_direction, movement_justification, movement_justified_at,
+                    approved_at, created_at
                FROM nine_box_evaluations WHERE employee_id = ?`,
             [employeeId]
         );
@@ -1234,7 +1248,7 @@ class DSRService {
             // `disclosed_to_employee` est vrai → marqueur quand il y en avait un,
             // NULL quand il n'y en avait pas ; jamais un NULL qui ferait avorter.
             await db.run(
-                "UPDATE nine_box_evaluations SET comments = NULL, evidence = NULL, calibration_notes = NULL, disclosure_reason = CASE WHEN disclosure_reason IS NULL THEN NULL ELSE '[erased]' END WHERE employee_id = ?",
+                "UPDATE nine_box_evaluations SET comments = NULL, evidence = NULL, calibration_notes = NULL, disclosure_reason = CASE WHEN disclosure_reason IS NULL THEN NULL ELSE '[erased]' END, movement_justification = CASE WHEN movement_justification IS NULL THEN NULL ELSE '[erased]' END WHERE employee_id = ?",
                 [employeeId]
             );
             await db.run(

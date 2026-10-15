@@ -283,7 +283,7 @@
   "cat_supervisorReviews": "Reviewer decisions and their notes",
   "cat_disputes": "Disputes",
   "cat_changeRequests": "Assessment change requests",
-  "cat_nineBox": "9-box placement and comments",
+  "cat_nineBox": "9-box placement, comments and reasons for a change of box",
   "cat_calibrationAdjustments": "Calibration adjustments",
   "cat_retentionRisk": "Risk-of-loss score",
   "cat_coachingSessions": "Coaching sessions",

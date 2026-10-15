@@ -194,7 +194,18 @@ class EmployeePortalController {
             const nineBoxVisible = await TalentConfidentialityService.nineBoxVisibleToEmployees();
             const nineBox = nineBoxVisible
                 ? await db.get(
-                      `SELECT performance, potential, box, box_label, approved_at
+                      // movement_direction (migration 175): the person sees the
+                      // DIRECTION of the move only, never the reason or the
+                      // calibration notes, and only when the PREVIOUS placement
+                      // was itself disclosed to them: a direction would otherwise
+                      // reveal an earlier box they were never shown.
+                      `SELECT performance, potential, box, box_label, approved_at,
+                              CASE WHEN movement_direction IN ('up', 'down', 'lateral', 'stable')
+                                    AND EXISTS (SELECT 1 FROM nine_box_evaluations pv
+                                                 WHERE pv.id = nine_box_evaluations.previous_evaluation_id
+                                                   AND pv.employee_id = nine_box_evaluations.employee_id
+                                                   AND pv.disclosed_to_employee = true)
+                                   THEN movement_direction END AS movement_direction
                          FROM nine_box_evaluations
                         WHERE employee_id = ? AND status = 'approved' AND disclosed_to_employee = true
                         ORDER BY approved_at DESC NULLS LAST, id DESC LIMIT 1`,

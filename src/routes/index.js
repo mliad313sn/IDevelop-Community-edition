@@ -840,6 +840,15 @@ router.get('/api/org-chart', requireManagerOrAdmin, (req, res) =>
 router.get('/talent/nine-box', requireManagerOrAdmin, NineBoxController.gridPage);
 router.get('/api/ninebox/grid', requireManagerOrAdmin, NineBoxController.grid);
 router.get('/api/ninebox/roster', requireManagerOrAdmin, NineBoxController.roster);
+// 9-box movements (migration 175): the page and its CSV, same guard and scope as
+// the console. Mounted before /api/ninebox/:id so "movements.csv" is never an id.
+router.get('/talent/nine-box/movements', requireManagerOrAdmin, NineBoxController.movementsPage);
+router.get('/api/ninebox/movements.csv', requireManagerOrAdmin, NineBoxController.movementsCsv);
+router.get(
+    '/api/ninebox/employee/:id/previous',
+    requireManagerOrAdmin,
+    NineBoxController.previousPlacement
+);
 router.get('/api/ninebox/:id', requireManagerOrAdmin, NineBoxController.get);
 router.get('/api/ninebox/:id/history', requireManagerOrAdmin, NineBoxController.history);
 router.get('/api/ninebox/employee/:id/trend', requireManagerOrAdmin, NineBoxController.trend);

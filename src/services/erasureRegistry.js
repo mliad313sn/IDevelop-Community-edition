@@ -347,7 +347,11 @@ const SUBJECT_DATA_REGISTRY = [
     },
 
     // ---- talent -----------------------------------------------------------------------
+    // `movement_justification` (migration 175) is redacted with the other free
+    // text of the row (REDACTED_ON_ERASURE `nineBox`); `movement_justified_by`
+    // is the account that wrote it, an id on another person's record.
     red('nine_box_evaluations', 'employee_id', 'nineBox'),
+    keep('nine_box_evaluations', 'movement_justified_by', ACTOR),
     {
         table: 'nine_box_events',
         column: 'employee_id',
