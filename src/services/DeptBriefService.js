@@ -482,13 +482,17 @@ const METRIC_DIRECTION = Object.freeze({
 // the one renderer of a value
 // ---------------------------------------------------------------------------
 
+// One rounding for the text AND the colour (utils/displayedValue): a value
+// printed "80,0 %" is never coloured as below an 80 % threshold.
+const { displayedValue } = require('../utils/displayedValue');
+
 function frNum(n) {
     if (n === null || n === undefined) return null;
-    return String(Math.round(Number(n) * 10) / 10).replace('.', ',');
+    return String(displayedValue(Number(n), 1)).replace('.', ',');
 }
 function enNum(n) {
     if (n === null || n === undefined) return null;
-    return String(Math.round(Number(n) * 10) / 10);
+    return String(displayedValue(Number(n), 1));
 }
 
 /**
@@ -697,7 +701,8 @@ function cell(value, opts = {}) {
     }
 
     const n = Number(value);
-    const color = _colorFor(n, thresholds);
+    // Decide on the value the reader sees (a % is printed with one decimal).
+    const color = _colorFor(unit === 'pct' ? displayedValue(n, 1) : n, thresholds);
     let fr, en;
     if (unit === 'pct') {
         fr = `${frNum(n)} %`;

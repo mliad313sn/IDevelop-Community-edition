@@ -466,8 +466,12 @@ class DashboardModel {
                 -- KPI would read 1/303 = 0.3 % instead of 100 %, and the
                 -- snapshot job would persist that into the trend for good.
                 -- Same rule as readiness_assessed_only.
+                -- A COMPLIANCE %: never rounded UP (utils/displayedValue, safety
+                -- exception). ROUND(…, 1) printed 1 999 of 2 000 critical
+                -- requirements met as "100 %"; FLOOR to the printed decimal keeps
+                -- a single shortfall visible (99.9 %).
                 CASE WHEN SUM(critical_assessed) > 0
-                     THEN ROUND(100.0 * SUM(critical_met) / NULLIF(SUM(critical_assessed), 0), 1)
+                     THEN FLOOR(1000.0 * SUM(critical_met) / NULLIF(SUM(critical_assessed), 0)) / 10
                 END as criticalCompliance,
                 SUM(critical_assessed) as criticalAssessedRequirements,
                 SUM(critical_expected) as criticalExpectedRequirements,

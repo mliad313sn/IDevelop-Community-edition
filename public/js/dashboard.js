@@ -2406,8 +2406,11 @@ const Dashboard = (() => {
     }
 
     function getColorForValue(val, goodThresh, warnThresh) {
-        if (val >= goodThresh) return COLORS.good;
-        if (val >= warnThresh) return COLORS.warning;
+        // Decide on the value the reader sees: fmtPct prints one decimal, so a
+        // 94.96 printed "95 %" is coloured as 95, never as below 95.
+        const shown = Number(Number(val).toFixed(1));
+        if (shown >= goodThresh) return COLORS.good;
+        if (shown >= warnThresh) return COLORS.warning;
         return COLORS.danger; // or red
     }
 
