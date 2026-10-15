@@ -101,6 +101,10 @@ const IMMUTABLE_TABLES = new Set([
     // Migration 116 — trg_sa_events_immutable / trg_sa_events_no_truncate.
     'self_assessment_events',
     'selfAssessmentEvents',
+    // Migration 186 — trg_kpi_targets_immutable: a target decision is never
+    // rewritten or deleted.
+    'kpi_targets',
+    'kpiTargets',
 ]);
 
 const BACKUP_DIR = path.resolve(__dirname, '../../data/backups');
