@@ -844,5 +844,6 @@
   "dg_nothing": "Rien à signaler sur cette période.",
   "dg_forbidden": "Ce récapitulatif a été écrit pour une autre personne : il ne peut pas être affiché.",
   "dg_notfound": "Ce récapitulatif n'existe pas.",
-  "dg_out_of_scope": "Ce récapitulatif décrit un périmètre qui n'est plus entièrement dans vos droits : son contenu n'est pas affiché."
+  "dg_out_of_scope": "Ce récapitulatif décrit un périmètre qui n'est plus entièrement dans vos droits : son contenu n'est pas affiché.",
+  "d3_rd_h_map": "Le référentiel par {{unit}} : piliers et sous-domaines"
 }

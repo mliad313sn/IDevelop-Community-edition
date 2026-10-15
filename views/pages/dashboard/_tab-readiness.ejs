@@ -1,7 +1,8 @@
 <%#
   « Role readiness »: the K1-K4 tiles (above, from _panel), how readiness is
   spread (bell curve ‖ K1 by unit), one unit compared with the whole scope
-  (pillar radar + its widest measured skill gaps), the pillar heatmap.
+  (pillar radar + its widest measured skill gaps), the capability map (every
+  pillar disclosing its sub-domains x every unit, « Whole framework » first).
   Locals: P (tabModel 'readiness'), units.
 -%><%
   var _F = numFmt;
@@ -96,9 +97,9 @@
 </section>
 <% } %>
 
-<% if (P.pillarHeat && !P.pillarHeat.empty && (P.pillarHeat.rows || []).some(function (r) { return (r.cells || []).some(function (c) { return c.state === 'ok'; }); })) { %>
-<h3 class="ds-section-h"><%= __('dash:d3_rd_h_heat', { unit: _unitName }) %></h3>
-<section class="ds-card" id="ds-pillar-heat">
-    <%- include('../../partials/viz/heat', { H: P.pillarHeat, heatId: 'ds-heat-pillar', heatTitle: __('dash:d3_rd_h_heat', { unit: _unitName }), noneLabel: _noneLabel, topRows: 10 }) %>
+<% if (P.capabilityMap && !P.capabilityMap.empty) { %>
+<h3 class="ds-section-h"><%= __('viz:heat.map_name') %></h3>
+<section class="ds-card" id="ds-capmap">
+    <%- include('../../partials/viz/capmap', { H: P.capabilityMap, heatId: 'ds-cm', heatTitle: __('dash:d3_rd_h_map', { unit: _unitName }), noneLabel: _noneLabel }) %>
 </section>
 <% } %>

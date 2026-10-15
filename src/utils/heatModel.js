@@ -390,6 +390,216 @@ function coverageHeatModel(cov, opts = {}) {
     };
 }
 
+/**
+ * capabilityMapModel(rows, tree, opts) — the capability map: the WHOLE
+ * framework (every active pillar, each disclosing its active sub-domains, in
+ * framework order) x every unit of the reader's scope, with « Whole
+ * framework » as the FIRST row. Same measure, colours and rules as heatModel
+ * (attain): n < 5 masked, units under 5 pooled into « Others » (last
+ * column), complementary suppression line by line (the pillar grid, each
+ * pillar's sub-domains, and the « Whole framework » row), « Not measured »
+ * hatched and never 0, « Not required in this scope » (na) when nobody of the
+ * scope holds a requirement there, marginals as population aggregates.
+ *   rows  the cube of DashboardHomeService.capabilityMap: parts 'us' (unit x
+ *         pillar x sub-domain), 'up' (unit x pillar), 'u' (unit), 's'
+ *         (pillar x sub-domain), 'p' (pillar), 'total'
+ *   tree  [{ key, label, subs: [{ key, label }] }] in framework order
+ *   opts  { unit, unitLabel(unitKey, unitName), hrefOf(unitKey, part) }
+ *         part = 'p<id>' (a pillar) or 's<id>' (a sub-domain)
+ * Pure.
+ */
+function capabilityMapModel(rows, tree, opts = {}) {
+    const kind = 'attain';
+    const us = new Map();
+    const up = new Map();
+    const u = new Map();
+    const sp = new Map();
+    const pp = new Map();
+    const names = new Map();
+    let total = null;
+    for (const r of rows || []) {
+        const uk = r.unitKey === null || r.unitKey === undefined ? null : String(r.unitKey);
+        const pk = r.pillarKey === null || r.pillarKey === undefined ? null : String(r.pillarKey);
+        const sk = r.subKey === null || r.subKey === undefined ? null : String(r.subKey);
+        if (uk !== null && !names.has(uk)) names.set(uk, r.unitName || null);
+        if (r.part === 'us') us.set(uk + '|' + pk + '|' + sk, r);
+        else if (r.part === 'up') up.set(uk + '|' + pk, r);
+        else if (r.part === 'u') u.set(uk, r);
+        else if (r.part === 's') sp.set(pk + '|' + sk, r);
+        else if (r.part === 'p') pp.set(pk, r);
+        else if (r.part === 'total') total = r;
+    }
+    const T = Array.isArray(tree) ? tree : [];
+    const units = [...u.keys()];
+    const empty = { kind, mode: 'map', cols: [], rows: [], flat: [], layout: 'grid', empty: true };
+    if (!units.length || !T.length || !total) return empty;
+    const labelOf = (k) =>
+        opts.unitLabel ? opts.unitLabel(k, names.get(k) || null) : names.get(k) || null;
+    const pooled = units.filter((k) => ((u.get(k) || {}).n || 0) < HEAT_MIN_N);
+    const shown = units.filter((k) => !pooled.includes(k));
+    const cols = shown.map((k) => ({
+        key: k,
+        label: labelOf(k),
+        none: k === 'none',
+        pooled: null,
+        n: (u.get(k) || {}).n || 0,
+        src: [k],
+    }));
+    if (pooled.length)
+        cols.push({
+            key: 'pooled',
+            label: null,
+            none: false,
+            pooled: pooled.map((k) => labelOf(k)),
+            n: pooled.reduce((a, k) => a + ((u.get(k) || {}).n || 0), 0),
+            src: pooled,
+        });
+    const sum = (map, keyOf, c) => {
+        let acc = null;
+        for (const k of c.src) acc = heatAdd(acc, map.get(keyOf(k)) || null);
+        return heatCellOf(kind, acc);
+    };
+    // « Whole framework » row: one population aggregate per column
+    const margRow = cols.map((c) => sum(u, (k) => k, c));
+    heatComplement([margRow]);
+    cols.forEach((c, j) => {
+        c.marg = margRow[j];
+    });
+    // pillar grid, then each pillar's sub-domains: suppression line by line
+    const pillarMatrix = T.map((p) => cols.map((c) => sum(up, (k) => k + '|' + p.key, c)));
+    heatComplement(pillarMatrix);
+    let outRows = T.map((p, i) => {
+        const subs = Array.isArray(p.subs) ? p.subs : [];
+        const subMatrix = subs.map((sd) =>
+            cols.map((c) => sum(us, (k) => k + '|' + p.key + '|' + sd.key, c))
+        );
+        heatComplement(subMatrix);
+        return {
+            key: String(p.key),
+            label: p.label,
+            marg: heatCellOf(kind, pp.get(String(p.key)) || null),
+            cells: pillarMatrix[i],
+            children: subs.map((sd, j) => ({
+                key: String(sd.key),
+                label: sd.label,
+                marg: heatCellOf(kind, sp.get(String(p.key) + '|' + String(sd.key)) || null),
+                cells: subMatrix[j],
+            })),
+        };
+    });
+    // columns worst first on « Whole framework », the pooled column last
+    const order = cols
+        .map((c, j) => ({ ...c, j }))
+        .sort((a, b) => (a.pooled || b.pooled ? (a.pooled ? 1 : -1) : heatWorstFirst(kind)(a, b)));
+    const colsOut = order.map(({ src: _src, j: _j, ...c }) => c);
+    const link = (x, c, part) => {
+        if (x.state !== 'ok' || !opts.hrefOf || c.pooled || c.key === 'none') return x;
+        const href = opts.hrefOf(c.key, part);
+        return href ? { ...x, href } : x;
+    };
+    outRows = outRows.map((r) => ({
+        ...r,
+        cells: order.map((c) => link(r.cells[c.j], c, 'p' + r.key)),
+        children: r.children.map((ch) => ({
+            ...ch,
+            cells: order.map((c) => link(ch.cells[c.j], c, 's' + ch.key)),
+        })),
+    }));
+    const flat = [];
+    outRows.forEach((r) =>
+        r.children.forEach((ch) =>
+            ch.cells.forEach((c, j) => {
+                if (c.state === 'ok')
+                    flat.push({
+                        row: r.label + ' › ' + ch.label,
+                        col: colsOut[j].label,
+                        pooled: !!colsOut[j].pooled,
+                        none: colsOut[j].none,
+                        ...c,
+                    });
+            })
+        )
+    );
+    // a framework without measured sub-domain cells: the pillar cells instead
+    if (!flat.length)
+        outRows.forEach((r) =>
+            r.cells.forEach((c, j) => {
+                if (c.state === 'ok')
+                    flat.push({
+                        row: r.label,
+                        col: colsOut[j].label,
+                        pooled: !!colsOut[j].pooled,
+                        none: colsOut[j].none,
+                        ...c,
+                    });
+            })
+        );
+    flat.sort((a, b) => a.value - b.value);
+    const totalCell = heatCellOf(kind, total);
+    const all = [];
+    outRows.forEach((r) => {
+        all.push(r.marg, ...r.cells);
+        r.children.forEach((ch) => all.push(ch.marg, ...ch.cells));
+    });
+    colsOut.forEach((c) => all.push(c.marg));
+    all.push(totalCell);
+    const present = new Set(all.filter((c) => c && c.bin).map((c) => c.bin));
+    return {
+        kind,
+        mode: 'map',
+        unit: opts.unit || null,
+        cols: colsOut,
+        rows: outRows,
+        total: totalCell,
+        totalFirst: true,
+        flat: flat.slice(0, FLAT_GRID),
+        restRows: 0,
+        binsPresent: [...present],
+        hasMasked: all.some((c) => c && c.state === 'masked'),
+        hasUnmeasured: all.some((c) => c && c.state === 'unmeasured'),
+        hasNa: all.some((c) => c && c.state === 'na'),
+        hasBelow: all.some((c) => c && c.below),
+        pillarsBelow: outRows
+            .filter((r) => r.marg.state === 'ok' && r.marg.below)
+            .map((r) => r.label),
+        subsBelow: outRows.reduce(
+            (a, r) => a + r.children.filter((ch) => ch.marg.state === 'ok' && ch.marg.below).length,
+            0
+        ),
+        layout: 'grid',
+    };
+}
+
+/**
+ * The « Whole framework » row of a capability map alone, for the Overview
+ * tab: one cell per column and the overall figure. null when the map is
+ * empty (the block hides). Pure.
+ */
+function capabilityMapStrip(m) {
+    if (!m || m.empty || !m.cols || !m.cols.length) return null;
+    const present = new Set(
+        m.cols
+            .map((c) => c.marg)
+            .concat([m.total])
+            .filter((c) => c && c.bin)
+            .map((c) => c.bin)
+    );
+    return {
+        kind: m.kind,
+        unit: m.unit,
+        cols: m.cols.map((c) => ({
+            key: c.key,
+            label: c.label,
+            none: c.none,
+            pooled: c.pooled,
+            n: c.n,
+            marg: c.marg,
+        })),
+        total: m.total,
+        binsPresent: [...present],
+    };
+}
+
 module.exports = {
     HEAT_MIN_N,
     heatCellOf,
@@ -399,4 +609,6 @@ module.exports = {
     heatFlat,
     heatModel,
     coverageHeatModel,
+    capabilityMapModel,
+    capabilityMapStrip,
 };

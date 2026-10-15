@@ -213,6 +213,20 @@
             setDisclosure(disc, disc.getAttribute('aria-expanded') !== 'true');
             return;
         }
+        // the capability map: open or close every pillar at once
+        var all = t.closest('[data-vh-expand-all]');
+        if (all) {
+            var mapFig = figureOf(all);
+            if (!mapFig) return;
+            var openAll = all.getAttribute('aria-pressed') !== 'true';
+            Array.prototype.forEach.call(mapFig.querySelectorAll('[data-vh-disc]'), function (b) {
+                setDisclosure(b, openAll);
+            });
+            all.setAttribute('aria-pressed', openAll ? 'true' : 'false');
+            var allLabel = all.getAttribute(openAll ? 'data-label-close' : 'data-label-open');
+            if (allLabel) all.textContent = allLabel;
+            return;
+        }
         var btn = t.closest('[data-vh-showgrid]');
         if (btn) {
             var fig = figureOf(btn);

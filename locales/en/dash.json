@@ -844,5 +844,6 @@
   "dg_nothing": "Nothing to report over this period.",
   "dg_forbidden": "This summary was written for someone else: it cannot be shown.",
   "dg_notfound": "This summary does not exist.",
-  "dg_out_of_scope": "This summary describes a scope that is no longer entirely within your rights: its content is not shown."
+  "dg_out_of_scope": "This summary describes a scope that is no longer entirely within your rights: its content is not shown.",
+  "d3_rd_h_map": "The framework by {{unit}}: pillars and sub-domains"
 }

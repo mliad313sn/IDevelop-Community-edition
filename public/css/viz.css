@@ -278,6 +278,36 @@
 .vh-margrow .vh-v,
 .vh-margrow th { font-weight: 800; }
 .vh-c:focus-visible { outline: 3px solid var(--focus-ring, var(--brand)); outline-offset: 1px; }
+/* ---- the capability map (views/partials/viz/capmap.ejs) ------------------- */
+.vh-map-tools { margin: 0 0 0.5rem; }
+.vh-totalrow .vh-v,
+.vh-totalrow th { font-weight: 800; }
+.vh-totalrow td { box-shadow: inset 0 -2px 0 var(--vh-edge); }
+.vh-disc { display: inline-flex; align-items: flex-start; gap: 0.35rem; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.vh-disc:focus-visible { outline: 3px solid var(--focus-ring, var(--brand)); outline-offset: 2px; }
+.vh-disc-icon { display: inline-block; transition: transform 0.15s ease; }
+.vh-disc[aria-expanded='true'] .vh-disc-icon { transform: rotate(90deg); }
+.vh-rowh--sub { padding-left: 1.4rem; font-weight: 500; }
+.vh-subrow .vh-c { height: 48px; }
+.vh-sw--na { display: inline-block; text-align: center; color: var(--viz-text-dim); }
+/* the « Whole framework » strip (views/partials/viz/capstrip.ejs) */
+.vh-strip h3 { margin: 0 0 0.25rem; font-size: 1rem; }
+.vh-strip-row { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr)); gap: 6px; }
+.vh-strip-c { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--vh-at); color: var(--vh-ink-at); box-shadow: inset 0 0 0 1px var(--vh-edge); }
+.vh-strip-c[data-bin='below-3'] { background: var(--vh-below-3); color: var(--vh-ink-below-3); }
+.vh-strip-c[data-bin='below-2'] { background: var(--vh-below-2); color: var(--vh-ink-below-2); }
+.vh-strip-c[data-bin='below-1'] { background: var(--vh-below-1); color: var(--vh-ink-below-1); }
+.vh-strip-c[data-bin='above-1'] { background: var(--vh-above-1); color: var(--vh-ink-above-1); }
+.vh-strip-c[data-bin='above-2'] { background: var(--vh-above-2); color: var(--vh-ink-above-2); }
+.vh-strip-c--masked,
+.vh-strip-c--na { background: transparent; color: var(--viz-text-dim); }
+/* the hatch must win over the .vh-strip-c background (later rule) */
+.vh-strip-c--unmeasured,
+.vh-strip-c.viz-hatch { background-color: transparent; background-image: var(--viz-hatch); color: var(--viz-text); }
+.vh-strip-c--total { font-weight: 800; }
+.vh-strip-l { font-size: 0.8125rem; overflow-wrap: anywhere; }
+.vh-strip-v { font-weight: 700; font-variant-numeric: tabular-nums; }
+.vh-strip-more { margin: 0.5rem 0 0; }
 .vh-tip { position: absolute; z-index: var(--z-popover); max-width: 280px; padding: 10px 12px; border-radius: 12px; background: var(--vh-tip-bg); color: var(--vh-tip-ink); font-size: 0.8125rem; line-height: 1.35; white-space: pre-line; box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.25)); pointer-events: none; }
 .vh-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 10px 0 4px; font-size: 0.8125rem; color: var(--viz-text-dim); }
 .vh-key { display: inline-flex; align-items: center; gap: 6px; }
@@ -438,6 +468,10 @@ polyline.viz-radar-line { fill: none; }
     .vh .vh-scroll,
     .vh .vh-more { display: block !important; overflow: visible; }
     .vh .vh-more > summary { display: none; }
+    .vh .vh-subs[hidden] { display: table-row-group !important; }
+    .vh .vh-map-tools,
+    .vh .vh-disc-icon { display: none !important; }
+    .vh-strip-c { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     .vh .vh-c .vh-n,
     .vh .vh-coln { display: block; }
     .viz-canvas-wrap canvas { display: none !important; }

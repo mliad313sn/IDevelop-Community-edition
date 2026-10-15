@@ -1,0 +1,157 @@
+<%#
+  The capability map (model: src/utils/heatModel.capabilityMapModel). The
+  WHOLE framework: « Whole framework » first, then every pillar in framework
+  order, each a disclosure button (aria-expanded, aria-controls) opening a
+  tbody of its sub-domains; one column per unit of the scope, worst first,
+  « Others » (units under 5 people, pooled) last, and « Overall ».
+  Same rules and tokens as views/partials/viz/heat.ejs: « Not measured » is
+  hatched and never 0, fewer than 5 people is « < 5 » (never coloured, never
+  a link), « Not required in this scope » is a dot; colour is never the only
+  carrier (the value and ▼ are printed); a link opens the aggregate list of
+  the people below the requirement, never a name. Keyboard: one tab stop per
+  grid, arrows / Home / End (public/js/viz-heat.js), the disclosure buttons
+  are real buttons. Phone: the sub-domain cells furthest behind as a list,
+  the full grid on demand. Print: everything open.
+  Locals: H (model), heatId, heatTitle?, heatSubtitle?, noneLabel?, plus `__`,
+  `lang`, `numFmt`, `colon`.
+-%><%
+  var _H = (typeof H !== 'undefined' && H) ? H : null;
+  var _id = (typeof heatId !== 'undefined' && heatId) ? String(heatId) : 'cm';
+  var _F = (typeof numFmt !== 'undefined' && numFmt) ? numFmt : { num: function (v) { return v === null || v === undefined ? null : String(v); }, pct: function (v) { return v === null || v === undefined ? null : String(v) + ' %'; }, level: function (v) { return v === null || v === undefined ? null : String(v); } };
+  var _N = function (n) { return _F.num(n, 0); };
+  var _L1 = function (n) { return _F.level(n); };
+  var _P0 = function (v) { return _F.pct(v * 100, 0); };
+  var _P1 = function (v) { return _F.pct(v * 100, 1); };
+  var _title = (typeof heatTitle !== 'undefined' && heatTitle) ? heatTitle : __('viz:heat.map_title');
+  var _sub = (typeof heatSubtitle !== 'undefined' && heatSubtitle) ? heatSubtitle : __('viz:heat.map_sub');
+  var _none = (typeof noneLabel !== 'undefined' && noneLabel) ? noneLabel : __('viz:no_site');
+  var _colon = (typeof colon !== 'undefined' && colon) ? colon : ((typeof lang !== 'undefined' && lang === 'en') ? ':' : ' :');
+  var _BINS = ['below-3', 'below-2', 'below-1', 'at', 'above-1', 'above-2'];
+  var colLabel = function (c) { return c.pooled ? __('viz:heat.pooled') : (c.none ? _none : (c.label || '—')); };
+  var totalLabel = __('viz:heat.map_total_row');
+  var valueText = function (c) {
+      if (c.state === 'na') return '·';
+      if (c.state === 'masked') return __('viz:heat.masked');
+      if (c.state === 'unmeasured') return __('viz:unmeasured');
+      return _P0(c.value);
+  };
+  var tipLines = function (c) {
+      var l = [];
+      if (c.state === 'ok') {
+          l.push(__('viz:heat.tip_level', { a: _L1(c.actual), r: _L1(c.required), p: _P0(c.value) }));
+          l.push(__('viz:heat.tip_n', { n: _N(c.n) }));
+          if (c.href) l.push(__('viz:heat.tip_drill'));
+      } else if (c.state === 'masked') l.push(__('viz:heat.tip_masked'));
+      else if (c.state === 'unmeasured') l.push(__('viz:heat.tip_unmeasured'));
+      else l.push(__('viz:heat.map_na'));
+      return l;
+  };
+  var cellCls = function (c, extra) {
+      var k = 'vh-c' + (extra ? ' ' + extra : '');
+      if (c.state === 'masked') return k + ' vh-c--masked';
+      if (c.state === 'unmeasured') return k + ' vh-c--unmeasured viz-hatch';
+      if (c.state === 'na') return k + ' vh-c--na';
+      return k;
+  };
+  var takeaway = null;
+  if (_H && _H.rows && _H.rows.length) {
+      if (_H.pillarsBelow && _H.pillarsBelow.length) takeaway = __('viz:heat.map_tk_pillars', { k: _N(_H.pillarsBelow.length), m: _N(_H.rows.length), list: _H.pillarsBelow.join(', ') });
+      else if (_H.subsBelow) takeaway = __('viz:heat.map_tk_subs', { count: _H.subsBelow, n: _N(_H.subsBelow) });
+      else takeaway = __('viz:heat.map_tk_none');
+  }
+  var _entry = { done: false };
+-%>
+<figure class="vh vh--map" id="<%= _id %>" data-vh-kind="attain" aria-labelledby="<%= _id %>-h">
+    <figcaption class="vh-head">
+        <h3 class="vh-title" id="<%= _id %>-h"><%= _title %></h3>
+        <p class="viz-subtitle"><%= _sub %></p>
+        <% if (takeaway) { %><p class="vh-tk"><%= takeaway %></p><% } %>
+    </figcaption>
+<% if (!_H || _H.empty || !_H.rows || !_H.rows.length) { %>
+    <p class="vh-note"><%= __('viz:heat.empty') %></p>
+<% } else { %>
+    <% var renderCell = function (rowLabel, c, j, cols, extraCls) {
+        var colText = colLabel(cols[j]);
+        var lines = tipLines(c);
+        var tip = rowLabel + ' — ' + colText + '\n' + lines.join('\n');
+        var spoken = rowLabel + ', ' + colText + _colon + ' ' + valueText(c) + (c.below ? ' ▼' : '') + '. ' + lines.join('. ');
+        var _tab = (c.state === 'ok' && !_entry.done) ? '0' : '-1'; if (_tab === '0') _entry.done = true; %><td role="gridcell" tabindex="<%= _tab %>" class="<%= cellCls(c, extraCls) %>"<% if (c.state === 'ok') { %> data-bin="<%= c.bin %>"<% if (c.below) { %> data-below="1"<% } %><% } %> data-tip="<%= tip %>"><% if (c.href && c.state === 'ok') { %><a class="vh-drill" href="<%= c.href %>" tabindex="-1" aria-hidden="true"><% } %><span class="vh-v<%= c.state === 'unmeasured' ? ' vh-v--sm' : '' %>" aria-hidden="true"><%= valueText(c) %><% if (c.below) { %><span class="vh-mk">▼</span><% } %></span><% if (c.state === 'ok') { %><span class="vh-n" aria-hidden="true"><%= __('viz:heat.n', { n: _N(c.n) }) %></span><% } %><% if (c.href && c.state === 'ok') { %></a><% } %><span class="viz-live"><%= spoken %></span></td><% }; %>
+    <p class="vh-map-tools"><button type="button" class="btn btn-sm btn-secondary" data-vh-expand-all aria-controls="<%= _id %>-grid" data-label-open="<%= __('viz:heat.map_expand_all') %>" data-label-close="<%= __('viz:heat.map_collapse_all') %>" aria-pressed="false"><%= __('viz:heat.map_expand_all') %></button></p>
+    <div class="vh-scroll" data-vh-scroll>
+    <table class="vh-grid vh-grid--map" id="<%= _id %>-grid" role="grid" aria-describedby="<%= _id %>-legend" aria-colcount="<%= _H.cols.length + 2 %>">
+        <caption class="viz-live"><%= __('viz:heat.caption', { title: _title }) %></caption>
+        <thead><tr>
+            <th scope="col" class="vh-corner"><%= __('viz:heat.map_rows') %></th>
+            <% _H.cols.forEach(function (c) { %><th scope="col" class="vh-colh<%= c.pooled ? ' vh-colh--pooled' : '' %>"<% if (c.pooled) { %> title="<%= __('viz:heat.pooled_tip', { list: c.pooled.map(function (p) { return p || _none; }).join(', ') }) %>"<% } %>><span class="vh-colt"><%= colLabel(c) %></span><% if (c.n) { %><span class="vh-coln"><%= __('viz:heat.n', { n: _N(c.n) }) %></span><% } %></th><% }); %>
+            <th scope="col" class="vh-colh vh-marg"><span class="vh-colt"><%= __('viz:heat.marg_col') %></span></th>
+        </tr></thead>
+        <tbody>
+            <tr class="vh-totalrow"><th scope="row" class="vh-rowh"><%= totalLabel %></th>
+            <% _H.cols.forEach(function (c, j) { %><% renderCell(totalLabel, c.marg, j, _H.cols); %><% }); %>
+            <% renderCell(totalLabel, _H.total || { state: 'na' }, 0, [{ label: __('viz:heat.marg_col') }], 'vh-marg'); %>
+            </tr>
+        </tbody>
+        <% _H.rows.forEach(function (r) { var gid = _id + '-g-p' + r.key; %>
+        <tbody class="vh-pillar">
+            <tr><th scope="row" class="vh-rowh"><% if (r.children.length) { %><button type="button" class="vh-disc" data-vh-disc aria-expanded="false" aria-controls="<%= gid %>"><span class="vh-disc-icon" aria-hidden="true">▸</span><%= r.label %><span class="viz-live"> — <%= __('viz:heat.map_disc', { count: r.children.length, n: _N(r.children.length) }) %></span></button><% } else { %><%= r.label %><% } %></th>
+            <% r.cells.forEach(function (c, j) { %><% renderCell(r.label, c, j, _H.cols); %><% }); %>
+            <% renderCell(r.label, r.marg, 0, [{ label: __('viz:heat.marg_col') }], 'vh-marg'); %>
+            </tr>
+        </tbody>
+        <% if (r.children.length) { %>
+        <tbody class="vh-subs" id="<%= gid %>" hidden>
+            <% r.children.forEach(function (ch) { var lab = r.label + ' › ' + ch.label; %>
+            <tr class="vh-subrow"><th scope="row" class="vh-rowh vh-rowh--sub"><%= ch.label %></th>
+            <% ch.cells.forEach(function (c, j) { %><% renderCell(lab, c, j, _H.cols); %><% }); %>
+            <% renderCell(lab, ch.marg, 0, [{ label: __('viz:heat.marg_col') }], 'vh-marg'); %>
+            </tr>
+            <% }); %>
+        </tbody>
+        <% } %>
+        <% }); %>
+    </table>
+    </div>
+    <ol class="vh-list" aria-label="<%= __('viz:heat.list_title') %>">
+        <% (_H.flat || []).forEach(function (x) { %>
+        <li class="vh-item"><span class="vh-sw" data-bin="<%= x.bin %>" aria-hidden="true"></span>
+            <span class="vh-item-t"><% if (x.href) { %><a class="vh-item-link" href="<%= x.href %>"><%= x.row %></a><% } else { %><%= x.row %><% } %></span>
+            <span class="vh-item-v"><%= valueText(x) %><% if (x.below) { %> ▼<% } %></span>
+            <span class="vh-item-m"><%= x.pooled ? __('viz:heat.pooled') : (x.none ? _none : (x.col || '—')) %> · <%= __('viz:heat.n', { n: _N(x.n) }) %></span>
+        </li>
+        <% }); %>
+    </ol>
+    <p class="vh-showgrid"><button type="button" class="btn btn-sm btn-secondary" data-vh-showgrid aria-controls="<%= _id %>-grid" aria-expanded="false" data-label-open="<%= __('viz:heat.show_grid') %>" data-label-close="<%= __('viz:heat.hide_grid') %>"><%= __('viz:heat.show_grid') %></button></p>
+    <p class="vh-legend" id="<%= _id %>-legend">
+        <% _BINS.filter(function (b) { return (_H.binsPresent || []).indexOf(b) >= 0; }).forEach(function (b) { %><span class="vh-key"><span class="vh-sw" data-bin="<%= b %>" aria-hidden="true"></span><%= __('viz:heat.bin_attain_' + b.replace('-', '_')) %></span><% }); %>
+        <% if (_H.hasBelow) { %><span class="vh-key"><%= __('viz:heat.legend_below') %></span><% } %>
+        <% if (_H.hasMasked) { %><span class="vh-key"><span class="vh-sw vh-sw--masked" aria-hidden="true"></span><%= __('viz:heat.legend_masked') %></span><% } %>
+        <% if (_H.hasUnmeasured) { %><span class="vh-key"><span class="vh-sw viz-hatch" aria-hidden="true"></span><%= __('viz:unmeasured') %></span><% } %>
+        <% if (_H.hasNa) { %><span class="vh-key"><span class="vh-sw vh-sw--na" aria-hidden="true">·</span><%= __('viz:heat.map_na') %></span><% } %>
+    </p>
+    <div role="tooltip" class="vh-tip" id="<%= _id %>-tip" hidden></div>
+    <details class="viz-data">
+        <summary class="viz-data-toggle btn btn-sm btn-secondary"><%= __('viz:chart.toggle_show') %></summary>
+        <div class="viz-table-wrap">
+            <table class="viz-table" id="<%= _id %>-data">
+                <caption class="viz-live"><%= __('viz:chart.table_caption', { title: _title }) %></caption>
+                <thead><tr><th scope="col"><%= __('viz:heat.map_rows') %></th><th scope="col"><%= __('viz:heat.col_col') %></th><th scope="col" class="viz-num"><%= __('viz:heat.col_actual') %></th><th scope="col" class="viz-num"><%= __('viz:heat.col_required') %></th><th scope="col" class="viz-num"><%= __('viz:heat.col_pct') %></th><th scope="col" class="viz-num"><%= __('viz:heat.col_n') %></th></tr></thead>
+                <tbody>
+                <% var dataRow = function (rl, cl, c) { %>
+                    <tr><th scope="row"><%= rl %></th><td><%= cl %></td>
+                    <% if (c.state !== 'ok') { %><td class="viz-num viz-unmeasured-cell" colspan="4"><%= c.state === 'masked' ? __('viz:heat.tip_masked') : (c.state === 'na' ? '· ' + __('viz:heat.map_na') : __('viz:unmeasured')) %></td>
+                    <% } else { %><td class="viz-num"><%= _L1(c.actual) %></td><td class="viz-num"><%= _L1(c.required) %></td><td class="viz-num"><%= _P1(c.value) %></td><td class="viz-num"><%= _N(c.n) %></td><% } %>
+                    </tr>
+                <% }; %>
+                <% _H.cols.forEach(function (c) { dataRow(totalLabel, colLabel(c), c.marg); }); %>
+                <% if (_H.total) dataRow(totalLabel, __('viz:heat.marg_col'), _H.total); %>
+                <% _H.rows.forEach(function (r) {
+                    r.cells.forEach(function (c, j) { dataRow(r.label, colLabel(_H.cols[j]), c); }); dataRow(r.label, __('viz:heat.marg_col'), r.marg);
+                    r.children.forEach(function (ch) { var lab = r.label + ' › ' + ch.label; ch.cells.forEach(function (c, j) { dataRow(lab, colLabel(_H.cols[j]), c); }); dataRow(lab, __('viz:heat.marg_col'), ch.marg); });
+                }); %>
+                </tbody>
+            </table>
+            <% var pooledCol = _H.cols.filter(function (c) { return c.pooled; })[0]; if (pooledCol) { %><p class="vh-note"><%= __('viz:heat.pooled_tip', { list: pooledCol.pooled.map(function (p) { return p || _none; }).join(', ') }) %></p><% } %>
+        </div>
+    </details>
+<% } %>
+</figure>

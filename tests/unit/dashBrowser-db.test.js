@@ -290,14 +290,13 @@ d('the dashboard in a real browser (fixture world, rolled back)', () => {
                 role: a.getAttribute('role'),
                 row: a.parentElement ? a.parentElement.rowIndex : -1,
                 col: a.cellIndex,
-                stops: document.querySelectorAll(
-                    '#ds-heat-pillar-grid [role=gridcell][tabindex="0"]'
-                ).length,
+                stops: document.querySelectorAll('#ds-cm-grid [role=gridcell][tabindex="0"]')
+                    .length,
             };
         });
     const tip = (page) =>
         page.evaluate(() => {
-            const t = document.querySelector('#ds-heat-pillar .vh-tip');
+            const t = document.querySelector('#ds-cm .vh-tip');
             return { shown: !!t && !t.hidden, text: t ? t.textContent : '' };
         });
 
@@ -305,7 +304,7 @@ d('the dashboard in a real browser (fixture world, rolled back)', () => {
         'heatmap 1280 %s: one tab stop, arrows, Home / End, tooltip, Escape',
         async (theme) => {
             const { ctx, page, errors } = await open('/dashboard?tab=readiness', { theme });
-            const grid = '#ds-heat-pillar-grid';
+            const grid = '#ds-cm-grid';
             expect(await page.locator(`${grid} [role=gridcell][tabindex="0"]`).count()).toBe(1);
             await page.focus(`${grid} [role=gridcell][tabindex="0"]`);
             const a = await active(page);
@@ -335,12 +334,12 @@ d('the dashboard in a real browser (fixture world, rolled back)', () => {
     test('heatmap: Enter on a cell opens its list page, which names nobody', async () => {
         const { ctx, page } = await open('/dashboard?tab=readiness');
         const href = await page.evaluate(() => {
-            const a = document.querySelector('#ds-heat-pillar-grid a.vh-drill[href]');
+            const a = document.querySelector('#ds-cm-grid a.vh-drill[href]');
             return a ? a.getAttribute('href') : null;
         });
         expect(href).toMatch(/^\/dashboard\/list\?kpi=DOM&part=p\d+&/);
         await page.evaluate((h) => {
-            const a = document.querySelector(`#ds-heat-pillar-grid a.vh-drill[href="${h}"]`);
+            const a = document.querySelector(`#ds-cm-grid a.vh-drill[href="${h}"]`);
             a.closest('[role=gridcell]').focus();
         }, href);
         await Promise.all([page.waitForNavigation(), page.keyboard.press('Enter')]);
@@ -372,14 +371,14 @@ d('the dashboard in a real browser (fixture world, rolled back)', () => {
                         ),
                     sel
                 );
-            expect(await vis('#ds-heat-pillar .vh-scroll')).toBe(false);
-            expect(await vis('#ds-heat-pillar .vh-list')).toBe(true);
-            const items = await page.locator('#ds-heat-pillar .vh-item').count();
+            expect(await vis('#ds-cm .vh-scroll')).toBe(false);
+            expect(await vis('#ds-cm .vh-list')).toBe(true);
+            const items = await page.locator('#ds-cm .vh-item').count();
             expect(items).toBeGreaterThan(0);
             expect(items).toBeLessThanOrEqual(10);
             expect(await fits(page)).toBe(true);
-            await page.click('#ds-heat-pillar [data-vh-showgrid]');
-            expect(await vis('#ds-heat-pillar .vh-scroll')).toBe(true);
+            await page.click('#ds-cm [data-vh-showgrid]');
+            expect(await vis('#ds-cm .vh-scroll')).toBe(true);
             expect(await fits(page)).toBe(true);
             expect(errors).toEqual([]);
             await ctx.close();
@@ -402,8 +401,8 @@ d('the dashboard in a real browser (fixture world, rolled back)', () => {
                 ).length,
                 tabs: shown('.ds-tabs'),
                 actions: shown('.ds-actions'),
-                grid: shown('#ds-heat-pillar .vh-scroll'),
-                list: shown('#ds-heat-pillar .vh-list'),
+                grid: shown('#ds-cm .vh-scroll'),
+                list: shown('#ds-cm .vh-list'),
                 form: shown('.viz-scope-form'),
             };
         });

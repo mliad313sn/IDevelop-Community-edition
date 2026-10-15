@@ -68,12 +68,15 @@ const BLOCKS = Object.freeze([
     { id: 'gauge', tab: 'overview', module: null, permission: null },
     { id: 'trend', tab: 'overview', module: null, permission: null, kpi: 'K1' },
     { id: 'siteStatus', tab: 'overview', module: null, permission: null, kpi: 'K1' },
+    // the « Whole framework » row of the capability map, linked to the full map
+    { id: 'capStrip', tab: 'overview', module: null, permission: 'skills', kpi: 'K2' },
     // readiness
     { id: 'readinessTiles', tab: 'readiness', module: null, permission: null },
     { id: 'bell', tab: 'readiness', module: null, permission: null, kpi: 'K2' },
     { id: 'byGroup', tab: 'readiness', module: null, permission: null, kpi: 'K1' },
     { id: 'compare', tab: 'readiness', module: null, permission: 'skills', kpi: 'K2' },
-    { id: 'pillarHeat', tab: 'readiness', module: null, permission: 'skills', kpi: 'K2' },
+    // the capability map: every pillar (disclosing its sub-domains) x every unit
+    { id: 'capabilityMap', tab: 'readiness', module: null, permission: 'skills', kpi: 'K2' },
     // safety
     { id: 'safetyTiles', tab: 'safety', module: null, permission: 'safety' },
     { id: 'certCalendar', tab: 'safety', module: null, permission: 'safety', kpi: 'K8' },
@@ -153,13 +156,14 @@ const DRILLS = Object.freeze({
         parts: ['active', 'overdue'],
     },
     // a heatmap cell: the people below the requirement on one pillar (p<id>)
+    // or one sub-domain (s<id>, the capability map)
     DOM: {
         module: null,
         cap: 'skills',
         kind: 'people',
         list: 'gaps_report',
         parts: [],
-        partPattern: /^p[1-9][0-9]{0,9}$/,
+        partPattern: /^[ps][1-9][0-9]{0,9}$/,
     },
     VAL: {
         module: null,

@@ -61,6 +61,12 @@
     </section>
 </div>
 
+<% if (P.capStrip) { var _q = P.scopeQuery ? '&' + P.scopeQuery : ''; %>
+<section class="ds-card" id="ds-capstrip-block">
+    <%- include('../../partials/viz/capstrip', { S: P.capStrip, stripId: 'ds-capstrip', href: '/dashboard?tab=readiness' + _q + '#ds-capmap', noneLabel: P.groupUnit === 'site' ? __('viz:no_site') : __('dash:d3_no_department') }) %>
+</section>
+<% } %>
+
 <% if (P.sites && P.sites.length) { %>
 <section class="ds-card" id="ds-status-table" aria-labelledby="ds-sites-h">
     <h3 id="ds-sites-h"><%= __('dash:d3_ov_sites_title') %></h3>

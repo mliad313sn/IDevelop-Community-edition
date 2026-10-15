@@ -139,7 +139,7 @@ describe('readiness', () => {
     };
     const base = {
         id: 'readiness',
-        blocks: ['readinessTiles', 'bell', 'byGroup', 'compare', 'pillarHeat'],
+        blocks: ['readinessTiles', 'bell', 'byGroup', 'compare', 'capabilityMap'],
         threshold: 80,
         bell: {
             n: 30,

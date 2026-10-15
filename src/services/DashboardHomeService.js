@@ -1295,6 +1295,87 @@ async function capabilityHeat(ids, unit = 'site', level = 'domain') {
     }));
 }
 
+/**
+ * The capability-map cube (utils/heatModel.capabilityMapModel): SUMS of the
+ * paired levels per unit x pillar x sub-domain and every marginal in ONE
+ * GROUPING SETS pass, so the pooled columns, the pillar rows and « Whole
+ * framework » are population aggregates, never a mean of cells. Its unit and
+ * pillar marginals are the capabilityHeat ones (same base).
+ */
+async function capabilityMap(ids, unit = 'site') {
+    if (!has(UNIT_COLUMNS, unit)) throw new Error('capabilityMap: unknown unit');
+    if (!Array.isArray(ids) || !ids.length) return [];
+    const U = UNIT_COLUMNS[unit];
+    const rows = await db.all(
+        `WITH base AS (
+             SELECT ${U.id} AS u_id, ${U.name} AS u_name, g.domain_id AS p_id,
+                    sk.sub_domain_id AS s_id, g.actual_level AS act, g.required_level AS req,
+                    g.is_assessed AS assessed, g.employee_id AS emp
+               FROM v_employee_skill_gaps g
+               JOIN skills sk ON sk.id = g.skill_id
+              WHERE g.employee_id = ANY(?)
+         )
+         SELECT GROUPING(u_id)::int AS "gu", GROUPING(p_id)::int AS "gp", GROUPING(s_id)::int AS "gs",
+                u_id AS "unitId", MAX(u_name) AS "unitName", p_id AS "pillarId", s_id AS "subId",
+                SUM(act) FILTER (WHERE assessed = 1) AS "sumActual",
+                SUM(req) FILTER (WHERE assessed = 1) AS "sumRequired",
+                COALESCE(SUM(assessed), 0)::int AS "measured",
+                COUNT(DISTINCT emp) FILTER (WHERE assessed = 1)::int AS "n"
+           FROM base
+          GROUP BY GROUPING SETS ((u_id, p_id, s_id), (u_id, p_id), (u_id), (p_id, s_id), (p_id), ())`,
+        [ids]
+    );
+    const nn = (v) => (isNum(v) ? Number(v) : null);
+    const key = (v) => (v === null || v === undefined ? null : String(v));
+    const partOf = (r) => {
+        const g = `${Number(r.gu)}${Number(r.gp)}${Number(r.gs)}`;
+        return (
+            { '000': 'us', '001': 'up', '011': 'u', 100: 's', 101: 'p', 111: 'total' }[g] || null
+        );
+    };
+    return (rows || [])
+        .map((r) => {
+            const part = partOf(r);
+            const unitKey = Number(r.gu) ? null : key(r.unitId) === null ? 'none' : key(r.unitId);
+            return {
+                part,
+                unitKey,
+                unitName: r.unitName || null,
+                pillarKey: Number(r.gp) ? null : key(r.pillarId),
+                subKey: Number(r.gs) ? null : key(r.subId),
+                sumActual: nn(r.sumActual),
+                sumRequired: nn(r.sumRequired),
+                measured: Number(r.measured) || 0,
+                n: Number(r.n) || 0,
+            };
+        })
+        .filter((r) => r.part !== null);
+}
+
+/** The active framework in its order: pillars by name, their sub-domains by position. */
+async function frameworkTree() {
+    const rows = await db.all(
+        `SELECT d.id AS "pid", d.name AS "pname", sd.id AS "sid", sd.name AS "sname"
+           FROM domains d
+           LEFT JOIN sub_domains sd ON sd.domain_id = d.id AND sd.is_active = true
+          WHERE d.is_active = true
+          ORDER BY d.name, d.id, sd.position, sd.name, sd.id`
+    );
+    const out = [];
+    const by = new Map();
+    for (const r of rows || []) {
+        const pk = String(r.pid);
+        if (!by.has(pk)) {
+            const p = { key: pk, label: r.pname, subs: [] };
+            by.set(pk, p);
+            out.push(p);
+        }
+        if (r.sid !== null && r.sid !== undefined)
+            by.get(pk).subs.push({ key: String(r.sid), label: r.sname });
+    }
+    return out;
+}
+
 /** Requirements and dated assessed levels of a population (the reconstructed trend). */
 async function backcastInputs(ids) {
     if (!Array.isArray(ids) || !ids.length) return { reqs: [], events: [] };
@@ -1426,6 +1507,12 @@ async function tabModel(ctx, tabId, { query = {}, t } = {}) {
             m.recorded = (mv.series || []).filter((p) => isNum(p.K1) || isNum(p.K3));
             m.reconstructed = backcastSeries(await backcastInputs(ctx.pop.ids), { threshold });
         }
+        if (want('capStrip')) {
+            m.groupUnit = groupUnit(ctx);
+            m.mapCube = await capabilityMap(ctx.pop.ids, m.groupUnit);
+            m.mapTree = await frameworkTree();
+            m.stripOnly = true;
+        }
         if (want('siteStatus') && ctx.caps.multiSite) {
             const k1Site = await Kpi.bySite('K1', s);
             const k8Site = ctx.caps.safety ? await Kpi.bySite('K8', s) : null;
@@ -1449,7 +1536,10 @@ async function tabModel(ctx, tabId, { query = {}, t } = {}) {
         m.groupUnit = unit;
         const byGroup = await Kpi.computeBlock('k1ByGroup', s, unit);
         m.byGroup = byGroup;
-        if (want('pillarHeat')) m.pillarCube = await capabilityHeat(ctx.pop.ids, unit, 'domain');
+        if (want('capabilityMap')) {
+            m.mapCube = await capabilityMap(ctx.pop.ids, unit);
+            m.mapTree = await frameworkTree();
+        }
         if (want('compare') && byGroup && byGroup.rows.length >= 2) {
             const options = unit === 'site' ? ctx.opts.sites : ctx.opts.departments;
             const raw = Array.isArray(query.compare)
@@ -1536,29 +1626,40 @@ async function tabModel(ctx, tabId, { query = {}, t } = {}) {
             .filter(Boolean);
     const H = require('../utils/heatModel');
     const unitLabel = (u, name) => (u === 'none' ? null : name);
-    if (m.pillarCube)
-        m.pillarHeat = H.heatModel(m.pillarCube, {
-            kind: 'attain',
+    if (m.mapCube) {
+        const map = H.capabilityMapModel(m.mapCube, m.mapTree, {
+            unit: m.groupUnit,
             unitLabel,
-            hrefOf: (unitKey, axisKey) => domHref(ctx, m.groupUnit, unitKey, axisKey),
+            hrefOf: (unitKey, part) => domHref(ctx, m.groupUnit, unitKey, part),
         });
+        if (m.stripOnly) m.capStrip = H.capabilityMapStrip(map);
+        else m.capabilityMap = map.empty ? null : map;
+    }
     if (m.deficitCube)
         m.deficitHeat = H.heatModel(m.deficitCube, { kind: 'deficit', unitLabel, maxRows: 12 });
     if (m.coverage) m.coverageHeat = H.coverageHeatModel(m.coverage);
-    delete m.pillarCube;
+    delete m.mapCube;
+    delete m.mapTree;
+    delete m.stripOnly;
     delete m.deficitCube;
     return m;
 }
 
-/** The list of the people below the requirement on a pillar in one unit (a heatmap cell). */
+/**
+ * The list of the people below the requirement on a pillar or a sub-domain in
+ * one unit (a heatmap or capability-map cell). `axisKey` is a pillar id, or a
+ * part already prefixed: 'p<id>' (pillar) / 's<id>' (sub-domain).
+ */
 function domHref(ctx, unit, unitKey, axisKey) {
     if (!drillAllowed(ctx.caps, ctx.flags, 'DOM')) return null;
-    if (!/^[1-9][0-9]{0,9}$/.test(String(axisKey)) || !/^[1-9][0-9]{0,9}$/.test(String(unitKey)))
+    const k = String(axisKey);
+    const part = /^[1-9][0-9]{0,9}$/.test(k) ? 'p' + k : k;
+    if (!T.DRILLS.DOM.partPattern.test(part) || !/^[1-9][0-9]{0,9}$/.test(String(unitKey)))
         return null;
     const s = { ...(ctx.scope || {}) };
     if (unit === 'site') s.site = Number(unitKey);
     else s.department = Number(unitKey);
-    return '/dashboard/list?kpi=DOM&part=p' + axisKey + '&' + Scope.queryOf(s);
+    return '/dashboard/list?kpi=DOM&part=' + part + '&' + Scope.queryOf(s);
 }
 
 // ---------------------------------------------------------------------------
@@ -1618,14 +1719,24 @@ async function drillIds(ctx, kpi, part) {
         };
     }
     if (kpi === 'DOM') {
-        // people of the scope with an ASSESSED requirement of the pillar below its level
-        const pillar = Number(String(part).slice(1));
+        // people of the scope with an ASSESSED requirement of the pillar (p<id>)
+        // or of the sub-domain (s<id>) below its level
+        const axis = Number(String(part).slice(1));
         if (!ctx.pop.ids.length) return { ids: [] };
-        const rows = await db.all(
-            `SELECT DISTINCT g.employee_id AS "id" FROM v_employee_skill_gaps g
-              WHERE g.employee_id = ANY(?) AND g.domain_id = ? AND g.is_assessed = 1 AND g.is_met = 0`,
-            [ctx.pop.ids, pillar]
-        );
+        const rows =
+            String(part).charAt(0) === 's'
+                ? await db.all(
+                      `SELECT DISTINCT g.employee_id AS "id" FROM v_employee_skill_gaps g
+                         JOIN skills sk ON sk.id = g.skill_id
+                        WHERE g.employee_id = ANY(?) AND sk.sub_domain_id = ?
+                          AND g.is_assessed = 1 AND g.is_met = 0`,
+                      [ctx.pop.ids, axis]
+                  )
+                : await db.all(
+                      `SELECT DISTINCT g.employee_id AS "id" FROM v_employee_skill_gaps g
+                        WHERE g.employee_id = ANY(?) AND g.domain_id = ? AND g.is_assessed = 1 AND g.is_met = 0`,
+                      [ctx.pop.ids, axis]
+                  );
         return { ids: (rows || []).map((r) => Number(r.id)).sort((a, b) => a - b) };
     }
     if (kpi === 'VAL') {
@@ -1815,6 +1926,8 @@ module.exports = {
     // reads
     capabilityProfile,
     capabilityHeat,
+    capabilityMap,
+    frameworkTree,
     backcastInputs,
     nineBoxCounts,
     frequentGaps,
