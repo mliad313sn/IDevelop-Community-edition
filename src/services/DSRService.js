@@ -388,12 +388,22 @@ const REDACTED_ON_ERASURE = [
         erased: ['note', 'decision_note'],
         kept: ['id', 'opportunity_id', 'status', 'created_at', 'decided_at'],
     },
-    // PLANNED ABSENCES: the note goes; the dates stay (cover planning).
+    // PLANNED ABSENCES: the note and the reason a cancellation was given go;
+    // the dates and the state stay (cover planning).
     {
         key: 'plannedAbsences',
         table: 'planned_absences',
-        erased: ['note'],
-        kept: ['id', 'starts_on', 'ends_on', 'kind'],
+        erased: ['note', 'deactivated_reason'],
+        kept: ['id', 'starts_on', 'ends_on', 'kind', 'is_active', 'deactivated_at'],
+    },
+    // DECISIONS ON THE PERSON'S PROPOSED SKILL UPLIFTS (migration 180): the
+    // reason a supervisor wrote is about the person, so it goes ('[erased]',
+    // never NULL: a decline must keep a reason); who decided and when stay.
+    {
+        key: 'lmsUpliftDecisions',
+        table: 'lms_completions',
+        erased: ['decision_reason'],
+        kept: ['id', 'decided_at'],
     },
     // THE PERSON'S OWN NOTIFICATIONS: deleted.
     {
@@ -860,7 +870,14 @@ class DSRService {
         );
         await q(
             'plannedAbsences',
-            'SELECT id, starts_on, ends_on, kind, note FROM planned_absences WHERE employee_id = ? ORDER BY starts_on',
+            `SELECT id, starts_on, ends_on, kind, note, is_active, deactivated_at, deactivated_reason
+               FROM planned_absences WHERE employee_id = ? ORDER BY starts_on`,
+            [employeeId]
+        );
+        await q(
+            'lmsUpliftDecisions',
+            `SELECT id, decided_at, decision_reason
+               FROM lms_completions WHERE employee_id = ? AND decided_at IS NOT NULL ORDER BY id`,
             [employeeId]
         );
         await q(
@@ -1344,9 +1361,18 @@ class DSRService {
                   WHERE employee_id = ?`,
                 [employeeId]
             );
-            await db.run('UPDATE planned_absences SET note = NULL WHERE employee_id = ?', [
-                employeeId,
-            ]);
+            await db.run(
+                `UPDATE planned_absences SET note = NULL,
+                        deactivated_reason = CASE WHEN deactivated_reason IS NULL THEN NULL ELSE '[erased]' END
+                  WHERE employee_id = ?`,
+                [employeeId]
+            );
+            await db.run(
+                `UPDATE lms_completions
+                    SET decision_reason = CASE WHEN decision_reason IS NULL THEN NULL ELSE '[erased]' END
+                  WHERE employee_id = ?`,
+                [employeeId]
+            );
             await db.run(
                 "DELETE FROM notifications WHERE user_id = ? AND user_type::text IN ('employee', 'manager')",
                 [employeeId]

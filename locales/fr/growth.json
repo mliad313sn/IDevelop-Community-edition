@@ -157,5 +157,8 @@
   "oo_err_bad_owner": "Le responsable de l’action doit être l’un de vous deux.",
   "oo_err_bad_date": "Date invalide.",
   "oo_err_bad_link": "Ce lien ne concerne pas cette personne.",
-  "oo_err_meeting_held": "Cet entretien est déjà tenu."
+  "oo_err_meeting_held": "Cet entretien est déjà tenu.",
+  "survey_band_under": "Moins de {{n}} réponses",
+  "survey_band_at_least": "{{n}} réponses ou plus",
+  "survey_results_after_close": "Les résultats sont publiés à la clôture de l’enquête, figés. Tant qu’elle est ouverte, il n’y a ni résultat ni décompte."
 }

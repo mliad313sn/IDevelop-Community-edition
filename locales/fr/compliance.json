@@ -154,7 +154,7 @@
   "da_type_coaching": "Coaching",
   "da_type_mentoring": "Mentorat",
   "da_type_sa": "Auto-évaluation",
-  "delete_rule": "Supprimer la règle",
+  "delete_rule": "Désactiver la règle",
   "sec_impact": "Certificats périmés qui dégradent la qualification",
   "impact_help": "Chaque ligne est une exigence de poste qui n'est PLUS satisfaite uniquement parce que le certificat détenu a expiré ou a été révoqué. Ces personnes ne sont plus comptées comme qualifiées sur cette compétence dans la préparation, le benchmark et le vivier de succession — jusqu'à la revalidation. Le nombre de compétences exigées par le poste est inchangé : seule la validité du titre détenu change.",
   "th_role": "Poste",
@@ -164,9 +164,7 @@
   "lapse_expired": "certificat expiré",
   "lapse_revoked": "certificat révoqué",
   "no_impact": "Aucun certificat périmé ne dégrade actuellement une exigence de poste dans votre périmètre.",
-  "js_confirm_absence": "Supprimer cette absence planifiée ?",
   "js_confirm_toggle": "Activer / désactiver cette règle de couverture ?",
-  "js_confirm_delete": "Supprimer définitivement la règle « {name} » ? Cette suppression est journalisée et irréversible.",
   "js_neterr": "Erreur réseau",
   "js_denied": "Action refusée : cette règle est hors de votre périmètre.",
   "gen_planned": "{n} règle(s) à créer",
@@ -418,5 +416,9 @@
   "reg_ret_report_copies": "Copies des rapports programmés (dans l’application)",
   "reg_ret_emptied": "Contenu vidé (aussi à l’effacement d’une personne du périmètre)",
   "cat_safetyWaivers": "Dérogations d’habilitation sécurité",
-  "cat_safetyContests": "Contestations d’habilitation sécurité"
+  "cat_safetyContests": "Contestations d’habilitation sécurité",
+  "absence_reason_prompt": "Pourquoi cette absence planifiée est-elle annulée ? L’absence est conservée avec votre motif ; elle sort des listes et de la prévision.",
+  "rule_reason_prompt": "Pourquoi la règle « {name} » est-elle retirée ? Elle est désactivée, pas supprimée : la règle et votre motif sont conservés et journalisés.",
+  "err_deactivate_reason_required": "Un motif est obligatoire.",
+  "rule_deactivated": "Règle de couverture désactivée"
 }

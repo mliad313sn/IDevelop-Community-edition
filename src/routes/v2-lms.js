@@ -322,7 +322,10 @@ router.get(
 const decide = (decision) =>
     ah(async (req, res) => {
         try {
-            const out = await LmsService.decideUplift(req.user, Number(req.params.id), decision);
+            // The reason travels with the decision (required on a decline).
+            const out = await LmsService.decideUplift(req.user, Number(req.params.id), decision, {
+                reason: req.body && req.body.reason,
+            });
             res.json({ ok: true, ...out });
         } catch (e) {
             const status = e && e.status ? e.status : 500;

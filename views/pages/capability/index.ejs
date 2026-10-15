@@ -119,7 +119,7 @@
     </div>
   </div>
   <table class="table" id="cap-svy-table" style="margin-top:.6rem"><thead><tr><th><%= __('talentx:cap_title') %></th><th><%= __('talentx:cap_kind') %></th><th><%= __('talentx:state') %></th><th><%= __('talentx:cap_col_respondents') %></th><th></th></tr></thead>
-    <tbody><% (surveys||[]).forEach(function(s){ %><tr><td><%= s.title %></td><td><%= __('talentx:cap_svy_kind_' + (['pulse','engagement','enps','onboarding','exit'].indexOf(s.kind) > -1 ? s.kind : 'pulse')) %></td><td><span class="badge"><%= enumLabel(s.state) %></span></td><td><%= s.respondents %></td>
+    <tbody><% (surveys||[]).forEach(function(s){ %><tr><td><%= s.title %></td><td><%= __('talentx:cap_svy_kind_' + (['pulse','engagement','enps','onboarding','exit'].indexOf(s.kind) > -1 ? s.kind : 'pulse')) %></td><td><span class="badge"><%= enumLabel(s.state) %></span></td><td><%# exact count only once closed and over the floor; otherwise a band %><% if (s.respondents != null) { %><%= s.respondents %><% } else if (s.respondentsBand === 'at_least') { %><%= __('growth:survey_band_at_least', { n: s.respondentsFloor }) %><% } else if (s.respondentsBand === 'under') { %><%= __('growth:survey_band_under', { n: s.respondentsFloor }) %><% } else { %>—<% } %></td>
       <td style="white-space:nowrap"><% if(s.state==='draft'){ %><button class="btn btn-sm btn-success" data-on-click="CAP.surveyOpen" data-args="<%= JSON.stringify([s.id]) %>"><%= __('talentx:open') %></button><% } %>
         <% if(s.state==='open'){ %><button class="btn btn-sm btn-secondary" data-on-click="CAP.surveyClose" data-args="<%= JSON.stringify([s.id]) %>"><%= __('talentx:cap_close_survey') %></button><% } %>
         <button class="btn btn-sm btn-secondary" data-on-click="CAP.surveyResults" data-args="<%= JSON.stringify([s.id]) %>"><%= __('talentx:cap_results') %></button></td></tr><% }); %>
@@ -255,7 +255,9 @@ const CAP_T = <%- include('../../partials/json-script', { v: {
   templates: (typeof surveyTemplates !== 'undefined' ? surveyTemplates : []),
   templateHint: __('talentx:cap_svy_template_hint'),
   openConfirm: __('talentx:cap_open_survey_confirm'), closeConfirm: __('talentx:cap_close_survey_confirm'),
-  invited: __('talentx:cap_survey_invited'), avg: __('talentx:cap_avg'), textAnswers: __('talentx:cap_text_answers')
+  invited: __('talentx:cap_survey_invited'), avg: __('talentx:cap_avg'), textAnswers: __('talentx:cap_text_answers'),
+  svyAfterClose: __('growth:survey_results_after_close'),
+  svyBandUnder: __('growth:survey_band_under', { n: '{{n}}' }), svyBandAtLeast: __('growth:survey_band_at_least', { n: '{{n}}' })
 } }) %>;
 // Every value that comes from the server is escaped before it touches innerHTML
 // (DEI group labels and survey question texts were written raw: stored XSS).
@@ -373,6 +375,12 @@ const CAP = {
   async surveyClose(id){ if(window.confirmDialog && !(await window.confirmDialog(CAP_T.closeConfirm))) return; await this.api('POST','/v2/cap/survey/'+id+'/close'); location.reload(); },
   async surveyResults(id){
     const j=await this.api('GET','/v2/cap/survey/'+id+'/results');
+    // Results only once the survey is closed; while open, a band, never a count.
+    if(j && j.closed===false){
+      const band=j.band==='at_least'?CAP_T.svyBandAtLeast:(j.band==='under'?CAP_T.svyBandUnder:'');
+      document.getElementById('survey-results').innerHTML=capEsc(CAP_T.svyAfterClose)+(band?(' — '+capEsc(String(band).replace('{{n}}', j.threshold))):'');
+      return;
+    }
     document.getElementById('survey-results').innerHTML=(j.results||[]).map(r=>{
       if(r.suppressed) return capEsc(r.text)+CAP_T.colon+' '+capEsc(CAP_T.suppressed)+' ('+capEsc(r.responses)+' '+capEsc(CAP_T.responses)+')';
       if(r.qtype==='text') return '<strong>'+capEsc(r.text)+'</strong> — '+capEsc(CAP_T.textAnswers)+' ('+capEsc(r.responses)+')<ul style="margin:.2rem 0 .4rem">'+(r.answers||[]).map(a=>'<li>'+capEsc(a)+'</li>').join('')+'</ul>';

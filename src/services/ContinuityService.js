@@ -270,7 +270,7 @@ class ContinuityService {
                         to_char(sp.review_due, 'YYYY-MM-DD') AS review_due_ymd,
                         (CURRENT_DATE - sp.review_due)       AS days_overdue,
                         e.first_name AS incumbent_first, e.last_name AS incumbent_last,
-                        (SELECT COUNT(*) FROM successors s WHERE s.plan_id = sp.id) AS bench_depth
+                        (SELECT COUNT(*) FROM successors s WHERE s.plan_id = sp.id AND s.state = 'active') AS bench_depth
                  FROM succession_plans sp
                  JOIN roles r ON r.id = sp.position_role_id
                  LEFT JOIN employees e ON e.id = sp.incumbent_employee_id
@@ -285,7 +285,7 @@ class ContinuityService {
                     to_char(sp.review_due, 'YYYY-MM-DD') AS review_due_ymd,
                     (CURRENT_DATE - sp.review_due)       AS days_overdue,
                     e.first_name AS incumbent_first, e.last_name AS incumbent_last,
-                    (SELECT COUNT(*) FROM successors s WHERE s.plan_id = sp.id) AS bench_depth
+                    (SELECT COUNT(*) FROM successors s WHERE s.plan_id = sp.id AND s.state = 'active') AS bench_depth
              FROM succession_plans sp
              JOIN roles r ON r.id = sp.position_role_id
              LEFT JOIN employees e ON e.id = sp.incumbent_employee_id
@@ -305,7 +305,7 @@ class ContinuityService {
         plan.successors = await db.all(
             `SELECT s.*, e.first_name, e.last_name, e.employee_number
              FROM successors s JOIN employees e ON e.id = s.candidate_employee_id
-             WHERE s.plan_id = ?
+             WHERE s.plan_id = ? AND s.state = 'active'
              ORDER BY CASE s.readiness_band
                         WHEN 'ready_now' THEN 0 WHEN 'emergency' THEN 1
                         WHEN 'ready_1_2y' THEN 2 ELSE 3 END,
@@ -379,18 +379,28 @@ class ContinuityService {
         return row || null;
     }
 
+    /** Returns { id, fromIncumbent, toIncumbent } for the audit trail, or null. */
     async setIncumbent(planId, incumbentEmployeeId) {
-        await db.run(
-            'UPDATE succession_plans SET incumbent_employee_id = ?, updated_at = now() WHERE id = ?',
-            [incumbentEmployeeId || null, planId]
+        const row = await db.get(
+            `UPDATE succession_plans sp SET incumbent_employee_id = ?, updated_at = now()
+               FROM (SELECT id, incumbent_employee_id AS old_inc FROM succession_plans WHERE id = ? FOR UPDATE) o
+              WHERE sp.id = o.id
+              RETURNING sp.id, o.old_inc AS "fromIncumbent", sp.incumbent_employee_id AS "toIncumbent"`,
+            [incumbentEmployeeId || null, Number(planId)]
         );
+        return row || null;
     }
 
+    /** Returns { id, fromStatus } for the audit trail, or null when nothing was archived. */
     async archivePlan(planId) {
-        await db.run(
-            "UPDATE succession_plans SET status = 'archived', updated_at = now() WHERE id = ?",
-            [planId]
+        const row = await db.get(
+            `UPDATE succession_plans sp SET status = 'archived', updated_at = now()
+               FROM (SELECT id, status AS old_status FROM succession_plans WHERE id = ? FOR UPDATE) o
+              WHERE sp.id = o.id AND o.old_status <> 'archived'
+              RETURNING sp.id, o.old_status AS "fromStatus"`,
+            [Number(planId)]
         );
+        return row || null;
     }
 
     // ---- Cadence + "where do I start" queue --------------------------------
@@ -439,9 +449,9 @@ class ContinuityService {
                     (CURRENT_DATE - sp.review_due)            AS days_overdue,
                     r.name AS role_name,
                     e.first_name AS incumbent_first, e.last_name AS incumbent_last,
-                    (SELECT COUNT(*) FROM successors s WHERE s.plan_id = sp.id) AS bench_depth,
+                    (SELECT COUNT(*) FROM successors s WHERE s.plan_id = sp.id AND s.state = 'active') AS bench_depth,
                     (SELECT COUNT(*) FROM successors s2
-                      WHERE s2.plan_id = sp.id AND s2.readiness_band = 'ready_now') AS ready_now_count
+                      WHERE s2.plan_id = sp.id AND s2.state = 'active' AND s2.readiness_band = 'ready_now') AS ready_now_count
                FROM succession_plans sp
                JOIN roles r ON r.id = sp.position_role_id
                LEFT JOIN employees e ON e.id = sp.incumbent_employee_id
@@ -525,7 +535,7 @@ class ContinuityService {
                LEFT JOIN employees e ON e.id = sp.incumbent_employee_id
               WHERE rc.criticality_score >= ${ContinuityService.CRITICAL_SCORE_MIN}
                 AND (sp.id IS NULL
-                     OR NOT EXISTS (SELECT 1 FROM successors s WHERE s.plan_id = sp.id))
+                     OR NOT EXISTS (SELECT 1 FROM successors s WHERE s.plan_id = sp.id AND s.state = 'active'))
                 ${scope}
               ORDER BY rc.criticality_score DESC, r.name`,
             roleIds === null ? [] : roleIds
@@ -717,7 +727,9 @@ class ContinuityService {
         for (let i = 0; i < top.length; i++) {
             const c = top[i];
             const band = bandFromReadiness(c.pctExact ?? c.pct, c.coveragePct);
-            await db.run(
+            // A successor a person removed (state 'removed', with its reason) is
+            // never put back on the bench by the automatic seed.
+            const seeded = await db.run(
                 `INSERT INTO successors (plan_id, candidate_employee_id, readiness_band, bench_rank, source, confidence, gap_summary, nominated_by, nominated_at)
                  VALUES (?, ?, ?, ?, 'auto_readiness', ?, ?, ?, now())
                  ON CONFLICT (plan_id, candidate_employee_id) DO UPDATE SET
@@ -727,7 +739,8 @@ class ContinuityService {
                    gap_summary    = EXCLUDED.gap_summary,
                    nominated_by   = COALESCE(successors.nominated_by, EXCLUDED.nominated_by),
                    nominated_at   = COALESCE(successors.nominated_at, EXCLUDED.nominated_at),
-                   updated_at     = now()`,
+                   updated_at     = now()
+                 WHERE successors.state = 'active'`,
                 [
                     planId,
                     c.empId,
@@ -738,7 +751,9 @@ class ContinuityService {
                     nominatedBy,
                 ]
             );
-            added++;
+            // A removed successor's row is left untouched (0 rows): not "added".
+            const n = seeded && (seeded.changes ?? seeded.rowCount);
+            if (n == null || Number(n) > 0) added++;
         }
         return { added, unmeasuredCandidates };
     }
@@ -756,6 +771,9 @@ class ContinuityService {
                source = 'manual', confidence = EXCLUDED.confidence, gap_summary = EXCLUDED.gap_summary,
                nominated_by = COALESCE(EXCLUDED.nominated_by, successors.nominated_by),
                nominated_at = COALESCE(successors.nominated_at, EXCLUDED.nominated_at),
+               -- A person naming a removed successor again puts them back on the
+               -- bench; the removal stays in the audit log.
+               state = 'active', removed_by = NULL, removed_at = NULL, removed_reason = NULL,
                updated_at = now()
              RETURNING *`,
             [
@@ -769,15 +787,46 @@ class ContinuityService {
         );
     }
 
+    /**
+     * Manual band override of an active successor. Returns { id, planId,
+     * candidateEmployeeId, fromBand, toBand } for the audit trail, or null.
+     */
     async setSuccessorBand(successorId, band) {
-        await db.run(
-            "UPDATE successors SET readiness_band = ?, source = 'manual', updated_at = now() WHERE id = ?",
-            [band, successorId]
+        const row = await db.get(
+            `UPDATE successors s SET readiness_band = ?, source = 'manual', updated_at = now()
+               FROM (SELECT id, readiness_band AS old_band FROM successors WHERE id = ? FOR UPDATE) o
+              WHERE s.id = o.id AND s.state = 'active'
+              RETURNING s.id, s.plan_id AS "planId", s.candidate_employee_id AS "candidateEmployeeId",
+                        o.old_band AS "fromBand", s.readiness_band AS "toBand"`,
+            [band, Number(successorId)]
         );
+        return row || null;
     }
 
-    async removeSuccessor(successorId) {
-        await db.run('DELETE FROM successors WHERE id = ?', [successorId]);
+    /**
+     * A successor is never deleted (SA-43): the row moves to state 'removed'
+     * with who, when and why. A reason is required.
+     * @returns {Promise<{id, planId, candidateEmployeeId}|null>} null when no
+     *   active successor matched.
+     * @throws .code 'reason_required' (400)
+     */
+    async removeSuccessor(successorId, { reason, actorRef = null } = {}) {
+        const why = String(reason == null ? '' : reason).trim();
+        if (!why) {
+            const e = new Error('reason_required');
+            e.code = 'reason_required';
+            e.status = 400;
+            throw e;
+        }
+        const row = await db.get(
+            `UPDATE successors
+                SET state = 'removed', removed_by = ?, removed_at = now(), removed_reason = ?,
+                    updated_at = now()
+              WHERE id = ? AND state = 'active'
+              RETURNING id, plan_id AS "planId", candidate_employee_id AS "candidateEmployeeId"`,
+            [actorRef, why.slice(0, 1000), Number(successorId)]
+        );
+        return row || null;
     }
 
     /**
@@ -807,6 +856,7 @@ class ContinuityService {
                JOIN employees e ON e.id = s.candidate_employee_id
               WHERE sp.position_role_id = ?
                 AND sp.status <> 'archived'
+                AND s.state = 'active'
                 AND e.is_active = true
                 ${exclude ? 'AND s.candidate_employee_id <> ?' : ''}
               ORDER BY CASE s.readiness_band

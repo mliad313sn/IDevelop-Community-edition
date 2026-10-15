@@ -98,9 +98,10 @@
   "upl_accept": "Valider",
   "upl_decline": "Refuser",
   "upl_failed": "La décision n’a pas pu être enregistrée.",
-  "upl_confirm_decline": "Refuser cette proposition ? Le niveau officiel restera inchangé et la formation restera enregistrée comme preuve.",
   "upl_err_bad_decision": "Décision inconnue : choisissez « Valider » ou « Refuser ».",
   "upl_err_not_found": "Cette formation terminée est introuvable.",
   "upl_err_not_pending": "Cette formation a déjà fait l’objet d’une décision.",
-  "upl_err_forbidden": "Seul le manager ou un responsable habilité de ce collaborateur peut décider."
+  "upl_err_forbidden": "Seul le manager ou un responsable habilité de ce collaborateur peut décider.",
+  "upl_decline_reason_prompt": "Pourquoi refuser cette proposition ? Le niveau officiel reste inchangé et le cours reste enregistré comme preuve ; votre motif est conservé avec la décision.",
+  "upl_err_reason_required": "Un motif est obligatoire pour refuser une proposition."
 }

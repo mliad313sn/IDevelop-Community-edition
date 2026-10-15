@@ -339,7 +339,7 @@ const CT_T = {
   select: <%- JSON.stringify(__('talentx:cp_select')) %>,
   add: <%- JSON.stringify(__('talentx:add')) %>,
   setCover: <%- JSON.stringify(__('talentx:ct_set_cover')) %>,
-  removeConfirm: <%- JSON.stringify(__('talentx:ct_remove_confirm')) %>,
+  removeReasonPrompt: <%- JSON.stringify(__('talentx:ct_remove_reason_prompt')) %>,
   selectEmployee: <%- JSON.stringify(__('talentx:ct_select_employee')) %>,
   pickCover: <%- JSON.stringify(__('talentx:ct_pick_cover')) %>,
   coverNote: <%- JSON.stringify(__('talentx:ct_cover_note')) %>,
@@ -491,7 +491,7 @@ const CONT = {
     return h;
   },
   async band(id,band){ await this.api('/v2/continuity/successor/'+id+'/band',{band}); },
-  async removeSucc(id){ if(!(await window.confirmDialog(CT_T.removeConfirm,{danger:true})))return; await this.api('/v2/continuity/successor/'+id+'/remove',{}); location.reload(); },
+  async removeSucc(id){ const reason=await window.promptDialog(CT_T.removeReasonPrompt,'',{required:true,multiline:true}); if(!reason||!reason.trim())return; await this.api('/v2/continuity/successor/'+id+'/remove',{reason:reason.trim()}); location.reload(); },
   async addSucc(planId){ const sel=document.getElementById('add-succ-'+planId); const employeeId=Number(sel.value); if(!employeeId){alert(CT_T.selectEmployee);return;} await this.api('/v2/continuity/plan/'+planId+'/successor',{employeeId}); this.toggle(planId); this.toggle(planId); location.reload(); },
   async cover(planId){ const sel=document.getElementById('add-succ-'+planId); const employeeId=Number(sel.value); if(!employeeId){alert(CT_T.pickCover);return;} const note=(await window.promptDialog(CT_T.coverNote,''))||''; await this.api('/v2/continuity/plan/'+planId+'/emergency-cover',{employeeId,note}); alert(CT_T.coverSet); },
 

@@ -704,7 +704,8 @@ router.get(
     guarded(async (req, res) => {
         const s = await ownedSurvey(req, res);
         if (!s) return;
-        res.json({ ok: true, results: await Sv.results(s.id) });
+        // Results only once the survey is closed (frozen); while open, a band only.
+        res.json({ ok: true, ...(await Sv.publishedResults(s.id)) });
     })
 );
 /**

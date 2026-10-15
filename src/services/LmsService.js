@@ -805,11 +805,20 @@ class LmsService {
      * actor_ref, and the note names the provenance. The deciding human is on
      * the record even where the FK cannot hold them.
      */
-    static async decideUplift(user, completionId, decision) {
+    static async decideUplift(user, completionId, decision, { reason = null } = {}) {
         // Every refusal carries a stable `code` (an lms: locale key): the route
         // answers in the reader's language, never with this English message.
         const id = Number(completionId);
         const accept = decision === 'accept';
+        // Who decided, when and why are on the row (SA-43); a decline needs its
+        // reason, because the person's training is refused as evidence.
+        const why = String(reason == null ? '' : reason)
+            .trim()
+            .slice(0, 2000);
+        const decidedBy =
+            user && user.id != null
+                ? `${user.userType === 'admin' ? 'admin' : 'employee'}:${Number(user.id)}`
+                : null;
         if (!accept && decision !== 'decline') {
             const e = new Error("decision must be 'accept' or 'decline'");
             e.status = 400;
@@ -840,10 +849,20 @@ class LmsService {
         }
 
         if (!accept) {
+            if (!why) {
+                const e = new Error('A reason is required to decline');
+                e.status = 400;
+                e.code = 'upl_err_reason_required';
+                throw e;
+            }
             await db.run(
-                "UPDATE lms_completions SET applied = false, review_reason = 'declined_by_supervisor' WHERE id = ?",
-                [id]
+                `UPDATE lms_completions
+                    SET applied = false, review_reason = 'declined_by_supervisor',
+                        decided_by_ref = ?, decided_at = now(), decision_reason = ?
+                  WHERE id = ?`,
+                [decidedBy, why, id]
             );
+            await this._auditDecision(user, id, c.employeeId, 'decline', why, []);
             return { completionId: id, decision: 'decline', raisedSkills: [] };
         }
 
@@ -863,13 +882,40 @@ class LmsService {
                 raised.push(p);
             }
             await db.run(
-                'UPDATE lms_completions SET applied = ?, review_reason = NULL WHERE id = ?',
-                [raised.length > 0, id]
+                `UPDATE lms_completions
+                    SET applied = ?, review_reason = NULL,
+                        decided_by_ref = ?, decided_at = now(), decision_reason = ?
+                  WHERE id = ?`,
+                [raised.length > 0, decidedBy, why || null, id]
             );
         });
+        await this._auditDecision(user, id, c.employeeId, 'accept', why, raised);
         // Benches move only once a human has accepted the level.
         if (raised.length) await this._reevaluateSuccessors(Number(c.employeeId));
         return { completionId: id, decision: 'accept', raisedSkills: raised };
+    }
+
+    /** One audit line per uplift decision, accepted or declined (ids, levels, reason). */
+    static async _auditDecision(user, completionId, employeeId, decision, why, raised) {
+        try {
+            await require('./LogService').log({
+                adminId: user && user.userType === 'admin' ? Number(user.id) : null,
+                actorRef:
+                    user && user.id != null
+                        ? `${user.userType === 'admin' ? 'admin' : 'employee'}:${Number(user.id)}`
+                        : undefined,
+                action: decision === 'accept' ? 'LMS_UPLIFT_ACCEPTED' : 'LMS_UPLIFT_DECLINED',
+                entityType: 'lms_completion',
+                entityId: Number(completionId),
+                details: `employee #${Number(employeeId)}${
+                    raised && raised.length
+                        ? `; ${raised.map((p) => `skill #${p.skillId}: ${p.from == null ? 'not assessed' : p.from} -> ${p.to}`).join(', ')}`
+                        : ''
+                }${why ? `; reason: ${why.slice(0, 200)}` : ''}`,
+            });
+        } catch (e) {
+            console.error('[lms] decision audit failed:', e && e.message);
+        }
     }
 
     /** The admins(id) the FK can hold for this decider. */
@@ -888,7 +934,8 @@ class LmsService {
                  FROM successors s
                  JOIN succession_plans sp ON sp.id = s.plan_id
                  JOIN roles r ON r.id = sp.position_role_id
-                 WHERE s.candidate_employee_id = ? AND sp.status <> 'archived' AND s.source <> 'manual'`,
+                 WHERE s.candidate_employee_id = ? AND sp.status <> 'archived' AND s.source <> 'manual'
+                   AND s.state = 'active'`,
                 [employeeId]
             );
             for (const r of rows) {
@@ -981,7 +1028,7 @@ class LmsService {
                  -- requirement is a reason to assess, not to buy a course.
                  SELECT (g->>'skillId')::bigint AS skill_id, COUNT(*) AS demand
                  FROM successors s, jsonb_array_elements(s.gap_summary) g
-                 WHERE g->>'current' IS NOT NULL
+                 WHERE g->>'current' IS NOT NULL AND s.state = 'active'
                  GROUP BY 1
                  UNION ALL
                  SELECT o.skill_id, COUNT(*) FROM idp_objectives o

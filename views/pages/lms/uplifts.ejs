@@ -71,23 +71,24 @@ const uplDate = (d) => { if (!d) return '—'; try { return new Date(d).toLocale
     var CSRF = <%- include('../../partials/json-script', { v: typeof csrfToken !== 'undefined' ? csrfToken : '' }) %>;
     var T = <%- include('../../partials/json-script', { v: {
         failed: __('lms:upl_failed'),
-        confirmDecline: __('lms:upl_confirm_decline')
+        reasonPrompt: __('lms:upl_decline_reason_prompt'),
+        reasonRequired: __('lms:upl_err_reason_required')
     } }) %>;
 
-    // The house dialog, never a native one: a native confirm is
-    // unstyled, untranslated and unreachable by the keyboard trap the rest of
-    // the app uses.
-    function ask(message) {
-        if (typeof window.confirmDialog === 'function') return window.confirmDialog(message);
-        return Promise.resolve(true);
+    // A decline needs its reason, asked in the house dialog, never a native one
+    // (a native prompt is unstyled, untranslated and unreachable by the keyboard
+    // trap the rest of the app uses). No dialog available: no decline.
+    function askReason(message) {
+        if (typeof window.promptDialog === 'function') return window.promptDialog(message, '', { required: true, multiline: true });
+        return Promise.resolve(null);
     }
 
-    function send(btn, id, act) {
+    function send(btn, id, act, reason) {
         btn.disabled = true;
         return fetch('/v2/lms/uplifts/' + encodeURIComponent(id) + '/' + act, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-csrf-token': CSRF },
-            body: '{}',
+            body: JSON.stringify(reason ? { reason: reason } : {}),
         })
             .then(function (r) { return r.json().catch(function () { return {}; }); })
             .then(function (j) {
@@ -109,7 +110,15 @@ const uplDate = (d) => { if (!d) return '—'; try { return new Date(d).toLocale
         var act = btn.getAttribute('data-act');
         var id = btn.getAttribute('data-id');
         if (act !== 'decline') return void send(btn, id, act);
-        ask(T.confirmDecline).then(function (yes) { if (yes) send(btn, id, act); });
+        askReason(T.reasonPrompt).then(function (why) {
+            if (why == null) return;
+            why = String(why).trim();
+            if (!why) {
+                if (typeof window.showToast === 'function') window.showToast(T.reasonRequired, 'error');
+                return;
+            }
+            send(btn, id, act, why);
+        });
     });
 })();
 </script>

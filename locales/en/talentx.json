@@ -421,7 +421,6 @@
   "ct_gaps_col": "Gaps",
   "ct_add_successor": "Add successor",
   "ct_set_cover": "Set emergency cover",
-  "ct_remove_confirm": "Remove from bench?",
   "ct_select_employee": "Select an employee",
   "ct_pick_cover": "Pick the cover person in the dropdown first",
   "ct_cover_note": "Emergency-cover note (optional):",
@@ -745,7 +744,7 @@
   "lc_err_bad_kind": "Unknown event (joiner, mover or leaver).",
   "lc_err_not_authorized_employee": "This person is outside your scope.",
   "lc_err_bad_effective_date": "Invalid effective date.",
-  "lc_err_lc_reason_required": "A reason is required for a departure.",
+  "lc_err_lc_reason_required": "A reason is required for every arrival, move or departure.",
   "lc_err_subject_not_leavable": "This record is voided or erased: no departure is possible.",
   "lc_err_already_left": "This person has already left.",
   "lc_err_leaver_requested": "Departure request sent to the administrators.",
@@ -1281,5 +1280,7 @@
   "nb_mv_employee_line": "Since your previous placement:",
   "nb_mv_err_justification_placeholder": "Write a real sentence: spaces, punctuation or one repeated character are not a reason.",
   "nb_mv_err_justification_copy": "This reason is word for word the previous one for this person: explain this change.",
-  "legacy_write_retired": "This former 9-box write is retired. Place or move a person, with a justification, in the 9-box: /talent/nine-box."
+  "legacy_write_retired": "This former 9-box write is retired. Place or move a person, with a justification, in the 9-box: /talent/nine-box.",
+  "ct_remove_reason_prompt": "Why is this successor removed from the bench? The entry is kept with your reason and the removal is audited.",
+  "lc_err_jm_requested": "Request sent: an administrator will decide."
 }

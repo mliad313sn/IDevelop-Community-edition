@@ -13,7 +13,7 @@
  *   GET  /compliance/evidence/:id             download evidence (clean only)
  *   POST /compliance/rules                    create coverage rule
  *   POST /compliance/rules/:id/toggle         activate/deactivate rule
- *   POST /compliance/rules/:id/delete         delete ONE coverage rule
+ *   POST /compliance/rules/:id/delete         deactivate ONE coverage rule (reason; never deleted)
  *
  * RBAC: reads are scoped BEFORE aggregation via rbacScope (managers see their
  * sub-tree, local admins their assigned scopes, SuperAdmin everything).
@@ -35,6 +35,15 @@ const CoverageService = require('../services/CoverageService');
 const LogService = require('../services/LogService');
 const { scopedEmployeeIds } = require('../utils/rbacScope');
 const RBACService = require('../services/RBACService');
+
+/** 'admin:<id>' | 'employee:<id>', stored as deactivated_by. */
+function actorRefOf(user) {
+    if (!user || user.id == null) return null;
+    return `${user.userType === 'admin' ? 'admin' : 'employee'}:${Number(user.id)}`;
+}
+function reasonRequired(req) {
+    return req.t ? req.t('compliance:err_deactivate_reason_required') : 'A reason is required.';
+}
 
 class ComplianceController {
     /** Page shell with initial data (tables render server-side; no SPA needed). */
@@ -408,17 +417,27 @@ class ComplianceController {
         if (ids !== null && !ids.includes(Number(absence.employeeId))) {
             return res.status(403).json({ error: 'Employee outside your scope' });
         }
-        await CoverageService.deleteAbsence(absence.id);
+        // Never deleted (SA-43): cancelled with its reason, and audited.
+        const reason = String((req.body && req.body.reason) || '').trim();
+        if (!reason)
+            return res.status(400).json({ error: reasonRequired(req), code: 'reason_required' });
+        const row = await CoverageService.deactivateAbsence(
+            absence.id,
+            reason,
+            actorRefOf(req.user)
+        );
+        if (!row) return res.status(404).json({ error: 'Absence not found' });
         await LogService.log({
             adminId: req.user.userType === 'admin' ? req.user.id : null,
-            action: 'ABSENCE_REMOVED',
+            actorRef: actorRefOf(req.user),
+            action: 'ABSENCE_DEACTIVATED',
             entityType: 'employee',
             entityId: absence.employeeId,
-            details: `Planned absence ${absence.id} removed (${absence.startsOn} → ${absence.endsOn})`,
+            details: `Planned absence ${absence.id} cancelled (${absence.startsOn} → ${absence.endsOn}); reason: ${reason.slice(0, 200)}`,
             ipAddress: req.ip,
             userAgent: req.get('user-agent'),
         });
-        res.json({ success: true });
+        res.json({ success: true, deactivated: Number(absence.id) });
     }
 
     async createRule(req, res) {
@@ -505,15 +524,15 @@ class ComplianceController {
     }
 
     /**
-     * Delete ONE coverage rule. The bulk generator can create a grid of
+     * Remove ONE coverage rule from use. The bulk generator can create a grid of
      * hundreds; until now there was no way to remove a single bad rule short of
      * a DB console, so operators disabled them and lived with the noise.
      *
-     * Deleting is destructive, so it is: permission-gated at the route,
-     * scope-checked here (a rule naming an org unit outside the caller's scope
-     * is invisible to them and stays undeletable), and audited with the FULL
-     * rule definition — a safe-shift rule must never vanish without a record of
-     * what it required.
+     * The rule is deactivated with a written reason, never deleted (SA-43). It
+     * is permission-gated at the route, scope-checked here (a rule naming an org
+     * unit outside the caller's scope is invisible to them and stays out of
+     * reach), and audited with the FULL rule definition: a safe-shift rule must
+     * never leave use without a record of what it required.
      */
     async deleteRule(req, res) {
         const rule = await CoverageService.findRule(req.params.id);
@@ -530,20 +549,37 @@ class ComplianceController {
         const scopeLabel =
             [rule.siteName, rule.departmentName, rule.serviceName].filter(Boolean).join(' / ') ||
             'whole organization';
-        await CoverageService.deleteRule(rule.id);
+        // Never deleted (SA-43): deactivated with its reason (state and reason
+        // on the row). It leaves the lists, the evaluation and the prediction,
+        // which read active rules only.
+        const reason = String((req.body && req.body.reason) || '').trim();
+        if (!reason) {
+            if (this._wantsJson(req))
+                return res
+                    .status(400)
+                    .json({ error: reasonRequired(req), code: 'reason_required' });
+            req.flash('error', reasonRequired(req));
+            return res.redirect('/compliance');
+        }
+        const row = await CoverageService.deactivateRule(rule.id, reason, actorRefOf(req.user));
+        if (!row) return res.status(404).json({ error: 'Rule not found' });
         await LogService.log({
             adminId: req.user.userType === 'admin' ? req.user.id : null,
-            action: 'COVERAGE_RULE_DELETED',
+            actorRef: actorRefOf(req.user),
+            action: 'COVERAGE_RULE_DEACTIVATED',
             entityType: 'coverage_rule',
             entityId: rule.id,
             details:
-                `Coverage rule "${rule.name}" DELETED (${scopeLabel}): required >=${rule.minHeadcount} at level>=${rule.minLevel} in ${rule.skillName}` +
-                `${rule.requireValidCert ? ' with a valid certification' : ''}, severity ${rule.severity}`,
+                `Coverage rule "${rule.name}" DEACTIVATED (${scopeLabel}): required >=${rule.minHeadcount} at level>=${rule.minLevel} in ${rule.skillName}` +
+                `${rule.requireValidCert ? ' with a valid certification' : ''}, severity ${rule.severity}; reason: ${reason.slice(0, 200)}`,
             ipAddress: req.ip,
             userAgent: req.get('user-agent'),
         });
-        if (this._wantsJson(req)) return res.json({ success: true, deleted: Number(rule.id) });
-        req.flash('success', req.t ? req.t('flash:cmp_rule_deleted') : 'Coverage rule deleted');
+        if (this._wantsJson(req)) return res.json({ success: true, deactivated: Number(rule.id) });
+        req.flash(
+            'success',
+            req.t ? req.t('compliance:rule_deactivated') : 'Coverage rule deactivated'
+        );
         res.redirect('/compliance');
     }
 

@@ -154,7 +154,7 @@
   "da_type_coaching": "Coaching",
   "da_type_mentoring": "Mentoring",
   "da_type_sa": "Self-assessment",
-  "delete_rule": "Delete rule",
+  "delete_rule": "Deactivate the rule",
   "sec_impact": "Lapsed certificates degrading qualification",
   "impact_help": "Every row is a role requirement that is NO LONGER met purely because the held certificate expired or was revoked. These people no longer count as qualified on that skill in readiness, benchmark and the succession bench — until revalidation. The number of skills the role requires is unchanged: only the validity of the held ticket changed.",
   "th_role": "Role",
@@ -164,9 +164,7 @@
   "lapse_expired": "certificate expired",
   "lapse_revoked": "certificate revoked",
   "no_impact": "No lapsed certificate is currently degrading a role requirement in your scope.",
-  "js_confirm_absence": "Remove this planned absence?",
   "js_confirm_toggle": "Activate / deactivate this coverage rule?",
-  "js_confirm_delete": "Permanently delete the rule “{name}”? The deletion is audited and cannot be undone.",
   "js_neterr": "Network error",
   "js_denied": "Refused: that rule is outside your scope.",
   "gen_planned": "{n} rule(s) to create",
@@ -418,5 +416,9 @@
   "reg_ret_report_copies": "Scheduled report copies (in the app)",
   "reg_ret_emptied": "Content emptied (also when a person in scope is erased)",
   "cat_safetyWaivers": "Safety clearance waivers",
-  "cat_safetyContests": "Safety clearance contests"
+  "cat_safetyContests": "Safety clearance contests",
+  "absence_reason_prompt": "Why is this planned absence cancelled? The absence is kept with your reason; it leaves the lists and the forecast.",
+  "rule_reason_prompt": "Why is the rule “{name}” taken out of use? It is deactivated, not deleted: the rule and your reason are kept and audited.",
+  "err_deactivate_reason_required": "A reason is required.",
+  "rule_deactivated": "Coverage rule deactivated"
 }

@@ -318,6 +318,14 @@ const SUBJECT_DATA_REGISTRY = [
         exportWhy: 'raw provider payload; the completion itself is exported',
     },
     {
+        scope: 'reasons given on the decisions about the subject’s proposed uplifts (migration 180)',
+        table: 'lms_completions',
+        treatment: 'redacted',
+        key: 'lmsUpliftDecisions',
+        export: 'lmsUpliftDecisions',
+    },
+    keep('lms_completions', 'decided_by_ref', ACTOR),
+    {
         table: 'safety_gate_status',
         column: 'employee_id',
         treatment: 'delete',
@@ -399,7 +407,8 @@ const SUBJECT_DATA_REGISTRY = [
         column: 'candidate_employee_id',
         treatment: 'delete',
         export: false,
-        exportWhy: 'confidential bench position',
+        exportWhy:
+            'confidential bench position; a removed successor’s row (removed_reason, migration 180) goes with it',
     },
     {
         table: 'merit_recommendations',
@@ -726,7 +735,10 @@ const TABLES_WITHOUT_SUBJECT_COLUMN = {
     countries: ['config', 'countries and their retention periods'],
     country_aliases: ['config', 'country name aliases'],
     course_skill_map: ['config', 'course to skill mapping'],
-    coverage_rules: ['config', 'coverage rules of skills per unit'],
+    coverage_rules: [
+        'config',
+        'coverage rules of skills per unit; deactivated_reason (migration 180) is about the rule, not a person',
+    ],
     cycle_closure_proposals: ['aggregate', 'campaign closure snapshot (counts)'],
     departments: ['config', 'org units'],
     dept_brief_prefs: ['config', 'recipients’ brief preferences'],

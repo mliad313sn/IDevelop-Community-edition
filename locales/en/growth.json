@@ -157,5 +157,8 @@
   "oo_err_bad_owner": "The owner must be one of you two.",
   "oo_err_bad_date": "Invalid date.",
   "oo_err_bad_link": "This link does not belong to this person.",
-  "oo_err_meeting_held": "This meeting has already been held."
+  "oo_err_meeting_held": "This meeting has already been held.",
+  "survey_band_under": "Fewer than {{n}} responses",
+  "survey_band_at_least": "{{n}} responses or more",
+  "survey_results_after_close": "Results are published when the survey closes, and frozen. While it is open there is no result and no count."
 }

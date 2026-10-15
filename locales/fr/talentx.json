@@ -421,7 +421,6 @@
   "ct_gaps_col": "Écarts",
   "ct_add_successor": "Ajouter un successeur",
   "ct_set_cover": "Définir une couverture d'urgence",
-  "ct_remove_confirm": "Retirer du vivier ?",
   "ct_select_employee": "Sélectionnez un collaborateur",
   "ct_pick_cover": "Choisissez d'abord la personne de couverture dans la liste",
   "ct_cover_note": "Note de couverture d'urgence (facultatif) :",
@@ -745,7 +744,7 @@
   "lc_err_bad_kind": "Événement inconnu (arrivée, mobilité ou départ).",
   "lc_err_not_authorized_employee": "Cette personne est hors de votre périmètre.",
   "lc_err_bad_effective_date": "Date d’effet invalide.",
-  "lc_err_lc_reason_required": "Un motif est obligatoire pour un départ.",
+  "lc_err_lc_reason_required": "Un motif est obligatoire pour chaque arrivée, mobilité ou départ.",
   "lc_err_subject_not_leavable": "Cette fiche est annulée ou effacée : aucun départ possible.",
   "lc_err_already_left": "Cette personne est déjà sortie.",
   "lc_err_leaver_requested": "Demande de départ transmise aux administrateurs.",
@@ -1281,5 +1280,7 @@
   "nb_mv_employee_line": "Depuis votre positionnement précédent :",
   "nb_mv_err_justification_placeholder": "Écrivez une vraie phrase : des espaces, de la ponctuation ou un même caractère répété ne sont pas un motif.",
   "nb_mv_err_justification_copy": "Ce motif reprend mot pour mot le précédent pour cette personne : expliquez ce changement-ci.",
-  "legacy_write_retired": "Cette ancienne écriture de la 9-box est retirée. Positionnez ou déplacez une personne, avec une justification, dans la 9-box : /talent/nine-box."
+  "legacy_write_retired": "Cette ancienne écriture de la 9-box est retirée. Positionnez ou déplacez une personne, avec une justification, dans la 9-box : /talent/nine-box.",
+  "ct_remove_reason_prompt": "Pourquoi retirer ce successeur du vivier ? La ligne est conservée avec votre motif et le retrait est journalisé.",
+  "lc_err_jm_requested": "Demande envoyée : un administrateur décidera."
 }
