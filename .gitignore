@@ -11,10 +11,10 @@ pnpm-debug.log*
 .env.*.local
 *.pem
 *.key
-certs/*.pem
-certs/*.key
-certs/*.pfx
-certs/*.p12
+*.pfx
+*.pfx.bak
+*.p12
+certs/
 
 # Build / temp
 tmp/
