@@ -1038,6 +1038,38 @@ const PROFILES = [
                 },
             },
             {
+                icon: '🧭',
+                img: null,
+                title: {
+                    fr: 'Mouvements de la 9-Box — d’où vient chaque positionnement, et pourquoi',
+                    en: '9-box movements — where each placement comes from, and why',
+                },
+                where: {
+                    fr: 'TALENTS → Grille 9-Box → bouton « Mouvements » (/talent/nine-box/movements)',
+                    en: 'TALENT → 9-Box Talent → “Movements” button (/talent/nine-box/movements)',
+                },
+                what: {
+                    fr: 'Chaque positionnement retient le <b>positionnement approuvé précédent</b> de la personne et le <b>sens du mouvement</b> : premier positionnement, inchangé, en hausse, en baisse ou déplacement latéral (un axe progresse, l’autre recule). Dès que la case change, un <b>motif écrit</b> est demandé : 20 caractères au moins, une vraie phrase, et pas la copie du motif précédent de la même personne. Il est demandé à la soumission, à l’approbation, quand un relecteur change la case proposée et en calibration. La page Mouvements donne la répartition par sens, un tableau « de case en case », la liste détaillée avec le motif, des filtres (campagne, site, département, sens) et un export CSV. Elle ne liste que les personnes de votre périmètre.',
+                    en: 'Every placement keeps the person’s <b>previous approved placement</b> and the <b>direction of the move</b>: first placement, unchanged, moved up, moved down or sideways (one axis rose, the other fell). As soon as the box changes, a <b>written reason</b> is required: at least 20 characters, a real sentence, and not a copy of the same person’s previous reason. It is asked for at submission, at approval, when a reviewer changes the proposed box and at calibration. The Movements page gives the moves by direction, a “from box to box” table, the detailed list with the reason, filters (campaign, site, department, direction) and a CSV export. It lists only the people in your scope.',
+                },
+                steps: {
+                    fr: [
+                        'Dans <b>Évaluer</b>, lisez l’encadré <b>Positionnement précédent</b> : si la case que vous choisissez est différente, le champ <b>« Pourquoi la case change-t-elle ? »</b> apparaît.',
+                        'Écrivez ce qui a changé depuis le dernier positionnement, puis enregistrez. Un motif trop court, fait de ponctuation ou recopié est refusé, avec la raison du refus.',
+                        'Ouvrez <b>Mouvements</b> pour voir « Avant → maintenant », le sens et le motif de chaque personne ; filtrez puis <b>Télécharger en CSV</b> si besoin.',
+                    ],
+                    en: [
+                        'In <b>Assess</b>, read the <b>Previous placement</b> box: if the box you choose is different, the <b>“Why does the box change?”</b> field appears.',
+                        'Write what changed since the last placement, then save. A reason that is too short, only punctuation, or copied is refused, and the refusal says why.',
+                        'Open <b>Movements</b> to see “Before → now”, the direction and the reason for each person; filter, then <b>Download CSV</b> if needed.',
+                    ],
+                },
+                tip: {
+                    fr: 'Le motif est confidentiel : la personne ne voit que le sens du mouvement, et seulement si son positionnement précédent lui avait déjà été rendu visible. Il fait partie de son dossier : il lui est communiqué sur une demande d’accès formelle et effacé avec ses données. Les positionnements décidés avant cette version apparaissent « reconstitués depuis l’historique », sans motif.',
+                    en: 'The reason is confidential: the person sees only the direction of the move, and only when their previous placement had already been disclosed to them. It is part of their file: given to them on a formal access request and erased with their data. Placements decided before this release appear as “rebuilt from history”, with no reason.',
+                },
+            },
+            {
                 icon: '📋',
                 img: 'mgr-12-talent-actions',
                 title: {
@@ -3328,6 +3360,7 @@ const FLOWS = [
                 '<b>Choisir la nature</b> : coaching ou mentorat. Le titre, l’objectif, le résultat attendu et une date cible.',
                 '<b>Ajouter des actions</b> — sur un plan ouvert automatiquement par une 9-box rouge, elles sont déjà écrites, une par écart critique du poste.',
                 '<b>Tenir les séances</b> en format GROW (Objectif, Réalité, Options, Chemin). Les objectifs encore ouverts d’une séance sont <b>reportés automatiquement</b> sur la suivante, avec le lien vers celle d’origine.',
+                '<b>Signer la séance</b> : seuls la personne accompagnée et le coach désigné sur la séance la signent (le coach peut passer par le compte d’administration qui lui est rattaché). Un administrateur qui peut lire la séance sans en être le coach ne peut pas signer à sa place ; la signature retient le compte utilisé.',
                 '<b>Suivre l’avancement</b> de 0 à 100 %. Le tableau de suivi distingue les plans actifs des plans <b>en retard</b> (date cible dépassée).',
                 '<b>Valider la fin</b> : le plan passe à « terminé », 100 %, avec le nom du valideur et la date ; le collaborateur est notifié. Un plan déjà terminé ne peut pas être re-validé.',
                 '<b>Plusieurs plans ouverts sont légitimes</b> pour une même personne — un par contexte. Ce n’est pas un doublon, et la plateforme ne l’empêche pas.',
@@ -3337,6 +3370,7 @@ const FLOWS = [
                 '<b>Pick the nature</b>: coaching or mentoring. Title, objective, expected outcome and a target date.',
                 '<b>Add actions</b> — on a plan opened automatically by a red 9-box they are already written, one per critical gap of the role.',
                 '<b>Run the sessions</b> in GROW format (Goal, Reality, Options, Way forward). Objectives still open at the end of a session are <b>carried forward automatically</b> to the next one, linked back to the original.',
+                '<b>Sign the session</b>: only the person coached and the coach named on the session sign it (the coach may use the administration account linked to them). An administrator who can read the session without being its coach cannot sign in their place; the signature records the account used.',
                 '<b>Track progress</b> 0 to 100%. The monitor separates active plans from <b>overdue</b> ones (target date passed).',
                 '<b>Validate completion</b>: the plan becomes “completed”, 100%, with the validator’s name and date; the employee is notified. An already-completed plan cannot be re-validated.',
                 '<b>Several open plans are legitimate</b> for one person — one per context. That is not a duplicate, and the platform does not block it.',
