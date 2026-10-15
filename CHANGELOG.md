@@ -167,6 +167,17 @@ project uses [Semantic Versioning](https://semver.org/).
 - **Workspace tabs**: the dashboard tab switches a SuperAdmin sets per administrator are now the new tabs (`tab:overview` … `tab:assessments`); a choice stored on a former tab applies to the tabs that replace it until it is saved again.
 - **Upgrade:** migration 185 is additive (one table, `dashboard_scope_prefs`, ends with the console reader sync); the scope a person chose is exported with them, deleted on erasure and kept by the go-live reset. The former JSON endpoints of the dashboard (`/api/dashboard/*` except the module widgets, and `/api/benchmark/fit`) answer **410 Gone**: nothing in IDevelop calls them any more; move any script or integration to the dashboard pages, the reports or `/api/v1`. The module widgets (`/api/dashboard/v2/*`) now also need the capability of the block they feed (403). `views/pages/dashboard.ejs`, `public/js/dashboard.js` and the former dashboard controller are removed; the old dashboard bookmarks keep working (`/dashboard`, a former `?tab=` name opening the tab that replaces it). Managers find their named team list under « My team »; the manager and workforce-planning digests now give counts and a « See the list » button instead of names. Administrators whose former dashboard tabs were hidden keep that choice through the mapping above. A manager's « Dashboard » opens their team in counts; the organisation dashboard limited to their team stays under Reports → Indicators.
 
+### Targets, alerts, « What changed » and the capability map
+
+- **Indicator targets** (`/kpi/targets`, Reports → Indicator targets, SA-53). One target per indicator, for the organisation or a site, from a date, with a reason. Every decision is kept (a change or a withdrawal adds a line; nothing is edited or deleted) and audited (`KPI_TARGET_SET`, `KPI_TARGET_WITHDRAWN`); a site without its own target follows the organisation's. Every administrator account reads the page; deciding needs the new **`manage_kpi_targets`** permission for a site of the clearance (the organisation needs an unrestricted clearance; a viewer never decides). An indicator whose module is off is neither offered nor accepted.
+- **Threshold alerts** (job `kpi-alerts`, one pass a day after `KPI_ALERTS_HOUR`, 6 by default): the role-ready rate below its target or « At risk » (when fewer than half the requirements are assessed, « coverage too low » instead), critical roles without a ready successor rising (talent module), people with an expired required certificate, safety fitness below 100 %, a running campaign behind its schedule (campaigns module). An alert fires **once** when an indicator enters an alert band, again only when it gets **worse** than its worst point, and once when it is **back to normal**. A site alert reaches the target managers, viewers and (certificates, safety) compliance holders whose clearance covers the site, else the SuperAdmins. In the app first; the certificate and safety alert is mandatory and e-mailed now, the others go to the daily summary. No name and no figure in a mail. The kinds `kpi.alert`, `kpi.alert.safety` and `kpi.recovered` are declared in the catalogue, which now also gives each kind its module (`moduleOf`).
+- **« What changed »** on the dashboard (inside « In brief »): up to three fixed sentences over 30 days, from the daily snapshots of the same contract, only about what the reader's dashboard shows; never « +0 », never a percentage under 5 people, « History starts on … » until a comparison exists. The movements of the dashboard now also work on a department scope.
+- **« What changed » summaries** (« My summaries », `/digests`), **opt-in**: nothing is sent until a SuperAdmin switches on `personaDigestsEnabled` (App Settings → Scheduled jobs). An administrator then gets the movements of the units its clearance covers whole and what is left to do; an employee gets one next step, in the app only; a manager keeps the weekly manager digest. Each summary is archived and readable in the app (by its owner only), each person chooses the frequency (every day, every week, never), and eight summaries in a row left unopened slow it down (« Restore » puts it back). Figures only, never a name.
+- **« Time to reach the role » (K14) is measured** once role start dates exist: a role change stamps the date (database trigger, whatever the path, the HRIS sync included) and the arrival of a joiner stamps their first role. Nothing is back-filled.
+- **Bench strength and critical roles without a ready successor** are recorded every day (K5, K6), and the continuity page's « Ready now » column and coverage gap now use the same rule as these indicators: an active successor ready for the target role by the role-ready rule. The band typed on a successor stays on the plan.
+- **Capability map** (Role readiness tab): the whole framework, each pillar opening its sub-domains, « Whole framework » first, by site or department; same rules and colours as the other heatmaps (fewer than 5 people never shown, « Not measured » hatched, « Not required in this scope » a dot), a cell opens the list of the people below the requirement. The Overview tab shows the « Whole framework » row with a link to the full map. It replaces the pillar heatmap.
+- **Upgrade:** migrations 186 to 189 are additive and idempotent and each ends with the console reader sync (186: targets and alert tables; 187: the department snapshot scope, `safety_fit_n`, the summary archive and frequencies; 188: `employees.role_start_date` and its trigger; 189: the bench columns of `kpi_snapshots`). The **existing manager and department digests are unchanged** and the « What changed » summaries stay **off** until switched on. The **first alert pass announces everything already in an alert band**: expect one alert per indicator and site already off target, then alerts only on changes. Grant `manage_kpi_targets` to the people who decide targets (no access profile includes it). K14 stays « not measured » until people who change role or join after the upgrade are ready; role start dates are never back-filled. The continuity page may now show **fewer « Ready now » successors**: it counts only successors who meet the role-ready rule for the target role, as the bench indicators do (the department brief's « critical roles without a successor » line still reads the bands). Department rows add a few snapshot rows a day. The summary archive, the summary frequency and the role start date are exported with the person; the archive and the frequency are deleted on erasure; the go-live reset keeps targets and frequencies and empties alerts and archived summaries.
+
 ### Security (uploads and escaping proofs)
 
 - **Every upload passes the antivirus** (SA-45). Imports, the HRIS CSV, the skills-library archive, the skill quality and SQL console workbooks, branding images, certificates and evidence are all scanned (ClamAV, else Microsoft Defender) before they are used. One rule, App Setting **`uploadAvScan`** (on by default, SuperAdmin only): a threat is refused, deleted and audited (`UPLOAD_REJECTED_AV`); when no scanner gives a verdict the upload is refused while `requireMalwareScan` applies (`UPLOAD_REFUSED_NOT_SCANNED`), otherwise accepted, marked not scanned and audited (`UPLOAD_NOT_SCANNED`). Evidence and certificates record that verdict instead of scanning twice.
@@ -402,6 +413,17 @@ project uses [Semantic Versioning](https://semver.org/).
   account chose, per page (a small JSON object of ids, CHECK on its shape).
   Additive; re-grants the console reader.
 
+- **Migration 186** adds `kpi_targets` (append-only by `block_mutation`, a
+  reason required), `kpi_alert_states` and `kpi_alert_events`. **Migration 187**
+  widens `kpi_snapshots.scope_type` with `department`, adds `safety_fit_n`, and
+  the `persona_digests` archive and `persona_digest_prefs`. **Migration 188**
+  adds `employees.role_start_date` and the trigger that stamps a role change
+  (column-granted to the console reader by the sync). **Migration 189** adds
+  `bench_strength_pct`, `bench_critical_roles` and
+  `critical_roles_without_ready` to `kpi_snapshots`. All additive and
+  idempotent (rehearsed twice on a populated copy); each re-grants the console
+  reader.
+
 ### Tests
 
 - DB-backed suites are serialised across jest workers by a PostgreSQL advisory
@@ -420,6 +442,12 @@ project uses [Semantic Versioning](https://semver.org/).
   `samlStrictMode` and `sensitiveSettingsBand`.
 - Mail privacy: `accountSetupLink` and the database suite
   `reportScheduleAccounts-db`.
+- Targets, alerts, « What changed », summaries and the capability map:
+  `c327-A-alert-rules`, `c327-A-targets-page`, `c327-B-narrative`,
+  `c327-B-digest-page`, `c332-CM-map` and the database suites
+  `c327-A-targets-alerts-db`, `c327-B-persona-digest-db`,
+  `c327-C-k14-bench-db` (with the idempotency of migrations 186 to 189) and
+  `c332-CM-db`.
 
 ### Security (CSRF on uploads, SSO notices, security panels)
 

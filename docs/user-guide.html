@@ -580,7 +580,7 @@ footer{color:var(--mut);font-size:12.5px;text-align:center;margin:22px 0}
       <div class="feat-where">Où : Tableau de bord → onglets</div></div></header>
     <div class="feat-body">
       <div class="feat-text">
-        <p class="feat-what"><b>Vue d’ensemble</b> : le score global de santé est la moyenne pondérée des seuls domaines mesurés (préparation 30, couverture 15, compétences critiques 25, relève 15, évaluations récentes 15) ; il se dit « partiel » quand un domaine manque et n’apparaît pas sous 3 domaines mesurés. La courbe en trait plein est enregistrée chaque jour ; la courbe en pointillés est <b>reconstituée</b> à partir des dates d’évaluation pour les personnes d’aujourd’hui : une estimation, jamais utilisée pour une évolution. <b>Préparation aux postes</b> : la répartition (courbe de référence à partir de 20 personnes, une référence et non un objectif), la préparation par site ou département, une unité comparée à tout le périmètre (par défaut la plus basse, 5 personnes au moins) et la carte thermique des piliers. Les cellules de moins de 5 personnes sont masquées ; « Non mesuré » n’est jamais un zéro. <b>Talents</b> : les positions approuvées de la grille 9 cases, les cases de moins de 5 regroupées.</p>
+        <p class="feat-what"><b>Vue d’ensemble</b> : le score global de santé est la moyenne pondérée des seuls domaines mesurés (préparation 30, couverture 15, compétences critiques 25, relève 15, évaluations récentes 15) ; il se dit « partiel » quand un domaine manque et n’apparaît pas sous 3 domaines mesurés. La courbe en trait plein est enregistrée chaque jour ; la courbe en pointillés est <b>reconstituée</b> à partir des dates d’évaluation pour les personnes d’aujourd’hui : une estimation, jamais utilisée pour une évolution. <b>Préparation aux postes</b> : la répartition (courbe de référence à partir de 20 personnes, une référence et non un objectif), la préparation par site ou département, une unité comparée à tout le périmètre (par défaut la plus basse, 5 personnes au moins) et la <b>cartographie des capacités</b> : tout le référentiel, « Ensemble du référentiel » en première ligne, chaque pilier s’ouvrant sur ses sous-domaines, par site ou département ; une cellule ouvre la liste des personnes sous le niveau requis (la Vue d’ensemble en montre la première ligne, avec un lien vers la carte complète). Les cellules de moins de 5 personnes sont masquées ; « Non mesuré » n’est jamais un zéro. <b>Talents</b> : les positions approuvées de la grille 9 cases, les cases de moins de 5 regroupées.</p>
         
         
         
@@ -620,6 +620,32 @@ footer{color:var(--mut);font-size:12.5px;text-align:center;margin:22px 0}
     <div class="feat-body">
       <div class="feat-text">
         <p class="feat-what">Une page, une définition par indicateur (K1 à K16), chacune avec son ancre (/kpi/glossary#K1) : définition, calcul, dénominateur, inclus et exclus, seuils, fraîcheur, responsable et, quand vos accès le permettent, un lien « Voir la liste » vers la page qui liste les personnes derrière le chiffre. Les règles communes sont en tête : population active de votre périmètre, sorties et effacés exclus ; une absence de mesure n’est jamais un 0 ; en dessous de 5 personnes, pas de pourcentage ; un statut (Conforme, À surveiller, À risque) vient d’une seule règle de seuils ; une évolution n’est jamais calculée entre deux définitions différentes. <b>Les modules comptent</b> : un indicateur qui appartient à un module désactivé (campagnes, talents, développement, mobilité) n’est pas listé, et aucun lien ne mène vers un module désactivé. K14 (délai d’atteinte du poste) est décrit mais pas encore mesuré : les dates de prise de poste ne sont pas encore enregistrées.</p>
+        
+        
+        
+      </div>
+      
+    </div>
+  </article><article class="feat">
+    <header class="feat-h"><span class="feat-ic">🎯</span>
+      <div><h3>Cibles des indicateurs et alertes</h3>
+      <div class="feat-where">Où : Rapports → Cibles des indicateurs (/kpi/targets) — administrateurs</div></div></header>
+    <div class="feat-body">
+      <div class="feat-text">
+        <p class="feat-what">Une cible par indicateur, pour l’organisation ou pour un site, à partir d’une date, avec un motif. Une décision n’est jamais modifiée ni effacée : changer ou retirer une cible ajoute une ligne à l’historique, qui dit qui l’a décidée, quand et pourquoi. Un site sans cible propre suit celle de l’organisation (« cible de l’organisation »). Tout compte administrateur consulte la page ; fixer une cible demande la permission <b>Gérer les cibles des indicateurs</b> sur un site de votre périmètre (l’organisation entière demande un périmètre sans restriction). Les <b>alertes</b> partent une fois par jour : une fois quand un indicateur entre dans une zone d’alerte (taux de prêts sous sa cible ou « À risque », certificats requis expirés, aptitude sécurité sous 100 %, postes critiques sans successeur prêt en hausse, campagne en retard), de nouveau seulement s’il se dégrade, et une dernière fois quand il revient à la normale. Elles arrivent dans la cloche ; celle des certificats et de la sécurité est aussi envoyée par e-mail tout de suite, les autres rejoignent le récapitulatif quotidien. Elles ne nomment personne et le sujet d’un e-mail ne porte aucun chiffre. Au premier passage après la mise à jour, tout ce qui est déjà en zone d’alerte est annoncé une fois.</p>
+        
+        
+        
+      </div>
+      
+    </div>
+  </article><article class="feat">
+    <header class="feat-h"><span class="feat-ic">📰</span>
+      <div><h3>« Ce qui a changé » et mes récapitulatifs</h3>
+      <div class="feat-where">Où : Tableau de bord → « En bref » ; menu du compte → Mes récapitulatifs (/digests)</div></div></header>
+    <div class="feat-body">
+      <div class="feat-text">
+        <p class="feat-what">Sous « En bref », jusqu’à trois phrases disent ce qui a changé en 30 jours, en chiffres : taux de prêts, aptitude sécurité, couverture, certificats, relève. Elles comparent deux relevés quotidiens de même définition ; tant qu’il n’y en a pas deux, la page dit « L’historique commence le … ». Pas de phrase pour un changement nul, pas de pourcentage sous 5 personnes, jamais un nom. Les <b>récapitulatifs « Ce qui a changé »</b> sont désactivés par défaut : un super-administrateur les active dans Paramètres → Tâches planifiées (« Récapitulatifs « Ce qui a changé » »). Un administrateur reçoit alors les évolutions de son périmètre et ce qui reste à faire ; un collaborateur, sa prochaine étape, dans l’application seulement ; un manager garde son récapitulatif d’équipe du lundi. Chacun choisit la fréquence (chaque jour, chaque semaine, jamais) dans « Mes récapitulatifs », où chaque récapitulatif reste consultable même sans e-mail ; huit récapitulatifs de suite non ouverts réduisent la fréquence, et « Rétablir » la remet.</p>
         
         
         

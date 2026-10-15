@@ -580,7 +580,7 @@ footer{color:var(--mut);font-size:12.5px;text-align:center;margin:22px 0}
       <div class="feat-where">Where: Dashboard → tabs</div></div></header>
     <div class="feat-body">
       <div class="feat-text">
-        <p class="feat-what"><b>Overview</b>: the overall health score is the weighted mean of the measured areas only (readiness 30, coverage 15, critical skills 25, succession 15, recent assessments 15); it says “partial” when an area is missing and does not appear below 3 measured areas. The solid line is recorded every day; the dashed line is <b>reconstructed</b> from assessment dates for today’s people: an estimate, never used for a movement. <b>Role readiness</b>: the distribution (reference curve from 20 people, a reference and not a target), readiness by site or department, one unit compared with the whole scope (by default the lowest, with 5 people at least) and the pillar heatmap. Cells of fewer than 5 people are masked; “Not measured” is never a zero. <b>Talent</b>: the approved 9-box positions, cells of fewer than 5 grouped.</p>
+        <p class="feat-what"><b>Overview</b>: the overall health score is the weighted mean of the measured areas only (readiness 30, coverage 15, critical skills 25, succession 15, recent assessments 15); it says “partial” when an area is missing and does not appear below 3 measured areas. The solid line is recorded every day; the dashed line is <b>reconstructed</b> from assessment dates for today’s people: an estimate, never used for a movement. <b>Role readiness</b>: the distribution (reference curve from 20 people, a reference and not a target), readiness by site or department, one unit compared with the whole scope (by default the lowest, with 5 people at least) and the <b>capability map</b>: the whole framework, « Whole framework » first, each pillar opening its sub-domains, by site or department; a cell opens the list of the people below the required level (the Overview shows its first row, with a link to the full map). Cells of fewer than 5 people are masked; “Not measured” is never a zero. <b>Talent</b>: the approved 9-box positions, cells of fewer than 5 grouped.</p>
         
         
         
@@ -620,6 +620,32 @@ footer{color:var(--mut);font-size:12.5px;text-align:center;margin:22px 0}
     <div class="feat-body">
       <div class="feat-text">
         <p class="feat-what">One page, one definition per indicator (K1 to K16), each with its anchor (/kpi/glossary#K1): definition, calculation, denominator, included and excluded, thresholds, freshness, owner and, when your access allows it, a « See the list » link to the page that lists the people behind the figure. The common rules come first: the active population of your perimeter, leavers and erased people excluded; an absence of measurement is never a 0; below 5 people no percentage; a status (Compliant, Watch, At risk) comes from one rule of thresholds; a change is never computed across two different definitions. <b>Modules matter</b>: an indicator that belongs to a module switched off (campaigns, talent, development, mobility) is not listed, and no link leads into a module that is off. K14 (time to competence) is described but not measured yet: role start dates are not recorded yet.</p>
+        
+        
+        
+      </div>
+      
+    </div>
+  </article><article class="feat">
+    <header class="feat-h"><span class="feat-ic">🎯</span>
+      <div><h3>Indicator targets and alerts</h3>
+      <div class="feat-where">Where: Reports → Indicator targets (/kpi/targets) — administrators</div></div></header>
+    <div class="feat-body">
+      <div class="feat-text">
+        <p class="feat-what">One target per indicator, for the organisation or a site, from a date, with a reason. A decision is never edited or deleted: changing or withdrawing a target adds a line to the history, which says who decided it, when and why. A site without its own target follows the organisation's (« organisation target »). Every administrator account reads the page; setting a target needs the <b>Manage indicator targets</b> permission on a site of your scope (the whole organisation needs an unrestricted scope). The <b>alerts</b> run once a day: once when an indicator enters an alert band (role-ready rate below its target or « At risk », required certificates expired, safety fitness below 100 %, more critical roles without a ready successor, a campaign behind schedule), again only if it gets worse, and a last time when it is back to normal. They arrive in the bell; the certificate and safety one is also e-mailed at once, the others join the daily summary. They name nobody and an e-mail subject carries no figure. On the first pass after the upgrade, everything already in an alert band is announced once.</p>
+        
+        
+        
+      </div>
+      
+    </div>
+  </article><article class="feat">
+    <header class="feat-h"><span class="feat-ic">📰</span>
+      <div><h3>« What changed » and my summaries</h3>
+      <div class="feat-where">Where: Dashboard → « In brief »; account menu → My summaries (/digests)</div></div></header>
+    <div class="feat-body">
+      <div class="feat-text">
+        <p class="feat-what">Under « In brief », up to three sentences say what changed over 30 days, in figures: role-ready rate, safety fitness, coverage, certificates, succession. They compare two daily records of the same definition; until there are two, the page says « History starts on … ». No sentence for no change, no percentage under 5 people, never a name. The <b>« What changed » summaries</b> are off by default: a SuperAdmin switches them on in Settings → Scheduled jobs (« « What changed » summaries »). An administrator then receives the movements of their scope and what is left to do; an employee their next step, in the app only; a manager keeps the Monday team summary. Everyone chooses the frequency (every day, every week, never) in « My summaries », where every summary stays readable even without e-mail; eight summaries in a row left unopened reduce the frequency, and « Restore » puts it back.</p>
         
         
         
