@@ -1,6 +1,13 @@
+<%# Export-only mode (SA-44): a holder of export_data who may not import (an
+    auditor, a read-only viewer, an HSE profile) sees ONLY the export blocks.
+    Every other route stays refused server-side by its own gate; this only stops
+    drawing forms that would answer 403. %>
+<% const _dmExportOnly = typeof dmMode !== 'undefined' && dmMode === 'export';
+   const _isSuperDm = !_dmExportOnly && !!(user && user.role === 'superadmin');
+   const _full = !_dmExportOnly; %>
 <div class="page-header">
     <h1><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('datamgmt:page_title') %></h1>
-    <p class="help-text"><%= __('datamgmt:page_subtitle') %></p>
+    <p class="help-text"><%= _dmExportOnly ? __('datamgmt:export_only_notice') : __('datamgmt:page_subtitle') %></p>
 </div>
 
 <!-- Export Section -->
@@ -30,12 +37,14 @@
             <a href="/data-management/export/employees" class="btn btn-primary"><%= __('datamgmt:btn_export_csv') %></a>
         </div>
 
+        <% if (_full) { %>
         <div class="export-card">
             <div class="export-card-icon"><i class="fas fa-lock" aria-hidden="true"></i></div>
             <h3><%= __('datamgmt:card_local_admins') %></h3>
             <p><%= __('datamgmt:card_local_admins_export_desc') %></p>
             <a href="/data-management/export/local-admins" class="btn btn-primary"><%= __('datamgmt:btn_export_json') %></a>
         </div>
+        <% } %>
 
         <div class="export-card">
             <div class="export-card-icon"><i class="fas fa-chart-column" aria-hidden="true"></i></div>
@@ -56,6 +65,7 @@
     </div>
 </div>
 
+<% if (_full) { %>
 <!-- Download Templates Section -->
 <div class="dashboard-section">
     <h2><i class="fas fa-clipboard" aria-hidden="true"></i> <%= __('datamgmt:templates_title') %></h2>
@@ -259,7 +269,9 @@
     </div>
 </div>
 
-<% if (user && user.role === 'superadmin') { %>
+<% } %>
+
+<% if (_isSuperDm) { %>
 <!-- SQL Console (super-admin only) -->
 <div class="dashboard-section" style="border-left: 4px solid #8e44ad;">
     <h2><i class="fas fa-terminal" aria-hidden="true"></i> <%= __('datamgmt:sql_console_title') %> <span class="badge" style="background:#8e44ad; color:#fff; font-size:11px; padding:2px 8px; border-radius:10px;"><%= __('datamgmt:badge_superadmin') %></span></h2>
@@ -273,6 +285,7 @@
 </div>
 <% } %>
 
+<% if (_full) { %>
 <!-- JSON System Migration (Portable) -->
 <div class="dashboard-section section-accent-purple">
     <h2><i class="fas fa-box" aria-hidden="true"></i> <%= __('datamgmt:json_migration_title') %></h2>
@@ -320,6 +333,8 @@
     </div>
 </div>
 
+<% } %>
+
 <!-- Skill Matrix (single-file provisioning — Excel / JSON / XML / CSV) -->
 <div class="dashboard-section section-accent-green">
     <h2><i class="fas fa-book" aria-hidden="true"></i> <%= __('datamgmt:matrix_title') %></h2>
@@ -342,6 +357,7 @@
             </div>
         </div>
 
+        <% if (_full) { %>
         <div class="export-card card-accent-top-green">
             <div class="export-card-icon"><i class="fas fa-clipboard" aria-hidden="true"></i></div>
             <h3><%= __('datamgmt:btn_download_template') %></h3>
@@ -373,10 +389,11 @@
             <div class="import-result" id="skillMatrixWorkbookResult"></div>
             <small class="card-footnote warning"><%= __('datamgmt:matrix_import_warning') %></small>
         </div>
+        <% } %>
     </div>
 </div>
 
-<% if (user && user.role === 'superadmin') { %>
+<% if (_isSuperDm) { %>
 <!-- Snapshots Section (super-admin only) -->
 <div class="dashboard-section">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
@@ -474,7 +491,7 @@
     </div>
 </div>
 
-<% if (user && user.role === 'superadmin') { %>
+<% if (_isSuperDm) { %>
 <!-- Database Reset Section (super-admin only) -->
 <div class="dashboard-section section-accent-danger">
     <h2><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('datamgmt:reset_title') %></h2>
@@ -515,6 +532,7 @@
 </div>
 <% } %>
 
+<% if (_full) { %>
 <!-- Create Snapshot Modal -->
 <div id="createSnapshotModal" class="modal">
     <div class="modal-content">
@@ -543,6 +561,8 @@
     </div>
 </div>
 
+<% } %>
+
 <!-- Snapshot Stats Modal -->
 <div id="snapshotStatsModal" class="modal">
     <div class="modal-content">
@@ -556,7 +576,7 @@
     </div>
 </div>
 
-<% if (user && user.role === 'superadmin') { %>
+<% if (_isSuperDm) { %>
 <!-- Reset Database Modal (super-admin only) -->
 <div id="resetDatabaseModal" class="modal">
     <div class="modal-content" style="max-width: 600px;">
@@ -874,45 +894,51 @@
             });
     }
 
+    // In export-only mode the import, restore and migration forms are not
+    // rendered: a missing form must not throw and stop every handler after it.
+    function formById(id) {
+        return document.getElementById(id) || { addEventListener: function () {} };
+    }
+
     function setupImportForms() {
         // Organization import
-        document.getElementById('importOrganizationForm').addEventListener('submit', function (e) {
+        formById('importOrganizationForm').addEventListener('submit', function (e) {
             e.preventDefault();
             importData(this, '/data-management/import/organization', 'orgResult');
         });
 
         // Domains & Skills import
-        document.getElementById('importDomainsSkillsForm').addEventListener('submit', function (e) {
+        formById('importDomainsSkillsForm').addEventListener('submit', function (e) {
             e.preventDefault();
             importData(this, '/data-management/import/domains-skills', 'dsResult');
         });
 
         // Employees import
-        document.getElementById('importEmployeesForm').addEventListener('submit', function (e) {
+        formById('importEmployeesForm').addEventListener('submit', function (e) {
             e.preventDefault();
             importData(this, '/data-management/import/employees', 'empResult');
         });
 
         // Local Admins import
-        document.getElementById('importLocalAdminsForm').addEventListener('submit', function (e) {
+        formById('importLocalAdminsForm').addEventListener('submit', function (e) {
             e.preventDefault();
             importData(this, '/data-management/import/local-admins', 'adminResult');
         });
 
         // Roles import
-        document.getElementById('importRolesForm').addEventListener('submit', function (e) {
+        formById('importRolesForm').addEventListener('submit', function (e) {
             e.preventDefault();
             importData(this, '/data-management/import/roles', 'roleResult');
         });
 
         // Skill Framework import
-        document.getElementById('importSkillFrameworkForm').addEventListener('submit', function (e) {
+        formById('importSkillFrameworkForm').addEventListener('submit', function (e) {
             e.preventDefault();
             importData(this, '/data-management/import/skill-framework', 'skillFrameworkResult');
         });
 
         // Assessments batch import
-        document.getElementById('importAssessmentsForm').addEventListener('submit', function (e) {
+        formById('importAssessmentsForm').addEventListener('submit', function (e) {
             e.preventDefault();
             importData(this, '/data-management/import/assessments', 'assessResult');
         });
@@ -920,7 +946,7 @@
         // Full System Import
         // one confirmation component everywhere (ui-feedback.js is
         // loaded on every page), so a destructive import never opens a native box.
-        document.getElementById('fullSystemImportForm').addEventListener('submit', function (e) {
+        formById('fullSystemImportForm').addEventListener('submit', function (e) {
             e.preventDefault();
             const form = this;
             window.confirmDialog(I18N.confirmRestoreFull, { danger: true }).then(function (ok) {
@@ -929,7 +955,7 @@
         });
 
         // JSON System Import
-        document.getElementById('importJsonForm').addEventListener('submit', function (e) {
+        formById('importJsonForm').addEventListener('submit', function (e) {
             e.preventDefault();
             const form = this;
             window.confirmDialog(I18N.confirmLoadJson, { danger: true }).then(function (ok) {
@@ -938,7 +964,7 @@
         });
 
         // Skill Matrix Workbook import
-        document.getElementById('importSkillMatrixWorkbookForm').addEventListener('submit', function (e) {
+        formById('importSkillMatrixWorkbookForm').addEventListener('submit', function (e) {
             e.preventDefault();
             const form = this;
             window.confirmDialog(I18N.confirmImportMatrix, { danger: true }).then(function (ok) {

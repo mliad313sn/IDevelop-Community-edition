@@ -83,24 +83,51 @@ class DataManagementController {
         this.importSkillMatrix = this.importSkillMatrix.bind(this);
         // Both read the counts through this.computeStatistics.
         this.index = this.index.bind(this);
+        this.pageMode = this.pageMode.bind(this);
         this.getStatistics = this.getStatistics.bind(this);
+    }
+
+    /**
+     * Which page a reader gets (SA-44): 'full' (SuperAdmin, or a local admin
+     * who may import), 'export' (may export but not import: an auditor, a
+     * read-only viewer, an HSE profile), or null (refused). Fails closed: a
+     * viewer is never 'full', whatever its grants.
+     */
+    pageMode(user) {
+        if (!user || user.userType !== 'admin') return null;
+        if (RBACService.isSuperAdmin(user)) return 'full';
+        const mayImport =
+            !RBACService.isViewer(user) &&
+            user.role === 'localadmin' &&
+            (RBACService.hasPermission(user, 'import_data') ||
+                RBACService.hasPermission(user, 'manage_admins'));
+        if (mayImport) return 'full';
+        if (RBACService.hasPermission(user, 'export_data')) return 'export';
+        return null;
     }
 
     async index(req, res) {
         try {
-            // Access Control: SuperAdmin OR LocalAdmin
-            // This page is now accessible to Local Admins for their limited scope
-            if (!req.user || (req.user.role !== 'superadmin' && req.user.role !== 'localadmin')) {
+            // Access control. The SuperAdmin and local admins who may import keep
+            // the full page. Any other admin holding export_data (an auditor, a
+            // read-only viewer, or a local admin who may export but not import)
+            // gets an EXPORT-ONLY page instead of a redirect: the menu offered
+            // "Import & export" and the page bounced them to /dashboard. Every
+            // non-export route keeps its own server-side gate.
+            const mode = this.pageMode(req.user);
+            if (!mode) {
                 req.flash('error', req.t ? req.t('flash:access_denied') : 'Access denied');
                 return res.redirect('/dashboard');
             }
+            const exportOnly = mode === 'export';
 
             // Get snapshots, with the stored size and captured counts:
             // a row that says only "name · creator · date" cannot be told apart
-            // from an empty capture.
+            // from an empty capture. Export-only readers get neither the
+            // snapshot list nor the API key: they are not export sections.
             const [snapshots, sizes, stats] = await Promise.all([
-                SnapshotModel.findAllWithCreator(),
-                SnapshotModel.sizesById().catch(() => ({})),
+                exportOnly ? [] : SnapshotModel.findAllWithCreator(),
+                exportOnly ? {} : SnapshotModel.sizesById().catch(() => ({})),
                 // the three counts are rendered server-side; the page used
                 // to print « - » until a fetch answered, showing an absence of
                 // measurement as a result.
@@ -119,7 +146,8 @@ class DataManagementController {
                 title: req.t ? req.t('chrome:pt_data_management') : 'Data Management',
                 snapshots,
                 stats,
-                apiKey: appConfig.apiKey,
+                dmMode: mode,
+                apiKey: exportOnly ? null : appConfig.apiKey,
                 apiUrl: apiUrl,
                 csrfToken: res.locals.csrfToken || '',
                 // English literal crumbs on a French page (the class is nine
