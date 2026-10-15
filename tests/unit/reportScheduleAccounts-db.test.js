@@ -243,7 +243,7 @@ suite('SA-38 — scheduled reports go to accounts, never to typed addresses', ()
                 [sid]
             );
             const inapp = await db.all(
-                `SELECT user_type AS t, user_id AS id, payload FROM notifications
+                `SELECT id AS row_id, user_type AS t, user_id AS id, payload FROM notifications
                   WHERE kind = 'report.schedule_ready' AND channel = 'inapp'
                     AND (payload->>'scheduleId')::int = ?
                   ORDER BY user_type`,
@@ -331,7 +331,14 @@ suite('SA-38 — scheduled reports go to accounts, never to typed addresses', ()
         expect(to[1]).toMatch(/^lead\.\d+@example\.test$/);
         for (const m of first) {
             expect(m.attachments).toBeUndefined();
-            expect(m.html).toContain(`/reports/schedules/runs/${r.run.id}`);
+            // The button reaches the copy: directly, or through the in-app
+            // row's « go » (migration 183 measures that it was opened), whose
+            // link is the copy's.
+            const go = /\/notifications\/(\d+)\/go/.exec(m.html);
+            if (go) {
+                const row = r.inapp.find((x) => Number(x.rowId) === Number(go[1]));
+                expect(row && row.payload.link).toBe(`/reports/schedules/runs/${r.run.id}`);
+            } else expect(m.html).toContain(`/reports/schedules/runs/${r.run.id}`);
             expect(`${m.subject}\n${m.html}\n${m.text}`).not.toMatch(/RSA-|employeeNumber/);
         }
         // Download re-checks access.

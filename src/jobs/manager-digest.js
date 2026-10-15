@@ -63,11 +63,11 @@ async function tick() {
          WHERE m.is_active = true AND e.is_active = true`);
 
     const EmployeeModel = require('../models/EmployeeModel');
-    // ONE language per mail (the site's mail language); the subject is the
-    // catalogue's and carries no date and no figure.
+    // ONE language per mail: the manager's own e-mail language, else the
+    // site's (resolved per recipient below); the subject is the catalogue's and
+    // carries no date and no figure.
     const NotificationService = require('../services/NotificationService');
-    const lang = await require('../utils/emailTemplate').mailLang();
-    const T = require('../utils/emailTemplate').blocks(lang);
+    const siteLang = await require('../utils/emailTemplate').mailLang();
     let sent = 0;
 
     // Current open campaign (shared across managers; per-manager counts below).
@@ -78,6 +78,12 @@ async function tick() {
         try {
             const ids = await EmployeeModel.findGovernedIds(mgr.id);
             if (!ids.length) continue;
+            const lang = await require('../utils/emailTemplate').recipientLang(
+                'employee',
+                mgr.id,
+                siteLang
+            );
+            const T = require('../utils/emailTemplate').blocks(lang);
             const ph = ids.map(() => '?').join(',');
 
             // NO LIMIT here: TOTALS must reflect the whole sub-tree (a manager

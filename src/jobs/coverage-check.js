@@ -45,14 +45,13 @@ function ruleScopeLabel(r, lang) {
     return lang === 'fr' ? 'Toute l’organisation' : 'Whole organization';
 }
 
-/**
- * The mail body of a coverage alert, in ONE language (renderEmail blocks).
- * The rule's name and figures are in the body, behind the recipient's own
- * mailbox; the SUBJECT is the catalogue's (no rule name, no figure).
+/*
+ * The mail body of a coverage alert is written for ANY language (the
+ * NotificationService `content` builder): each recipient reads it in their own
+ * e-mail language, else the site's. The rule's name and figures are in the
+ * body, behind the recipient's own mailbox; the SUBJECT is the catalogue's (no
+ * rule name, no figure).
  */
-async function mailLang() {
-    return require('../utils/emailTemplate').mailLang();
-}
 
 /**
  * Over-cap fallback: ONE notice to the admins who hold `manage_compliance`
@@ -69,9 +68,8 @@ async function batchNotice(rules, kind) {
     } catch (e) {
         console.error('[coverage-check] batch audience lookup failed:', e.message);
     }
-    const lang = await mailLang();
-    const B = require('../utils/emailTemplate').blocks(lang);
-    const sample = rules.slice(0, 5).map((r) => `${r.name} (${ruleScopeLabel(r, lang)})`);
+    // Each mail in its recipient's language (NotificationService `content`).
+    const sample = (lang) => rules.slice(0, 5).map((r) => `${r.name} (${ruleScopeLabel(r, lang)})`);
     try {
         await LogService.log({
             action: 'COVERAGE_ALERT_BATCHED',
@@ -93,18 +91,19 @@ async function batchNotice(rules, kind) {
                 kind,
                 category: 'compliance',
                 payload: { count: rules.length, batched: true, link: '/compliance' },
-                locale: lang,
-                blocks: [
-                    B.para(
-                        `${rules.length} règles de couverture ont changé d’état en une seule passe : les alertes sont regroupées.`,
-                        `${rules.length} coverage rules changed state in a single pass: the alerts are batched.`
-                    ),
-                    { type: 'list', items: sample },
-                    B.para(
-                        'Le détail complet est sur la page Conformité opérationnelle et dans le journal système.',
-                        'The full detail is on the Operational Compliance page and in the system log.'
-                    ),
-                ],
+                content: (B) => ({
+                    blocks: [
+                        B.para(
+                            `${rules.length} règles de couverture ont changé d’état en une seule passe : les alertes sont regroupées.`,
+                            `${rules.length} coverage rules changed state in a single pass: the alerts are batched.`
+                        ),
+                        { type: 'list', items: sample(B.lang) },
+                        B.para(
+                            'Le détail complet est sur la page Conformité opérationnelle et dans le journal système.',
+                            'The full detail is on the Operational Compliance page and in the system log.'
+                        ),
+                    ],
+                }),
             });
             if (res && res.inapp && res.inapp !== 'error') delivered++;
         } catch (e) {
@@ -119,8 +118,6 @@ async function tick() {
     const LogService = require('../services/LogService');
     const NotificationService = require('../services/NotificationService');
     const { fmtDate } = require('../utils/dateFormat');
-    const lang = await mailLang();
-    const B = require('../utils/emailTemplate').blocks(lang);
 
     const { evaluated, newlyBreached, recovered } = await CoverageService.evaluateAll();
 
@@ -183,14 +180,15 @@ async function tick() {
                             via: who.via,
                             link: '/compliance',
                         },
-                        locale: lang,
                         severity: r.severity === 'critical' ? 'critical' : 'warning',
-                        blocks: [
-                            B.para(
-                                `${r.name} — ${ruleScopeLabel(r, lang)} : ${r.qualifiedHeadcount}/${r.minHeadcount} personnes qualifiées (${r.skillName}, niveau ≥ ${r.minLevel}${r.requireValidCert ? ', certification valide requise' : ''}), en dessous du minimum.`,
-                                `${r.name} — ${ruleScopeLabel(r, lang)}: ${r.qualifiedHeadcount}/${r.minHeadcount} qualified people (${r.skillName}, level ≥ ${r.minLevel}${r.requireValidCert ? ', valid certification required' : ''}), below the minimum.`
-                            ),
-                        ],
+                        content: (B) => ({
+                            blocks: [
+                                B.para(
+                                    `${r.name} — ${ruleScopeLabel(r, B.lang)} : ${r.qualifiedHeadcount}/${r.minHeadcount} personnes qualifiées (${r.skillName}, niveau ≥ ${r.minLevel}${r.requireValidCert ? ', certification valide requise' : ''}), en dessous du minimum.`,
+                                    `${r.name} — ${ruleScopeLabel(r, B.lang)}: ${r.qualifiedHeadcount}/${r.minHeadcount} qualified people (${r.skillName}, level ≥ ${r.minLevel}${r.requireValidCert ? ', valid certification required' : ''}), below the minimum.`
+                                ),
+                            ],
+                        }),
                     });
                     if (!(res && res.inapp && res.inapp !== 'error')) anyError = true;
                 }
@@ -295,17 +293,18 @@ async function tick() {
                                 via: who.via,
                                 link: '/compliance',
                             },
-                            locale: lang,
-                            blocks: [
-                                B.para(
-                                    `${p.name} : rupture prévue le ${fmtDate(p.firstBreachOn)}, avec seulement ${p.worstQualified}/${p.minHeadcount} personnes qualifiées présentes (absences planifiées et expirations de certificats projetées).`,
-                                    `${p.name}: breach predicted on ${fmtDate(p.firstBreachOn)}, with only ${p.worstQualified}/${p.minHeadcount} qualified people present (planned absences and projected certificate expiries).`
-                                ),
-                                B.para(
-                                    'Agissez avant la date : décalez une absence, planifiez une revalidation ou affectez un remplaçant.',
-                                    'Act before the date: move an absence, schedule a revalidation or assign cover.'
-                                ),
-                            ],
+                            content: (B) => ({
+                                blocks: [
+                                    B.para(
+                                        `${p.name} : rupture prévue le ${fmtDate(p.firstBreachOn)}, avec seulement ${p.worstQualified}/${p.minHeadcount} personnes qualifiées présentes (absences planifiées et expirations de certificats projetées).`,
+                                        `${p.name}: breach predicted on ${fmtDate(p.firstBreachOn)}, with only ${p.worstQualified}/${p.minHeadcount} qualified people present (planned absences and projected certificate expiries).`
+                                    ),
+                                    B.para(
+                                        'Agissez avant la date : décalez une absence, planifiez une revalidation ou affectez un remplaçant.',
+                                        'Act before the date: move an absence, schedule a revalidation or assign cover.'
+                                    ),
+                                ],
+                            }),
                         });
                         if (!(res && res.inapp && res.inapp !== 'error')) anyError = true;
                     }

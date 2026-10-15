@@ -421,7 +421,38 @@ const REDACTED_ON_ERASURE = [
             'email_status',
             'email_attempts',
             'last_error',
+            // migration 183: the measurement of the person's own notifications
+            'event_id',
+            'ref_type',
+            'ref_id',
+            'opened_at',
+            'acted_at',
         ],
+        kept: [],
+    },
+    // NOTIFICATION SETTINGS (migration 183): the person's own summary cadence
+    // and step-down, e-mail language and .ics switch, and their category ×
+    // e-mail grid. Deleted.
+    {
+        key: 'notificationSettings',
+        table: 'notification_user_settings',
+        deleted: true,
+        erased: [
+            'digest_cadence',
+            'email_locale',
+            'ics_enabled',
+            'digest_stepdown_at',
+            'digest_stepdown_from',
+            'digest_streak_from',
+            'updated_at',
+        ],
+        kept: [],
+    },
+    {
+        key: 'notificationCategoryPrefs',
+        table: 'notification_category_prefs',
+        deleted: true,
+        erased: ['category', 'channel', 'enabled', 'updated_at'],
         kept: [],
     },
     // HRIS LINKS: the person's identifier in the HR system. Deleted.
@@ -894,9 +925,28 @@ class DSRService {
         await q(
             'notifications',
             `SELECT id, channel, kind, payload, created_at, read_at, sent_at,
-                    email_status, email_attempts, last_error
+                    email_status, email_attempts, last_error,
+                    event_id, ref_type, ref_id, opened_at, acted_at
                FROM notifications
               WHERE user_id = ? AND user_type::text IN ('employee', 'manager') ORDER BY id`,
+            [employeeId]
+        );
+        // The person's own notification settings (migration 183): summary
+        // cadence and step-down, e-mail language, .ics switch, and the
+        // category × e-mail grid. Settings about the person only.
+        await q(
+            'notificationSettings',
+            `SELECT digest_cadence, email_locale, ics_enabled, digest_stepdown_at,
+                    digest_stepdown_from, digest_streak_from, updated_at
+               FROM notification_user_settings
+              WHERE user_type = 'employee' AND user_id = ?`,
+            [employeeId]
+        );
+        await q(
+            'notificationCategoryPrefs',
+            `SELECT category, channel, enabled, updated_at
+               FROM notification_category_prefs
+              WHERE user_type = 'employee' AND user_id = ? ORDER BY category, channel`,
             [employeeId]
         );
         await q(
@@ -1391,6 +1441,15 @@ class DSRService {
                 [employeeId]
             );
             await db.run('DELETE FROM hris_links WHERE employee_id = ?', [employeeId]);
+            // The person's own notification settings and category grid (migration 183).
+            await db.run(
+                "DELETE FROM notification_user_settings WHERE user_type = 'employee' AND user_id = ?",
+                [employeeId]
+            );
+            await db.run(
+                "DELETE FROM notification_category_prefs WHERE user_type = 'employee' AND user_id = ?",
+                [employeeId]
+            );
             // ---- EVERY OTHER REGISTERED COLUMN (erasureRegistry) -----------------
             // Each 'erase' / 'delete' entry becomes one statement. A table absent
             // from this schema is skipped; a statement that fails on a present

@@ -18,6 +18,10 @@ var stateClass = { queued: 'badge-info', sent: 'badge-success', failed: 'badge-d
     <h1><i class="fas fa-bell" aria-hidden="true"></i> <%= __('admin:notif_title') %></h1>
 </div>
 <p class="text-muted" style="margin-top:-.5rem"><%= __('admin:notif_subtitle') %></p>
+<p style="display:flex;flex-wrap:wrap;gap:8px">
+    <a class="btn btn-secondary btn-sm" href="/admin/notifications/catalogue"><i class="fas fa-book-open" aria-hidden="true"></i> <%= __('chrome:ncat_title') %></a>
+    <a class="btn btn-secondary btn-sm" href="/admin/notifications/metrics"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('chrome:nmet_title') %></a>
+</p>
 
 <!-- Summary: totals by channel and by delivery state. -->
 <div class="emp-cards" style="margin-bottom:1rem">

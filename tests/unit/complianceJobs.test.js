@@ -127,19 +127,22 @@ describe('cert-expiry stage ladder', () => {
 });
 
 describe('cycle-nudge exactly-once ledger', () => {
+    // The job computes the ladder step from the campaign's dates (injectable
+    // clock): D-2 goes to everyone not yet submitted (migration 183 wave).
     const openCycle = {
         id: 3,
         code: 'C1',
         label: 'Cycle 1',
-        closesAt: '2026-08-02',
-        daysLeft: 1.4,
+        status: 'open',
+        closesAt: new Date(Date.now() + 1.4 * 86400000),
+        openedAt: new Date(Date.now() - 30 * 86400000),
     };
 
     function wireDb({ claimInserts }) {
         mockDb.all.mockImplementation(async (sql) => {
             if (/FROM assessment_cycles/.test(sql)) return [openCycle];
-            if (/workflow_state IN \('draft', 'changes_requested'\)/.test(sql)) {
-                return [{ employeeId: 7, firstName: 'Awa', n: 2 }];
+            if (/FROM cycle_participants p/.test(sql)) {
+                return [{ employeeId: 7, expected: 12, sent: 0 }];
             }
             return []; // no pending manager reviews
         });

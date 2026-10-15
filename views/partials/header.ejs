@@ -138,7 +138,13 @@
 .ac-note:hover{background:var(--bg-subtle,#f8fafc)}
 .ac-note.is-unread{background:rgba(185,147,31,.06)}
 .ac-note i{color:var(--brand,#2563eb);width:18px;text-align:center}
-.ac-note .ac-note-t{font-size:.86rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ac-note .ac-note-t{font-size:.86rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.ac-note .ac-count{margin-left:0}
+.ac-note .ac-when{font-size:.72rem;color:var(--text-muted,#64748b);white-space:nowrap}
+.ac-note.sev-critique i{color:#b91c1c}
+.ac-note.sev-echeance i{color:#b45309}
+.ac-note.sev-favorable i{color:#15803d}
+.ac-day{padding:7px 14px 3px;font-size:.7rem;font-weight:700;color:var(--text-muted,#64748b);background:var(--bg-subtle,#f8fafc)}
 </style>
 <script nonce="<%= cspNonce %>">
 function toggleActionCenter(){
@@ -183,8 +189,14 @@ document.addEventListener('click',function(e){
     var box=document.getElementById('acNotifs');
     unreadCount = j.unread||0; paintBadge();
     if(!j.items||!j.items.length){ box.innerHTML='<div class="ac-empty">'+esc(acNoneRecent)+'</div>'; return; }
-    box.innerHTML=j.items.slice(0,6).map(function(n){
-      return '<a class="ac-note'+(n.read?'':' is-unread')+'" href="/notifications/'+encodeURIComponent(n.id)+'/go"><i class="fas '+esc(n.icon||'fa-bell')+'"></i><span class="ac-note-t">'+esc(n.title)+'</span></a>';
+    // Grouped by day (today, yesterday, this week, older), the server's labels;
+    // identical items of one day arrive merged with their count.
+    var groups=j.groups||{}, last=null;
+    box.innerHTML=j.items.slice(0,8).map(function(n){
+      var head='';
+      if(n.group!==last){ last=n.group; head='<div class="ac-day">'+esc(groups[n.group]||'')+'</div>'; }
+      var href=(typeof n.href==='string'&&n.href.indexOf('/notifications/')===0)?n.href:'/notifications/'+encodeURIComponent(n.id)+'/go';
+      return head+'<a class="ac-note'+(n.read?'':' is-unread')+' sev-'+esc(n.severity||'info')+'" href="'+esc(safeHref(href))+'"><i class="fas '+esc(n.icon||'fa-bell')+'"></i><span class="ac-note-t">'+esc(n.title)+'</span>'+(n.count>1?'<span class="ac-count">×'+esc(n.count)+'</span>':'')+'<span class="ac-when" title="'+esc(n.exact||'')+'">'+esc(n.rel||'')+'</span></a>';
     }).join('');
   }).catch(function(){});
 })();

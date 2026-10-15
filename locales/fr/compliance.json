@@ -413,6 +413,8 @@
   "cat_lmsCompletions": "Formations suivies",
   "cat_plannedAbsences": "Absences prévues",
   "cat_notifications": "Notifications reçues",
+  "cat_notificationSettings": "Réglages de notification (récapitulatif, langue des e-mails, agenda)",
+  "cat_notificationCategoryPrefs": "Catégories de notification reçues par e-mail",
   "cat_hrisLinks": "Identifiant dans le système RH",
   "av_engine_on": "Les justificatifs déposés sont analysés par {{engine}}.",
   "cat_deiConsents": "Consentements aux données de diversité",

@@ -1,0 +1,97 @@
+<%#
+    Notification effectiveness per kind over 30 days (migration 183), SuperAdmin.
+    Aggregates only, no person named. Only rows written since the migration are
+    measurable (event_id); people who left, were voided or erased are out of
+    every figure. A ratio over fewer than `minN` people, or « acted upon » for a
+    kind no closing action records, is NOT a measurement: it says so, never
+    « 0 % ». « Opened » = the person followed the link; there is no pixel.
+%>
+<% var _m = (typeof metrics !== 'undefined' && metrics) ? metrics : { kinds: [], days: 30, minN: 5 };
+   var F = (typeof fmt !== 'undefined' && fmt) ? fmt : { num: String, dec: String, pct: String };
+   var reason = function (r) { return r === 'no_hook' ? __('chrome:nmet_no_hook') : __('chrome:nmet_small', { n: F.num(_m.minN) }); };
+   var hours = function (h) { return h >= 48 ? __('chrome:nmet_days', { n: F.dec(h / 24) }) : __('chrome:nmet_hours', { n: F.dec(h) }); };
+   var low = _m.kinds.filter(function (k) { return k.lowOpen; }); %>
+<div class="page-header">
+    <h1><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('chrome:nmet_title') %></h1>
+</div>
+<p class="text-muted nmet-lead"><%= __('chrome:nmet_subtitle', { days: F.num(_m.days) }) %></p>
+<p class="nmet-links">
+    <a class="btn btn-secondary btn-sm" href="/admin/notifications/catalogue"><i class="fas fa-book-open" aria-hidden="true"></i> <%= __('chrome:ncat_title') %></a>
+    <a class="btn btn-secondary btn-sm" href="/admin/notifications"><i class="fas fa-envelope-open-text" aria-hidden="true"></i> <%= __('chrome:ncat_link_monitor') %></a>
+</p>
+
+<div class="nmet-cards">
+    <div class="nmet-stat">
+        <div class="nmet-v"><%= _m.globalOptOut == null ? '—' : F.num(_m.globalOptOut) %></div>
+        <div class="nmet-l"><%= __('chrome:nmet_global_optout') %></div>
+    </div>
+    <div class="nmet-stat">
+        <div class="nmet-v"><%= _m.stepDowns == null ? '—' : F.num(_m.stepDowns) %></div>
+        <div class="nmet-l"><%= __('chrome:nmet_stepdowns') %></div>
+    </div>
+    <div class="nmet-stat">
+        <div class="nmet-v"><%= F.num(low.length) %></div>
+        <div class="nmet-l"><%= __('chrome:nmet_low_count') %></div>
+    </div>
+</div>
+
+<% if (!_m.kinds.length) { %>
+<p class="card nmet-empty"><%= __('chrome:nmet_empty') %></p>
+<% } else { %>
+<div class="card nmet-wrap">
+<table class="table nmet-table">
+    <caption class="sr-only"><%= __('chrome:nmet_title') %></caption>
+    <thead>
+        <tr>
+            <th scope="col"><%= __('chrome:ncat_col_kind') %></th>
+            <th scope="col" class="num"><%= __('chrome:nmet_col_sent') %></th>
+            <th scope="col" class="num"><%= __('chrome:nmet_col_emailed') %></th>
+            <th scope="col" class="num"><%= __('chrome:nmet_col_opened') %></th>
+            <th scope="col" class="num"><%= __('chrome:nmet_col_acted') %></th>
+            <th scope="col" class="num"><%= __('chrome:nmet_col_median') %></th>
+            <th scope="col" class="num"><%= __('chrome:nmet_col_optouts') %></th>
+        </tr>
+    </thead>
+    <tbody>
+    <% _m.kinds.forEach(function (k) { %>
+        <tr>
+            <th scope="row">
+                <code><%= k.kind %></code>
+                <% if (k.mandatory) { %><span class="nmet-tag"><%= __('chrome:notif_prefs_mandatory') %></span><% } %>
+                <% if (k.lowOpen) { %><span class="nmet-tag nmet-low"><i class="fas fa-flag" aria-hidden="true"></i> <%= __('chrome:nmet_low') %></span><% } %>
+            </th>
+            <td class="num"><%= F.num(k.sent) %></td>
+            <td class="num"><%= F.num(k.emailed) %></td>
+            <td class="num"><% if (k.openedPct == null) { %><span class="nmet-nm"><%= reason(k.openedReason) %></span><% } else { %><%= F.pct(k.openedPct) %> <span class="nmet-n">(n = <%= F.num(k.sent) %>)</span><% } %></td>
+            <td class="num"><% if (k.actedPct == null) { %><span class="nmet-nm"><%= reason(k.actedReason) %></span><% } else { %><%= F.pct(k.actedPct) %><% } %></td>
+            <td class="num"><% if (k.medianHours == null) { %><span class="nmet-nm"><%= reason(k.medianReason) %></span><% } else { %><%= hours(k.medianHours) %><% } %></td>
+            <td class="num"><%= k.optOuts == null ? '—' : F.num(k.optOuts) %></td>
+        </tr>
+    <% }); %>
+    </tbody>
+</table>
+</div>
+<% } %>
+<ul class="text-muted nmet-notes">
+    <li><%= __('chrome:nmet_note_opened') %></li>
+    <li><%= __('chrome:nmet_note_acted') %></li>
+    <li><%= __('chrome:nmet_note_low') %></li>
+    <li><%= __('chrome:nmet_note_scope') %></li>
+</ul>
+
+<style>
+.nmet-lead{margin-top:-.5rem}
+.nmet-links{display:flex;flex-wrap:wrap;gap:8px}
+.nmet-cards{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 1rem}
+.nmet-stat{flex:1 1 180px;padding:12px 16px;border:1px solid var(--border-color,#e2e8f0);border-radius:12px;background:var(--bg-elevated,#fff)}
+.nmet-v{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums}
+.nmet-l{font-size:.85rem;color:var(--text-muted,#64748b)}
+.nmet-wrap{padding:0;overflow-x:auto}
+.nmet-empty{padding:1rem}
+.nmet-table td.num,.nmet-table th.num{text-align:right;font-variant-numeric:tabular-nums}
+.nmet-tag{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;border:1px solid var(--border-color,#e2e8f0);font-size:.75rem;font-weight:600}
+.nmet-low{border-color:#b45309}
+.nmet-nm{color:var(--text-muted,#64748b);font-size:.85rem}
+.nmet-n{color:var(--text-muted,#64748b);font-size:.8rem}
+.nmet-notes{font-size:.85rem;margin-top:.75rem}
+</style>

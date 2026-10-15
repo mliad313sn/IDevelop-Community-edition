@@ -457,6 +457,17 @@ router.post(
             employeeId,
             await actorAdminId(req.user)
         );
+        // Measurement (migration 183): the succession-review reminder was acted
+        // upon. Best-effort, never throws.
+        await Promise.resolve()
+            .then(() =>
+                require('../services/NotificationService').actedQuietly({
+                    userType: req.user && req.user.userType === 'admin' ? 'admin' : 'employee',
+                    userId: Number(req.user && req.user.id),
+                    kinds: ['succession.review_due'],
+                })
+            )
+            .catch(() => 0);
         res.json({ ok: true, id: row.id, readinessBand: row.readinessBand });
     })
 );

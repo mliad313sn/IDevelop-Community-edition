@@ -9,10 +9,16 @@
  *   deactivated / erased subjects with a system category, put back whoever's
  *   time-boxed exclusion has expired (CycleService.reconcileParticipants).
  *
- *   OPEN cycles
- *     cycle.not_started : weekly roster nudge to everyone who never started,
- *                         from day one (reminder_log, per week)
- *     reminder_7 / 2    : unsubmitted rows ≤7 / ≤2 days before close (nudge_log)
+ *   OPEN cycles — the PERSON's ladder, at most 4 mails per campaign:
+ *     launch            : cycle.opened, sent by CycleService (not here)
+ *     D+3               : « not started yet », only to those who have not
+ *                         started (reminder_log, once): it stops on start
+ *     D-7, D-2          : deadline reminders to everyone not yet SUBMITTED
+ *                         (nudge_log), with the deadline .ics
+ *     A campaign shorter than 10 days gets launch + D-2 only. The former
+ *     cadence (a weekly « not started » mail from day one, then D-7 and D-2:
+ *     about 8 mails on a six-week campaign) is gone; the mails it already sent
+ *     count towards the ceiling.
  *     escalation_3      : reviews pending ≤3 days before close (nudge_log)
  *     escalation_overdue: reviews pending past close (nudge_log)
  *
@@ -28,7 +34,10 @@
  * the ON CONFLICT DO NOTHING insert is the claim; the notification only goes
  * out when the claim inserted a row, so a crash can't double-send and a
  * re-run can't re-nudge. Delivery via NotificationService (in-app always,
- * email rides on the master switch, category 'workflow').
+ * email rides on the master switch, category 'workflow'), each mail written in
+ * the recipient's language (`content`), counts and dates only, a deep link in
+ * every mail. `tick({ now })` takes an injectable clock (tests replay a whole
+ * campaign).
  */
 
 const db = require('../config/database');
@@ -97,23 +106,149 @@ async function pendingReviewers(cycleId) {
     );
 }
 
-async function tick() {
-    const NotificationService = require('../services/NotificationService');
+const DAY = 86400000;
+/** Below this many days from launch to close, the ladder is launch + D-2 only. */
+const SHORT_CAMPAIGN_DAYS = 10;
+/** Ceiling per person per campaign, the launch announcement included. */
+const MAX_PER_PERSON = 4;
+/** reminder_log kind and period of the D+3 « not started » mail. */
+const LADDER_KIND = 'cycle.not_started';
+const D3_PERIOD = 'd+3';
+
+/**
+ * Which step of the person's ladder is due now, or null:
+ *   D+3 : 3 days after launch, while more than 7 days remain (long campaigns)
+ *   D-7 : 7 to 2 days before close (long campaigns)
+ *   D-2 : the last 2 days (and once past the deadline while still open)
+ * A step whose window has passed is skipped, never sent late on top of the next.
+ */
+function ladderStage({ sinceOpenDays, daysLeft, durationDays }) {
+    const short = Number.isFinite(durationDays) && durationDays < SHORT_CAMPAIGN_DAYS;
+    if (daysLeft <= 2) return 'reminder_2';
+    if (short) return null;
+    if (daysLeft <= 7) return 'reminder_7';
+    if (sinceOpenDays >= 3) return 'd+3';
+    return null;
+}
+
+/**
+ * The person's own mail for a ladder step, written for any language (B =
+ * emailTemplate.blocks(lang) in the recipient's language). The campaign, its
+ * date and the count are in the body; the subject is the catalogue's.
+ */
+function ladderMail(cycle, stage, closesOn, expected) {
     const { fmtDate } = require('../utils/dateFormat');
-    // ONE language per mail. The campaign, its date and the counts are in the
-    // body only: the subject is the catalogue's (no date, no figure).
-    const lang = await require('../utils/emailTemplate').mailLang();
-    const B = require('../utils/emailTemplate').blocks(lang);
+    const date = closesOn ? fmtDate(closesOn) : null;
+    const name = cycle.label || cycle.code;
+    const n = Number(expected);
+    return (B) => {
+        const rows = [[B.pick('Campagne', 'Campaign'), name]];
+        if (date) rows.push([B.pick('À faire avant le', 'To do by'), date]);
+        if (Number.isFinite(n) && n > 0)
+            rows.push([
+                B.pick('Compétences à évaluer', 'Skills to assess'),
+                require('../utils/emailTemplate').fmtNum(n, 0, B.lang),
+            ]);
+        let intro;
+        if (stage === 'd+3')
+            intro = B.pick(
+                `La campagne ${name} est ouverte et votre auto-évaluation n’est pas encore commencée.`,
+                `The ${name} campaign is open and your self-assessment has not been started yet.`
+            );
+        else if (stage === 'reminder_7')
+            intro = B.pick(
+                `Il reste une semaine pour soumettre votre auto-évaluation de la campagne ${name}.`,
+                `One week is left to submit your self-assessment for the ${name} campaign.`
+            );
+        else
+            intro = B.pick(
+                `Dernier rappel : votre auto-évaluation de la campagne ${name} n’est pas encore soumise.`,
+                `Last reminder: your self-assessment for the ${name} campaign has not been submitted yet.`
+            );
+        return {
+            intro,
+            blocks: [
+                { type: 'kv', rows },
+                B.notice(
+                    stage === 'd+3'
+                        ? 'Vous pouvez la faire en plusieurs fois. Dès qu’elle est commencée, ce rappel s’arrête.'
+                        : 'Vous pouvez la faire en plusieurs fois. Dès qu’elle est soumise, ces rappels s’arrêtent.',
+                    stage === 'd+3'
+                        ? 'You can do it in several sittings. As soon as it is started, this reminder stops.'
+                        : 'You can do it in several sittings. As soon as it is submitted, these reminders stop.',
+                    stage === 'reminder_2' ? 'warning' : 'info'
+                ),
+            ],
+            ctaLabel:
+                stage === 'd+3'
+                    ? B.pick('Commencer mon auto-évaluation', 'Start my self-assessment')
+                    : B.pick('Ouvrir mon auto-évaluation', 'Open my self-assessment'),
+            ctaUrl: '/employee/self-assessment',
+            preheader: date ? B.pick(`À faire avant le ${date}`, `To do by ${date}`) : undefined,
+        };
+    };
+}
+
+/** A reviewer's mail — counts only, no names; for any language. */
+function reviewerMail(cycle, { stage, pending, closesOn }) {
+    const { fmtDate } = require('../utils/dateFormat');
+    const date = closesOn ? fmtDate(closesOn) : '—';
+    const name = cycle.label || cycle.code;
+    const n = Number(pending) || 0;
+    return (B) => {
+        const N = require('../utils/emailTemplate').fmtNum(n, 0, B.lang);
+        let intro;
+        if (stage === 'review_pending')
+            intro = B.pick(
+                `La campagne ${name} est verrouillée depuis le ${date} : ${N} ${n > 1 ? 'revues de votre équipe restent' : 'revue de votre équipe reste'} à finaliser.`,
+                `The ${name} campaign has been locked since ${date}: ${N} ${n > 1 ? 'team reviews are' : 'team review is'} still to be finalised.`
+            );
+        else if (stage === 'escalation_overdue')
+            intro = B.pick(
+                `${N} ${n > 1 ? 'revues de votre équipe sont' : 'revue de votre équipe est'} en retard : la campagne ${name} a fermé le ${date}.`,
+                `${N} team ${n > 1 ? 'reviews are' : 'review is'} overdue: the ${name} campaign closed on ${date}.`
+            );
+        else
+            intro = B.pick(
+                `${N} ${n > 1 ? 'revues de votre équipe sont' : 'revue de votre équipe est'} à finaliser avant le ${date} (campagne ${name}).`,
+                `${N} team ${n > 1 ? 'reviews' : 'review'} to finalise by ${date} (${name} campaign).`
+            );
+        return {
+            intro,
+            blocks: [
+                {
+                    type: 'kv',
+                    rows: [
+                        [B.pick('Campagne', 'Campaign'), name],
+                        [B.pick('Revues à finaliser', 'Reviews to finalise'), N],
+                        [
+                            stage === 'escalation_3'
+                                ? B.pick('Échéance', 'Deadline')
+                                : B.pick('Fermée le', 'Closed on'),
+                            date,
+                        ],
+                    ],
+                },
+                B.notice(
+                    'Validez ou renvoyez chaque auto-évaluation soumise depuis la liste des revues.',
+                    'Approve or send back each submitted self-assessment from the review list.',
+                    stage === 'escalation_overdue' ? 'warning' : 'info'
+                ),
+            ],
+            ctaLabel: B.pick('Ouvrir les revues', 'Open the reviews'),
+        };
+    };
+}
+
+async function tick({ now: nowArg } = {}) {
+    const NotificationService = require('../services/NotificationService');
+    const { sqlDateIso, appDayIso } = require('../utils/dateFormat');
+    const now = nowArg instanceof Date ? nowArg : new Date();
 
     // EVERY running cycle — open (people submit) and locked (reviewers finish).
-    // Not only those inside the 7-day deadline horizon: a campaign opened six
-    // weeks out used to stay silent for five weeks and then make FIRST contact
-    // with a deadline warning. The deadline stages below still only fire inside
-    // their own windows; the roster-driven "you have not started" nudge runs
-    // from day one, and the review backlog is chased through the locked phase.
     const cycles = await db.all(
         `SELECT id, code, label, status, closes_at AS "closesAt",
-                EXTRACT(EPOCH FROM (closes_at - now())) / 86400.0 AS "daysLeft"
+                COALESCE(opened_at, created_at) AS "openedAt"
            FROM assessment_cycles
           WHERE status IN ('open', 'locked')`
     );
@@ -133,43 +268,45 @@ async function tick() {
         reviewPending = 0,
         reincluded = 0;
 
-    // Weekly cadence bucket for the recurring nudges. The 4 deadline stages
-    // stay on nudge_log (one-shot by design: its UNIQUE has no period column and a
-    // CHECK pins the kind list); anything recurring goes on reminder_log, whose
-    // UNIQUE includes `period` — the same claim-before-send guarantee, per week.
+    // Weekly bucket for the reviewer reminders of a LOCKED campaign and for the
+    // admin-reviewer escalations (nudge_log's CHECK only knows employee|manager).
+    // reminder_log's UNIQUE includes `period`: the same claim-before-send
+    // guarantee, per week (or once, for the D+3 step).
     const _wk = (d) => {
         const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
         const day = (t.getUTCDay() + 6) % 7; // Monday = 0
         t.setUTCDate(t.getUTCDate() - day);
         return t.toISOString().slice(0, 10);
     };
-    const week = _wk(new Date());
-    const claimWeekly = async (kind, targetType, targetId, refId) => {
+    const week = _wk(now);
+    const claimPeriod = async (kind, targetType, targetId, refId, period) => {
         const r = await db.get(
             `INSERT INTO reminder_log (kind, target_type, target_id, ref_id, period)
              VALUES (?, ?, ?, ?, ?)
              ON CONFLICT (kind, target_type, target_id, ref_id, period) DO NOTHING
              RETURNING id`,
-            [kind, targetType, Number(targetId), Number(refId) || 0, week]
+            [kind, targetType, Number(targetId), Number(refId) || 0, period]
         );
         return !!r;
     };
-    const releaseWeekly = async (kind, targetType, targetId, refId) => {
+    const releasePeriod = async (kind, targetType, targetId, refId, period) => {
         try {
             await db.run(
                 `DELETE FROM reminder_log
                   WHERE kind = ? AND target_type = ? AND target_id = ? AND ref_id = ? AND period = ?`,
-                [kind, targetType, Number(targetId), Number(refId) || 0, week]
+                [kind, targetType, Number(targetId), Number(refId) || 0, period]
             );
         } catch (e) {
             console.error(
-                '[cycle-nudge] could not release the weekly claim',
+                '[cycle-nudge] could not release the claim',
                 kind,
                 targetId,
                 e && e.message
             );
         }
     };
+    const claimWeekly = (kind, t, id, ref) => claimPeriod(kind, t, id, ref, week);
+    const releaseWeekly = (kind, t, id, ref) => releasePeriod(kind, t, id, ref, week);
 
     for (const cycle of cycles) {
         // Self-heal the roster before chasing anyone: joiners (open cycles),
@@ -187,13 +324,15 @@ async function tick() {
             );
         }
 
-        const daysLeft = Number(cycle.daysLeft);
-        // The driver returns closes_at as a Date; String(date).slice(0, 10) would
-        // put "Sat Oct 31" into a French notification payload.
-        const closesOn =
-            cycle.closesAt instanceof Date
-                ? cycle.closesAt.toISOString().slice(0, 10)
-                : String(cycle.closesAt || '').slice(0, 10);
+        const closesAt = cycle.closesAt ? new Date(cycle.closesAt) : null;
+        const openedAt = cycle.openedAt ? new Date(cycle.openedAt) : null;
+        const daysLeft = closesAt ? (closesAt - now) / DAY : Infinity;
+        const sinceOpenDays = openedAt ? (now - openedAt) / DAY : 0;
+        const durationDays = closesAt && openedAt ? (closesAt - openedAt) / DAY : NaN;
+        // A calendar day in the app's zone ('YYYY-MM-DD'), never a Date in a
+        // payload and never a UTC-shifted ISO day.
+        const closesOn = closesAt ? appDayIso(closesAt) || sqlDateIso(closesAt) : null;
+        const reviewsLink = `/supervisor/self-assessment-reviews?cycleId=${cycle.id}`;
 
         // ---- LOCKED: the review phase. Reviewers holding submissions are reminded
         // weekly (claim-before-send per week) until the campaign is closed.
@@ -220,15 +359,14 @@ async function tick() {
                             closesOn,
                             pending: r.n,
                             stage: 'review_pending',
-                            link: `/supervisor/self-assessment-reviews?cycleId=${cycle.id}`,
+                            link: reviewsLink,
                         },
-                        locale: lang,
-                        blocks: [
-                            B.para(
-                                `La campagne ${cycle.label} est verrouillée depuis le ${fmtDate(closesOn)} : ${r.n} ${r.n === 1 ? 'revue d’auto-évaluation de votre équipe reste' : 'revues d’auto-évaluation de votre équipe restent'} à finaliser.`,
-                                `The ${cycle.label} campaign has been locked since ${fmtDate(closesOn)}: ${r.n} ${r.n === 1 ? 'team review is' : 'team reviews are'} still to be finalised.`
-                            ),
-                        ],
+                        content: reviewerMail(cycle, {
+                            stage: 'review_pending',
+                            pending: r.n,
+                            closesOn,
+                        }),
+                        ctaUrl: reviewsLink,
                     });
                     if (!res || res.inapp === 'error') {
                         await releaseWeekly(
@@ -247,103 +385,113 @@ async function tick() {
             continue;
         }
 
-        // ---- NON-STARTERS: the audience every other query structurally missed ----
-        // Every existing assessment nudge selects from self_assessments, so somebody
-        // who never opened the page has NO row and is unreachable by the very
-        // reminder whose job is to make them open it. The participant roster is
-        // stamped at launch from the employee population, so it CAN address them.
-        // Weekly cadence, claim-before-send, from day one of the campaign.
-        try {
-            const nonStarters = await db.all(
-                `SELECT p.employee_id AS "employeeId", e.first_name AS "firstName", p.expected_skills AS "expected"
-                   FROM cycle_participants p
-                   JOIN employees e ON e.id = p.employee_id AND e.is_active AND e.erased_at IS NULL
-                  WHERE p.cycle_id = ? AND p.excluded_at IS NULL
-                    AND NOT EXISTS (SELECT 1 FROM self_assessments sa
-                                     WHERE sa.cycle_id = p.cycle_id AND sa.employee_id = p.employee_id
-                                       AND sa.self_rated_level IS NOT NULL)`,
-                [cycle.id]
-            );
-            for (const emp of nonStarters) {
-                if (!(await claimWeekly('cycle.not_started', 'employee', emp.employeeId, cycle.id)))
-                    continue;
-                const r = await NotificationService.notify({
-                    userType: 'employee',
-                    userId: emp.employeeId,
-                    kind: 'cycle.reminder',
-                    category: 'workflow',
-                    payload: {
-                        cycleId: cycle.id,
-                        cycle: cycle.code,
-                        closesOn,
-                        expected: emp.expected,
-                        stage: 'not_started',
-                        link: '/employee/self-assessment',
-                    },
-                });
-                // Only count what actually went out, and give the week back if it did not.
-                if (!r || r.inapp === 'error') {
-                    await releaseWeekly('cycle.not_started', 'employee', emp.employeeId, cycle.id);
-                    continue;
-                }
-                notStarted++;
-            }
-        } catch (e) {
-            console.error('[cycle-nudge] non-starter pass failed:', e.message);
-        }
-
-        // The remaining stages are DEADLINE-driven and keep their original windows.
-        if (daysLeft > 7) continue;
-
-        // ---- Employee reminders: unsubmitted self-assessments ----
-        const reminderKind = daysLeft <= 2 ? 'reminder_2' : 'reminder_7';
-        const pendingEmployees = await db.all(
-            `SELECT sa.employee_id AS "employeeId", e.first_name AS "firstName", COUNT(*)::int AS n
-               FROM self_assessments sa
-               JOIN employees e ON e.id = sa.employee_id AND e.is_active AND e.erased_at IS NULL
-              WHERE sa.cycle_id = ? AND sa.workflow_state IN ('draft', 'changes_requested')
-              GROUP BY sa.employee_id, e.first_name`,
-            [cycle.id]
-        );
-        for (const emp of pendingEmployees) {
+        // ---- The person's ladder: D+3, D-7, D-2, at most 4 mails per campaign ----
+        // The roster is stamped at launch, so somebody who never opened the page
+        // is addressable. D+3 goes to NON-STARTERS only (« started » = the roster
+        // stamped started_at, or a rated row): it stops on start. D-7 and D-2 are
+        // deadline reminders and go to everyone NOT YET SUBMITTED (« submitted »
+        // = the roster stamped submitted_at, or a row past draft /
+        // changes_requested): a person who started but did not submit still gets
+        // them, and nothing once submitted. The ceiling counts the launch
+        // announcement as one mail, and every ladder mail already sent for this
+        // campaign — the weekly « not started » mails of the former cadence
+        // included — so an upgrade in the middle of a campaign never exceeds 4.
+        const stage = ladderStage({ sinceOpenDays, daysLeft, durationDays });
+        if (stage) {
             try {
-                if (!(await claim(cycle.id, 'employee', emp.employeeId, reminderKind))) continue;
-                const r = await NotificationService.notify({
-                    userType: 'employee',
-                    userId: emp.employeeId,
-                    kind: 'cycle.reminder',
-                    category: 'workflow',
-                    payload: {
-                        cycleId: cycle.id,
-                        cycle: cycle.code,
-                        closesOn,
-                        pending: emp.n,
-                        stage: reminderKind,
-                    },
-                    locale: lang,
-                    blocks: [
-                        B.para(
-                            `La campagne ${cycle.label} ferme le ${fmtDate(closesOn)} : il vous reste ${emp.n} ${emp.n === 1 ? 'auto-évaluation' : 'auto-évaluations'} à soumettre.`,
-                            `The ${cycle.label} campaign closes on ${fmtDate(closesOn)}: you still have ${emp.n} ${emp.n === 1 ? 'self-assessment' : 'self-assessments'} to submit.`
-                        ),
-                    ],
-                });
-                // A claimed-but-undelivered reminder must go back on the queue: this
-                // stage is one-shot, so keeping the claim loses it for good.
-                if (!r || r.inapp === 'error') {
-                    await release(cycle.id, 'employee', emp.employeeId, reminderKind);
-                    continue;
-                }
-                reminders++;
-            } catch (e) {
-                console.error(
-                    `[cycle-nudge] reminder to employee ${emp.employeeId} failed:`,
-                    e.message
+                const candidates = await db.all(
+                    `SELECT p.employee_id AS "employeeId", p.expected_skills AS "expected",
+                            ((SELECT COUNT(*) FROM reminder_log rl
+                               WHERE rl.kind = ? AND rl.target_type = 'employee'
+                                 AND rl.target_id = p.employee_id AND rl.ref_id = p.cycle_id)
+                           + (SELECT COUNT(*) FROM nudge_log nl
+                               WHERE nl.cycle_id = p.cycle_id AND nl.target_type = 'employee'
+                                 AND nl.target_id = p.employee_id
+                                 AND nl.kind IN ('reminder_7', 'reminder_2')))::int AS "sent"
+                       FROM cycle_participants p
+                       JOIN employees e ON e.id = p.employee_id AND e.is_active AND e.erased_at IS NULL
+                      WHERE p.cycle_id = ? AND p.excluded_at IS NULL AND p.submitted_at IS NULL
+                        AND NOT EXISTS (SELECT 1 FROM self_assessments sa
+                                         WHERE sa.cycle_id = p.cycle_id AND sa.employee_id = p.employee_id
+                                           AND sa.workflow_state NOT IN ('draft', 'changes_requested'))
+                        ${
+                            stage === 'd+3'
+                                ? `AND p.started_at IS NULL
+                        AND NOT EXISTS (SELECT 1 FROM self_assessments sa
+                                         WHERE sa.cycle_id = p.cycle_id AND sa.employee_id = p.employee_id
+                                           AND sa.self_rated_level IS NOT NULL)`
+                                : ''
+                        }`,
+                    [LADDER_KIND, cycle.id]
                 );
+                for (const emp of candidates) {
+                    try {
+                        if (1 + Number(emp.sent || 0) >= MAX_PER_PERSON) continue;
+                        const claimed =
+                            stage === 'd+3'
+                                ? await claimPeriod(
+                                      LADDER_KIND,
+                                      'employee',
+                                      emp.employeeId,
+                                      cycle.id,
+                                      D3_PERIOD
+                                  )
+                                : await claim(cycle.id, 'employee', emp.employeeId, stage);
+                        if (!claimed) continue;
+                        const r = await NotificationService.notify({
+                            userType: 'employee',
+                            userId: emp.employeeId,
+                            kind: 'cycle.reminder',
+                            category: 'workflow',
+                            payload: {
+                                cycleId: cycle.id,
+                                cycle: cycle.code,
+                                closesOn,
+                                expected: emp.expected,
+                                stage: stage === 'd+3' ? 'not_started' : stage,
+                                link: '/employee/self-assessment',
+                            },
+                            content: ladderMail(cycle, stage, closesOn, emp.expected),
+                            // D-7 and D-2 carry the deadline .ics, with the uid of the
+                            // launch summary's: a calendar updates ONE event.
+                            calendar:
+                                closesOn && (stage === 'reminder_7' || stage === 'reminder_2')
+                                    ? {
+                                          type: 'campaign_deadline',
+                                          date: closesOn,
+                                          uid: `cycle-${cycle.id}-deadline`,
+                                      }
+                                    : undefined,
+                        });
+                        // A claimed-but-undelivered reminder goes back on the queue:
+                        // each step is one-shot, so keeping the claim would lose it.
+                        if (!r || r.inapp === 'error') {
+                            if (stage === 'd+3')
+                                await releasePeriod(
+                                    LADDER_KIND,
+                                    'employee',
+                                    emp.employeeId,
+                                    cycle.id,
+                                    D3_PERIOD
+                                );
+                            else await release(cycle.id, 'employee', emp.employeeId, stage);
+                            continue;
+                        }
+                        if (stage === 'd+3') notStarted++;
+                        else reminders++;
+                    } catch (e) {
+                        console.error(
+                            `[cycle-nudge] reminder to employee ${emp.employeeId} failed:`,
+                            e.message
+                        );
+                    }
+                }
+            } catch (e) {
+                console.error('[cycle-nudge] ladder pass failed:', e.message);
             }
         }
 
-        // ---- Manager escalations: reviews still pending (snapshotted reviewer first) ----
+        // ---- Reviewer escalations: reviews still pending ----
         if (daysLeft <= 3) {
             const escalationKind = daysLeft < 0 ? 'escalation_overdue' : 'escalation_3';
             // nudge_log's CHECK only knows 'employee' | 'manager' targets: an admin
@@ -372,20 +520,15 @@ async function tick() {
                             closesOn,
                             pending: mgr.n,
                             stage: escalationKind,
-                            link: `/supervisor/self-assessment-reviews?cycleId=${cycle.id}`,
+                            link: reviewsLink,
                         },
-                        locale: lang,
                         severity: overdue ? 'echeance' : 'action',
-                        blocks: [
-                            B.para(
-                                overdue
-                                    ? `${mgr.n} revue(s) d’auto-évaluation de votre équipe sont en retard : la campagne ${cycle.label} a fermé le ${fmtDate(closesOn)}.`
-                                    : `${mgr.n} revue(s) d’auto-évaluation de votre équipe doivent être finalisées avant le ${fmtDate(closesOn)} (campagne ${cycle.label}).`,
-                                overdue
-                                    ? `${mgr.n} team review(s) are overdue: the ${cycle.label} campaign closed on ${fmtDate(closesOn)}.`
-                                    : `${mgr.n} team review(s) must be completed by ${fmtDate(closesOn)} (${cycle.label} campaign).`
-                            ),
-                        ],
+                        content: reviewerMail(cycle, {
+                            stage: escalationKind,
+                            pending: mgr.n,
+                            closesOn,
+                        }),
+                        ctaUrl: reviewsLink,
                     });
                     if (!r || r.inapp === 'error') {
                         if (mgr.targetType === 'admin')
@@ -411,4 +554,8 @@ async function tick() {
     return { cycles: cycles.length, reminders, escalations, notStarted, reviewPending, reincluded };
 }
 
-module.exports = { tick, pendingReviewers };
+module.exports = {
+    tick,
+    pendingReviewers,
+    __test: { ladderStage, ladderMail, reviewerMail, SHORT_CAMPAIGN_DAYS, MAX_PER_PERSON },
+};

@@ -404,9 +404,14 @@ async function tick() {
                 adminId = sub.subscriberId;
             }
 
-            // ONE language per mail; the subject is the catalogue's (no date).
+            // ONE language per mail: the subscriber's own e-mail language,
+            // else the site's; the subject is the catalogue's (no date).
             const NotificationService = require('../services/NotificationService');
-            const lang = await require('../utils/emailTemplate').mailLang();
+            const lang = employeeId
+                ? await require('../utils/emailTemplate').recipientLang('employee', employeeId)
+                : adminId
+                  ? await require('../utils/emailTemplate').recipientLang('admin', adminId)
+                  : await require('../utils/emailTemplate').mailLang();
             const mail = renderBlocks(rows, {
                 lang,
                 frequency: sub.frequency,

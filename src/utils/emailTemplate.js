@@ -570,6 +570,29 @@ async function mailLang(locale) {
     }
 }
 
+/**
+ * The language of ONE recipient's mails: their own choice (My account →
+ * Notifications, migration 183), else `fallback` (the sender's), else the
+ * site's mail language. For senders that compose a mail per recipient
+ * themselves. Never throws: an unreadable setting is the fallback.
+ */
+async function recipientLang(userType, userId, fallback) {
+    if (userId && (userType === 'admin' || userType === 'employee')) {
+        try {
+            const db = require('../config/database');
+            const r = await db.get(
+                'SELECT email_locale FROM notification_user_settings WHERE user_type = ? AND user_id = ?',
+                [userType, Number(userId)]
+            );
+            const l = r && (r.emailLocale ?? r.email_locale);
+            if (l === 'fr' || l === 'en') return l;
+        } catch (_) {
+            /* the fallback below */
+        }
+    }
+    return mailLang(fallback);
+}
+
 // ---------------------------------------------------------------------------
 // THE composer: blocks → { subject, html, text, attachments, headers }
 // ---------------------------------------------------------------------------
@@ -878,9 +901,11 @@ function renderBlocks(list, { lang, accent } = {}) {
  * THE composer — every mail goes through here: one look, one language, one
  * subject pattern, one footer. Synchronous. `spec` is renderEmail's argument
  * (kind, severity, title, intro, blocks, ctaLabel, ctaUrl, preheader, locale,
- * mandatory) plus `payload` (the notification's, for the headline's
- * complement and the default link); `ctx` carries the resolved brand and the
- * recipient's first name for the greeting.
+ * mandatory, calendar) plus `payload` (the notification's, for the headline's
+ * complement and the default link); `ctx` carries the resolved brand, the
+ * recipient's first name for the greeting, `icsEnabled` (the recipient's .ics
+ * switch, on by default) and `trackId` (the in-app row the button may go
+ * through, see below).
  * Returns { subject, html, text, attachments, headers }.
  */
 function compose(spec = {}, ctx = {}) {
@@ -908,6 +933,7 @@ function compose(spec = {}, ctx = {}) {
     if (intro == null && !list.length) intro = kindMessage(kind, lang);
 
     // CTA: explicit → forced kind link → payload link → kind link → the centre.
+    const inAppLink = (meta.forceLink && meta.link) || payload.link || meta.link || null;
     const rawLink =
         (nonEmpty(spec.ctaUrl) && String(spec.ctaUrl)) ||
         (meta.forceLink && meta.link) ||
@@ -915,7 +941,16 @@ function compose(spec = {}, ctx = {}) {
         payload.url ||
         meta.link ||
         '/notifications';
-    const linkAbs = absUrl(rawLink);
+    // Measurement (migration 183): when the button lands where the in-app row
+    // lands anyway, it goes through /notifications/:id/go, which records that
+    // the person opened it and redirects to the same page. No tracking pixel.
+    const tracked =
+        Number(ctx.trackId) > 0 &&
+        Number.isInteger(Number(ctx.trackId)) &&
+        rawLink === inAppLink &&
+        String(rawLink).startsWith('/') &&
+        !String(rawLink).startsWith('//');
+    const linkAbs = absUrl(tracked ? `/notifications/${Number(ctx.trackId)}/go` : rawLink);
     const label = nonEmpty(spec.ctaLabel) ? String(spec.ctaLabel) : L.open(appName);
 
     const greeting = nonEmpty(ctx.recipientName)
@@ -979,13 +1014,51 @@ function compose(spec = {}, ctx = {}) {
     };
     if (!mandatory && prefsUrl) headers['List-Unsubscribe'] = `<${prefsUrl}>`;
 
+    const attachments = logo ? [logo] : [];
+    // A dated obligation carries a content-free .ics (IcsService) unless the
+    // recipient switched it off (ctx.icsEnabled, on by default).
+    const ics =
+        spec.calendar && ctx.icsEnabled !== false
+            ? icsAttachment(spec.calendar, {
+                  appName,
+                  lang,
+                  url: absUrl(rawLink),
+                  kind,
+              })
+            : null;
+    if (ics) attachments.push(ics);
+
     return {
         subject,
         html,
         text: textParts.filter(Boolean).join('\n\n'),
-        attachments: logo ? [logo] : [],
+        attachments,
         headers,
     };
+}
+
+/**
+ * The .ics attachment of a dated obligation, or null. `calendar` = { type,
+ * date | start, end?, allDay?, uid? }: dates, a type and a stable key only;
+ * the summary is a fixed phrase, never caller text.
+ */
+function icsAttachment(calendar, { appName, lang, url, kind } = {}) {
+    const c = calendar && typeof calendar === 'object' ? calendar : null;
+    if (!c) return null;
+    try {
+        return require('../services/IcsService').attachment({
+            type: c.type,
+            start: c.start || c.date,
+            end: c.end,
+            allDay: c.allDay,
+            uid: c.uid || `${kind || 'obligation'}-${String(c.start || c.date || '')}`,
+            url: /^https?:\/\//i.test(String(url || '')) ? url : null,
+            appName,
+            lang,
+        });
+    } catch (_) {
+        return null;
+    }
 }
 
 /**
@@ -1017,6 +1090,9 @@ function compose(spec = {}, ctx = {}) {
  *   mandatory  true ⇒ « Message obligatoire » footer, no List-Unsubscribe;
  *              default = the catalogue's flag
  *   recipientName  first name for the greeting (optional)
+ *   calendar   { type: 'campaign_deadline'|'deadline'|'session'|…, date | start,
+ *              end?, uid? } → a content-free RFC 5545 .ics in `attachments`
+ *              (IcsService); dates and a type only, never caller text
  *
  * BLOCK TYPES — every value is PLAIN TEXT, escaped by the renderer (never pass HTML):
  *   { type: 'h', text }                                 a section heading
@@ -1046,8 +1122,10 @@ module.exports = {
     normalizeBase,
     renderEmail,
     compose,
+    icsAttachment,
     renderBlocks,
     mailLang,
+    recipientLang,
     blocks,
     brand,
     absUrl,

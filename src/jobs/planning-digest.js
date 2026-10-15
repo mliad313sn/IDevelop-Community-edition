@@ -298,7 +298,13 @@ async function tick() {
             // Claim BEFORE sending: exactly one brief per manager per month.
             if (!(await claim('planning.digest', 'employee', mgrId, 0, mo))) continue;
 
-            const mail = renderBlocks(data, { lang, monthLabel });
+            // The manager's own e-mail language, else the site's.
+            const mlang = await require('../utils/emailTemplate').recipientLang(
+                'employee',
+                mgrId,
+                lang
+            );
+            const mail = renderBlocks(data, { lang: mlang, monthLabel });
             const r = await N.notify({
                 userType: 'employee',
                 userId: mgrId,
@@ -311,7 +317,7 @@ async function tick() {
                     noBench: data.noBench.length,
                     newlyHigh: data.newlyHigh,
                 },
-                locale: lang,
+                locale: mlang,
                 title: mail.title,
                 blocks: mail.blocks,
                 ctaUrl: '/v2/continuity',

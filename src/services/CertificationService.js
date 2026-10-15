@@ -172,6 +172,18 @@ class CertificationService {
         );
 
         if (file) await this._attachEvidence(row.id, file);
+        // Measurement (migration 183): this person's expiry alert on that skill
+        // was acted upon. Best-effort, never throws.
+        await Promise.resolve()
+            .then(() =>
+                require('./NotificationService').actedQuietly({
+                    refType: 'skill',
+                    refId: Number(skillId),
+                    userType: 'employee',
+                    userId: Number(employeeId),
+                })
+            )
+            .catch(() => 0);
         return db.get('SELECT * FROM employee_certifications WHERE id = ?', [row.id]);
     }
 

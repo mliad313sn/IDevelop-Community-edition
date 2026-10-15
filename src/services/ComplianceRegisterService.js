@@ -82,6 +82,8 @@ const DATA_CATEGORIES = [
     { key: 'lmsUpliftDecisions', group: 'development', audience: 'self_line_hr' },
     { key: 'plannedAbsences', group: 'employment', audience: 'self_line_hr' },
     { key: 'notifications', group: 'identity', audience: 'self_admins' },
+    { key: 'notificationSettings', group: 'identity', audience: 'self_admins' },
+    { key: 'notificationCategoryPrefs', group: 'identity', audience: 'self_admins' },
     { key: 'hrisLinks', group: 'identity', audience: 'self_admins' },
     { key: 'profilingObjections', group: 'privacy', audience: 'self_admins' },
     { key: 'privacyNoticeAcks', group: 'privacy', audience: 'self_admins' },
