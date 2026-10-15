@@ -122,10 +122,19 @@ const CATEGORIES = [
         controls: [
             {
                 id: 'csp',
-                fr: 'Politique de sécurité du contenu avec un nonce par requête ; aucun gestionnaire d’événement en ligne (onclick…) ne peut s’exécuter (script-src-attr none) ; en-têtes Helmet, HSTS en HTTPS, anti-clickjacking.',
-                en: 'Content Security Policy with a per-request nonce; no inline event handler (onclick…) can run (script-src-attr none); Helmet headers, HSTS over HTTPS, clickjacking protection.',
-                evidence: ['server.js', 'src/utils/tlsServer.js', 'public/js/csp-actions.js'],
-                tests: ['webSecurityBaseline.test.js', 'noInlineHandlers.test.js'],
+                fr: 'Politique de sécurité du contenu avec un nonce par requête ; aucun gestionnaire d’événement en ligne (onclick…) ne peut s’exécuter (script-src-attr none) ; la politique assouplie des guides autonomes ne vaut que pour une liste fermée de documents ; en-têtes Helmet, HSTS en HTTPS, anti-clickjacking.',
+                en: 'Content Security Policy with a per-request nonce; no inline event handler (onclick…) can run (script-src-attr none); the relaxed policy of the standalone guides applies only to a closed list of documents; Helmet headers, HSTS over HTTPS, clickjacking protection.',
+                evidence: [
+                    'server.js',
+                    'src/utils/tlsServer.js',
+                    'public/js/csp-actions.js',
+                    'src/middleware/httpHardening.js',
+                ],
+                tests: [
+                    'webSecurityBaseline.test.js',
+                    'noInlineHandlers.test.js',
+                    'trustProxyAndStaticCsp.test.js',
+                ],
             },
             {
                 id: 'headers',
@@ -203,10 +212,20 @@ const CATEGORIES = [
             },
             {
                 id: 'limits',
-                fr: 'Taille des requêtes bornée et limitation du débit des actions coûteuses.',
-                en: 'Request size capped and expensive actions rate limited.',
-                evidence: ['server.js', 'src/middleware/rateLimiter.js'],
-                tests: ['webSecurityBaseline.test.js', 'loginRateLimiterCountsFailures.test.js'],
+                fr: 'Taille des requêtes bornée et limitation du débit des actions coûteuses ; motifs en texte libre limités à 2 000 caractères sur toutes les routes ; expressions régulières linéaires sur les textes non maîtrisés ; mandataire de confiance (TRUST_PROXY) vérifié au démarrage, une valeur qui ferait confiance à tout client est refusée.',
+                en: 'Request size capped and expensive actions rate limited; free-text reasons capped at 2,000 characters on every route; linear regular expressions on untrusted text; the trusted proxy (TRUST_PROXY) validated at start-up, a value that would trust every client is refused.',
+                evidence: [
+                    'server.js',
+                    'src/middleware/rateLimiter.js',
+                    'src/utils/validators.js',
+                    'src/middleware/httpHardening.js',
+                ],
+                tests: [
+                    'webSecurityBaseline.test.js',
+                    'loginRateLimiterCountsFailures.test.js',
+                    'reasonCapUsernameRedos.test.js',
+                    'trustProxyAndStaticCsp.test.js',
+                ],
             },
         ],
     },
@@ -289,6 +308,13 @@ const CATEGORIES = [
                     'anonymizationService.test.js',
                     'recognitionFeedScope.test.js',
                 ],
+            },
+            {
+                id: 'outbound-minimisation',
+                fr: 'Données sortantes réduites : les webhooks ne transmettent qu’une liste fermée d’événements, limités aux identifiants, dates et à un lien (9-box, plans d’amélioration, risque de départ et vie privée ne sortent jamais ; feedback 360°, entretiens individuels et SIRH seulement sur décision d’un super-administrateur) ; l’API exclut les personnes sorties et effacées pour tout appelant.',
+                en: 'Minimised outbound data: webhooks carry only a closed list of events, limited to ids, dates and a link (9-box, improvement plans, flight risk and privacy never leave; 360° feedback, one-to-ones and HRIS only when a super-administrator opts in); the API excludes leavers and erased people for every caller.',
+                evidence: ['src/services/WebhookService.js', 'src/api/v1/repository.js'],
+                tests: ['webhookEmittableEvents.test.js', 'apiV1ActivePopulation-db.test.js'],
             },
             {
                 id: 'feedback-privacy',
@@ -384,10 +410,14 @@ const CATEGORIES = [
         controls: [
             {
                 id: 'secrets-required',
-                fr: 'En production, démarrage refusé sans secrets forts ; aucun mot de passe par défaut livré.',
-                en: 'In production, start-up refused without strong secrets; no default password ships.',
+                fr: 'En production, démarrage refusé sans secrets forts (un secret aléatoire n’est jamais refusé pour une suite de chiffres ressemblant à une année) ; aucun mot de passe par défaut livré.',
+                en: 'In production, start-up refused without strong secrets (a random secret is never refused for a digit run that looks like a year); no default password ships.',
                 evidence: ['src/config/app.js', 'src/utils/bootstrapAdmin.js'],
-                tests: ['bootstrapAdmin.test.js', 'c317-D-ops-security-installer.test.js'],
+                tests: [
+                    'bootstrapAdmin.test.js',
+                    'c317-D-ops-security-installer.test.js',
+                    'sessionSecretStrength.test.js',
+                ],
             },
             {
                 id: 'safe-defaults',

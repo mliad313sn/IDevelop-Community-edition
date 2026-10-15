@@ -75,6 +75,77 @@ project uses [Semantic Versioning](https://semver.org/).
   legacy `repeat` option the jobs use), and commitlint 21 (needs Node ≥ 22.12,
   while the project supports 20.19+).
 
+### Security (webhooks, API population, input limits)
+
+- **Outgoing webhooks carry an allow-list of events** (audit SA-21). Only
+  operational kinds leave (lifecycle, campaigns, self-assessments, IDP,
+  coaching, training, certifications, coverage, mobility postings); the 9-box,
+  PIP, retention and privacy families never do, whatever a subscription asks
+  for. 360° feedback, one-to-one and HRIS sync kinds leave only when a
+  SuperAdmin lists them in the new security-class setting `webhookOptInEvents`
+  (empty by default). Payloads are reduced to ids, ISO dates and an in-app link,
+  for JSON, Slack and Teams alike.
+- **`/api/v1` person feeds exclude leavers and erased people for every caller**,
+  SuperAdmin keys included (SA-22).
+- **`TRUST_PROXY` is validated at boot** (SA-23): `/0`, a short IPv4-mapped or
+  zero-leading IPv6 subnet and anything that is not an address, a subnet, a hop
+  count or `loopback` / `linklocal` / `uniquelocal` stop the start-up with the
+  reason.
+- The relaxed CSP of the standalone guides applies only to the guides and the
+  offline page, not to any path ending in `.html` (SA-24).
+- Free-text reasons are capped at 2 000 characters on every route (400 or the
+  form with its draft); new admin usernames are letters, digits and `. _ @ -`,
+  2 to 64 characters; the SQL console's function scan is linear (SA-25).
+- `express-flash` is replaced by an in-house helper with the same API, which
+  never creates a session for an anonymous visitor; `node-mocks-http` is a
+  development dependency (SA-26).
+- Webhook-family settings (`webhook*`) are security-class (SuperAdmin only).
+
+### Fixed
+
+- A random production secret containing a year-like digit run (about 9 % of
+  64-hex values) was refused and the service boot-looped; the year test now
+  applies only to values that do not look random, and the Windows installer
+  re-rolls such a secret.
+- The LMS completion webhook was refused by the origin guard (no `Origin` on a
+  server-to-server call); its validated `X-Webhook-Secret` now stands in for it.
+- "Training completions to validate" crashed as soon as one completion was
+  waiting (an undefined `locale`); uplift refusals are now translated.
+- Erased people still marked active no longer appear on the employee list, in
+  the active population behind scope filters or in a manager's governed team.
+- The Power BI certification feed printed `IssuedOn` / `ExpiresOn` one day
+  early on a server east of UTC (`dateFormat.sqlDateIso`, `appDayIso`).
+- SAML refusals name their cause (signature, audience, issuer, clock,
+  `InResponseTo`) on the test sign-in page and in `SSO_ERROR`.
+- The critical-compliance KPI is floored, never rounded up: 1 999 of 2 000
+  critical requirements met reads 99.9 %, not 100 %. Status colours are decided
+  on the value printed (`utils/displayedValue.js`), on the dashboard and in the
+  department brief.
+- The dead hourly `priority-index.refresh` job (its service never existed) is
+  removed.
+- The audit-trail owner role of the Windows installer is now
+  `idevelop_audit_owner`; a role under the legacy name is renamed in place by
+  the installer and by migration 169.
+- `.gitignore` covers `certs/`, `*.pfx`, `*.pfx.bak` and `*.p12` anywhere.
+
+### Database
+
+- **Migration 168** adds `public.fn_console_reader_sync()`, the SQL console
+  read-role grant of migration 167 as a reusable function. Every later
+  migration that adds a table, a view or a column ends with
+  `SELECT public.fn_console_reader_sync();` (checked by a test).
+- **Migration 169** renames a legacy audit-trail owner role.
+
+### Tests
+
+- DB-backed suites are serialised across jest workers by a PostgreSQL advisory
+  lock (`tests/helpers/dbSuiteEnvironment.js`), so `npm run test:unit` no
+  longer deadlocks; they get a 60 s default timeout.
+- Every suite guards on the database **name** (`tests/helpers/testDatabase.js`),
+  never on a substring of `DATABASE_URL`.
+- Real-app suites wait for the server's i18n middleware (`i18nReady()`) instead
+  of a fixed sleep; dead skipped placeholders are removed.
+
 ### Security (CSRF on uploads, SSO notices, security panels)
 
 - **CSRF on multipart uploads (audit SA-15, fixed).** The data-management and
