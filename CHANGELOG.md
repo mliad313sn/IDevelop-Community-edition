@@ -101,6 +101,49 @@ project uses [Semantic Versioning](https://semver.org/).
   development dependency (SA-26).
 - Webhook-family settings (`webhook*`) are security-class (SuperAdmin only).
 
+### Security (privacy and sessions)
+
+- **Diversity data is self-declared, with explicit consent** (audit SA-32).
+  Only the person declares gender, age band, nationality and, for workplace
+  accommodation, disability, from **My diversity data**
+  (`/v2/cap/my-diversity`, linked from « What is recorded about me »); the page
+  stays reachable whatever the talent module says, so consent can always be
+  withdrawn. Disability needs its own consent. Withdrawal deletes every declared
+  value at once; the consent ledger (field names, text version, dates, never a
+  value) is kept and exported. A manager or an admin can no longer write
+  someone's diversity data (403). Ethnicity is off until a SuperAdmin types a
+  legal sign-off (audited). Disability is readable by the person and by HR
+  holding « edit employees » only. Analytics count only consented
+  self-declarations of active, non-erased people, with complementary small-cell
+  suppression; values recorded before consent existed are set aside and listed
+  for HR review (field names only, reason recorded).
+- **One nationality switch** (SA-35): the Local content module. While it is off,
+  a submitted nationality is ignored on employee create and edit, the bias scan
+  leaves out the nationality axis, and the diversity analytics and the « My
+  diversity data » page do not offer it. Nothing is deleted. The switch and the
+  home country are SuperAdmin-only, audited and confirmed.
+- **Back to the requested page after sign-in; no anonymous sessions** (SA-33).
+  A link opened before sign-in is remembered in a short signed cookie (15 min,
+  one use, same-origin relative paths only) and the password, MFA and SSO
+  sign-ins land there; the login page shows a neutral notice instead of a red
+  error. An anonymous visitor gets a session only on a page that renders a form.
+- **Shared-computer mode, off by default** (SA-34): `kioskModeEnabled`
+  (SuperAdmin) offers a « Shared computer » box at sign-in, or applies the mode
+  to addresses in `kioskIpRanges`. A shared session idles out after
+  `kioskIdleMinutes` (default 5), uses a browser-session cookie, signs out when
+  the tab closes, shows a badge with one-click sign-out and resets the menu and
+  language for the next person.
+- **Offline drafts wiped**: a self-assessment rating is queued on the device only
+  when it could not reach the server, and every sign-out removes the person's
+  drafts from the browser.
+- **SAML stays strict by default** (SA-36): the whole response and the assertion
+  must be signed; a new « Strict » switch on the SuperAdmin SSO page
+  (`samlStrict`) allows assertion-only signing, applied without a restart.
+  `SAML_WANT_RESPONSE_SIGNED=0` still applies until the setting is stored.
+- **Sensitive settings band**: on `/app-settings`, the nationality switch,
+  shared-computer mode and mandatory MFA come first, each with its consequence,
+  and every change asks for confirmation.
+
 ### Security (audit log)
 
 - **Audit lines carry ids, not names** (audit SA-29). Sign-in, SSO, admin,
@@ -176,6 +219,10 @@ project uses [Semantic Versioning](https://semver.org/).
   links and seeds `auditLogRetentionYears`. No existing row is rewritten. It was
   rehearsed on a populated copy (about 30 000 chained rows over seven years,
   pre-chain rows and historic forks): the chain verified before and after.
+- **Migration 171** adds the `dei_consents` ledger and the provenance,
+  needs-review and HR-review columns of `employee_demographics`; rows that exist
+  at upgrade are flagged `legacy_unknown` and leave every statistic. Re-grants
+  the console reader.
 
 ### Tests
 
@@ -189,6 +236,10 @@ project uses [Semantic Versioning](https://semver.org/).
 - Audit log: `auditIdsOnly`, `auditSsoIdsOnly`, `auditLoginFailedOnce`,
   `auditLogLinearScrub`, and the database suites
   `auditChainRedactionSealPurge-db` and `auditErasureNeedles-db`.
+- Privacy and sessions: `deiConsentSelfDeclaration`, `deiConsent-db`,
+  `nationalitySwitch`, `returnToAfterSignIn`, `anonymousNoSession`,
+  `sharedComputerMode`, `sharedComputerLoginView`, `selfAssessmentDraftsWiped`,
+  `samlStrictMode` and `sensitiveSettingsBand`.
 
 ### Security (CSRF on uploads, SSO notices, security panels)
 
