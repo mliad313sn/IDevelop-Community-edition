@@ -304,7 +304,7 @@ PR #14 (`claude/friendly-hawking-9iv6qf`) turned the CodeQL check red with 46 ne
 
 ### Accepted by design (high, dismissed as « won't fix »): the first-run password
 
-- **`js/clear-text-logging`** (`src/services/AuthService.js`, the first-run banner). On a brand-new install with no `BOOTSTRAP_ADMIN_PASSWORD` set, the app generates a random SuperAdmin password and prints it once to the server console, because that console is the only channel the installer has. The controls:
+- **`js/clear-text-logging`** (`src/utils/bootstrapAdmin.js` `printFirstRunBanner`, called by `AuthService` and `PostgresDatabase` on first run). On a brand-new install with no `BOOTSTRAP_ADMIN_PASSWORD` set, the app generates a random SuperAdmin password and prints it once to the server console, because that console is the only channel the installer has. The controls:
     - printed only when the password was generated, never when the operator supplied one;
     - printed once, on the run that creates the account, and never again;
     - the account must change it at first sign-in (`forcePasswordChange`), so the printed value is good for exactly one sign-in.

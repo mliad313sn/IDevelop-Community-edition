@@ -207,7 +207,7 @@ class AuthService {
             // the SECOND seed path (PostgresDatabase.seed is the other); both had
             // the same hardcoded default, so fixing only one would have left the
             // guessable credential reachable through this one.
-            const { seedAdminPassword } = require('../utils/bootstrapAdmin');
+            const { seedAdminPassword, printFirstRunBanner } = require('../utils/bootstrapAdmin');
             const { password, generated } = seedAdminPassword();
             const passwordHash = await bcrypt.hash(password, 12);
             await AdminModel.create({
@@ -221,14 +221,7 @@ class AuthService {
                 forcePasswordChange: 1,
             });
             if (generated) {
-                console.log('');
-                console.log('  ============================================================');
-                console.log('   FIRST-RUN SUPERADMIN — copy this now, it is shown ONCE');
-                console.log('     username : admin');
-                console.log(`     password : ${password}`);
-                console.log('   A password change is required at first sign-in.');
-                console.log('  ============================================================');
-                console.log('');
+                printFirstRunBanner(password);
             }
         }
     }

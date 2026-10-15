@@ -1050,7 +1050,7 @@ class PostgresDatabase {
 
     async seed() {
         const bcrypt = require('bcrypt');
-        const { seedAdminPassword } = require('../utils/bootstrapAdmin');
+        const { seedAdminPassword, printFirstRunBanner } = require('../utils/bootstrapAdmin');
         const existing = await this.get('SELECT id FROM admins WHERE username = ?', ['admin']);
         if (!existing) {
             // SECURITY — the bootstrap password is generated per install, never a
@@ -1074,14 +1074,7 @@ class PostgresDatabase {
                 ['admin', 'admin@localhost', hash, 'superadmin', true, true]
             );
             if (generated) {
-                console.log('');
-                console.log('  ============================================================');
-                console.log('   FIRST-RUN SUPERADMIN — copy this now, it is shown ONCE');
-                console.log('     username : admin');
-                console.log(`     password : ${password}`);
-                console.log('   A password change is required at first sign-in.');
-                console.log('  ============================================================');
-                console.log('');
+                printFirstRunBanner(password);
             } else {
                 console.log(
                     '✓ Default SuperAdmin created from BOOTSTRAP_ADMIN_PASSWORD (change required at first login)'
