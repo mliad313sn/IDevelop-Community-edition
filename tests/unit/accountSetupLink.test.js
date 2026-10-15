@@ -179,8 +179,10 @@ describe('an invitation never carries a password', () => {
         for (const [secret] of hashSpy.mock.calls) expect(all).not.toContain(String(secret));
         expect(all).not.toMatch(/mot de passe temporaire|temporary password/i);
         expect(m.html).toContain('alex.sample');
+        // One language per mail: French unless the site's mail language is English.
         expect(m.html).toContain('Définir mon mot de passe');
-        expect(m.html).toContain('Set my password');
+        expect(m.html).not.toContain('Set my password');
+        expect(m.html).toMatch(/<html lang="fr"/);
         expect(m.html).toMatch(
             /href="https:\/\/hr\.example\.test\/reset-password\?token=[A-Za-z0-9_-]{43}&amp;setup=1"/
         );
@@ -188,7 +190,10 @@ describe('an invitation never carries a password', () => {
             /https:\/\/hr\.example\.test\/reset-password\?token=[A-Za-z0-9_-]{43}&setup=1/
         );
         expect(m.html).toContain('72 heures');
-        expect(m.html).toContain('72 hours');
+        // The subject is the catalogue's: no name, no figure.
+        expect(m.subject).not.toMatch(/\d|alex/i);
+        // An account mail is mandatory: no unsubscribe header.
+        expect(m.headers && m.headers['List-Unsubscribe']).toBeUndefined();
         // The account got an unusable password and no forced rotation.
         const upd = EmployeeModel.update.mock.calls.at(-1)[1];
         expect(upd.forcePasswordChange).toBe(false);

@@ -1,0 +1,288 @@
+'use strict';
+
+/**
+ * The notification catalogue (src/services/notificationCatalogue.js) declares
+ * EVERY kind IDevelop emits — IDevelop's own included (360° feedback,
+ * one-to-one topics, safety waivers and contests, scheduled reports, the
+ * SuperAdmin reset of an assessment) — each with its category, severity,
+ * e-mail tier, mandatory flag, webhook rule and FR/EN title and subject.
+ *
+ * Two nets catch a kind that is emitted but not declared:
+ *   1. here, a scan of every file that emits notifications: each kind-like
+ *      literal is declared, or listed below as NOT a kind (ledger keys,
+ *      permissions, maker-checker kinds) with the reason;
+ *   2. at run time, NotificationService reports an undeclared kind and
+ *      tests/helpers/dbSuiteLockSetup.js fails the suite that emitted it.
+ */
+process.env.DATABASE_URL =
+    process.env.DATABASE_URL || 'postgres://test:test@127.0.0.1:5432/notification_catalogue';
+
+const fs = require('fs');
+const path = require('path');
+const catalogue = require('../../src/services/notificationCatalogue');
+const N = require('../../src/services/NotificationService');
+
+const ROOT = path.join(__dirname, '../..');
+
+/** Literals that look like kinds in emitter files but are NOT notification kinds. */
+const NOT_KINDS = new Map([
+    ['cycle.autolock', 'reminder_log ledger key of a campaign transition'],
+    ['cycle.closure_proposed', 'reminder_log ledger key of a campaign transition'],
+    ['cycle.manual_nudge', 'nudge_log ledger key'],
+    ['cycle.not_started', 'nudge_log ledger key'],
+    ['cycle.overdue', 'reminder_log ledger key of a campaign transition'],
+    ['cycle.review_pending', 'reminder_log ledger key (weekly reviewer reminder)'],
+    ['dept_brief.noscope', 'job result reason'],
+    ['digest.any', 'reminder_log ledger key of the department brief'],
+    ['dispute.reason', 'locale key'],
+    ['idp.signoff', 'reminder_log ledger key'],
+    ['lifecycle.leaver.admin_revoked', 'lifecycle cascade step name'],
+    ['lifecycle.leaver.plans_closed', 'lifecycle cascade step name'],
+    ['ninebox.reassess', 'reminder_log ledger key'],
+    ['onboarding.enabled', 'app setting key'],
+    ['pip.create', 'maker-checker request kind'],
+    ['retention.high', 'reminder_log ledger key'],
+    ['sa.employee_id', 'SQL column reference'],
+    ['safety.read', 'permission name'],
+    ['succession.review', 'reminder_log ledger key'],
+]);
+
+function emitterFiles() {
+    const files = [];
+    (function walk(d) {
+        for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+            const p = path.join(d, e.name);
+            if (e.isDirectory()) walk(p);
+            else if (e.name.endsWith('.js')) files.push(p);
+        }
+    })(path.join(ROOT, 'src'));
+    const EMITTER = /\b(notify|enqueue|enqueueBulkInApp|_notify|alert)\s*\(/;
+    return files
+        .filter((f) => !f.endsWith('notificationCatalogue.js'))
+        .map((f) => ({ f, src: fs.readFileSync(f, 'utf8') }))
+        .filter(({ src }) => EMITTER.test(src));
+}
+
+describe('every kind IDevelop emits is declared', () => {
+    const families = new Set(catalogue.kinds().map((k) => k.split('.')[0]));
+
+    test('no kind-like literal in an emitter file is left undeclared', () => {
+        const LIT = /(['"`])([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)\1/g;
+        const undeclared = new Map();
+        const seenNotKinds = new Set();
+        const files = emitterFiles();
+        expect(files.length).toBeGreaterThan(25); // guards against a vacuous scan
+        for (const { f, src } of files) {
+            let m;
+            while ((m = LIT.exec(src))) {
+                const v = m[2];
+                if (!families.has(v.split('.')[0]) || catalogue.isDeclared(v)) continue;
+                if (NOT_KINDS.has(v)) {
+                    seenNotKinds.add(v);
+                    continue;
+                }
+                undeclared.set(v, path.relative(ROOT, f));
+            }
+        }
+        expect([...undeclared]).toEqual([]);
+        // The list of non-kinds stays honest: none is declared, none is stale.
+        for (const k of NOT_KINDS.keys()) expect(catalogue.isDeclared(k)).toBe(false);
+        expect([...NOT_KINDS.keys()].filter((k) => !seenNotKinds.has(k))).toEqual([]);
+    });
+
+    test('the kinds built at run time are declared too', () => {
+        // SafetyGateService: `${kind}.team` for kind in safety.blocked / safety.expiring.
+        for (const k of ['safety.blocked', 'safety.expiring'])
+            expect(catalogue.isDeclared(`${k}.team`)).toBe(true);
+        // jobs/reminders.js prefers these when declared (kindFor), and falls back
+        // to the second; both are declared.
+        for (const k of [
+            'ninebox.reassess_due',
+            'talent.plan_due',
+            'handover.due',
+            'account.dormant',
+            'access.expiry',
+            'access.review',
+        ])
+            expect(catalogue.isDeclared(k)).toBe(true);
+        // AssessmentChangeRequestService: granted / refused.
+        expect(catalogue.isDeclared('sa.change_request_granted')).toBe(true);
+        expect(catalogue.isDeclared('sa.change_request_refused')).toBe(true);
+    });
+
+    test.each([
+        'feedback360.nominate',
+        'feedback360.approve',
+        'feedback360.invited',
+        'feedback360.reminder',
+        'feedback360.closed',
+        'feedback360.released',
+        'oneonone.topic_added',
+        'safety.waiver_granted',
+        'safety.waiver_granted.team',
+        'safety.waiver_ended',
+        'safety.waiver_ended.team',
+        'safety.contest.review',
+        'safety.contest.decided',
+        'report.schedule_ready',
+        'report.schedule_suspended',
+        'sa.reset_for_redo',
+        'sa.review_reset',
+        'ops.hris_plan_ready',
+        'ops.hris_sync_alert',
+    ])('IDevelop kind %s is declared in full', (kind) => {
+        const d = catalogue.describe(kind);
+        expect(d).not.toBeNull();
+        expect(catalogue.CATEGORIES).toContain(d.category);
+        expect(Object.keys(catalogue.SEVERITY_LEVELS)).toContain(d.severity);
+        expect(d.title.fr).toBeTruthy();
+        expect(d.title.en).toBeTruthy();
+        expect(d.subject.fr).toBeTruthy();
+        expect(d.subject.en).toBeTruthy();
+    });
+
+    test('a kind written at run time that is not declared is reported', async () => {
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        expect(N._checkDeclared('sa.submitted')).toBe(true);
+        expect(N._checkDeclared('not.a.declared.kind')).toBe(false);
+        expect(global.__undeclaredNotificationKinds.has('not.a.declared.kind')).toBe(true);
+        expect(warn).toHaveBeenCalledWith(expect.stringMatching(/not\.a\.declared\.kind/));
+        // This suite emitted it on purpose: clear it so the afterAll net passes.
+        global.__undeclaredNotificationKinds.clear();
+        warn.mockRestore();
+    });
+});
+
+describe('every declaration is complete', () => {
+    const kinds = catalogue.kinds();
+
+    test('the catalogue is not empty', () => {
+        expect(kinds.length).toBeGreaterThan(100);
+    });
+
+    test('category, severity, tier, mandatory, webhook, FR/EN title and subject for every kind', () => {
+        const bad = [];
+        for (const k of kinds) {
+            const d = catalogue.describe(k);
+            if (!catalogue.CATEGORIES.includes(d.category)) bad.push(`${k}: category`);
+            if (!Object.keys(catalogue.SEVERITY_LEVELS).includes(d.severity))
+                bad.push(`${k}: severity`);
+            if (!['immediate', 'digest', 'none'].includes(d.tier)) bad.push(`${k}: tier`);
+            if (typeof d.mandatory !== 'boolean') bad.push(`${k}: mandatory`);
+            if (!['default', 'opt-in', 'never'].includes(d.webhook)) bad.push(`${k}: webhook`);
+            for (const l of ['fr', 'en']) {
+                if (!d.title[l]) bad.push(`${k}: title.${l}`);
+                if (!d.subject[l]) bad.push(`${k}: subject.${l}`);
+            }
+        }
+        expect(bad).toEqual([]);
+    });
+
+    test('every category has a label in both languages', () => {
+        for (const c of catalogue.CATEGORIES) {
+            expect(catalogue.CATEGORY_LABELS[c].fr).toBeTruthy();
+            expect(catalogue.CATEGORY_LABELS[c].en).toBeTruthy();
+        }
+    });
+
+    test('one language per mail: an English mail never carries a French body', () => {
+        const T = require('../../src/utils/emailTemplate');
+        for (const k of kinds.filter((x) => catalogue.KIND_MESSAGES[x])) {
+            const m = catalogue.KIND_MESSAGES[k];
+            if (m.fr === m.en) continue;
+            const en = T.compose({ kind: k, locale: 'en' }, { brand: { appName: 'Acme' } }).text;
+            const fr = T.compose({ kind: k, locale: 'fr' }, { brand: { appName: 'Acme' } }).text;
+            expect([k, en.includes(m.en), en.includes(m.fr)]).toEqual([k, true, false]);
+            expect([k, fr.includes(m.fr), fr.includes(m.en)]).toEqual([k, true, false]);
+        }
+    });
+
+    test('mandatory kinds sit in a mandatory category', () => {
+        for (const k of kinds.filter((x) => catalogue.isMandatory(x) && !catalogue.MAIL_ONLY[x]))
+            expect(catalogue.MANDATORY_CATEGORIES).toContain(catalogue.categoryOf(k));
+    });
+
+    test('mail-only kinds never have an in-app row nor a webhook', () => {
+        for (const k of Object.keys(catalogue.MAIL_ONLY)) {
+            expect(catalogue.webhookOf(k)).toBe('never');
+            expect(catalogue.KIND_POLICY[k]).toBeUndefined();
+        }
+    });
+});
+
+describe('webhook rule (decision 8): the catalogue and WebhookService agree', () => {
+    const Hook = require('../../src/services/WebhookService');
+
+    test('the default list is the same', () => {
+        expect([...catalogue.WEBHOOK_DEFAULT].sort()).toEqual([...Hook.EMITTABLE_EVENTS].sort());
+    });
+
+    test('for every declared kind, « default » ⇔ it leaves with no opt-in', () => {
+        for (const k of catalogue.kinds())
+            expect([k, catalogue.webhookOf(k) === 'default']).toEqual([k, Hook.isEmittable(k)]);
+    });
+
+    test('360° feedback and one-to-one kinds never leave by default; a SuperAdmin may opt in', () => {
+        for (const k of catalogue.kinds().filter((x) => /^(feedback360|oneonone)\./.test(x))) {
+            expect(catalogue.webhookOf(k)).toBe('opt-in');
+            expect(Hook.isEmittable(k)).toBe(false);
+            expect(Hook.isEmittable(k, Hook.parseOptIn(k))).toBe(true);
+        }
+        for (const k of ['ops.hris_plan_ready', 'ops.hris_sync_alert'])
+            expect(catalogue.webhookOf(k)).toBe('never');
+    });
+
+    test('confidential families never leave, whatever the opt-in', () => {
+        for (const k of catalogue.kinds().filter((x) => /^(pip|ninebox|retention|privacy)/.test(x)))
+            expect(catalogue.webhookOf(k)).toBe('never');
+    });
+});
+
+describe('subjects: no person name, no figure, no status', () => {
+    const hostile = {
+        name: 'Jo Martin',
+        employeeName: 'Jo Martin',
+        fullName: 'Jo Martin',
+        reason: 'Refusé : niveau 2/4',
+        count: 12,
+        pending: 7,
+        days: 3,
+        cycle: 'C-2026-T4',
+        report: 'Rapport secret 2026',
+        closesOn: '2026-10-31',
+        provider: 'entra',
+        variant: 'standard',
+        link: '/x',
+    };
+
+    test.each(catalogue.kinds().map((k) => [k]))('%s', (kind) => {
+        for (const lang of ['fr', 'en']) {
+            const plain = N._subjectFor(kind, lang, 'Acme');
+            const rendered = N._compose(
+                { kind, payload: hostile, locale: lang, title: 'Jo Martin — 12 revues' },
+                { brand: { appName: 'Acme' }, recipientName: 'Jo' }
+            ).subject;
+            expect(rendered).toBe(plain);
+            expect(plain.startsWith('Acme — ')).toBe(true);
+            // « 360° » is the name of a feature, not a figure.
+            expect(plain.replace(/360°/g, '')).not.toMatch(/\d/);
+            expect(plain).not.toMatch(/Jo Martin|C-2026|secret|Refusé/);
+            expect(plain).not.toContain(kind);
+        }
+    });
+
+    test('a decision or a status is never stated in a subject', () => {
+        const STATUS =
+            /rejet|refus|approuv|annul|bloqu|retiré|validé|plan de performance|rejected|refused|approved|cancelled|blocked|revoked|validated|performance plan/i;
+        // The SuperAdmin security alerts name the EVENT (a refused sign-in, a
+        // locked administrator account), never a person: that is their point.
+        const EVENT_ALERTS = /^security\.(superadmin_|breakglass_|admin_account_locked)/;
+        for (const kind of catalogue.kinds().filter((k) => !EVENT_ALERTS.test(k)))
+            for (const lang of ['fr', 'en'])
+                expect([kind, lang, STATUS.test(catalogue.subjectOf(kind, lang))]).toEqual([
+                    kind,
+                    lang,
+                    false,
+                ]);
+    });
+});

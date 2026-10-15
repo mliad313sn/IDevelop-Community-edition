@@ -30,3 +30,18 @@ if (lock && lock.enabled()) {
         proto.connect = wrapped;
     }
 }
+
+// Every notification kind a suite makes NotificationService write must be
+// declared in src/services/notificationCatalogue.js. The service collects an
+// undeclared kind under the test runner (NotificationService._checkDeclared);
+// the suite that emitted it fails here, whatever it was testing.
+afterAll(() => {
+    const undeclared = globalThis.__undeclaredNotificationKinds;
+    if (undeclared && undeclared.size) {
+        const list = [...undeclared].sort().join(', ');
+        undeclared.clear();
+        throw new Error(
+            `notification kind(s) emitted but not declared in src/services/notificationCatalogue.js: ${list}`
+        );
+    }
+});

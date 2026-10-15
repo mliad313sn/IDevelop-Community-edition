@@ -5,7 +5,7 @@
  *     deepseek/openrouter/together) needs only an API key — endpoint + default
  *     model auto-fill, aliases resolve, explicit URL/model overrides win, and
  *     the wire format maps to the right style.
- *   - emailTemplate: escaping + branded wrapper invariants.
+ *   - emailTemplate: escaping + branded layout invariants.
  *   - Welcome invitation email: credentials, profile details and role-adapted
  *     expectations all present.
  */
@@ -136,25 +136,29 @@ describe('copilot provider presets', () => {
 
 describe('emailTemplate', () => {
     test('escapes user-controlled content everywhere', () => {
-        const html = T.wrap({
-            branding: { appName: '<script>x</script>' },
-            title: 'T',
-            intro: 'Bonjour <b>—',
-            blocks: [T.table([{ fr: 'A<' }], [[{ text: '<img onerror=1>' }]])],
-        });
+        const B = T.blocks('fr');
+        const { html } = T.compose(
+            {
+                kind: 'sa.submitted',
+                title: 'T',
+                intro: 'Bonjour <b>—',
+                blocks: [B.table([{ fr: 'A<' }], [[{ text: '<img onerror=1>' }]])],
+            },
+            { brand: { appName: '<script>x</script>' } }
+        );
         expect(html).not.toContain('<script>x</script>');
         expect(html).not.toContain('<img onerror=1>');
         expect(html).toContain('&lt;img onerror=1&gt;');
     });
 
-    test('wrap carries the brand name and accent color', () => {
-        const html = T.wrap({
-            branding: { appName: 'MinesRH', accentColor: '#123456' },
-            title: 'T',
-            blocks: [],
-        });
+    test('the layout carries the brand name and accent color', () => {
+        const { html, subject } = T.compose(
+            { kind: 'sa.submitted', title: 'T', blocks: [] },
+            { brand: { appName: 'MinesRH', accent: '#123456' } }
+        );
         expect(html).toContain('MinesRH');
         expect(html).toContain('#123456');
+        expect(subject.startsWith('MinesRH — ')).toBe(true);
     });
 });
 
@@ -174,6 +178,7 @@ describe('welcome invitation email', () => {
             if (/r\.supervisor_id = \?/.test(sql)) return { x: 1 }; // IS a manager
             return null;
         });
+        wireSettings({ appName: 'MinesRH' });
         const OnboardingCredentialService = require('../../src/services/OnboardingCredentialService');
         const mail = await OnboardingCredentialService._welcomeEmail({
             employee: { id: 5, firstName: 'Awa', lastName: 'Costé', employeeNumber: 'EMP005' },

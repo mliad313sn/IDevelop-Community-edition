@@ -327,7 +327,7 @@ $devOnlyScripts = @(
     'backfill-access-profiles.js', 'v3-merge-duplicate-skills.js',
     # QA and documentation tooling
     '_emoji-inventory.js', '_emoji-to-icons.js', '_scan-emoji.js', 'build-user-guide.js',
-    'check-icons.js', 'export-contracts.js', 'export-security-measures.js', 'export-skills-framework.js', 'export-v3-matrix.js', 'loadtest-readiness.js', 'security-check.js'
+    'check-icons.js', 'export-contracts.js', 'export-security-measures.js', 'export-skills-framework.js', 'export-v3-matrix.js', 'loadtest-readiness.js', 'render-notification-samples.js', 'security-check.js'
 )
 $devOnlyDirs = @('_lib')
 $stagedScripts = Get-ChildItem -LiteralPath (Join-Path $appDest 'scripts') -File -ErrorAction SilentlyContinue

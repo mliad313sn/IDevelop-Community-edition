@@ -240,7 +240,7 @@ describe('the surfaces exist and say what the rule is', () => {
     });
 
     test('the notification deep-links to a PAGE, not to raw JSON', () => {
-        const svc = read('src/services/NotificationService.js');
+        const svc = read('src/services/notificationCatalogue.js');
         expect(svc).toMatch(
             /'lms\.uplift_proposed':\s*\{[\s\S]{0,200}?link:\s*'\/v2\/lms\/uplifts'/
         );

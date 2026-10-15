@@ -10,8 +10,11 @@
  *      provider named Microsoft); SAML/OIDC/Google get the neutral sentence;
  *   5. the bare 'SSO' fallback never lands in a sentence;
  *   6. the benefits sentence no longer contradicts itself;
- *   7. the reminder prefixes BOTH halves of the subject;
+ *   7. a reminder says so in its title; the subject is the catalogue's;
  *   + the signed-in page shows the SAME sentences as the e-mail.
+ *
+ * One language per mail: compose({ lang }) writes the invitation in French
+ * (default) or English; `both` renders it twice to check each language.
  */
 const mockDb = {
     get: jest.fn(async () => null),
@@ -39,13 +42,20 @@ const base = {
 };
 const emp = { type: 'employee', isAdmin: false, firstName: 'Sam', name: 'Sam Rivera' };
 const admin = { ...emp, type: 'admin', isAdmin: true };
-const split = (m) => m.text.split('\n\n----\n\n');
+/** The same invitation in French and in English: [frText, enText]. */
+const split = (args) => [
+    Inv.compose({ ...args, lang: 'fr' }).text,
+    Inv.compose({ ...args, lang: 'en' }).text,
+];
+const SUBJECT = {
+    fr: 'MonApp — Connexion avec votre compte d’entreprise : ce qui change',
+    en: 'MonApp — Signing in with your company account: what changes',
+};
 const GO = new Date(2026, 9, 12, 0, 0);
 
 describe('4 — the Windows/Outlook sentence is Microsoft-only', () => {
     test('entra (Microsoft): FR and EN say Windows or Outlook', () => {
-        const m = Inv.compose({ ...base, rec: emp, provider: 'Microsoft', providerKey: 'entra' });
-        const [fr, en] = split(m);
+        const [fr, en] = split({ ...base, rec: emp, provider: 'Microsoft', providerKey: 'entra' });
         expect(fr).toMatch(
             /avec votre compte Microsoft, le même que pour Windows ou Outlook\. Votre ancien mot de passe MonApp ne sert plus\./
         );
@@ -63,8 +73,8 @@ describe('4 — the Windows/Outlook sentence is Microsoft-only', () => {
         ['google', 'Google'],
     ])('%s (%s): the neutral sentence, never Windows', (key, name) => {
         const m = Inv.compose({ ...base, rec: emp, provider: name, providerKey: key });
-        const [fr, en] = split(m);
-        expect(m.text).not.toMatch(/Windows|Outlook/);
+        const [fr, en] = split({ ...base, rec: emp, provider: name, providerKey: key });
+        expect(`${fr}\n${en}`).not.toMatch(/Windows|Outlook/);
         expect(m.html).not.toMatch(/Windows|Outlook/);
         expect(fr).toMatch(
             new RegExp(
@@ -119,8 +129,10 @@ describe('5 — the bare « SSO » fallback never lands in a sentence', () => {
         expect(Inv.providerLabel('saml')).toBe('SSO');
         const all = `${m.subject}\n${m.text}\n${m.html}`;
         expect(all).not.toMatch(/compte (d’entreprise )?SSO|SSO account|SSO company/);
-        expect(m.subject).toBe(
-            '[MonApp] Connectez-vous avec votre compte d’entreprise / Sign in with your company account'
+        // The subject is the catalogue's, in ONE language: no provider, no name.
+        expect(m.subject).toBe(SUBJECT.fr);
+        expect(Inv.compose({ ...base, rec: emp, provider: 'Contoso', lang: 'en' }).subject).toBe(
+            SUBJECT.en
         );
         expect(m.text).toMatch(/avec votre compte d’entreprise, celui que vous utilisez déjà/);
         expect(m.text).toMatch(/Lors d’une première connexion, votre compte d’entreprise vient/);
@@ -135,17 +147,14 @@ describe('5 — the bare « SSO » fallback never lands in a sentence', () => {
             app: 'MonApp',
             url: '',
         });
-        expect(a.subject).toMatch(
-            /connexion avec votre compte d’entreprise \/ .*sign in with your company account$/
-        );
+        expect(a.subject).toBe(SUBJECT.fr);
+        expect(a.html).toMatch(/compte d’entreprise/);
     });
 });
 
 describe('3 / 6 / 7 — admin paragraph, benefits, reminder subject', () => {
     test('3 — the admin paragraph: the local code only if no second verification was asked', () => {
-        const [fr, en] = split(
-            Inv.compose({ ...base, rec: admin, provider: 'Contoso', providerKey: 'saml' })
-        );
+        const [fr, en] = split({ ...base, rec: admin, provider: 'Contoso', providerKey: 'saml' });
         expect(fr).toMatch(
             /Compte administrateur : si votre connexion d’entreprise ne vous a pas déjà demandé une seconde vérification \(un code, ou une validation sur votre téléphone\), un code à 6 chiffres vous sera ensuite demandé/
         );
@@ -155,35 +164,44 @@ describe('3 / 6 / 7 — admin paragraph, benefits, reminder subject', () => {
         expect(fr).not.toMatch(/après la connexion Contoso, un code/);
     });
     test('6 — benefits: one password, the company one; no more app password', () => {
-        const [fr, en] = split(Inv.compose({ ...base, rec: emp, provider: 'Contoso' }));
+        const [fr, en] = split({ ...base, rec: emp, provider: 'Contoso' });
         expect(fr).toMatch(
-            /^Avantages : Un seul mot de passe : celui de votre compte d’entreprise\. Plus de mot de passe MonApp à retenir ni à réinitialiser, et une connexion mieux protégée\.$/m
+            /^Avantages\n\nUn seul mot de passe : celui de votre compte d’entreprise\. Plus de mot de passe MonApp à retenir ni à réinitialiser, et une connexion mieux protégée\.$/m
         );
         expect(fr).not.toMatch(/rien à retenir/);
         expect(en).toMatch(
-            /^Benefits: One password only: your company account’s\. No MonApp password to remember or reset any more, and a better-protected sign-in\.$/m
+            /^Benefits\n\nOne password only: your company account’s\. No MonApp password to remember or reset any more, and a better-protected sign-in\.$/m
         );
     });
-    test('7 — the reminder prefixes both halves of the subject', () => {
+    test('7 — a reminder says so in its title; the subject stays the catalogue’s', () => {
         const m = Inv.compose({ ...base, rec: emp, provider: 'Contoso', reminder: true });
-        expect(m.subject).toBe(
-            'Rappel : [MonApp] Connectez-vous avec votre compte Contoso / Reminder: Sign in with your Contoso account'
-        );
+        expect(m.subject).toBe(SUBJECT.fr);
+        expect(m.html).toMatch(/<h1[^>]*>Rappel : /);
+        const en = Inv.compose({
+            ...base,
+            rec: emp,
+            provider: 'Contoso',
+            reminder: true,
+            lang: 'en',
+        });
+        expect(en.subject).toBe(SUBJECT.en);
+        expect(en.html).toMatch(/<h1[^>]*>Reminder: /);
     });
 });
 
 describe('the page shows the same sentences as the e-mail', () => {
     test('invitation: every page sentence is in the e-mail text, in order, no sign-in button', () => {
-        const m = Inv.compose({
+        const args = {
             ...base,
             rec: admin,
             provider: 'Microsoft',
             providerKey: 'entra',
             upn: 'sam@corp.test',
-        });
+        };
+        const m = Inv.compose(args);
         for (const lang of ['fr', 'en']) {
             const p = m.page[lang];
-            const txt = split(m)[lang === 'fr' ? 0 : 1];
+            const txt = split(args)[lang === 'fr' ? 0 : 1];
             expect(txt.startsWith(p.hello)).toBe(true);
             const sentences = p.blocks.flatMap((b) => (b.t === 'steps' ? b.items : [b.text]));
             expect(sentences.length).toBeGreaterThan(8);

@@ -51,6 +51,8 @@ jest.mock('../../src/services/EmailService', () => ({
 }));
 jest.mock('../../src/utils/emailTemplate', () => ({
     baseUrlAsync: async () => 'https://app.example.test',
+    // The reset mail is rendered in the background too (it reads the branding).
+    renderEmail: async () => ({ subject: 's', html: '<p>h</p>', text: 't', headers: {} }),
 }));
 
 const AuthController = require('../../src/controllers/AuthController');

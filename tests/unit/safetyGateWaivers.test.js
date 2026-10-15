@@ -678,7 +678,7 @@ describe('the pages and the catalogue say « authorised by waiver », never « c
 
     test('the six notification kinds are in the catalogue, in FR and EN', () => {
         const src = fs.readFileSync(
-            path.join(__dirname, '../../src/services/NotificationService.js'),
+            path.join(__dirname, '../../src/services/notificationCatalogue.js'),
             'utf8'
         );
         const N = jest.requireActual('../../src/services/NotificationService');
