@@ -1137,6 +1137,20 @@ class DSRService {
                 "UPDATE pips SET summary = '[erased]', outcome = NULL WHERE employee_id = ?",
                 [employeeId]
             );
+            // SA-38: the in-app copies of scheduled reports produced over a scope
+            // containing this person, or over everyone (an unrestricted scope is
+            // JSON null), are emptied; the row stays for the audit and its link
+            // answers « copy expired ». A database without migration 173 has no
+            // such table to empty.
+            if (await this._tableExists('report_schedule_runs'))
+                await db.run(
+                    `UPDATE report_schedule_runs
+                        SET content = NULL, purged_at = now(), purge_reason = 'erasure'
+                      WHERE purged_at IS NULL
+                        AND (scope_ids IS NULL OR jsonb_typeof(scope_ids) = 'null'
+                             OR scope_ids @> jsonb_build_array(CAST(? AS integer)))`,
+                    [Number(employeeId)]
+                );
             await db.run('UPDATE survey_responses SET text_answer = NULL WHERE employee_id = ?', [
                 employeeId,
             ]);

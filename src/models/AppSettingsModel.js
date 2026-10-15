@@ -142,6 +142,8 @@ const CATALOG = {
     perfEventsRetentionDays: { min: 0, max: 3650, integer: true },
     notificationRetentionDays: { min: 0, max: 3650, integer: true },
     reminderLogRetentionDays: { min: 0, max: 3650, integer: true },
+    // SA-38: in-app copies of scheduled reports, 1 to 365 days (retention-purge).
+    reportRunRetentionDays: { min: 1, max: 365, integer: true },
     // Blank = follow notificationRetentionDays (read by jobs/telemetry-prune.js).
     unreadNotificationRetentionDays: { min: 0, max: 3650, integer: true, optional: true },
     onboardingRejectedRetentionDays: { min: 0, max: 3650, integer: true },
@@ -1025,6 +1027,16 @@ class AppSettingsModel {
                 type: 'number',
                 description:
                     'Days to keep the reminder ledger (reminder_log: one row per nudge sent) before pruning; 0 = keep forever. Audit logs are never pruned.',
+                category: 'jobs',
+            },
+            {
+                // SA-38: read by jobs/retention-purge.js; also seeded by migration
+                // 173. Security-class via RetentionDays$ (utils/securitySettings).
+                key: 'reportRunRetentionDays',
+                value: '90',
+                type: 'number',
+                description:
+                    'Days the content of a scheduled report copy is kept (1-365, default 90). Past it the copy is emptied; the row (date, schedule, row count) stays and its link answers « copy expired ».',
                 category: 'jobs',
             },
             {

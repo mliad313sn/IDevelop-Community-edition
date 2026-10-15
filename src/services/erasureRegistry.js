@@ -144,6 +144,25 @@ const SUBJECT_DATA_REGISTRY = [
         export: false,
         exportWhy: 'addressed to other people',
     },
+    // SA-38 (migrations 172-173): scheduled reports go to accounts and keep an
+    // in-app copy. An erased employee leaves every recipient list, and every
+    // copy whose scope contained them (or that was unrestricted) is emptied.
+    {
+        table: 'report_schedule_recipients',
+        column: 'recipient_id',
+        treatment: 'delete',
+        where: "recipient_type = 'employee'",
+        export: false,
+        exportWhy: 'delivery list of a report schedule: the account id only',
+    },
+    {
+        scope: 'scheduled report copies covering the subject',
+        table: 'report_schedule_runs',
+        treatment: 'custom',
+        why: 'content of every copy whose scope_ids contain the subject, or that is unrestricted, emptied (purged_at, purge_reason erasure); the row (date, schedule, row count) stays',
+        export: false,
+        exportWhy: 'report extract produced for other people; emptied on erasure',
+    },
     {
         scope: 'sign-in history',
         table: 'login_attempts',
@@ -725,6 +744,14 @@ const TABLES_WITHOUT_SUBJECT_COLUMN = {
     regions: ['config', 'org units'],
     reminder_log: ['telemetry', 'reminder ledger (target ids), pruned on a schedule'],
     report_schedules: ['config', 'report schedules'],
+    report_schedule_recipients: [
+        'config',
+        'recipient accounts of a report schedule; an erased employee is removed (registry entry)',
+    ],
+    report_schedule_runs: [
+        'via',
+        'in-app copies of scheduled reports: emptied after reportRunRetentionDays and on erasure (custom)',
+    ],
     report_templates: ['config', 'report templates'],
     role_criticality: ['config', 'role criticality'],
     role_families: ['config', 'role families'],

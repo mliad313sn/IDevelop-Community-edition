@@ -414,5 +414,7 @@
   "cat_notifications": "Notifications reçues",
   "cat_hrisLinks": "Identifiant dans le système RH",
   "av_engine_on": "Les justificatifs déposés sont analysés par {{engine}}.",
-  "cat_deiConsents": "Consentements aux données de diversité"
+  "cat_deiConsents": "Consentements aux données de diversité",
+  "reg_ret_report_copies": "Copies des rapports programmés (dans l’application)",
+  "reg_ret_emptied": "Contenu vidé (aussi à l’effacement d’une personne du périmètre)"
 }

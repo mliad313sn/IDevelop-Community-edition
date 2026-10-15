@@ -7,6 +7,7 @@ const db = require('../config/database');
 const LogService = require('../services/LogService');
 const { csvCell } = require('../utils/csvSafe');
 const { personNameSql } = require('../utils/personName');
+const { wantsJson } = require('../utils/wantsJson');
 
 // Make a CSV open correctly in French Excel: prepend a UTF-8 BOM (accented
 // names render, no mojibake) and a `sep=,` hint line (Excel then parses the
@@ -33,6 +34,11 @@ class ReportController {
         this.loadTemplate = this.loadTemplate.bind(this);
         this.deleteTemplate = this.deleteTemplate.bind(this);
         this.getReferenceData = this.getReferenceData.bind(this);
+        // Report schedules (SA-38): the routes pass these unbound.
+        this.listSchedules = this.listSchedules.bind(this);
+        this.createSchedule = this.createSchedule.bind(this);
+        this.updateScheduleRecipients = this.updateScheduleRecipients.bind(this);
+        this.downloadScheduleRun = this.downloadScheduleRun.bind(this);
         this.reportData = this.reportData.bind(this);
         this.readiness = this.readiness.bind(this);
         this.gaps = this.gaps.bind(this);
@@ -312,58 +318,7 @@ class ReportController {
     /** Schedules page: own schedules (all for superadmin) + schedulable templates. */
     async listSchedules(req, res) {
         try {
-            const mine = req.user.role !== 'superadmin';
-            // Ownership is (creator_type, created_by): employee and admin ids are
-            // separate sequences, so created_by alone would show a manager an
-            // admin's schedule of the same id (and vice-versa).
-            const schedules = await db.all(
-                `SELECT s.*, t.name AS template_name
-                   FROM report_schedules s JOIN report_templates t ON t.id = s.template_id
-                  ${mine ? 'WHERE s.created_by = ? AND s.creator_type = ?' : ''}
-                  ORDER BY s.created_at DESC`,
-                mine ? [req.user.id, req.user.userType === 'admin' ? 'admin' : 'employee'] : []
-            );
-            const actorType = req.user.userType === 'admin' ? 'admin' : 'employee';
-            const templates = await db.all(
-                `SELECT id, name FROM reportTemplates WHERE isPublic = true OR (createdBy = ? AND creatorType = ?) ORDER BY name`,
-                [req.user.id, actorType]
-            );
-            // Owner + next run: a SuperAdmin sees every schedule,
-            // so "whose is it" and "when does it run again" have to be on the row.
-            // Owner names come from the two id spaces the creator_type selects.
-            const { nextRunAt } = require('../jobs/report-scheduler');
-            const adminIds = schedules
-                .filter((s) => (s.creatorType || s.creator_type) === 'admin')
-                .map((s) => s.createdBy);
-            const empIds = schedules
-                .filter((s) => (s.creatorType || s.creator_type) !== 'admin')
-                .map((s) => s.createdBy);
-            const [admins, emps] = await Promise.all([
-                adminIds.length
-                    ? db.all('SELECT id, username AS name FROM admins WHERE id = ANY(?)', [
-                          adminIds,
-                      ])
-                    : [],
-                empIds.length
-                    ? db.all(
-                          `SELECT id, ${personNameSql('')} AS name FROM employees WHERE id = ANY(?)`,
-                          [empIds]
-                      )
-                    : [],
-            ]);
-            const byAdmin = new Map(admins.map((a) => [Number(a.id), a.name]));
-            const byEmp = new Map(emps.map((e) => [Number(e.id), e.name]));
-            schedules.forEach((s) => {
-                const isAdmin = (s.creatorType || s.creator_type) === 'admin';
-                s.ownerName = (isAdmin ? byAdmin : byEmp).get(Number(s.createdBy)) || null;
-                s.ownerKind = isAdmin ? 'admin' : 'employee';
-                s.nextRunAt = nextRunAt(s);
-            });
-            res.render('pages/reports/schedules', {
-                title: req.t ? req.t('chrome:pt_report_schedules') : 'Report Schedules',
-                schedules,
-                templates,
-            });
+            return await this._renderSchedules(req, res);
         } catch (error) {
             console.error('List schedules error:', error);
             req.flash(
@@ -376,6 +331,117 @@ class ReportController {
         }
     }
 
+    /**
+     * The schedules page, shared by GET and by a refused POST (which answers
+     * 400 with the page and the reason, instead of a 302 that hides it).
+     */
+    async _renderSchedules(req, res, { status = 200, formError = null } = {}) {
+        const scheduler = require('../jobs/report-scheduler');
+        const mine = req.user.role !== 'superadmin';
+        // Ownership is (creator_type, created_by): employee and admin ids are
+        // separate sequences, so created_by alone would show a manager an
+        // admin's schedule of the same id (and vice-versa).
+        const schedules = await db.all(
+            `SELECT s.*, t.name AS template_name
+               FROM report_schedules s JOIN report_templates t ON t.id = s.template_id
+              ${mine ? 'WHERE s.created_by = ? AND s.creator_type = ?' : ''}
+              ORDER BY s.created_at DESC`,
+            mine ? [req.user.id, req.user.userType === 'admin' ? 'admin' : 'employee'] : []
+        );
+        const actorType = req.user.userType === 'admin' ? 'admin' : 'employee';
+        const templates = await db.all(
+            `SELECT id, name FROM reportTemplates WHERE isPublic = true OR (createdBy = ? AND creatorType = ?) ORDER BY name`,
+            [req.user.id, actorType]
+        );
+        // Owner + next run: a SuperAdmin sees every schedule, so "whose is it"
+        // and "when does it run again" have to be on the row. Names come from
+        // the two id spaces the creator_type / recipient_type selects.
+        const { nextRunAt } = scheduler;
+        const ids = schedules.map((s) => Number(s.id));
+        const recRows = ids.length
+            ? await db.all(
+                  `SELECT schedule_id AS "scheduleId", recipient_type AS "type", recipient_id AS "id"
+                     FROM report_schedule_recipients
+                    WHERE schedule_id = ANY(?) AND removed_at IS NULL ORDER BY id`,
+                  [ids]
+              )
+            : [];
+        const lastRuns = ids.length
+            ? await db.all(
+                  `SELECT DISTINCT ON (schedule_id) schedule_id AS "scheduleId", id, created_at AS "createdAt",
+                          purged_at AS "purgedAt"
+                     FROM report_schedule_runs WHERE schedule_id = ANY(?)
+                    ORDER BY schedule_id, created_at DESC, id DESC`,
+                  [ids]
+              )
+            : [];
+        const adminIds = [
+            ...schedules
+                .filter((s) => (s.creatorType || s.creator_type) === 'admin')
+                .map((s) => s.createdBy),
+            ...recRows.filter((r) => r.type === 'admin').map((r) => r.id),
+        ];
+        const empIds = [
+            ...schedules
+                .filter((s) => (s.creatorType || s.creator_type) !== 'admin')
+                .map((s) => s.createdBy),
+            ...recRows.filter((r) => r.type === 'employee').map((r) => r.id),
+        ];
+        const [admins, emps] = await Promise.all([
+            adminIds.length
+                ? db.all('SELECT id, username AS name FROM admins WHERE id = ANY(?)', [adminIds])
+                : [],
+            empIds.length
+                ? db.all(
+                      `SELECT id, ${personNameSql('')} AS name FROM employees WHERE id = ANY(?)`,
+                      [empIds]
+                  )
+                : [],
+        ]);
+        const byAdmin = new Map(admins.map((a) => [Number(a.id), a.name]));
+        const byEmp = new Map(emps.map((e) => [Number(e.id), e.name]));
+        const nameOf = (type, id) =>
+            (type === 'admin' ? byAdmin : byEmp).get(Number(id)) || `#${Number(id)}`;
+        const lastRunBy = new Map(lastRuns.map((r) => [Number(r.scheduleId), r]));
+        schedules.forEach((s) => {
+            const isAdmin = (s.creatorType || s.creator_type) === 'admin';
+            s.ownerName = (isAdmin ? byAdmin : byEmp).get(Number(s.createdBy)) || null;
+            s.ownerKind = isAdmin ? 'admin' : 'employee';
+            s.nextRunAt = nextRunAt(s);
+            const recs = recRows.filter((r) => Number(r.scheduleId) === Number(s.id));
+            s.recipientTokens = recs.map((r) => `${r.type}:${r.id}`);
+            s.recipientNames = recs.map((r) => nameOf(r.type, r.id));
+            s.lastRun = lastRunBy.get(Number(s.id)) || null;
+        });
+        // The accounts this user may address: their clearance covers this
+        // user's own (the report runs under the creator's scope).
+        const accounts = await scheduler.eligibleAccounts(req.user).catch(() => []);
+        return res.status(status).render('pages/reports/schedules', {
+            title: req.t ? req.t('chrome:pt_report_schedules') : 'Report Schedules',
+            schedules,
+            templates,
+            accounts,
+            formError,
+        });
+    }
+
+    /**
+     * Answer a refused schedule write: 400, JSON for an API caller, the page
+     * with the reason for a form.
+     */
+    async _refuseSchedule(req, res, code, refused) {
+        const msg = req.t ? req.t(`reports:sched_err_${code}`) : code;
+        if (wantsJson(req))
+            return res.status(400).json({ success: false, code, error: msg, refused });
+        return this._renderSchedules(req, res, { status: 400, formError: msg });
+    }
+
+    /**
+     * Create a schedule (SA-38): recipients are ACCOUNTS whose clearance covers
+     * the report. A typed address, an unknown or inactive account, or an
+     * account whose scope does not cover the creator's is a 400; nothing is
+     * written.
+     */
     async createSchedule(req, res) {
         try {
             const templateId = parseInt(req.body.templateId, 10);
@@ -387,43 +453,33 @@ class ReportController {
                 frequency === 'weekly'
                     ? Math.min(6, Math.max(0, parseInt(req.body.dayOfWeek, 10) || 1))
                     : null;
-            const recipients = String(req.body.recipients || '')
-                .split(',')
-                .map((x) => x.trim())
-                .filter((x) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x))
-                .slice(0, 20)
-                .join(',');
 
-            if (!templateId || !recipients) {
-                req.flash(
-                    'error',
-                    req.t
-                        ? req.t('flash:report_schedule_invalid')
-                        : 'Choose a template and at least one valid recipient email.'
-                );
-                return res.redirect('/reports/schedules');
-            }
+            if (!templateId) return await this._refuseSchedule(req, res, 'template');
+            const scheduler = require('../jobs/report-scheduler');
+            const check = await scheduler.validateRecipients(
+                {
+                    recipients: req.body.recipients,
+                    recipientAccounts: req.body.recipientAccounts,
+                },
+                req.user
+            );
+            if (!check.ok) return await this._refuseSchedule(req, res, check.code, check.refused);
+
             // The template must be visible to the scheduling user (own or public).
             const tpl = await db.get(
                 'SELECT id, dataSource FROM reportTemplates WHERE id = ? AND (isPublic = true OR (createdBy = ? AND creatorType = ?))',
                 [templateId, req.user.id, req.user.userType === 'admin' ? 'admin' : 'employee']
             );
-            if (!tpl) {
-                req.flash(
-                    'error',
-                    req.t
-                        ? req.t('flash:report_template_not_found')
-                        : 'Template not found or not accessible.'
-                );
-                return res.redirect('/reports/schedules');
-            }
+            if (!tpl) return await this._refuseSchedule(req, res, 'template');
             // Refuse NOW what the scheduler could only fail at later. A composite
             // (multi-section) template is stored with dataSource 'multi', which
             // buildQuery cannot execute — and saveTemplate defaults a missing
-            // dataSource to 'multi' too. Accepting the schedule meant an e-mail
+            // dataSource to 'multi' too. Accepting the schedule meant a report
             // that never arrived, re-failing on every tick, discoverable only in
             // last_status. Say so at the point the person can still act on it.
             if (!ReportBuilderService.canExecute(tpl.dataSource)) {
+                if (wantsJson(req))
+                    return res.status(400).json({ success: false, code: 'not_schedulable' });
                 req.flash(
                     'error',
                     req.t
@@ -434,40 +490,174 @@ class ReportController {
             }
             // Store the REAL creator identity: (creator_type, created_by), exactly
             // as reportTemplates does. A manager's id is an EMPLOYEE id — a
-            // different sequence from admin ids — and the scheduler used to replay
-            // every schedule as userType 'admin', so a manager's report scoped to
-            // nothing (empty CSV, status ok) or, on an id collision, to an
-            // unrelated admin's clearance. Migration 102 adds the column.
+            // different sequence from admin ids. Migration 102 adds the column.
+            // `recipients` (the legacy free-text column) is written EMPTY: the
+            // recipients are the account rows (migration 172).
             const creatorType = req.user.userType === 'admin' ? 'admin' : 'employee';
-            await db.run(
-                `INSERT INTO report_schedules (template_id, recipients, frequency, day_of_week, hour, created_by, creator_role, creator_type)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    templateId,
-                    recipients,
-                    frequency,
-                    dayOfWeek,
-                    hour,
-                    req.user.id,
-                    req.user.role || 'localadmin',
-                    creatorType,
-                ]
-            );
-            req.flash(
-                'success',
-                req.t
-                    ? req.t('flash:report_schedule_created')
-                    : 'Schedule created — the report will be emailed automatically.'
-            );
-            res.redirect('/reports/schedules');
+            const created = await db.runTransaction(async () => {
+                const row = await db.get(
+                    `INSERT INTO report_schedules (template_id, recipients, frequency, day_of_week, hour, created_by, creator_role, creator_type)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+                    [
+                        templateId,
+                        '',
+                        frequency,
+                        dayOfWeek,
+                        hour,
+                        req.user.id,
+                        req.user.role || 'localadmin',
+                        creatorType,
+                    ]
+                );
+                await scheduler.setRecipients(row.id, check.accounts);
+                return row;
+            });
+            if (wantsJson(req))
+                return res.status(201).json({ success: true, id: Number(created.id) });
+            req.flash('success', req.t ? req.t('reports:sched_saved') : 'Schedule saved.');
+            return res.redirect('/reports/schedules');
         } catch (error) {
             console.error('Create schedule error:', error);
+            if (wantsJson(req))
+                return res.status(500).json({ success: false, error: 'create_failed' });
             req.flash(
                 'error',
                 req.t ? req.t('flash:report_schedule_create_error') : 'Error creating schedule'
             );
-            res.redirect('/reports/schedules');
+            return res.redirect('/reports/schedules');
         }
+    }
+
+    /**
+     * Update a schedule's recipients (owner, or SuperAdmin), with the same
+     * validation as create, against the CREATOR's live scope (the report runs
+     * under it). A schedule the system suspended for typed addresses
+     * (migration 172) is re-enabled once its recipients are valid accounts.
+     * Nothing is deleted: a recipient taken off is stamped removed_at.
+     */
+    async updateScheduleRecipients(req, res) {
+        const id = parseInt(req.params.id, 10);
+        const scheduler = require('../jobs/report-scheduler');
+        const s = Number.isInteger(id)
+            ? await db.get('SELECT * FROM report_schedules WHERE id = ?', [id])
+            : null;
+        const owns =
+            s &&
+            String(s.createdBy) === String(req.user.id) &&
+            (s.creatorType || s.creator_type) ===
+                (req.user.userType === 'admin' ? 'admin' : 'employee');
+        if (!s || (req.user.role !== 'superadmin' && !owns)) {
+            if (wantsJson(req)) return res.status(404).json({ success: false, code: 'not_found' });
+            req.flash('error', req.t ? req.t('admin:ops_sched_not_found') : 'Schedule not found.');
+            return res.redirect('/reports/schedules');
+        }
+        const creator = await scheduler.resolveCreator(s);
+        if (!creator) return this._refuseSchedule(req, res, 'under_cleared');
+        const check = await scheduler.validateRecipients(
+            { recipients: req.body.recipients, recipientAccounts: req.body.recipientAccounts },
+            creator
+        );
+        if (!check.ok) return this._refuseSchedule(req, res, check.code, check.refused);
+        const reenabled = s.enabled === false && s.disabledReason === 'legacy_outside_address';
+        await db.runTransaction(async () => {
+            await scheduler.setRecipients(id, check.accounts);
+            if (reenabled)
+                await db.run(
+                    `UPDATE report_schedules SET enabled = true, disabled_reason = NULL, disabled_at = NULL
+                      WHERE id = ?`,
+                    [id]
+                );
+        });
+        await LogService.log({
+            adminId: req.user.userType === 'admin' ? req.user.id : null,
+            action: 'REPORT_SCHEDULE_RECIPIENTS_SET',
+            entityType: 'report_schedule',
+            entityId: id,
+            category: 'audit',
+            severity: 'info',
+            actorRef: `${req.user.userType === 'admin' ? 'admin' : 'manager'}:${req.user.id}`,
+            details: `Scheduled report #${id}: ${check.accounts.length} account recipient(s)${reenabled ? ', re-enabled' : ''}`,
+            ipAddress: req.ip,
+            userAgent: req.get ? req.get('user-agent') : null,
+        }).catch(() => {
+            /* audit best-effort */
+        });
+        if (wantsJson(req)) return res.json({ success: true });
+        req.flash('success', req.t ? req.t('reports:sched_recipients_updated') : 'Updated.');
+        return res.redirect('/reports/schedules');
+    }
+
+    /**
+     * The in-app copy a scheduled notice links to. Served only to the
+     * schedule's owner, one of its CURRENT account recipients, or a SuperAdmin,
+     * and in every case only when the reader's CURRENT scope covers the scope
+     * the copy was produced under. Otherwise 403 (404 for an unknown copy, 410
+     * for a copy emptied by retention or erasure).
+     */
+    async downloadScheduleRun(req, res) {
+        const runId = parseInt(req.params.runId, 10);
+        const scheduler = require('../jobs/report-scheduler');
+        const run = Number.isInteger(runId)
+            ? await db.get(
+                  `SELECT r.id, r.schedule_id AS "scheduleId", r.scope_ids AS "scopeIds",
+                          r.filename, r.content, r.purged_at AS "purgedAt",
+                          s.created_by AS "createdBy", s.creator_type AS "creatorType"
+                     FROM report_schedule_runs r JOIN report_schedules s ON s.id = r.schedule_id
+                    WHERE r.id = ?`,
+                  [runId]
+              )
+            : null;
+        const deny = (status, key) => {
+            const msg = req.t ? req.t(`reports:${key}`) : key;
+            if (wantsJson(req)) return res.status(status).json({ success: false, error: msg });
+            return res.status(status).type('text/plain').send(msg);
+        };
+        if (!run) return deny(404, 'sched_download_not_found');
+        const me = scheduler.accountTypeOf(req.user);
+        const owns = String(run.createdBy) === String(req.user.id) && run.creatorType === me;
+        const listed = await db.get(
+            `SELECT 1 AS yes FROM report_schedule_recipients
+              WHERE schedule_id = ? AND recipient_type = ? AND recipient_id = ? AND removed_at IS NULL`,
+            [run.scheduleId, me, Number(req.user.id)]
+        );
+        const superadmin = req.user.userType === 'admin' && req.user.role === 'superadmin';
+        let scope = run.scopeIds;
+        if (typeof scope === 'string') {
+            try {
+                scope = JSON.parse(scope);
+            } catch (_) {
+                scope = [];
+            }
+        }
+        const allowed =
+            (owns || !!listed || superadmin) &&
+            scheduler.covers(await scheduler.scopeOf(req.user), scope);
+        await LogService.log({
+            adminId: req.user.userType === 'admin' ? req.user.id : null,
+            action: allowed ? 'REPORT_SCHEDULE_COPY_DOWNLOADED' : 'REPORT_SCHEDULE_COPY_REFUSED',
+            entityType: 'report_schedule',
+            entityId: Number(run.scheduleId),
+            category: 'audit',
+            severity: allowed ? 'info' : 'warn',
+            actorRef: `${req.user.userType === 'admin' ? 'admin' : 'manager'}:${req.user.id}`,
+            details: `Scheduled report copy #${run.id} ${allowed ? 'downloaded' : 'refused'}`,
+            ipAddress: req.ip,
+            userAgent: req.get ? req.get('user-agent') : null,
+        }).catch(() => {
+            /* audit best-effort */
+        });
+        if (!allowed) return deny(403, 'sched_download_forbidden');
+        // A copy past its retention, or emptied by an erasure, is gone for
+        // good: 410, never an empty file.
+        if (run.purgedAt || run.content == null) return deny(410, 'sched_download_expired');
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="${String(run.filename).replace(/[^\w.-]+/g, '_')}"`
+        );
+        res.setHeader('Cache-Control', 'no-store');
+        // Stored already wrapped by ReportBuilderService.excelCsv at run time.
+        return res.send(run.content);
     }
 
     async deleteSchedule(req, res) {

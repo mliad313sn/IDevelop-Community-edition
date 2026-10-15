@@ -587,6 +587,9 @@ class NotificationService {
             'safety.expiring': 'Your safety clearance is expiring soon',
             'safety.blocked.team': 'A team member’s safety clearance is blocked',
             'safety.expiring.team': 'A team member’s safety clearance is expiring soon',
+            // SA-38: scheduled reports reach accounts in the app, never an attachment.
+            'report.schedule_ready': 'Your scheduled report is ready',
+            'report.schedule_suspended': 'A report schedule was suspended',
             'sa.submitted': 'Self-assessment submitted',
             'sa.changes_requested': 'Changes requested on your self-assessment',
             'sa.approved': 'Your self-assessment was approved',
@@ -1361,6 +1364,24 @@ class NotificationService {
                     en: 'Licence expired or seats exceeded',
                 },
             },
+            // SA-38: scheduled reports (report-scheduler.js, migration 172).
+            'report.schedule_ready': {
+                icon: 'fa-file-csv',
+                link: '/reports/schedules',
+                title: {
+                    fr: 'Votre rapport programmé est prêt',
+                    en: 'Your scheduled report is ready',
+                },
+            },
+            'report.schedule_suspended': {
+                icon: 'fa-pause-circle',
+                link: '/reports/schedules',
+                forceLink: true,
+                title: {
+                    fr: 'Un envoi de rapport programmé a été suspendu',
+                    en: 'A report schedule was suspended',
+                },
+            },
             // ---- 3.23.20 (C2f): security alerts to every SuperAdmin.
             'security.breakglass_signin': {
                 icon: 'fa-key',
@@ -1547,6 +1568,9 @@ class NotificationService {
             'ops.hris_sync_alert': 'digest',
             'ops.smtp_failed': 'digest',
             'ops.license': 'digest',
+            // SA-38: the copy is ready now; a suspension is said in the app.
+            'report.schedule_ready': 'immediate',
+            'report.schedule_suspended': 'digest',
             // 3.23.20 (C2f): security alerts to every SuperAdmin — sent now.
             'security.breakglass_signin': 'immediate',
             'security.superadmin_sso_refused': 'immediate',
@@ -1607,6 +1631,11 @@ class NotificationService {
             // title alone said nothing to a person with no e-mail.
             'sso.migration_invite': (p, lang) =>
                 require('./SsoInviteService').inAppSubtitle(p, lang),
+            // SA-38: the report's own (template) name, never a figure.
+            'report.schedule_ready': (p) => {
+                const name = String((p && p.report) || '').trim();
+                return name ? `« ${name.slice(0, 120)} »` : null;
+            },
             'cycle.escalation': (p, lang) => {
                 const code = String((p && p.cycle) || '').trim();
                 if (!code) return null;
@@ -2184,6 +2213,14 @@ class NotificationService {
             'ops.license': {
                 fr: "La licence de l'instance est expirée ou le nombre de sièges licenciés est dépassé. Mettez la licence à jour.",
                 en: 'The instance licence has expired or the licensed seat count is exceeded. Update the licence.',
+            },
+            'report.schedule_ready': {
+                fr: "Le rapport n'est pas joint à ce message : ouvrez-le dans l'application, où votre accès est vérifié à l'ouverture.",
+                en: 'The report is not attached to this message: open it in the app, where your access is checked when you open it.',
+            },
+            'report.schedule_suspended': {
+                fr: "Cet envoi programmé partait vers des adresses saisies à la main. Les destinataires doivent désormais être des comptes de l'application : choisissez-les de nouveau pour le réactiver.",
+                en: 'This schedule sent to typed e-mail addresses. Recipients must now be accounts of the app: choose them again to re-enable it.',
             },
             // ---- 3.23.20 (C2f) security alerts to every SuperAdmin ----
             'security.breakglass_signin': {

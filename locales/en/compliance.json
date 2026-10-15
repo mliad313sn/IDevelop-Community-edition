@@ -414,5 +414,7 @@
   "cat_notifications": "Notifications received",
   "cat_hrisLinks": "Identifier in the HR system",
   "av_engine_on": "Uploaded evidence is scanned by {{engine}}.",
-  "cat_deiConsents": "Diversity data consents"
+  "cat_deiConsents": "Diversity data consents",
+  "reg_ret_report_copies": "Scheduled report copies (in the app)",
+  "reg_ret_emptied": "Content emptied (also when a person in scope is erased)"
 }

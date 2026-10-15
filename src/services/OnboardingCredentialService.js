@@ -1,24 +1,27 @@
 'use strict';
 
 /**
- * OnboardingCredentialService — issue login credentials to an employee and
- * email them a bilingual (FR/EN) onboarding message.
+ * OnboardingCredentialService — open an employee's login and tell them how to
+ * get in, in a bilingual (FR/EN) onboarding message.
  *
- * Flow (hooks straight into the existing first-login machinery):
+ * A PASSWORD IS NEVER SENT BY E-MAIL (SA-37).
  *   1. Ensure a unique username (kept if one exists, else generated from the
  *      identity via credentialGenerator).
- *   2. Generate a strong temporary password that satisfies the password policy.
- *   3. Store the bcrypt hash, activate the login (is_account_active) and set
- *      force_password_change — server.js funnels the account to
- *      /change-password on first sign-in until it is rotated.
- *   4. Email username + temporary password via EmailService (gated by the
- *      SMTP settings / master switch like every other mail).
- *   5. Audit CREDENTIALS_ISSUED — never logging the password itself.
- *
- * The temporary password exists only in the email; it is never persisted in
- * clear and never written to a log line.
+ *   2a. E-mail possible: the account receives a random password that nobody
+ *       knows, and the person receives their USERNAME and a one-time
+ *       « Définir mon mot de passe / Set my password » link, valid 72 hours.
+ *       The link is a token of the password-reset machinery
+ *       (PasswordResetService.issueSetupToken: sha256 at rest, claimed once
+ *       by consume()). No migration is needed.
+ *   2b. No address, e-mail off, or the send failed: a temporary password is
+ *       generated and returned ONCE for the administrator's one-time
+ *       credentials sheet; force_password_change makes the person replace it
+ *       at first sign-in. It is never mailed, never stored in clear and never
+ *       logged.
+ *   3. Audit CREDENTIALS_ISSUED, never with the password or the link.
  */
 
+const crypto = require('crypto');
 const PRODUCT = require('../config/product');
 const bcrypt = require('bcrypt');
 const EmployeeModel = require('../models/EmployeeModel');
@@ -26,14 +29,65 @@ const EmailService = require('./EmailService');
 const LogService = require('./LogService');
 const { generatePassword, baseUsername, uniqueUsername } = require('../utils/credentialGenerator');
 
+/** The set-password link lives 72 hours. */
+const SETUP_TTL_HOURS = 72;
+
+/** « 05/10/2026 14:30 » / « 2026-10-05 14:30 » in server local time. */
+function expiryLabels(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    const time = `${p(d.getHours())}:${p(d.getMinutes())}`;
+    return {
+        fr: `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${time}`,
+        en: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${time}`,
+    };
+}
+
+/** The credential block of both mails: username, the link and its expiry. */
+function setupBlocks(T, { username, link, expiresAt, branding }) {
+    const when = expiryLabels(expiresAt);
+    return [
+        T.details([['Identifiant / Username', username]]),
+        T.para(
+            'Choisissez vous-même votre mot de passe avec le bouton ci-dessous. Aucun mot de passe ne vous est envoyé par e-mail.',
+            'Choose your own password with the button below. No password is ever sent to you by e-mail.'
+        ),
+        T.cta(
+            'Définir mon mot de passe',
+            'Set my password',
+            link,
+            branding && branding.accentColor
+        ),
+        T.para(
+            `Ce lien sert une seule fois et expire dans ${SETUP_TTL_HOURS} heures (le ${when.fr}).`,
+            `This link works once and expires in ${SETUP_TTL_HOURS} hours (${when.en}).`
+        ),
+        T.para(
+            'Lien expiré ? Utilisez « Mot de passe oublié » sur la page de connexion, ou demandez une nouvelle invitation à votre administrateur.',
+            'Link expired? Use "Forgot password" on the sign-in page, or ask your administrator for a new invitation.'
+        ),
+    ];
+}
+
+/** The plain-text twin of setupBlocks. */
+function setupText({ username, link, expiresAt }) {
+    const when = expiryLabels(expiresAt);
+    return (
+        `Identifiant / Username: ${username}\n` +
+        `Définir mon mot de passe / Set my password: ${link}\n` +
+        `Lien à usage unique, valable ${SETUP_TTL_HOURS} heures (jusqu'au ${when.fr}). / ` +
+        `Single-use link, valid ${SETUP_TTL_HOURS} hours (until ${when.en}).\n` +
+        `Aucun mot de passe n'est envoyé par e-mail. / No password is ever sent by e-mail.`
+    );
+}
+
 class OnboardingCredentialService {
     /**
      * Full WELCOME onboarding email (bulk invitation flow): what the platform
      * is, the person's own profile details, what is expected of them (adapted
-     * to employee vs manager), their credentials, and the forced first-login
-     * password change. Built on the shared branded template.
+     * to employee vs manager), their username and the one-time set-password
+     * link. Never a password. Built on the shared branded template.
      */
-    async _welcomeEmail({ employee, username, tempPassword, branding }) {
+    async _welcomeEmail({ employee, username, link, expiresAt, branding }) {
         const T = require('../utils/emailTemplate');
         const db = require('../config/database');
         const appUrl = require('../utils/emailTemplate').baseUrl();
@@ -102,8 +156,8 @@ class OnboardingCredentialService {
         blocks.push(T.section('Ce qui est attendu de vous', 'What is expected from you'));
         const expected = [
             {
-                fr: 'Connectez-vous et choisissez votre propre mot de passe (obligatoire à la première connexion).',
-                en: 'Sign in and set your own password (required at first login).',
+                fr: 'Choisissez votre mot de passe avec le lien « Définir mon mot de passe » ci-dessous, puis connectez-vous.',
+                en: 'Choose your password with the "Set my password" link below, then sign in.',
             },
             {
                 fr: 'Complétez votre auto-évaluation : pour chaque compétence de votre poste, votre niveau honnête de 0 à 4 — un niveau bas sert à planifier des formations, pas à juger.',
@@ -136,28 +190,8 @@ class OnboardingCredentialService {
         }
         blocks.push(T.steps(expected));
 
-        blocks.push(T.section('Vos identifiants', 'Your credentials'));
-        blocks.push(
-            T.details([
-                ['Identifiant / Username', username],
-                ['Mot de passe temporaire / Temporary password', tempPassword],
-            ])
-        );
-        blocks.push(
-            T.para(
-                'Ce mot de passe est à usage unique : vous devrez en choisir un nouveau dès votre première connexion. Ne le partagez pas.',
-                'This password is single-use: you must choose a new one at first sign-in. Do not share it.'
-            )
-        );
-        if (appUrl)
-            blocks.push(
-                T.cta(
-                    'Se connecter',
-                    'Sign in',
-                    appUrl + '/login',
-                    branding && branding.accentColor
-                )
-            );
+        blocks.push(T.section('Votre accès', 'Your access'));
+        blocks.push(...setupBlocks(T, { username, link, expiresAt, branding }));
         blocks.push(
             T.para(
                 'Besoin d’aide ? Le Guide utilisateur est dans le menu de votre profil une fois connecté.',
@@ -175,9 +209,27 @@ class OnboardingCredentialService {
             }),
             text:
                 `Bienvenue sur ${appName} / Welcome to ${appName}.\n` +
-                `Identifiant / Username: ${username}\nMot de passe temporaire / Temporary password: ${tempPassword}\n` +
-                (appUrl ? `Connexion / Sign in: ${appUrl}/login\n` : '') +
-                `Un nouveau mot de passe sera exigé à la première connexion. / A new password is required at first sign-in.`,
+                setupText({ username, link, expiresAt }) +
+                (appUrl ? `\nConnexion / Sign in: ${appUrl}/login` : ''),
+        };
+    }
+
+    /** The short credentials mail (single resend): username + set-password link. */
+    _setupEmail({ employee, username, link, expiresAt, branding }) {
+        const T = require('../utils/emailTemplate');
+        const appName = (branding && branding.appName) || PRODUCT.name;
+        return {
+            subject: `[${appName}] Définissez votre mot de passe / Set your password`,
+            html: T.wrap({
+                branding,
+                title: 'Votre accès / Your access',
+                intro: `Bonjour ${employee.firstName},`,
+                blocks: [
+                    T.para('Votre accès est ouvert.', 'Your access is open.'),
+                    ...setupBlocks(T, { username, link, expiresAt, branding }),
+                ],
+            }),
+            text: setupText({ username, link, expiresAt }),
         };
     }
 
@@ -265,27 +317,21 @@ class OnboardingCredentialService {
             });
         }
 
-        // 2–3. Temp password → hash, activate login, force first-login rotation.
         // invited_at/invited_by (migration 59) record the invitation state:
         // they drive the console badges ("invited on…", stale/expired) and the
-        // invitationExpiryDays login refusal for never-used credentials.
-        const tempPassword = generatePassword();
-        const passwordHash = await bcrypt.hash(tempPassword, 10);
-        await EmployeeModel.update(employeeId, {
-            username,
-            passwordHash,
-            isAccountActive: 1,
-            forcePasswordChange: true,
-            invitedAt: new Date().toISOString(),
-            invitedBy: actor && actor.userType === 'admin' ? actor.id : null,
-        });
+        // invitationExpiryDays login refusal for never-used TEMPORARY passwords.
+        const invitedAt = new Date().toISOString();
+        const invitedBy = actor && actor.userType === 'admin' ? actor.id : null;
 
         // Reopening a login somebody deliberately switched off is a privilege
-        // change, not a mail-out. Record it as one.
-        if (reopeningDisabledLogin) {
+        // change, not a mail-out. Record it as one (once, whichever path runs).
+        let reopenAudited = false;
+        const auditReopen = async () => {
+            if (!reopeningDisabledLogin || reopenAudited) return;
+            reopenAudited = true;
             try {
                 await require('./LogService').log({
-                    adminId: actor && actor.userType === 'admin' ? actor.id : null,
+                    adminId: invitedBy,
                     action: 'CREDENTIALS_REISSUED_REACTIVATED',
                     entityType: 'employee',
                     entityId: Number(employeeId),
@@ -297,72 +343,103 @@ class OnboardingCredentialService {
             } catch (_) {
                 /* the audit is best-effort; the reactivation already happened */
             }
-        }
+        };
 
-        // 4. Bilingual onboarding email on the shared branded template — the
-        //    short credentials mail, or the full welcome/invitation variant.
         let branding = null;
         try {
             branding = await require('../utils/branding').getBranding();
         } catch {
             /* stock identity */
         }
-        let mail;
-        if (welcome) {
-            mail = await this._welcomeEmail({ employee, username, tempPassword, branding });
-        } else {
-            const T = require('../utils/emailTemplate');
-            const appUrl = require('../utils/emailTemplate').baseUrl();
-            const appName = (branding && branding.appName) || PRODUCT.name;
-            mail = {
-                subject: `[${appName}] Vos identifiants de connexion / Your login credentials`,
-                html: T.wrap({
-                    branding,
-                    title: 'Vos identifiants / Your credentials',
-                    intro: `Bonjour ${employee.firstName},`,
-                    blocks: [
-                        T.para('Votre compte a été créé.', 'Your account has been created.'),
-                        T.details([
-                            ['Identifiant / Username', username],
-                            ['Mot de passe temporaire / Temporary password', tempPassword],
-                        ]),
-                        T.para(
-                            'Vous devrez choisir un nouveau mot de passe à votre première connexion. Ce mot de passe est à usage unique — ne le partagez pas.',
-                            'You must choose a new password at first sign-in. This password is single-use — do not share it.'
-                        ),
-                        ...(appUrl
-                            ? [
-                                  T.cta(
-                                      'Se connecter',
-                                      'Sign in',
-                                      appUrl + '/login',
-                                      branding && branding.accentColor
-                                  ),
-                              ]
-                            : []),
-                    ],
-                }),
-                text:
-                    `Identifiant / Username: ${username}\n` +
-                    `Mot de passe temporaire / Temporary password: ${tempPassword}\n` +
-                    (appUrl ? `Accès / Access: ${appUrl}/login\n` : '') +
-                    `Un nouveau mot de passe vous sera demandé à la première connexion. / A new password is required on first sign-in.`,
-            };
-        }
-        // No address → nothing to send; the sheet is the delivery channel.
-        const result = noEmail
-            ? { sent: false, skipped: 'no_email' }
-            : await EmailService.send({ to: employee.email, ...mail });
 
-        // 5. Audit — the password never appears here.
+        // 2a. E-mail possible → username + one-time set-password link, NO password.
+        let mailOn = !noEmail;
+        if (mailOn && typeof EmailService.isEnabled === 'function') {
+            try {
+                mailOn = !!(await EmailService.isEnabled());
+            } catch (_) {
+                mailOn = false;
+            }
+        }
+        const PasswordResetService = require('./PasswordResetService');
+        let result = { sent: false, skipped: noEmail ? 'no_email' : 'disabled' };
+        if (mailOn) {
+            // A random password nobody knows: the link sets the real one.
+            await EmployeeModel.update(employeeId, {
+                username,
+                passwordHash: await bcrypt.hash(crypto.randomBytes(32).toString('base64url'), 10),
+                isAccountActive: 1,
+                forcePasswordChange: false, // the person chooses it through the link
+                invitedAt,
+                invitedBy,
+            });
+            await auditReopen();
+            let mail = null;
+            try {
+                const token = await PasswordResetService.issueSetupToken('employee', employeeId, {
+                    ttlHours: SETUP_TTL_HOURS,
+                    requestIp: req ? req.ip : null,
+                });
+                if (!token) {
+                    result = { sent: false, skipped: 'link_not_allowed' };
+                } else {
+                    // The link carries a credential: its origin is the CONFIGURED
+                    // base URL, never the request's Host header.
+                    const base = String(
+                        (await require('../utils/emailTemplate').baseUrlAsync()) || ''
+                    ).replace(/\/+$/, '');
+                    const link = `${base}/reset-password?token=${encodeURIComponent(token.rawToken)}&setup=1`;
+                    const args = { employee, username, link, expiresAt: token.expiresAt, branding };
+                    mail = welcome ? await this._welcomeEmail(args) : this._setupEmail(args);
+                }
+            } catch (e) {
+                result = { sent: false, error: `setup link unavailable: ${e && e.message}` };
+            }
+            if (mail) {
+                try {
+                    result = await EmailService.send({ to: employee.email, ...mail });
+                } catch (e) {
+                    result = { sent: false, error: (e && e.message) || 'send failed' };
+                }
+            }
+            // Not delivered: no live link may outlive the attempt.
+            if (!(result && result.sent)) {
+                try {
+                    await PasswordResetService.invalidateOutstanding('employee', employeeId);
+                } catch (_) {
+                    /* best-effort: the token expires on its own */
+                }
+            }
+        }
+
+        // 2b. Not delivered (no address, e-mail off, send failed) → the one-time
+        //     handover: a temporary password returned ONCE for the credentials
+        //     sheet, replaced at first sign-in. Never mailed.
+        let tempPassword = null;
+        if (!(result && result.sent)) {
+            tempPassword = generatePassword();
+            await EmployeeModel.update(employeeId, {
+                username,
+                passwordHash: await bcrypt.hash(tempPassword, 10),
+                isAccountActive: 1,
+                forcePasswordChange: true,
+                invitedAt,
+                invitedBy,
+            });
+            await auditReopen();
+        }
+
+        // 3. Audit — neither the password nor the link ever appears here.
         await LogService.log({
-            adminId: actor && actor.userType === 'admin' ? actor.id : null,
+            adminId: invitedBy,
             action: 'CREDENTIALS_ISSUED',
             entityType: 'employee',
             entityId: employeeId,
             details:
                 `Login credentials issued${welcome ? ' (welcome invitation)' : ''} for employee:${Number(employeeId)} (number ${employee.employeeNumber}); ` +
-                `onboarding email ${result.sent ? 'sent' : 'NOT sent (' + (result.error || result.skipped || 'email disabled') + ')'}`,
+                (result.sent
+                    ? `set-password link (${SETUP_TTL_HOURS} h, single use) e-mailed`
+                    : `e-mail NOT sent (${result.error || result.skipped || 'email disabled'}); temporary password for the one-time credentials sheet`),
             ipAddress: req && req.ip,
             userAgent: req && req.get && req.get('user-agent'),
         });
@@ -376,25 +453,25 @@ class OnboardingCredentialService {
                     : employee.passwordHash
                       ? 'credentials'
                       : 'no_credentials',
-                toLabel: result.sent ? 'credentials_emailed' : 'credentials_on_sheet',
+                toLabel: result.sent ? 'setup_link_emailed' : 'credentials_on_sheet',
             });
         } catch (_) {
             /* feed row is best-effort */
         }
 
-        // The temp password is returned ONLY when the email did NOT go out —
-        // otherwise the account would exist with a credential nobody can ever
-        // read. The invitations console turns these into a ONE-TIME credentials
-        // sheet (same pattern as the import credentials CSV); when the email
-        // was delivered, the password lives nowhere but that email.
+        // The temp password is returned ONLY when the e-mail did NOT go out: the
+        // invitations console turns it into the ONE-TIME credentials sheet (same
+        // pattern as the import credentials CSV). When the e-mail went, no
+        // password exists anywhere: the person sets it through the link.
         return {
             success: true,
             username,
             emailed: !!result.sent,
             emailStatus: result.sent ? 'sent' : result.error || result.skipped || 'disabled',
-            ...(result.sent ? {} : { tempPassword }),
+            ...(tempPassword ? { tempPassword } : {}),
         };
     }
 }
 
 module.exports = new OnboardingCredentialService();
+module.exports.SETUP_TTL_HOURS = SETUP_TTL_HOURS;

@@ -171,6 +171,8 @@ class ComplianceRegisterService {
                 'REMINDER_LOG_RETENTION_DAYS',
                 180
             ),
+            // SA-38: in-app copies of scheduled reports (1-365, default 90).
+            reportRunDays: await num('reportRunRetentionDays', null, 90),
         };
     }
 
