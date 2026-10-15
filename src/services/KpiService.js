@@ -1190,7 +1190,18 @@ async function k16ActivePlans(scope) {
  * @returns {Promise<Set<number>>}
  */
 async function rolesWithReadySuccessor(roleIds) {
-    const out = new Set();
+    const counts = await readySuccessorCounts(roleIds);
+    return new Set([...counts.entries()].filter(([, n]) => n > 0).map(([id]) => id));
+}
+
+/**
+ * How many READY successors each role (among `roleIds`) has, by the rule of
+ * rolesWithReadySuccessor. The continuity page's « Ready now » column reads
+ * this too, so the page and K5 / K6 can never disagree.
+ * @returns {Promise<Map<number, number>>} roleId -> ready successors (0 omitted)
+ */
+async function readySuccessorCounts(roleIds) {
+    const out = new Map();
     if (!roleIds.length) return out;
     const pairs = await db.all(
         `SELECT DISTINCT p.position_role_id AS "roleId", s.candidate_employee_id AS "empId"
@@ -1247,7 +1258,10 @@ async function rolesWithReadySuccessor(roleIds) {
             },
             threshold
         );
-        if (c.state === R.READY) out.add(Number(f.roleId));
+        if (c.state === R.READY) {
+            const id = Number(f.roleId);
+            out.set(id, (out.get(id) || 0) + 1);
+        }
     }
     return out;
 }
@@ -1754,10 +1768,14 @@ function firstReadyDay(reqs, events, startDay, threshold) {
 /**
  * K14 Time to competence: median days from role start to the first "ready"
  * (K1 rule on the current role, replayed from assessment_history). Needs a
- * CAPTURED role start date (employees.role_start_date), never imputed. This
- * release does not capture it yet: until the column exists, K14 answers
- * 'not_measured' with notCaptured: true ("role start date not recorded yet").
- * Fewer than 5 people: 'small_n'. Informational.
+ * CAPTURED role start date (employees.role_start_date, migration 188), never
+ * imputed: it is stamped going forward by a role change (database trigger,
+ * whatever the path: the employee form, a move, an import, the HRIS sync) and
+ * by the joiner flow; people already in post keep none. While nobody of the
+ * scope has a captured date (or before migration 188), K14 answers
+ * 'not_measured' with notCaptured: true; once people have one, it is measured
+ * over those who reached "ready". Fewer than 5 people: 'small_n'.
+ * Informational.
  */
 async function k14TimeToCompetence(scope) {
     const pop = await resolvePopulation(scope);
@@ -2402,6 +2420,11 @@ async function snapshotMetrics(scope) {
     const k7 = await k7SoleHolders(s);
     const k8 = await k8Certifications(s);
     const k9 = await k9SafetyFitness(s);
+    // K5 / K6 share one bench read (migration 189). The snapshot is the
+    // organisation's truth: stored whatever the modules, read only while the
+    // talent module is on.
+    const k5 = await k5BenchStrength(s);
+    const k6 = await k6CriticalRolesWithoutReady(s);
     const b1 = k1.breakdown || {};
     const b3 = k3.breakdown || {};
     const b4 = k4.breakdown || {};
@@ -2425,6 +2448,13 @@ async function snapshotMetrics(scope) {
         certsExpired: configured8 ? k8.breakdown.expiredPeople : null,
         certsExpiring90d: configured8 ? k8.breakdown.expiringPeople : null,
         safetyFitPct: k9.rawValue,
+        // K9 denominator (migration 187): the small-n rule of a K9 sentence.
+        safetyFitN:
+            k9.emptyScope || !Number.isFinite(num(k9.denominator)) ? null : num(k9.denominator),
+        // K5 / K6 (migration 189): NULL when no critical role is designated.
+        benchStrengthPct: k5.emptyScope ? null : k5.rawValue,
+        benchCriticalRoles: k6.emptyScope ? null : num(k6.n),
+        criticalRolesWithoutReady: k6.emptyScope ? null : k6.value,
     };
 }
 
@@ -2452,6 +2482,7 @@ module.exports = {
     overdueStatus,
     firstReadyDay,
     rolesWithReadySuccessor,
+    readySuccessorCounts,
     // modules
     moduleOf,
     isAvailable,

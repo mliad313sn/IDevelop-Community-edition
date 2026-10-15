@@ -183,14 +183,56 @@ class ContinuityService {
         const select = `SELECT v.*, rc.business_impact AS "businessImpact", rc.rationale AS "rationale"
                         FROM v_continuity_coverage v
                         LEFT JOIN role_criticality rc ON rc.role_id = v.role_id`;
-        const order = 'ORDER BY v.criticality_score DESC, v.has_coverage_gap DESC, v.role_name';
+        const order = 'ORDER BY v.criticality_score DESC, v.role_name';
         if (roleIds === null) {
-            return db.all(`${select} ${order}`);
+            return ContinuityService.applyReadyRule(await db.all(`${select} ${order}`));
         }
         if (!roleIds.length) return [];
         const ph = roleIds.map(() => '?').join(',');
         const rows = await db.all(`${select} WHERE v.role_id IN (${ph}) ${order}`, roleIds);
-        return ContinuityService.maskIncumbents(rows, scope);
+        return ContinuityService.maskIncumbents(
+            await ContinuityService.applyReadyRule(rows),
+            scope
+        );
+    }
+
+    /**
+     * « Ready now » and the coverage gap by the SAME rule as the KPI module's
+     * bench strength (K5) and critical roles without a ready successor (K6):
+     * an active successor (active, not erased, not the incumbent) who is
+     * « Ready » for the TARGET role by the role-ready rule (K1) on its full
+     * requirement set. The band typed on a successor stays visible on the
+     * plan (`declaredReadyNowCount`); it is no longer what calls a role
+     * covered. Rows keep the view's order: criticality, then gap, then name.
+     */
+    static async applyReadyRule(rows) {
+        const list = rows || [];
+        const ids = [
+            ...new Set(list.map((r) => Number(r.roleId != null ? r.roleId : r.role_id))),
+        ].filter(Number.isFinite);
+        const counts = ids.length
+            ? await require('./KpiService').readySuccessorCounts(ids)
+            : new Map();
+        const out = list.map((r) => {
+            const id = Number(r.roleId != null ? r.roleId : r.role_id);
+            const n = counts.get(id) || 0;
+            return {
+                ...r,
+                declaredReadyNowCount: Number(r.readyNowCount ?? r.ready_now_count ?? 0),
+                readyNowCount: n,
+                hasCoverageGap: n === 0,
+            };
+        });
+        const score = (r) => Number(r.criticalityScore ?? r.criticality_score ?? 0);
+        return out
+            .map((r, i) => ({ r, i }))
+            .sort(
+                (a, b) =>
+                    score(b.r) - score(a.r) ||
+                    Number(b.r.hasCoverageGap) - Number(a.r.hasCoverageGap) ||
+                    a.i - b.i
+            )
+            .map((x) => x.r);
     }
 
     /** Null the incumbent's identity + retention verdict outside the caller's span (see listCoverage). */

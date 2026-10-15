@@ -2,7 +2,8 @@
 
 /**
  * kpi-snapshot — daily capture of the headline indicators into kpi_snapshots
- * (migrations 82 and 184), organisation-wide and per site.
+ * (migrations 82, 184, 187 and 189), organisation-wide, per site and per
+ * department (a department with at least one active person).
  *
  * Shaped exactly like the proven jobs/fit-history.js: unscoped organisation
  * truth, idempotent per day (unique key + ON CONFLICT DO NOTHING), cheap early
@@ -69,8 +70,50 @@ async function tick() {
         }
     }
 
+    // ---- Per department (migration 187) ------------------------------------
+    // Departments holding at least one active, not-erased person: the same
+    // population rule as every other row. The KPI module's columns only; the
+    // legacy dashboard-model columns stay NULL, never borrowed from a site.
+    for (const dep of await departmentsToCapture()) {
+        try {
+            await KpiSnapshotService.capture(
+                'department',
+                Number(dep.id),
+                dep.name,
+                await departmentMetrics(Number(dep.id))
+            );
+            captured++;
+        } catch (e) {
+            failed.push({
+                department: dep.name,
+                error: String((e && e.message) || e).slice(0, 200),
+            });
+        }
+    }
+
     // Say what is missing rather than reporting a clean run over a hole.
     return failed.length ? { captured, failed } : { captured };
+}
+
+/** The KPI-module metrics of one department (no legacy columns). */
+async function departmentMetrics(departmentId) {
+    const KpiService = require('../services/KpiService');
+    return KpiService.snapshotMetrics({ system: true, departmentId });
+}
+
+/** Departments holding at least one active, not-erased, not-cancelled person. */
+async function departmentsToCapture() {
+    return (
+        (await db.all(
+            `SELECT d.id, d.name
+               FROM departments d
+              WHERE EXISTS (SELECT 1 FROM employees e
+                             WHERE e.department_id = d.id
+                               AND e.is_active = true AND e.erased_at IS NULL
+                               AND e.cancelled_at IS NULL)
+              ORDER BY d.id`
+        )) || []
+    );
 }
 
 /**
@@ -108,6 +151,17 @@ async function metricsFor(DashboardModel, siteId) {
  */
 async function isDayComplete(KpiSnapshotService) {
     if (!(await KpiSnapshotService.hasToday('org', 0))) return false;
+    // A day missing a department row is not complete either (migration 187).
+    const deps = await departmentsToCapture();
+    if (deps.length) {
+        const d = await db.get(
+            `SELECT COUNT(*)::int AS got FROM kpi_snapshots
+              WHERE snapshot_date = CURRENT_DATE AND scope_type = 'department'
+                AND scope_id = ANY(?)`,
+            [deps.map((x) => Number(x.id))]
+        );
+        if (!d || Number(d.got) < deps.length) return false;
+    }
     const row = await db.get(
         `SELECT (SELECT COUNT(*) FROM sites)::int AS expected,
                 (SELECT COUNT(*) FROM kpi_snapshots
@@ -129,4 +183,7 @@ async function safeSignature(DashboardModel, filters) {
     }
 }
 
-module.exports = { tick, __test: { metricsFor } };
+module.exports = {
+    tick,
+    __test: { metricsFor, departmentMetrics, departmentsToCapture, isDayComplete },
+};

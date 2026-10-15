@@ -56,7 +56,7 @@
   "no_campaign": "No campaign in progress",
   "coverage_insufficient": "Insufficient coverage",
   "steps_not_tracked": "Steps not tracked for this campaign",
-  "k14_not_captured": "Role start dates are not recorded yet: this indicator is not measured in this release.",
+  "k14_not_captured": "Role start dates are recorded from this version onwards, at each role change and for each joiner; people already in post have none, and no date is ever assumed. Until someone with a recorded start date has reached « Ready », this indicator is not measured.",
   "k1_name": "Role-ready rate",
   "k1_def": "Share of the people with a verdict who meet the requirements of their role.",
   "k1_formula": "Ready ÷ (Ready + Not ready). « Ready » = every requirement assessed, readiness at or above the threshold and every critical skill met. « Not ready » = fully assessed and below, or an assessed critical skill not met.",

@@ -277,6 +277,27 @@ class LifecycleService {
     }
 
     static async onJoiner({ employeeId }) {
+        // K14 « Time to reach the role » (migration 188): a joiner's first role
+        // starts on the arrival's effective date (today when it has none). Set
+        // once, never over a date already captured; a later role change is
+        // stamped by the database trigger.
+        try {
+            await db.runInSavepoint(() =>
+                db.run(
+                    `UPDATE employees
+                    SET role_start_date = COALESCE(
+                        (SELECT le.effective_at::date FROM lifecycle_events le
+                          WHERE le.employee_id = employees.id AND le.kind = 'joiner'
+                            AND le.effective_at IS NOT NULL
+                          ORDER BY le.id DESC LIMIT 1),
+                        CURRENT_DATE)
+                  WHERE id = ? AND role_id IS NOT NULL AND role_start_date IS NULL`,
+                    [employeeId]
+                )
+            );
+        } catch (e) {
+            console.error('[lifecycle] role start date not stamped:', e && e.message);
+        }
         const cycle = await db.get(
             `SELECT id FROM assessment_cycles WHERE status='open' ORDER BY closes_at LIMIT 1`
         );

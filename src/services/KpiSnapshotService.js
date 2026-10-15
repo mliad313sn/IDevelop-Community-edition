@@ -44,7 +44,53 @@ const METRICS = [
     'criticalUnassessed',
     'certsExpired',
     'safetyFitPct',
+    // K5 / K6 (migration 189)
+    'benchStrengthPct',
+    'criticalRolesWithoutReady',
 ];
+
+/** The scopes a snapshot row may describe (department from migration 187). */
+const SCOPE_TYPES = Object.freeze(['org', 'site', 'department']);
+
+/** Every metric column of a row, camelCase, for the narrative reads. */
+const ROW_COLUMNS = `snapshot_date        AS "date",
+                    total_employees      AS "totalEmployees",
+                    measured_employees   AS "measuredEmployees",
+                    avg_readiness        AS "avgReadiness",
+                    assessment_coverage  AS "assessmentCoverage",
+                    critical_compliance  AS "criticalCompliance",
+                    role_ready_count     AS "roleReadyCount",
+                    sole_holder_count    AS "soleHolderCount",
+                    certs_expiring_90d   AS "certsExpiring90d",
+                    not_ready_count      AS "notReadyCount",
+                    partial_count        AS "partialCount",
+                    unassessed_count     AS "unassessedCount",
+                    critical_unassessed  AS "criticalUnassessed",
+                    certs_expired        AS "certsExpired",
+                    safety_fit_pct       AS "safetyFitPct",
+                    safety_fit_n         AS "safetyFitN",
+                    bench_strength_pct   AS "benchStrengthPct",
+                    bench_critical_roles AS "benchCriticalRoles",
+                    critical_roles_without_ready AS "criticalRolesWithoutReady",
+                    kpi_contract         AS "kpiContract"`;
+
+/** A row with an ISO date and every numeric column as a number or null. */
+function normRow(row) {
+    if (!row) return null;
+    const out = { ...row };
+    for (const [k, v] of Object.entries(row)) {
+        if (k === 'date' || k === 'kpiContract') continue;
+        out[k] = numOrNull(v);
+    }
+    out.date = row.date instanceof Date ? toDay(row.date) : String(row.date).slice(0, 10);
+    return out;
+}
+
+/** YYYY-MM-DD of a DATE column read by node-pg (local midnight). */
+function toDay(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
 /**
  * Metrics whose definition is the SAME before and after the KPI module
@@ -77,6 +123,7 @@ function currentContract() {
 
 const KpiSnapshotService = {
     METRICS,
+    SCOPE_TYPES,
     CONTRACT_STABLE_METRICS,
     currentContract,
 
@@ -85,8 +132,8 @@ const KpiSnapshotService = {
      * @returns {Promise<{written: boolean}>}
      */
     async capture(scopeType, scopeId, scopeLabel, metrics) {
-        const type = scopeType === 'site' ? 'site' : 'org';
-        const id = type === 'site' ? Number(scopeId) || 0 : 0;
+        const type = SCOPE_TYPES.includes(scopeType) ? scopeType : 'org';
+        const id = type === 'org' ? 0 : Number(scopeId) || 0;
         const m = metrics || {};
 
         // COUNTS DERIVED FROM MEASUREMENT ARE NULL WHEN NOTHING WAS MEASURED.
@@ -110,9 +157,10 @@ const KpiSnapshotService = {
                  critical_compliance, role_ready_count, roles_at_risk, roles_unmeasured,
                  sole_holder_count, no_qualified_count, certs_expiring_90d, measured_signature,
                  not_ready_count, partial_count, unassessed_count, critical_unassessed,
-                 certs_expired, safety_fit_pct, kpi_contract)
+                 certs_expired, safety_fit_pct, kpi_contract, safety_fit_n,
+                 bench_strength_pct, bench_critical_roles, critical_roles_without_ready)
              VALUES (CURRENT_DATE, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                     ?, ?, ?, ?, ?, ?, ?)
+                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (snapshot_date, scope_type, scope_id) DO NOTHING`,
             [
                 type,
@@ -147,6 +195,12 @@ const KpiSnapshotService = {
                 numOrNull(m.certsExpired),
                 numOrNull(m.safetyFitPct),
                 m.kpiContract ? String(m.kpiContract) : null,
+                // K9 denominator (migration 187) and K5 / K6 (migration 189):
+                // NULL stays NULL (unknown n, no critical role designated).
+                numOrNull(m.safetyFitN),
+                numOrNull(m.benchStrengthPct),
+                numOrNull(m.benchCriticalRoles),
+                numOrNull(m.criticalRolesWithoutReady),
             ]
         );
         return { written: Boolean(res && (res.changes === undefined || res.changes > 0)) };
@@ -187,6 +241,8 @@ const KpiSnapshotService = {
                     critical_unassessed  AS "criticalUnassessed",
                     certs_expired        AS "certsExpired",
                     safety_fit_pct       AS "safetyFitPct",
+                    bench_strength_pct   AS "benchStrengthPct",
+                    critical_roles_without_ready AS "criticalRolesWithoutReady",
                     kpi_contract         AS "kpiContract"
                FROM kpi_snapshots
               WHERE scope_type = ? AND scope_id = ?
@@ -206,6 +262,8 @@ const KpiSnapshotService = {
             assessmentCoverage: numOrNull(r.assessmentCoverage),
             criticalCompliance: numOrNull(r.criticalCompliance),
             safetyFitPct: numOrNull(r.safetyFitPct),
+            benchStrengthPct: numOrNull(r.benchStrengthPct),
+            criticalRolesWithoutReady: numOrNull(r.criticalRolesWithoutReady),
         }));
     },
 
@@ -259,6 +317,8 @@ const KpiSnapshotService = {
                     critical_unassessed  AS "criticalUnassessed",
                     certs_expired        AS "certsExpired",
                     safety_fit_pct       AS "safetyFitPct",
+                    bench_strength_pct   AS "benchStrengthPct",
+                    critical_roles_without_ready AS "criticalRolesWithoutReady",
                     kpi_contract         AS "kpiContract"
                FROM kpi_snapshots
               WHERE scope_type = ? AND scope_id = ?
@@ -333,6 +393,71 @@ const KpiSnapshotService = {
         const netMoved = values.measuredEmployees != null && values.measuredEmployees !== 0;
         const cohortChanged = !!(nowSig && thenSig && nowSig !== thenSig);
         return { since: prior.date, values, populationChanged: netMoved || cohortChanged };
+    },
+
+    // ---- Reads for the « What changed » narrative (NarrativeService) ----------
+    // Relative to the LATEST row of the scope, not to CURRENT_DATE: the job
+    // writes once a day, and a narrative read before it ran must compare
+    // yesterday's row with the row `days` before IT.
+
+    /** The most recent row of a scope under one KPI contract, or null. */
+    async latest(scopeType, scopeId, contract) {
+        if (!SCOPE_TYPES.includes(scopeType)) return null;
+        const row = await db.get(
+            `SELECT ${ROW_COLUMNS}
+               FROM kpi_snapshots
+              WHERE scope_type = ? AND scope_id = ?
+                AND kpi_contract IS NOT DISTINCT FROM ?::text
+                AND snapshot_date <= CURRENT_DATE
+              ORDER BY snapshot_date DESC
+              LIMIT 1`,
+            [scopeType, Number(scopeId) || 0, contract || null]
+        );
+        return normRow(row);
+    },
+
+    /**
+     * The comparison row: the most recent row at least `days` before
+     * `refDate` and no older than MAX_PRIOR_AGE_FACTOR x days, SAME contract.
+     * Null when there is none (fresh install, contract change, a gap).
+     */
+    async priorTo(scopeType, scopeId, refDate, days, contract) {
+        if (!SCOPE_TYPES.includes(scopeType)) return null;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(refDate || ''))) return null;
+        const d = Math.max(1, Math.min(366, Number(days) || 7));
+        const row = await db.get(
+            `SELECT ${ROW_COLUMNS}
+               FROM kpi_snapshots
+              WHERE scope_type = ? AND scope_id = ?
+                AND kpi_contract IS NOT DISTINCT FROM ?::text
+                AND snapshot_date <= ?::date - ?::int
+                AND snapshot_date >= ?::date - ?::int
+              ORDER BY snapshot_date DESC
+              LIMIT 1`,
+            [
+                scopeType,
+                Number(scopeId) || 0,
+                contract || null,
+                refDate,
+                d,
+                refDate,
+                d * this.MAX_PRIOR_AGE_FACTOR,
+            ]
+        );
+        return normRow(row);
+    },
+
+    /** The first day a scope has a row under one contract (YYYY-MM-DD), or null. */
+    async firstDate(scopeType, scopeId, contract) {
+        if (!SCOPE_TYPES.includes(scopeType)) return null;
+        const row = await db.get(
+            `SELECT to_char(MIN(snapshot_date), 'YYYY-MM-DD') AS "d"
+               FROM kpi_snapshots
+              WHERE scope_type = ? AND scope_id = ?
+                AND kpi_contract IS NOT DISTINCT FROM ?::text`,
+            [scopeType, Number(scopeId) || 0, contract || null]
+        );
+        return row && row.d ? String(row.d) : null;
     },
 };
 

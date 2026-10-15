@@ -56,7 +56,7 @@
   "no_campaign": "Aucune campagne en cours",
   "coverage_insufficient": "Couverture insuffisante",
   "steps_not_tracked": "Étapes non suivies pour cette campagne",
-  "k14_not_captured": "Les dates de prise de poste ne sont pas encore enregistrées : cet indicateur n'est pas mesuré dans cette version.",
+  "k14_not_captured": "Les dates de prise de poste sont enregistrées depuis cette version, à chaque changement de poste et pour chaque arrivée ; les personnes déjà en poste n'en ont pas, et aucune date n'est jamais supposée. Tant que personne ayant une date enregistrée n'a atteint « Prêt », cet indicateur n'est pas mesuré.",
   "k1_name": "Taux de préparation au poste",
   "k1_def": "Part des personnes ayant un verdict qui satisfont aux exigences de leur poste.",
   "k1_formula": "Prêts ÷ (Prêts + Non prêts). « Prêt » = toutes les exigences évaluées, préparation au moins égale au seuil et toutes les compétences critiques atteintes. « Non prêt » = entièrement évalué et en dessous, ou une compétence critique évaluée non atteinte.",
