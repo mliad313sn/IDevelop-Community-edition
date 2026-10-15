@@ -680,9 +680,12 @@ app.use(async (req, res, next) => {
     }
     // Local-content module: its flag comes from the same resolution as the
     // other modules (strict boolean parse — a '0' stored as a string is OFF).
+    // It is also the ONE nationality switch (utils/featureFlags): views read
+    // `nationalisationEnabled` for every nationality field and dimension.
     res.locals.featureLocalContent = Boolean(
         res.locals.appModules && res.locals.appModules.localContent
     );
+    res.locals.nationalisationEnabled = res.locals.featureLocalContent;
     // AI companion (help panel « Assistant » tab) — default ON; only an explicit
     // off value hides it. Rendered pages only need it for signed-in users.
     res.locals.companionEnabled = true;

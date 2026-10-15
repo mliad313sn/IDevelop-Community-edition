@@ -51,6 +51,20 @@ class ModulesController {
             ipAddress: req.ip,
             userAgent: req.get('user-agent'),
         });
+        // localContent is also the ONE nationality switch (utils/featureFlags):
+        // a change is a security event of its own.
+        if (on.includes('localContent') || off.includes('localContent')) {
+            await LogService.log({
+                adminId: req.user && req.user.id,
+                action: 'NATIONALISATION_FEATURE_TOGGLED',
+                entityType: 'appSetting',
+                category: 'security',
+                severity: 'warn',
+                details: `localContent module (nationality fields and analytics) switched ${on.includes('localContent') ? 'on' : 'off'}`,
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent'),
+            });
+        }
 
         req.flash('success', req.t ? req.t('admin:mod_saved') : 'Modules saved.');
         return res.redirect('/admin/modules');
