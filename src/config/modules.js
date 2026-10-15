@@ -149,6 +149,9 @@ const CORE_PREFIXES = Object.freeze([
     '/v2/slf',
     '/v2/uam',
     '/v2/cap/dsr',
+    // The person's own diversity data: consent must stay withdrawable whatever
+    // the talent module says (outside every CAP_PATHS prefix).
+    '/v2/cap/my-diversity',
     '/v2/cap/webhooks',
     '/v2/cap/skills',
     '/app-settings',

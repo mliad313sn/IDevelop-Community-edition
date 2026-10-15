@@ -767,6 +767,14 @@ class DSRService {
             'SELECT gender, ethnicity, age_band, disability, nationality FROM employee_demographics WHERE employee_id = ?',
             [employeeId]
         );
+        // The DEI consent ledger (migration 171): what the person consented to,
+        // when, and when it ended — field names only, never a value.
+        await q(
+            'deiConsents',
+            `SELECT fields, text_version, locale, granted_at, withdrawn_at, end_reason
+               FROM dei_consents WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
         // HISTORIQUE DE CYCLE DE VIE — arrivée, mutation, départ, avec leurs motifs.
         await q(
             'lifecycleEvents',

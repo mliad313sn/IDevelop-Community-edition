@@ -148,16 +148,56 @@
 <% } %>
 
 <!-- ===================== DEI ===================== -->
-<% if (_cm('talent')) { %>
-<div class="card" style="padding:1rem">
+<%# Org-wide analytics are the SuperAdmin's (the routes refuse anyone else); only
+    self-declared, consented values are counted; ethnicity is offered only while
+    switched on (typed legal sign-off), nationality only while the localContent
+    module is on. HR admins get the legacy-values review link. %>
+<% const _deiSuper = (typeof isSuper !== 'undefined') && isSuper; %>
+<% const _deiEth = (typeof deiEthnicity !== 'undefined' && deiEthnicity) ? deiEthnicity : { enabled: false, signoff: null }; %>
+<% const _deiReview = (typeof deiCanReview !== 'undefined') && deiCanReview; %>
+<% const _deiNat = typeof featureLocalContent !== 'undefined' && !!featureLocalContent; %>
+<% if (_cm('talent') && (_deiSuper || _deiReview)) { %>
+<div class="card" style="padding:1rem" id="dei">
   <h3 style="margin-top:0"><%= __('talentx:cap_dei') %> <span class="text-muted" style="font-size:.7em"><%= __('talentx:cap_dei_suppressed') %></span></h3>
-  <div style="display:flex;gap:.5rem;align-items:flex-end">
-    <div><label for="dei-dim"><%= __('talentx:cap_dimension') %></label><br><select id="dei-dim" class="form-control"><option value="gender"><%= __('talentx:cap_dim_gender') %></option><option value="ethnicity"><%= __('talentx:cap_dim_ethnicity') %></option><option value="age_band"><%= __('talentx:cap_dim_age_band') %></option><option value="nationality"><%= __('talentx:cap_dim_nationality') %></option></select></div>
+  <p class="help-text" style="margin:.25rem 0 .6rem"><%= __('talentx:dei_hub_self_declared_note') %></p>
+  <% if (_deiSuper) { %>
+  <div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap">
+    <div><label for="dei-dim"><%= __('talentx:cap_dimension') %></label><br><select id="dei-dim" class="form-control"><option value="gender"><%= __('talentx:cap_dim_gender') %></option><% if (_deiEth.enabled) { %><option value="ethnicity"><%= __('talentx:cap_dim_ethnicity') %></option><% } %><option value="age_band"><%= __('talentx:cap_dim_age_band') %></option><% if (_deiNat) { %><option value="nationality"><%= __('talentx:cap_dim_nationality') %></option><% } %></select></div>
     <button class="btn btn-secondary" data-on-click="CAP.dei" data-args='[]'><%= __('talentx:cap_representation') %></button>
     <button class="btn btn-secondary" data-on-click="CAP.deiNineBox" data-args='[]'><%= __('talentx:cap_ninebox_group') %></button>
     <button class="btn btn-secondary" data-on-click="CAP.deiPip" data-args='[]'><%= __('talentx:cap_pip_rate_group') %></button>
   </div>
   <div id="dei-out" style="margin-top:.5rem;font-size:.88em"></div>
+  <% } %>
+  <% if (_deiReview) { %>
+  <p style="margin:.75rem 0 0"><a class="btn btn-secondary" href="/v2/cap/dei/review"><i class="fas fa-clipboard-check" aria-hidden="true"></i> <%= __('talentx:dei_review_link') %></a></p>
+  <% } %>
+  <% if (_deiSuper) { %>
+  <details style="margin-top:.9rem">
+    <summary><%= __('talentx:dei_eth_panel_title') %> — <strong><%= _deiEth.enabled ? __('talentx:dei_eth_state_on') : __('talentx:dei_eth_state_off') %></strong></summary>
+    <p class="help-text" style="margin:.5rem 0"><%= __('talentx:dei_eth_panel_intro') %></p>
+    <% if (_deiEth.signoff && _deiEth.signoff.at) { %>
+      <p class="help-text"><%= __('talentx:dei_eth_last_signoff', { at: _deiEth.signoff.at, by: _deiEth.signoff.by || '—' }) %></p>
+    <% } %>
+    <% if (_deiEth.enabled) { %>
+    <form method="POST" action="/v2/cap/dei/settings/ethnicity">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="enabled" value="false">
+      <button type="submit" class="btn btn-secondary"><%= __('talentx:dei_eth_disable_btn') %></button>
+    </form>
+    <% } else { %>
+    <form method="POST" action="/v2/cap/dei/settings/ethnicity" style="max-width:40rem">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="enabled" value="true">
+      <label for="dei-eth-ref"><%= __('talentx:dei_eth_reference_label') %></label>
+      <input id="dei-eth-ref" name="reference" class="form-control" required minlength="10" maxlength="500">
+      <label for="dei-eth-ack" style="margin-top:.5rem"><%= __('talentx:dei_eth_ack_label', { phrase: (typeof deiAckPhrases !== 'undefined' && deiAckPhrases[(typeof lang !== 'undefined' && lang === 'en') ? 1 : 0]) || '' }) %></label>
+      <input id="dei-eth-ack" name="acknowledgement" class="form-control" required autocomplete="off">
+      <button type="submit" class="btn btn-danger" style="margin-top:.5rem"><%= __('talentx:dei_eth_enable_btn') %></button>
+    </form>
+    <% } %>
+  </details>
+  <% } %>
 </div>
 
 <% } %>

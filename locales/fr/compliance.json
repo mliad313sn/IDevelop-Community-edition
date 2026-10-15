@@ -413,5 +413,6 @@
   "cat_plannedAbsences": "Absences prévues",
   "cat_notifications": "Notifications reçues",
   "cat_hrisLinks": "Identifiant dans le système RH",
-  "av_engine_on": "Les justificatifs déposés sont analysés par {{engine}}."
+  "av_engine_on": "Les justificatifs déposés sont analysés par {{engine}}.",
+  "cat_deiConsents": "Consentements aux données de diversité"
 }

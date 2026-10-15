@@ -158,6 +158,10 @@ const CATALOG = {
     // Off = employees never see the 9-box, even a disclosed placement
     // (TalentConfidentialityService.nineBoxVisibleToEmployees). Default on.
     nineBoxVisibleToEmployees: { type: 'boolean' },
+    // DEI ethnicity switch (migration 171): written only by the SuperAdmin DEI
+    // panel with a typed legal sign-off (DEIService.setEthnicityEnabled).
+    deiEthnicityEnabled: { readOnly: true },
+    deiEthnicitySignoff: { readOnly: true },
     dormantAccountDays: { min: 1, max: 3650, integer: true },
     edition: { enum: ['community'] },
     localContentHomeCountry: { optional: true },

@@ -413,5 +413,6 @@
   "cat_plannedAbsences": "Planned absences",
   "cat_notifications": "Notifications received",
   "cat_hrisLinks": "Identifier in the HR system",
-  "av_engine_on": "Uploaded evidence is scanned by {{engine}}."
+  "av_engine_on": "Uploaded evidence is scanned by {{engine}}.",
+  "cat_deiConsents": "Diversity data consents"
 }
