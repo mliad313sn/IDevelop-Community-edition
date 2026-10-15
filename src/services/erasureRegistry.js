@@ -480,6 +480,8 @@ const SUBJECT_DATA_REGISTRY = [
     red('coaching_sessions', 'employee_id', 'coachingSessions'),
     keep('coaching_sessions', 'coach_id', ACTOR),
     keep('coaching_signoffs', 'user_id', 'signature of a session (who and when, no text)'),
+    // The account used to sign (migration 177): 'employee:<id>' or 'admin:<id>'.
+    keep('coaching_signoffs', 'actor_ref', ACTOR),
     {
         scope: 'objectives of the subject’s coaching sessions',
         table: 'coaching_objectives',

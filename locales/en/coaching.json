@@ -70,5 +70,6 @@
     "identification": "Identification"
   },
   "prompt_cancel_reason": "Reason for requesting cancellation (required):",
-  "cancel_requested": "Cancellation requested — awaiting admin approval."
+  "cancel_requested": "Cancellation requested — awaiting admin approval.",
+  "err_sign_parties_only": "Only the coach of this session or the person being coached can sign it."
 }

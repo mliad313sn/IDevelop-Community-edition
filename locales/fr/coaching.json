@@ -70,5 +70,6 @@
     "identification": "Identification"
   },
   "prompt_cancel_reason": "Motif de la demande d'annulation (obligatoire) :",
-  "cancel_requested": "Annulation demandée — en attente d'approbation d'un administrateur."
+  "cancel_requested": "Annulation demandée — en attente d'approbation d'un administrateur.",
+  "err_sign_parties_only": "Seuls le coach de cette séance et la personne accompagnée peuvent la signer."
 }
