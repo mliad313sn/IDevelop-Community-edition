@@ -15,15 +15,17 @@
  *   6. Current campaign completion            (cycle discipline)
  *
  * Sections render ONLY when non-empty, KPI chips give the 5-second read, and
- * each figure states where to act. Bilingual FR/EN throughout.
+ * each figure states where to act. One language per mail (the site's mail
+ * language), through the one renderer (renderEmail blocks); the subject is the
+ * catalogue's and carries no date and no figure.
  *
  * Cadence unchanged: hourly tick, fires on DIGEST_DOW at/after DIGEST_HOUR,
  * at most once per week (digestLastSentOn claim BEFORE sending). Delivery via
  * NotificationService (in-app always lands; email rides the master switch).
  */
 
-const PRODUCT = require('../config/product');
 const db = require('../config/database');
+const { fmtDate } = require('../utils/dateFormat');
 const { dayKey } = require('../utils/dayKey');
 
 const ENV_DOW = Number(process.env.DIGEST_DOW) || 1; // 1 = Monday
@@ -61,15 +63,11 @@ async function tick() {
          WHERE m.is_active = true AND e.is_active = true`);
 
     const EmployeeModel = require('../models/EmployeeModel');
-    const T = require('../utils/emailTemplate');
-    let branding = null;
-    try {
-        branding = await require('../utils/branding').getBranding();
-    } catch {
-        /* stock identity */
-    }
-    const appUrl = require('../utils/emailTemplate').baseUrl();
-    const link = (p) => (appUrl ? appUrl + p : null);
+    // ONE language per mail (the site's mail language); the subject is the
+    // catalogue's and carries no date and no figure.
+    const NotificationService = require('../services/NotificationService');
+    const lang = await require('../utils/emailTemplate').mailLang();
+    const T = require('../utils/emailTemplate').blocks(lang);
     let sent = 0;
 
     // Current open campaign (shared across managers; per-manager counts below).
@@ -196,17 +194,17 @@ async function tick() {
             blocks.push(
                 T.kpis([
                     {
-                        label: 'Revues / Reviews',
+                        label: T.pick('Revues', 'Reviews'),
                         value: totals.reviews,
                         color: totals.reviews ? '#b45309' : '#15803d',
                     },
                     {
-                        label: 'Actions IDP',
+                        label: T.pick('Actions de développement', 'Development actions'),
                         value: totals.idp,
                         color: totals.idp ? '#b45309' : '#15803d',
                     },
                     {
-                        label: 'Écarts crit. / Gaps',
+                        label: T.pick('Écarts critiques', 'Critical gaps'),
                         value: totals.gaps,
                         color: totals.gaps ? '#b91c1c' : '#15803d',
                     },
@@ -214,24 +212,24 @@ async function tick() {
                     // proven competence shortfall. Green only when there is nothing left
                     // to measure.
                     {
-                        label: 'Non mesuré / Unmeasured',
+                        label: T.pick('Non mesuré', 'Not measured'),
                         value: totals.unmeasured,
                         color: totals.unmeasured ? '#b45309' : '#15803d',
                     },
                     {
-                        label: 'Certifs ≤60j',
+                        label: T.pick('Certifications ≤ 60 jours', 'Certifications ≤ 60 days'),
                         value: totals.certs,
                         color: totals.certs ? '#b45309' : '#15803d',
                     },
                     {
-                        label: 'Couverture / Coverage',
+                        label: T.pick('Couverture', 'Coverage'),
                         value: totals.breaches,
                         color: totals.breaches ? '#b91c1c' : '#15803d',
                     },
                     ...(campaignPct !== null
                         ? [
                               {
-                                  label: 'Campagne',
+                                  label: T.pick('Campagne', 'Campaign'),
                                   value: campaignPct + '%',
                                   color: campaignPct >= 80 ? '#15803d' : '#b45309',
                                   sub: `${cycle.code} · ${campaign.submitted}/${campaign.enrolled}`,
@@ -258,7 +256,12 @@ async function tick() {
                         reviews.slice(0, 8).map((r) => [r.name, { text: String(r.n), bold: true }])
                     )
                 );
-                blocks.push(T.para('Agir : Équipe → Revues AE.', 'Act: Team → SA Reviews.'));
+                blocks.push(
+                    T.para(
+                        'Agir : Équipe → Revues d’auto-évaluation.',
+                        'Act: Team → Self-assessment reviews.'
+                    )
+                );
             }
             if (certs.length) {
                 blocks.push(
@@ -272,14 +275,14 @@ async function tick() {
                     T.table(
                         [
                             { fr: 'Collaborateur', en: 'Employee' },
-                            { fr: 'Certification' },
+                            { fr: 'Certification', en: 'Certification' },
                             { fr: 'Échéance', en: 'Due' },
                         ],
                         certs.slice(0, 8).map((c) => [
                             c.name,
                             c.skill,
                             {
-                                text: `${new Date(c.expiresOn).toISOString().slice(0, 10)} (${c.days}j)`,
+                                text: `${fmtDate(c.expiresOn)} (${c.days} ${T.pick('j', 'd')})`,
                                 color: c.days <= 30 ? '#b91c1c' : '#b45309',
                                 bold: c.days <= 30,
                             },
@@ -288,7 +291,7 @@ async function tick() {
                 );
                 blocks.push(
                     T.para(
-                        'Planifiez la revalidation (VOC) avant la date — un recyclage LMS mappé est auto-assigné à 60 jours.',
+                        'Planifiez la revalidation avant la date — une formation de recyclage associée est assignée automatiquement à 60 jours.',
                         'Schedule the revalidation before the date — a mapped LMS refresher is auto-assigned at 60 days.'
                     )
                 );
@@ -305,7 +308,7 @@ async function tick() {
                             ...breaches.map((b) => [
                                 b.name,
                                 {
-                                    text: `RUPTURE — ${b.qualifiedHeadcount}/${b.minHeadcount}`,
+                                    text: `${T.pick('Rupture', 'Breach')} — ${b.qualifiedHeadcount}/${b.minHeadcount}`,
                                     color: '#b91c1c',
                                     bold: true,
                                 },
@@ -313,7 +316,7 @@ async function tick() {
                             ...predicted.map((b) => [
                                 b.name,
                                 {
-                                    text: `prévue le ${new Date(b.predictedBreachOn).toISOString().slice(0, 10)} (${b.predictedQualified}/${b.minHeadcount})`,
+                                    text: `${T.pick('prévue le', 'predicted on')} ${fmtDate(b.predictedBreachOn)} (${b.predictedQualified}/${b.minHeadcount})`,
                                     color: '#b45309',
                                 },
                             ]),
@@ -323,11 +326,14 @@ async function tick() {
             }
             if (totals.idp) {
                 blocks.push(
-                    T.section('Actions de développement (IDP) ouvertes', 'Open IDP actions')
+                    T.section('Actions de développement ouvertes', 'Open development actions')
                 );
                 blocks.push(
                     T.table(
-                        [{ fr: 'Collaborateur', en: 'Employee' }, { fr: 'Actions' }],
+                        [
+                            { fr: 'Collaborateur', en: 'Employee' },
+                            { fr: 'Actions', en: 'Actions' },
+                        ],
                         idp.slice(0, 8).map((r) => [r.name, String(r.n)])
                     )
                 );
@@ -364,16 +370,14 @@ async function tick() {
                 );
             }
             if (campaignPct !== null && campaignPct < 100 && cycle) {
-                const closes = cycle.closesAt
-                    ? new Date(cycle.closesAt).toISOString().slice(0, 10)
-                    : null;
+                const closes = cycle.closesAt ? fmtDate(cycle.closesAt) : null;
                 // A LOCKED campaign is still followed: the employee window is
                 // shut, the manager's reviews are what is left.
                 const locked = cycle.status === 'locked';
                 blocks.push(
                     T.section(
                         `Campagne ${cycle.label}${locked ? ' — verrouillée, revues à finaliser' : ''}`,
-                        `Assessment campaign${locked ? ' — locked, reviews to finalise' : ''}`,
+                        `Campaign ${cycle.label}${locked ? ' — locked, reviews to finalise' : ''}`,
                         campaignPct >= 80 ? '#15803d' : '#b45309'
                     )
                 );
@@ -400,24 +404,6 @@ async function tick() {
                     );
                 }
             }
-            if (link('/dashboard'))
-                blocks.push(
-                    T.cta(
-                        'Ouvrir mon espace',
-                        'Open my workspace',
-                        link('/dashboard'),
-                        branding && branding.accentColor
-                    )
-                );
-
-            const html = T.wrap({
-                branding,
-                title: 'Récap équipe hebdo / Weekly team digest',
-                intro: `Bonjour ${mgr.firstName},`,
-                blocks,
-            });
-
-            const NotificationService = require('../services/NotificationService');
             const r = await NotificationService.notify({
                 userType: 'employee',
                 userId: mgr.id,
@@ -438,15 +424,14 @@ async function tick() {
                             : null,
                     week: today,
                 },
-                subject: `[${(branding && branding.appName) || PRODUCT.name}] Récap équipe hebdo / Weekly team digest — ${today}`,
-                html,
-                text:
-                    `Revues / Reviews: ${totals.reviews} · IDP: ${totals.idp} · Écarts critiques / Critical gaps: ${totals.gaps}` +
-                    ` · Non mesuré / Unmeasured: ${totals.unmeasured}` +
-                    ` · Certifs ≤60j: ${totals.certs} · Couverture / Coverage: ${totals.breaches}` +
-                    (campaignPct !== null
-                        ? ` · Campagne ${cycle.code}: ${campaignPct}% (${campaignFunnelFr})`
-                        : ''),
+                locale: lang,
+                title: T.pick(
+                    'Récapitulatif hebdomadaire de votre équipe',
+                    'Weekly summary of your team'
+                ),
+                blocks,
+                ctaUrl: '/dashboard',
+                ctaLabel: T.pick('Ouvrir mon espace', 'Open my workspace'),
             });
             if (r && r.inapp && r.inapp !== 'error') sent++;
         } catch (e) {

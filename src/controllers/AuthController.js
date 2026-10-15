@@ -1077,57 +1077,69 @@ class AuthController {
                 const base = await require('../utils/emailTemplate').baseUrlAsync(req);
                 const link = `${base}/reset-password?token=${encodeURIComponent(result.rawToken)}`;
                 if (await EmailService.isEnabled().catch(() => false)) {
-                    // White-label + FR-first: the brand comes from App Settings (never the
-                    // hardcoded product name) and every sentence is localized like the rest
-                    // of the chrome. `brand` is admin-supplied, so escape it for the HTML part.
+                    // The one renderer, in the requester's language (one language
+                    // per mail); the subject is the catalogue's. The brand comes
+                    // from App Settings inside renderEmail, never a product name.
                     const brand =
                         (res.locals && res.locals.branding && res.locals.branding.appName) ||
                         PRODUCT.name;
-                    const escHtml = (s) =>
-                        String(s)
-                            .replace(/&/g, '&amp;')
-                            .replace(/</g, '&lt;')
-                            .replace(/>/g, '&gt;')
-                            .replace(/"/g, '&quot;');
                     const T = (key, opts, fallback) =>
                         req.t ? req.t(`chrome:${key}`, opts) : fallback;
                     const mins = result.ttlMinutes;
-                    const subject = T(
-                        'mail_reset_subject',
-                        { brand },
-                        `Reset your ${brand} password`
-                    );
-                    // The link is built from server-side config and a URI-encoded
-                    // token, so it cannot carry markup — escape it anyway. It is the
-                    // one credential-bearing string in this mail, and an operator
-                    // typo in APP_BASE_URL should never be able to break the attribute.
-                    const escLink = escHtml(link);
-                    const accountLine = result.accountLine
-                        ? `<p><strong>${T('mail_reset_account', { name: escHtml(result.accountLine) }, `Account: ${escHtml(result.accountLine)}`)}</strong></p>`
-                        : '';
-                    const html =
-                        `<p>${T('mail_reset_intro', { brand: escHtml(brand) }, `We received a request to reset your ${escHtml(brand)} password.`)}</p>` +
-                        accountLine +
-                        `<p><a href="${escLink}">${T('mail_reset_cta', {}, 'Choose a new password')}</a> ` +
-                        `(${T('mail_reset_validity', { mins }, `link valid for ${mins} minutes`)}).</p>` +
-                        `<p>${T('mail_reset_fallback', {}, 'If the link does not work, copy this URL:')}<br><code>${escLink}</code></p>` +
-                        `<p>${T('mail_reset_ignore', {}, 'If you did not request this, you can safely ignore this email — your password is unchanged.')}</p>`;
-                    const text =
-                        `${T('mail_reset_text_lead', { brand }, `Reset your ${brand} password:`)}\n` +
-                        (result.accountLine
-                            ? `${T('mail_reset_account', { name: result.accountLine }, `Account: ${result.accountLine}`)}\n`
-                            : '') +
-                        `${link}\n\n` +
-                        `${T('mail_reset_text_validity', { mins }, `This link is valid for ${mins} minutes.`)} ` +
-                        `${T('mail_reset_ignore', {}, 'If you did not request this, you can safely ignore this email — your password is unchanged.')}`;
-                    // Timing: NOT awaited. Awaiting the SMTP round-trip only for
-                    // REAL accounts made the response seconds slower exactly when
-                    // the identifier exists, an enumeration oracle despite the
-                    // identical message. Sent in the background; `result` is
-                    // re-used across the loop, so capture THIS mail now.
-                    const mail = { to: result.email, subject, html, text };
+                    const blocks = [
+                        {
+                            type: 'p',
+                            text: T(
+                                'mail_reset_intro',
+                                { brand },
+                                `We received a request to reset your ${brand} password.`
+                            ),
+                        },
+                    ];
+                    if (result.accountLine)
+                        blocks.push({
+                            type: 'p',
+                            text: T(
+                                'mail_reset_account',
+                                { name: result.accountLine },
+                                `Account: ${result.accountLine}`
+                            ),
+                        });
+                    blocks.push({
+                        type: 'p',
+                        text: T(
+                            'mail_reset_text_validity',
+                            { mins },
+                            `This link is valid for ${mins} minutes.`
+                        ),
+                    });
+                    blocks.push({
+                        type: 'p',
+                        text: T(
+                            'mail_reset_ignore',
+                            {},
+                            'If you did not request this, you can safely ignore this email — your password is unchanged.'
+                        ),
+                    });
+                    // Timing: NOT awaited — neither the rendering (it reads the
+                    // branding settings) nor the SMTP round-trip. Awaiting either
+                    // only for REAL accounts would make the response slower exactly
+                    // when the identifier exists, an enumeration oracle despite the
+                    // identical message. `result` is re-used across the loop, so
+                    // capture THIS mail's inputs now.
+                    const to = result.email;
+                    const spec = {
+                        kind: 'account.password_reset',
+                        locale: req.language || 'fr',
+                        blocks,
+                        ctaUrl: link,
+                        ctaLabel: T('mail_reset_cta', {}, 'Choose a new password'),
+                    };
                     Promise.resolve()
-                        .then(() => EmailService.send(mail))
+                        .then(async () => {
+                            const m = await require('../utils/emailTemplate').renderEmail(spec);
+                            return EmailService.send({ to, ...m });
+                        })
                         .catch((e) => console.error('Reset email send failed:', e && e.message));
                 } else {
                     console.warn(
@@ -1362,7 +1374,13 @@ class AuthController {
                     await require('../services/PasswordResetService').onEmailChanged(
                         'admin',
                         me.id,
-                        { oldEmail: me.email, newEmail: email, t: req.t, name: me.username }
+                        {
+                            oldEmail: me.email,
+                            newEmail: email,
+                            t: req.t,
+                            name: me.username,
+                            lang: req.language,
+                        }
                     );
                 }
                 if (emailAdvisory) req.flash('warning', emailAdvisory);
@@ -1442,6 +1460,7 @@ class AuthController {
                         oldEmail: current.email,
                         newEmail: email,
                         t: req.t,
+                        lang: req.language,
                         name: `${current.firstName || ''} ${current.lastName || ''}`.trim(),
                     }
                 );

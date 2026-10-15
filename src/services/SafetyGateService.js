@@ -1355,6 +1355,11 @@ const SafetyGateService = {
         const L = LOCALE_TEXT;
         const head = (lng) => (blocked ? L[lng].notif_blocked : L[lng].notif_expiring);
         const sent = [];
+        // ONE language per mail, and the subject is the catalogue's: it never
+        // states the clearance status nor names the person (it is read on lock
+        // screens). The reasons are in the body, the detail behind the link.
+        const lang = await require('../utils/emailTemplate').mailLang();
+        const B = require('../utils/emailTemplate').blocks(lang);
 
         const personResult = await NotificationService.notify({
             userType: 'employee',
@@ -1368,9 +1373,9 @@ const SafetyGateService = {
                 reason: fr,
                 link: '/v2/idp',
             },
-            subject: `${head('fr')} / ${head('en')}`,
-            html: `<p>${esc(head('fr'))} : ${esc(fr)}.</p><p>${esc(L.fr.notif_plan)}</p><p style="color:#888;">${esc(head('en'))}: ${esc(en)}. ${esc(L.en.notif_plan)}</p>`,
-            text: `${head('fr')} : ${fr}. ${L.fr.notif_plan}\n${head('en')}: ${en}. ${L.en.notif_plan}`,
+            locale: lang,
+            title: B.pick(head('fr'), head('en')),
+            blocks: [B.para(`${fr}.`, `${en}.`), B.para(L.fr.notif_plan, L.en.notif_plan)],
         });
         sent.push({ userType: 'employee', id: r.employeeId, result: personResult });
 
@@ -1391,9 +1396,9 @@ const SafetyGateService = {
                     reason: `${who} — ${fr}`,
                     link: lineLink,
                 },
-                subject: `${head('fr')} — ${who} / ${head('en')}`,
-                html: `<p><strong>${esc(who)}</strong> — ${esc(head('fr'))} : ${esc(fr)}.</p><p style="color:#888;">${esc(head('en'))}: ${esc(en)}.</p>`,
-                text: `${who} — ${head('fr')} : ${fr}.\n${head('en')}: ${en}.`,
+                locale: lang,
+                title: B.pick(head('fr'), head('en')),
+                blocks: [B.para(`${who} — ${fr}.`, `${who} — ${en}.`)],
             });
             sent.push({ userType: x.userType, id: x.id, result: res });
         }

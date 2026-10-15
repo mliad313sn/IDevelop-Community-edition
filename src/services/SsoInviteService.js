@@ -296,7 +296,31 @@ function pageOf(spec, v, lang) {
 }
 
 /**
- * Compose the invitation (FR first, EN below) — pure given its inputs.
+ * The mail of an invitation or an announcement, through the one renderer
+ * (NotificationService._compose: one look, ONE language, the catalogue's
+ * subject). `first` is the greeting's first name.
+ */
+function renderMail({ lang, title, blocks, ctaUrl, ctaLabel, first, app, branding }) {
+    return require('../utils/emailTemplate').compose(
+        {
+            kind: 'sso.migration_invite',
+            title,
+            blocks,
+            ctaUrl: ctaUrl || '/account/sso-change',
+            ctaLabel,
+            locale: lang,
+            mandatory: true,
+        },
+        {
+            brand: { appName: app, accent: branding && branding.accentColor },
+            recipientName: first,
+        }
+    );
+}
+
+/**
+ * Compose the invitation in ONE language (`lang`, default French) — pure given
+ * its inputs. The in-app page keeps both languages (`page.fr`, `page.en`).
  * `providerKey` (entra/google/saml/oidc…) selects the Microsoft-only sentence
  * « le même que pour Windows ou Outlook »; a provider NAMED Microsoft does too.
  * @returns {{subject:string, html:string, text:string, page:{fr:object, en:object}}}
@@ -313,8 +337,10 @@ function compose({
     reminder = false,
     branding = null,
     buttons = null,
+    lang: mailLang = 'fr',
 }) {
-    const T = require('../utils/emailTemplate');
+    const ml = mailLang === 'en' ? 'en' : 'fr';
+    const T = require('../utils/emailTemplate').blocks(ml);
     const v = (lang) => ({
         app,
         provider,
@@ -330,8 +356,6 @@ function compose({
                 ? tr(lang, 'login_sso_org')
                 : tr(lang, 'login_sso_with', { name: provider })),
     });
-    // UX-11: French puts a space before « : », English does not.
-    const colon = (lang) => (lang === 'fr' ? ' :' : ':');
     const introKey = isMicrosoftProvider(providerKey, provider)
         ? 'ssoinv_intro_ms'
         : 'ssoinv_intro';
@@ -350,51 +374,38 @@ function compose({
         url ? { t: 'cta', k: 'ssoinv_cta', href: `${url}/login` } : null,
         { t: 'p', k: 'ssoinv_help' },
     ].filter(Boolean);
-    const both = (key) => [tr('fr', key, v('fr')), tr('en', key, v('en'))];
-    const blocks = spec.map((b) => {
-        if (b.t === 'h') return T.section(...both(b.k));
-        if (b.t === 'steps')
-            return T.steps(
-                b.ks.map((k) => ({ fr: tr('fr', k, v('fr')), en: tr('en', k, v('en')) }))
-            );
-        if (b.t === 'cta') return T.cta(...both(b.k), b.href, branding && branding.accentColor);
-        return T.para(...both(b.k));
-    });
-    // The reminder prefix is in BOTH halves (« Rappel : … / Reminder: … »).
-    const pre = (lang) => (reminder ? `${tr(lang, 'ssoinv_reminder_prefix')} ` : '');
-    const subject = `${pre('fr')}${tr('fr', 'ssoinv_subject', v('fr'))} / ${pre('en')}${tr('en', 'ssoinv_subject', v('en'))}`;
-    const html = T.wrap({
-        branding: branding || { appName: app },
-        title: `${tr('fr', 'ssoinv_title')} / ${tr('en', 'ssoinv_title')}`,
-        intro: tr('fr', 'ssoinv_hello', v('fr')),
+    const one = (key) => tr(ml, key, v(ml));
+    const blocks = [];
+    let cta = null;
+    for (const b of spec) {
+        if (b.t === 'h') blocks.push(T.section(one(b.k)));
+        else if (b.t === 'steps') blocks.push(T.steps(b.ks.map(one)));
+        else if (b.t === 'cta') cta = { label: one(b.k), url: b.href };
+        else blocks.push(T.para(one(b.k)));
+    }
+    // A reminder says so in its title (the subject is the catalogue's).
+    const title = `${reminder ? `${tr(ml, 'ssoinv_reminder_prefix')} ` : ''}${tr(ml, 'ssoinv_title')}`;
+    const mail = renderMail({
+        lang: ml,
+        title,
         blocks,
+        ctaUrl: cta && cta.url,
+        ctaLabel: cta && cta.label,
+        first: rec.firstName || rec.name || '',
+        app,
+        branding,
     });
-    const lines = (lang) =>
-        [
-            tr(lang, 'ssoinv_hello', v(lang)),
-            variant === 'security_notice' ? tr(lang, 'ssoinv_security_notice', v(lang)) : null,
-            tr(lang, introKey, v(lang)),
-            `${tr(lang, 'ssoinv_benefits_title')}${colon(lang)} ${tr(lang, 'ssoinv_benefits', v(lang))}`,
-            `${tr(lang, 'ssoinv_how_title')}${colon(lang)}`,
-            `1. ${tr(lang, 'ssoinv_step1', v(lang))}`,
-            `2. ${tr(lang, 'ssoinv_step2', v(lang))}`,
-            `3. ${tr(lang, step3, v(lang))}`,
-            rec.isAdmin ? tr(lang, 'ssoinv_admin', v(lang)) : null,
-            tr(lang, 'ssoinv_shared_pc'),
-            tr(lang, 'ssoinv_never_password'),
-            tr(lang, 'ssoinv_help', v(lang)),
-        ]
-            .filter(Boolean)
-            .join('\n');
     const page = (lang) => ({
         heading: tr(lang, 'ssoinv_title'),
         hello: tr(lang, 'ssoinv_hello', v(lang)),
         blocks: pageOf(spec, v, lang),
     });
     return {
-        subject,
-        html,
-        text: `${lines('fr')}\n\n----\n\n${lines('en')}`,
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+        attachments: mail.attachments,
+        headers: mail.headers,
         page: { fr: page('fr'), en: page('en') },
     };
 }
@@ -420,6 +431,7 @@ async function messageFor(row, rec, { reminder = false } = {}) {
         reminder,
         branding,
         buttons: { fr: buttonText(row.provider, 'fr'), en: buttonText(row.provider, 'en') },
+        lang: await require('../utils/emailTemplate').mailLang(),
     });
 }
 
@@ -769,8 +781,9 @@ function formatGoLive(d, lang) {
 }
 
 /**
- * The announcement text (FR first, EN below) — pure given its inputs.
- * @returns {{subject:string, html:string, text:string}}
+ * The announcement in ONE language (`lang`, default French) — pure given its
+ * inputs. The in-app page keeps both languages.
+ * @returns {{subject:string, html:string, text:string, page:object}}
  */
 function composeAnnouncement({
     rec,
@@ -781,8 +794,10 @@ function composeAnnouncement({
     app,
     url,
     branding = null,
+    lang: mailLang = 'fr',
 }) {
-    const T = require('../utils/emailTemplate');
+    const ml = mailLang === 'en' ? 'en' : 'fr';
+    const T = require('../utils/emailTemplate').blocks(ml);
     const v = (lang) => ({
         app,
         provider,
@@ -800,39 +815,34 @@ function composeAnnouncement({
         url ? { t: 'cta', k: 'ssoann_cta', href: `${url}/login` } : null,
         { t: 'p', k: 'ssoinv_help' },
     ].filter(Boolean);
-    const both = (key) => [tr('fr', key, v('fr')), tr('en', key, v('en'))];
-    const blocks = spec.map((b) =>
-        b.t === 'cta'
-            ? T.cta(...both(b.k), b.href, branding && branding.accentColor)
-            : T.para(...both(b.k))
-    );
-    const subject = `${tr('fr', 'ssoann_subject', v('fr'))} / ${tr('en', 'ssoann_subject', v('en'))}`;
-    const html = T.wrap({
-        branding: branding || { appName: app },
-        title: `${tr('fr', 'ssoann_title')} / ${tr('en', 'ssoann_title')}`,
-        intro: tr('fr', 'ssoinv_hello', v('fr')),
+    const one = (key) => tr(ml, key, v(ml));
+    const blocks = [];
+    let cta = null;
+    for (const b of spec) {
+        if (b.t === 'cta') cta = { label: one(b.k), url: b.href };
+        else blocks.push(T.para(one(b.k)));
+    }
+    const mail = renderMail({
+        lang: ml,
+        title: tr(ml, 'ssoann_title'),
         blocks,
+        ctaUrl: cta && cta.url,
+        ctaLabel: cta && cta.label,
+        first: rec.firstName || rec.name || '',
+        app,
+        branding,
     });
-    const lines = (lang) =>
-        [
-            tr(lang, 'ssoinv_hello', v(lang)),
-            tr(lang, bodyKey, v(lang)),
-            tr(lang, 'ssoann_nothing_yet', v(lang)),
-            url ? `${url}/login` : null,
-            tr(lang, 'ssoinv_never_password'),
-            tr(lang, 'ssoinv_help', v(lang)),
-        ]
-            .filter(Boolean)
-            .join('\n');
     const page = (lang) => ({
         heading: tr(lang, 'ssoann_title'),
         hello: tr(lang, 'ssoinv_hello', v(lang)),
         blocks: pageOf(spec, v, lang),
     });
     return {
-        subject,
-        html,
-        text: `${lines('fr')}\n\n----\n\n${lines('en')}`,
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+        attachments: mail.attachments,
+        headers: mail.headers,
         page: { fr: page('fr'), en: page('en') },
     };
 }
@@ -1064,6 +1074,7 @@ async function announce({ limit = null, now = new Date() } = {}) {
                 app,
                 url,
                 branding,
+                lang: await require('../utils/emailTemplate').mailLang(),
             });
             let s;
             try {

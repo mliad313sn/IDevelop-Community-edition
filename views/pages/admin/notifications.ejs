@@ -117,12 +117,15 @@ var stateClass = { queued: 'badge-info', sent: 'badge-success', failed: 'badge-d
                 </td>
                 <td><i class="fas <%= r.channel === 'email' ? 'fa-envelope' : 'fa-bell' %>" aria-hidden="true"></i> <%= channelLabel(r.channel) %></td>
                 <td><code style="font-size:.82rem"><%= esc(r.kind) %></code></td>
-                <td><span class="badge <%= stateClass[r.state] || 'badge-muted' %>"><%= stateLabel(r.state) %></span></td>
+                <td><span class="badge <%= stateClass[r.state] || 'badge-muted' %>"><%= stateLabel(r.state) %></span>
+                    <% if (r.emailStatus) { %><br><span class="text-muted" style="font-size:.78rem"><%= __('admin:notif_es_' + r.emailStatus) %><% if (r.channel === 'email' && r.emailAttempts) { %> · <%= __('admin:notif_attempts', { n: r.emailAttempts }) %><% } %><% if (r.emailStatus === 'retry' && r.nextAttemptAt) { %> · <%= __('admin:notif_next_attempt') %> <%= _fd(r.nextAttemptAt) %><% } %></span><% } %>
+                    <% if (r.lastError) { %><br><span class="text-muted" style="font-size:.74rem"><%= esc(r.lastError) %></span><% } %>
+                </td>
                 <td><%= _fd(r.createdAt) %></td>
                 <td><%= r.sentAt ? _fd(r.sentAt) : '—' %></td>
                 <td><%= r.readAt ? _fd(r.readAt) : '—' %></td>
                 <td>
-                    <% if (r.state === 'failed') { %>
+                    <% if (r.channel === 'email' && r.state === 'failed' && r.emailStatus !== 'suppressed' && r.emailStatus !== 'sending') { %>
                     <form method="post" action="/admin/notifications/<%= r.id %>/retry" style="margin:0">
                         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                         <button type="submit" class="btn btn-sm btn-secondary" title="<%= __('admin:notif_retry_title') %>"><i class="fas fa-rotate-right" aria-hidden="true"></i> <%= __('admin:notif_retry') %></button>

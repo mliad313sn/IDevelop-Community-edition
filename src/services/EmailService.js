@@ -32,6 +32,11 @@ try {
  *   / auth) are toggled by the `emailOn*` settings — see isCategoryEnabled.
  */
 class EmailService {
+    /** SMTP waits (ms): 15 s to connect and to get the greeting, 30 s of socket silence. */
+    static get SMTP_TIMEOUTS() {
+        return { connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000 };
+    }
+
     constructor() {
         this._transport = null;
         this._signature = null; // config fingerprint — rebuild transport when it changes
@@ -53,7 +58,15 @@ class EmailService {
         const secure = await AppSettingsModel.getValue('smtpSecure', port === 465);
         const user = await this._val('smtpUser', 'SMTP_USER', '');
         const pass = await this._val('smtpPassword', 'SMTP_PASS', '');
-        const fromName = await this._val('smtpFromName', null, PRODUCT.name);
+        // The sender name defaults to the configured app name (white-label).
+        const appName = await Promise.resolve()
+            .then(() => AppSettingsModel.getValue('appName', null))
+            .catch(() => null);
+        const fromName = await this._val(
+            'smtpFromName',
+            null,
+            (appName && String(appName).trim()) || PRODUCT.name
+        );
         const fromAddress = await this._val('smtpFromAddress', null, user);
 
         // SMTP_FROM (env) may be a combined "Name <addr>" value; honour it when
@@ -134,7 +147,16 @@ class EmailService {
      * checks stay on.
      */
     transportOptions(cfg, decision = { mode: cfg.secure ? 'tls' : 'starttls' }) {
-        const options = { host: cfg.host, port: cfg.port, secure: cfg.secure };
+        // Bounded SMTP waits. nodemailer's defaults are 2 min (connection) and
+        // 10 min (socket): a stalled relay held the release tick, and the outbox
+        // rows it had claimed, past their lease, so the next tick could claim
+        // and send them a second time.
+        const options = {
+            host: cfg.host,
+            port: cfg.port,
+            secure: cfg.secure,
+            ...EmailService.SMTP_TIMEOUTS,
+        };
         const hasAuth = !!(cfg.user || cfg.pass);
         if (!cfg.secure) {
             const relay = decision && decision.mode === 'relay';
@@ -319,9 +341,14 @@ class EmailService {
     /**
      * Send an email. Never throws — returns a small status object so callers
      * (background notifications) can record the outcome without try/catch.
+     *
+     * `headers`: extra message headers — renderEmail returns Auto-Submitted,
+     * X-Auto-Response-Suppress and, for a mail that is not mandatory,
+     * List-Unsubscribe → the preferences page. `attachments` carries the CID
+     * logo. Pass both through as renderEmail returned them.
      * @returns {Promise<{sent:boolean, skipped?:string, error?:string, messageId?:string}>}
      */
-    async send({ to, subject, html, text, attachments }) {
+    async send({ to, subject, html, text, attachments, headers }) {
         if (!nodemailer) return { sent: false, skipped: 'nodemailer_missing' };
         if (!to) return { sent: false, skipped: 'no_recipient' };
         if (!(await this.isEnabled())) return { sent: false, skipped: 'disabled' };
@@ -336,11 +363,13 @@ class EmailService {
                 from: cfg.from || cfg.user || PRODUCT.defaultMailFrom,
                 to,
                 subject: subject || '(no subject)',
-                text: text || (html ? html.replace(/<[^>]+>/g, ' ') : ''),
+                // A real plain-text part (entities decoded, links kept).
+                text: text || (html ? require('../utils/emailTemplate').htmlToText(html) : ''),
                 html: html || undefined,
-                // nodemailer-native attachments (e.g. scheduled report CSVs).
+                // nodemailer-native attachments (the CID logo).
                 attachments:
                     Array.isArray(attachments) && attachments.length ? attachments : undefined,
+                headers: EmailService.safeHeaders(headers),
             });
             return { sent: true, messageId: info && info.messageId };
         } catch (error) {
@@ -374,28 +403,78 @@ class EmailService {
         }
     }
 
-    /** Send a diagnostic email to confirm configuration end-to-end. */
-    async sendTest(to) {
+    /**
+     * Only plain string headers with a token name, CR/LF stripped from the
+     * value (header injection), or undefined when there are none.
+     */
+    static safeHeaders(headers) {
+        if (!headers || typeof headers !== 'object') return undefined;
+        const out = new Map();
+        for (const [k, v] of Object.entries(headers)) {
+            if (!/^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(k) || v == null) continue;
+            out.set(
+                k,
+                String(v)
+                    .replace(/[\r\n]+/g, ' ')
+                    .slice(0, 2000)
+            );
+        }
+        return out.size ? Object.fromEntries(out) : undefined;
+    }
+
+    /**
+     * Send a diagnostic email to confirm the configuration end to end: in the
+     * site's mail language (`locale` overrides it), branded, through the same
+     * renderer as every other mail.
+     */
+    async sendTest(to, { locale } = {}) {
         const cfg = await this.getConfig();
-        const subject = 'IDevelop — test email';
-        const html = `
-            <p>This is a test message from <strong>IDevelop</strong>.</p>
-            <p>If you received this, outgoing email notifications are configured correctly.</p>
-            <hr>
-            <p style="color:#777;font-size:12px">
-                Host: ${cfg.host || '(unset)'} · Port: ${cfg.port} · Secure: ${cfg.secure ? 'yes' : 'no'}
-            </p>`;
         // Bypass the master switch for the test so admins can validate before enabling.
         const transport = await this._getTransport();
         if (!transport)
             return { sent: false, error: this._refusal || 'SMTP host is not configured' };
+        let mail;
+        try {
+            const E = require('../utils/emailTemplate');
+            const lang = await E.mailLang(locale);
+            const en = lang === 'en';
+            mail = await E.renderEmail({
+                kind: 'ops.smtp_test',
+                intro: en
+                    ? 'If you received this message, outgoing e-mail is configured correctly.'
+                    : 'Si vous recevez ce message, l’envoi des e-mails est correctement configuré.',
+                blocks: [
+                    {
+                        type: 'kv',
+                        rows: [
+                            [en ? 'Server' : 'Serveur', cfg.host || null],
+                            ['Port', String(cfg.port)],
+                            [
+                                en ? 'Encryption' : 'Chiffrement',
+                                cfg.secure ? 'TLS' : en ? 'STARTTLS required' : 'STARTTLS exigé',
+                            ],
+                        ],
+                    },
+                ],
+                ctaUrl: '/app-settings',
+                ctaLabel: en ? 'Open the settings' : 'Ouvrir les paramètres',
+                locale: lang,
+                mandatory: true,
+                severity: 'info',
+            });
+        } catch (error) {
+            return { sent: false, error: error.message };
+        }
         try {
             const info = await transport.sendMail({
                 from: cfg.from || cfg.user || PRODUCT.defaultMailFrom,
                 to,
-                subject,
-                html,
-                text: 'Test message from IDevelop. Email notifications are configured correctly.',
+                subject: mail.subject,
+                html: mail.html,
+                text: mail.text,
+                attachments:
+                    mail.attachments && mail.attachments.length ? mail.attachments : undefined,
+                headers: EmailService.safeHeaders(mail.headers),
             });
             return { sent: true, messageId: info && info.messageId };
         } catch (error) {

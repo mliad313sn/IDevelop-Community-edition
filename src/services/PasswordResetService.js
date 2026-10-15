@@ -320,7 +320,7 @@ class PasswordResetService {
     async onEmailChanged(
         subjectType,
         subjectId,
-        { oldEmail = null, newEmail = null, t = null, name = '' } = {}
+        { oldEmail = null, newEmail = null, t = null, name = '', lang = null } = {}
     ) {
         const out = { tokensInvalidated: null, oldAddressNotified: false };
         try {
@@ -340,25 +340,41 @@ class PasswordResetService {
                 : tr('auth:email_changed_removed', '(aucune)');
             try {
                 const EmailService = require('./EmailService');
+                const body = tr(
+                    'auth:email_changed_body',
+                    'Bonjour {{name}},\n\nL’adresse e-mail associée à votre compte vient d’être remplacée par : {{newEmail}}.\nLes liens de réinitialisation de mot de passe seront désormais envoyés à cette adresse.\n\nSi vous n’êtes pas à l’origine de ce changement, contactez immédiatement votre administrateur.',
+                    {
+                        name: name || '',
+                        newEmail: newShown,
+                        interpolation: { escapeValue: false },
+                    }
+                );
+                // The one renderer adds its own greeting: the body's first
+                // paragraph (« Bonjour … ») is left out, the rest is one
+                // paragraph per line.
+                const paras = String(body)
+                    .split('\n')
+                    .map((l) => l.trim())
+                    .filter(Boolean);
+                if (paras.length > 1 && /,\s*$/.test(paras[0])) paras.shift();
                 // Fire and forget: SMTP latency or failure must never block the edit.
-                Promise.resolve(
-                    EmailService.send({
-                        to: String(oldEmail).trim(),
-                        subject: tr(
-                            'auth:email_changed_subject',
-                            'Votre adresse e-mail de connexion a été modifiée'
-                        ),
-                        text: tr(
-                            'auth:email_changed_body',
-                            'Bonjour {{name}},\n\nL’adresse e-mail associée à votre compte vient d’être remplacée par : {{newEmail}}.\nLes liens de réinitialisation de mot de passe seront désormais envoyés à cette adresse.\n\nSi vous n’êtes pas à l’origine de ce changement, contactez immédiatement votre administrateur.',
-                            {
-                                name: name || '',
-                                newEmail: newShown,
-                                interpolation: { escapeValue: false },
-                            }
-                        ),
+                Promise.resolve()
+                    .then(async () => {
+                        const m = await require('../utils/emailTemplate').renderEmail({
+                            kind: 'account.email_changed',
+                            // The language `t` wrote the text in (the request's).
+                            locale: lang || undefined,
+                            title: tr(
+                                'auth:email_changed_subject',
+                                'Votre adresse e-mail de connexion a été modifiée'
+                            ),
+                            blocks: paras.map((text) => ({ type: 'p', text })),
+                            ctaUrl: '/account',
+                            recipientName: name || '',
+                        });
+                        return EmailService.send({ to: String(oldEmail).trim(), ...m });
                     })
-                ).catch(() => {});
+                    .catch(() => {});
                 out.oldAddressNotified = true;
             } catch (_) {
                 /* best-effort */

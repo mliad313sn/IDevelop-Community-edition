@@ -655,7 +655,7 @@ class AppSettingsController {
                 return res.redirect('/app-settings');
             }
 
-            const result = await EmailService.sendTest(to);
+            const result = await EmailService.sendTest(to, { locale: req.language });
             await LogService.log({
                 adminId: req.user.id,
                 action: result.sent ? 'EMAIL_TEST_SENT' : 'EMAIL_TEST_FAILED',

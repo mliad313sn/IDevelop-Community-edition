@@ -2,7 +2,8 @@
 
 /**
  * OnboardingCredentialService — open an employee's login and tell them how to
- * get in, in a bilingual (FR/EN) onboarding message.
+ * get in, in an onboarding message written in ONE language (the site's mail
+ * language) through the one renderer (renderEmail).
  *
  * A PASSWORD IS NEVER SENT BY E-MAIL (SA-37).
  *   1. Ensure a unique username (kept if one exists, else generated from the
@@ -43,20 +44,15 @@ function expiryLabels(d) {
 }
 
 /** The credential block of both mails: username, the link and its expiry. */
-function setupBlocks(T, { username, link, expiresAt, branding }) {
+function setupBlocks(T, { username, link, expiresAt }) {
     const when = expiryLabels(expiresAt);
     return [
-        T.details([['Identifiant / Username', username]]),
+        T.details([[T.pick('Identifiant', 'Username'), username]]),
         T.para(
             'Choisissez vous-même votre mot de passe avec le bouton ci-dessous. Aucun mot de passe ne vous est envoyé par e-mail.',
             'Choose your own password with the button below. No password is ever sent to you by e-mail.'
         ),
-        T.cta(
-            'Définir mon mot de passe',
-            'Set my password',
-            link,
-            branding && branding.accentColor
-        ),
+        T.button('Définir mon mot de passe', 'Set my password', link),
         T.para(
             `Ce lien sert une seule fois et expire dans ${SETUP_TTL_HOURS} heures (le ${when.fr}).`,
             `This link works once and expires in ${SETUP_TTL_HOURS} hours (${when.en}).`
@@ -68,29 +64,19 @@ function setupBlocks(T, { username, link, expiresAt, branding }) {
     ];
 }
 
-/** The plain-text twin of setupBlocks. */
-function setupText({ username, link, expiresAt }) {
-    const when = expiryLabels(expiresAt);
-    return (
-        `Identifiant / Username: ${username}\n` +
-        `Définir mon mot de passe / Set my password: ${link}\n` +
-        `Lien à usage unique, valable ${SETUP_TTL_HOURS} heures (jusqu'au ${when.fr}). / ` +
-        `Single-use link, valid ${SETUP_TTL_HOURS} hours (until ${when.en}).\n` +
-        `Aucun mot de passe n'est envoyé par e-mail. / No password is ever sent by e-mail.`
-    );
-}
-
 class OnboardingCredentialService {
     /**
      * Full WELCOME onboarding email (bulk invitation flow): what the platform
      * is, the person's own profile details, what is expected of them (adapted
      * to employee vs manager), their username and the one-time set-password
-     * link. Never a password. Built on the shared branded template.
+     * link. Never a password. ONE language, the one renderer; the subject is
+     * the catalogue's (account.welcome).
      */
     async _welcomeEmail({ employee, username, link, expiresAt, branding }) {
-        const T = require('../utils/emailTemplate');
+        const E = require('../utils/emailTemplate');
+        const lang = await E.mailLang();
+        const T = E.blocks(lang);
         const db = require('../config/database');
-        const appUrl = require('../utils/emailTemplate').baseUrl();
         const appName = (branding && branding.appName) || PRODUCT.name;
 
         // Profile details (org placement + who reviews them).
@@ -135,20 +121,20 @@ class OnboardingCredentialService {
         blocks.push(
             T.details([
                 [
-                    'Nom / Name',
+                    T.pick('Nom', 'Name'),
                     (detail && detail.fullName) || `${employee.firstName} ${employee.lastName}`,
                 ],
-                ['Matricule / Employee #', employee.employeeNumber],
-                ...(detail && detail.roleName ? [['Poste / Role', detail.roleName]] : []),
+                [T.pick('Matricule', 'Employee number'), employee.employeeNumber],
+                ...(detail && detail.roleName ? [[T.pick('Poste', 'Role'), detail.roleName]] : []),
                 ...(detail && detail.siteName ? [['Site', detail.siteName]] : []),
                 ...(detail && detail.departmentName
-                    ? [['Département / Department', detail.departmentName]]
+                    ? [[T.pick('Département', 'Department'), detail.departmentName]]
                     : []),
                 ...(detail && detail.serviceName ? [['Service', detail.serviceName]] : []),
-                ...(managerName ? [['Responsable / Reviewed by', managerName]] : []),
+                ...(managerName ? [[T.pick('Responsable', 'Reviewed by'), managerName]] : []),
                 [
-                    'Profil / Profile',
-                    isManager ? 'Manager / Superviseur' : 'Collaborateur / Employee',
+                    T.pick('Profil', 'Profile'),
+                    isManager ? T.pick('Manager', 'Manager') : T.pick('Collaborateur', 'Employee'),
                 ],
             ])
         );
@@ -172,8 +158,8 @@ class OnboardingCredentialService {
                 en: 'Open "My Progression" to see your growth campaign over campaign.',
             },
             {
-                fr: 'Surveillez la cloche 🔔 : rappels de campagne, plans de développement et notifications vous y attendent.',
-                en: 'Watch the 🔔 bell: campaign reminders, development plans and notifications land there.',
+                fr: 'Surveillez la cloche des notifications : rappels de campagne, plans de développement et notifications vous y attendent.',
+                en: 'Watch the notification bell: campaign reminders, development plans and notifications land there.',
             },
         ];
         if (isManager) {
@@ -191,7 +177,7 @@ class OnboardingCredentialService {
         blocks.push(T.steps(expected));
 
         blocks.push(T.section('Votre accès', 'Your access'));
-        blocks.push(...setupBlocks(T, { username, link, expiresAt, branding }));
+        blocks.push(...setupBlocks(T, { username, link, expiresAt }));
         blocks.push(
             T.para(
                 'Besoin d’aide ? Le Guide utilisateur est dans le menu de votre profil une fois connecté.',
@@ -199,38 +185,34 @@ class OnboardingCredentialService {
             )
         );
 
-        return {
-            subject: `[${appName}] Bienvenue — vos accès / Welcome — your account`,
-            html: T.wrap({
-                branding,
-                title: 'Bienvenue / Welcome',
-                intro: `Bonjour ${employee.firstName},`,
-                blocks,
-            }),
-            text:
-                `Bienvenue sur ${appName} / Welcome to ${appName}.\n` +
-                setupText({ username, link, expiresAt }) +
-                (appUrl ? `\nConnexion / Sign in: ${appUrl}/login` : ''),
-        };
+        return E.renderEmail({
+            kind: 'account.welcome',
+            locale: lang,
+            title: T.pick('Bienvenue', 'Welcome'),
+            blocks,
+            ctaUrl: '/login',
+            ctaLabel: T.pick('Se connecter', 'Sign in'),
+            recipientName: employee.firstName,
+        });
     }
 
     /** The short credentials mail (single resend): username + set-password link. */
-    _setupEmail({ employee, username, link, expiresAt, branding }) {
-        const T = require('../utils/emailTemplate');
-        const appName = (branding && branding.appName) || PRODUCT.name;
-        return {
-            subject: `[${appName}] Définissez votre mot de passe / Set your password`,
-            html: T.wrap({
-                branding,
-                title: 'Votre accès / Your access',
-                intro: `Bonjour ${employee.firstName},`,
-                blocks: [
-                    T.para('Votre accès est ouvert.', 'Your access is open.'),
-                    ...setupBlocks(T, { username, link, expiresAt, branding }),
-                ],
-            }),
-            text: setupText({ username, link, expiresAt }),
-        };
+    async _setupEmail({ employee, username, link, expiresAt }) {
+        const E = require('../utils/emailTemplate');
+        const lang = await E.mailLang();
+        const T = E.blocks(lang);
+        return E.renderEmail({
+            kind: 'account.setup',
+            locale: lang,
+            title: T.pick('Votre accès', 'Your access'),
+            blocks: [
+                T.para('Votre accès est ouvert.', 'Your access is open.'),
+                ...setupBlocks(T, { username, link, expiresAt }),
+            ],
+            ctaUrl: '/login',
+            ctaLabel: T.pick('Se connecter', 'Sign in'),
+            recipientName: employee.firstName,
+        });
     }
 
     /**
@@ -390,7 +372,7 @@ class OnboardingCredentialService {
                     ).replace(/\/+$/, '');
                     const link = `${base}/reset-password?token=${encodeURIComponent(token.rawToken)}&setup=1`;
                     const args = { employee, username, link, expiresAt: token.expiresAt, branding };
-                    mail = welcome ? await this._welcomeEmail(args) : this._setupEmail(args);
+                    mail = welcome ? await this._welcomeEmail(args) : await this._setupEmail(args);
                 }
             } catch (e) {
                 result = { sent: false, error: `setup link unavailable: ${e && e.message}` };

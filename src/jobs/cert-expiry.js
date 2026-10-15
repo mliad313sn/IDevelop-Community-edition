@@ -64,6 +64,9 @@ async function tick() {
     );
 
     const NotificationService = require('../services/NotificationService');
+    const { fmtDate } = require('../utils/dateFormat');
+    const lang = await require('../utils/emailTemplate').mailLang();
+    const B = require('../utils/emailTemplate').blocks(lang);
     let alerts = 0,
         lmsAssigned = 0;
 
@@ -103,16 +106,9 @@ async function tick() {
             };
 
             const label = STAGE_LABEL[stage];
-            const esc = (s) =>
-                String(s == null ? '' : s).replace(
-                    /[&<>]/g,
-                    (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch]
-                );
-            const subject = `[IDevelop] Certification ${stage === 4 ? 'expirée / expired' : 'à renouveler / renewal due'} — ${c.skillName}`;
-            const html =
-                `<p>La certification <strong>${esc(c.skillName)}</strong> ${label.fr} (échéance ${c.expiresOn}).` +
-                ` <span style="color:#888;">/ The <strong>${esc(c.skillName)}</strong> certification ${label.en} (due ${c.expiresOn}).</span></p>` +
-                `<p style="font-size:13px;color:#888;">Planifiez la revalidation (VOC) avant l'échéance. / Schedule the revalidation (VOC) before the due date.</p>`;
+            // ONE language per mail; the certification and its date are in the
+            // body only — the subject is the catalogue's (no name, no date).
+            const due = fmtDate(c.expiresOn);
 
             // Employee notification. The EMPLOYEE's alert is what the stage claims;
             // if it fails, hand the stage back so the next tick tries again.
@@ -127,9 +123,17 @@ async function tick() {
                     expiresOn: c.expiresOn,
                     stage,
                 },
-                subject,
-                html,
-                text: `Certification ${c.skillName}: ${label.en} (due ${c.expiresOn}).`,
+                locale: lang,
+                blocks: [
+                    B.para(
+                        `La certification ${c.skillName} ${label.fr} (échéance ${due}).`,
+                        `The ${c.skillName} certification ${label.en} (due ${due}).`
+                    ),
+                    B.para(
+                        'Planifiez la revalidation avant l’échéance.',
+                        'Schedule the revalidation before the due date.'
+                    ),
+                ],
             });
             if (!empResult || empResult.inapp === 'error') {
                 await releaseStage();
@@ -158,9 +162,13 @@ async function tick() {
                         expiresOn: c.expiresOn,
                         stage,
                     },
-                    subject: `[IDevelop] Certification de ${c.fullName} ${stage === 4 ? 'expirée / expired' : 'à renouveler / renewal due'} — ${c.skillName}`,
-                    html: `<p><strong>${esc(c.fullName)}</strong> : la certification <strong>${esc(c.skillName)}</strong> ${label.fr} (échéance ${c.expiresOn}). <span style="color:#888;">/ ${label.en} (due ${c.expiresOn}).</span></p>`,
-                    text: `${c.fullName}: certification ${c.skillName} ${label.en} (due ${c.expiresOn}).`,
+                    locale: lang,
+                    blocks: [
+                        B.para(
+                            `${c.fullName} : la certification ${c.skillName} ${label.fr} (échéance ${due}).`,
+                            `${c.fullName}: the ${c.skillName} certification ${label.en} (due ${due}).`
+                        ),
+                    ],
                 });
             }
             alerts++;

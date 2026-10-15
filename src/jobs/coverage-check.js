@@ -36,26 +36,30 @@ function alertCap() {
     return Number.isFinite(n) && n >= 0 ? n : 25;
 }
 
-function ruleScopeLabel(r) {
+function ruleScopeLabel(r, lang) {
     const bits = [];
     if (r.siteName) bits.push(r.siteName);
     if (r.departmentName) bits.push(r.departmentName);
     if (r.serviceName) bits.push(r.serviceName);
-    return bits.length ? bits.join(' / ') : 'Whole organization';
+    if (bits.length) return bits.join(' / ');
+    return lang === 'fr' ? 'Toute l’organisation' : 'Whole organization';
 }
 
-const esc = (s) =>
-    String(s == null ? '' : s).replace(
-        /[&<>]/g,
-        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]
-    );
+/**
+ * The mail body of a coverage alert, in ONE language (renderEmail blocks).
+ * The rule's name and figures are in the body, behind the recipient's own
+ * mailbox; the SUBJECT is the catalogue's (no rule name, no figure).
+ */
+async function mailLang() {
+    return require('../utils/emailTemplate').mailLang();
+}
 
 /**
  * Over-cap fallback: ONE notice to the admins who hold `manage_compliance`
  * (the owners of the rule set), naming the count and a few examples, instead of
  * hundreds of individual pages. Never silent — an empty audience is logged.
  */
-async function batchNotice(rules, kind, subject) {
+async function batchNotice(rules, kind) {
     const NotificationService = require('../services/NotificationService');
     const RBACService = require('../services/RBACService');
     const LogService = require('../services/LogService');
@@ -65,7 +69,9 @@ async function batchNotice(rules, kind, subject) {
     } catch (e) {
         console.error('[coverage-check] batch audience lookup failed:', e.message);
     }
-    const sample = rules.slice(0, 5).map((r) => `${r.name} (${ruleScopeLabel(r)})`);
+    const lang = await mailLang();
+    const B = require('../utils/emailTemplate').blocks(lang);
+    const sample = rules.slice(0, 5).map((r) => `${r.name} (${ruleScopeLabel(r, lang)})`);
     try {
         await LogService.log({
             action: 'COVERAGE_ALERT_BATCHED',
@@ -87,13 +93,18 @@ async function batchNotice(rules, kind, subject) {
                 kind,
                 category: 'compliance',
                 payload: { count: rules.length, batched: true, link: '/compliance' },
-                subject,
-                html:
-                    `<p><strong>${rules.length}</strong> règles de couverture viennent de basculer en rupture en une seule passe — ` +
-                    `alertes regroupées pour éviter une avalanche. <span style="color:#888;">/ ${rules.length} coverage rules changed state in a single pass; alerts batched.</span></p>` +
-                    `<ul>${sample.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` +
-                    `<p style="font-size:13px;color:#888;">Détail complet sur /compliance et dans le journal système. / Full detail on /compliance and in the system log.</p>`,
-                text: `${rules.length} coverage rules newly breached in one pass (alerts batched). See /compliance.`,
+                locale: lang,
+                blocks: [
+                    B.para(
+                        `${rules.length} règles de couverture ont changé d’état en une seule passe : les alertes sont regroupées.`,
+                        `${rules.length} coverage rules changed state in a single pass: the alerts are batched.`
+                    ),
+                    { type: 'list', items: sample },
+                    B.para(
+                        'Le détail complet est sur la page Conformité opérationnelle et dans le journal système.',
+                        'The full detail is on the Operational Compliance page and in the system log.'
+                    ),
+                ],
             });
             if (res && res.inapp && res.inapp !== 'error') delivered++;
         } catch (e) {
@@ -107,6 +118,9 @@ async function tick() {
     const CoverageService = require('../services/CoverageService');
     const LogService = require('../services/LogService');
     const NotificationService = require('../services/NotificationService');
+    const { fmtDate } = require('../utils/dateFormat');
+    const lang = await mailLang();
+    const B = require('../utils/emailTemplate').blocks(lang);
 
     const { evaluated, newlyBreached, recovered } = await CoverageService.evaluateAll();
 
@@ -133,11 +147,7 @@ async function tick() {
     if (newlyBreached.length > cap) {
         // Mass event (typically right after a bulk rule generation). One notice
         // to the people who own the rule set, not one page per rule.
-        const batch = await batchNotice(
-            newlyBreached,
-            'coverage.breach.batch',
-            `[IDevelop] ${newlyBreached.length} règles de couverture en rupture / coverage rules newly breached`
-        );
+        const batch = await batchNotice(newlyBreached, 'coverage.breach.batch');
         if (batch && batch.recipients > 0 && batch.delivered === 0) {
             // The whole batch reached nobody (systemic send failure). Re-open every
             // transition so the next pass retries, rather than burning the alert.
@@ -173,13 +183,14 @@ async function tick() {
                             via: who.via,
                             link: '/compliance',
                         },
-                        subject: `[IDevelop] ${r.severity === 'critical' ? 'CRITIQUE' : 'Alerte'} — couverture insuffisante / coverage breach: ${r.name}`,
-                        html:
-                            `<p><strong>${esc(r.name)}</strong> — ${esc(ruleScopeLabel(r))} : ` +
-                            `<strong>${r.qualifiedHeadcount}/${r.minHeadcount}</strong> personnes qualifiées (${esc(r.skillName)}, niveau ≥ ${r.minLevel}` +
-                            `${r.requireValidCert ? ', certification valide requise' : ''}). ` +
-                            `<span style="color:#888;">/ qualified people below the required minimum.</span></p>`,
-                        text: `${r.name} (${ruleScopeLabel(r)}): ${r.qualifiedHeadcount}/${r.minHeadcount} qualified — below minimum.`,
+                        locale: lang,
+                        severity: r.severity === 'critical' ? 'critical' : 'warning',
+                        blocks: [
+                            B.para(
+                                `${r.name} — ${ruleScopeLabel(r, lang)} : ${r.qualifiedHeadcount}/${r.minHeadcount} personnes qualifiées (${r.skillName}, niveau ≥ ${r.minLevel}${r.requireValidCert ? ', certification valide requise' : ''}), en dessous du minimum.`,
+                                `${r.name} — ${ruleScopeLabel(r, lang)}: ${r.qualifiedHeadcount}/${r.minHeadcount} qualified people (${r.skillName}, level ≥ ${r.minLevel}${r.requireValidCert ? ', valid certification required' : ''}), below the minimum.`
+                            ),
+                        ],
                     });
                     if (!(res && res.inapp && res.inapp !== 'error')) anyError = true;
                 }
@@ -246,11 +257,7 @@ async function tick() {
             }
         }
         if (newlyPredicted.length > cap) {
-            const batch = await batchNotice(
-                newlyPredicted,
-                'coverage.predicted.batch',
-                `[IDevelop] ${newlyPredicted.length} ruptures de couverture PRÉVUES / predicted coverage breaches`
-            );
+            const batch = await batchNotice(newlyPredicted, 'coverage.predicted.batch');
             if (batch && batch.recipients > 0 && batch.delivered === 0) {
                 for (const p of newlyPredicted) {
                     try {
@@ -288,13 +295,17 @@ async function tick() {
                                 via: who.via,
                                 link: '/compliance',
                             },
-                            subject: `[IDevelop] Rupture de couverture PRÉVUE le ${p.firstBreachOn} / PREDICTED coverage breach: ${p.name}`,
-                            html:
-                                `<p><strong>${esc(p.name)}</strong> : rupture prévue le <strong>${p.firstBreachOn}</strong> — ` +
-                                `seulement <strong>${p.worstQualified}/${p.minHeadcount}</strong> personnes qualifiées présentes (absences planifiées + expirations de certificats projetées). ` +
-                                `<span style="color:#888;">/ Predicted breach on ${p.firstBreachOn}: only ${p.worstQualified}/${p.minHeadcount} present-qualified.</span></p>` +
-                                `<p style="font-size:13px;color:#888;">Agissez avant la date : décalez une absence, planifiez une revalidation ou affectez un remplaçant. / Act before the date: move an absence, schedule a revalidation, or assign cover.</p>`,
-                            text: `PREDICTED breach ${p.firstBreachOn}: ${p.name} — ${p.worstQualified}/${p.minHeadcount} present-qualified.`,
+                            locale: lang,
+                            blocks: [
+                                B.para(
+                                    `${p.name} : rupture prévue le ${fmtDate(p.firstBreachOn)}, avec seulement ${p.worstQualified}/${p.minHeadcount} personnes qualifiées présentes (absences planifiées et expirations de certificats projetées).`,
+                                    `${p.name}: breach predicted on ${fmtDate(p.firstBreachOn)}, with only ${p.worstQualified}/${p.minHeadcount} qualified people present (planned absences and projected certificate expiries).`
+                                ),
+                                B.para(
+                                    'Agissez avant la date : décalez une absence, planifiez une revalidation ou affectez un remplaçant.',
+                                    'Act before the date: move an absence, schedule a revalidation or assign cover.'
+                                ),
+                            ],
                         });
                         if (!(res && res.inapp && res.inapp !== 'error')) anyError = true;
                     }

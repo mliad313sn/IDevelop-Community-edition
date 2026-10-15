@@ -1230,6 +1230,7 @@ class EmployeeController {
                         oldEmail: employee.email,
                         newEmail: req.body.email?.trim() || null,
                         t: req.t,
+                        lang: req.language,
                         name: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
                     }
                 );

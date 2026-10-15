@@ -99,11 +99,11 @@ async function pendingReviewers(cycleId) {
 
 async function tick() {
     const NotificationService = require('../services/NotificationService');
-    const esc = (s) =>
-        String(s == null ? '' : s).replace(
-            /[&<>]/g,
-            (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]
-        );
+    const { fmtDate } = require('../utils/dateFormat');
+    // ONE language per mail. The campaign, its date and the counts are in the
+    // body only: the subject is the catalogue's (no date, no figure).
+    const lang = await require('../utils/emailTemplate').mailLang();
+    const B = require('../utils/emailTemplate').blocks(lang);
 
     // EVERY running cycle — open (people submit) and locked (reviewers finish).
     // Not only those inside the 7-day deadline horizon: a campaign opened six
@@ -222,13 +222,13 @@ async function tick() {
                             stage: 'review_pending',
                             link: `/supervisor/self-assessment-reviews?cycleId=${cycle.id}`,
                         },
-                        subject: `[IDevelop] Revues à finaliser — campagne ${cycle.code} verrouillée / Reviews to finalise`,
-                        html:
-                            `<p>Bonjour ${esc(r.firstName)},</p>` +
-                            `<p>La campagne <strong>${esc(cycle.label)}</strong> est verrouillée depuis le <strong>${closesOn}</strong> : ` +
-                            `<strong>${r.n}</strong> revue(s) d'auto-évaluation de votre équipe restent à finaliser. ` +
-                            `<span style="color:#888;">/ The campaign is locked since ${closesOn}; ${r.n} team review(s) are still to be finalised.</span></p>`,
-                        text: `Cycle ${cycle.code} locked since ${closesOn} — ${r.n} review(s) still pending.`,
+                        locale: lang,
+                        blocks: [
+                            B.para(
+                                `La campagne ${cycle.label} est verrouillée depuis le ${fmtDate(closesOn)} : ${r.n} ${r.n === 1 ? 'revue d’auto-évaluation de votre équipe reste' : 'revues d’auto-évaluation de votre équipe restent'} à finaliser.`,
+                                `The ${cycle.label} campaign has been locked since ${fmtDate(closesOn)}: ${r.n} ${r.n === 1 ? 'team review is' : 'team reviews are'} still to be finalised.`
+                            ),
+                        ],
                     });
                     if (!res || res.inapp === 'error') {
                         await releaseWeekly(
@@ -320,13 +320,13 @@ async function tick() {
                         pending: emp.n,
                         stage: reminderKind,
                     },
-                    subject: `[IDevelop] Auto-évaluation à soumettre avant le ${closesOn} / Self-assessment due by ${closesOn}`,
-                    html:
-                        `<p>Bonjour ${esc(emp.firstName)},</p>` +
-                        `<p>La campagne <strong>${esc(cycle.label)}</strong> ferme le <strong>${closesOn}</strong> — ` +
-                        `il vous reste <strong>${emp.n}</strong> auto-évaluation(s) à soumettre. ` +
-                        `<span style="color:#888;">/ The campaign closes on ${closesOn}; you still have ${emp.n} self-assessment(s) to submit.</span></p>`,
-                    text: `Cycle ${cycle.code} closes ${closesOn} — ${emp.n} self-assessment(s) still unsubmitted.`,
+                    locale: lang,
+                    blocks: [
+                        B.para(
+                            `La campagne ${cycle.label} ferme le ${fmtDate(closesOn)} : il vous reste ${emp.n} ${emp.n === 1 ? 'auto-évaluation' : 'auto-évaluations'} à soumettre.`,
+                            `The ${cycle.label} campaign closes on ${fmtDate(closesOn)}: you still have ${emp.n} ${emp.n === 1 ? 'self-assessment' : 'self-assessments'} to submit.`
+                        ),
+                    ],
                 });
                 // A claimed-but-undelivered reminder must go back on the queue: this
                 // stage is one-shot, so keeping the claim loses it for good.
@@ -374,18 +374,18 @@ async function tick() {
                             stage: escalationKind,
                             link: `/supervisor/self-assessment-reviews?cycleId=${cycle.id}`,
                         },
-                        subject: overdue
-                            ? `[IDevelop] URGENT — revues en retard (campagne fermée le ${closesOn}) / OVERDUE reviews`
-                            : `[IDevelop] Revues à finaliser avant le ${closesOn} / Reviews due by ${closesOn}`,
-                        html:
-                            `<p>Bonjour ${esc(mgr.firstName)},</p>` +
-                            `<p><strong>${mgr.n}</strong> revue(s) d'auto-évaluation de votre équipe ${
+                        locale: lang,
+                        severity: overdue ? 'echeance' : 'action',
+                        blocks: [
+                            B.para(
                                 overdue
-                                    ? `sont <strong>en retard</strong> — la campagne <strong>${esc(cycle.label)}</strong> a fermé le ${closesOn}`
-                                    : `doivent être finalisées avant le <strong>${closesOn}</strong> (campagne <strong>${esc(cycle.label)}</strong>)`
-                            }. ` +
-                            `<span style="color:#888;">/ ${mgr.n} team review(s) ${overdue ? 'are OVERDUE — the campaign closed on ' + closesOn : 'must be completed by ' + closesOn}.</span></p>`,
-                        text: `Cycle ${cycle.code}: ${mgr.n} review(s) ${overdue ? 'OVERDUE (closed ' + closesOn + ')' : 'due by ' + closesOn}.`,
+                                    ? `${mgr.n} revue(s) d’auto-évaluation de votre équipe sont en retard : la campagne ${cycle.label} a fermé le ${fmtDate(closesOn)}.`
+                                    : `${mgr.n} revue(s) d’auto-évaluation de votre équipe doivent être finalisées avant le ${fmtDate(closesOn)} (campagne ${cycle.label}).`,
+                                overdue
+                                    ? `${mgr.n} team review(s) are overdue: the ${cycle.label} campaign closed on ${fmtDate(closesOn)}.`
+                                    : `${mgr.n} team review(s) must be completed by ${fmtDate(closesOn)} (${cycle.label} campaign).`
+                            ),
+                        ],
                     });
                     if (!r || r.inapp === 'error') {
                         if (mgr.targetType === 'admin')

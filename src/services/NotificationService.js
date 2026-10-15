@@ -1,14 +1,20 @@
 'use strict';
 
 const db = require('../config/database');
+const catalogue = require('./notificationCatalogue');
 
 /**
  *   NotificationService — write to notifications, respect per-user
- *   preferences and quiet hours.  In-app channel always-on; email
- *   delivery is a Phase-7 add (SMTP) — for now we just mark sent.
+ *   preferences and quiet hours. The in-app channel is always on; e-mail goes
+ *   through EmailService, rendered by ONE composer (renderEmail / _compose)
+ *   in ONE language, and is delivered through a small outbox: a failed send
+ *   is retried for 24 hours, and a person who has left, was voided or was
+ *   erased is never written to. Every kind is declared in
+ *   ./notificationCatalogue.
  */
 class NotificationService {
     static async enqueue({ userType, userId, kind, channel, locale, payload }) {
+        NotificationService._checkDeclared(kind);
         // One query for BOTH the kind-specific pref and the user's global ('__all__')
         // pref: kind-specific enable/quiet-hours win, else fall back to the global
         // quiet hours set in the preferences UI. (default = enabled, no quiet hours).
@@ -35,12 +41,38 @@ class NotificationService {
                 channel,
                 kind,
                 locale || 'fr',
-                typeof payload === 'string' ? payload : JSON.stringify(payload),
+                // A call without a payload must not write NULL into a NOT NULL
+                // column: the in-app row would be lost and, inside a
+                // transaction, the aborted savepoint would take the e-mail too.
+                typeof payload === 'string' ? payload : JSON.stringify(payload || {}),
                 state,
                 releaseAt,
             ]
         );
         return { state, releaseAt: releaseAt || null };
+    }
+
+    /**
+     * Every kind written to `notifications` is declared in the catalogue. An
+     * undeclared kind is still written (a notification is never lost for a
+     * missing label), but it is reported once per process; under the test
+     * runner it is also collected, and tests/helpers/dbSuiteLockSetup.js fails
+     * the suite that emitted it.
+     */
+    static _checkDeclared(kind) {
+        if (catalogue.isDeclared(kind)) return true;
+        const k = String(kind || '').slice(0, 100);
+        if (!NotificationService._undeclared) NotificationService._undeclared = new Set();
+        if (!NotificationService._undeclared.has(k)) {
+            NotificationService._undeclared.add(k);
+            console.warn(`[notify] kind "${k}" is not declared in notificationCatalogue`);
+        }
+        if (process.env.NODE_ENV === 'test') {
+            if (!global.__undeclaredNotificationKinds)
+                global.__undeclaredNotificationKinds = new Set();
+            global.__undeclaredNotificationKinds.add(k);
+        }
+        return false;
     }
 
     /**
@@ -84,19 +116,27 @@ class NotificationService {
 
     /**
      * High-level entry point for system events. Records an in-app notification
-     * and, when email is enabled for the event's domain, sends an email to the
-     * recipient. Best-effort: never throws into the calling business logic.
+     * and, when e-mail applies to the kind, sends ONE mail to the recipient.
+     * Best-effort: never throws into the calling business logic.
      *
-     * @param {object} o
+     *   NotificationService.notify({
+     *       userType, userId, kind, category, locale, payload,
+     *       // the mail body — same fields as renderEmail(), all optional:
+     *       title, intro, blocks, ctaLabel, ctaUrl, preheader, severity,
+     *       ignoreQuietHours,
+     *   })
+     *
      * @param {'admin'|'employee'} o.userType  recipient type
      * @param {number} o.userId                recipient id (admins.id / employees.id)
-     * @param {string} o.kind                  event kind, e.g. 'sa.approved'
-     * @param {string} [o.category]            email domain: workflow|validation|talent|lifecycle|coaching|auth
-     * @param {string} [o.locale]
-     * @param {object} [o.payload]             contextual data for the message
-     * @param {string} [o.subject]             explicit subject (else derived from kind)
-     * @param {string} [o.html]                explicit HTML body (else derived from kind+payload)
-     * @param {string} [o.text]                explicit text body
+     * @param {string} o.kind                  a kind declared in notificationCatalogue
+     * @param {string} [o.category]            e-mail domain toggle: workflow|validation|talent|lifecycle|coaching|...
+     * @param {string} [o.locale]              the RECIPIENT's language; else the site's mail language
+     * @param {object} [o.payload]             contextual data (in-app row; never printed in a subject)
+     *
+     * The subject is always « {app} — {the kind's catalogue subject} »: a caller
+     * cannot put a name, a figure or a date in it. A legacy `subject` / `html` /
+     * `text` argument is ignored: every mail is built from blocks, in one
+     * language.
      */
     /**
      * Every caller treats this as best-effort — around twenty invoke it as
@@ -114,117 +154,163 @@ class NotificationService {
         try {
             return await db.runInSavepoint(() => NotificationService._notify(args));
         } catch (e) {
+            // Never silent: one line, the kind and the recipient's id only (the
+            // error text is address-masked).
+            const a = args || {};
+            console.warn(
+                `[notify] ${a.kind || '?'} → ${a.userType || '?'}:${a.userId ?? '?'} failed: ${NotificationService._safeError(e && e.message) || 'error'}`.slice(
+                    0,
+                    300
+                )
+            );
             return { inapp: 'error', email: 'error', error: e && e.message };
         }
     }
 
-    static async _notify({
-        userType,
-        userId,
-        kind,
-        category,
-        locale,
-        payload,
-        subject,
-        html,
-        text,
-    }) {
+    static async _notify(args) {
+        const {
+            userType,
+            userId,
+            kind,
+            category,
+            locale,
+            payload,
+            title,
+            intro,
+            blocks,
+            ctaLabel,
+            ctaUrl,
+            preheader,
+            severity,
+            ignoreQuietHours,
+        } = args || {};
         const result = { inapp: null, email: null };
 
         // 0) Fan the event out to any external webhook subscribers (best-effort,
-        //    non-blocking) — makes the platform event-driven for integration.
+        //    non-blocking). Only allow-listed kinds leave (WebhookService.isEmittable,
+        //    which reads the SuperAdmin opt-in for the 360°, one-to-one and HRIS
+        //    families), and their payload is reduced to ids, dates and an in-app
+        //    link: no figure, no name, no free text ever reaches a subscriber or a
+        //    chat channel. It is NOT awaited, so it runs outside the caller's
+        //    transaction: two queries in flight on one pg client is node-pg's
+        //    « client is already executing a query », and a failure there would
+        //    abort the caller's transaction.
         try {
-            // Only allow-listed kinds leave (WebhookService.isEmittable), and their
-            // payload is reduced to ids, dates and an in-app link: no figure, no
-            // name, no free text ever reaches a subscriber or a chat channel.
             const Hook = require('./WebhookService');
-            Promise.resolve(
-                Hook.emit(kind, {
-                    userType,
-                    userId,
-                    category,
-                    payload:
-                        typeof Hook.minimisePayload === 'function'
-                            ? Hook.minimisePayload(payload)
-                            : {},
-                })
-            ).catch(() => {});
+            NotificationService._outsideTx(() =>
+                Promise.resolve(
+                    Hook.emit(kind, {
+                        userType,
+                        userId,
+                        category,
+                        payload:
+                            typeof Hook.minimisePayload === 'function'
+                                ? Hook.minimisePayload(payload)
+                                : {},
+                    })
+                ).catch(() => {})
+            );
         } catch (_) {
             /* never block */
         }
 
         // 1) Always record the in-app notification (drives the digest UI).
         try {
-            const r = await NotificationService.enqueue({
-                userType,
-                userId,
-                kind,
-                channel: 'inapp',
-                locale,
-                payload,
-            });
+            const r = await NotificationService._bestEffort(() =>
+                NotificationService.enqueue({
+                    userType,
+                    userId,
+                    kind,
+                    channel: 'inapp',
+                    locale,
+                    payload,
+                })
+            );
             result.inapp = r && (r.state || r.skipped) ? r.state || r.skipped : 'queued';
         } catch (e) {
             result.inapp = 'error';
         }
 
-        // 2) Email channel — data-driven policy first, then master switch + per-domain
-        //    toggle. Policy tiers: 'none' never emails; 'digest' defers to the daily
-        //    digest (in-app only now → no per-event inbox spam); 'immediate' (or an
-        //    unlisted kind) falls through to category gating and sends now.
+        // 2) E-mail — the catalogue tier first. 'none' never e-mails; 'digest'
+        //    defers to the daily digest; 'immediate' (or a kind absent from
+        //    KIND_POLICY) sends now. A MANDATORY kind (safety, security) is sent
+        //    now whatever its tier, the recipient's own switch and the per-domain
+        //    toggle; the global e-mail switch and SMTP still apply.
         try {
-            const tier = NotificationService.KIND_POLICY[kind];
+            const tier = NotificationService._tier(kind);
+            const mandatory = NotificationService._isMandatory(kind);
+            result.mandatory = mandatory;
             if (tier === 'none') {
                 result.email = 'policy_none';
                 return result;
             }
-            if (tier === 'digest') {
+            if (tier === 'digest' && !mandatory) {
                 result.email = 'digest_deferred';
                 return result;
             }
-            // Per-user opt-out: the recipient can switch OFF all notification email
-            // from their preferences (they still get everything in-app).
-            if (!(await NotificationService._userEmailAllowed(userType, userId))) {
+            if (!mandatory && !(await NotificationService._userEmailAllowed(userType, userId))) {
                 result.email = 'user_opt_out';
                 return result;
             }
             const EmailService = require('./EmailService');
-            if (!(await EmailService.isCategoryEnabled(category))) {
+            const open = mandatory
+                ? await EmailService.isEnabled()
+                : await EmailService.isCategoryEnabled(category);
+            if (!open) {
                 result.email = 'disabled';
                 return result;
             }
             const recipient = await NotificationService._resolveRecipient(userType, userId);
+            if (recipient.emailStatus === 'suppressed') {
+                await NotificationService._recordEmail({
+                    userType,
+                    userId,
+                    kind,
+                    locale,
+                    payload,
+                    state: 'failed',
+                    emailStatus: 'suppressed',
+                    attempts: 0,
+                    lastError: 'recipient inactive, cancelled or erased',
+                });
+                result.email = 'suppressed';
+                return result;
+            }
             if (!recipient.email) {
                 result.email = 'no_address';
                 return result;
             }
-            // Quiet hours apply to EMAIL too — that is the whole point of the
-            // promise in the preferences UI. An immediate-tier mail raised at
-            // 03:00 is written as a deferred email row and actually sent by the
-            // release tick once the window ends, rather than waking the
-            // recipient now (or, as before, ignoring their setting entirely).
-            const releaseAt = NotificationService._releaseAt(
-                await NotificationService._quietPref(userType, userId)
+            const lang = await NotificationService._mailLang(locale);
+            const brand = await NotificationService._brand();
+            const rendered = NotificationService._compose(
+                {
+                    kind,
+                    severity,
+                    title,
+                    intro,
+                    blocks,
+                    ctaLabel,
+                    ctaUrl,
+                    preheader,
+                    locale: lang,
+                    mandatory,
+                    payload,
+                },
+                { brand, recipientName: recipient.name }
             );
+            // Quiet hours apply to EMAIL too. An immediate-tier mail raised at
+            // 03:00 is written as a deferred email row (rendered NOW and parked
+            // on the row: re-deriving it hours later from the kind alone would
+            // lose the caller's blocks) and sent by the release tick once the
+            // window ends. This is the delivery-audit row, not the in-app inbox
+            // row — the inbox payload written in step 1 is untouched.
+            const releaseAt = ignoreQuietHours
+                ? null
+                : NotificationService._releaseAt(
+                      await NotificationService._quietPref(userType, userId)
+                  );
             if (releaseAt) {
                 try {
-                    // Render NOW and park the result on the email-channel row:
-                    // several call sites (cert-expiry, coverage-check, cycle-nudge)
-                    // pass their own subject/body, and re-deriving it hours later
-                    // from the kind alone would quietly downgrade those messages.
-                    // This is the delivery-audit row, not the in-app inbox row —
-                    // the inbox payload written in step 1 is untouched.
-                    const brandNow = await NotificationService._brand();
-                    const pending = NotificationService._render({
-                        kind,
-                        payload,
-                        subject,
-                        html,
-                        text,
-                        brand: brandNow,
-                        recipientName: recipient.name,
-                        locale,
-                    });
                     await db.run(
                         `INSERT INTO notifications (user_type, user_id, channel, kind, locale, payload, state, release_at)
                          VALUES (?, ?, 'email', ?, ?, ?, 'snoozed', ?)`,
@@ -232,53 +318,226 @@ class NotificationService {
                             userType,
                             userId,
                             kind,
-                            locale || 'fr',
+                            lang,
                             JSON.stringify({
                                 ...(payload && typeof payload === 'object' ? payload : {}),
-                                [NotificationService.PENDING_EMAIL_KEY]: pending,
+                                [NotificationService.PENDING_EMAIL_KEY]:
+                                    NotificationService._storable(rendered),
                             }),
                             releaseAt,
                         ]
                     );
+                    await NotificationService._markEmailed(userType, userId, kind);
                     result.email = 'quiet_deferred';
                 } catch {
                     result.email = 'error';
                 }
                 return result;
             }
-            const brand = await NotificationService._brand();
-            const rendered = NotificationService._render({
-                kind,
-                payload,
-                subject,
-                html,
-                text,
-                brand,
-                recipientName: recipient.name,
-                locale,
-            });
             const sendResult = await EmailService.send({
                 to: recipient.email,
                 subject: rendered.subject,
                 html: rendered.html,
                 text: rendered.text,
+                attachments: NotificationService._attachmentsOrNone(rendered.attachments),
+                headers: rendered.headers,
             });
-            const state = sendResult.sent ? 'sent' : 'failed';
-            // Record the email-channel notification with its final state.
-            try {
-                await db.run(
-                    `INSERT INTO notifications (user_type, user_id, channel, kind, locale, payload, state, sent_at)
-                     VALUES (?, ?, 'email', ?, ?, ?, ?, ${sendResult.sent ? 'now()' : 'NULL'})`,
-                    [userType, userId, kind, locale || 'fr', JSON.stringify(payload || {}), state]
-                );
-            } catch {
-                /* notification audit is best-effort */
+            const o = NotificationService._outcome(sendResult, 1);
+            await NotificationService._recordEmail({
+                userType,
+                userId,
+                kind,
+                locale: lang,
+                payload,
+                state: o.state,
+                emailStatus: o.emailStatus,
+                attempts: 1,
+                nextAttemptAt: o.nextAttemptAt,
+                lastError: o.error,
+                pending: o.emailStatus === 'retry' ? rendered : null,
+            });
+            if (sendResult.sent || o.emailStatus === 'retry') {
+                await NotificationService._markEmailed(userType, userId, kind);
             }
+            result.emailStatus = o.emailStatus;
             result.email = sendResult.sent ? 'sent' : sendResult.skipped || 'failed';
         } catch (e) {
             result.email = 'error';
         }
         return result;
+    }
+
+    /** Outbox: 3 attempts over 24 h — retry after 1 h, then after 23 h, then 'abandoned'. */
+    static get EMAIL_MAX_ATTEMPTS() {
+        return 3;
+    }
+
+    static get EMAIL_RETRY_DELAYS_MS() {
+        return [60 * 60 * 1000, 23 * 60 * 60 * 1000];
+    }
+
+    /**
+     * The delivery state of one attempt. A send that was SKIPPED (SMTP off,
+     * not configured — a configuration fact, not a transient failure) is not
+     * retried; an ERROR is retried until EMAIL_MAX_ATTEMPTS, then abandoned.
+     */
+    static _outcome(sendResult, attempts, now = new Date()) {
+        const r = sendResult || {};
+        if (r.sent) return { state: 'sent', emailStatus: 'sent', nextAttemptAt: null, error: null };
+        if (!r.error) {
+            return {
+                state: 'failed',
+                emailStatus: 'skipped',
+                nextAttemptAt: null,
+                error: r.skipped || 'not sent',
+            };
+        }
+        const n = Number(attempts) || 1;
+        if (n >= NotificationService.EMAIL_MAX_ATTEMPTS) {
+            return {
+                state: 'failed',
+                emailStatus: 'abandoned',
+                nextAttemptAt: null,
+                error: r.error,
+            };
+        }
+        const delays = NotificationService.EMAIL_RETRY_DELAYS_MS;
+        const delay = delays[Math.min(n - 1, delays.length - 1)];
+        return {
+            state: 'failed',
+            emailStatus: 'retry',
+            nextAttemptAt: new Date(now.getTime() + delay),
+            error: r.error,
+        };
+    }
+
+    /**
+     * An error message fit for the audit row: every e-mail address masked
+     * (« a***@domain »), length capped. A single forward pass, no regular
+     * expression over the message: an SMTP server's reply cannot make it slow.
+     */
+    static _safeError(e) {
+        if (e == null) return null;
+        const s = String(e).slice(0, 2000);
+        const local = (c) => /[A-Za-z0-9._%+-]/.test(c);
+        let out = '';
+        let i = 0;
+        while (i < s.length) {
+            const at = s.indexOf('@', i);
+            if (at < 0) {
+                out += s.slice(i);
+                break;
+            }
+            let start = at;
+            while (start > i && local(s[start - 1])) start--;
+            out += start < at ? `${s.slice(i, start)}${s[start]}***@` : s.slice(i, at + 1);
+            i = at + 1;
+        }
+        return out.slice(0, 500);
+    }
+
+    /** What a deferred / retried mail keeps on its row (the logo is re-attached at send time). */
+    static _storable(rendered) {
+        const r = rendered || {};
+        return { subject: r.subject, html: r.html, text: r.text, headers: r.headers || {} };
+    }
+
+    /** The email-channel delivery-audit row (best-effort; never throws). */
+    static async _recordEmail({
+        userType,
+        userId,
+        kind,
+        locale,
+        payload,
+        state,
+        emailStatus,
+        attempts,
+        nextAttemptAt,
+        lastError,
+        pending,
+    }) {
+        try {
+            const body = {
+                ...(payload && typeof payload === 'object' ? payload : {}),
+                ...(pending
+                    ? {
+                          [NotificationService.PENDING_EMAIL_KEY]:
+                              NotificationService._storable(pending),
+                      }
+                    : {}),
+            };
+            await NotificationService._bestEffort(() =>
+                db.run(
+                    `INSERT INTO notifications (user_type, user_id, channel, kind, locale, payload, state, sent_at,
+                                                email_status, email_attempts, next_attempt_at, last_error)
+                     VALUES (?, ?, 'email', ?, ?, ?, ?, ${state === 'sent' ? 'now()' : 'NULL'}, ?, ?, ?, ?)`,
+                    [
+                        userType,
+                        userId,
+                        kind,
+                        NotificationService._lang(locale),
+                        JSON.stringify(body),
+                        state,
+                        emailStatus,
+                        Number(attempts) || 0,
+                        nextAttemptAt || null,
+                        NotificationService._safeError(lastError),
+                    ]
+                )
+            );
+        } catch {
+            /* notification audit is best-effort */
+        }
+    }
+
+    /**
+     * Run a best-effort statement in its own SAVEPOINT when inside a
+     * transaction, so a failure it raises (and the caller swallows) does not
+     * abort the statements that follow it in the same notification.
+     */
+    static _bestEffort(fn) {
+        return typeof db.runInSavepoint === 'function' ? db.runInSavepoint(fn) : fn();
+    }
+
+    /**
+     * Mark the in-app row of this event as already e-mailed: the daily digest
+     * lists only what the person has NOT received by e-mail yet. The row is
+     * the latest in-app row of this kind for the recipient — the one step 1 of
+     * _notify wrote, in the same savepoint.
+     */
+    static async _markEmailed(userType, userId, kind) {
+        try {
+            await NotificationService._bestEffort(() =>
+                db.run(
+                    `UPDATE notifications SET email_status = 'emailed'
+                      WHERE id = (SELECT id FROM notifications
+                                   WHERE user_type = ? AND user_id = ? AND channel = 'inapp' AND kind = ?
+                                   ORDER BY id DESC LIMIT 1)`,
+                    [userType, userId, kind]
+                )
+            );
+        } catch {
+            /* best-effort */
+        }
+    }
+
+    /** E-mail tier of a kind, from the catalogue: 'immediate' | 'digest' | 'none'. */
+    static _tier(kind) {
+        return catalogue.tierOf(kind);
+    }
+
+    /** Mandatory kind (safety, security)? From the catalogue. */
+    static _isMandatory(kind) {
+        return catalogue.isMandatory(kind);
+    }
+
+    /**
+     * The language of a mail: the recipient's (`locale`, when the caller knows
+     * it), else the site's mail language (App Settings → E-mail,
+     * `mailDefaultLanguage`), else French. ONE language per mail.
+     */
+    static async _mailLang(locale) {
+        return require('../utils/emailTemplate').mailLang(locale);
     }
 
     /**
@@ -294,11 +553,7 @@ class NotificationService {
      * is always absolute.
      */
     static absUrl(link) {
-        if (!link) return null;
-        if (/^https?:\/\//i.test(link)) return link;
-        const base = require('../utils/emailTemplate').baseUrl();
-        const path = String(link).startsWith('/') ? link : `/${link}`;
-        return base ? `${base}${path}` : path;
+        return require('../utils/emailTemplate').absUrl(link);
     }
 
     // ---- In-app notification centre (reads the `notifications` inbox) ----------
@@ -307,7 +562,9 @@ class NotificationService {
     // the user-facing inbox (the 'email' rows are a delivery audit).
     /**
      * `sinceHours` bounds the window (default: unbounded, the inbox behaviour).
-     * The daily digest passes 24 — see sendDigest.
+     * The daily digest passes 24 and `excludeEmailed` (an item the person
+     * already received by e-mail on its own, or in an earlier digest, is not
+     * repeated) — see sendDigest.
      */
     static async listInApp({
         userType,
@@ -315,16 +572,18 @@ class NotificationService {
         limit = 20,
         unreadOnly = false,
         sinceHours = null,
+        excludeEmailed = false,
     }) {
         const lim = Math.min(Math.max(Number(limit) || 20, 1), 100);
         const hours = Number(sinceHours) > 0 ? Math.floor(Number(sinceHours)) : null;
         return db.all(
-            `SELECT id, kind, payload, state, locale, read_at, created_at
+            `SELECT id, kind, payload, state, locale, read_at, created_at, email_status
                FROM notifications
               WHERE user_type = ? AND user_id = ? AND channel = 'inapp'
                     AND ${NotificationService.VISIBLE_SQL}
                     ${unreadOnly ? 'AND read_at IS NULL' : ''}
                     ${hours ? `AND created_at >= now() - interval '${hours} hours'` : ''}
+                    ${excludeEmailed ? 'AND email_status IS NULL' : ''}
               ORDER BY created_at DESC
               LIMIT ?`,
             [userType, userId, lim]
@@ -426,6 +685,7 @@ class NotificationService {
     static async enqueueBulkInApp({ userType, userIds, kind, locale = 'fr', payload }) {
         const ids = [...new Set((userIds || []).map(Number).filter(Boolean))];
         if (!ids.length) return 0;
+        NotificationService._checkDeclared(kind);
         const pl = typeof payload === 'string' ? payload : JSON.stringify(payload || {});
         const CHUNK = 500;
         let n = 0;
@@ -552,1232 +812,75 @@ class NotificationService {
     }
 
     /**
-     * Resolve a recipient's { email, name } for a courteous, personalised email.
-     * name → employee first name / admin display name (best-effort; '' when unknown).
+     * Resolve a recipient's { email, name, emailStatus } for a courteous,
+     * personalised email. name → employee first name / admin display name
+     * (best-effort; '' when unknown).
+     *
+     * Suppression: a recipient who can no longer receive anything — an
+     * employee who has left (is_active false), whose record was voided
+     * (cancelled_at) or erased (erased_at), an admin whose account is
+     * deactivated — resolves to NO address and emailStatus 'suppressed'. The
+     * check runs at every attempt, so a mail held by quiet hours or waiting for
+     * a retry is never sent to someone who left in the meantime.
      */
     static async _resolveRecipient(userType, userId) {
-        if (!userId) return { email: null, name: '' };
+        if (!userId) return { email: null, name: '', emailStatus: null };
         try {
             if (userType === 'admin') {
-                const row = await db.get('SELECT email, username FROM admins WHERE id = ?', [
-                    userId,
-                ]);
-                return {
-                    email: row && row.email ? row.email : null,
-                    name: (row && (row.firstName || row.username)) || '',
-                };
-            }
-            const row = await db.get('SELECT email, first_name FROM employees WHERE id = ?', [
-                userId,
-            ]);
-            return {
-                email: row && row.email ? row.email : null,
-                name: (row && (row.firstName || row.first_name)) || '',
-            };
-        } catch {
-            return { email: null, name: '' };
-        }
-    }
-
-    /** Human-readable subject lines per event kind. */
-    static get KIND_LABELS() {
-        return {
-            // 3.23.21 safety-competency gate transitions
-            'safety.blocked': 'Your safety clearance is blocked',
-            'safety.expiring': 'Your safety clearance is expiring soon',
-            'safety.blocked.team': 'A team member’s safety clearance is blocked',
-            'safety.expiring.team': 'A team member’s safety clearance is expiring soon',
-            // Safety-gate waivers and contests (migration 174)
-            'safety.waiver_granted': 'You are authorised by a safety waiver',
-            'safety.waiver_granted.team': 'A team member is authorised by a safety waiver',
-            'safety.waiver_ended': 'Your safety waiver is over',
-            'safety.waiver_ended.team': 'A team member’s safety waiver is over',
-            'safety.contest.review': 'A safety clearance contest needs your decision',
-            'safety.contest.decided': 'A safety clearance contest has a decision',
-            // SA-38: scheduled reports reach accounts in the app, never an attachment.
-            'report.schedule_ready': 'Your scheduled report is ready',
-            'report.schedule_suspended': 'A report schedule was suspended',
-            'sa.submitted': 'Self-assessment submitted',
-            'sa.changes_requested': 'Changes requested on your self-assessment',
-            'sa.approved': 'Your self-assessment was approved',
-            'sa.rejected': 'Your self-assessment was rejected',
-            'sa.manager_validated': 'Your assessment was validated by management',
-            //  / M-05 — the five kinds shipped by the cancellation and
-            // request-for-change work with NO catalogue entry at all.
-            'sa.cancelled': 'A self-assessment was cancelled',
-            // SA-42: a SuperAdmin reset an assessment so it can be redone.
-            'sa.reset_for_redo': 'Resume your assessment',
-            'sa.review_reset': 'An assessment needs reviewing again',
-            'sa.change_request_raised': 'A request for change awaits your decision',
-            // the SUBJECT of a request raised by someone else was told
-            // nothing at all; only the decider was written to.
-            'sa.change_request_raised_on_me': 'A request for change was raised on your assessment',
-            'sa.change_request_granted': 'A request for change was granted',
-            'sa.change_request_refused': 'A request for change was refused',
-            'talent.task.created': 'A follow-up task is assigned to you',
-            // Same class as the five above, found by sweeping every kind emitted
-            // in src/ and every kind already stored in `notifications`:
-            // 'certification.revoked' is raised by CertificationService:187 and
-            // had no entry anywhere; 'review.due' has no emitter left but one row
-            // still sits in an inbox (notification #1, admin:1) and rendered as
-            // its own slug.
-            'certification.revoked': 'A certification was revoked',
-            'privacy.objection': 'Someone objected to automated profiling',
-            'privacy.trigger_paused': 'An automatic development action awaits your review',
-            'review.due': 'A review is due',
-            'review.completed': 'A supervisor review was completed',
-            'mc.submitted': 'An action awaits your approval',
-            'mc.approved': 'Your submitted action was approved',
-            'mc.rejected': 'Your submitted action was rejected',
-            'pip.created': 'A Performance Improvement Plan was created',
-            'pip.activated': 'Your Performance Improvement Plan is now active',
-            'pip.closed': 'A Performance Improvement Plan was closed',
-            'idp.created': 'An Individual Development Plan was created',
-            'idp.activated': 'Your Individual Development Plan is now active',
-            'coaching.created': 'A coaching plan was created',
-            'coaching.validated': 'A coaching plan was completed',
-            'feedback360.nominate': 'Choose who gives you 360° feedback',
-            'feedback360.approve': '360° feedback nominations to approve',
-            'feedback360.invited': 'You are asked for 360° feedback',
-            'feedback360.reminder': 'A 360° feedback questionnaire is waiting for you',
-            'feedback360.closed': 'A 360° feedback report is ready to release',
-            'feedback360.released': 'Your 360° feedback report is available',
-            'oneonone.topic_added': 'A topic was added to your next one-to-one',
-            'ninebox.submitted': 'A 9-box placement was submitted for review',
-            'ninebox.approved': 'A 9-box placement was approved',
-            'dispute.opened': 'A rating dispute was opened',
-            'dispute.escalated': 'A dispute was escalated',
-            'dispute.resolved': 'A dispute was resolved',
-            'lifecycle.joiner': 'Welcome — your account is ready',
-            'lifecycle.mover': 'Your role assignment has changed',
-            'cycle.opened': 'An assessment cycle is now open',
-            'cycle.closed': 'An assessment cycle has closed',
-            'admin.created': 'Your administrator account was created',
-        };
-    }
-
-    /**
-     * Per-kind display metadata for the in-app centre: an icon and a FALLBACK
-     * deep link used only when the stored payload has no explicit `link`. Wiring
-     * a `link` into the notify payload at the event site is always preferred
-     * (it can be id-specific); this map keeps older/link-less rows still clickable.
-     */
-    static get KIND_META() {
-        // `title` carries BOTH languages ({ fr, en }); resolve at render time via
-        // NotificationService._localizeTitle(meta.title, locale). FR is primary —
-        // it is the fallback whenever a locale/translation is missing.
-        return {
-            'sa.submitted': {
-                icon: 'fa-clipboard-check',
-                link: '/supervisor/self-assessment-reviews',
-                title: { fr: 'Auto-évaluation à réviser', en: 'Self-assessment to review' },
-            },
-            'sa.changes_requested': {
-                icon: 'fa-pen-to-square',
-                link: '/employee/self-assessment',
-                title: {
-                    fr: 'Modifications demandées sur votre auto-évaluation',
-                    en: 'Changes requested on your self-assessment',
-                },
-            },
-            // The three DECISION notifications land on the review page, not on the
-            // status list: a decision is only useful next to the level that was
-            // retained and the reason given for it. /employee/assessment-status
-            // answers "where is my file"; /employee/supervisor-reviews answers
-            // "what was decided about me, and why".
-            'sa.approved': {
-                icon: 'fa-circle-check',
-                link: '/employee/supervisor-reviews',
-                title: {
-                    fr: 'Votre auto-évaluation a été approuvée',
-                    en: 'Your self-assessment was approved',
-                },
-            },
-            'sa.rejected': {
-                icon: 'fa-circle-xmark',
-                link: '/employee/supervisor-reviews',
-                title: {
-                    fr: 'Votre auto-évaluation a été rejetée',
-                    en: 'Your self-assessment was rejected',
-                },
-            },
-            'sa.manager_validated': {
-                icon: 'fa-clipboard-check',
-                link: '/employee/supervisor-reviews',
-                title: {
-                    fr: 'Votre évaluation a été validée par le management',
-                    en: 'Your assessment was validated by management',
-                },
-            },
-            // ----  / M-05 — les CINQ `kind` livrés sans entrée de catalogue.
-            //      Mesuré avant correction : `present` retombait sur `n.kind`, donc
-            //      le centre de notifications et la cloche affichaient le slug technique
-            //      « sa.cancelled », « sa.change_request_raised »… À L'IDENTIQUE en
-            //      français et en anglais — absence de libellé, pas trou de traduction —
-            //      avec l'icône générique fa-bell et le lien de repli /dashboard.
-            //      Émetteurs : SelfAssessmentWorkflowService (_notifyEmployee),
-            //      AssessmentChangeRequestService (_notifyDeciders / _notifyRequester),
-            //      DevelopmentTriggerService (_notify).
-            //
-            //      Le destinataire de `sa.cancelled` est le SUJET : sa ligne est annulée,
-            //      aucune revue n'a été décidée (supervisor_reviews n'est pas touchée),
-            //      donc l'atterrissage est « où en est mon dossier » et non la page des
-            //      décisions de revue.
-            // SA-42: a SuperAdmin reset the assessment for redo. The person may
-            // do it again and their reviewer will see it again. No reason and no
-            // name in the title or the body.
-            'sa.reset_for_redo': {
-                icon: 'fa-rotate-left',
-                link: '/employee/self-assessment',
-                title: { fr: 'Reprenez votre évaluation', en: 'Resume your assessment' },
-            },
-            'sa.review_reset': {
-                icon: 'fa-rotate-left',
-                link: '/supervisor/self-assessment-reviews',
-                title: {
-                    fr: 'Une évaluation est à revoir',
-                    en: 'An assessment needs reviewing again',
-                },
-            },
-            'sa.cancelled': {
-                icon: 'fa-ban',
-                link: '/employee/assessment-status',
-                title: {
-                    fr: 'Votre auto-évaluation a été annulée',
-                    en: 'Your self-assessment was cancelled',
-                },
-            },
-            //      `raised` va au DÉCIDEUR (superviseur, à défaut manager) : sa file.
-            'sa.change_request_raised': {
-                icon: 'fa-pen-to-square',
-                link: '/assessment-changes',
-                title: {
-                    fr: 'Une demande de modification attend votre décision',
-                    en: 'A request for change awaits your decision',
-                },
-            },
-            //      le SUJET d'une demande déposée par son superviseur ne
-            //      recevait RIEN (mesuré sur la demande #35 : une seule notification,
-            //      pour le décideur). `kind` distinct de `raised` parce que le libellé
-            //      de `raised` dit « attend VOTRE décision » : le sujet ne décide rien,
-            //      il doit savoir que la réouverture de SON évaluation est demandée.
-            'sa.change_request_raised_on_me': {
-                icon: 'fa-pen-to-square',
-                link: '/assessment-changes',
-                title: {
-                    fr: 'Une demande de modification a été déposée sur votre évaluation',
-                    en: 'A request for change was raised on your assessment',
-                },
-            },
-            //      `granted` est notifié DEUX FOIS — au demandeur (qui peut être le
-            //      superviseur) et au sujet — donc le libellé reste neutre : dire
-            //      « votre auto-évaluation » mentirait au superviseur demandeur. Le
-            //      lien de repli sert le sujet, qui peut de nouveau saisir ; le
-            //      demandeur, lui, reçoit /assessment-changes dans son payload.
-            'sa.change_request_granted': {
-                icon: 'fa-lock-open',
-                link: '/employee/self-assessment',
-                title: {
-                    fr: 'Une demande de modification a été accordée',
-                    en: 'A request for change was granted',
-                },
-            },
-            'sa.change_request_refused': {
-                icon: 'fa-circle-xmark',
-                link: '/assessment-changes',
-                title: {
-                    fr: 'Votre demande de modification a été refusée',
-                    en: 'Your request for change was refused',
-                },
-            },
-            //      la case basse produit une TÂCHE manager, jamais un PIP d'office.
-            //      Le libellé ne nomme ni la case, ni la performance, ni le potentiel —
-            //      même règle de confidentialité que les autres kinds 9-box.
-            'talent.task.created': {
-                icon: 'fa-list-check',
-                link: '/v2/pip',
-                title: {
-                    fr: 'Une action de suivi vous est assignée',
-                    en: 'A follow-up task is assigned to you',
-                },
-            },
-            'cycle.reminder': {
-                icon: 'fa-clock',
-                link: '/employee/self-assessment',
-                title: { fr: 'Auto-évaluation à soumettre', en: 'Self-assessment to submit' },
-            },
-            'cycle.escalation': {
-                icon: 'fa-triangle-exclamation',
-                link: '/supervisor/self-assessment-reviews',
-                title: { fr: 'Revues à finaliser', en: 'Reviews to finalize' },
-            },
-            'review.completed': {
-                icon: 'fa-clipboard-check',
-                link: '/employee/assessment-status',
-                title: { fr: 'Une revue a été complétée', en: 'A review was completed' },
-            },
-            // ---- Même classe que les cinq `kind` de E-03/M-05, relevée en
-            //      balayant TOUS les kinds émis dans src/ et tous ceux déjà
-            //      stockés en base : deux autres n'avaient aucune entrée.
-            //      `review.due` n'a plus d'émetteur mais une ligne survit dans
-            //      une boîte (notification #1, admin:1) et s'affichait
-            //      « review.due » ; sa destination est la file de revues du
-            //      superviseur, la même que `sa.submitted`.
-            'review.due': {
-                icon: 'fa-clipboard-list',
-                link: '/supervisor/self-assessment-reviews',
-                title: { fr: 'Une revue reste à réaliser', en: 'A review is still to be done' },
-            },
-            //      `certification.revoked` est émis vers l'EMPLOYÉ
-            //      (CertificationService:187) avec la compétence et le motif dans
-            //      le payload ; il atterrit sur ses propres certifications, comme
-            //      `cert.expiry`. Le libellé ne nomme pas la compétence : c'est le
-            //      motif, écrit par le décideur, que present rend.
-            'certification.revoked': {
-                icon: 'fa-id-badge',
-                link: '/employee/my-certifications',
-                title: {
-                    fr: 'Une certification vous a été retirée',
-                    en: 'A certification of yours was revoked',
-                },
-            },
-            'mc.submitted': {
-                icon: 'fa-user-shield',
-                link: '/v2/uam/maker-checker/queue',
-                title: {
-                    fr: 'Une action attend votre approbation',
-                    en: 'An action awaits your approval',
-                },
-            },
-            'mc.approved': {
-                icon: 'fa-circle-check',
-                link: '/dashboard',
-                title: { fr: 'Votre action a été approuvée', en: 'Your action was approved' },
-            },
-            'mc.rejected': {
-                icon: 'fa-circle-xmark',
-                link: '/dashboard',
-                title: { fr: 'Votre action a été rejetée', en: 'Your action was rejected' },
-            },
-            'pip.created': {
-                icon: 'fa-user-clock',
-                link: '/employee/dashboard',
-                title: {
-                    fr: 'Un plan de performance vous concerne',
-                    en: 'A performance plan concerns you',
-                },
-            },
-            'pip.activated': {
-                icon: 'fa-user-clock',
-                link: '/employee/dashboard',
-                title: {
-                    fr: 'Votre plan de performance est actif',
-                    en: 'Your performance plan is now active',
-                },
-            },
-            'pip.closed': {
-                icon: 'fa-user-check',
-                link: '/employee/dashboard',
-                title: {
-                    fr: 'Un plan de performance a été clôturé',
-                    en: 'A performance plan was closed',
-                },
-            },
-            'idp.created': {
-                icon: 'fa-seedling',
-                link: '/v2/idp',
-                title: {
-                    fr: 'Un plan de développement a été créé',
-                    en: 'A development plan was created',
-                },
-            },
-            'idp.activated': {
-                icon: 'fa-seedling',
-                link: '/v2/idp',
-                title: {
-                    fr: 'Votre plan de développement est actif',
-                    en: 'Your development plan is now active',
-                },
-            },
-            'coaching.created': {
-                icon: 'fa-hands-helping',
-                link: '/employee/my-coaching',
-                title: { fr: 'Un plan de coaching a été créé', en: 'A coaching plan was created' },
-            },
-            'coaching.validated': {
-                icon: 'fa-hands-helping',
-                link: '/employee/my-coaching',
-                title: {
-                    fr: 'Un plan de coaching a été complété',
-                    en: 'A coaching plan was completed',
-                },
-            },
-            'feedback360.nominate': {
-                icon: 'fa-users-viewfinder',
-                link: '/feedback-360',
-                title: {
-                    fr: 'Choisissez qui vous donne un feedback 360°',
-                    en: 'Choose who gives you 360° feedback',
-                },
-            },
-            'feedback360.approve': {
-                icon: 'fa-users-viewfinder',
-                link: '/feedback-360',
-                title: {
-                    fr: 'Des propositions d’évaluateurs 360° attendent votre accord',
-                    en: '360° feedback nominations await your approval',
-                },
-            },
-            'feedback360.invited': {
-                icon: 'fa-comments',
-                link: '/feedback-360',
-                title: {
-                    fr: 'On vous demande un feedback 360°',
-                    en: 'You are asked for 360° feedback',
-                },
-            },
-            'feedback360.reminder': {
-                icon: 'fa-comments',
-                link: '/feedback-360',
-                title: {
-                    fr: 'Un questionnaire 360° vous attend',
-                    en: 'A 360° feedback questionnaire is waiting for you',
-                },
-            },
-            'feedback360.closed': {
-                icon: 'fa-users-viewfinder',
-                link: '/feedback-360',
-                title: {
-                    fr: 'Un rapport 360° est prêt à être communiqué',
-                    en: 'A 360° feedback report is ready to release',
-                },
-            },
-            'feedback360.released': {
-                icon: 'fa-users-viewfinder',
-                link: '/feedback-360',
-                title: {
-                    fr: 'Votre rapport 360° est disponible',
-                    en: 'Your 360° feedback report is available',
-                },
-            },
-            'oneonone.topic_added': {
-                icon: 'fa-people-arrows',
-                link: '/one-on-one',
-                title: {
-                    fr: 'Un sujet a été ajouté à votre prochain entretien individuel',
-                    en: 'A topic was added to your next one-to-one',
-                },
-            },
-            'dispute.opened': {
-                icon: 'fa-scale-balanced',
-                link: '/employee/assessment-status',
-                title: { fr: 'Une contestation a été ouverte', en: 'A dispute was opened' },
-            },
-            'dispute.escalated': {
-                icon: 'fa-scale-balanced',
-                link: '/dashboard',
-                title: { fr: 'Une contestation a été escaladée', en: 'A dispute was escalated' },
-            },
-            'dispute.resolved': {
-                icon: 'fa-scale-balanced',
-                link: '/employee/assessment-status',
-                title: { fr: 'Une contestation a été résolue', en: 'A dispute was resolved' },
-            },
-            'ninebox.disclosed': {
-                icon: 'fa-box-open',
-                link: '/employee/dashboard',
-                title: {
-                    fr: 'Votre positionnement talent a été partagé avec vous',
-                    en: 'Your talent placement was shared with you',
-                },
-            },
-            // The two 9-box WORKFLOW kinds. They were in KIND_LABELS (email subjects)
-            // and the policy map but had NO KIND_META, so present fell through to
-            // the raw kind string and the bell rendered a literal "ninebox.approved".
-            // Recipients are the reviewer / submitting manager, never the subject, so
-            // both land on the manager-side grid (/talent/nine-box, requireManagerOrAdmin
-            // — src/routes/index.js:379) and NOT on an employee page. Titles say a
-            // placement moved; they never name the box, the performance or the potential.
-            'ninebox.submitted': {
-                icon: 'fa-box-open',
-                link: '/talent/nine-box',
-                title: {
-                    fr: 'Un positionnement talent attend votre revue',
-                    en: 'A talent placement awaits your review',
-                },
-            },
-            'ninebox.approved': {
-                icon: 'fa-box-open',
-                link: '/talent/nine-box',
-                title: {
-                    fr: 'Un positionnement talent a été approuvé',
-                    en: 'A talent placement was approved',
-                },
-            },
-            'recognition.received': {
-                icon: 'fa-award',
-                link: '/employee/dashboard',
-                title: { fr: 'Vous avez reçu une reconnaissance', en: 'You received recognition' },
-            },
-            // The expiry ladder alerts the EMPLOYEE four times (90/60/30 days, then
-            // expired) because they are the person who must book the revalidation.
-            // It used to land on /employee/dashboard, which shows no certification at
-            // all — four alerts, nowhere to learn WHICH one or WHEN. It now lands on
-            // the employee's own certification page. The TEAM copy goes to the
-            // manager, so it lands on /compliance (manager or view_compliance), where
-            // the scoped expiring-cert table already lives — never on the employee's
-            // own page, which shows the reader's certifications and not their report's.
-            'cert.expiry': {
-                icon: 'fa-id-badge',
-                link: '/employee/my-certifications',
-                title: { fr: 'Certification à renouveler', en: 'Certification to renew' },
-            },
-            'cert.expiry.team': {
-                icon: 'fa-id-badge',
-                link: '/compliance',
-                title: {
-                    fr: "Certification d'un collaborateur à renouveler",
-                    en: "A team member's certification needs renewal",
-                },
-            },
-            'coverage.breach': {
-                icon: 'fa-triangle-exclamation',
-                link: '/dashboard',
-                title: { fr: 'Couverture insuffisante', en: 'Insufficient coverage' },
-            },
-            'coverage.predicted': {
-                icon: 'fa-triangle-exclamation',
-                link: '/dashboard',
-                title: { fr: 'Rupture de couverture prévue', en: 'Coverage gap predicted' },
-            },
-            // Batched variants: past the per-pass alert cap the coverage job sends ONE
-            // notice to the manage_compliance audience instead of one page per rule
-            // (a bulk rule generation can flip hundreds of rules at once).
-            'coverage.breach.batch': {
-                icon: 'fa-triangle-exclamation',
-                link: '/compliance',
-                title: { fr: 'Plusieurs ruptures de couverture', en: 'Multiple coverage breaches' },
-            },
-            'coverage.predicted.batch': {
-                icon: 'fa-triangle-exclamation',
-                link: '/compliance',
-                title: {
-                    fr: 'Plusieurs ruptures de couverture prévues',
-                    en: 'Multiple predicted coverage breaches',
-                },
-            },
-            'continuity.successor_ready': {
-                icon: 'fa-people-roof',
-                link: '/v2/continuity',
-                title: { fr: 'Un successeur est prêt', en: 'A successor is ready' },
-            },
-            'onboarding.submitted': {
-                icon: 'fa-user-plus',
-                link: '/onboarding',
-                title: { fr: "Nouvelle demande d'intégration", en: 'New onboarding request' },
-            },
-            'lifecycle.joiner': {
-                icon: 'fa-door-open',
-                link: '/dashboard',
-                title: {
-                    fr: 'Bienvenue — votre compte est prêt',
-                    en: 'Welcome — your account is ready',
-                },
-            },
-            'lifecycle.mover': {
-                icon: 'fa-shuffle',
-                link: '/employee/dashboard',
-                title: { fr: 'Votre affectation a changé', en: 'Your assignment has changed' },
-            },
-            'cycle.opened': {
-                icon: 'fa-calendar-check',
-                link: '/employee/self-assessment',
-                title: {
-                    fr: "Une campagne d'évaluation est ouverte",
-                    en: 'An assessment cycle is now open',
-                },
-            },
-            'cycle.closed': {
-                icon: 'fa-calendar-xmark',
-                link: '/dashboard',
-                title: {
-                    fr: "Une campagne d'évaluation est clôturée",
-                    en: 'An assessment cycle has closed',
-                },
-            },
-            manager_digest: {
-                icon: 'fa-chart-line',
-                link: '/dashboard',
-                title: {
-                    fr: 'Récapitulatif hebdomadaire de votre équipe',
-                    en: 'Weekly summary of your team',
-                },
-            },
-            dept_digest: {
-                icon: 'fa-chart-line',
-                link: '/reports/dept-analytics',
-                title: { fr: 'Récapitulatif départemental', en: 'Departmental summary' },
-            },
-            // ONE kind for all four cadences of the department brief — the cadence
-            // travels in the payload. Four kinds would make the merge of §4.7
-            // (weekly + monthly + quarterly + yearly falling due on 1 January, ONE
-            // message) impossible to represent. The kind carries no dot, so it forms
-            // its own family through split_part(kind,'.',1) in the notification
-            // centre, which is why locales/*/chrome.json carry
-            // `notif_family_dept_brief`: without it the raw slug leaks into the
-            // family selector (views/pages/notifications/index.ejs:27).
-            // The link is the FALLBACK — every brief carries its own
-            // `payload.link = /reports/dept-brief/<id>`.
-            dept_brief: {
-                icon: 'fa-list-check',
-                link: '/reports/dept-brief',
-                title: { fr: 'Bilan de votre département', en: 'Your department brief' },
-            },
-            'idp.signoff_needed': {
-                icon: 'fa-signature',
-                link: '/v2/idp',
-                title: {
-                    fr: 'Un plan de développement attend votre signature',
-                    en: 'A development plan awaits your signature',
-                },
-            },
-            // Learner-facing kinds point at the LEARNER page. They used to point at
-            // /v2/lms — the admin console — so the employee the notification was
-            // written for was refused by the very link it gave them.
-            'lms.assigned': {
-                icon: 'fa-graduation-cap',
-                link: '/employee/my-learning',
-                title: {
-                    fr: 'Une formation vous a été assignée',
-                    en: 'A training course was assigned to you',
-                },
-            },
-            'lms.due': {
-                icon: 'fa-hourglass-half',
-                link: '/employee/my-learning',
-                title: {
-                    fr: 'Une formation assignée reste à démarrer',
-                    en: 'An assigned training course is still to start',
-                },
-            },
-            // Goes to the SUPERVISOR, not the learner: a finished course now
-            // proposes a level instead of setting one (rulebook §10), and this
-            // is the nudge that stops the proposal sitting unseen forever.
-            'lms.uplift_proposed': {
-                icon: 'fa-user-graduate',
-                link: '/v2/lms/uplifts',
-                title: {
-                    fr: 'Une formation terminée propose une élévation de niveau à valider',
-                    en: 'A completed course proposes a level increase for your decision',
-                },
-            },
-            // Recipient-appropriate landings. These four go to EMPLOYEES, and
-            // /v2/cap is the manager/admin capability console (requireManagerOrAdmin,
-            // src/routes/index.js) — an employee clicking through was bounced to
-            // /dashboard. /employee/opportunities is the "Mon évolution" hub that
-            // surfaces exactly this content (mobility, surveys, recognition) for
-            // them. mobility.application_received stays on /v2/cap: its recipient
-            // is the manager who posted the opportunity.
-            'mobility.opportunity_posted': {
-                icon: 'fa-briefcase',
-                link: '/employee/opportunities',
-                title: {
-                    fr: 'Une nouvelle opportunité pourrait vous correspondre',
-                    en: 'A new opportunity may match your profile',
-                },
-            },
-            'mobility.application_received': {
-                icon: 'fa-user-check',
-                link: '/v2/cap',
-                title: {
-                    fr: 'Une candidature a été reçue pour votre opportunité',
-                    en: 'An application was received for your opportunity',
-                },
-            },
-            'mobility.application_decided': {
-                icon: 'fa-clipboard-check',
-                link: '/employee/opportunities',
-                title: {
-                    fr: 'Une décision a été prise sur votre candidature',
-                    en: 'A decision was made on your application',
-                },
-            },
-            'survey.published': {
-                icon: 'fa-clipboard-question',
-                link: '/employee/opportunities',
-                title: {
-                    fr: 'Une enquête attend votre réponse',
-                    en: 'A survey awaits your response',
-                },
-            },
-            'survey.respond': {
-                icon: 'fa-clipboard-question',
-                link: '/employee/opportunities',
-                title: {
-                    fr: 'Rappel : une enquête attend votre réponse',
-                    en: 'Reminder: a survey awaits your response',
-                },
-            },
-            'lifecycle.leaver': {
-                icon: 'fa-door-closed',
-                link: '/v2/continuity',
-                title: {
-                    fr: 'Un départ requiert un plan de passation',
-                    en: 'A departure requires a handover plan',
-                },
-            },
-            // 3.23.18 R2 — the leaver cascade (LifecycleService) names the ACTIVE
-            // people left without a reviewer. The payload link is per recipient
-            // (admin → the leaver's record, line manager → continuity); this is
-            // the fallback.
-            'safety.blocked': {
-                icon: 'fa-helmet-safety',
-                link: '/v2/idp',
-                title: {
-                    fr: 'Votre habilitation sécurité est bloquée',
-                    en: 'Your safety clearance is blocked',
-                },
-            },
-            'safety.expiring': {
-                icon: 'fa-helmet-safety',
-                link: '/v2/idp',
-                title: {
-                    fr: 'Votre habilitation sécurité arrive à échéance',
-                    en: 'Your safety clearance is expiring soon',
-                },
-            },
-            'safety.blocked.team': {
-                icon: 'fa-helmet-safety',
-                link: '/v2/idp/manage',
-                title: {
-                    fr: 'Habilitation sécurité bloquée dans votre équipe',
-                    en: 'A team member’s safety clearance is blocked',
-                },
-            },
-            'safety.expiring.team': {
-                icon: 'fa-helmet-safety',
-                link: '/v2/idp/manage',
-                title: {
-                    fr: 'Habilitation sécurité d’un collaborateur bientôt échue',
-                    en: 'A team member’s safety clearance is expiring soon',
-                },
-            },
-            // Safety-gate waivers and contests (migration 174).
-            'safety.waiver_granted': {
-                icon: 'fa-user-shield',
-                link: '/safety-gate/me',
-                title: {
-                    fr: 'Vous êtes autorisé(e) par une dérogation de sécurité',
-                    en: 'You are authorised by a safety waiver',
-                },
-            },
-            'safety.waiver_granted.team': {
-                icon: 'fa-user-shield',
-                link: '/safety-gate',
-                title: {
-                    fr: 'Un collaborateur est autorisé par une dérogation de sécurité',
-                    en: 'A team member is authorised by a safety waiver',
-                },
-            },
-            'safety.waiver_ended': {
-                icon: 'fa-user-shield',
-                link: '/safety-gate/me',
-                title: {
-                    fr: 'Votre dérogation de sécurité est terminée',
-                    en: 'Your safety waiver is over',
-                },
-            },
-            'safety.waiver_ended.team': {
-                icon: 'fa-user-shield',
-                link: '/safety-gate',
-                title: {
-                    fr: 'La dérogation de sécurité d’un collaborateur est terminée',
-                    en: 'A team member’s safety waiver is over',
-                },
-            },
-            'safety.contest.review': {
-                icon: 'fa-scale-balanced',
-                link: '/safety-gate',
-                title: {
-                    fr: 'Une contestation d’habilitation sécurité attend votre décision',
-                    en: 'A safety clearance contest needs your decision',
-                },
-            },
-            'safety.contest.decided': {
-                icon: 'fa-scale-balanced',
-                link: '/safety-gate/me',
-                title: {
-                    fr: 'Une contestation d’habilitation sécurité a reçu une décision',
-                    en: 'A safety clearance contest has a decision',
-                },
-            },
-            'lifecycle.reports_to_reassign': {
-                icon: 'fa-people-arrows',
-                link: '/v2/continuity',
-                title: {
-                    fr: 'Des collaborateurs sont à réaffecter après un départ',
-                    en: 'Team members need a new reviewer after a departure',
-                },
-            },
-            'access.review': {
-                icon: 'fa-user-shield',
-                link: '/admin/access-review',
-                title: { fr: 'Revue des accès à réaliser', en: 'Access review to complete' },
-            },
-            // The two weekly manager nudges raised by jobs/reminders.js. That job
-            // deliberately falls back to another kind whenever KIND_META has no
-            // entry (kindFor), so until now they borrowed 'ninebox.submitted' /
-            // 'cycle.escalation' titles that described a different event. Their own
-            // entries make the bell say what actually happened. Counts only — no
-            // names, no placements.
-            'ninebox.reassess_due': {
-                icon: 'fa-box-open',
-                link: '/talent/nine-box',
-                title: {
-                    fr: 'Des positionnements talent sont à revoir',
-                    en: 'Talent placements are due for review',
-                },
-            },
-            'talent.plan_due': {
-                icon: 'fa-list-check',
-                link: '/talent/actions',
-                title: {
-                    fr: 'Des plans de votre équipe arrivent à échéance',
-                    en: 'Plans in your team are coming due',
-                },
-            },
-            // ---- Proactive continuity automation (jobs/succession-review,
-            //      jobs/retention-recompute, jobs/reminders handover section,
-            //      jobs/planning-digest). Key-person risk is the one exposure the
-            //      platform used to surface ONLY to whoever happened to open
-            //      /v2/continuity; these four kinds are what now go and find the
-            //      responsible person. All four are AGGREGATED (one notification
-            //      carrying a count, never one per row) and carry COUNTS ONLY —
-            //      no employee name, no risk band, no placement.
-            'succession.review_due': {
-                icon: 'fa-people-roof',
-                link: '/v2/continuity',
-                title: {
-                    fr: 'Des postes clés attendent votre revue de succession',
-                    en: 'Key positions await your succession review',
-                },
-            },
-            'handover.due': {
-                icon: 'fa-people-arrows',
-                link: '/v2/continuity',
-                title: {
-                    fr: 'Des plans de passation restent à finaliser',
-                    en: 'Handover plans are still to be completed',
-                },
-            },
-            // Retention risk is a `restricted` confidentiality tier (24_continuity.sql):
-            // in-app only, count only, and it never names anyone — same rule as 9-box.
-            'retention.risk_high': {
-                icon: 'fa-user-minus',
-                link: '/v2/continuity',
-                title: {
-                    fr: 'Risque de départ élevé dans votre équipe',
-                    en: 'High retention risk in your team',
-                },
-            },
-            'planning.digest': {
-                icon: 'fa-calendar-days',
-                link: '/dashboard',
-                title: {
-                    fr: 'Votre point mensuel de planification des effectifs',
-                    en: 'Your monthly workforce-planning brief',
-                },
-            },
-            // ---- operations alerts to SuperAdmins.
-            //      Raised by JobRunService.alert — de-duplicated per day, in-app
-            //      first, rolled into the daily digest e-mail (tier 'digest').
-            'ops.job_failed': {
-                icon: 'fa-heart-crack',
-                link: '/admin/health',
-                title: {
-                    fr: 'Une tâche planifiée a échoué ou ne tourne plus',
-                    en: 'A scheduled job failed or has stopped running',
-                },
-            },
-            'ops.backup_stale': {
-                icon: 'fa-database',
-                link: '/admin/health',
-                title: {
-                    fr: 'Sauvegarde de la base absente ou trop ancienne',
-                    en: 'Database backup missing or too old',
-                },
-            },
-            'ops.hris_plan_ready': {
-                icon: 'fa-people-arrows',
-                link: '/admin/integrations/hris',
-                title: {
-                    fr: 'Synchronisation SIRH : un plan attend votre revue',
-                    en: 'HRIS sync: a plan is waiting for your review',
-                },
-            },
-            'ops.hris_sync_alert': {
-                icon: 'fa-triangle-exclamation',
-                link: '/admin/integrations/hris',
-                title: {
-                    fr: 'Synchronisation SIRH interrompue',
-                    en: 'HRIS sync stopped',
-                },
-            },
-            'ops.smtp_failed': {
-                icon: 'fa-envelope-circle-check',
-                link: '/admin/health',
-                title: {
-                    fr: 'L’envoi d’e-mails échoue (SMTP)',
-                    en: 'E-mail delivery is failing (SMTP)',
-                },
-            },
-            'ops.license': {
-                icon: 'fa-file-contract',
-                link: '/admin/license',
-                title: {
-                    fr: 'Licence expirée ou sièges dépassés',
-                    en: 'Licence expired or seats exceeded',
-                },
-            },
-            // SA-38: scheduled reports (report-scheduler.js, migration 172).
-            'report.schedule_ready': {
-                icon: 'fa-file-csv',
-                link: '/reports/schedules',
-                title: {
-                    fr: 'Votre rapport programmé est prêt',
-                    en: 'Your scheduled report is ready',
-                },
-            },
-            'report.schedule_suspended': {
-                icon: 'fa-pause-circle',
-                link: '/reports/schedules',
-                forceLink: true,
-                title: {
-                    fr: 'Un envoi de rapport programmé a été suspendu',
-                    en: 'A report schedule was suspended',
-                },
-            },
-            // ---- 3.23.20 (C2f): security alerts to every SuperAdmin.
-            'security.breakglass_signin': {
-                icon: 'fa-key',
-                link: '/system-logs',
-                title: {
-                    fr: 'Connexion par l’accès de secours super administrateur',
-                    en: 'Super administrator emergency-access sign-in',
-                },
-            },
-            'security.superadmin_sso_refused': {
-                icon: 'fa-user-shield',
-                link: '/system-logs',
-                title: {
-                    fr: 'Connexion SSO refusée sur un compte super administrateur',
-                    en: 'SSO sign-in refused on a super administrator account',
-                },
-            },
-            'security.superadmin_mfa_changed': {
-                icon: 'fa-shield-halved',
-                link: '/admins',
-                title: {
-                    fr: 'Double authentification d’un super administrateur modifiée',
-                    en: 'Super administrator two-factor authentication changed',
-                },
-            },
-            'sso.migration_invite': {
-                icon: 'fa-right-to-bracket',
-                // The signed-in explanation (same text as the e-mail); /login took
-                // a signed-in reader nowhere. Wins over the payload link, so the
-                // notices already stored with '/login' open it too.
-                link: '/account/sso-change',
-                forceLink: true,
-                title: {
-                    fr: 'Connexion avec votre compte d’entreprise : ce qui change',
-                    en: 'Signing in with your company account: what changes',
-                },
-            },
-            'security.superadmin_password_reset': {
-                icon: 'fa-key',
-                link: '/admins',
-                title: {
-                    fr: 'Mot de passe d’un super administrateur réinitialisé',
-                    en: 'Super administrator password reset',
-                },
-            },
-            // Objection to automated profiling (GDPR art. 21): reviewed on the
-            // works-council register page. The row names nobody.
-            'privacy.objection': {
-                icon: 'fa-hand',
-                link: '/compliance/register',
-                title: {
-                    fr: 'Une personne s’est opposée au profilage automatisé',
-                    en: 'Someone objected to automated profiling',
-                },
-            },
-            'privacy.trigger_paused': {
-                icon: 'fa-pause',
-                link: '/compliance/register',
-                title: {
-                    fr: 'Une action de développement automatique attend votre examen',
-                    en: 'An automatic development action awaits your review',
-                },
-            },
-            // ---- Lockout model (progressive throttling, admin hard lock).
-            'security.admin_account_locked': {
-                icon: 'fa-lock',
-                link: '/admins',
-                title: {
-                    fr: 'Compte administrateur verrouillé après des échecs de connexion',
-                    en: 'Administrator account locked after failed sign-ins',
-                },
-            },
-            'security.account_soft_locked': {
-                icon: 'fa-user-lock',
-                link: '/account',
-                title: {
-                    fr: 'Connexions ralenties sur votre compte',
-                    en: 'Sign-ins slowed on your account',
-                },
-            },
-        };
-    }
-
-    /**
-     * Data-driven channel policy — email TIER per kind (the "no mailbox invasion"
-     * core): 'immediate' (send now, still user-controllable via the category
-     * toggle), 'digest' (in-app now; the daily digest emails it), 'none' (in-app
-     * only, never email — e.g. confidential 9-box). A kind absent here falls back
-     * to legacy category gating. Class is implied: obligations/criticals are
-     * immediate, informational/engagement are digest.
-     */
-    static get KIND_POLICY() {
-        return {
-            // Time-boxed obligation / security / SLA → immediate email
-            'sa.changes_requested': 'immediate',
-            'sa.reset_for_redo': 'immediate',
-            'sa.rejected': 'immediate',
-            'mc.submitted': 'immediate',
-            'mc.rejected': 'immediate',
-            'dispute.opened': 'immediate',
-            'dispute.escalated': 'immediate',
-            'dispute.resolved': 'immediate',
-            'pip.activated': 'immediate',
-            'coverage.breach': 'immediate',
-            'coverage.predicted': 'immediate',
-            'coverage.breach.batch': 'immediate',
-            'coverage.predicted.batch': 'immediate',
-            'cert.expiry': 'immediate',
-            'cycle.reminder': 'immediate',
-            'cycle.escalation': 'immediate',
-            // Informational / engagement → daily digest only (no standalone email)
-            'sa.submitted': 'digest',
-            'sa.review_reset': 'digest',
-            'sa.approved': 'digest',
-            'sa.manager_validated': 'digest',
-            'mc.approved': 'digest',
-            'review.completed': 'digest',
-            'pip.created': 'digest',
-            'pip.closed': 'digest',
-            'idp.created': 'digest',
-            'idp.activated': 'digest',
-            'idp.signoff_needed': 'digest',
-            'coaching.created': 'digest',
-            'coaching.validated': 'digest',
-            'feedback360.nominate': 'digest',
-            'feedback360.approve': 'digest',
-            'feedback360.invited': 'digest',
-            'feedback360.reminder': 'digest',
-            'feedback360.closed': 'digest',
-            'feedback360.released': 'digest',
-            'oneonone.topic_added': 'digest',
-            'recognition.received': 'digest',
-            'continuity.successor_ready': 'digest',
-            'onboarding.submitted': 'digest',
-            'cert.expiry.team': 'digest',
-            'lms.assigned': 'digest',
-            'lms.due': 'digest',
-            // A decision is pending on a person's official skill level — it
-            // belongs in the daily digest, not buried in-app only.
-            'lms.uplift_proposed': 'digest',
-            'mobility.opportunity_posted': 'digest',
-            'mobility.application_received': 'digest',
-            'mobility.application_decided': 'immediate',
-            'survey.published': 'digest',
-            'survey.respond': 'digest',
-            // ('idp.signoff_needed' was listed twice — same 'digest' tier both times,
-            //  so the duplicate was a no-op that only tripped no-dupe-keys. Removed
-            //  here; the surviving declaration is three lines up, tier unchanged.)
-            'access.review': 'digest',
-            // Manager nudges from jobs/reminders.js — in-app now, rolled into the
-            // one daily digest mail; never a standalone email.
-            'ninebox.reassess_due': 'digest',
-            'talent.plan_due': 'digest',
-            // Continuity automation — in-app now, rolled into the one daily digest
-            // mail. ('planning.digest' is deliberately ABSENT: like manager_digest
-            // and dept_digest it composes its own branded email and is gated by the
-            // 'digest' email category, not by a per-kind tier.)
-            'succession.review_due': 'digest',
-            'handover.due': 'digest',
-            'lifecycle.joiner': 'digest',
-            'lifecycle.mover': 'digest',
-            'lifecycle.leaver': 'digest',
-            'safety.blocked': 'immediate',
-            'safety.expiring': 'immediate',
-            'safety.blocked.team': 'immediate',
-            'safety.expiring.team': 'immediate',
-            'safety.waiver_granted': 'immediate',
-            'safety.waiver_granted.team': 'immediate',
-            'safety.waiver_ended': 'immediate',
-            'safety.waiver_ended.team': 'immediate',
-            'safety.contest.review': 'immediate',
-            'safety.contest.decided': 'immediate',
-            'lifecycle.reports_to_reassign': 'digest',
-            'cycle.opened': 'digest',
-            'cycle.closed': 'digest',
-            // Confidential → in-app only, NEVER email
-            // ('ninebox.submitted' was the only 9-box kind with no tier, so it fell
-            //  through to category gating and could have been emailed. Added, not
-            //  changed: no existing tier is touched.)
-            // Retention risk carries a `restricted` confidentiality tier in the
-            // schema — it must never leave the app, so it is in-app only. (The
-            // job that raises it uses enqueue rather than notify as well, so
-            // it never reaches the webhook fan-out either.)
-            'ninebox.disclosed': 'none',
-            'ninebox.approved': 'none',
-            'ninebox.submitted': 'none',
-            'retention.risk_high': 'none',
-            // ops alerts: in-app now, in the daily digest e-mail when emailOnDigest.
-            'ops.job_failed': 'digest',
-            'ops.backup_stale': 'digest',
-            'ops.hris_plan_ready': 'digest',
-            'ops.hris_sync_alert': 'digest',
-            'ops.smtp_failed': 'digest',
-            'ops.license': 'digest',
-            // SA-38: the copy is ready now; a suspension is said in the app.
-            'report.schedule_ready': 'immediate',
-            'report.schedule_suspended': 'digest',
-            // 3.23.20 (C2f): security alerts to every SuperAdmin — sent now.
-            'security.breakglass_signin': 'immediate',
-            'security.superadmin_sso_refused': 'immediate',
-            'security.superadmin_mfa_changed': 'immediate',
-            'security.superadmin_password_reset': 'immediate',
-            // Lockout: the SuperAdmins now; the person, now too (someone is
-            // trying their account; still user-controllable by category).
-            'security.admin_account_locked': 'immediate',
-            'security.account_soft_locked': 'immediate',
-            // 3.23.20: the SSO migration invitation — in-app row written by
-            // SsoInviteService (enqueue); its e-mail is composed and sent there.
-            'sso.migration_invite': 'none',
-            // Profiling objections: in-app only. They name nobody, but an
-            // objection is itself personal data: it never leaves the app.
-            'privacy.objection': 'none',
-            'privacy.trigger_paused': 'none',
-            // 'dept_brief' is DELIBERATELY ABSENT — do not add it.
-            //
-            // Like manager_digest, dept_digest and planning.digest, the department
-            // brief composes its OWN branded email and is gated by the 'digest'
-            // EMAIL CATEGORY, not by a per-kind tier. A tier of 'digest' here would
-            // hit line 131 (`if (tier === 'digest') { result.email =
-            // 'digest_deferred'; return result; }`) and the composed brief would
-            // never be sent — the monthly, quarterly and yearly cadences would
-            // silently become in-app only.
-            //
-            // This absence is written down because the jest invariant only checks
-            // POLICY → META, never META → POLICY: the omission is invisible to the
-            // test suite, and the next contributor will reasonably assume it was an
-            // oversight. It is not.
-        };
-    }
-
-    /**
-     * QA LE SIGNALEMENT NOMME LA CAMPAGNE.
-     *
-     * Trois transitions de campagne (verrouillage, proposition de clôture,
-     * retard hebdomadaire) réemploient DÉLIBÉRÉMENT le même kind
-     * `cycle.escalation` (`jobs/cycle-deadline.js`). Le réemploi est bon — le
-     * lien du payload pointe la bonne campagne et la surface de décision est
-     * complète — mais la boîte du super-administrateur affichait six lignes
-     * RIGOUREUSEMENT identiques, « Revues à finaliser », venues de campagnes
-     * différentes : rien ne disait laquelle, ni ce qui venait de se passer.
-     *
-     * Le mécanisme n'est pas refait : le kind, le ledger, la cadence et le lien
-     * ne bougent pas. Seul le LIBELLÉ gagne un complément, construit AU MOMENT
-     * DE LA LECTURE à partir du payload (jamais figé en base, sinon la phrase
-     * serait gelée dans la langue de l'émetteur — c'est exactement le défaut
-     * P2-03) et fourni en FR et en EN dans le même geste.
-     *
-     * Contrat : retourne une chaîne courte, ou null — et null veut dire « titre
-     * inchangé ». Un payload sans code de campagne ne change donc rien.
-     */
-    static get KIND_SUBTITLE() {
-        const n = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
-        return {
-            // The announcement carries its date, the invitation its provider: the
-            // title alone said nothing to a person with no e-mail.
-            'sso.migration_invite': (p, lang) =>
-                require('./SsoInviteService').inAppSubtitle(p, lang),
-            // SA-38: the report's own (template) name, never a figure.
-            'report.schedule_ready': (p) => {
-                const name = String((p && p.report) || '').trim();
-                return name ? `« ${name.slice(0, 120)} »` : null;
-            },
-            'cycle.escalation': (p, lang) => {
-                const code = String((p && p.cycle) || '').trim();
-                if (!code) return null;
-                const stage = String((p && p.stage) || '');
-                const pending = n(p && p.pending);
-                const late = n(p && p.overdueDays);
-                if (lang === 'en') {
-                    if (stage === 'locked')
-                        return `campaign ${code} is locked: the reviews are what is left`;
-                    if (stage === 'closure_proposed')
-                        return `campaign ${code}: a closure is proposed, your decision is awaited`;
-                    if (stage === 'overdue')
-                        return late
-                            ? `campaign ${code} is ${late} day(s) past its deadline`
-                            : `campaign ${code} is past its deadline`;
-                    if (stage === 'escalation_overdue')
-                        return pending
-                            ? `campaign ${code}: ${pending} review(s) overdue`
-                            : `campaign ${code}: reviews overdue`;
-                    return pending
-                        ? `campaign ${code}: ${pending} review(s) to finalise`
-                        : `campaign ${code}`;
+                const row = await db.get(
+                    'SELECT email, username, is_active FROM admins WHERE id = ?',
+                    [userId]
+                );
+                const name = (row && (row.firstName || row.username)) || '';
+                if (row && (row.isActive ?? row.is_active) === false) {
+                    return { email: null, name, emailStatus: 'suppressed' };
                 }
-                if (stage === 'locked') return `campagne ${code} verrouillée : restent les revues`;
-                if (stage === 'closure_proposed')
-                    return `campagne ${code} : une clôture est proposée, votre décision est attendue`;
-                if (stage === 'overdue')
-                    return late
-                        ? `campagne ${code} en retard de ${late} jour(s)`
-                        : `campagne ${code} en retard`;
-                if (stage === 'escalation_overdue')
-                    return pending
-                        ? `campagne ${code} : ${pending} revue(s) en retard`
-                        : `campagne ${code} : revues en retard`;
-                return pending
-                    ? `campagne ${code} : ${pending} revue(s) à finaliser`
-                    : `campagne ${code}`;
-            },
-        };
+                return { email: row && row.email ? row.email : null, name, emailStatus: null };
+            }
+            const row = await db.get(
+                'SELECT email, first_name, is_active, cancelled_at, erased_at FROM employees WHERE id = ?',
+                [userId]
+            );
+            const name = (row && (row.firstName || row.first_name)) || '';
+            if (
+                row &&
+                ((row.isActive ?? row.is_active) === false ||
+                    row.cancelledAt ||
+                    row.cancelled_at ||
+                    row.erasedAt ||
+                    row.erased_at)
+            ) {
+                return { email: null, name: '', emailStatus: 'suppressed' };
+            }
+            return { email: row && row.email ? row.email : null, name, emailStatus: null };
+        } catch {
+            return { email: null, name: '', emailStatus: null };
+        }
     }
 
-    /** Le complément de libellé d'un kind pour ce payload, ou null. */
+    /** Moved to ./notificationCatalogue (the one catalogue of every kind). */
+    static get KIND_LABELS() {
+        return catalogue.KIND_LABELS;
+    }
+
+    /** Moved to ./notificationCatalogue (the one catalogue of every kind). */
+    static get KIND_META() {
+        return catalogue.KIND_META;
+    }
+
+    /** Moved to ./notificationCatalogue (the one catalogue of every kind). */
+    static get KIND_POLICY() {
+        return catalogue.KIND_POLICY;
+    }
+
+    /** Moved to ./notificationCatalogue (the one catalogue of every kind). */
+    static get KIND_SUBTITLE() {
+        return catalogue.KIND_SUBTITLE;
+    }
+
+    /** The complement of a kind's title for this payload, or null (catalogue.subtitleOf). */
     static _kindSubtitle(kind, payload, locale) {
-        const build = NotificationService.KIND_SUBTITLE[kind];
-        if (typeof build !== 'function') return null;
-        let s = null;
-        try {
-            s = build(
-                payload && typeof payload === 'object' ? payload : {},
-                NotificationService._lang(locale)
-            );
-        } catch (_) {
-            return null;
-        }
-        if (s == null) return null;
-        // Replié sur une ligne, comme un motif : le titre est une seule ligne.
-        s = String(s).replace(/[ -]+/g, ' ').replace(/\s+/g, ' ').trim(); // eslint-disable-line no-control-regex
-        if (!s) return null;
-        return s.length > 120 ? `${s.slice(0, 119)}…` : s;
+        return catalogue.subtitleOf(kind, payload, locale);
     }
 
     /**
@@ -1787,10 +890,7 @@ class NotificationService {
      * 'en-US', etc.; only the leading language subtag matters.
      */
     static _localizeTitle(title, locale) {
-        if (title == null) return null;
-        if (typeof title === 'string') return title;
-        const lang = NotificationService._lang(locale);
-        return title[lang] || title.fr || title.en || null;
+        return catalogue.localize(title, locale);
     }
 
     /**
@@ -1879,623 +979,93 @@ class NotificationService {
         };
     }
 
-    /**
-     * Build {subject, html, text} for an event. Explicit subject/html/text win;
-     * otherwise derive a readable message from the kind label + payload fields.
-     */
     /** HTML-escape for values interpolated into the email body. */
     static _esc(s) {
-        return String(s == null ? '' : s).replace(
-            /[&<>"']/g,
-            (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
-        );
+        return require('../utils/emailTemplate').esc(s);
     }
 
-    /** Resolve tenant branding for emails (best-effort; sensible defaults). */
-    static async _brand() {
-        const d = { appName: 'IDevelop', accent: '#5140D9', ink: '#0E1116', logo: '' };
-        try {
-            const AppSettingsModel = require('../models/AppSettingsModel');
-            // Sequential, NOT Promise.all: notify is routinely called from
-            // inside db.runTransaction, where every query shares ONE pg client
-            // — firing three at once there triggers node-pg's "client is already
-            // executing a query" path. These reads are settings-cache hits, so
-            // serialising them costs nothing.
-            const appName = await AppSettingsModel.getValue('appName', null).catch(() => null);
-            const accent = await AppSettingsModel.getValue('brandAccentColor', null).catch(
-                () => null
-            );
-            const logo = await AppSettingsModel.getValue('brandLogo', null).catch(() => null);
-            if (appName && String(appName).trim()) d.appName = String(appName).trim();
-            if (accent && /^#?[0-9a-fA-F]{6}$/.test(String(accent).trim())) {
-                d.accent = String(accent).trim().startsWith('#')
-                    ? String(accent).trim()
-                    : `#${String(accent).trim()}`;
-            }
-            if (logo && /^data:image\//.test(String(logo))) d.logo = String(logo);
-        } catch (_) {
-            /* defaults */
-        }
-        return d;
+    /** The product's default name (src/config/product.js), never typed here. */
+    static get DEFAULT_APP_NAME() {
+        return require('../utils/emailTemplate').defaultAppName();
+    }
+
+    /** Content-ID of the inline logo. */
+    static get LOGO_CID() {
+        return require('../utils/emailTemplate').LOGO_CID;
     }
 
     /**
-     * The body sentence for an event, FR primary + EN parity.
-     *
-     * Every kind that can be emailed has one — the generic "Une mise à jour
-     * vous concernant est disponible" fallback used to stand in for whole tiers
-     * of events (including five immediate-tier ones), so an urgent dispute
-     * escalation and a routine plan update read identically and neither told
-     * the reader what had happened.
-     *
-     * The confidentiality rule holds and is the reason these are static
-     * sentences: NOTHING from the payload is interpolated, no rating, level,
-     * comment, reason, PIP content or 9-box placement ever appears. The mail
-     * says what KIND of thing happened and links into the app; the detail
-     * stays behind authentication, where clearance is enforced.
+     * Resolve tenant branding for emails (best-effort; sensible defaults). The
+     * logo stays the stored data URL: it is NEVER put in the HTML — it travels
+     * as a CID inline attachment. Overridable (scripts/render-notification-samples.js).
      */
+    static async _brand() {
+        return require('../utils/emailTemplate').brand();
+    }
+
+    /** The logo as a nodemailer inline attachment, or null (see emailTemplate.logoAttachment). */
+    static _logoAttachment(brand) {
+        return require('../utils/emailTemplate').logoAttachment(brand);
+    }
+
+    /** Moved to ./notificationCatalogue (the one catalogue of every kind). */
     static get KIND_MESSAGES() {
-        return {
-            // ---- Self-assessment workflow ----
-            'sa.submitted': {
-                fr: 'Une auto-évaluation a été soumise et attend votre revue. Merci de la traiter dès que possible.',
-                en: 'A self-assessment has been submitted and is waiting for your review. Please handle it as soon as you can.',
-            },
-            'sa.changes_requested': {
-                fr: 'Votre responsable a demandé des modifications sur votre auto-évaluation. Merci de la compléter puis de la soumettre à nouveau.',
-                en: 'Your manager has requested changes to your self-assessment. Please complete it and submit it again.',
-            },
-            'sa.approved': {
-                fr: 'Bonne nouvelle : votre auto-évaluation a été approuvée. Vous pouvez en consulter le détail.',
-                en: 'Good news: your self-assessment has been approved. You can review the details.',
-            },
-            'sa.rejected': {
-                fr: 'Votre auto-évaluation a été rejetée. Consultez les commentaires associés pour la suite à donner.',
-                en: 'Your self-assessment was rejected. Open it to read the comments and see what happens next.',
-            },
-            'sa.manager_validated': {
-                fr: 'Votre évaluation a été validée par le management. Vous pouvez en consulter le détail.',
-                en: 'Your assessment has been validated by management. You can review the details.',
-            },
-            'review.completed': {
-                fr: "Une revue de votre responsable a été complétée. Le résultat est consultable dans l'application.",
-                en: 'A supervisor review has been completed. The outcome is available in the app.',
-            },
-            'review.due': {
-                fr: "Une revue d'évaluation reste à réaliser et attend votre traitement.",
-                en: 'An assessment review is still to be done and is waiting for you.',
-            },
-            // Compétence et motif restent dans l'application : la phrase dit ce qui
-            // s'est passé, jamais quelle certification ni pourquoi.
-            'privacy.objection': {
-                fr: "Une personne s'est opposée au profilage automatisé. Examinez sa demande dans le registre.",
-                en: 'Someone objected to automated profiling. Review the request in the register.',
-            },
-            'privacy.trigger_paused': {
-                fr: "Une action de développement déclenchée automatiquement a été suspendue parce que la personne s'est opposée au profilage. Elle attend une décision humaine.",
-                en: 'An automatically triggered development action was paused because the person objected to profiling. It awaits a human decision.',
-            },
-            'certification.revoked': {
-                fr: "Une de vos certifications a été retirée. Le motif et la marche à suivre sont consultables dans l'application.",
-                en: 'One of your certifications was revoked. The reason and what to do next are available in the app.',
-            },
-            // ----  / M-05 — annulation et demande de modification.
-            //      Comme toutes les autres : phrases STATIQUES, rien du payload n'y est
-            //      interpolé. Le motif écrit par le décideur est rendu dans le centre de
-            //      notifications (voir present), jamais dans un e-mail.
-            'sa.reset_for_redo': {
-                fr: 'Votre évaluation a été rouverte : vous pouvez la reprendre.',
-                en: 'Your assessment has been reopened: you can resume it.',
-            },
-            'sa.review_reset': {
-                fr: 'Une évaluation de votre équipe a été rouverte et attend de nouveau votre revue.',
-                en: 'An assessment in your team has been reopened and is waiting for your review again.',
-            },
-            'sa.cancelled': {
-                fr: "Une auto-évaluation vous concernant a été annulée par votre responsable. Le motif et la suite à donner sont consultables dans l'application.",
-                en: 'A self-assessment concerning you was cancelled by your manager. The reason and what happens next are available in the app.',
-            },
-            'sa.change_request_raised': {
-                fr: 'Une demande de modification sur une évaluation validée attend votre décision. Merci de la traiter dès que possible.',
-                en: 'A request to change a validated assessment is waiting for your decision. Please handle it as soon as you can.',
-            },
-            'sa.change_request_raised_on_me': {
-                fr: "Une demande de modification a été déposée sur une de vos évaluations. Le motif et la suite donnée sont consultables dans l'application.",
-                en: 'A request for change was raised on one of your assessments. The reason and what happens next are available in the app.',
-            },
-            'sa.change_request_granted': {
-                fr: "Une demande de modification a été accordée : l'auto-évaluation concernée est de nouveau modifiable.",
-                en: 'A request for change was granted: the self-assessment concerned can be edited again.',
-            },
-            'sa.change_request_refused': {
-                fr: "Votre demande de modification a été refusée. Le motif de la décision est consultable dans l'application.",
-                en: 'Your request for change was refused. The reason for the decision is available in the app.',
-            },
-
-            // ---- Maker-checker ----
-            'mc.submitted': {
-                fr: "Une action soumise par un collègue attend votre approbation. Merci de l'examiner à votre convenance.",
-                en: 'An action submitted by a colleague is waiting for your approval. Please review it at your convenience.',
-            },
-            'mc.approved': {
-                fr: "L'action que vous avez soumise a été approuvée.",
-                en: 'The action you submitted has been approved.',
-            },
-            'mc.rejected': {
-                fr: "L'action que vous avez soumise a été rejetée. Consultez le motif pour la suite à donner.",
-                en: 'The action you submitted was rejected. Open it to read the reason and decide what happens next.',
-            },
-
-            // ---- Disputes (immediate tier — SLA-bound) ----
-            'dispute.opened': {
-                fr: 'Une contestation a été ouverte sur une évaluation et attend votre traitement dans le délai prévu.',
-                en: 'A rating dispute has been opened and is waiting to be handled within the agreed time limit.',
-            },
-            'dispute.escalated': {
-                fr: 'Une contestation a été escaladée au niveau supérieur : son délai de traitement court désormais pour vous.',
-                en: 'A rating dispute has been escalated to the next level — its response deadline now runs for you.',
-            },
-            'dispute.resolved': {
-                fr: "Une contestation a été résolue. La décision et sa justification sont consultables dans l'application.",
-                en: 'A rating dispute has been resolved. The decision and its rationale are available in the app.',
-            },
-
-            // ---- Performance / development plans ----
-            'pip.created': {
-                fr: "Un plan d'amélioration de la performance a été créé et vous concerne.",
-                en: 'A performance improvement plan has been created and concerns you.',
-            },
-            'pip.activated': {
-                fr: "Un plan de performance vous concernant est désormais actif. Merci d'en prendre connaissance.",
-                en: 'A performance plan concerning you is now active. Please take note of it.',
-            },
-            'pip.closed': {
-                fr: "Un plan d'amélioration de la performance a été clôturé.",
-                en: 'A performance improvement plan has been closed.',
-            },
-            'idp.created': {
-                fr: 'Un plan de développement individuel a été créé et vous concerne.',
-                en: 'An individual development plan has been created and concerns you.',
-            },
-            'idp.activated': {
-                fr: 'Votre plan de développement individuel est désormais actif.',
-                en: 'Your individual development plan is now active.',
-            },
-            'idp.signoff_needed': {
-                fr: 'Un plan de développement attend votre signature pour pouvoir démarrer.',
-                en: 'A development plan is waiting for your sign-off before it can start.',
-            },
-            'coaching.created': {
-                fr: 'Un plan de coaching a été créé pour vous accompagner.',
-                en: 'A coaching plan has been created to support you.',
-            },
-            'coaching.validated': {
-                fr: 'Un plan de coaching a été mené à son terme et validé.',
-                en: 'A coaching plan has been completed and validated.',
-            },
-            'feedback360.nominate': {
-                fr: 'Un feedback 360° est lancé pour vous. Proposez les collègues, collaborateurs et autres personnes qui vous répondront.',
-                en: 'A 360° feedback round has been launched for you. Propose the colleagues, direct reports and others who will answer.',
-            },
-            'feedback360.approve': {
-                fr: 'Un membre de votre équipe a proposé ses évaluateurs 360°. Validez ou ajustez la liste.',
-                en: 'A member of your team has proposed their 360° raters. Approve or adjust the list.',
-            },
-            'feedback360.invited': {
-                fr: 'Un collègue vous demande un feedback 360°. Vos réponses sont regroupées avec celles des autres et restent anonymes.',
-                en: 'A colleague asks you for 360° feedback. Your answers are grouped with others and stay anonymous.',
-            },
-            'feedback360.reminder': {
-                fr: 'Un questionnaire de feedback 360° attend encore votre réponse.',
-                en: 'A 360° feedback questionnaire is still waiting for your answer.',
-            },
-            'feedback360.closed': {
-                fr: 'Un tour de feedback 360° est clos. Consultez le rapport et communiquez-le à la personne concernée.',
-                en: 'A 360° feedback round has closed. Read the report and release it to the person.',
-            },
-            'feedback360.released': {
-                fr: 'Votre rapport de feedback 360° est disponible.',
-                en: 'Your 360° feedback report is available.',
-            },
-            'oneonone.topic_added': {
-                fr: 'Un sujet a été ajouté à l’ordre du jour de votre prochain entretien individuel.',
-                en: 'A topic has been added to the agenda of your next one-to-one.',
-            },
-            'talent.plan_due': {
-                fr: "Des plans de développement ou de performance de votre équipe arrivent à échéance ou n'ont pas démarré.",
-                en: 'Development or performance plans in your team are coming due or have not started.',
-            },
-            //  / M-05. Comptes et faits seulement : ni la case, ni la
-            // performance, ni le potentiel — le détail reste derrière le lien.
-            'talent.task.created': {
-                fr: "Une action de suivi vous a été assignée à la suite d'une revue talent. Ouvrez-la pour décider de la suite : rien n'est ouvert d'office.",
-                en: 'A follow-up task has been assigned to you after a talent review. Open it to decide what happens next: nothing is opened automatically.',
-            },
-            // Counts only — never a box, a performance level or a potential level.
-            'ninebox.reassess_due': {
-                fr: "Des positionnements talent de votre équipe n'ont pas été revus depuis la cadence définie.",
-                en: 'Talent placements in your team have not been reviewed within the defined cadence.',
-            },
-
-            // ---- Campaigns ----
-            'cycle.opened': {
-                fr: "Une campagne d'évaluation vient d'être ouverte : votre contribution y est attendue.",
-                en: 'An assessment cycle has just opened — your contribution is expected.',
-            },
-            'cycle.reminder': {
-                fr: "Une campagne d'évaluation est en cours et attend votre contribution.",
-                en: 'An assessment cycle is under way and is waiting for your contribution.',
-            },
-            'cycle.escalation': {
-                fr: 'Des revues de votre périmètre restent à finaliser avant la clôture de la campagne.',
-                en: 'Reviews in your scope are still to be finalised before the cycle closes.',
-            },
-            'cycle.closed': {
-                fr: "Une campagne d'évaluation est clôturée. Les résultats consolidés sont disponibles.",
-                en: 'An assessment cycle has closed. The consolidated results are available.',
-            },
-
-            // ---- Compliance / operations ----
-            'cert.expiry': {
-                fr: "Une de vos certifications arrive à échéance. Merci d'anticiper son renouvellement.",
-                en: 'One of your certifications is approaching its expiry date. Please plan its renewal.',
-            },
-            'cert.expiry.team': {
-                fr: "La certification d'un membre de votre équipe arrive à échéance et doit être renouvelée.",
-                en: 'A certification held by a member of your team is approaching expiry and needs renewing.',
-            },
-            'coverage.breach': {
-                fr: "Un seuil de couverture de compétences n'est plus respecté. Une action peut être requise.",
-                en: 'A skills-coverage threshold is no longer met. Action may be required.',
-            },
-            'coverage.predicted': {
-                fr: 'Une rupture de couverture de compétences est prévue à court terme sur votre périmètre.',
-                en: 'A skills-coverage gap is forecast in the near term for your scope.',
-            },
-            'coverage.breach.batch': {
-                fr: 'Plusieurs règles de couverture sont passées en rupture en une seule passe. Les alertes ont été regroupées ; le détail est sur la page Conformité opérationnelle.',
-                en: 'Several coverage rules moved into breach in a single pass. The alerts were batched; the detail is on the Operational Compliance page.',
-            },
-            'coverage.predicted.batch': {
-                fr: 'Plusieurs ruptures de couverture sont prévues à court terme. Les alertes ont été regroupées ; le détail est sur la page Conformité opérationnelle.',
-                en: 'Several coverage gaps are forecast in the near term. The alerts were batched; the detail is on the Operational Compliance page.',
-            },
-            'access.review': {
-                fr: 'Une revue des accès vous est assignée et doit être réalisée.',
-                en: 'An access review has been assigned to you and needs to be completed.',
-            },
-
-            // ---- Learning ----
-            'lms.assigned': {
-                fr: 'Une formation vous a été assignée. Vous pouvez la démarrer depuis la plateforme.',
-                en: 'A training course has been assigned to you. You can start it from the platform.',
-            },
-            'lms.due': {
-                fr: "Une formation qui vous a été assignée n'a pas encore été démarrée.",
-                en: 'A training course assigned to you has not been started yet.',
-            },
-            // No name, no level and no skill in the body: this leaves the
-            // platform by e-mail, and the detail belongs behind the link.
-            'lms.uplift_proposed': {
-                fr: "Une formation terminée par une personne que vous encadrez propose une élévation de niveau. Le niveau officiel reste inchangé tant que vous ne l'avez pas validée.",
-                en: 'A course completed by someone you supervise proposes a level increase. The official level stays unchanged until you validate it.',
-            },
-
-            // ---- Mobility, surveys, recognition ----
-            'mobility.opportunity_posted': {
-                fr: "Une nouvelle opportunité interne vient d'être publiée et pourrait correspondre à votre profil.",
-                en: 'A new internal opportunity has just been published and may match your profile.',
-            },
-            'mobility.application_received': {
-                fr: 'Une candidature a été déposée sur une opportunité dont vous êtes responsable.',
-                en: 'An application has been submitted for an opportunity you own.',
-            },
-            'mobility.application_decided': {
-                fr: "Une décision a été prise sur votre candidature interne. Le détail est consultable dans l'application.",
-                en: 'A decision has been made on your internal application. The details are available in the app.',
-            },
-            'survey.published': {
-                fr: "Une enquête vient d'être publiée et attend votre réponse.",
-                en: 'A survey has just been published and is waiting for your response.',
-            },
-            'survey.respond': {
-                fr: 'Rappel : une enquête attend toujours votre réponse.',
-                en: 'Reminder: a survey is still waiting for your response.',
-            },
-            'recognition.received': {
-                fr: 'Un collègue tient à vous remercier — vous avez reçu une reconnaissance.',
-                en: 'A colleague wants to thank you — you have received recognition.',
-            },
-
-            // ---- Continuity, lifecycle, onboarding ----
-            'continuity.successor_ready': {
-                fr: 'Un successeur a atteint le niveau de préparation requis pour un poste clé.',
-                en: 'A successor has reached the readiness level required for a key position.',
-            },
-            'succession.review_due': {
-                fr: 'Des postes clés de votre périmètre attendent une revue de succession : plans arrivés à échéance de revue, ou postes critiques sans successeur désigné.',
-                en: 'Key positions in your scope are waiting for a succession review: plans that have reached their review date, or critical positions with no named successor.',
-            },
-            'handover.due': {
-                fr: 'Des plans de passation de votre périmètre sont en retard ou arrivent à échéance avec des éléments encore ouverts.',
-                en: 'Handover plans in your scope are overdue, or are coming due with items still open.',
-            },
-            'onboarding.submitted': {
-                fr: "Une nouvelle demande d'intégration a été déposée et attend votre décision.",
-                en: 'A new onboarding request has been submitted and is waiting for your decision.',
-            },
-            'lifecycle.joiner': {
-                fr: 'Votre compte est prêt : vous pouvez vous connecter et compléter votre profil.',
-                en: 'Your account is ready — you can sign in and complete your profile.',
-            },
-            'lifecycle.mover': {
-                fr: 'Votre affectation a changé. Les compétences attendues de votre nouveau poste sont consultables.',
-                en: 'Your assignment has changed. The skills expected in your new role are available to review.',
-            },
-            'lifecycle.leaver': {
-                fr: "Un départ a été enregistré et requiert la mise en place d'un plan de passation.",
-                en: 'A departure has been recorded and requires a handover plan.',
-            },
-            'safety.blocked': {
-                fr: 'Une ou plusieurs compétences critiques de votre poste ne sont plus couvertes. Consultez votre plan de développement.',
-                en: 'One or more critical skills of your role are no longer covered. Please check your development plan.',
-            },
-            'safety.expiring': {
-                fr: 'Un certificat requis pour votre poste arrive à échéance. Prévoyez son renouvellement.',
-                en: 'A certificate required for your role is about to expire. Please plan its renewal.',
-            },
-            'safety.blocked.team': {
-                fr: 'L’habilitation sécurité d’un collaborateur de votre équipe est bloquée. Un plan de développement peut être proposé.',
-                en: 'A team member’s safety clearance is blocked. A development plan can be proposed.',
-            },
-            'safety.expiring.team': {
-                fr: 'Un certificat requis pour un collaborateur de votre équipe arrive à échéance.',
-                en: 'A certificate required for a member of your team is about to expire.',
-            },
-            'safety.waiver_granted': {
-                fr: 'Une dérogation vous autorise pour une durée limitée. À son terme, votre statut calculé s’appliquera de nouveau. Le détail est dans l’application.',
-                en: 'A waiver authorises you for a limited time. When it ends, your computed status applies again. The details are in the app.',
-            },
-            'safety.waiver_granted.team': {
-                fr: 'Une dérogation autorise un collaborateur de votre équipe pour une durée limitée. Le détail est dans l’application.',
-                en: 'A waiver authorises a member of your team for a limited time. The details are in the app.',
-            },
-            'safety.waiver_ended': {
-                fr: 'Votre dérogation de sécurité est terminée : votre statut calculé s’applique de nouveau.',
-                en: 'Your safety waiver is over: your computed status applies again.',
-            },
-            'safety.waiver_ended.team': {
-                fr: 'La dérogation de sécurité d’un collaborateur est terminée : son statut calculé s’applique de nouveau.',
-                en: 'A team member’s safety waiver is over: their computed status applies again.',
-            },
-            'safety.contest.review': {
-                fr: 'Une personne conteste le blocage de son habilitation sécurité. Une décision motivée est attendue.',
-                en: 'Someone is contesting the block on their safety clearance. A decision with a reason is needed.',
-            },
-            'safety.contest.decided': {
-                fr: 'Une décision motivée a été enregistrée sur la contestation d’habilitation sécurité.',
-                en: 'A decision with its reason has been recorded on the safety clearance contest.',
-            },
-            'lifecycle.reports_to_reassign': {
-                fr: 'Un départ a laissé des collaborateurs sans responsable actif. Désignez-leur un nouveau réviseur.',
-                en: 'A departure has left team members without an active reviewer. Please assign them a new one.',
-            },
-            'admin.created': {
-                fr: 'Un compte administrateur a été créé pour vous. Vos identifiants vous parviennent séparément.',
-                en: 'An administrator account has been created for you. Your credentials are sent separately.',
-            },
-
-            // ---- Rollups (these have their own dedicated emails; kept for parity) ----
-            manager_digest: {
-                fr: 'Le récapitulatif de votre équipe est disponible.',
-                en: 'The summary for your team is available.',
-            },
-            dept_digest: {
-                fr: 'Le récapitulatif de votre département est disponible.',
-                en: 'The summary for your department is available.',
-            },
-            // Counts and rates live in the brief itself, behind authentication —
-            // this sentence says what arrived and nothing about what it contains.
-            dept_brief: {
-                fr: "Le bilan de performance de votre département est disponible : ce qui attend votre décision, ce qu'il y a à relancer, ce qui arrive à échéance, et l'état mesuré de vos départements.",
-                en: 'The performance brief for your department is available: what awaits your decision, what needs chasing, what falls due, and the measured state of your departments.',
-            },
-            'planning.digest': {
-                fr: 'Votre point mensuel de planification des effectifs est disponible : échéances de certification, postes critiques sans relève et évolution du risque de départ.',
-                en: 'Your monthly workforce-planning brief is available: upcoming certification expiries, critical positions with no bench, and movements in retention risk.',
-            },
-            // ---- operations alerts (SuperAdmins only) ----
-            'ops.job_failed': {
-                fr: "Une tâche planifiée a échoué ou n'a pas tourné depuis plus de 36 heures. Consultez la page Santé de l'instance pour le détail et relancez-la.",
-                en: 'A scheduled job failed or has not run for more than 36 hours. Open the instance health page for the detail and run it again.',
-            },
-            'ops.backup_stale': {
-                fr: "Aucune sauvegarde de la base de données réussie depuis plus de 36 heures. Vérifiez l'emplacement et l'espace disque, puis lancez une sauvegarde depuis la page Santé de l'instance.",
-                en: 'No successful database backup for more than 36 hours. Check the location and the disk space, then run a backup from the instance health page.',
-            },
-            'ops.hris_plan_ready': {
-                fr: "La synchronisation SIRH de la nuit a préparé un plan (arrivées, mobilités, départs, valeurs non rapprochées). Rien n'a été appliqué : relisez-le puis appliquez-le depuis Intégrations → SIRH.",
-                en: 'The nightly HRIS sync prepared a plan (joiners, movers, leavers, unmapped values). Nothing was applied: review it, then apply it from Integrations → HRIS.',
-            },
-            'ops.hris_sync_alert': {
-                fr: "La synchronisation SIRH s'est arrêtée sans rien appliquer : l'export n'a pas pu être lu, ou il aurait désactivé plus de salariés que le seuil de sécurité ne l'autorise. Vérifiez l'export puis relancez un essai à blanc.",
-                en: 'The HRIS sync stopped without applying anything: the export could not be read, or it would have deactivated more employees than the safety threshold allows. Check the export, then run a new dry run.',
-            },
-            'ops.smtp_failed': {
-                fr: "L'envoi d'e-mails a échoué. Vérifiez la configuration SMTP dans les paramètres et relancez un e-mail de test.",
-                en: 'E-mail delivery failed. Check the SMTP settings and send a test e-mail again.',
-            },
-            'ops.license': {
-                fr: "La licence de l'instance est expirée ou le nombre de sièges licenciés est dépassé. Mettez la licence à jour.",
-                en: 'The instance licence has expired or the licensed seat count is exceeded. Update the licence.',
-            },
-            'report.schedule_ready': {
-                fr: "Le rapport n'est pas joint à ce message : ouvrez-le dans l'application, où votre accès est vérifié à l'ouverture.",
-                en: 'The report is not attached to this message: open it in the app, where your access is checked when you open it.',
-            },
-            'report.schedule_suspended': {
-                fr: "Cet envoi programmé partait vers des adresses saisies à la main. Les destinataires doivent désormais être des comptes de l'application : choisissez-les de nouveau pour le réactiver.",
-                en: 'This schedule sent to typed e-mail addresses. Recipients must now be accounts of the app: choose them again to re-enable it.',
-            },
-            // ---- 3.23.20 (C2f) security alerts to every SuperAdmin ----
-            'security.breakglass_signin': {
-                fr: "Un super administrateur s'est connecté par l'accès de secours (mot de passe) alors que la connexion SSO est imposée. Si ce n'était pas prévu, vérifiez le journal de sécurité.",
-                en: 'A super administrator signed in through the password emergency access while SSO sign-in is enforced. If this was not expected, check the security log.',
-            },
-            'security.superadmin_sso_refused': {
-                fr: 'Une tentative de connexion par SSO à un compte super administrateur a été refusée. Un super administrateur ne se connecte jamais par SSO. Vérifiez le journal de sécurité.',
-                en: 'A single sign-on attempt to a super administrator account was refused. A super administrator never signs in with SSO. Check the security log.',
-            },
-            'security.superadmin_mfa_changed': {
-                fr: "La double authentification d'un compte super administrateur a été modifiée (activation, réinitialisation ou code de secours). Si ce n'était pas prévu, vérifiez le journal de sécurité.",
-                en: "A super administrator account's two-factor authentication changed (enrolment, reset or recovery). If this was not expected, check the security log.",
-            },
-            'security.superadmin_password_reset': {
-                fr: "Le mot de passe d'un compte super administrateur a été réinitialisé. La double authentification reste exigée. Si ce n'était pas prévu, vérifiez le journal de sécurité.",
-                en: "A super administrator account's password was reset. Two-factor authentication is still required. If this was not expected, check the security log.",
-            },
-            // ---- Lockout ----
-            'security.admin_account_locked': {
-                fr: "Un compte administrateur a été verrouillé après une série d'échecs de connexion. Si ce n'était pas la personne elle-même, vérifiez le journal de sécurité ; un super administrateur peut le déverrouiller.",
-                en: 'An administrator account was locked after a series of failed sign-ins. If it was not the person themselves, check the security log; a super administrator can unlock it.',
-            },
-            'security.account_soft_locked': {
-                fr: "Plusieurs tentatives de connexion ont échoué sur votre compte : les connexions sont ralenties pour un moment. Votre mot de passe reste valable. Si ce n'était pas vous, prévenez votre administrateur.",
-                en: 'Several sign-in attempts on your account failed: sign-ins are slowed for a while. Your password still works. If it was not you, tell your administrator.',
-            },
-        };
+        return catalogue.KIND_MESSAGES;
     }
 
     /** Short, courteous message adapted to the event kind (FR primary). */
     static _kindMessage(kind, locale) {
-        const lang = NotificationService._lang(locale);
-        const m = NotificationService.KIND_MESSAGES[kind];
-        if (m) return m[lang] || m.fr;
-        return lang === 'en'
-            ? 'An update concerning you is available on the platform.'
-            : 'Une mise à jour vous concernant est disponible sur la plateforme.';
-    }
-
-    /** Wrap body content in the branded, responsive email shell (header + footer). */
-    static _shell(inner, brand) {
-        const b = brand || {};
-        const appName = NotificationService._esc(b.appName || 'IDevelop');
-        const accent = b.accent || '#5140D9';
-        const ink = b.ink || '#0E1116';
-        const header = b.logo
-            ? `<img src="${b.logo}" alt="${appName}" style="height:32px;max-width:190px;object-fit:contain;display:block">`
-            : `<span style="font-size:19px;font-weight:800;letter-spacing:.3px;color:#ffffff">${appName}</span>`;
-        return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;margin:0;padding:24px 0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
-  <tr><td align="center">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:92%;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(2,20,40,.07)">
-      <tr><td style="background:${ink};padding:18px 28px" align="left">${header}</td></tr>
-      <tr><td style="height:4px;background:${accent};font-size:0;line-height:0">&nbsp;</td></tr>
-      <tr><td style="padding:30px 28px 24px">${inner}</td></tr>
-      <tr><td style="padding:16px 28px;background:#fafbfc;border-top:1px solid #eef0f3;color:#9aa2ad;font-size:12px;line-height:1.6">
-        Ceci est un message automatique de <strong>${appName}</strong>. Merci de ne pas y répondre.<br>
-        <span style="color:#b7bdc6">Automated message from ${appName} — please do not reply. Manage your notification preferences in the app.</span>
-      </td></tr>
-    </table>
-  </td></tr>
-</table>`;
+        return require('../utils/emailTemplate').kindMessage(kind, locale);
     }
 
     /**
-     * The subject line for an event, in the recipient's language.
-     *
-     * Subjects used to come from KIND_LABELS — an English-only map that covered
-     * roughly half the kinds actually emitted, so a French user got either an
-     * English subject or, for an uncovered kind, the raw slug
-     * ("IDevelop — mobility.application_decided"). KIND_META titles are already
-     * bilingual and already cover every kind in KIND_POLICY (a jest invariant),
-     * so they are the source of truth; KIND_LABELS survives only as the EN
-     * fallback for kinds that predate KIND_META.
+     * The subject line of a mail, in its language: « {app} — {subject} », the
+     * kind's catalogue subject. Never built from a payload or from the caller
+     * (emailTemplate.subjectFor): no name, no figure, no date, no status.
      */
-    static _subjectFor(kind, locale, appName, payload) {
-        const meta = NotificationService.KIND_META[kind] || {};
-        const title =
-            NotificationService._localizeTitle(meta.title, locale) ||
-            NotificationService.KIND_LABELS[kind] ||
-            kind;
-        // QA même complément qu'en boîte de réception : un objet
-        // « Revues à finaliser » qui ne dit pas de quelle campagne il parle
-        // oblige à ouvrir le lien pour le savoir. `payload` est facultatif :
-        // sans lui, le sujet est exactement celui d'avant.
-        const sub = NotificationService._kindSubtitle(kind, payload, locale);
-        return `${appName} — ${sub ? `${title} — ${sub}` : title}`;
+    static _subjectFor(kind, locale, appName) {
+        return require('../utils/emailTemplate').subjectFor(kind, locale, appName);
     }
 
-    static _render({ kind, payload, subject, html, text, brand, recipientName, locale }) {
-        const labels = NotificationService.KIND_LABELS;
-        const b = brand || { appName: 'IDevelop', accent: '#5140D9', ink: '#0E1116' };
-        const appName = b.appName || 'IDevelop';
-        const lang = NotificationService._lang(locale);
-        const T = NotificationService.DIGEST_TEXT[lang];
-        const finalSubject =
-            subject || NotificationService._subjectFor(kind, locale, appName, payload);
+    /** The kind's title (+ its subtitle) in one language: the headline INSIDE the mail. */
+    static _kindHeadline(kind, locale, payload) {
+        return require('../utils/emailTemplate').kindHeadline(kind, locale, payload);
+    }
 
-        // A caller-provided html body is treated as trusted content and wrapped in
-        // the branded shell for a consistent, professional look across every email.
-        if (html) {
-            return {
-                subject: finalSubject,
-                html: NotificationService._shell(html, b),
-                text:
-                    text ||
-                    html
-                        .replace(/<[^>]+>/g, ' ')
-                        .replace(/\s+/g, ' ')
-                        .trim(),
-            };
-        }
+    /**
+     * THE composer (utils/emailTemplate.compose) — every mail goes through it:
+     * one look, one language, one subject pattern, one footer.
+     */
+    static _compose(spec = {}, ctx = {}) {
+        return require('../utils/emailTemplate').compose(spec, ctx);
+    }
 
-        const data = payload && typeof payload === 'object' ? payload : {};
-        const kindMeta = NotificationService.KIND_META[kind] || {};
-        const metaTitle = NotificationService._localizeTitle(kindMeta.title, locale);
-        // QA le titre du corps nomme la campagne, comme le sujet.
-        const metaSub = NotificationService._kindSubtitle(kind, data, locale);
-        const headline = NotificationService._esc(
-            metaSub
-                ? `${metaTitle || labels[kind] || kind} — ${metaSub}`
-                : metaTitle || labels[kind] || kind
+    /**
+     * Catalogue-only entry — { kind, payload, brand, recipientName, locale } →
+     * the composed mail with the kind's catalogue title and message (no
+     * blocks). A legacy subject / html / text argument is ignored.
+     */
+    static _render({ kind, payload, brand, recipientName, locale }) {
+        return NotificationService._compose(
+            { kind, payload, locale },
+            { brand: brand || {}, recipientName }
         );
-        // Deep-link CTA: explicit payload link wins, else the per-kind KIND_META link,
-        // so every email lands the recipient exactly where the action is. NOTE: we do
-        // NOT dump raw payload fields into the body — that reads unprofessionally and
-        // risks leaking sensitive detail (PIP summaries, dispute reasons). Detail stays
-        // behind the deep link, inside the app.
-        const linkAbs = NotificationService.absUrl(data.link || data.url || kindMeta.link);
-        const openLabel = lang === 'en' ? `Open in ${appName}` : `Ouvrir dans ${appName}`;
-        const ctaLabel = NotificationService._esc(data.cta || openLabel);
-        const accent = b.accent || '#5140D9';
-        const greeting = recipientName
-            ? `${T.hello} ${NotificationService._esc(recipientName)},`
-            : `${T.hello},`;
-        const message = NotificationService._esc(NotificationService._kindMessage(kind, locale));
+    }
 
-        const ctaHtml = linkAbs
-            ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 6px"><tr><td style="border-radius:9px;background:${accent}">
-                 <a href="${linkAbs}" style="display:inline-block;padding:12px 26px;color:#0E1116;text-decoration:none;font-weight:700;font-size:15px">${ctaLabel} &rarr;</a>
-               </td></tr></table>`
-            : '';
+    /**
+     * renderEmail — THE e-mail rendering contract (documented on
+     * utils/emailTemplate.renderEmail). The branding comes from _brand.
+     */
+    static async renderEmail(spec = {}) {
+        const brand = await NotificationService._brand();
+        const locale = await NotificationService._mailLang(spec && spec.locale);
+        const { recipientName, ...rest } = spec || {};
+        return NotificationService._compose({ ...rest, locale }, { brand, recipientName });
+    }
 
-        const inner = `
-            <p style="margin:0 0 16px;color:#5a6472;font-size:15px">${greeting}</p>
-            <h1 style="margin:0 0 12px;color:#0E1116;font-size:21px;line-height:1.35;font-weight:700">${headline}</h1>
-            <p style="margin:0 0 4px;color:#4a5560;font-size:15px;line-height:1.65">${message}</p>
-            ${ctaHtml}
-            <p style="margin:26px 0 0;color:#5a6472;font-size:14px;line-height:1.6">${T.regards},<br><strong>${NotificationService._esc(T.team(appName))}</strong></p>`;
-
-        const finalHtml = NotificationService._shell(inner, b);
-        const plainHead = metaSub
-            ? `${metaTitle || labels[kind] || kind} — ${metaSub}`
-            : metaTitle || labels[kind] || kind;
-        const finalText =
-            `${greeting}\n\n${plainHead}\n\n${NotificationService._kindMessage(kind, locale)}` +
-            (linkAbs ? `\n\n${data.cta || openLabel} : ${linkAbs}` : '') +
-            `\n\n${T.regards},\n${T.team(appName)}`;
-
-        return { subject: finalSubject, html: finalHtml, text: text || finalText };
+    /** renderEmail blocks → { html, text } (utils/emailTemplate.renderBlocks). */
+    static _renderBlocks(blocks, opts) {
+        return require('../utils/emailTemplate').renderBlocks(blocks, opts);
     }
 
     /**
@@ -2557,14 +1127,18 @@ class NotificationService {
     }
 
     /**
-     * Release everything whose quiet-hours window has ended — the tick that
-     * makes "Les notifications reçues pendant cette plage sont différées" true.
+     * Release everything whose quiet-hours window has ended, and drain the
+     * e-mail outbox — the tick that makes "Les notifications reçues pendant
+     * cette plage sont différées" true and that retries a failed mail.
      *
      *   in-app : flip 'snoozed' → 'queued', which is what puts the row back in
      *            the inbox and the bell count.
      *   email  : actually SEND the mail that was held back, then record its
      *            outcome. Without this half, deferring email would mean losing
      *            it.
+     *   retry  : a mail whose send FAILED is retried 1 h later, then 23 h
+     *            later; after the third failure it is marked 'abandoned'.
+     *            Nothing is deleted.
      *
      * The old implementation joined notification_preferences on p.kind = n.kind
      * while the quiet window lives on the wildcard ('__all__','inapp') row, so
@@ -2577,7 +1151,15 @@ class NotificationService {
      * never genuinely deferred, so they are released rather than stranded.
      */
     static async releaseSnoozed({ limit = 200 } = {}) {
-        const out = { released: 0, emailsSent: 0, emailsFailed: 0 };
+        const out = {
+            released: 0,
+            emailsSent: 0,
+            emailsFailed: 0,
+            emailsSkipped: 0,
+            retried: 0,
+            abandoned: 0,
+            failed: 0,
+        };
 
         // 1) In-app — one statement, no N+1, regardless of table size.
         try {
@@ -2593,56 +1175,118 @@ class NotificationService {
 
         // 2) Email — claim BEFORE sending (same discipline as jobs/reminders.js)
         //    so a second scheduler, or a restart mid-batch, can never double-send.
+        //    The claim is a lease ('sending', from now): a process killed between
+        //    claim and send leaves a row the retry pass re-claims an hour later,
+        //    never a lost mail.
         const lim = Math.min(Math.max(Number(limit) || 200, 1), 1000);
         let due = [];
         try {
-            due = await db.all(
-                `UPDATE notifications SET state = 'queued'
-                  WHERE id IN (
-                        SELECT id FROM notifications
-                         WHERE state = 'snoozed' AND channel = 'email'
-                           AND (release_at IS NULL OR release_at <= now())
-                         ORDER BY id
-                         LIMIT ?
-                         FOR UPDATE SKIP LOCKED)
-                  RETURNING id, user_type, user_id, kind, locale, payload`,
-                [lim]
-            );
+            due =
+                (await db.all(
+                    `UPDATE notifications SET state = 'queued', email_status = 'sending',
+                            next_attempt_at = now()
+                      WHERE id IN (
+                            SELECT id FROM notifications
+                             WHERE state = 'snoozed' AND channel = 'email'
+                               AND (release_at IS NULL OR release_at <= now())
+                             ORDER BY id
+                             LIMIT ?
+                             FOR UPDATE SKIP LOCKED)
+                      RETURNING id, user_type, user_id, kind, locale, payload`,
+                    [lim]
+                )) || [];
         } catch (_) {
-            return out;
+            due = [];
         }
+        const count = (o) => {
+            if (o.state === 'sent') out.emailsSent++;
+            else if (o.emailStatus === 'abandoned') out.abandoned++;
+            else if (o.emailStatus === 'retry') out.emailsFailed++;
+            else out.emailsSkipped++; // opt-out, no address, leaver, SMTP off: not a failure
+        };
+        for (const row of due) count(await NotificationService._attempt(row, 1));
 
-        for (const row of due) {
-            let ok = false;
-            try {
-                ok = await NotificationService._sendDeferredEmail(row);
-            } catch (_) {
-                ok = false;
-            }
-            if (ok) out.emailsSent++;
-            else out.emailsFailed++;
-            try {
-                await db.run(
-                    `UPDATE notifications SET state = ?, sent_at = ${ok ? 'now()' : 'NULL'} WHERE id = ?`,
-                    [ok ? 'sent' : 'failed', Number(row.id)]
-                );
-            } catch (_) {
-                /* delivery audit is best-effort */
-            }
+        // 3) Outbox retries. A row left 'sending' by a killed process is
+        //    claimable again an hour after its claim. The lease runs from the
+        //    CLAIM (next_attempt_at = now()), not from the old due time — else a
+        //    row due more than an hour ago would be re-claimable by the next
+        //    tick while it is still being sent.
+        let retry = [];
+        try {
+            retry =
+                (await db.all(
+                    `UPDATE notifications SET email_status = 'sending', next_attempt_at = now()
+                      WHERE id IN (
+                            SELECT id FROM notifications
+                             WHERE channel = 'email'
+                               AND ((email_status = 'retry' AND next_attempt_at <= now())
+                                 OR (email_status = 'sending' AND next_attempt_at <= now() - interval '1 hour'))
+                             ORDER BY next_attempt_at, id
+                             LIMIT ?
+                             FOR UPDATE SKIP LOCKED)
+                      RETURNING id, user_type, user_id, kind, locale, payload, email_attempts`,
+                    [lim]
+                )) || [];
+        } catch (_) {
+            retry = [];
         }
+        for (const row of retry) {
+            const attempts = (Number(row.emailAttempts ?? row.email_attempts) || 0) + 1;
+            count(await NotificationService._attempt(row, attempts));
+            out.retried++;
+        }
+        // The job ledger reads `failed` (JobRunService).
+        out.failed = out.emailsFailed + out.abandoned;
         return out;
     }
 
-    /** Deliver one email row that was held back by quiet hours. */
-    static async _sendDeferredEmail(row) {
+    /** One delivery attempt of a stored email row, and its recorded outcome. */
+    static async _attempt(row, attempts) {
+        let res;
+        try {
+            res = await NotificationService._deliverStored(row);
+        } catch (e) {
+            res = { sent: false, error: (e && e.message) || 'send failed' };
+        }
+        const o = res.suppressed
+            ? {
+                  state: 'failed',
+                  emailStatus: 'suppressed',
+                  nextAttemptAt: null,
+                  error: 'recipient inactive, cancelled or erased',
+              }
+            : NotificationService._outcome(res, attempts);
+        try {
+            await db.run(
+                `UPDATE notifications
+                    SET state = ?, sent_at = ${o.state === 'sent' ? 'now()' : 'NULL'},
+                        email_status = ?, email_attempts = ?, next_attempt_at = ?, last_error = ?
+                  WHERE id = ?`,
+                [
+                    o.state,
+                    o.emailStatus,
+                    attempts,
+                    o.nextAttemptAt || null,
+                    NotificationService._safeError(o.error),
+                    Number(row.id),
+                ]
+            );
+        } catch (_) {
+            /* delivery audit is best-effort */
+        }
+        return o;
+    }
+
+    /**
+     * Send one stored email row (deferred by quiet hours, or queued for a
+     * retry). The recipient is re-resolved NOW: a leaver is suppressed, and the
+     * opt-out may have been switched OFF while the mail waited — the CURRENT
+     * preference wins, except for a mandatory kind.
+     * → { sent, skipped?, error?, suppressed? }
+     */
+    static async _deliverStored(row) {
         const userType = row.userType || row.user_type;
         const userId = Number(row.userId ?? row.user_id);
-        // The opt-out may have been switched OFF while the mail sat in the
-        // window — honour the CURRENT preference, not the one at enqueue time.
-        if (!(await NotificationService._userEmailAllowed(userType, userId))) return false;
-        const recipient = await NotificationService._resolveRecipient(userType, userId);
-        if (!recipient.email) return false;
-
         let payload = row.payload;
         if (typeof payload === 'string') {
             try {
@@ -2653,142 +1297,267 @@ class NotificationService {
         }
         payload = payload && typeof payload === 'object' ? payload : {};
         const pending = payload[NotificationService.PENDING_EMAIL_KEY];
+        const mandatory = NotificationService._isMandatory(row.kind);
+        if (!mandatory && !(await NotificationService._userEmailAllowed(userType, userId)))
+            return { sent: false, skipped: 'user_opt_out' };
+        const recipient = await NotificationService._resolveRecipient(userType, userId);
+        if (recipient.emailStatus === 'suppressed') return { sent: false, suppressed: true };
+        if (!recipient.email) return { sent: false, skipped: 'no_address' };
+
+        const brand = await NotificationService._brand();
+        // A row whose rendered body was removed (erasure strips it from rows
+        // about an erased person) is re-composed from its kind alone.
         const rendered =
             pending && pending.subject && pending.html
                 ? pending
-                : NotificationService._render({
-                      kind: row.kind,
-                      payload,
-                      brand: await NotificationService._brand(),
-                      recipientName: recipient.name,
-                      locale: row.locale,
-                  });
+                : NotificationService._compose(
+                      { kind: row.kind, payload, locale: row.locale, mandatory },
+                      { brand, recipientName: recipient.name }
+                  );
+        const attachments = NotificationService._reviveAttachments(rendered.attachments);
+        if (
+            String(rendered.html).includes(`cid:${NotificationService.LOGO_CID}`) &&
+            !attachments.some((a) => a && a.cid === NotificationService.LOGO_CID)
+        ) {
+            const logo = NotificationService._logoAttachment(brand);
+            if (logo) attachments.push(logo);
+        }
         const EmailService = require('./EmailService');
-        const sendResult = await EmailService.send({
+        if (mandatory && !(await EmailService.isEnabled()))
+            return { sent: false, skipped: 'disabled' };
+        return EmailService.send({
             to: recipient.email,
             subject: rendered.subject,
             html: rendered.html,
             text: rendered.text,
+            attachments: NotificationService._attachmentsOrNone(attachments),
+            headers: rendered.headers || {},
         });
-        return !!sendResult.sent;
     }
 
-    /** BullMQ worker target — picks queued, marks sent (email future). */
-    static async send(item) {
-        await db.run(`UPDATE notifications SET state='sent', sent_at=now() WHERE id = ?`, [
-            item.id,
-        ]);
-        return { id: item.id, state: 'sent' };
+    /** A mail's attachments, or undefined when there is none (the logo is the only one). */
+    static _attachmentsOrNone(list) {
+        return Array.isArray(list) && list.length ? list : undefined;
     }
 
     /**
-     * Build + send ONE branded rollup email of a user's UNREAD in-app notifications
+     * Attachments of a mail that went through JSON (a held row): a Buffer was
+     * stored as { type: 'Buffer', data: [...] }, or as a base64 string with
+     * `encoding: 'base64'`. Anything else unusable is dropped.
+     */
+    static _reviveAttachments(list) {
+        if (!Array.isArray(list)) return [];
+        const out = [];
+        for (const a of list) {
+            if (!a || typeof a !== 'object') continue;
+            let content = a.content;
+            if (content && content.type === 'Buffer' && Array.isArray(content.data))
+                content = Buffer.from(content.data);
+            else if (typeof content === 'string' && a.encoding === 'base64')
+                content = Buffer.from(content, 'base64');
+            if (content == null) continue;
+            out.push({
+                filename: a.filename,
+                contentType: a.contentType,
+                cid: a.cid,
+                contentDisposition: a.contentDisposition,
+                content,
+            });
+        }
+        return out;
+    }
+
+    /**
+     * Run `fn` OUTSIDE the caller's transaction context (on the pool), for
+     * fire-and-forget work that must not share the transaction's pg client.
+     * A pass-through when there is no open transaction.
+     */
+    static _outsideTx(fn) {
+        const als = db && db._txStore;
+        if (
+            als &&
+            typeof als.exit === 'function' &&
+            typeof als.getStore === 'function' &&
+            als.getStore()
+        )
+            return als.exit(fn);
+        return fn();
+    }
+
+    /** May this kind appear in the daily digest? Never a tier-'none' kind. */
+    static _digestible(kind) {
+        return catalogue.isDigestible(kind);
+    }
+
+    /** Deliver one email row that was held back by quiet hours (boolean, kept for callers). */
+    static async _sendDeferredEmail(row) {
+        const r = await NotificationService._deliverStored(row);
+        return !!(r && r.sent);
+    }
+
+    /**
+     * Build + send ONE branded rollup email of a user's NEW in-app notifications
      * — the "no mailbox invasion" batching lever (many events → one daily email).
-     * Gated by the `digest` email category; deep-links every line. Best-effort.
+     *
+     * The lines are the last 24 hours' unread items that are (a) not tier
+     * 'none' — a kind that is never e-mailed is never named in a digest either
+     * — and (b) not already e-mailed on their own or listed in an earlier
+     * digest; then one line « N actions toujours en attente » for what is older
+     * and still unread. No new item ⇒ no mail at all. A person who has left is
+     * not written to. Gated by the `digest` email category and the person's own
+     * switch. The subject never carries the count.
      */
     static async sendDigest({ userType, userId, locale }) {
         const EmailService = require('./EmailService');
         if (!(await EmailService.isCategoryEnabled('digest'))) return { skipped: 'digest_off' };
         // The per-user opt-out governs the digest FIRST. It is the one email a
-        // recipient is most likely to want stopped, and it used to be the only
-        // one that ignored the switch: notify checked _userEmailAllowed but
-        // the daily rollup went out to everyone who had unread items, so
-        // "Recevoir les notifications par e-mail = OFF" still produced mail.
+        // recipient is most likely to want stopped.
         if (!(await NotificationService._userEmailAllowed(userType, userId)))
             return { skipped: 'user_opt_out' };
         // The window is the LAST 24 HOURS, matching the recipient selection of
-        // personal-digest.js:48-55 — which filters on `created_at >= now -
-        // interval '24 hours'` while this query did not. An unread notification
-        // was therefore re-listed at the top of EVERY day's summary until somebody
-        // opened it, and with 259 of 262 rows unread on a development database
-        // that is the nominal case, not an edge one: the digest turned into the
-        // same list every morning, which is how a reader learns to ignore it.
-        // The bell and the notification centre still show everything — this bound
-        // is the DIGEST's, and it is the difference between "what is new" and
-        // "what is outstanding".
+        // personal-digest.js: an unread notification is not re-listed at the top
+        // of every day's summary. The bell and the notification centre still show
+        // everything.
         const rows = await NotificationService.listInApp({
             userType,
             userId,
-            limit: 20,
+            limit: 100,
             unreadOnly: true,
             sinceHours: 24,
+            excludeEmailed: true,
         });
-        if (!rows.length) return { skipped: 'empty' };
+        const fresh = (rows || []).filter(
+            (r) => NotificationService._digestible(r.kind) && !(r.emailStatus || r.email_status)
+        );
+        if (!fresh.length) return { skipped: 'empty' };
         const recipient = await NotificationService._resolveRecipient(userType, userId);
+        if (recipient.emailStatus === 'suppressed') return { skipped: 'suppressed' };
         if (!recipient.email) return { skipped: 'no_address' };
         const brand = await NotificationService._brand();
-        const appName = NotificationService._esc(brand.appName || 'IDevelop');
-        // Written in the language the notifications themselves were raised in
-        // (FR primary) rather than always in French.
-        const lang = NotificationService._lang(
-            locale || (rows[0] && (rows[0].locale || rows[0].locale))
+        const lang = await NotificationService._mailLang(locale);
+        const D = NotificationService.DIGEST_TEXT[lang];
+        // `withReason: false` — no reason, comment or rating leaves the app by
+        // e-mail. The reason stays readable in the notification centre, behind
+        // authentication, where clearance is enforced.
+        const items = fresh.map((r) => NotificationService.present(r, lang, { withReason: false }));
+        const shown = items.slice(0, 20);
+        const blocks = [
+            { type: 'links', items: shown.map((i) => ({ text: i.title, href: i.link })) },
+        ];
+        if (items.length > shown.length)
+            blocks.push({ type: 'p', text: D.more(items.length - shown.length) });
+        const outstanding = await NotificationService._outstandingCount(userType, userId);
+        if (outstanding > 0)
+            blocks.push({
+                type: 'links',
+                items: [{ text: D.pending(outstanding), href: '/notifications' }],
+            });
+        const rendered = NotificationService._compose(
+            {
+                kind: 'digest.daily',
+                title: D.title(items.length),
+                intro: D.lead,
+                blocks,
+                ctaLabel: D.cta,
+                ctaUrl: '/notifications',
+                locale: lang,
+                mandatory: false,
+                severity: 'info',
+            },
+            { brand, recipientName: recipient.name }
         );
-        const T = NotificationService.DIGEST_TEXT[lang];
-        // `withReason: false` — la règle écrite au-dessus de KIND_MESSAGES vaut
-        // aussi pour ce récapitulatif : ni motif, ni commentaire, ni note ne
-        // quitte l'application par e-mail. Mesuré : sans ce drapeau, la ligne
-        // composée était « Votre auto-évaluation a été annulée — Saisie faite sur
-        // le mauvais collaborateur. », motif compris, dans le HTML ET le texte.
-        // Le motif reste lisible dans le centre de notifications, derrière
-        // l'authentification, où l'habilitation est vérifiée.
-        const items = rows.map((r) => NotificationService.present(r, lang, { withReason: false }));
-        const greeting = recipient.name
-            ? `${T.hello} ${NotificationService._esc(recipient.name)},`
-            : `${T.hello},`;
-        const list = items
-            .map((i) => {
-                const href = NotificationService.absUrl(i.link);
-                return `<tr><td style="padding:10px 0;border-bottom:1px solid #eef0f3">
-                <a href="${href}" style="color:#0E1116;text-decoration:none;font-weight:600;font-size:15px">${NotificationService._esc(i.title)}</a>
-              </td></tr>`;
-            })
-            .join('');
-        const allHref = NotificationService.absUrl('/notifications');
-        const inner = `
-            <p style="margin:0 0 14px;color:#5a6472;font-size:15px">${greeting}</p>
-            <h1 style="margin:0 0 6px;color:#0E1116;font-size:21px;font-weight:700">${T.title}</h1>
-            <p style="margin:0 0 16px;color:#4a5560;font-size:15px">${T.lead(`<strong>${items.length}</strong>`)}</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0">${list}</table>
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 6px"><tr><td style="border-radius:9px;background:${brand.accent || '#5140D9'}">
-              <a href="${allHref}" style="display:inline-block;padding:12px 26px;color:#0E1116;text-decoration:none;font-weight:700;font-size:15px">${T.cta} &rarr;</a>
-            </td></tr></table>
-            <p style="margin:26px 0 0;color:#5a6472;font-size:14px">${T.regards},<br><strong>${T.team(appName)}</strong></p>`;
-        const html = NotificationService._shell(inner, brand);
-        const text =
-            `${greeting}\n\n${T.lead(items.length)}\n` +
-            items.map((i) => `- ${i.title} : ${NotificationService.absUrl(i.link)}`).join('\n') +
-            `\n\n${T.cta} : ${allHref}\n\n${T.regards},\n${T.team(brand.appName || 'IDevelop')}`;
         const send = await EmailService.send({
             to: recipient.email,
-            subject: `${brand.appName || 'IDevelop'} — ${T.title} (${items.length})`,
-            html,
-            text,
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+            attachments: NotificationService._attachmentsOrNone(rendered.attachments),
+            headers: rendered.headers,
         });
+        if (send.sent) {
+            const ids = fresh.map((r) => Number(r.id)).filter(Boolean);
+            if (ids.length) {
+                try {
+                    await db.run(
+                        `UPDATE notifications SET email_status = 'digested'
+                          WHERE id IN (${ids.map(() => '?').join(',')}) AND email_status IS NULL`,
+                        ids
+                    );
+                } catch (_) {
+                    /* best-effort */
+                }
+            }
+        }
         return {
             sent: !!send.sent,
             count: items.length,
+            outstanding,
             skipped: send.sent ? undefined : send.skipped || 'failed',
         };
     }
 
-    /** Digest chrome, FR primary + EN parity (the rest of the app's rule). */
+    /** Unread, visible, digestible items OLDER than the digest window (« toujours en attente »). */
+    static async _outstandingCount(userType, userId) {
+        try {
+            const rows =
+                (await db.all(
+                    `SELECT kind, COUNT(*)::int AS c FROM notifications
+                      WHERE user_type = ? AND user_id = ? AND channel = 'inapp' AND read_at IS NULL
+                        AND ${NotificationService.VISIBLE_SQL}
+                        AND created_at < now() - interval '24 hours'
+                      GROUP BY kind`,
+                    [userType, userId]
+                )) || [];
+            return rows.reduce(
+                (a, r) => a + (NotificationService._digestible(r.kind) ? Number(r.c) || 0 : 0),
+                0
+            );
+        } catch (_) {
+            return 0;
+        }
+    }
+
+    /** Mail chrome per language — one language per mail. */
     static get DIGEST_TEXT() {
+        const num = (n, lang) => require('../utils/emailTemplate').fmtNum(n, 0, lang);
         return {
             fr: {
                 hello: 'Bonjour',
-                title: 'Votre récapitulatif',
                 regards: 'Cordialement',
                 team: (app) => `L'équipe ${app}`,
                 cta: 'Voir toutes mes notifications',
-                lead: (n) => `Vous avez ${n} notification(s) en attente sur la plateforme.`,
+                title: (n) =>
+                    n === 1
+                        ? "1 nouveauté pour vous aujourd'hui"
+                        : `${num(n, 'fr')} nouveautés pour vous aujourd'hui`,
+                lead: 'Voici ce qui est arrivé depuis hier.',
+                more: (n) =>
+                    n === 1
+                        ? 'Et 1 autre dans le centre de notifications.'
+                        : `Et ${num(n, 'fr')} autres dans le centre de notifications.`,
+                pending: (n) =>
+                    n === 1
+                        ? '1 notification plus ancienne toujours en attente'
+                        : `${num(n, 'fr')} notifications plus anciennes toujours en attente`,
             },
             en: {
                 hello: 'Hello',
-                title: 'Your summary',
                 regards: 'Kind regards',
                 team: (app) => `The ${app} team`,
                 cta: 'See all my notifications',
-                lead: (n) => `You have ${n} notification(s) waiting on the platform.`,
+                title: (n) =>
+                    n === 1
+                        ? '1 new item for you today'
+                        : `${num(n, 'en')} new items for you today`,
+                lead: 'Here is what arrived since yesterday.',
+                more: (n) =>
+                    n === 1
+                        ? 'And 1 more in the notification centre.'
+                        : `And ${num(n, 'en')} more in the notification centre.`,
+                pending: (n) =>
+                    n === 1
+                        ? '1 older notification still waiting'
+                        : `${num(n, 'en')} older notifications still waiting`,
             },
         };
     }

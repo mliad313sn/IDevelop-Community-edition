@@ -11,7 +11,7 @@
  *   Every time-based tick MUST be declared in TICKS below — both runtimes
  *   iterate that registry, so a tick can never exist in one path only
  *   (the v3.22.3 telemetry-prune drift). Event-driven jobs (cycle.closed,
- *   notifications, lifecycle) stay outside the registry.
+ *   lifecycle) stay outside the registry.
  *
  *   Workers are intentionally thin — the heavy lifting lives in the
  *   *Service classes; jobs just call them.
@@ -305,7 +305,6 @@ function boot() {
 
     const queues = {
         cycleEvents: new Queue('cycle-events', { connection }),
-        notifications: new Queue('notifications', { connection }),
         digests: new Queue('digests', { connection }),
         lifecycle: new Queue('lifecycle', { connection }),
     };
@@ -328,14 +327,10 @@ function boot() {
             { connection }
         ),
 
-        notifications: new Worker(
-            'notifications',
-            async (job) => {
-                const Notify = require('../services/NotificationService');
-                return Notify.send(job.data);
-            },
-            { connection }
-        ),
+        // No 'notifications' worker: nothing enqueued to it, and its handler
+        // marked a row 'sent' without sending anything. E-mail is delivered by
+        // NotificationService and its outbox drains in the release tick
+        // (notifications.release-snoozed).
 
         lifecycle: new Worker(
             'lifecycle',
