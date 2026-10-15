@@ -20,6 +20,8 @@
  *   logoutHardening           Clear-Site-Data on logout
  *   healthHandler / readyHandler  status only; details for the /metrics callers
  *   requestAuditSink          which store a finished request goes to
+ *   isStaticHtmlDoc           the few static documents that get the relaxed CSP
+ *   parseTrustProxy           TRUST_PROXY validated at boot, fail closed
  *
  * IDevelop-only controls stay where they were (server.js): the JSON-only 415
  * guard (middleware/jsonContentType), the SSO-migration parser skip, HSTS
@@ -480,6 +482,74 @@ function requestAuditSink(statusCode) {
     return null;
 }
 
+// ---------------------------------------------------------------------------
+// The only documents that get the relaxed (inline-script) CSP: the
+// self-contained user guides (served by an authenticated route) and the
+// service worker's offline page. Exact paths, case-sensitive like the routes.
+// Any path ending in ".html" used to qualify, so /employees/1.html relaxed the
+// CSP on an application route.
+// ---------------------------------------------------------------------------
+const STATIC_HTML_DOCS = new Set(['/user-guide.html', '/user-guide.en.html', '/offline.html']);
+function isStaticHtmlDoc(p) {
+    return STATIC_HTML_DOCS.has(String(p || ''));
+}
+
+// ---------------------------------------------------------------------------
+// TRUST_PROXY is validated at boot, fail closed. proxy-addr < 2.0.8
+// (GHSA-jqcg-44mw-7w3h) compiled an IPv4-mapped IPv6 subnet with a short prefix
+// (`::ffff:10.0.0.0/8`) or an IPv6 subnet with zero leading bits (`::/1`) into
+// "every IPv4 address": every client became a trusted proxy and X-Forwarded-For
+// defeated the rate limiters and the audit IP. 2.0.8 fixes the matching; the
+// boot refuses the misconfiguration itself, whatever the version, as well as
+// "/0" and anything that is not an address, a subnet, a hop count or a name.
+// ---------------------------------------------------------------------------
+const TRUST_PROXY_NAMES = new Set(['loopback', 'linklocal', 'uniquelocal']);
+function parseTrustProxy(raw) {
+    const tp = String(raw == null ? '' : raw).trim();
+    if (!tp) return false;
+    if (/^\d{1,2}$/.test(tp)) return parseInt(tp, 10); // hop count ("1" = the one proxy in front)
+    const net = require('net');
+    const entries = tp
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    const bad = (entry, why) =>
+        new Error(
+            `TRUST_PROXY entry "${entry.slice(0, 80)}" refused: ${why}. Use a hop count (TRUST_PROXY=1), loopback / linklocal / uniquelocal, or the proxy addresses (IPv4 "10.0.0.0/8", IPv4-mapped IPv6 only with a prefix of at least /96, e.g. "::ffff:10.0.0.0/104").`
+        );
+    for (const e of entries) {
+        if (TRUST_PROXY_NAMES.has(e.toLowerCase())) continue;
+        const slash = e.indexOf('/');
+        const addr = slash < 0 ? e : e.slice(0, slash);
+        const prefixText = slash < 0 ? null : e.slice(slash + 1);
+        const fam = net.isIP(addr);
+        if (!fam) throw bad(e, 'not an IP address, a subnet or a known name');
+        if (prefixText == null) continue;
+        if (!/^\d{1,3}$/.test(prefixText)) throw bad(e, 'the prefix must be a number (CIDR)');
+        const prefix = parseInt(prefixText, 10);
+        if (fam === 4) {
+            if (prefix > 32) throw bad(e, 'IPv4 prefix above /32');
+            if (prefix === 0) throw bad(e, '/0 trusts every client as a proxy');
+            continue;
+        }
+        if (prefix > 128) throw bad(e, 'IPv6 prefix above /128');
+        const lower = addr.toLowerCase();
+        const mapped = /^::ffff:/.test(lower) || /^0{0,4}(?::0{0,4}){4}:ffff:/.test(lower);
+        if (mapped && prefix < 96)
+            throw bad(
+                e,
+                'an IPv4-mapped IPv6 subnet needs a prefix of at least /96 (it would match every IPv4 address)'
+            );
+        const leadingZero = lower.startsWith('::') || /^0{1,4}:/.test(lower);
+        if (leadingZero && prefix < 96)
+            throw bad(
+                e,
+                'an IPv6 subnet with zero leading bits and a short prefix trusts every client'
+            );
+    }
+    return entries.length === 1 ? entries[0] : entries;
+}
+
 module.exports = {
     JSON_TYPES,
     mimeEssence,
@@ -502,4 +572,7 @@ module.exports = {
     healthHandler,
     readyHandler,
     requestAuditSink,
+    STATIC_HTML_DOCS,
+    isStaticHtmlDoc,
+    parseTrustProxy,
 };

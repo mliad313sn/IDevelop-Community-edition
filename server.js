@@ -163,11 +163,13 @@ app.use(httpHardening.securityHeaders);
 const tlsServer = require('./src/utils/tlsServer');
 app.use(tlsServer.hstsMiddleware());
 
-// Static standalone HTML docs (e.g. /user-guide.html) inline their own scripts
-// and cannot carry a per-request nonce, so relax script-src to 'unsafe-inline'
-// for those static files only. They are static documents, not app surfaces.
+// Static standalone HTML docs (the user guides, the offline page) inline their
+// own scripts and cannot carry a per-request nonce, so relax script-src to
+// 'unsafe-inline' for that allow-list of real files only
+// (httpHardening.isStaticHtmlDoc). Any path ending in .html used to qualify, so
+// /employees/1.html relaxed the CSP on an application route.
 app.use((req, res, next) => {
-    if (/\.html$/i.test(req.path)) {
+    if (httpHardening.isStaticHtmlDoc(req.path)) {
         res.setHeader(
             'Content-Security-Policy',
             [
@@ -310,8 +312,10 @@ console.log(`✓ Session store: ${sessionStoreLabel}`);
 // 'auto' keeps the cookie hardened under HTTPS (incl. behind a TLS-terminating
 // proxy when TRUST_PROXY is set) yet lets a plain-HTTP deployment log in.
 if (process.env.TRUST_PROXY) {
-    const tp = process.env.TRUST_PROXY;
-    app.set('trust proxy', tp === '1' ? 1 : /^\d+$/.test(tp) ? parseInt(tp, 10) : tp);
+    // Validated, fail closed: a short IPv6 / IPv4-mapped prefix or /0 would make
+    // every client a trusted proxy (spoofable req.ip). The boot stops with the
+    // reason rather than run that way (httpHardening.parseTrustProxy).
+    app.set('trust proxy', httpHardening.parseTrustProxy(process.env.TRUST_PROXY));
 }
 const _cs = String(process.env.COOKIE_SECURE || '').toLowerCase();
 const cookieSecure =
