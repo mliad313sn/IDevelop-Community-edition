@@ -155,7 +155,7 @@ function saCell(v) { return (v === null || v === undefined || v === '') ? '—' 
 .sa-tab{background:none;border:1px solid var(--border);border-radius:999px;padding:4px 12px;cursor:pointer;font-size:.85rem;color:inherit}
 .sa-tab.on{background:var(--accent,#6656f0);color:#111;border-color:transparent}
 .sa-team-card{margin-bottom:1rem;padding:.8rem 1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
-.sa-team-text{flex:1;min-width:260px}
+.sa-team-text{flex:1;min-width:min(260px, 100%)}
 .sa-team-rule{font-size:.85rem;margin:.25rem 0 0}
 .sa-cycle-chip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.75rem;background:rgba(127,127,127,.18)}
 </style>

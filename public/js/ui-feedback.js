@@ -224,7 +224,9 @@
         sr.className = 'uif-sr';
         sr.textContent = typeWord(type) + ' : ';
         span.appendChild(sr);
-        span.appendChild(document.createTextNode(String(msg)));
+        var body = document.createElement('span');
+        body.textContent = String(msg);
+        span.appendChild(body);
         // The close control is a real <button> with a name.
         var x = document.createElement('button');
         x.setAttribute('type', 'button');
@@ -244,10 +246,9 @@
         // A timer that removes information reads the motion table: under
         // prefers-reduced-motion autoDismiss returns 0 = never. An ERROR never
         // leaves on its own: it stays until its close button is pressed.
-        var ttl =
-            type === 'error' || o.persist
-                ? 0
-                : window.MOTION.autoDismiss(Number(o.duration) > 0 ? Number(o.duration) : 3500);
+        var ttl = type === 'error' ? 0 : window.MOTION.autoDismiss(3500);
+        if (o.persist) ttl = 0;
+        else if (ttl && Number(o.duration) > 0) ttl = window.MOTION.autoDismiss(Number(o.duration));
         var timer = ttl ? setTimeout(dismiss, ttl) : null;
         function dismiss() {
             clearTimeout(timer);

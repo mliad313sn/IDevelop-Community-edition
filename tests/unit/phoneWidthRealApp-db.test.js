@@ -126,10 +126,15 @@ d('no page is wider than a 390 px phone (real app, Chromium)', () => {
         }
     });
 
-    async function contextFor(who) {
+    // French labels are longer than English ones: every check runs in the
+    // language chosen by the `lang` cookie (the « FR / EN » switch).
+    async function contextFor(who, lang = 'en') {
         const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
         const [name, value] = cookies[who].split(';')[0].split(/=(.*)/s);
-        await ctx.addCookies([{ name, value, url: base }]);
+        await ctx.addCookies([
+            { name, value, url: base },
+            { name: 'lang', value: lang, url: base },
+        ]);
         return ctx;
     }
 
@@ -185,22 +190,25 @@ d('no page is wider than a 390 px phone (real app, Chromium)', () => {
         return out;
     }
 
-    test('SuperAdmin: every administration page fits 390 px', async () => {
-        const ctx = await contextFor('superadmin');
-        const rows = await widths(ctx, ADMIN_PAGES);
-        await ctx.close();
-        // the pages really opened (no bounce to the sign-in page)
-        expect(rows.filter((r) => /\/login/.test(r.url)).map((r) => r.p)).toEqual([]);
-        expect(
-            rows
-                .filter((r) => r.sw > r.vw)
-                .map((r) => `${r.p} ${r.sw}/${r.vw} ${r.culprits.join(' ')}`)
-        ).toEqual([]);
-    });
+    test.each(['en', 'fr'])(
+        'SuperAdmin (%s): every administration page fits 390 px',
+        async (lang) => {
+            const ctx = await contextFor('superadmin', lang);
+            const rows = await widths(ctx, ADMIN_PAGES);
+            await ctx.close();
+            // the pages really opened (no bounce to the sign-in page)
+            expect(rows.filter((r) => /\/login/.test(r.url)).map((r) => r.p)).toEqual([]);
+            expect(
+                rows
+                    .filter((r) => r.sw > r.vw)
+                    .map((r) => `${r.p} ${r.sw}/${r.vw} ${r.culprits.join(' ')}`)
+            ).toEqual([]);
+        }
+    );
 
-    test('employee: every page of the rail fits 390 px', async () => {
+    test.each(['en', 'fr'])('employee (%s): every page of the rail fits 390 px', async (lang) => {
         if (!cookies.employee) return;
-        const ctx = await contextFor('employee');
+        const ctx = await contextFor('employee', lang);
         const page = await ctx.newPage();
         await page.goto(base + '/employee/dashboard');
         const rail = await page.$$eval('#appSidebar nav a.sidebar-link[href]', (as) =>

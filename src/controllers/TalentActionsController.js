@@ -639,7 +639,7 @@ async function myActions(req, res) {
     } catch (_) {
         /* never block the bell */
     }
-    res.set('Cache-Control', 'no-store');
+    if (typeof res.set === 'function') res.set('Cache-Control', 'no-store');
     res.json(out);
 }
 

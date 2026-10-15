@@ -386,6 +386,10 @@ describe('counting queries exclude cancelled plans', () => {
     test('F5 Action Center: "development actions to progress" only counts actions of LIVE plans', async () => {
         let payload = null;
         mockDb.get.mockResolvedValue({ c: 0 });
+        // The task sources follow the optional modules: development is on here.
+        const modules = jest
+            .spyOn(require('../../src/services/ModuleService'), 'resolve')
+            .mockResolvedValue({ modules: { development: true } });
         await TalentActionsController.myActions(
             { user: { id: 68963, userType: 'employee' } },
             {
@@ -399,6 +403,7 @@ describe('counting queries exclude cancelled plans', () => {
         expect(q[0]).toMatch(/p\.status IN \('draft','active'\)/);
         expect(q[0]).toMatch(/a\.status IN \('pending','in_progress'\)/);
         expect(payload.total).toBe(0);
+        modules.mockRestore();
     });
 
     test('F5 dashboard "IDP completion": cancelled/archived plans leave the denominator, completed plans stay', async () => {

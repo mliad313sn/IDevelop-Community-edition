@@ -4412,11 +4412,7 @@ label.required::after {
     }
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .skeleton-line {
-        animation: none;
-    }
-}
+/* Under prefers-reduced-motion the global switch above stops the shimmer. */
 
 /* ── « Sur cette page » (partials/page-toc.ejs) ────────────────────── */
 .page-toc {
@@ -4562,5 +4558,12 @@ label.required::after {
         max-width: 100%;
         white-space: normal;
         overflow-wrap: anywhere;
+    }
+
+    /* A button whose label is long (French often is) wraps on two lines
+       rather than pushing the page sideways. */
+    .main-content .btn {
+        max-width: 100%;
+        white-space: normal;
     }
 }
