@@ -501,7 +501,7 @@
                                 container.appendChild(input);
                                 help.textContent = <%- JSON.stringify(__('admin:number_help')) %>;
                             } else {
-                                const isSecret = /password|secret|pass$/i.test(setting.settingKey || '');
+                                const isSecret = /password|secret/i.test(setting.settingKey || '') || /pass$/i.test(setting.settingKey || '');
                                 const input = document.createElement('input');
                                 input.type = isSecret ? 'password' : 'text';
                                 input.id = 'editSettingValue';

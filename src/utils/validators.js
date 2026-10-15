@@ -13,10 +13,14 @@ const { safeBackUrl } = require('./safeRedirect');
 /** Never echo credentials back into a page. */
 const SECRET_FIELD = /pass|pwd|secret|token|_csrf|otp|mfa/i;
 
+/** Keys that would reach Object.prototype through a draft (CWE-1321). */
+const UNSAFE_KEY = new Set(['__proto__', 'constructor', 'prototype']);
+
 function safeDraft(body) {
-    const out = {};
+    // A prototype-less map: no posted key can shadow or reach Object.prototype.
+    const out = Object.create(null);
     Object.entries(body || {}).forEach(([k, v]) => {
-        if (SECRET_FIELD.test(k)) return;
+        if (UNSAFE_KEY.has(k) || SECRET_FIELD.test(k)) return;
         if (v == null) return;
         // Scalars and small arrays (checkbox groups); files/objects never belong in a draft.
         if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === 'string').slice(0, 200);

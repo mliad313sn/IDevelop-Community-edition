@@ -50,6 +50,7 @@ function isNonDataRow(name) {
 // ---------------------------------------------------------------------------
 const fs = require('fs');
 const zlib = require('zlib');
+const { containedUploadPath } = require('./uploadTempPath');
 
 const XLSX_LIMITS = Object.freeze({
     maxEntries: Number(process.env.XLSX_MAX_ENTRIES) || 5000,
@@ -197,7 +198,11 @@ function readZipEntries(buf, wanted, limits = {}) {
 
 /** File-path flavour, for the multer temp file every import reads. */
 function assertSafeXlsxFile(filepath, limits) {
-    return assertSafeXlsxBuffer(fs.readFileSync(filepath), limits);
+    // Only an upload temp file is ever checked here (CWE-22): a path outside the
+    // upload directories is refused before anything is read.
+    const contained = containedUploadPath(filepath);
+    if (!contained) throw archiveRefusal('the upload is not where uploads are kept');
+    return assertSafeXlsxBuffer(fs.readFileSync(contained), limits);
 }
 
 module.exports = {
