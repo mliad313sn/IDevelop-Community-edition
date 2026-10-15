@@ -971,7 +971,7 @@ class DSRService {
                     email_status, email_attempts, last_error,
                     event_id, ref_type, ref_id, opened_at, acted_at
                FROM notifications
-              WHERE user_id = ? AND user_type::text IN ('employee', 'manager') ORDER BY id`,
+              WHERE user_id = ? AND user_type::text = 'employee' ORDER BY id`,
             [employeeId]
         );
         // The person's own notification settings (migration 183): summary
@@ -1505,7 +1505,7 @@ class DSRService {
                 [employeeId]
             );
             await db.run(
-                "DELETE FROM notifications WHERE user_id = ? AND user_type::text IN ('employee', 'manager')",
+                "DELETE FROM notifications WHERE user_id = ? AND user_type::text = 'employee'",
                 [employeeId]
             );
             await db.run('DELETE FROM hris_links WHERE employee_id = ?', [employeeId]);

@@ -59,14 +59,10 @@ const TICKS = [
         cron: '0 * * * *',
         everyMin: 60,
         keep: 50,
-        fn: () => {
-            try {
-                return require('../services/LmsService').runScheduledSync();
-            } catch {
-                return null;
-            }
-        },
-    }, // hourly catalog + completion poll; service optional
+        // A missing or broken module must FAIL the run (JobRunService records
+        // it), never resolve null and be recorded as a success.
+        fn: () => require('../services/LmsService').runScheduledSync(),
+    }, // hourly catalog + completion poll (self-gated: nothing unless an LMS integration is enabled)
     {
         name: 'report-scheduler.tick',
         cron: '*/15 * * * *',

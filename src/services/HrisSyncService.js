@@ -915,10 +915,12 @@ class HrisSyncService {
     static async runScheduled({ now = new Date(), force = false, opts = {} } = {}) {
         const row = await this.enabledRow();
         if (!row) return { skipped: 'no_connector' };
-        const today = now.toISOString().slice(0, 10);
-        const last = row.lastScheduledOn
-            ? new Date(row.lastScheduledOn).toISOString().slice(0, 10)
-            : null;
+        // Both days in the app's calendar: last_scheduled_on is a DATE, which
+        // node-pg returns at LOCAL midnight, so toISOString() named the day
+        // before on a server east of UTC and the nightly pass ran twice.
+        const { appDayIso, sqlDateIso } = require('../utils/dateFormat');
+        const today = appDayIso(now);
+        const last = row.lastScheduledOn ? sqlDateIso(row.lastScheduledOn) : null;
         if (!force) {
             if (last === today) return { skipped: 'already_today' };
             if (now.getHours() < Number(row.scheduleHour)) return { skipped: 'not_yet' };

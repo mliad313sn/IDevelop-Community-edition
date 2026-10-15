@@ -1431,7 +1431,7 @@ class NotificationService {
                 `SELECT COUNT(*)::int AS c FROM notification_preferences p
                   WHERE p.kind = '__all__' AND p.channel = 'email' AND p.enabled = false
                     AND NOT EXISTS (SELECT 1 FROM employees e
-                                     WHERE p.user_type::text IN ('employee', 'manager') AND e.id = p.user_id
+                                     WHERE p.user_type::text = 'employee' AND e.id = p.user_id
                                        AND (e.is_active = false OR e.cancelled_at IS NOT NULL OR e.erased_at IS NOT NULL))`
             );
             globalOptOut = Number(g && g.c) || 0;

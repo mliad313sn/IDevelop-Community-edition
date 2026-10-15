@@ -160,5 +160,6 @@
   "oo_err_meeting_held": "Cet entretien est déjà tenu.",
   "survey_band_under": "Moins de {{n}} réponses",
   "survey_band_at_least": "{{n}} réponses ou plus",
-  "survey_results_after_close": "Les résultats sont publiés à la clôture de l’enquête, figés. Tant qu’elle est ouverte, il n’y a ni résultat ni décompte."
+  "survey_results_after_close": "Les résultats sont publiés à la clôture de l’enquête, figés. Tant qu’elle est ouverte, il n’y a ni résultat ni décompte.",
+  "app_st_withdrawn": "Candidature retirée"
 }

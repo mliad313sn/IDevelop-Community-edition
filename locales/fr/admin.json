@@ -3798,5 +3798,6 @@
   "enum_admin_role_regional_admin": "Administrateur régional (réservé)",
   "enum_admin_role_country_admin": "Administrateur pays (réservé)",
   "enum_admin_role_site_admin": "Administrateur de site (réservé)",
-  "enum_admin_role_hr_bp": "Partenaire RH (réservé)"
+  "enum_admin_role_hr_bp": "Partenaire RH (réservé)",
+  "cyc_status_cancelled": "Annulée"
 }

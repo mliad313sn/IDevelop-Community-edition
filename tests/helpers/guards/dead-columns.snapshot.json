@@ -1,0 +1,179 @@
+{
+  "_doc": "Columns that src/ writes but nothing reads (deadWritten) and columns nothing references at all (neverReferenced), measured on IDevelop's schema after migration 189. The list may only shrink: a new entry needs a review and a reason.",
+  "columns": [
+    {
+      "table": "erasure_override_requests",
+      "col": "hold_snapshot",
+      "kind": "deadWritten",
+      "reason": "privacy record: the legal hold as it stood when the override was requested, kept as evidence and never displayed"
+    },
+    {
+      "table": "erasure_override_requests",
+      "col": "executed_at",
+      "kind": "deadWritten",
+      "reason": "privacy record: when an approved override was executed; evidence for an audit, not shown"
+    },
+    {
+      "table": "coaching_plans",
+      "col": "validated_by",
+      "kind": "deadWritten",
+      "reason": "audit stamp: who validated the plan; the plan pages show the state, not the actor"
+    },
+    {
+      "table": "cycle_participants",
+      "col": "last_excluded_by_admin_id",
+      "kind": "deadWritten",
+      "reason": "audit stamp: who excluded the participant; the campaign console shows the category, not the actor"
+    },
+    {
+      "table": "cycle_participants",
+      "col": "reviewer_assigned_by_admin_id",
+      "kind": "deadWritten",
+      "reason": "audit stamp: who assigned the reviewer"
+    },
+    {
+      "table": "calibration_sessions",
+      "col": "finalized_at",
+      "kind": "deadWritten",
+      "reason": "calibration stamp, kept for the record"
+    },
+    {
+      "table": "coverage_rules",
+      "col": "last_evaluated_at",
+      "kind": "deadWritten",
+      "reason": "freshness stamp written by the coverage check; a reader is wanted on the coverage page"
+    },
+    {
+      "table": "coverage_rules",
+      "col": "last_predicted_at",
+      "kind": "deadWritten",
+      "reason": "freshness stamp of the 30-60-90 day projection; a reader is wanted on the coverage page"
+    },
+    {
+      "table": "assessment_cycles",
+      "col": "cancelled_by_admin_id",
+      "kind": "deadWritten",
+      "reason": "audit stamp: who cancelled the campaign (maintenance panel); the system log names the actor too"
+    },
+    {
+      "table": "assessment_cycles",
+      "col": "reopen_override_by_admin_id",
+      "kind": "deadWritten",
+      "reason": "audit stamp: who forced a reopening"
+    },
+    {
+      "table": "feedback360_subjects",
+      "col": "released_by_type",
+      "kind": "deadWritten",
+      "reason": "audit stamp of a 360° report release (manager, or the round closing); the report shows that it was released, not by whom"
+    },
+    {
+      "table": "feedback360_subjects",
+      "col": "released_by_id",
+      "kind": "deadWritten",
+      "reason": "audit stamp of a 360° report release, paired with released_by_type"
+    },
+    {
+      "table": "privacy_paused_triggers",
+      "col": "resolved_by",
+      "kind": "deadWritten",
+      "reason": "privacy record: who resolved a paused trigger"
+    },
+    {
+      "table": "sso_migration_invites",
+      "col": "handed_over_by",
+      "kind": "deadWritten",
+      "reason": "SSO migration record: who handed the invitation over by hand"
+    },
+    {
+      "table": "coaching_objectives",
+      "col": "carry_forward_of",
+      "kind": "deadWritten",
+      "reason": "lineage of a carried-forward objective, kept until a history view exists"
+    },
+    {
+      "table": "lms_integrations",
+      "col": "last_catalog_sync",
+      "kind": "deadWritten",
+      "reason": "LMS catalogue sync stamp; the LMS hub shows the completion sync only"
+    },
+    {
+      "table": "talent_manager_tasks",
+      "col": "resolved_by_admin_id",
+      "kind": "deadWritten",
+      "reason": "task record: who resolved the task"
+    },
+    {
+      "table": "talent_manager_tasks",
+      "col": "resolved_target_id",
+      "kind": "deadWritten",
+      "reason": "task record: the plan or placement a task was resolved into"
+    },
+    {
+      "table": "opportunities",
+      "col": "state_changed_by_admin_id",
+      "kind": "deadWritten",
+      "reason": "audit stamp: who changed the posting's state"
+    },
+    {
+      "table": "nine_box_evaluations",
+      "col": "submitted_by",
+      "kind": "deadWritten",
+      "reason": "9-box record: who submitted the placement; the console shows the state, not the actor"
+    },
+    {
+      "table": "nine_box_evaluations",
+      "col": "rejected_by",
+      "kind": "deadWritten",
+      "reason": "9-box record: who rejected the placement"
+    },
+    {
+      "table": "nine_box_evaluations",
+      "col": "rejected_at",
+      "kind": "deadWritten",
+      "reason": "9-box record: when the placement was rejected"
+    },
+    {
+      "table": "webhook_deliveries",
+      "col": "subscription_id",
+      "kind": "deadWritten",
+      "reason": "outbound webhook log (telemetry, pruned): the subscription a delivery went to, kept for troubleshooting in the database"
+    },
+    {
+      "table": "cycle_participants",
+      "col": "enrolled_at",
+      "kind": "neverReferenced",
+      "reason": "enrolment stamp filled by its column default, never shown"
+    },
+    {
+      "table": "dsr_requests",
+      "col": "fulfilled_at",
+      "kind": "neverReferenced",
+      "reason": "data-subject request register stamp, not written or read by the current flow"
+    },
+    {
+      "table": "lms_completions",
+      "col": "ingested_at",
+      "kind": "neverReferenced",
+      "reason": "LMS ingestion stamp filled by its column default, never displayed"
+    },
+    {
+      "table": "saml_assertion_seen",
+      "col": "seen_at",
+      "kind": "neverReferenced",
+      "reason": "replay protection: the row's existence is the check; the purge reads expires_at"
+    },
+    {
+      "table": "coaching_sessions",
+      "col": "notes_uri",
+      "kind": "neverReferenced",
+      "reason": "early column with no writer and no reader; candidate for removal"
+    },
+    {
+      "table": "mfa_secrets",
+      "col": "period_sec",
+      "kind": "neverReferenced",
+      "reason": "the TOTP period is fixed at 30 s in code and never read back from the row"
+    }
+  ]
+}

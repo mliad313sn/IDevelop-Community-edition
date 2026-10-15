@@ -3798,5 +3798,6 @@
   "enum_admin_role_regional_admin": "Regional admin (reserved)",
   "enum_admin_role_country_admin": "Country admin (reserved)",
   "enum_admin_role_site_admin": "Site admin (reserved)",
-  "enum_admin_role_hr_bp": "HR business partner (reserved)"
+  "enum_admin_role_hr_bp": "HR business partner (reserved)",
+  "cyc_status_cancelled": "Cancelled"
 }
