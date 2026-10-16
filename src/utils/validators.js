@@ -81,7 +81,16 @@ function keepDraft(req, route) {
             JSON.stringify({ ...safeDraft(req.body), __from: String(req.path || '') })
         );
     }
-    return to;
+    // The caller's own route is a literal; a derived one is kept on this site.
+    if (route) return route;
+    return localRedirectPath(to);
+}
+
+/** `p` when it is a path on this site ("/x", never "//host" or "/\host"), else "/". */
+function localRedirectPath(p) {
+    const s = String(p || '');
+    if (s.startsWith('/') && !s.startsWith('//') && !s.startsWith('/\\')) return s;
+    return '/';
 }
 
 /** Translate a `validation:<key>` message (or pass any other text through). */

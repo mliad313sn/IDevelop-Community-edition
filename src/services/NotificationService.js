@@ -213,8 +213,10 @@ class NotificationService {
             // Never silent: one line, the kind and the recipient's id only (the
             // error text is address-masked).
             const a = args || {};
+            const oneLine = (v) => String(v).replace(/\n|\r/g, ' ');
+            const msg = NotificationService._safeError(e && e.message) || 'error';
             console.warn(
-                `[notify] ${a.kind || '?'} → ${a.userType || '?'}:${a.userId ?? '?'} failed: ${NotificationService._safeError(e && e.message) || 'error'}`.slice(
+                `[notify] ${oneLine(a.kind || '?')} → ${oneLine(a.userType || '?')}:${oneLine(a.userId ?? '?')} failed: ${oneLine(msg)}`.slice(
                     0,
                     300
                 )
