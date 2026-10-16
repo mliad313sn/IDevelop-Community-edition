@@ -542,10 +542,8 @@ describe('D4 — declined rows are reported, not swallowed', () => {
 // D5 / D6 — the CSS values behind the browser measurements
 // =============================================================================
 describe('D5/D6 — rating target size and the mobile action bar', () => {
-    const VIEW = fs.readFileSync(
-        path.join(APP, 'views/pages/employee/self-assessment.ejs'),
-        'utf8'
-    );
+    // The page CSS lives in public/css/self-assessment.css (design tokens).
+    const VIEW = fs.readFileSync(path.join(APP, 'public/css/self-assessment.css'), 'utf8');
 
     test('D5: the rating dropdown clears the WCAG 2.2 SC 2.5.8 minimum of 24px', () => {
         const rule = VIEW.match(/\.self-rating-select\s*\{([^}]*)\}/);
@@ -558,8 +556,8 @@ describe('D5/D6 — rating target size and the mobile action bar', () => {
     test('D6: the mobile action bar wraps, so it cannot overflow to the LEFT', () => {
         // Everything from the phone media query to the rule that follows it: the
         // `.sa-bar-actions` override inside is the one that governs 375px.
-        const mq = VIEW.slice(VIEW.indexOf('@media (max-width:780px)'));
-        const block = mq.slice(0, mq.indexOf('.sa-locked{'));
+        const mq = VIEW.slice(VIEW.indexOf('@media (max-width: 780px)'));
+        const block = mq.slice(0, mq.indexOf('.sa-locked {'));
         const actions = block.match(/\.sa-bar-actions\s*\{([^}]*)\}/);
         expect(actions).not.toBeNull();
         expect(actions[1]).toMatch(/flex-wrap:\s*wrap/);

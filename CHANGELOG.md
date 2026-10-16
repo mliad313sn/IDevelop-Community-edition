@@ -467,8 +467,8 @@ project uses [Semantic Versioning](https://semver.org/).
   `c334-GUARD-render-standalone`, `c334-GUARD-date-lint`,
   `c334-GUARD-population-parity`, `c334-GUARD-routes`,
   `c334-GUARD-dead-columns` and `c334-GUARD-tick-registry` over
-  `tests/helpers/guards/`; page journeys and repaired forms: `agoBucket` and
-  `adminFormsRepaired`.
+  `tests/helpers/guards/`; page journeys and repaired forms: `agoBucket`,
+  `pageJourneys` and `adminFormsRepaired`.
 
 ### Security (CSRF on uploads, SSO notices, security panels)
 

@@ -96,11 +96,13 @@
 .cp-tabs{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-4)}
 .cp-tabs .btn{min-height:44px}
 .cp-panel{padding:0}
+/* .card sets display:flex, which would beat the hidden attribute */
+.cp-panel[hidden],#cp-plans-panel[hidden]{display:none}
 .cp-panel-head{display:flex;flex-wrap:wrap;gap:var(--space-3);justify-content:space-between;align-items:center;padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border)}
 .cp-panel-title{margin:0;font-size:1rem}
 .cp-search{max-width:280px;min-height:44px}
 .cp-count{margin:0;padding:var(--space-2) var(--space-4);font-size:.8rem}
-.cp-monitor{padding:var(--space-4);margin-bottom:var(--space-4);display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
+.cp-monitor{padding:var(--space-4);margin-bottom:var(--space-4);display:flex;flex-direction:row;flex-wrap:wrap;gap:var(--space-2);align-items:center}
 .cp-monitor .cp-panel-title{margin-right:var(--space-2)}
 .cp-sub{display:block;color:var(--text-muted);font-size:.78rem}
 .cp-empty{padding:var(--space-4)}
@@ -213,7 +215,7 @@ const CP = {
       '<td data-label="'+esc(T.role)+'">'+esc(e.roleName||'—')+'</td>'+
       '<td data-label="'+esc(T.serviceSite)+'" class="text-muted">'+esc((e.serviceName||'—')+' · '+(e.siteName||'—'))+'</td>'+
       '<td data-label="'+esc(T.activePlans)+'">'+(e.planCount?cpBadge('info', CP_T.activeSuffix, e.planCount):'<span class="text-muted">'+esc(CP_T.none)+'</span>')+'</td>'+
-      '<td class="col-actions" data-label="'+esc(T.actions)+'">'+
+      '<td class="col-actions cell-actions">'+
         '<button class="btn btn-sm btn-primary" data-emp="'+esc(e.employeeId)+'" data-name="'+esc(e.firstName+" "+e.lastName)+'"'+cpOn('click','CP.startBtn',['$el'])+'><i class="fas fa-people-arrows" aria-hidden="true"></i> '+esc(CP_T.startPlan)+'</button>'+
       '</td></tr>').join('');
     document.getElementById('cp-roster-count').textContent=CP_T.rosterCount.replace('{{shown}}',rows.length).replace('{{total}}',this.roster.length);
@@ -310,7 +312,7 @@ const CP = {
     const [q,m]=await Promise.all([this.api('/api/coaching/queue'),this.api('/api/coaching/monitor')]);
     const tb=document.querySelector('#cp-table tbody');
     const T=CP_T.th;
-    tb.innerHTML=q.items.length?q.items.map(p=>'<tr><td data-label="'+esc(T.employee)+'">'+esc((p.firstName||'')+' '+(p.lastName||''))+'</td><td data-label="'+esc(T.kind)+'">'+esc(this.lbl(CP_T.kind,p.kind))+'</td><td data-label="'+esc(T.title)+'">'+esc(p.title)+'</td><td data-label="'+esc(T.context)+'">'+(p.contextLabel?cpBadge('info', p.contextLabel, null, {text:true}):'<span class="text-muted">—</span>')+'</td><td data-label="'+esc(T.target)+'">'+(p.targetDate?esc(String(p.targetDate).slice(0,10)):'—')+'</td><td data-label="'+esc(T.state)+'">'+this.badge(p.state)+'</td><td data-label="'+esc(T.progress)+'">'+Number(p.progress)+' %</td><td class="col-actions" data-label="'+esc(T.actions)+'">'+
+    tb.innerHTML=q.items.length?q.items.map(p=>'<tr><td data-label="'+esc(T.employee)+'">'+esc((p.firstName||'')+' '+(p.lastName||''))+'</td><td data-label="'+esc(T.kind)+'">'+esc(this.lbl(CP_T.kind,p.kind))+'</td><td data-label="'+esc(T.title)+'">'+esc(p.title)+'</td><td data-label="'+esc(T.context)+'">'+(p.contextLabel?cpBadge('info', p.contextLabel, null, {text:true}):'<span class="text-muted">—</span>')+'</td><td data-label="'+esc(T.target)+'">'+(p.targetDate?esc(String(p.targetDate).slice(0,10)):'—')+'</td><td data-label="'+esc(T.state)+'">'+this.badge(p.state)+'</td><td data-label="'+esc(T.progress)+'">'+Number(p.progress)+' %</td><td class="col-actions cell-actions">'+
       '<button class="btn btn-sm btn-secondary"'+cpOn('click','CP.act',[p.id,'session'])+'>'+esc(CP_T.btnNote)+'</button> '+
       (p.state==='active'?'<button class="btn btn-sm btn-success"'+cpOn('click','CP.act',[p.id,'validate'])+'>'+esc(CP_T.btnValidate)+'</button> <button class="btn btn-sm btn-danger" data-kind="'+((p.kind==='mentoring'||p.kind==='mentor')?'mentoring':'coaching')+'"'+cpOn('click','CP.cancelBtn',['$el',Number(p.id)])+'>'+esc(CP_T.btnCancel)+'</button>':'')+
       '</td></tr>').join(''):'<tr><td colspan="8"><em>'+esc(CP_T.noPlans)+'</em></td></tr>';
