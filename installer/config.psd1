@@ -63,7 +63,13 @@
     # role are refused by PostgreSQL (Danger-Zone database cleanup, data reset,
     # snapshot restore, SQL-console revert). A Manage -Restore hands the tables back
     # to the app role until the next Patch.
-    AuditOwnerSeparation = $false
+    #   'Auto' (shipped) - OFF for a new install (the four tools above stay usable);
+    #                      the separation is OFFERED: -EnableAuditOwnerSeparation, or
+    #                      a 'yes' at the console on an upgrade. An upgrade keeps the
+    #                      state its database is in: separated stays separated.
+    #   $true / $false   - explicit ($false also hands a separated database back to
+    #                      the app role on the next run).
+    AuditOwnerSeparation = 'Auto'
 
     # ---- Service hosting ----
     # How the app is hosted as a background, auto-start, restart-on-failure process:
@@ -73,20 +79,27 @@
     #   'Auto'          - prefer a real Windows service; fall back to a Scheduled Task only
     #                     if the WinSW wrapper can't be obtained (offline + not bundled).
     ServiceMode    = 'Auto'
-    # Account the Windows service runs as (3.23.18, S-04):
-    #   'LocalSystem' - DEFAULT, unchanged. Full control of the machine.
+    # Account the Windows service runs as (S-04):
+    #   'Auto'        - SHIPPED. A NEW install runs as the virtual account below. An
+    #                   UPGRADE keeps the account the service runs as today (never
+    #                   forced): a LocalSystem service gets the recommendation and the
+    #                   one-switch migration (-MigrateServiceAccount, or a 'yes' at the
+    #                   console), done after the upgrade is healthy, with an automatic
+    #                   return to LocalSystem if the service does not come up healthy.
     #   'Virtual'     - the service's own virtual account NT SERVICE\<ServiceName>
-    #                   (no password, least privilege). The installer then grants
-    #                   that SID Modify on the install dir and on every restricted
-    #                   data folder (%ProgramData%\IDevelop\backups, sql-restore-points,
-    #                   logs, audit-anchors, tls..., <InstallDir>\uploads, data, logs)
-    #                   and Read on .env, so the daily pg_dump backups, uploads and
-    #                   restore points keep working. Applies to ServiceMode 'Service'
-    #                   (a Scheduled Task host always runs as SYSTEM).
-    # This release ships 'LocalSystem': switching a live appliance is the operator's
-    # decision - set 'Virtual' and run a Patch; set it back and Patch to revert
-    # (the virtual account's grants are then removed).
-    ServiceAccount = 'LocalSystem'
+    #                   (no password, least privilege). The installer grants that SID
+    #                   Modify on every folder the app writes to (%ProgramData%\IDevelop
+    #                   backups, sql-restore-points, logs, audit-anchors, tls, keys;
+    #                   <InstallDir>\uploads, data, logs, backups, tmp, certs,
+    #                   AI_Engine_Docs, service\logs), Read on .env, ReadAndExecute
+    #                   ONLY on the code (the install root and service\), and
+    #                   ReadAndExecute on HRIS_DROP_ROOT when .env sets it. Nothing on
+    #                   the code backups (app-backups, restore-points). Applies to
+    #                   ServiceMode 'Service' (a Scheduled Task host runs as SYSTEM).
+    #   'LocalSystem' - full control of the machine. Set it and run a Patch to revert
+    #                   a virtual-account service (the virtual account's grants are
+    #                   then removed).
+    ServiceAccount = 'Auto'
     # WinSW (github.com/winsw/winsw) - a tiny, self-contained service wrapper. The
     # installer uses a copy bundled at <package>\bin\WinSW-x64.exe if present, else
     # downloads this URL at install time (same pattern as the Node/PG/VC++ downloads).

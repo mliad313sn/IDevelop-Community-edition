@@ -145,12 +145,22 @@ describe('read-only warnings, firewall, service logs', () => {
     });
 
     test('the service log folder is restricted before the wrapper writes', () => {
-        for (const src of [INSTALL, MANAGE])
-            expect(src).toMatch(/@\('logs', 'backups', 'uploads', 'data', 'service'\)/);
+        for (const src of [INSTALL, MANAGE]) {
+            expect(src).toMatch(
+                /@\('logs', 'backups', 'uploads', 'data', 'tmp', 'certs', 'AI_Engine_Docs'\)/
+            );
+            expect(src).toMatch(/Join-Path \$InstallDir 'service\\logs'/);
+        }
         const reg = INSTALL.slice(INSTALL.indexOf('function Register-WindowsService'));
-        expect(reg.indexOf('Protect-SensitivePath $svcDir')).toBeGreaterThan(-1);
-        expect(reg.indexOf('Protect-SensitivePath $svcDir')).toBeLessThan(
-            reg.indexOf('$svcExe = Join-Path $svcDir')
+        // The logs folder (Modify) and the wrapper folder (ReadAndExecute) are
+        // both restricted before the wrapper is copied or writes a line.
+        const logs = reg.indexOf("Protect-SensitivePath $svcLogDir 'Modify'");
+        const dir = reg.indexOf("Protect-SensitivePath $svcDir 'ReadAndExecute'");
+        expect(logs).toBeGreaterThan(-1);
+        expect(dir).toBeGreaterThan(logs);
+        expect(dir).toBeLessThan(reg.indexOf('$svcExe = Join-Path $svcDir'));
+        expect(reg).toMatch(
+            /<logpath>\$\(\[System\.Security\.SecurityElement\]::Escape\(\$svcLogDir\)\)<\/logpath>/
         );
     });
 });

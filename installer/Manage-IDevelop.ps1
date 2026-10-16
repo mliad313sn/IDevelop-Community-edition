@@ -134,9 +134,12 @@ function Resolve-ServiceAccount($Configured, [string]$ServiceName) {
     if (-not $v -or $v -eq 'LocalSystem') { return [pscustomobject]@{ Mode = 'LocalSystem'; Account = 'LocalSystem'; Sid = $null } }
     return [pscustomobject]@{ Mode = 'Custom'; Account = $v; Sid = $null }
 }
-function Test-AclHardened([string]$Path) {
+# $WithService = $false: the service account must NOT be on this target (a folder
+# it is never granted, such as the code backups): its ACE then fails the check.
+function Test-AclHardened([string]$Path, [bool]$WithService = $true) {
     try {
-        $allowed = @($script:HardenedAclSids) + @(@($script:ServiceAclSid) | Where-Object { $_ })
+        $svc = if ($WithService) { @(@($script:ServiceAclSid) | Where-Object { $_ }) } else { @() }
+        $allowed = @($script:HardenedAclSids) + $svc
         $seen = @()
         $acl = Get-Acl -LiteralPath $Path -ErrorAction Stop
         if (-not $acl.AreAccessRulesProtected) { return $false }
@@ -144,12 +147,19 @@ function Test-AclHardened([string]$Path) {
             if ($allowed -notcontains $r.IdentityReference.Value) { return $false }
             $seen += $r.IdentityReference.Value
         }
-        if ($script:ServiceAclSid -and ($seen -notcontains $script:ServiceAclSid)) { return $false }
+        # The service account must actually HOLD its grant, not merely be allowed one.
+        if ($svc.Count -and ($seen -notcontains $script:ServiceAclSid)) { return $false }
         return $true
     } catch { return $false }
 }
-# The virtual account's ACE goes through .NET, not icacls: icacls refuses a SID
-# it cannot map yet (error 1332 before the service exists). Same as the installer.
+# Grant / revoke the virtual service account's ACE through .NET, NOT icacls:
+# icacls refuses a SID it cannot map to a name (error 1332), and NT SERVICE\<name>
+# only maps once the service exists - the data folders are hardened BEFORE the
+# service is registered. $Grant: '' = revoke only, or a FileSystemRights name
+# ('Modify' / 'ReadAndExecute' inherited by children on a folder, 'Read' on a
+# file). EXACTLY that right is left: a broader ACE an older release laid (Modify
+# on the install root or on the WinSW folder) is replaced, not kept because it
+# "includes" the new one. Writes only when something changes. Returns $true / $false.
 function Set-ServiceSidAce([string]$Path, [bool]$IsDir, [string]$Grant) {
     try {
         $sec = if ($IsDir) { New-Object System.Security.AccessControl.DirectorySecurity($Path, [System.Security.AccessControl.AccessControlSections]::Access) }
@@ -165,8 +175,10 @@ function Set-ServiceSidAce([string]$Path, [bool]$IsDir, [string]$Grant) {
             $sid = New-Object System.Security.Principal.SecurityIdentifier($script:ServiceAclSid)
             $right = [System.Security.AccessControl.FileSystemRights]$Grant
             $inhF = if ($IsDir) { [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit' } else { [System.Security.AccessControl.InheritanceFlags]::None }
-            $have = @($rules | Where-Object { $_.IdentityReference.Value -eq $script:ServiceAclSid -and $_.AccessControlType -eq 'Allow' -and (($_.FileSystemRights -band $right) -eq $right) -and $_.InheritanceFlags -eq $inhF })
-            if (-not $have.Count) {
+            $want = [int]$right; $sync = [int][System.Security.AccessControl.FileSystemRights]::Synchronize
+            $mine = @($rules | Where-Object { $_.IdentityReference.Value -eq $script:ServiceAclSid })
+            $exact = @($mine | Where-Object { $_.AccessControlType -eq 'Allow' -and $_.InheritanceFlags -eq $inhF -and (([int]$_.FileSystemRights -band $want) -eq $want) -and (([int]$_.FileSystemRights -band (-bnot ($want -bor $sync))) -eq 0) })
+            if (-not ($mine.Count -eq 1 -and $exact.Count -eq 1)) {
                 $sec.PurgeAccessRules($sid)
                 $sec.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sid, $right, $inhF, [System.Security.AccessControl.PropagationFlags]::None, [System.Security.AccessControl.AccessControlType]::Allow)))
                 $changed = $true
@@ -178,54 +190,209 @@ function Set-ServiceSidAce([string]$Path, [bool]$IsDir, [string]$Grant) {
         return $true
     } catch { return $false }
 }
-function Protect-SensitivePath([string]$Path) {
+# $DirGrant: what the virtual service account gets on a FOLDER ('Modify', or
+# 'ReadAndExecute' for the WinSW folder), or 'None' (a folder it must never
+# touch: its ACE is removed). A FILE always gets 'Read' (the .env).
+function Protect-SensitivePath([string]$Path, [string]$DirGrant = 'Modify') {
     if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return 'absent' }
-    if (Test-AclHardened $Path) { return 'already restricted' }
     $isDir = (Get-Item -LiteralPath $Path -Force).PSIsContainer
+    $svcGrant = if (-not $script:ServiceAclSid -or $DirGrant -eq 'None') { '' } elseif ($isDir) { $DirGrant } else { 'Read' }
+    $withSvc = [bool]$svcGrant
+    if (Test-AclHardened $Path $withSvc) {
+        # The service account's LEVEL is re-checked as well (an older release
+        # granted Modify where ReadAndExecute is now the rule).
+        if ($svcGrant -and -not (Set-ServiceSidAce $Path $isDir $svcGrant)) { return 'FAILED (service-account ACE)' }
+        return 'already restricted'
+    }
     $inh = if ($isDir) { '(OI)(CI)' } else { '' }
     $rc = 1
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     try {
-        # Explicit broad grants first (whole tree, while still listable), then drop inheritance.
+        # 1) Explicit broad grants a copy may have carried in (Users, Authenticated
+        #    Users, Everyone, CREATOR OWNER, Power Users), on the whole tree -
+        #    FIRST, while the tree is still listable.
         $tree = if ($isDir) { '/T' } else { $null }
         & icacls.exe $Path /remove:g '*S-1-5-32-545' '*S-1-5-11' '*S-1-1-0' '*S-1-3-0' '*S-1-5-32-547' $tree /C /Q *> $null
+        # 2) /inheritance:r drops every inherited ACE (BUILTIN\Users, CREATOR OWNER...);
+        #    children that inherit are re-propagated from the new DACL by icacls.
         & icacls.exe $Path /inheritance:r /grant:r "*S-1-5-18:${inh}F" "*S-1-5-32-544:${inh}F" /C /Q *> $null
         $rc = $LASTEXITCODE
     } catch { $rc = 1 } finally { $ErrorActionPreference = $prev }
     if ($rc -ne 0) { return "FAILED (icacls exit $rc)" }
+    # 3) The virtual service account: its grant on this target, or its ACE (and a
+    #    stale one after a switch back to LocalSystem) removed.
     if ($script:ServiceAclSid -or @(@($script:RevokeAclSids) | Where-Object { $_ }).Count) {
-        $g = if (-not $script:ServiceAclSid) { '' } elseif ($isDir) { 'Modify' } else { 'Read' }
-        if (-not (Set-ServiceSidAce $Path $isDir $g)) { return 'FAILED (service-account ACE)' }
+        if ($svcGrant) {
+            if (-not (Set-ServiceSidAce $Path $isDir $svcGrant)) { return 'FAILED (service-account ACE)' }
+        } else {
+            $keepRevoke = $script:RevokeAclSids
+            try {
+                $script:RevokeAclSids = @(@($keepRevoke) + @($script:ServiceAclSid) | Where-Object { $_ })
+                if (-not (Set-ServiceSidAce $Path $isDir '')) { return 'FAILED (service-account ACE)' }
+            } finally { $script:RevokeAclSids = $keepRevoke }
+        }
     }
-    if (Test-AclHardened $Path) { return 'restricted' }
+    if (Test-AclHardened $Path $withSvc) { return 'restricted' }
     return 'PARTIAL (an explicit non-admin ACE remains)'
 }
-function Protect-AppDataAcls([string]$DataRoot, [string]$InstallDir) {
-    $targets = @()
-    foreach ($sub in @('backups', 'app-backups', 'restore-points', 'sql-restore-points', 'logs', 'audit-anchors', 'tls')) { $targets += (Join-Path $DataRoot $sub) }
-    $targets += $DataRoot
-    if ($InstallDir) {
-        $targets += (Join-Path $InstallDir '.env')
-        # + service: the WinSW wrapper's stdout/stderr logs.
-        foreach ($sub in @('logs', 'backups', 'uploads', 'data', 'service')) { $targets += (Join-Path $InstallDir $sub) }
+# HRIS_DROP_ROOT of the installed .env (docs/HRIS-SYNC.md): the folder tree the
+# HRIS CSV connector reads its exports from. '' when unset.
+function Get-HrisDropRoot([string]$InstallDir) {
+    try {
+        $envFile = Join-Path $InstallDir '.env'
+        if (-not $InstallDir -or -not (Test-Path -LiteralPath $envFile)) { return '' }
+        $m = [regex]::Match([IO.File]::ReadAllText($envFile), '(?m)^[ \t]*HRIS_DROP_ROOT[ \t]*=[ \t]*"?([^"\r\n]*)"?')
+        if ($m.Success -and $m.Groups[1].Value.Trim()) { return $m.Groups[1].Value.Trim() }
+    } catch {}
+    return ''
+}
+# WHERE THE APP WRITES, and what the service account gets there. One pure
+# function (a test runs it, and checks Install and Manage compute the same list)
+# so the virtual account is granted EVERY place the app writes:
+#   %ProgramData%\IDevelop: backups (daily dumps, erasure tombstones),
+#     sql-restore-points (SQL console), audit-anchors, tls, keys (the backup
+#     keyring), logs, and the root itself - Modify.
+#   <InstallDir>: uploads, data, logs, backups, tmp (upload staging), certs,
+#     AI_Engine_Docs (Data Management upload staging), service\logs (WinSW
+#     logs) - Modify; .env - Read; service\ (the wrapper EXE + XML) and the
+#     install root - ReadAndExecute, NEVER Modify: the code (src, scripts,
+#     node_modules, the installer scripts) is run by administrators, so a
+#     service able to rewrite it could escalate to whoever runs it next.
+#   app-backups and restore-points (code backups, Manage restore points whose
+#     code Manage -Restore runs as administrator): restricted, and NOTHING for
+#     the service, for the same reason.
+#   HRIS_DROP_ROOT (when set in .env): ReadAndExecute, additive (a customer
+#     folder: never restricted by Setup).
+# Each entry: Path; Kind Dir|File; Restrict (cut down to SYSTEM + Administrators);
+# Grant for the virtual account ('' when there is none); ProtectedFiles: the app
+# writes files there with their OWN protected DACL (SYSTEM + Administrators +
+# OWNER RIGHTS: dumps, the keyring, SQL-console restore points). Nothing
+# inherits into such a file, so a file created by an administrator or by
+# LocalSystem stays closed to the virtual account (a keyring it cannot read =
+# every backup refused) unless its SID is put on the file itself.
+function Get-AppAclTargets([string]$DataRoot, [string]$InstallDir, [string]$ServiceSid, [string]$HrisDropRoot = '') {
+    $out = @()
+    $m = if ($ServiceSid) { 'Modify' } else { '' }
+    $rx = if ($ServiceSid) { 'ReadAndExecute' } else { '' }
+    $pf = @('backups', 'sql-restore-points', 'keys', 'audit-anchors')
+    foreach ($sub in @('backups', 'app-backups', 'restore-points', 'sql-restore-points', 'logs', 'audit-anchors', 'tls', 'keys')) {
+        $gr = if ($sub -in @('app-backups', 'restore-points')) { '' } else { $m }
+        $out += [pscustomobject]@{ Path = (Join-Path $DataRoot $sub); Kind = 'Dir'; Restrict = $true; Grant = $gr; ProtectedFiles = ($pf -contains $sub)
+                    # keys\: the keyring only (Read) - never an exported backup-recovery-*.txt.
+                    ProtectedFilter = $(if ($sub -eq 'keys') { 'backup-keyring*.json' } else { '*' }) }
     }
+    $out += [pscustomobject]@{ Path = $DataRoot; Kind = 'Dir'; Restrict = $true; Grant = $m; ProtectedFiles = $false; ProtectedFilter = '*' }
+    if ($InstallDir) {
+        $out += [pscustomobject]@{ Path = (Join-Path $InstallDir '.env'); Kind = 'File'; Restrict = $true; Grant = $(if ($ServiceSid) { 'Read' } else { '' }); ProtectedFiles = $false; ProtectedFilter = '*' }
+        foreach ($sub in @('logs', 'backups', 'uploads', 'data', 'tmp', 'certs', 'AI_Engine_Docs')) {
+            $out += [pscustomobject]@{ Path = (Join-Path $InstallDir $sub); Kind = 'Dir'; Restrict = $true; Grant = $m; ProtectedFiles = ($sub -in @('backups', 'data')); ProtectedFilter = '*' }
+        }
+        $out += [pscustomobject]@{ Path = (Join-Path $InstallDir 'service\logs'); Kind = 'Dir'; Restrict = $true; Grant = $m; ProtectedFiles = $false; ProtectedFilter = '*' }
+        $out += [pscustomobject]@{ Path = (Join-Path $InstallDir 'service'); Kind = 'Dir'; Restrict = $true; Grant = $rx; ProtectedFiles = $false; ProtectedFilter = '*' }
+        # The install root stays readable (Program Files rules): additive grant only.
+        $out += [pscustomobject]@{ Path = $InstallDir; Kind = 'Dir'; Restrict = $false; Grant = $rx; ProtectedFiles = $false; ProtectedFilter = '*' }
+    }
+    if ($HrisDropRoot) {
+        $out += [pscustomobject]@{ Path = $HrisDropRoot; Kind = 'Dir'; Restrict = $false; Grant = $rx; ProtectedFiles = $false; ProtectedFilter = '*' }
+    }
+    return $out
+}
+# $DataRoot = %ProgramData%\IDevelop; $InstallDir optional (the .env lives there).
+# Sub-folders first, root last. Returns the number of targets NOT restricted.
+function Protect-AppDataAcls([string]$DataRoot, [string]$InstallDir) {
+    $all = @(Get-AppAclTargets $DataRoot $InstallDir $script:ServiceAclSid (Get-HrisDropRoot $InstallDir))
+    $targets = @($all | Where-Object { $_.Restrict })
     $who = if ($script:ServiceAclSid) { "SYSTEM + Administrators + the service account $($script:ServiceAclSid)" } else { 'SYSTEM + Administrators only' }
+    $touchSvc = $script:ServiceAclSid -or @(@($script:RevokeAclSids) | Where-Object { $_ }).Count
     $bad = 0
-    foreach ($t in $targets) {
-        $r = Protect-SensitivePath $t
+    # The service SID on (or off) every PROTECTED file of those folders - first,
+    # while the folders are still listable by whoever runs this.
+    if ($touchSvc) {
+        foreach ($t in @($all | Where-Object { $_.ProtectedFiles -and (Test-Path -LiteralPath $_.Path -ErrorAction SilentlyContinue) })) {
+            $fg = if (-not $script:ServiceAclSid) { '' } elseif ($t.ProtectedFilter -ne '*') { 'Read' } else { 'Modify' }
+            $n = 0; $nf = 0
+            foreach ($f in @(Get-ChildItem -LiteralPath $t.Path -Recurse -File -Force -Filter $t.ProtectedFilter -ErrorAction SilentlyContinue)) {
+                $isProt = $false
+                try { $isProt = (New-Object System.Security.AccessControl.FileSecurity($f.FullName, [System.Security.AccessControl.AccessControlSections]::Access)).AreAccessRulesProtected } catch { $isProt = $true }
+                if (-not $isProt) { continue }
+                if (Set-ServiceSidAce $f.FullName $false $fg) { $n++ } else { $nf++ }
+            }
+            if ($nf) { $bad++; Log "ACL: $nf protected file(s) under $($t.Path) could not be updated for the service account." 'WARN' }
+            elseif ($n) { Log "ACL: service-account access $(if ($fg) { 'granted' } else { 'withdrawn' }) on $n protected file(s) under $($t.Path)." }
+        }
+    }
+    foreach ($tt in $targets) {
+        $t = $tt.Path
+        $dg = if ($tt.Kind -ne 'Dir') { 'Modify' } elseif ($tt.Grant) { $tt.Grant } elseif ($script:ServiceAclSid) { 'None' } else { 'Modify' }
+        $r = Protect-SensitivePath $t $dg
         if ($r -eq 'absent') { continue }
         if ($r -like 'FAILED*' -or $r -like 'PARTIAL*') { $bad++; Log "ACL hardening: $t -> $r" 'WARN' }
-        else { Log "ACL hardening: $t -> $r ($who)" }
+        else { Log "ACL hardening: $t -> $r ($who$(if ($script:ServiceAclSid -and -not $tt.Grant) { ' - not the service account' }))" }
     }
-    if ($InstallDir -and (Test-Path -LiteralPath $InstallDir) -and ($script:ServiceAclSid -or @(@($script:RevokeAclSids) | Where-Object { $_ }).Count)) {
-        $g = if ($script:ServiceAclSid) { 'Modify' } else { '' }
-        if (-not (Set-ServiceSidAce $InstallDir $true $g)) { $bad++; Log "ACL: service-account access on $InstallDir could not be updated." 'WARN' }
+    # Additive grants on folders Setup does not restrict (the install root, the
+    # HRIS drop folder): ReadAndExecute for the virtual account, revoked after a
+    # switch back to LocalSystem.
+    if ($touchSvc) {
+        foreach ($tt in @($all | Where-Object { -not $_.Restrict -and (Test-Path -LiteralPath $_.Path -ErrorAction SilentlyContinue) })) {
+            if (-not (Set-ServiceSidAce $tt.Path $true $tt.Grant)) { $bad++; Log "ACL: service-account access on $($tt.Path) could not be updated." 'WARN' }
+            elseif ($tt.Grant) { Log "ACL: service account $($script:ServiceAclSid) holds $($tt.Grant) on $($tt.Path) (read-only; Modify only on the data folders)." }
+        }
     }
     return $bad
 }
-$script:SvcAcct = Resolve-ServiceAccount $cfg.ServiceAccount $cfg.ServiceName
-if ($script:SvcAcct.Mode -eq 'Virtual') { $script:ServiceAclSid = $script:SvcAcct.Sid }
-else { $script:RevokeAclSids = @(Get-ServiceSid $cfg.ServiceName) }
+# ---------------------------------------------------------------------------
+# WHICH ACCOUNT THE SERVICE RUNS AS. config.psd1 ServiceAccount:
+#   'Auto' (shipped) - a NEW install gets the virtual account NT SERVICE\<name>;
+#                      an UPGRADE keeps what the service runs as today: a virtual
+#                      service stays virtual, a LocalSystem one stays LocalSystem
+#                      (never forced) with the recommendation shown, and moves only
+#                      on -MigrateServiceAccount or a 'yes' at the console.
+#   'Virtual' / 'LocalSystem' / '<account>' - explicit.
+# A move of an EXISTING service from LocalSystem to the virtual account is never
+# made in passing by the re-registration: the upgrade runs on the current account
+# and, once it is healthy, Invoke-ServiceAccountMigration switches it with its own
+# health check and its own way back (Migrate = $true below).
+# Pure: returns @{ Mode; Account; Sid; VirtualSid; Migrate; Recommend; Reason }.
+# ---------------------------------------------------------------------------
+function Resolve-ServiceAccountPlan($Configured, [string]$ServiceName, [string]$CurrentStartName, [bool]$ServiceExists, [bool]$MigrateRequested) {
+    $virtualName = "NT SERVICE\$ServiceName"
+    $vsid = Get-ServiceSid $ServiceName
+    $cur = "$CurrentStartName".Trim()
+    $curIsVirtual = $ServiceExists -and ($cur -ieq $virtualName)
+    $v = "$Configured".Trim()
+    $mk = {
+        param($mode, $account, $migrate, $recommend, $reason)
+        [pscustomobject]@{
+            Mode = $mode; Account = $account; Sid = $(if ($mode -eq 'Virtual') { $vsid } else { $null })
+            VirtualSid = $vsid; Migrate = [bool]$migrate; Recommend = [bool]$recommend; Reason = $reason
+        }
+    }
+    if ($v -ieq 'LocalSystem') { return (& $mk 'LocalSystem' 'LocalSystem' $false $false 'config.psd1 ServiceAccount = LocalSystem (explicit)') }
+    if ($v -ieq 'Virtual' -or $v -ieq $virtualName) {
+        $mig = $ServiceExists -and -not $curIsVirtual
+        return (& $mk 'Virtual' $virtualName $mig $false $(if ($mig) { 'config.psd1 ServiceAccount = Virtual (explicit): the existing service is moved to the virtual account after the upgrade, with a health check' } else { 'config.psd1 ServiceAccount = Virtual (explicit)' }))
+    }
+    if ($v -and $v -ine 'Auto') { return (& $mk 'Custom' $v $false $false "config.psd1 ServiceAccount = $v (explicit)") }
+    if (-not $ServiceExists) { return (& $mk 'Virtual' $virtualName $false $false 'new install: least-privilege virtual account (default)') }
+    if ($curIsVirtual) { return (& $mk 'Virtual' $virtualName $false $false 'upgrade: the service already runs as its virtual account - kept') }
+    if ($MigrateRequested) { return (& $mk 'Virtual' $virtualName $true $false 'upgrade: migration to the virtual account requested') }
+    $shown = if ($cur) { $cur } else { 'LocalSystem' }
+    return (& $mk 'LocalSystem' 'LocalSystem' $false $true "upgrade: the service keeps its current account ($shown) - not forced")
+}
+# config.psd1 ships ServiceAccount = 'Auto', and an upgrade may have moved the
+# service to its virtual account with -MigrateServiceAccount. Manage never
+# changes the account, so the account the service RUNS AS decides the grants: a
+# virtual-account service must never lose them here (its backups would stop).
+$svcStart = $null; $svcExists = $false
+try {
+    $w0 = Get-CimInstance Win32_Service -Filter "Name='$($cfg.ServiceName)'" -ErrorAction Stop
+    if ($w0) { $svcExists = $true; $svcStart = "$($w0.StartName)" }
+} catch {}
+# An existing service: what it runs as ('Auto'); none: what config.psd1 says.
+$plan = Resolve-ServiceAccountPlan $(if ($svcExists) { 'Auto' } else { $cfg.ServiceAccount }) $cfg.ServiceName $svcStart $svcExists $false
+$script:SvcAcct = [pscustomobject]@{ Mode = $plan.Mode; Account = $plan.Account; Sid = $plan.Sid }
+if ($plan.Mode -eq 'Virtual') { $script:ServiceAclSid = $plan.Sid }
+else { $script:RevokeAclSids = @($plan.VirtualSid) }
 # Before any restore point / import log is written: it then inherits the restriction.
 if ($action -in @('backup', 'restore')) {
     try { [void](Protect-AppDataAcls $LogDir $cfg.InstallDir) } catch { Log "ACL hardening skipped: $($_.Exception.Message)" 'WARN' }
