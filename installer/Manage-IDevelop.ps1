@@ -274,7 +274,9 @@ function Get-HrisDropRoot([string]$InstallDir) {
 #     code Manage -Restore runs as administrator): restricted, and NOTHING for
 #     the service, for the same reason.
 #   HRIS_DROP_ROOT (when set in .env): ReadAndExecute, additive (a customer
-#     folder: never restricted by Setup).
+#     folder: never restricted by Setup). Local paths only: on a network share
+#     (\\server\share) the virtual account authenticates as the COMPUTER account
+#     (DOMAIN\<machine>$), which the share's owner must grant.
 # Each entry: Path; Kind Dir|File; Restrict (cut down to SYSTEM + Administrators);
 # Grant for the virtual account ('' when there is none); ProtectedFiles: the app
 # writes files there with their OWN protected DACL (SYSTEM + Administrators +
@@ -304,7 +306,7 @@ function Get-AppAclTargets([string]$DataRoot, [string]$InstallDir, [string]$Serv
         # The install root stays readable (Program Files rules): additive grant only.
         $out += [pscustomobject]@{ Path = $InstallDir; Kind = 'Dir'; Restrict = $false; Grant = $rx; ProtectedFiles = $false; ProtectedFilter = '*' }
     }
-    if ($HrisDropRoot) {
+    if ($HrisDropRoot -and -not $HrisDropRoot.StartsWith('\\')) {
         $out += [pscustomobject]@{ Path = $HrisDropRoot; Kind = 'Dir'; Restrict = $false; Grant = $rx; ProtectedFiles = $false; ProtectedFilter = '*' }
     }
     return $out
