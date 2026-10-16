@@ -62,6 +62,10 @@
                               installer did not create (otherwise: report it, and ask
                               when a console is attached). Applied automatically on a
                               server Setup created.
+.PARAMETER EnforceManifest    Move the files of the install directory that the release
+                              manifest does not list (customer folders excluded) to
+                              %ProgramData%\IDevelop\app-backups\retired-<stamp>\.
+                              Never deletes. Default: report them only.
 .PARAMETER NoRollback         Disable the automatic restore-on-failure safety net. By
                               default, when patching / upgrading an EXISTING install,
                               the installer backs up the running version first and — if
@@ -180,7 +184,11 @@ param(
     [switch]$EnableAuditOwnerSeparation,
     # Apply the recommended PostgreSQL hardening on a server this installer did
     # NOT create, without asking (unattended consent). Without it: report + ask.
-    [switch]$ApplyPgHardening
+    [switch]$ApplyPgHardening,
+    # ENFORCE the release manifest: files in the install dir that the package does
+    # not list are MOVED (never deleted) to app-backups\retired-<stamp>\.
+    # Without it the unknown files are only reported.
+    [switch]$EnforceManifest
 )
 
 $ErrorActionPreference = 'Stop'
@@ -2794,6 +2802,64 @@ Log 'STEP 5/7 - Deploy application' 'STEP'
 $payload = Join-Path $ScriptRoot 'app'
 if (-not (Test-Path (Join-Path $payload 'server.js'))) { Fail "Application payload not found at $payload (expected an 'app' folder beside this script)." }
 
+# PACKAGE INTEGRITY: the payload is VERIFIED against app\release-manifest.sha256
+# (written by Build-Package: the SHA-256 of every shipped file) BEFORE anything
+# is stopped or copied. A file altered, missing or added since the build stops
+# the install (fail closed) and every difference is listed: a tampered or
+# half-extracted package never reaches Program Files. (Authenticode signing of
+# the exe / zip is the next step: it needs a code-signing certificate.)
+function Read-ReleaseManifest([string]$Path) {
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $null }
+    $known = @{}; $ver = ''
+    foreach ($line in [System.IO.File]::ReadAllLines($Path)) {
+        if ($line -match '^#.*\bversion=(\S+)') { $ver = $Matches[1]; continue }
+        if ($line -match '^([0-9a-fA-F]{64})\s+\*?(.+)$') {
+            $rel = ($Matches[2].Trim() -replace '/', '\').TrimStart('\')
+            if ($rel) { $known[$rel.ToLowerInvariant()] = @{ Hash = $Matches[1].ToLowerInvariant(); Rel = $rel } }
+        }
+    }
+    if (-not $known.Count) { return $null }
+    return [pscustomobject]@{ Version = $ver; Known = $known }
+}
+function Test-PayloadManifest([string]$PayloadDir) {
+    $res = [pscustomobject]@{ Present = $false; Version = ''; Count = 0; Mismatch = @(); Missing = @(); Extra = @() }
+    $mf = Read-ReleaseManifest (Join-Path $PayloadDir 'release-manifest.sha256')
+    if (-not $mf) { return $res }
+    $res.Present = $true; $res.Version = $mf.Version; $res.Count = $mf.Known.Count
+    $root = [IO.Path]::GetFullPath($PayloadDir).TrimEnd('\')
+    $seen = @{}
+    $mm = New-Object System.Collections.Generic.List[string]
+    $ex = New-Object System.Collections.Generic.List[string]
+    foreach ($f in @(Get-ChildItem -LiteralPath $root -Recurse -File -Force -ErrorAction SilentlyContinue)) {
+        $rel = $f.FullName.Substring($root.Length + 1)
+        $low = $rel.ToLowerInvariant()
+        if ($low -eq 'release-manifest.sha256') { continue }
+        # Explorer's own metadata (thumbnail caches, folder settings) appears as
+        # soon as someone browses the extracted folder: not code, not refused.
+        if (-not $mf.Known.ContainsKey($low) -and $f.Name -in @('Thumbs.db', 'ehthumbs.db', 'desktop.ini', '.DS_Store')) { continue }
+        if (-not $mf.Known.ContainsKey($low)) { $ex.Add($rel); continue }
+        $seen[$low] = $true
+        $h = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($h -ne $mf.Known[$low].Hash) { $mm.Add($rel) }
+    }
+    $res.Mismatch = @($mm | Sort-Object)
+    $res.Extra = @($ex | Sort-Object)
+    $res.Missing = @($mf.Known.Keys | Where-Object { -not $seen.ContainsKey($_) } | ForEach-Object { $mf.Known[$_].Rel } | Sort-Object)
+    return $res
+}
+$pv = Test-PayloadManifest $payload
+if (-not $pv.Present) {
+    Fail "Package integrity: app\release-manifest.sha256 is missing - this package cannot be verified and is refused. Use the complete package produced by Build-Package.ps1 (the manifest is written there)."
+}
+$pvBad = @($pv.Mismatch).Count + @($pv.Missing).Count + @($pv.Extra).Count
+if ($pvBad -gt 0) {
+    foreach ($x in @($pv.Mismatch)) { Log "    ALTERED (SHA-256 differs from the manifest): $x" 'ERROR' }
+    foreach ($x in @($pv.Missing))  { Log "    MISSING (listed in the manifest): $x" 'ERROR' }
+    foreach ($x in @($pv.Extra))    { Log "    NOT IN THE MANIFEST (added after the build): $x" 'ERROR' }
+    Fail "Package integrity check FAILED: $(@($pv.Mismatch).Count) altered, $(@($pv.Missing).Count) missing, $(@($pv.Extra).Count) added file(s) against release-manifest.sha256 $($pv.Version) - nothing was stopped or copied. Re-extract the original package (or rebuild it) and run Setup again."
+}
+Log "Package integrity: $($pv.Count) file(s) match release-manifest.sha256 $($pv.Version) (SHA-256)." 'OK'
+
 # Stop a previous host so files aren't locked (upgrade). Handle BOTH hosting modes —
 # a real Windows service (the Auto/Service default) AND a Scheduled Task — otherwise a
 # service-hosted node.exe keeps node_modules/files locked during the robocopy/npm step.
@@ -2955,6 +3021,91 @@ if ((Test-Path -LiteralPath $scriptsLive) -and (Test-Path -LiteralPath $scriptsS
         Log "Removed $removed stale dev-only script(s) from scripts\ - the package ships $($shipped.Count)" 'OK'
     }
 }
+
+# --- RELEASE MANIFEST: DRIFT IN THE INSTALL DIRECTORY ---------------------------
+# Whatever the install dir holds beyond the manifest - outside the customer
+# folders below - is drift: a file an older version shipped, a hand-copied
+# hotfix, a leftover. It is REPORTED (install log + summary); -EnforceManifest
+# MOVES it, never deletes it, to %ProgramData%\IDevelop\app-backups\retired-<stamp>\.
+# Customer folders are never walked: runtime data (uploads, branding, logs,
+# backups, data, tmp, AI_Engine_Docs upload staging, the WinSW service folder,
+# certs), configuration (.env, config), dependencies (node_modules), HRIS drop
+# folders, and HRIS_DROP_ROOT when it lies inside the install dir.
+$script:ManifestName = 'release-manifest.sha256'
+$script:ManifestCustomerDirs = @('uploads', 'branding', 'logs', 'backups', 'config', '.env', 'certs', 'data',
+    'node_modules', 'tmp', 'app-backups', 'service', 'maintenance', 'AI_Engine_Docs', 'hris', 'hris-drop', 'imports')
+$script:ManifestCustomerNested = @('public\uploads', 'public\branding')
+# Relative paths (install-dir case) of files NOT in $Known. Customer folders are
+# never walked: $ExcludeTop by top-level name, $ExcludeNested by relative prefix.
+function Get-ManifestUnknownFiles([string]$InstallDir, [hashtable]$Known, [string[]]$ExcludeTop, [string[]]$ExcludeNested) {
+    $root = [IO.Path]::GetFullPath($InstallDir).TrimEnd('\')
+    $nested = @(@($ExcludeNested) | Where-Object { $_ } | ForEach-Object { ($_ -replace '/', '\').Trim('\').ToLowerInvariant() + '\' })
+    $unknown = New-Object System.Collections.Generic.List[string]
+    foreach ($e in @(Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue)) {
+        if (@($ExcludeTop) -contains $e.Name) { continue }
+        $files = if ($e.PSIsContainer) { @(Get-ChildItem -LiteralPath $e.FullName -Recurse -File -Force -ErrorAction SilentlyContinue) } else { @($e) }
+        foreach ($f in $files) {
+            $rel = $f.FullName.Substring($root.Length + 1)
+            $low = $rel.ToLowerInvariant()
+            if ($Known.ContainsKey($low)) { continue }
+            if (@($nested | Where-Object { $low.StartsWith($_) }).Count) { continue }
+            $unknown.Add($rel)
+        }
+    }
+    # Unrolled on purpose: callers wrap the call in @() (0, 1 or N paths alike).
+    return @($unknown | Sort-Object)
+}
+# -EnforceManifest: MOVE (never delete) each file to $RetiredDir\<same relative
+# path>. Refuses any path that resolves outside the install dir. Returns the count moved.
+function Move-ManifestUnknownFiles([string]$InstallDir, [string[]]$RelPaths, [string]$RetiredDir) {
+    $root = [IO.Path]::GetFullPath($InstallDir).TrimEnd('\') + '\'
+    $moved = 0
+    foreach ($rel in @($RelPaths)) {
+        $src = [IO.Path]::GetFullPath((Join-Path $InstallDir $rel))
+        if (-not $src.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { Log "Refusing to move a path outside the install directory: $rel" 'WARN'; continue }
+        if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { continue }
+        try {
+            $dest = Join-Path $RetiredDir $rel
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+            Move-Item -LiteralPath $src -Destination $dest -Force -ErrorAction Stop
+            $moved++
+            Log "Moved out of the install directory (not in the release manifest): $rel -> $dest" 'OK'
+        } catch { Log "COULD NOT move $rel out of the install directory: $($_.Exception.Message)" 'WARN' }
+    }
+    return $moved
+}
+$script:ManifestSummary = $null
+try {
+    $mf = Read-ReleaseManifest (Join-Path $payload $script:ManifestName)
+    if (-not $mf) {
+        Log "Release manifest: $($script:ManifestName) is not in this package - unknown-file check skipped." 'WARN'
+    } else {
+        $mf.Known[$script:ManifestName.ToLowerInvariant()] = @{ Hash = 'self'; Rel = $script:ManifestName }
+        $nestedEx = @($script:ManifestCustomerNested)
+        $hrisRoot = Get-HrisDropRoot $cfg.InstallDir
+        if ($hrisRoot) {
+            $instFull = [IO.Path]::GetFullPath($cfg.InstallDir).TrimEnd('\') + '\'
+            try { $hrisFull = [IO.Path]::GetFullPath($hrisRoot) } catch { $hrisFull = '' }
+            if ($hrisFull -and $hrisFull.StartsWith($instFull, [StringComparison]::OrdinalIgnoreCase)) { $nestedEx += $hrisFull.Substring($instFull.Length) }
+        }
+        $unk = @(Get-ManifestUnknownFiles $cfg.InstallDir $mf.Known $script:ManifestCustomerDirs $nestedEx)
+        if ($unk.Count -eq 0) {
+            Log "Release manifest $($mf.Version): the install directory holds exactly the release (customer folders excluded)." 'OK'
+            $script:ManifestSummary = 'no unknown file'
+        } else {
+            Log "Release manifest $($mf.Version): $($unk.Count) file(s) in $($cfg.InstallDir) are NOT part of this release (customer folders $($script:ManifestCustomerDirs -join ', ') excluded):" 'WARN'
+            foreach ($u in $unk) { Log "    unknown: $u" 'WARN' }
+            if ($EnforceManifest) {
+                $retDir = Join-Path (Join-Path $LogDir 'app-backups') ("retired-$stamp")
+                $nMoved = Move-ManifestUnknownFiles $cfg.InstallDir $unk $retDir
+                $script:ManifestSummary = "$nMoved of $($unk.Count) unknown file(s) moved to $retDir (-EnforceManifest)"
+            } else {
+                Log "REPORT ONLY: nothing was moved. Re-run with -EnforceManifest to move these files (never deleted) to $(Join-Path $LogDir 'app-backups')\retired-<stamp>\." 'WARN'
+                $script:ManifestSummary = "$($unk.Count) unknown file(s) reported - -EnforceManifest moves them out"
+            }
+        }
+    }
+} catch { Log "Release manifest check skipped: $($_.Exception.Message)" 'WARN' }
 
 # Resolve the effective HTTP port. The old service (if any) was just stopped, so
 # if the preferred port is STILL occupied it belongs to ANOTHER application -
@@ -3717,6 +3868,7 @@ finally {
         }
         if ($script:AuditPlan) { $sum += "Audit owner   : $(if ($script:AuditPlan.On) { 'separated' } else { 'not separated' }) - $($script:AuditPlan.Reason)" }
         if ($script:PgHardeningSummary) { $sum += "PG hardening  : $($script:PgHardeningSummary)" }
+        if ($script:ManifestSummary) { $sum += "Manifest      : $($script:ManifestSummary)" }
         if (-not $script:InstallSucceeded) {
             $sum += "Failed at     : Step $($script:CurrentStep)/$($script:TotalSteps) - $($script:CurrentName)"
         }

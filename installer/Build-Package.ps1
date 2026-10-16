@@ -509,6 +509,34 @@ if ($brandHits) {
 }
 Write-Host ("  [OK] Denylist guard: " + $(if ($denyRx.Count) { "$($denyRx.Count) pattern(s), no match" } else { 'no installer\denylist.txt - skipped' })) -ForegroundColor Gray
 
+# 3c. RELEASE MANIFEST - app\release-manifest.sha256 lists EVERY file the
+#     application payload ships ('<sha256>  <relative/path>', the sha256sum
+#     format). Install-IDevelop.ps1 verifies the payload against it BEFORE it
+#     stops or copies anything (an altered, missing or added file refuses the
+#     install), then compares the install directory with it: a file outside the
+#     customer folders that the release does not list is reported (moved out with
+#     -EnforceManifest). Written LAST, once the payload is final (scripts purged,
+#     icon generated, guards passed), and it does not list itself. Nothing may
+#     write under app\ after this point.
+function Write-ReleaseManifest([string]$AppDir, [string]$OutFile, [string]$Version) {
+    $root = [IO.Path]::GetFullPath($AppDir).TrimEnd('\')
+    $self = [IO.Path]::GetFullPath($OutFile)
+    $lines = New-Object System.Collections.Generic.List[string]
+    $files = @(Get-ChildItem -LiteralPath $root -Recurse -File -Force | Where-Object { $_.FullName -ne $self } |
+        Sort-Object { $_.FullName.Substring($root.Length + 1).ToLowerInvariant() })
+    foreach ($f in $files) {
+        $rel = $f.FullName.Substring($root.Length + 1) -replace '\\', '/'
+        $h = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        $lines.Add("$h  $rel")
+    }
+    $head = "# IDevelop release manifest version=$Version files=$($files.Count) algorithm=sha256"
+    [IO.File]::WriteAllText($OutFile, (@($head) + $lines -join "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
+    return $files.Count
+}
+$manifestFile = Join-Path $appDest 'release-manifest.sha256'
+$manifestCount = Write-ReleaseManifest $appDest $manifestFile $version
+Write-Host "  [OK] Release manifest: app\release-manifest.sha256 ($manifestCount files, sha256)" -ForegroundColor Gray
+
 # 4. zip
 $zip = Join-Path $OutDir "$pkgName.zip"
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
