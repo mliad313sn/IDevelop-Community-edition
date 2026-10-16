@@ -621,6 +621,26 @@ const CATEGORIES = [
                 tests: ['installerIntegrityAndTrust.test.js'],
             },
             {
+                id: 'installer-least-privilege',
+                fr: 'Installateur Windows : une nouvelle installation tourne sous le compte virtuel du service, en lecture seule sur le code et en écriture sur les seuls dossiers de données ; une mise à jour sous LocalSystem se voit proposer la bascule, annulée d’elle-même si le service ne répond plus ; paquet vérifié contre son manifeste SHA-256 avant tout arrêt ou copie ; durcissement PostgreSQL appliqué sur un serveur créé par l’installateur, proposé ailleurs, avec un rapport à chaque passage ; clé de sauvegarde créée à l’installation et points de restauration chiffrés.',
+                en: 'Windows installer: a new install runs as the service’s virtual account, read-only on the code and writing to the data folders only; an upgrade on LocalSystem is offered the switch, undone by itself if the service stops answering; the package is checked against its SHA-256 manifest before anything is stopped or copied; PostgreSQL hardening applied on a server the installer created, offered elsewhere, with a report on every run; the backup key created at install and restore points encrypted.',
+                evidence: [
+                    'installer/Install-IDevelop.ps1',
+                    'installer/Manage-IDevelop.ps1',
+                    'installer/Build-Package.ps1',
+                    'installer/config.psd1',
+                    'installer/README.md',
+                ],
+                tests: [
+                    'installerLeastPrivilege.test.js',
+                    'installerReleaseManifest.test.js',
+                    'installerPgHardening.test.js',
+                    'installerBackupKey.test.js',
+                    'installerAuditOwnerErasure-db.test.js',
+                    'installerSecretsOffArgv.test.js',
+                ],
+            },
+            {
                 id: 'container-hardening',
                 fr: 'Conteneurs durcis selon le CIS Docker Benchmark : image de base épinglée par empreinte, système de fichiers en lecture seule, aucune capacité Linux, no-new-privileges, limites de ressources et base de données non exposée à l’hôte.',
                 en: 'Containers hardened per the CIS Docker Benchmark: base image pinned by digest, read-only filesystem, no Linux capabilities, no-new-privileges, resource limits and a database not exposed to the host.',

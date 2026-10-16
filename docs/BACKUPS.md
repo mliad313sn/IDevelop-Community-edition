@@ -17,6 +17,7 @@ kept as carefully as the backups, and apart from them.
 | `<db>-<date>.dump.enc.manifest.json`                                      | same                                          | SHA-256 and size of the file, key id, app version, signed (HMAC) with the backup key   |
 | `sql-restore-points/<db>/<name>.dump.enc` (+ manifest, + `.json` sidecar) | the SQL console before a destructive script   | same format                                                                            |
 | `<db>-<date>.dump` (no `.enc`)                                            | versions before SA-39                         | plaintext; kept, listed as **not encrypted**, removed by the usual retention           |
+| `restore-points/rp-<version>-<date>/database.sql.enc` (+ manifest)        | `Manage-IDevelop.ps1 -Backup` (Windows)       | plain `pg_dump` encrypted with the same key, then the plain file deleted (SA-54)       |
 
 The format is a chunked AES-256-GCM stream: every file has its own random data
 key, wrapped by the backup **master key**. Chunks cannot be altered, reordered,
@@ -44,7 +45,13 @@ Windows machine falls back to the derived key, with a warning.
 
 ## What to keep offline, apart from the backups
 
-- **Windows:** the recovery copy of the key, once, right after installation:
+- **Windows:** the recovery copy of the key, once, right after installation.
+  The Windows installer does it for you: every run calls `backup-key.js init`
+  (it never replaces an existing key), and until the copy has been exported it
+  asks for a file path at the console (removable media, never the install
+  directory) or, unattended, writes
+  `%ProgramData%\IDevelop\keys\backup-recovery-<keyId>.txt` and warns you to
+  move it offline. By hand:
 
     ```powershell
     node scripts\backup-key.js init
@@ -122,6 +129,24 @@ quarter and after any change to the backup set-up.
 
 `backup-key.js decrypt --in <file> --out <plain>` writes a clear copy (ACL
 restricted) for the rare case where nothing else works. Delete it after use.
+
+## Windows restore points (`Manage-IDevelop.ps1`)
+
+`Setup.bat` takes a restore point (code and database) before every patch,
+upgrade or reinstall; `Manage-IDevelop.ps1 -Backup` takes one by hand. The
+database part is a plain `pg_dump` that is encrypted at once with the backup key
+(`backup-key.js encrypt --remove-plain`, kind `installer-restore-point`) and
+kept as `database.sql.enc`. If the key tool fails, the restore point is refused
+and the plain dump deleted, unless you pass `-AllowPlainBackup`. One exception:
+an installed version older than the backup key has no `backup-key.js`, so the
+restore point taken before upgrading it stays plain and is listed
+`[UNENCRYPTED]` by `-List`.
+
+`Manage-IDevelop.ps1 -Restore` runs `backup-key.js verify` on the dump before it
+stops the service or drops the database, and refuses a changed or truncated
+file. It then streams the decrypted SQL into `psql` (`backup-key.js pipe`):
+nothing clear is written to disk. Plain `database.sql` points from earlier
+versions are restored as they are, with a warning.
 
 ## Off-host copy
 

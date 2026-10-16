@@ -259,6 +259,67 @@ project uses [Semantic Versioning](https://semver.org/).
   `APP_KEY`, and never change it by hand: older backups would be unreadable
   until the previous value is imported (`backup-key.js import-app-key`).
 
+### Security (Windows installer)
+
+> **Release gate:** these installer changes were verified from the PowerShell
+> source and the database side only; their PowerShell functions run in the test
+> suite on Windows. Rehearse the checklist in `installer/README.md` ("Release
+> rehearsal on a Windows VM") on a clean Windows Server VM before releasing.
+
+- **Least-privilege service account** (audit SA-54). `ServiceAccount = 'Auto'`:
+  a new install runs the service as its virtual account `NT SERVICE\IDevelop`,
+  with Modify on the data folders only (uploads, data, logs, backups, tmp,
+  certs, the Data Management upload staging, the WinSW logs now in
+  `service\logs`, and under `%ProgramData%\IDevelop` the backups, SQL restore
+  points, audit anchors, TLS, keys and logs), Read on `.env` and the backup
+  keyring, Read and execute only on the code, and nothing on the code backups.
+  An upgrade keeps the account it runs as and is offered
+  `-MigrateServiceAccount`: after the upgrade is healthy, the folders are granted
+  (nothing is switched if one cannot be), the account is changed, and the
+  service goes back to LocalSystem by itself if it does not pass its health
+  check. `HRIS_DROP_ROOT` (local) is granted Read and execute.
+- **Audit-trail ownership separation** keeps its role name
+  `idevelop_audit_owner` (an older role is renamed in place) and is **off by
+  default**, on new installs too, because it disables four SuperAdmin tools;
+  `-EnableAuditOwnerSeparation` turns it on, and an upgrade keeps the state its
+  database is in. With it on, GDPR erasure works again: the role owns every
+  function that guards or rewrites the audit log, can read `employees`,
+  `admins` and `pii_cleanup_jobs`, and the application keeps EXECUTE on the
+  redaction, purge and seal functions.
+- **OWNER RIGHTS** (the creator of a file) is accepted in the restricted
+  folders the application closes itself, so they are no longer reported as
+  partially restricted.
+- **PostgreSQL hardening** with a report on every run: connection logging, a
+  log prefix naming user, database and client, `CONNECT` for the application
+  role only, and `listen_addresses = 'localhost'` when PostgreSQL is on the same
+  machine. Applied on a server the installer created
+  (`pg-created-by-installer.json`), offered elsewhere (`-ApplyPgHardening`).
+  `pg_hba.conf` is never changed.
+- **Release manifest.** The package carries `app\release-manifest.sha256`; the
+  installer refuses an altered, missing or added file before it stops the
+  service or copies anything, and reports files of the install directory the
+  release does not ship (customer folders excluded). `-EnforceManifest` moves
+  them to `app-backups\retired-<timestamp>`; nothing is deleted.
+- **No password on a command line.** The PostgreSQL installer reads the
+  superuser password from an option file in a private temporary folder;
+  `scripts/set-admin-password.js` reads `SET_ADMIN_PASSWORD` from its
+  environment (the argument form still works), and `Manage -SetAdminPassword`
+  uses it, also against an older installed script.
+- **Backup key on install, encrypted restore points.** Every installer run calls
+  `backup-key.js init` (never replaces a key) and offers the one recovery-key
+  export to a path you type, else to the server's key folder with a warning to
+  move it offline. `Manage -Backup` writes `database.sql.enc` and refuses a
+  plain restore point (unless `-AllowPlainBackup`, or the installed version has
+  no key tool yet); `Manage -Restore` verifies the dump before it stops anything
+  and decrypts it straight into `psql`.
+- **Upgrade notes:** existing installs stay on LocalSystem until you run
+  `-MigrateServiceAccount`; plan it and check backups, uploads and HRIS imports
+  afterwards. A configured `AuditOwnerSeparation = $true` should become `'Auto'`
+  or stay `$true`; a database that is separated stays separated under `'Auto'`.
+  Before applying the PostgreSQL hardening on a shared server, grant `CONNECT`
+  to any other role that reads this database. The restore point Setup takes
+  before upgrading a version without the key tool stays plain (`[UNENCRYPTED]`).
+
 ### Security (mail privacy)
 
 - **No password by e-mail** (audit SA-37). An invitation or a credentials resend
