@@ -962,6 +962,29 @@ function Invoke-SetPgPassword {
 #  Runs the application's own scripts\set-admin-password.js against the
 #  installed .env, so it works on any version that ships that script.
 # ===========================================================================
+# Runs set-admin-password.js with the password taken from $env:SET_ADMIN_PASSWORD
+# (set by the caller). NOTHING secret is placed on a command line: the process
+# list (Get-CimInstance Win32_Process, tasklist /v) is readable by every local
+# user. A script that reads the variable itself is run directly. An OLDER
+# installed script only reads argv[2]: it is loaded by a fixed 'node -e' shim
+# that copies the variable into process.argv INSIDE node, so the OS command line
+# shows only the shim and the script path.
+# Returns @{ Code; Out }. Code -1 = no password in the environment (nothing run).
+function Invoke-SetAdminPasswordTool([string]$NodeExe, [string]$Tool) {
+    if (-not $env:SET_ADMIN_PASSWORD) { return @{ Code = -1; Out = @('SET_ADMIN_PASSWORD is not set - nothing was run.') } }
+    $envAware = $false
+    try { $envAware = ([IO.File]::ReadAllText($Tool) -match 'SET_ADMIN_PASSWORD') } catch { $envAware = $false }
+    if ($envAware) {
+        $out = & $NodeExe $Tool 2>&1
+        return @{ Code = $LASTEXITCODE; Out = @($out) }
+    }
+    $shim = 'var e=process.env,t=e.SET_ADMIN_TOOL,p=e.SET_ADMIN_PASSWORD;delete e.SET_ADMIN_PASSWORD;delete e.SET_ADMIN_TOOL;process.argv=[process.argv[0],t,p];require(t)'
+    $env:SET_ADMIN_TOOL = $Tool
+    try { $out = & $NodeExe -e $shim 2>&1; $code = $LASTEXITCODE }
+    finally { Remove-Item Env:\SET_ADMIN_TOOL -ErrorAction SilentlyContinue }
+    return @{ Code = $code; Out = @($out) }
+}
+
 function Invoke-SetAdminPassword {
     Log "=== Reset the application 'admin' password to the standard appliance value ===" 'STEP'
     if (-not ($cfg.ContainsKey('StandardAdminPassword') -and $cfg.StandardAdminPassword)) {
@@ -977,8 +1000,13 @@ function Invoke-SetAdminPassword {
     Log "Target: 'admin' in database '$($creds.db)' @ $($creds.host):$($creds.port) (via $($cfg.InstallDir)\.env)."
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     Push-Location $cfg.InstallDir
-    try { $out = & $nodeExe $tool $cfg.StandardAdminPassword 2>&1; $code = $LASTEXITCODE }
-    finally { Pop-Location; $ErrorActionPreference = $prev }
+    # The password travels in the ENVIRONMENT of the child, never on a command
+    # line, whatever the age of the installed script (Invoke-SetAdminPasswordTool).
+    try {
+        $env:SET_ADMIN_PASSWORD = $cfg.StandardAdminPassword
+        $r = Invoke-SetAdminPasswordTool -NodeExe $nodeExe -Tool $tool; $out = $r.Out; $code = $r.Code
+    }
+    finally { Remove-Item Env:\SET_ADMIN_PASSWORD -ErrorAction SilentlyContinue; Pop-Location; $ErrorActionPreference = $prev }
     foreach ($l in @($out)) { if ("$l".Trim()) { Log ("  " + "$l".Trim()) } }
     if ($code -eq 0) {
         Log "'admin' password set to the standard appliance value - a change is required at first login." 'OK'

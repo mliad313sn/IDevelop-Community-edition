@@ -1567,6 +1567,27 @@ function Find-PgBin {
 function Test-PgListening([string]$h, [int]$port) {
     try { return (Test-NetConnection -ComputerName $h -Port $port -WarningAction SilentlyContinue).TcpTestSucceeded } catch { return $false }
 }
+# SECRETS OFF THE COMMAND LINE: the EDB PostgreSQL installer used to receive the
+# superuser password as '--superpassword <pw>', visible to every local user in
+# the process list (Get-CimInstance Win32_Process, tasklist /v) for the minutes
+# the install takes. It now reads it from an InstallBuilder option file
+# ('--optionfile', key=value lines, UTF-8 without BOM) written in a fresh folder
+# under the elevated user's own %TEMP% (profile ACL: that user, SYSTEM,
+# Administrators). The caller deletes .Dir as soon as the installer returns.
+# Returns @{ Args; Dir; OptionFile }. Nothing secret is in .Args.
+function New-PgInstallerArgs([string]$SuperPassword, [int]$Port, [string]$TempRoot = $env:TEMP) {
+    $dir = Join-Path $TempRoot ('idevelop-pgopt-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $opt = Join-Path $dir 'pg-install.options'
+    [IO.File]::WriteAllText($opt, "superpassword=$SuperPassword`r`n", (New-Object System.Text.UTF8Encoding($false)))
+    $a = @(
+        '--mode', 'unattended', '--unattendedmodeui', 'none',
+        '--optionfile', "`"$opt`"",
+        '--serverport', "$Port",
+        '--enable-components', 'server,commandlinetools'
+    )
+    return @{ Args = $a; Dir = $dir; OptionFile = $opt }
+}
 
 $isLocalPg   = $cfg.PgHost -in @('localhost', '127.0.0.1', '::1', $env:COMPUTERNAME)
 $pgService   = if ($isLocalPg) { Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
@@ -1599,15 +1620,10 @@ if ($pgExists) {
     $exe = Join-Path $env:TEMP "postgresql-$($cfg.PgMajor).exe"
     Get-File $cfg.PgInstallerUrl $exe $cfg.PgInstallerSha256 $cfg.PgInstallerPublisher
     Log 'Installing PostgreSQL unattended (large component - this can take a while; please wait)...'
-    $pgArgs = @(
-        '--mode', 'unattended', '--unattendedmodeui', 'none',
-        '--superpassword', $cfg.PgSuperPassword,
-        '--serverport', "$($cfg.PgPort)",
-        '--enable-components', 'server,commandlinetools'
-    )
+    $pgInst = New-PgInstallerArgs -SuperPassword $cfg.PgSuperPassword -Port $cfg.PgPort
     $prevPP = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
-    try { $p = Start-Process -FilePath $exe -ArgumentList $pgArgs -Wait -PassThru }
-    finally { $ProgressPreference = $prevPP }
+    try { $p = Start-Process -FilePath $exe -ArgumentList $pgInst.Args -Wait -PassThru }
+    finally { $ProgressPreference = $prevPP; Remove-Item -LiteralPath $pgInst.Dir -Recurse -Force -ErrorAction SilentlyContinue }
     if ($p.ExitCode -ne 0) { Fail "PostgreSQL installer failed (exit $($p.ExitCode))." }
     # Wait for the service to actually accept connections, not just a fixed sleep.
     Start-Sleep -Seconds 3
@@ -2756,7 +2772,10 @@ if ($freshDb -or $dataImported) {
         $script:adminPw = New-Secret 9   # 18 hex chars
     }
     if ($script:adminPw) {
-        $code = Invoke-Logged -File $nodeExe -Arguments @('scripts\set-admin-password.js', $script:adminPw) -WorkDir $cfg.InstallDir -EnvVars $childEnv -RedactArgs @(1)
+        # In the child's ENVIRONMENT, never on its command line (the process list
+        # is readable by every local user); Invoke-Logged removes it right after.
+        $pwEnv = @{} + $childEnv; $pwEnv['SET_ADMIN_PASSWORD'] = $script:adminPw
+        $code = Invoke-Logged -File $nodeExe -Arguments @('scripts\set-admin-password.js') -WorkDir $cfg.InstallDir -EnvVars $pwEnv
         if ($code -ne 0) {
             Log "Could not set the admin password (exit $code). The database's own admin credential still applies (seed output above, or the imported snapshot)." 'WARN'
             $script:adminPw = $null; $script:adminPwStandard = $false
