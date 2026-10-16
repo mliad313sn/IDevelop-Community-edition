@@ -109,7 +109,10 @@ Log "=== IDevelop maintenance: $action | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss
 # Restore points hold the .env and a full database.sql; the daily dumps and the
 # code backups sit next to them. SYSTEM + Administrators only (SIDs: the group is
 # 'Administrateurs' on a French box). Idempotent and never fatal.
-$script:HardenedAclSids = @('S-1-5-18', 'S-1-5-32-544')
+# + OWNER RIGHTS (S-1-3-4): the app restricts the folders and files it writes
+# (audit-anchors, the backup keyring, the dumps) to SYSTEM + Administrators +
+# OWNER RIGHTS - the creator only, never a group. Same set as the installer.
+$script:HardenedAclSids = @('S-1-5-18', 'S-1-5-32-544', 'S-1-3-4')
 # 3.23.18 (S-04): ServiceAccount = 'Virtual' -> NT SERVICE\<ServiceName> is also
 # granted (Modify on folders, Read on the .env). Same rule as the installer.
 $script:ServiceAclSid = $null

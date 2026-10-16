@@ -364,7 +364,12 @@ function Fail($m) {
 # SIDs is left alone, so the (large) app-backups tree is walked once, not on
 # every patch. Never fatal: a failure is logged as WARN and the run goes on.
 # ---------------------------------------------------------------------------
-$script:HardenedAclSids = @('S-1-5-18', 'S-1-5-32-544')
+# + OWNER RIGHTS (S-1-3-4): the app itself closes the folders and files it writes
+# (audit-anchors, the backup keyring, the database dumps) to SYSTEM + Administrators
+# + OWNER RIGHTS. OWNER RIGHTS is only ever the creator, never a group, so a folder
+# the app restricted that way IS hardened; without it audit-anchors read 'PARTIAL',
+# was re-walked on every patch and refused -MigrateServiceAccount.
+$script:HardenedAclSids = @('S-1-5-18', 'S-1-5-32-544', 'S-1-3-4')
 # 3.23.18 (S-04): with ServiceAccount = 'Virtual' the service runs as its virtual
 # account NT SERVICE\<ServiceName>. That SID is then ALSO granted on every
 # hardened target (Modify on folders, Read on the .env file) and Modify on the
