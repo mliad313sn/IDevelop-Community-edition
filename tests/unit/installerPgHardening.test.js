@@ -81,9 +81,13 @@ describe('PostgreSQL hardening (static)', () => {
         const write = INST.indexOf("createdBy = 'IDevelop installer'");
         const installed = INST.indexOf("Log 'PostgreSQL installed.' 'OK'");
         expect(write).toBeGreaterThan(installed);
-        expect(INST.slice(write, write + 400)).toMatch(
+        const block = INST.slice(write, write + 1000);
+        expect(block).toMatch(
             /icacls\.exe \$script:PgMarkerFile \/inheritance:r \/grant:r '\*S-1-5-18:F' '\*S-1-5-32-544:F'/
         );
+        // Owned by Administrators explicitly (a Windows client gives the file to
+        // the creating user by default).
+        expect(block).toMatch(/icacls\.exe \$script:PgMarkerFile \/setowner '\*S-1-5-32-544'/);
         // Trusted only when an administrator or SYSTEM owns it (the service may
         // write in %ProgramData%\IDevelop and must not forge it).
         const t = /function Test-PgMarkerTrusted[\s\S]*?\n\}/.exec(INST)[0];
