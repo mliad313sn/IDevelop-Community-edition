@@ -89,6 +89,26 @@ ALTER SCHEMA public OWNER TO idevelop_app;
 > `ALTER TABLE/SEQUENCE/VIEW ... OWNER TO idevelop_app` for every object in `public` (the
 > automated installer does this on every install/patch).
 
+**Recommended PostgreSQL hardening.** The automated installer applies these on a
+server it installed itself and offers them (never silently) on any other server
+(`-ApplyPgHardening`). By hand, as `postgres`:
+
+```sql
+ALTER SYSTEM SET log_connections = 'on';
+ALTER SYSTEM SET log_disconnections = 'on';
+ALTER SYSTEM SET log_line_prefix = '%m [%p] user=%u,db=%d,client=%h ';
+GRANT CONNECT ON DATABASE idevelop TO idevelop_app;
+REVOKE CONNECT ON DATABASE idevelop FROM PUBLIC;
+SELECT pg_reload_conf();
+-- ONLY when the app reaches PostgreSQL on localhost (same machine); needs a restart:
+ALTER SYSTEM SET listen_addresses = 'localhost';
+```
+
+Any other role that must read this database (a reporting account, for example)
+then needs its own `GRANT CONNECT`. Replace every `trust` line of `pg_hba.conf`
+with `scram-sha-256` (check `password_encryption = scram-sha-256` first and reset
+the passwords of roles created under md5), then reload.
+
 ---
 
 ## PHASE D — Deploy the application files
@@ -175,10 +195,25 @@ To pin a known value instead (for automated deploys), set
 `BOOTSTRAP_ADMIN_PASSWORD` before seeding; it must satisfy the normal password
 policy or the seed refuses it. Nothing is echoed when you pin it.
 
-If you would rather set the password explicitly after seeding:
+If you would rather set the password explicitly after seeding, pass it in the
+environment, never as an argument (an argument is visible to every local user in
+the process list):
+
+```powershell
+$env:SET_ADMIN_PASSWORD = Read-Host 'New admin password'
+node scripts/set-admin-password.js
+Remove-Item Env:\SET_ADMIN_PASSWORD
+```
+
+On Linux: `read -rs SET_ADMIN_PASSWORD && export SET_ADMIN_PASSWORD && node scripts/set-admin-password.js; unset SET_ADMIN_PASSWORD`.
+
+**Backup key (Windows).** Create the backup encryption key and export its
+recovery copy once, to removable media kept offline (see
+[docs/BACKUPS.md](../docs/BACKUPS.md)):
 
 ```
-node scripts/set-admin-password.js "A-Strong-Admin-Password!"
+node scripts/backup-key.js init
+node scripts/backup-key.js export --out E:\idevelop-backup-recovery-key.txt
 ```
 
 ---
@@ -212,6 +247,32 @@ Start-ScheduledTask -TaskName 'IDevelop'
 
 _(Alternatives: [NSSM](https://nssm.cc/) or `pm2` + `pm2-windows-startup`.)_
 
+**Least privilege.** A Scheduled Task runs as SYSTEM. The automated installer
+instead registers a real Windows service (WinSW) that runs as its **virtual
+account** `NT SERVICE\IDevelop` on a new install. To do the same by hand with a
+service host, after registering the service as `IDevelop`:
+
+```powershell
+sc.exe config IDevelop obj= "NT SERVICE\IDevelop"
+$a = 'NT SERVICE\IDevelop'
+# Modify where the app writes; ReadAndExecute on the code; Read on .env and the keyring.
+foreach ($d in 'C:\ProgramData\IDevelop', 'C:\Program Files\IDevelop\uploads', 'C:\Program Files\IDevelop\data',
+               'C:\Program Files\IDevelop\logs', 'C:\Program Files\IDevelop\backups', 'C:\Program Files\IDevelop\tmp',
+               'C:\Program Files\IDevelop\certs', 'C:\Program Files\IDevelop\AI_Engine_Docs', 'C:\Program Files\IDevelop\service\logs') {
+    New-Item -ItemType Directory -Force -Path $d | Out-Null
+    icacls $d /grant "${a}:(OI)(CI)M"
+}
+icacls 'C:\Program Files\IDevelop' /grant "${a}:(OI)(CI)RX"
+icacls 'C:\Program Files\IDevelop\.env' /grant "${a}:R"
+icacls 'C:\ProgramData\IDevelop\keys\backup-keyring.json' /grant "${a}:R"
+Restart-Service IDevelop
+```
+
+Never grant it Modify on the install directory itself, nor anything on
+`C:\ProgramData\IDevelop\app-backups` or `restore-points` (code an administrator
+may run later). Then check `http://localhost:3000/health`, run "Back up now" in
+Admin → Instance health and upload a file.
+
 ---
 
 ## PHASE I — Firewall & TLS
@@ -222,6 +283,14 @@ _(Alternatives: [NSSM](https://nssm.cc/) or `pm2` + `pm2-windows-startup`.)_
     ```
 - **TLS** — the app serves **HTTP** by default. For production, front it with a reverse proxy
   that terminates HTTPS (IIS + ARR, nginx, or Caddy) pointing at `http://localhost:3000`.
+- **Reverse proxy on the same machine: set `TRUST_PROXY`.** Every request then reaches
+  the app from `127.0.0.1`. Without `TRUST_PROXY` every client looks like the server
+  itself: the per-address rate limits apply to everybody at once and the audit trail
+  records `127.0.0.1`. In `.env` set `TRUST_PROXY=loopback` (or the proxy's exact
+  address; for a proxy on another machine its address or subnet, or `1` for one hop),
+  make the proxy append the client to `X-Forwarded-For` and pass `X-Forwarded-Proto`,
+  then restart the service. A value that would trust every client is refused at start-up
+  with the reason. Check in System logs that sign-ins show the workstations' addresses.
 
 ---
 
@@ -238,7 +307,7 @@ _(Alternatives: [NSSM](https://nssm.cc/) or `pm2` + `pm2-windows-startup`.)_
 
 - **Node 20:** `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install -y nodejs`
 - **PostgreSQL:** `sudo apt install -y postgresql` then the same `CREATE ROLE/DATABASE/EXTENSION` SQL via `sudo -u postgres psql`.
-- **App:** same `npm ci --omit=dev`, `.env`, `npm run db:migrate:all`, `npm run db:seed`, `node scripts/set-admin-password.js`.
+- **App:** same `npm ci --omit=dev`, `.env`, `npm run db:migrate:all`, `npm run db:seed`, then `SET_ADMIN_PASSWORD=… node scripts/set-admin-password.js` if you set the admin password yourself. The backup key is derived from `APP_KEY` on Linux: keep an offline copy of `APP_KEY` (see `docs/BACKUPS.md`).
 - **Service:** systemd unit:
     ```ini
     [Unit]
