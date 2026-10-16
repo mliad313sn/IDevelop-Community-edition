@@ -3471,6 +3471,111 @@ if ($script:AuditPlan.On) {
     Log "Audit-trail ownership: not separated - '$($cfg.DbUser)' owns the append-only tables."
 }
 
+# THE BACKUP ENCRYPTION KEY (scripts\backup-key.js, docs/BACKUPS.md), run from
+# the install dir (it reads .env / APP_KEY there):
+#   init              idempotent - creates the key ONLY when none exists (never
+#                     regenerates); exit 0; JSON { keyId, protection, keyring, created }
+#   status            exit 0; JSON { keyId, protection, exportedAt }
+#   export --out <f>  the recovery copy, ONCE: exit 0 written; exit 3 already exported
+# Only the parsed flags are logged (created / protection / exportedAt), never the
+# raw output, and never the recovery key itself (it goes to a file).
+# $RunNode {param([string[]]$KeyArgs)} -> @{ Code; Out }; $AskPath {} -> path or
+# $null; $AfterWrite {} -> re-grant the service account on the keyring (the
+# script writes it with a protected DACL: SYSTEM + Administrators + owner).
+# Result: absent | init-failed | <created|existing>/<exported-now|exported-to-server|exported-earlier|NOT-exported|app-key-derived>
+function Invoke-BackupKeyHook([string]$InstallDir, [scriptblock]$RunNode, [scriptblock]$AskPath, [scriptblock]$AfterWrite) {
+    if (-not (Test-Path -LiteralPath (Join-Path $InstallDir 'scripts\backup-key.js'))) {
+        Log 'Backup encryption key: scripts\backup-key.js is not in this package - no key initialised.' 'WARN'
+        return 'absent'
+    }
+    $parse = { param($t) $m = [regex]::Match("$t", '(?s)\{.*\}'); if ($m.Success) { try { $m.Value | ConvertFrom-Json } catch { $null } } }
+    $in = & $RunNode @('init')
+    if ([int]$in.Code -ne 0) { Log "Backup encryption key: init failed (exit $($in.Code)) - the daily backup creates it, or fails and alerts, until it exists." 'WARN'; return 'init-failed' }
+    $ij = & $parse $in.Out
+    $state = if ($ij -and $ij.created -eq $true) { 'created' } else { 'existing' }
+    if ($state -eq 'created') { Log "Backup encryption key created (protection: $(if ($ij.protection) { $ij.protection } else { '?' }))." 'OK' }
+    else { Log 'Backup encryption key: present - kept (init never regenerates an existing key).' 'OK' }
+    if ($AfterWrite) { & $AfterWrite | Out-Null }
+    if ($ij -and $ij.protection -and $ij.protection -ne 'dpapi-localmachine') {
+        Log "Backup encryption key is DERIVED from APP_KEY (protection '$($ij.protection)'): there is no separate recovery key - keep an OFFLINE copy of the APP_KEY line of .env instead, and change APP_KEY only with scripts\rotate-app-key.js." 'WARN'
+        return "$state/app-key-derived"
+    }
+    $sj = & $parse ((& $RunNode @('status')).Out)
+    if ($sj -and $sj.exportedAt) {
+        Log "Backup recovery key: already exported on $($sj.exportedAt) - not shown again."
+        return "$state/exported-earlier"
+    }
+    # Where the ONE export goes: the path the operator types (interactive), else
+    # %ProgramData%\IDevelop\keys\backup-recovery-<keyId>.txt (SYSTEM +
+    # Administrators only, never granted to the service) with a loud WARN to move
+    # it offline. Never inside the install dir (copied into every code backup).
+    $keyTag = if ($ij -and $ij.keyId) { ("$($ij.keyId)" -replace '[^A-Za-z0-9_-]', '_') } else { 'current' }
+    $fallback = Join-Path (Join-Path $LogDir 'keys') "backup-recovery-$keyTag.txt"
+    $cands = @()
+    $dest = & $AskPath
+    if ($dest) {
+        $full = $null
+        try { $full = [IO.Path]::GetFullPath($dest) } catch { $full = $null }
+        $instRoot = [IO.Path]::GetFullPath($InstallDir).TrimEnd('\') + '\'
+        if (-not $full) { Log "Recovery key: '$dest' is not a valid path - written to the server's key folder instead." 'WARN' }
+        elseif ($full.StartsWith($instRoot, [StringComparison]::OrdinalIgnoreCase)) { Log "Recovery key: not inside the install directory ('$full') - written to the server's key folder instead." 'WARN' }
+        else { $cands += $full }
+    }
+    $cands += $fallback
+    foreach ($target in $cands) {
+        try { New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null } catch {}
+        $ex = & $RunNode @('export', '--out', $target)
+        if ($AfterWrite) { & $AfterWrite | Out-Null }   # export stamps exportedAt in the keyring
+        if ([int]$ex.Code -eq 3) { Log 'Backup recovery key: already exported earlier - not shown again.'; return "$state/exported-earlier" }
+        if ([int]$ex.Code -ne 0) { Log "Recovery key export to '$target' failed (exit $($ex.Code); the file must not exist yet)." 'WARN'; continue }
+        if ($target -ne $fallback) {
+            Log "Backup recovery key saved to $target - move it to OFFLINE storage (removable media in a safe) and delete any other copy." 'OK'
+            return "$state/exported-now"
+        }
+        Log "BACKUP RECOVERY KEY WRITTEN TO $target (SYSTEM + Administrators only). MOVE IT TO OFFLINE STORAGE NOW (removable media in a safe) AND DELETE IT FROM THIS SERVER: whoever holds this file and a backup can read the HR data, and without it the backups cannot be restored on another server (backup-key.js import --in <file>)." 'WARN'
+        return "$state/exported-to-server"
+    }
+    Log "RECOVERY KEY NOT EXPORTED YET: as an administrator, from $InstallDir run  node scripts\backup-key.js export --out <removable drive>\idevelop-backup-recovery-key.txt  and keep that file OFFLINE. Without it, encrypted backups cannot be restored on another server." 'WARN'
+    return "$state/NOT-exported"
+}
+
+# Every run (fresh install AND upgrade): 'init' once .env / APP_KEY exist - it
+# creates the key only when there is none and never regenerates one; the
+# recovery-key export is offered until it has been done ONCE. Never fatal.
+$script:BackupKeyResult = $null
+try {
+    $script:BackupKeyResult = Invoke-BackupKeyHook -InstallDir $cfg.InstallDir -RunNode {
+        param([string[]]$KeyArgs)
+        $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        Push-Location $cfg.InstallDir
+        try {
+            $o = & $nodeExe (@('scripts\backup-key.js') + $KeyArgs) 2>&1
+            return [pscustomobject]@{ Code = $LASTEXITCODE; Out = (($o | Out-String).Trim()) }
+        } finally { Pop-Location; $ErrorActionPreference = $prevEAP }
+    } -AfterWrite {
+        # The keyring gets a protected DACL (SYSTEM + Administrators + OWNER RIGHTS)
+        # and its owner is the administrator running Setup: a virtual-account
+        # service must be put on the file itself or every backup is refused.
+        # (A migration still pending does it in Protect-AppDataAcls.) Read on the
+        # keyring ONLY - never on an exported backup-recovery-*.txt.
+        if ($script:ServiceAclSid) {
+            foreach ($kf in @(Get-ChildItem -LiteralPath (Join-Path $LogDir 'keys') -File -Force -Filter 'backup-keyring*.json' -ErrorAction SilentlyContinue)) {
+                if (-not (Set-ServiceSidAce $kf.FullName $false 'Read')) { Log "ACL: could not grant the service account on $($kf.FullName) - backups would be refused under the virtual account." 'WARN' }
+            }
+        }
+    } -AskPath {
+        if (-not (Test-CanAsk)) { return $null }
+        Write-Host ''
+        Write-Host '  BACKUP RECOVERY KEY - written ONCE. Backups are encrypted with a key kept on this server.' -ForegroundColor Yellow
+        Write-Host '  If this server is lost, the backups can only be restored with the recovery key.' -ForegroundColor Yellow
+        Write-Host '  Save it to REMOVABLE media and keep it OFFLINE (a safe), never on this server or a share.' -ForegroundColor Yellow
+        Log 'QUESTION (answer in the setup CONSOLE window): where to save the backup recovery key' 'STEP'
+        $p = ''
+        try { $p = Read-Host '  Full path of the file to write (e.g. E:\idevelop-backup-recovery-key.txt; blank = the server key folder, to move offline yourself)' } catch { $p = '' }
+        return "$p".Trim().Trim('"')
+    }
+} catch { Log "Backup key step skipped: $($_.Exception.Message)" 'WARN' }
+
 # ---------------------------------------------------------------------------
 # STEP 6/7 - Service (Windows service via WinSW, or SYSTEM Scheduled Task)
 # ---------------------------------------------------------------------------
@@ -3869,6 +3974,7 @@ finally {
         if ($script:AuditPlan) { $sum += "Audit owner   : $(if ($script:AuditPlan.On) { 'separated' } else { 'not separated' }) - $($script:AuditPlan.Reason)" }
         if ($script:PgHardeningSummary) { $sum += "PG hardening  : $($script:PgHardeningSummary)" }
         if ($script:ManifestSummary) { $sum += "Manifest      : $($script:ManifestSummary)" }
+        if ($script:BackupKeyResult) { $sum += "Backup key    : $($script:BackupKeyResult)" }
         if (-not $script:InstallSucceeded) {
             $sum += "Failed at     : Step $($script:CurrentStep)/$($script:TotalSteps) - $($script:CurrentName)"
         }

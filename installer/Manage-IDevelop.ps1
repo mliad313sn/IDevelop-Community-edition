@@ -9,8 +9,13 @@
 
     Restore points live under  %ProgramData%\IDevelop\restore-points\rp-<ver>-<stamp>\
         app\           - the application code at that point (no node_modules)
-        database.sql   - full pg_dump (--no-owner --no-privileges), plain SQL
-        manifest.json  - version, timestamp, db name, note
+        database.sql.enc + database.sql.enc.manifest.json
+                       - full pg_dump (--no-owner --no-privileges), encrypted with
+                         the backup key (scripts\backup-key.js, docs/BACKUPS.md) and
+                         verified before any restore. Points written before
+                         encryption carry a plain database.sql: still restorable,
+                         listed [UNENCRYPTED].
+        manifest.json  - version, timestamp, db name, note, dump file, encrypted
 
 .PARAMETER Backup    Create a new restore point (code + database).
 .PARAMETER List      List existing restore points.
@@ -19,6 +24,10 @@
 .PARAMETER PgSuperPassword  PostgreSQL 'postgres' superuser password (needed for -Restore: drop+recreate the DB).
 .PARAMETER Note      Optional label stored in the restore point's manifest.
 .PARAMETER Keep      How many restore points to keep when pruning after a backup (default 8).
+.PARAMETER AllowPlainBackup  With -Backup: keep the restore point with a PLAIN database.sql
+                     when backup-key.js is present but cannot encrypt it (by default
+                     the restore point is then refused: a backup is never written in
+                     clear as a fallback).
 .PARAMETER ResetSuperadminMfa  SuperAdmin username whose two-factor authentication is cleared (OS-admin recovery, 3.23.20).
 .EXAMPLE  .\Manage-IDevelop.ps1 -Backup -Note "before 3.22.1 upgrade"
 .EXAMPLE  .\Manage-IDevelop.ps1 -List
@@ -40,7 +49,10 @@ param(
     # Allow -SetPgPassword to open the temporary pg_hba.conf 'trust' window when
     # the current postgres password is unknown (else: asked, or refused when
     # unattended). Every use is logged to logs\pg-trust-window.log.
-    [switch]$AllowPasswordRecovery
+    [switch]$AllowPasswordRecovery,
+    # With -Backup: accept a PLAIN database.sql when backup-key.js exists but
+    # fails to encrypt it (default: the restore point is refused).
+    [switch]$AllowPlainBackup
 )
 
 $ErrorActionPreference = 'Stop'
@@ -584,6 +596,58 @@ function Reset-PgSuperViaTrust([string]$targetPw) {
 }
 
 # ===========================================================================
+#  ENCRYPTED RESTORE POINTS: the database dump of a restore point is encrypted
+#  with the backup key (scripts\backup-key.js: AES-256-GCM stream + signed
+#  SHA-256 manifest): database.sql.enc. Legacy plain database.sql points stay
+#  restorable (restored as-is, flagged).
+# ===========================================================================
+function Get-ManageNodeExe {
+    $n = $null
+    try { $n = (Get-Command node.exe -ErrorAction Stop).Source } catch { $n = $null }
+    if (-not $n -and (Test-Path -LiteralPath "$env:ProgramFiles\nodejs\node.exe")) { $n = "$env:ProgramFiles\nodejs\node.exe" }
+    return $n
+}
+# Runs backup-key.js with $KeyArgs from the install dir (it reads .env there).
+# -OutLog: everything the tool (and a piped psql) prints goes to that file.
+# Code -1 = node.exe or the script is missing.
+function Invoke-KeyTool([string]$InstallDir, [string[]]$KeyArgs, [string]$OutLog) {
+    $node = Get-ManageNodeExe
+    $tool = Join-Path $InstallDir 'scripts\backup-key.js'
+    if (-not $node -or -not (Test-Path -LiteralPath $tool)) { return [pscustomobject]@{ Code = -1; Out = 'scripts\backup-key.js or node.exe not found' } }
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    Push-Location $InstallDir
+    try {
+        if ($OutLog) { & $node $tool @KeyArgs *> $OutLog; return [pscustomobject]@{ Code = $LASTEXITCODE; Out = '' } }
+        $o = & $node $tool @KeyArgs 2>&1
+        return [pscustomobject]@{ Code = $LASTEXITCODE; Out = (($o | Out-String).Trim()) }
+    } finally { Pop-Location; $ErrorActionPreference = $prev }
+}
+# pg_dump wrote $DbFile (plain SQL): encrypt it to $DbFile.enc; the tool removes
+# the plain file only once the encrypted copy verified. On any failure the
+# restore point is KEPT in plain SQL (a rollback point before an upgrade matters
+# more than its format) and says so loudly.
+# $RunKeyTool {param([string[]]$KeyArgs)} -> @{ Code; Out }.
+function Protect-RestorePointDump([string]$DbFile, [scriptblock]$RunKeyTool) {
+    $enc = "$DbFile.enc"
+    $r = & $RunKeyTool @('encrypt', '--in', $DbFile, '--out', $enc, '--kind', 'installer-restore-point', '--remove-plain')
+    if ([int]$r.Code -eq 0 -and (Test-Path -LiteralPath $enc) -and -not (Test-Path -LiteralPath $DbFile)) {
+        return [pscustomobject]@{ Encrypted = $true; File = $enc; Message = 'database.sql.enc (AES-256-GCM, verified)' }
+    }
+    $missing = ([int]$r.Code -eq -1)
+    $why = if ($missing) { 'scripts\backup-key.js / node.exe not found' } else { "backup-key.js encrypt exit $($r.Code)" }
+    if ((Test-Path -LiteralPath $enc) -and (Test-Path -LiteralPath $DbFile)) { Remove-Item -LiteralPath $enc -Force -ErrorAction SilentlyContinue }
+    return [pscustomobject]@{ Encrypted = $false; ToolMissing = $missing; File = $DbFile; Message = "NOT encrypted ($why) - this restore point holds the database in PLAIN SQL" }
+}
+# The dump of a restore point: database.sql.enc (preferred) or a legacy database.sql.
+function Resolve-RestorePointDump([string]$RpDir) {
+    $enc = Join-Path $RpDir 'database.sql.enc'
+    if (Test-Path -LiteralPath $enc) { return [pscustomobject]@{ File = $enc; Encrypted = $true } }
+    $plain = Join-Path $RpDir 'database.sql'
+    if (Test-Path -LiteralPath $plain) { return [pscustomobject]@{ File = $plain; Encrypted = $false } }
+    return $null
+}
+
+# ===========================================================================
 #  BACKUP  - code + database -> a new restore point
 # ===========================================================================
 function Invoke-Backup {
@@ -613,6 +677,19 @@ function Invoke-Backup {
     } finally { Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue }
     $dbMB = [math]::Round((Get-Item $dbFile).Length / 1MB, 2)
     Log "Database captured (database.sql, $dbMB MB)." 'OK'
+    # 2a. Encrypted at rest with the backup key.
+    #     A backup is never written in clear as a fallback (docs/BACKUPS.md), with
+    #     one exception: an installed version older than the backup key has no
+    #     backup-key.js to encrypt with - the restore point taken before upgrading
+    #     it stays plain (said loudly), since refusing it would block the upgrade
+    #     that brings the encryption.
+    $dump = Protect-RestorePointDump $dbFile { param([string[]]$KeyArgs) Invoke-KeyTool $cfg.InstallDir $KeyArgs }
+    if ($dump.Encrypted) { Log "Database dump encrypted: $($dump.Message)." 'OK' }
+    elseif ($dump.ToolMissing -or $AllowPlainBackup) { Log "Database dump $($dump.Message)$(if (-not $dump.ToolMissing) { ' (-AllowPlainBackup)' })." 'WARN' }
+    else {
+        Remove-Item -LiteralPath $rp -Recurse -Force -ErrorAction SilentlyContinue
+        Die "Restore point REFUSED: the database dump could not be encrypted ($($dump.Message)); the plain dump was deleted. Check the backup key (node scripts\backup-key.js status, docs/BACKUPS.md), or re-run with -AllowPlainBackup to keep a plain dump this once."
+    }
 
     # 3. Manifest.
     $manifest = [ordered]@{
@@ -621,6 +698,8 @@ function Invoke-Backup {
         dbName    = $creds.db
         note      = $Note
         appPort   = $cfg.AppPort
+        dbFile    = (Split-Path -Leaf $dump.File)
+        encrypted = [bool]$dump.Encrypted
     }
     ($manifest | ConvertTo-Json) | Set-Content -Path (Join-Path $rp 'manifest.json') -Encoding UTF8
     Log "Restore point complete: $rp" 'OK'
@@ -640,7 +719,7 @@ function Invoke-Backup {
 # ===========================================================================
 function Get-RestorePoints {
     Get-ChildItem $rpRoot -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like 'rp-*' -and (Test-Path (Join-Path $_.FullName 'database.sql')) } |
+        Where-Object { $_.Name -like 'rp-*' -and (Resolve-RestorePointDump $_.FullName) } |
         Sort-Object LastWriteTime -Descending
 }
 function Invoke-List {
@@ -655,7 +734,8 @@ function Invoke-List {
         $mf = @{}; $mfp = Join-Path $rp.FullName 'manifest.json'
         if (Test-Path $mfp) { try { $mf = Get-Content $mfp -Raw | ConvertFrom-Json } catch {} }
         $ver = if ($mf.version) { $mf.version } else { '?' }
-        '  {0,-2}  {1,-37}  {2,-17}  {3}' -f $i, $rp.Name, $ver, $rp.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss') | Write-Host
+        $encTag = if ((Resolve-RestorePointDump $rp.FullName).Encrypted) { '' } else { '  [UNENCRYPTED]' }
+        '  {0,-2}  {1,-37}  {2,-17}  {3}{4}' -f $i, $rp.Name, $ver, $rp.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'), $encTag | Write-Host
         if ($mf.note) { Write-Host ("        note: " + $mf.note) -ForegroundColor DarkGray }
     }
     Write-Host ''
@@ -681,9 +761,23 @@ function Invoke-Restore {
         if ($sel -notmatch '^\d+$' -or [int]$sel -lt 1 -or [int]$sel -gt $rps.Count) { Die "Invalid selection '$sel'." }
         $target = $rps[[int]$sel - 1]
     }
-    $dbFile = Join-Path $target.FullName 'database.sql'
     $appSrc = Join-Path $target.FullName 'app'
-    if (-not (Test-Path $dbFile)) { Die "Restore point is missing database.sql." }
+    $dump = Resolve-RestorePointDump $target.FullName
+    if (-not $dump) { Die "Restore point is missing database.sql(.enc)." }
+    $dbFile = $dump.File
+    # Integrity (signed SHA-256 manifest) + full authenticated decryption proven
+    # BEFORE anything is stopped or dropped. Exit 1 = refuse.
+    $vr = Invoke-KeyTool $cfg.InstallDir @('verify', '--in', $dbFile)
+    if ($vr.Code -eq -1) {
+        if ($dump.Encrypted) { Die "This restore point is encrypted and scripts\backup-key.js / node.exe was not found in $($cfg.InstallDir) - nothing was changed." }
+        Log 'Legacy UNENCRYPTED restore point, and backup-key.js is not available to check it - restored as-is.' 'WARN'
+    } elseif ($vr.Code -ne 0) {
+        Die "RESTORE REFUSED - the dump failed its integrity / decryption check (backup-key.js verify exit $($vr.Code)): $($vr.Out). Nothing was changed. A restore point made on another server needs its key: node scripts\backup-key.js import --in <recovery file>."
+    } elseif ($dump.Encrypted) {
+        Log 'Restore point verified: manifest + full authenticated decryption OK.' 'OK'
+    } else {
+        Log 'Legacy UNENCRYPTED restore point (database.sql in plain SQL) - restored as-is.' 'WARN'
+    }
 
     # Verify a WORKING postgres superuser password BEFORE touching anything (tries
     # candidates, then prompts). Confirming up front avoids failing mid-restore
@@ -737,13 +831,19 @@ function Invoke-Restore {
         foreach ($ext in @('citext', 'pgcrypto', 'pg_trgm', 'unaccent')) {
             & $psql -h $creds.host -p $creds.port -U postgres -d $creds.db -c "CREATE EXTENSION IF NOT EXISTS $ext" | Out-Null
         }
-        Log 'Importing database.sql...' 'STEP'
+        Log "Importing database.sql$(if ($dump.Encrypted) { '.enc (decrypted straight into psql)' })..." 'STEP'
         # ON_ERROR_STOP=0 -> psql exits 0 whatever failed (measured: a file with
         # a failing SELECT exits 0). The verdict comes from the `ERROR:` lines in
         # the import log and from a structural count of the core tables, never
         # from the exit code.
         $importLog = Join-Path $LogDir 'last-restore-import.log'
-        & $psql -h $creds.host -p $creds.port -U postgres -d $creds.db -v ON_ERROR_STOP=0 -f $dbFile *> $importLog
+        if ($dump.Encrypted) {
+            # Decrypted straight into psql's stdin: no plaintext file on disk.
+            # '--run', not '--': Windows PowerShell 5.1 drops a bare '--'.
+            [void](Invoke-KeyTool $cfg.InstallDir @('pipe', '--in', $dbFile, '--run', $psql, '-h', $creds.host, '-p', "$($creds.port)", '-U', 'postgres', '-d', $creds.db, '-v', 'ON_ERROR_STOP=0') $importLog)
+        } else {
+            & $psql -h $creds.host -p $creds.port -U postgres -d $creds.db -v ON_ERROR_STOP=0 -f $dbFile *> $importLog
+        }
         $impErrors = @(Select-String -LiteralPath $importLog -Pattern '(^|\s)ERROR:' -ErrorAction SilentlyContinue)
         $impCheck = Test-RestoredDatabase $creds
         if ($impCheck.missing.Count) {
