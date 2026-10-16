@@ -1793,7 +1793,7 @@ function Get-AuditOwnerSql([string]$Owner, [string]$App, [string]$Legacy = '') {
     $sql = @'
 DO $audit$
 DECLARE
-  r record; s record; n int := 0;
+  r record; s record; n int := 0; t text;
   own text := '__OWNER__'; app text := '__APP__'; legacy text := '__LEGACY__';
 BEGIN
   IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
@@ -1810,9 +1810,25 @@ BEGIN
     EXECUTE format('CREATE ROLE %I NOLOGIN', own);
   END IF;
   -- The guard functions first: an owner could CREATE OR REPLACE them into no-ops.
+  -- + the audit-log redaction / purge / seal functions and their helpers
+  -- (migration 170): the SECURITY DEFINER ones work on system_logs, so they must
+  -- belong to its owner, or every GDPR erasure (redaction) is refused and fails
+  -- closed; the helpers decide what block_mutation lets through, so the app role
+  -- must not be able to replace them.
   FOR r IN SELECT p.oid::regprocedure AS sig FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
-            WHERE ns.nspname = 'public' AND p.proname IN ('block_mutation', 'block_truncate', 'fn_system_logs_hashchain') LOOP
+            WHERE ns.nspname = 'public' AND p.proname IN ('block_mutation', 'block_truncate', 'fn_system_logs_hashchain',
+                  'fn_system_logs_redact', '_fn_system_logs_redact_flush', 'fn_system_logs_purge', 'fn_system_logs_seal',
+                  'fn_system_logs_mutation_allowed', 'fn_system_logs_rowhash') LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO %I', r.sig, own);
+  END LOOP;
+  -- A change of owner hands the OLD owner's privileges to the new one. Migration
+  -- 170 revoked EXECUTE on the writing functions from PUBLIC and left it to the
+  -- app role as their owner, so after the move the app could no longer call
+  -- them ('permission denied for function fn_system_logs_redact'): EXECUTE is
+  -- granted back on exactly the functions the app calls.
+  FOR r IN SELECT p.oid::regprocedure AS sig FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
+            WHERE ns.nspname = 'public' AND p.proname IN ('fn_system_logs_redact', 'fn_system_logs_purge', 'fn_system_logs_seal') LOOP
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %I', r.sig, app);
   END LOOP;
   FOR r IN SELECT DISTINCT c.oid, c.relname
              FROM pg_trigger t
@@ -1831,6 +1847,17 @@ BEGIN
       EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %s TO %I', s.seq, app);
     END LOOP;
     n := n + 1;
+  END LOOP;
+  -- The SECURITY DEFINER functions above run AS the owner role and read ordinary
+  -- tables it does not own: fn_system_logs_redact and fn_system_logs_mutation_allowed
+  -- check employees.erased_at; fn_system_logs_purge reads the legal holds
+  -- (employees.legal_hold_at, pii_cleanup_jobs, admins.linked_employee_id).
+  -- Without SELECT every GDPR erasure fails with 'permission denied'. Keep this
+  -- list in step with what those functions read (a test compares them).
+  FOREACH t IN ARRAY ARRAY['employees', 'admins', 'pii_cleanup_jobs'] LOOP
+    IF to_regclass('public.' || quote_ident(t)) IS NOT NULL THEN
+      EXECUTE format('GRANT SELECT ON TABLE public.%I TO %I', t, own);
+    END IF;
   END LOOP;
   RAISE NOTICE 'AUDIT_OWNER_APPLIED: % table(s) owned by %, app role % limited to SELECT + INSERT', n, own, app;
 END $audit$;
