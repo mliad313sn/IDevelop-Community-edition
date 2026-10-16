@@ -58,6 +58,10 @@
                               virtual account by default.
 .PARAMETER EnableAuditOwnerSeparation  Turn on audit-trail ownership separation (off by
                               default: four SuperAdmin tools are refused while it is on).
+.PARAMETER ApplyPgHardening   Apply the recommended PostgreSQL hardening on a server this
+                              installer did not create (otherwise: report it, and ask
+                              when a console is attached). Applied automatically on a
+                              server Setup created.
 .PARAMETER NoRollback         Disable the automatic restore-on-failure safety net. By
                               default, when patching / upgrading an EXISTING install,
                               the installer backs up the running version first and — if
@@ -173,7 +177,10 @@ param(
     [switch]$MigrateServiceAccount,
     # Turn on audit-trail ownership separation (off by default). Four SuperAdmin
     # tools are then refused (see config.psd1 AuditOwnerSeparation).
-    [switch]$EnableAuditOwnerSeparation
+    [switch]$EnableAuditOwnerSeparation,
+    # Apply the recommended PostgreSQL hardening on a server this installer did
+    # NOT create, without asking (unattended consent). Without it: report + ask.
+    [switch]$ApplyPgHardening
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1871,6 +1878,21 @@ $pgService   = if ($isLocalPg) { Get-Service -Name 'postgresql*' -ErrorAction Si
 $pgBin       = Find-PgBin
 $pgListening = Test-PgListening $cfg.PgHost $cfg.PgPort
 $pgExists    = $UseExistingPostgres -or $pgService -or $pgListening -or (-not $isLocalPg)
+# Was this server created by this installer (now or on an earlier run)? The
+# marker is trusted only when an administrator or SYSTEM owns it: the service
+# account may write in %ProgramData%\IDevelop and must not be able to forge it
+# (it would make Setup change and restart a server it does not own).
+$script:PgMarkerFile = Join-Path $LogDir 'pg-created-by-installer.json'
+$script:PgCreatedByUs = $false
+function Test-PgMarkerTrusted([string]$Path, [int]$Port) {
+    try {
+        if (-not (Test-Path -LiteralPath $Path)) { return $false }
+        $own = (New-Object System.Security.AccessControl.FileSecurity($Path, [System.Security.AccessControl.AccessControlSections]::Owner)).GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+        if ($own -notin @('S-1-5-18', 'S-1-5-32-544')) { return $false }
+        return ([int]((Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json).port) -eq $Port)
+    } catch { return $false }
+}
+if ($pgExists -and $isLocalPg) { $script:PgCreatedByUs = Test-PgMarkerTrusted $script:PgMarkerFile ([int]$cfg.PgPort) }
 
 if ($pgExists) {
     Log "Existing PostgreSQL (service=$([bool]$pgService), psql=$([bool]$pgBin), port $($cfg.PgPort) open=$pgListening, local=$isLocalPg) - reusing." 'OK'
@@ -1908,6 +1930,14 @@ if ($pgExists) {
     if (-not $pgBin) { Fail 'PostgreSQL installed but psql.exe not found.' }
     for ($i = 0; $i -lt 15; $i++) { if (Test-PgListening $cfg.PgHost $cfg.PgPort) { break }; Start-Sleep -Seconds 2 }
     Log 'PostgreSQL installed.' 'OK'
+    # Remember that THIS installer created the server, so its recommended
+    # hardening is applied now and re-applied on later runs. SYSTEM +
+    # Administrators only (see Test-PgMarkerTrusted).
+    $script:PgCreatedByUs = $true
+    try {
+        Set-Content -LiteralPath $script:PgMarkerFile -Value (@{ createdBy = 'IDevelop installer'; created = (Get-Date -Format o); port = $cfg.PgPort; major = $cfg.PgMajor } | ConvertTo-Json -Compress) -Encoding ASCII
+        & icacls.exe $script:PgMarkerFile /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' /Q *> $null
+    } catch { Log "Could not write $($script:PgMarkerFile): $($_.Exception.Message)" 'WARN' }
 }
 $psql = Join-Path $pgBin 'psql.exe'
 # Ensure psql's bin is on PATH for this session (the environment header showed
@@ -2286,6 +2316,101 @@ function Get-PgHbaTrustLines([string]$Text) {
     return , $hits
 }
 
+# ---------------------------------------------------------------------------
+# RECOMMENDED POSTGRESQL HARDENING.
+#   log_connections / log_disconnections = on, a log_line_prefix naming the user,
+#   the database and the client address, CONNECT on the application database for
+#   the app role only (REVOKE ... FROM PUBLIC), and listen_addresses = 'localhost'
+#   ONLY when the app reaches PostgreSQL on a loopback address (co-located).
+# On a server this installer CREATED: applied automatically. On any other server
+# (we do not own it; changing it silently can break other applications): WARN,
+# then ask at the console, or apply only with -ApplyPgHardening. Every run writes
+# a report (checked / applied / to do + the pg_hba.conf 'trust' check) to the log.
+# pg_hba.conf itself is NEVER changed by Setup.
+# ---------------------------------------------------------------------------
+function Test-LoopbackHost([string]$HostName) {
+    $x = "$HostName".Trim().Trim('[', ']').ToLowerInvariant()
+    return ($x -eq 'localhost' -or $x -eq '::1' -or $x -match '^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+}
+function Get-PgHardeningPlan($Current, [bool]$PublicCanConnect, [bool]$CoLocated, [string]$DbName, [string]$AppRole) {
+    $qi = { param($n) '"' + ("$n" -replace '"', '""') + '"' }
+    $on = { param($v) ("$v".Trim().ToLowerInvariant() -notin @('', 'off', 'false', '0', 'no')) }
+    $item = {
+        param($key, $cur, $rec, $offered, $needed, $restart, $sql, $note)
+        [pscustomobject]@{ Key = $key; Current = "$cur"; Recommended = $rec; Offered = [bool]$offered; Needed = [bool]($offered -and $needed)
+                           Restart = [bool]$restart; Sql = @($sql); Note = $note; Status = ''; Error = '' }
+    }
+    $items = @()
+    foreach ($k in @('log_connections', 'log_disconnections')) {
+        $cur = $Current[$k]
+        $items += (& $item $k $cur 'on' $true (-not (& $on $cur)) $false @("ALTER SYSTEM SET $k = 'on'") 'who connected / disconnected, and when')
+    }
+    $prefix = '%m [%p] user=%u,db=%d,client=%h '
+    $lp = "$($Current['log_line_prefix'])"
+    $items += (& $item 'log_line_prefix' $lp $prefix $true (-not ($lp -match '%u' -and $lp -match '%d' -and $lp -match '%h')) $false @("ALTER SYSTEM SET log_line_prefix = '$($prefix -replace "'", "''")'") 'every log line names the user, the database and the client address')
+    $items += (& $item "CONNECT ON DATABASE $DbName" $(if ($PublicCanConnect) { 'PUBLIC (every role)' } else { 'granted roles only' }) "$AppRole only" $true $PublicCanConnect $false @(
+            "GRANT CONNECT ON DATABASE $(& $qi $DbName) TO $(& $qi $AppRole)",
+            "REVOKE CONNECT ON DATABASE $(& $qi $DbName) FROM PUBLIC") 'no other login role of this server can open the HR database')
+    $la = "$($Current['listen_addresses'])"
+    $exposed = @(@($la -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not (Test-LoopbackHost $_) })
+    if ($CoLocated) {
+        $items += (& $item 'listen_addresses' $la 'localhost' $true ($exposed.Count -gt 0) $true @("ALTER SYSTEM SET listen_addresses = 'localhost'") 'the app and PostgreSQL are on this machine: nothing else needs to reach PostgreSQL over the network')
+    } else {
+        $items += (& $item 'listen_addresses' $la 'localhost' $false $false $true @() 'not offered: the app reaches PostgreSQL through a non-loopback address (PgHost), so PostgreSQL must keep listening on the network')
+    }
+    return $items
+}
+# Created by us -> applied; -ApplyPgHardening -> applied; console -> asked; else report only.
+function Resolve-PgHardeningConsent([bool]$CreatedByUs, [bool]$Switch, [bool]$CanAsk, [scriptblock]$Ask) {
+    if ($CreatedByUs) { return [pscustomobject]@{ Granted = $true; Mode = 'created' } }
+    if ($Switch) { return [pscustomobject]@{ Granted = $true; Mode = 'switch' } }
+    if (-not $CanAsk) { return [pscustomobject]@{ Granted = $false; Mode = 'unattended' } }
+    $ans = ''
+    try { $ans = "$(& $Ask)" } catch { $ans = '' }
+    if (Test-YesAnswer $ans) { return [pscustomobject]@{ Granted = $true; Mode = 'interactive' } }
+    return [pscustomobject]@{ Granted = $false; Mode = 'declined' }
+}
+# Applies each needed item on its own (a refused ALTER SYSTEM on a managed server
+# must not hide that the REVOKE worked) and sets Status: OK | APPLIED | FAILED |
+# TO DO | NOT OFFERED. $RunSql {param($sql)} -> @{ Code; Out } (psql via stdin).
+function Invoke-PgHardening($Items, [bool]$Granted, [scriptblock]$RunSql) {
+    $reload = $false
+    foreach ($it in @($Items)) {
+        if (-not $it.Offered) { $it.Status = 'NOT OFFERED'; continue }
+        if (-not $it.Needed) { $it.Status = 'OK'; continue }
+        if (-not $Granted) { $it.Status = 'TO DO'; continue }
+        $r = & $RunSql ((@($it.Sql) -join ";`n") + ';')
+        # A reloadable ALTER SYSTEM setting (log_*) needs pg_reload_conf(); GRANT /
+        # REVOKE act at once; listen_addresses needs a restart, not a reload.
+        if ($r -and $r.Code -eq 0) { $it.Status = 'APPLIED'; if ($it.Key -like 'log_*') { $reload = $true } }
+        else { $it.Status = 'FAILED'; $it.Error = "$(if ($r) { $r.Out })".Trim() }
+    }
+    if ($reload) { [void](& $RunSql 'SELECT pg_reload_conf();') }
+    return @($Items)
+}
+function Get-PgHardeningReport($Items, $HbaTrust, [string]$HbaFile, [string]$ConsentMode, [bool]$CreatedByUs, [string]$Target) {
+    $l = @()
+    $l += "PostgreSQL hardening report - server $Target, created by this installer: $(if ($CreatedByUs) { 'yes' } else { 'no' }), decision: $ConsentMode"
+    foreach ($it in @($Items)) {
+        $st = if ($it.Status) { $it.Status } else { '?' }
+        $line = '  [{0}] {1}: {2}' -f $st, $it.Key, $(if ($it.Current) { $it.Current } else { '(empty)' })
+        if ($st -in @('APPLIED', 'TO DO', 'FAILED')) { $line += " -> $($it.Recommended)" }
+        $line += " ($($it.Note))"
+        if ($st -eq 'FAILED' -and $it.Error) { $line += " - $($it.Error)" }
+        $l += $line
+    }
+    if ($null -eq $HbaTrust) { $l += '  [NOT CHECKED] pg_hba.conf trust entries (neither the file nor pg_hba_file_rules could be read)' }
+    elseif (@($HbaTrust).Count) {
+        $l += "  [TO DO] pg_hba.conf ($HbaFile): $(@($HbaTrust).Count) 'trust' entr$(if (@($HbaTrust).Count -eq 1) { 'y' } else { 'ies' }) - replace with scram-sha-256 and reload (never changed by Setup):"
+        foreach ($h in @($HbaTrust)) { $l += "      $h" }
+    } else { $l += '  [OK] pg_hba.conf: no trust entries' }
+    $todo = @(@($Items) | Where-Object { $_.Status -eq 'TO DO' }).Count
+    if ($todo -and $ConsentMode -in @('unattended', 'declined')) {
+        $l += "  $todo recommendation(s) not applied: re-run with -ApplyPgHardening (or answer Y at the console) to apply them."
+    }
+    return $l
+}
+
 $pgCandidates = New-Object System.Collections.Generic.List[string]
 foreach ($p in @($PgSuperPassword, $cfg.PgSuperPassword, $cfg.StandardPgSuperPassword)) {
     if ($p -and -not $pgCandidates.Contains($p)) { $pgCandidates.Add($p) }
@@ -2387,6 +2512,7 @@ function Get-PsqlText([string]$db, [string]$sql) {
         return ($o | Out-String).Trim()
     } finally { $ErrorActionPreference = $prevEAP }
 }
+$script:PgHbaTrust = $null; $script:PgHbaFile = $null   # $null = not checked
 try {
     $hbaTrust = @()
     $hbaFile = Get-PsqlText 'postgres' 'SHOW hba_file'
@@ -2397,6 +2523,7 @@ try {
         $rows = Get-PsqlText 'postgres' "SELECT line_number || ': ' || type || ' ' || array_to_string(database, ',') || ' ' || array_to_string(user_name, ',') || ' ' || coalesce(address, '') FROM pg_hba_file_rules WHERE auth_method = 'trust'"
         $hbaTrust = @(("$rows" -split "`r?`n") | Where-Object { $_.Trim() } | ForEach-Object { "line $_" })
     }
+    $script:PgHbaTrust = @($hbaTrust); $script:PgHbaFile = $hbaFile
     if ($hbaTrust.Count) {
         Log "SECURITY: pg_hba.conf ($hbaFile) has $($hbaTrust.Count) 'trust' entr$(if ($hbaTrust.Count -eq 1) { 'y' } else { 'ies' }) - anyone reaching those addresses logs in to PostgreSQL WITHOUT a password, as any role, including the HR database. Replace 'trust' with 'scram-sha-256' and reload PostgreSQL (Setup does not change a server's authentication itself):" 'WARN'
         foreach ($l in $hbaTrust) { Log "    $l" 'WARN' }
@@ -2461,6 +2588,56 @@ Psql $cfg.DbName "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ""$($cfg.DbUser
 Psql $cfg.DbName "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ""$($cfg.DbUser)""" | Out-Null
 Psql $cfg.DbName "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ""$($cfg.DbUser)""" | Out-Null
 Log "Extensions + privileges applied (server major $pgServerMajor)." 'OK'
+
+# Recommended PostgreSQL hardening + its report. Never fatal.
+$script:PgHardeningSummary = $null
+try {
+    $pgCur = @{}
+    foreach ($k in @('log_connections', 'log_disconnections', 'log_line_prefix', 'listen_addresses')) { $pgCur[$k] = Get-PsqlText 'postgres' "SHOW $k" }
+    $dbLit = $cfg.DbName -replace "'", "''"
+    $pubConnect = ((Get-PsqlText 'postgres' "SELECT has_database_privilege('public', '$dbLit', 'CONNECT')::int") -eq '1')
+    $coLocated = Test-LoopbackHost $cfg.PgHost
+    $pgItems = Get-PgHardeningPlan $pgCur $pubConnect $coLocated $cfg.DbName $cfg.DbUser
+    $pgNeeded = @($pgItems | Where-Object { $_.Needed })
+    if ($pgNeeded.Count -and -not $script:PgCreatedByUs) {
+        Log "PostgreSQL at $($cfg.PgHost):$($cfg.PgPort) was NOT created by this installer and $($pgNeeded.Count) recommended hardening setting(s) are missing: $(($pgNeeded | ForEach-Object { $_.Key }) -join ', '). Setup never changes a server it did not create without your consent." 'WARN'
+    }
+    $pgConsent = if ($pgNeeded.Count) {
+        Resolve-PgHardeningConsent $script:PgCreatedByUs $ApplyPgHardening.IsPresent (Test-CanAsk) {
+            foreach ($it in $pgNeeded) { Write-Host ("    - {0}: {1} -> {2}{3}" -f $it.Key, $(if ($it.Current) { $it.Current } else { '(empty)' }), $it.Recommended, $(if ($it.Restart) { ' (effective at the next PostgreSQL restart)' } else { '' })) -ForegroundColor Yellow }
+            $qh = 'Apply the recommended PostgreSQL hardening listed above?'
+            Log "QUESTION (answer in the setup CONSOLE window): $qh" 'STEP'
+            Read-Host "  $qh [Y/N]"
+        }
+    } else { [pscustomobject]@{ Granted = $false; Mode = 'nothing to apply' } }
+    $runSql = { param($sql) Invoke-PsqlStdin $psql @('-h', $cfg.PgHost, '-p', "$($cfg.PgPort)", '-U', 'postgres', '-d', 'postgres', '-t', '-A', '-v', 'ON_ERROR_STOP=1', '-f', '-') $sql }
+    $pgItems = Invoke-PgHardening $pgItems $pgConsent.Granted $runSql
+    $listenItem = $pgItems | Where-Object { $_.Key -eq 'listen_addresses' -and $_.Status -eq 'APPLIED' } | Select-Object -First 1
+    if ($listenItem) {
+        # A server we created is ours to restart now; any other one restarts in its
+        # owner's maintenance window (the setting waits in postgresql.auto.conf).
+        $pgSvc = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Running' } | Select-Object -First 1
+        if ($script:PgCreatedByUs -and $pgSvc) {
+            try {
+                Restart-Service -Name $pgSvc.Name -Force -ErrorAction Stop
+                $up = $false
+                for ($i = 0; $i -lt 30 -and -not $up; $i++) { Start-Sleep -Seconds 1; $up = (Test-PgProbe $cfg.PgSuperPassword).ok }
+                $env:PGPASSWORD = $cfg.PgSuperPassword
+                $listenItem.Status = if ($up) { 'APPLIED' } else { 'FAILED' }
+                $listenItem.Note += $(if ($up) { ' - PostgreSQL restarted' } else { ' - PostgreSQL did not answer after its restart' })
+            } catch { $listenItem.Note += " - restart failed: $($_.Exception.Message)" }
+        } else {
+            $listenItem.Note += ' - effective at the NEXT PostgreSQL restart (not restarted by Setup)'
+        }
+    }
+    $pgReport = Get-PgHardeningReport $pgItems $script:PgHbaTrust $script:PgHbaFile $pgConsent.Mode $script:PgCreatedByUs "$($cfg.PgHost):$($cfg.PgPort)"
+    foreach ($line in $pgReport) {
+        $lvl = if ($line -match '^\s+\[(TO DO|FAILED)\]') { 'WARN' } elseif ($line -match '^\s+\[APPLIED\]') { 'OK' } else { 'INFO' }
+        Log $line $lvl
+    }
+    $cnt = { param($s) @($pgItems | Where-Object { $_.Status -eq $s }).Count }
+    $script:PgHardeningSummary = "{0} applied, {1} to do, {2} failed, {3} already OK; pg_hba trust entries: {4}" -f (& $cnt 'APPLIED'), (& $cnt 'TO DO'), (& $cnt 'FAILED'), (& $cnt 'OK'), $(if ($null -eq $script:PgHbaTrust) { 'not checked' } else { @($script:PgHbaTrust).Count })
+} catch { Log "PostgreSQL hardening check skipped: $($_.Exception.Message)" 'WARN' }
 
 # Is the audit trail ALREADY separated in this database? Read before the ownership
 # reconcile below hands the tables back to the app role for the migration pass
@@ -3539,6 +3716,7 @@ finally {
             $sum += "Service acct  : $svcTxt"
         }
         if ($script:AuditPlan) { $sum += "Audit owner   : $(if ($script:AuditPlan.On) { 'separated' } else { 'not separated' }) - $($script:AuditPlan.Reason)" }
+        if ($script:PgHardeningSummary) { $sum += "PG hardening  : $($script:PgHardeningSummary)" }
         if (-not $script:InstallSucceeded) {
             $sum += "Failed at     : Step $($script:CurrentStep)/$($script:TotalSteps) - $($script:CurrentName)"
         }
