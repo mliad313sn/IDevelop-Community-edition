@@ -1946,6 +1946,10 @@ if ($pgExists) {
     $script:PgCreatedByUs = $true
     try {
         Set-Content -LiteralPath $script:PgMarkerFile -Value (@{ createdBy = 'IDevelop installer'; created = (Get-Date -Format o); port = $cfg.PgPort; major = $cfg.PgMajor } | ConvertTo-Json -Compress) -Encoding ASCII
+        # Owner = Administrators explicitly: on a Windows client the default owner
+        # is the creating user, and only an administrator can hand a file to the
+        # Administrators group (what Test-PgMarkerTrusted checks).
+        & icacls.exe $script:PgMarkerFile /setowner '*S-1-5-32-544' /Q *> $null
         & icacls.exe $script:PgMarkerFile /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' /Q *> $null
     } catch { Log "Could not write $($script:PgMarkerFile): $($_.Exception.Message)" 'WARN' }
 }
