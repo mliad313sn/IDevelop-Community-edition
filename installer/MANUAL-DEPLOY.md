@@ -232,7 +232,9 @@ self-heals a missed Phase F — except the admin-password hardening.)
 
 ## PHASE H — Run as a service (survives reboot)
 
-**Windows — SYSTEM scheduled task** (what the installer registers). In an **admin** PowerShell:
+**Windows — SYSTEM scheduled task** (the installer's fallback when the WinSW service wrapper
+cannot be obtained; by default it registers a real Windows service, see _Least privilege_
+below). In an **admin** PowerShell:
 
 ```powershell
 $node = (Get-Command node.exe).Source
