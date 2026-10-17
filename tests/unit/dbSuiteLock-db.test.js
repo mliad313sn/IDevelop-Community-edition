@@ -27,7 +27,8 @@ suite('DB suite lock and defaults', () => {
         expect(globalThis.__dbSuiteLock.held()).toBe(true);
         const r = await db.get(
             `SELECT COUNT(*)::int AS n FROM pg_locks
-              WHERE locktype = 'advisory' AND objid = $1 AND granted`,
+              WHERE locktype = 'advisory' AND objid = $1 AND granted
+                AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`,
             [LOCK_KEY]
         );
         expect(r.n).toBe(1);
