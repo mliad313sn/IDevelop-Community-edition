@@ -60,7 +60,7 @@ async function guardDisputeScope(req, res, level = null) {
     }
     if (level) {
         const rel = await AuthorityService.relation(req.user, empId);
-        if (!rel || rel.isSelf || rel.selfByIdentity) {
+        if (rel && (rel.isSelf || rel.selfByIdentity)) {
             res.status(403).json({
                 ok: false,
                 code: 'DISPUTE_OWN_RECORD',
@@ -73,13 +73,15 @@ async function guardDisputeScope(req, res, level = null) {
             return false;
         }
         // In scope: the manager's governed sub-tree. The rung it stands for.
-        const as = rel.isDirectManager
-            ? 'manager'
-            : rel.isSupervisor
-              ? 'supervisor'
-              : rel.isLineAbove
-                ? 'manager'
-                : null;
+        const as = !rel
+            ? null
+            : rel.isDirectManager
+              ? 'manager'
+              : rel.isSupervisor
+                ? 'supervisor'
+                : rel.isLineAbove
+                  ? 'manager'
+                  : null;
         // 'dispute.l0' / 'dispute.l1' keep this reach in both ladder modes.
         AuthorityService.noteAs(req.user, empId, as);
         req.disputeEmployeeId = empId;
