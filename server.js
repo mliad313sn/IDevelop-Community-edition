@@ -246,15 +246,20 @@ const MANIFEST_FILES = new Map([
     ['/manifest.fr.webmanifest', 'manifest.fr.webmanifest'],
     ['/manifest.en.webmanifest', 'manifest.en.webmanifest'],
 ]);
+// The stock manifests are read once at start-up, so a request never touches the disk.
+const MANIFEST_BASE = new Map(
+    [...MANIFEST_FILES].map(([route, file]) => {
+        try {
+            const full = path.join(__dirname, 'public', file);
+            // eslint-disable-next-line security/detect-non-literal-fs-filename -- one of three fixed names
+            return [route, JSON.parse(fs.readFileSync(full, 'utf8'))];
+        } catch (_) {
+            return [route, {}]; // the stock values below
+        }
+    })
+);
 app.get([...MANIFEST_FILES.keys()], async (req, res) => {
-    const file = MANIFEST_FILES.get(req.path);
-    let base = {};
-    try {
-        // eslint-disable-next-line security/detect-non-literal-fs-filename -- one of three fixed names
-        base = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', file), 'utf8'));
-    } catch (_) {
-        /* the stock values below */
-    }
+    const base = MANIFEST_BASE.get(req.path) || {};
     let b = null;
     try {
         b = await require('./src/utils/branding').getBranding();
