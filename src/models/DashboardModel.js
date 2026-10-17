@@ -970,10 +970,13 @@ class DashboardModel {
                             AND rsr.requiredLevel > 0`;
         }
 
+        // Against a requirement the radar plots the CREDITED level
+        // min(level, required) (src/utils/capability.js): no surplus above it.
+        const levelExpr = joinRequired ? 'LEAST(c.level, rsr.requiredLevel)' : 'c.level';
         const sql = `
             SELECT
                 c.domainName,
-                ROUND(AVG(c.level), 2) as avgLevel
+                ROUND(AVG(${levelExpr}), 2) as avgLevel
             FROM v_domain_capability c
             JOIN v_employee_details e ON e.employeeId = c.employeeId
             ${joinRequired}
@@ -1102,7 +1105,9 @@ class DashboardModel {
             `SELECT
                  g.domainId,
                  g.domainName,
-                 ROUND(AVG(CASE WHEN g.isAssessed = 1 THEN g.actualLevel END), 2)   as avgActual,
+                 -- the CREDITED level (src/utils/capability.js): a surplus never
+                 -- lifts a domain above its requirement nor offsets a gap
+                 ROUND(AVG(CASE WHEN g.isAssessed = 1 THEN LEAST(g.actualLevel, g.requiredLevel) END), 2) as avgActual,
                  ROUND(AVG(CASE WHEN g.isAssessed = 1 THEN g.requiredLevel END), 2) as avgRequired,
                  COUNT(DISTINCT CASE WHEN g.isAssessed = 1 THEN g.employeeId END)::int as assessedCount,
                  COUNT(DISTINCT g.skillId)::int                                     as requiredSkillCount,
@@ -1439,7 +1444,7 @@ class DashboardModel {
         const filterClause = this._buildFilterClause(filters, params, 'g');
         const rows = await db.all(
             `SELECT COALESCE(sk.category, 'Technical') AS domainName,
-                    ROUND(AVG(CASE WHEN g.isAssessed = 1 THEN g.actualLevel END), 2)   AS avgActual,
+                    ROUND(AVG(CASE WHEN g.isAssessed = 1 THEN LEAST(g.actualLevel, g.requiredLevel) END), 2) AS avgActual,
                     ROUND(AVG(CASE WHEN g.isAssessed = 1 THEN g.requiredLevel END), 2) AS avgRequired,
                     COUNT(DISTINCT CASE WHEN g.isAssessed = 1 THEN g.employeeId END)::int AS assessedCount,
                     COUNT(DISTINCT g.skillId)::int                                        AS requiredSkillCount,

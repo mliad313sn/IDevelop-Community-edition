@@ -1,5 +1,6 @@
 'use strict';
 const db = require('../config/database');
+const CAP = require('../utils/capability');
 
 /**
  * Benchmark = the required proficiency each role demands per skill
@@ -306,9 +307,15 @@ class BenchmarkModel {
             }
             // A requirement nobody assessed has NO level (the view coalesces it
             // to 0): actual is null and it is neither met nor a gap — the page
-            // says "Not assessed".
+            // says "Not assessed". A role matrix shows the level CREDITED
+            // against the requirement (src/utils/capability.js): at or above it
+            // is « met », never a surplus.
             sk.cells[eid] = r.isAssessed
-                ? { actual, met: actual >= required, assessed: true }
+                ? {
+                      actual: CAP.credited(actual, required),
+                      met: actual >= required,
+                      assessed: true,
+                  }
                 : { actual: null, met: null, assessed: false };
         }
         const occupants = [...occMap.values()]

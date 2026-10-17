@@ -26,7 +26,7 @@
   var _sub = (typeof heatSubtitle !== 'undefined' && heatSubtitle) ? heatSubtitle : __('viz:heat.map_sub');
   var _none = (typeof noneLabel !== 'undefined' && noneLabel) ? noneLabel : __('viz:no_site');
   var _colon = (typeof colon !== 'undefined' && colon) ? colon : ((typeof lang !== 'undefined' && lang === 'en') ? ':' : ' :');
-  var _BINS = ['below-3', 'below-2', 'below-1', 'at', 'above-1', 'above-2'];
+  var _BINS = ['below-3', 'below-2', 'below-1', 'at']; // met is ONE state (utils/capability.js)
   var colLabel = function (c) { return c.pooled ? __('viz:heat.pooled') : (c.none ? _none : (c.label || '—')); };
   var totalLabel = __('viz:heat.map_total_row');
   var valueText = function (c) {

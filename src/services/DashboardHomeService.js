@@ -1210,6 +1210,9 @@ const PROFILE_AXES = Object.freeze({
     skill: { key: 'g.skill_id', label: 'g.skill_name', join: '' },
 });
 
+/** The credited level of one requirement row of v_employee_skill_gaps (fixed SQL). */
+const CREDITED = require('../utils/capability').creditedSql('g.actual_level', 'g.required_level');
+
 function profileRow(r) {
     const measured = Number(r.measured) || 0;
     const actual = measured && isNum(r.actual) ? Math.round(Number(r.actual) * 100) / 100 : null;
@@ -1226,14 +1229,19 @@ function profileRow(r) {
     };
 }
 
-/** Demonstrated vs required level per axis, PAIRED over the measured requirement rows. */
+/**
+ * Demonstrated vs required level per axis, PAIRED over the measured requirement
+ * rows. The demonstrated side is the CREDITED level LEAST(actual, required)
+ * (src/utils/capability.js): a surplus on one skill or one person never offsets
+ * a gap elsewhere, so required − actual is the mean POSITIVE gap.
+ */
 async function capabilityProfile(ids, axis = 'domain') {
     if (!has(PROFILE_AXES, axis)) throw new Error('capabilityProfile: unknown axis');
     if (!Array.isArray(ids) || !ids.length) return [];
     const A = PROFILE_AXES[axis];
     const rows = await db.all(
         `SELECT ${A.key} AS "key", MAX(${A.label}) AS "label",
-                AVG(g.actual_level) FILTER (WHERE g.is_assessed = 1) AS "actual",
+                AVG(${CREDITED}) FILTER (WHERE g.is_assessed = 1) AS "actual",
                 AVG(g.required_level) FILTER (WHERE g.is_assessed = 1) AS "required",
                 COUNT(DISTINCT g.employee_id) FILTER (WHERE g.is_assessed = 1)::int AS "n",
                 COALESCE(SUM(g.is_assessed), 0)::int AS "measured",
@@ -1250,7 +1258,8 @@ async function capabilityProfile(ids, axis = 'domain') {
 /**
  * The heatmap cube (utils/heatModel.heatModel): SUMS of the paired levels per
  * (unit × axis) and every marginal in one GROUPING SETS pass, so pooled
- * columns and totals are population aggregates, never a mean of cells.
+ * columns and totals are population aggregates, never a mean of cells. The
+ * demonstrated side is the credited level (never above the requirement).
  */
 async function capabilityHeat(ids, unit = 'site', level = 'domain') {
     if (!has(UNIT_COLUMNS, unit)) throw new Error('capabilityHeat: unknown unit');
@@ -1260,7 +1269,7 @@ async function capabilityHeat(ids, unit = 'site', level = 'domain') {
     const rows = await db.all(
         `WITH base AS (
              SELECT ${U.id} AS u_id, ${U.name} AS u_name, ${A.key} AS k_id, ${A.label} AS k_label,
-                    g.actual_level AS act, g.required_level AS req, g.is_assessed AS assessed,
+                    ${CREDITED} AS act, g.required_level AS req, g.is_assessed AS assessed,
                     g.employee_id AS emp
                FROM v_employee_skill_gaps g ${A.join}
               WHERE g.employee_id = ANY(?)
@@ -1309,7 +1318,7 @@ async function capabilityMap(ids, unit = 'site') {
     const rows = await db.all(
         `WITH base AS (
              SELECT ${U.id} AS u_id, ${U.name} AS u_name, g.domain_id AS p_id,
-                    sk.sub_domain_id AS s_id, g.actual_level AS act, g.required_level AS req,
+                    sk.sub_domain_id AS s_id, ${CREDITED} AS act, g.required_level AS req,
                     g.is_assessed AS assessed, g.employee_id AS emp
                FROM v_employee_skill_gaps g
                JOIN skills sk ON sk.id = g.skill_id

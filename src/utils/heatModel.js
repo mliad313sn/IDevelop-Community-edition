@@ -5,8 +5,10 @@
  * and nothing else decides a colour, a mask or an order.
  *
  * Kinds
- *   attain    demonstrated ÷ required (summed levels), DIVERGING around 100 %
- *   deficit   required − demonstrated, in levels (mean over the measured rows)
+ *   attain    Σ credited ÷ Σ required (credited = min(demonstrated, required),
+ *             src/utils/capability.js): at most 100 %, « met » is ONE state
+ *   deficit   required − credited, in levels (mean over the measured rows):
+ *             never negative, a surplus never offsets a gap
  *   coverage  people at the required level ÷ people ASSESSED (an unassessed
  *             holder is never a gap), printed as counts « a of r »
  *
@@ -31,6 +33,7 @@
  *            actual?, required?, available?, measured?, href? }
  */
 const HB = require('./heatBins');
+const CAP = require('./capability');
 const { displayedValue } = require('./displayedValue');
 
 const HEAT_MIN_N = 5;
@@ -47,19 +50,27 @@ const isNum = (v) =>
 
 const byLabel = (a, b) => String(a || '').localeCompare(String(b || ''), 'fr');
 
-/** One heat cell from summed levels: attain = Σdemonstrated ÷ Σrequired, deficit = mean gap. */
+/**
+ * One heat cell from summed levels: attain = Σ credited ÷ Σ required, deficit =
+ * mean gap. The cubes sum the CREDITED level LEAST(actual, required); the cell
+ * clamps again (capped ratio, actual never above required) so a caller that
+ * hands raw sums still never prints a surplus.
+ */
 function heatCellOf(kind, x) {
     if (!x) return { state: 'na' };
     if (!x.measured || !isNum(x.sumRequired) || Number(x.sumRequired) <= 0)
         return { state: 'unmeasured', n: x.n || 0 };
     if ((x.n || 0) < HEAT_MIN_N) return { state: 'masked', n: null };
-    const actual = displayedValue(Number(x.sumActual) / x.measured, 'level');
     const required = displayedValue(Number(x.sumRequired) / x.measured, 'level');
+    const actual = CAP.cappedLevel(
+        displayedValue(Number(x.sumActual) / x.measured, 'level'),
+        required
+    );
     // the deficit is decided on the same one-decimal levels the cell prints
     const value =
         kind === 'deficit'
             ? displayedValue(Math.max(0, required - actual), 'level')
-            : Number(x.sumActual) / Number(x.sumRequired);
+            : CAP.cappedRatio(x.sumActual, x.sumRequired);
     const shown = kind === 'attain' ? displayedValue(value, 'ratio') : value;
     return {
         state: 'ok',

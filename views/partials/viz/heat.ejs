@@ -2,7 +2,7 @@
   THE heatmap component. A server-rendered table (no Chart.js) plus progressive
   behaviour from public/js/viz-heat.js (roving focus, tooltip, Enter = the cell's
   link). Model = src/utils/heatModel.js (heatModel / coverageHeatModel):
-    kind 'attain'   % of the requirement, diverging (orange below, blue above)
+    kind 'attain'   % of the requirement credited (at most 100 %), orange below, « met » one calm state
     kind 'deficit'  the missing level, orange only
     kind 'coverage' « a of r » at the required level, orange only
   Rules: "Not measured" is hatched, never coloured; fewer than 5 people is « < 5 »,
@@ -29,7 +29,7 @@
   var _colon = (typeof colon !== 'undefined' && colon) ? colon : ((typeof lang !== 'undefined' && lang === 'en') ? ':' : ' :');
   var _top = (typeof topRows !== 'undefined' && topRows) ? Number(topRows) : ((_H && _H.topRows) || 0);
   var _kind = _H && _H.kind ? _H.kind : 'attain';
-  var _BINS = { attain: ['below-3', 'below-2', 'below-1', 'at', 'above-1', 'above-2'], deficit: ['below-3', 'below-2', 'below-1', 'at'], coverage: ['below-3', 'below-2', 'below-1', 'at'] }[_kind] || [];
+  var _BINS = { attain: ['below-3', 'below-2', 'below-1', 'at'], deficit: ['below-3', 'below-2', 'below-1', 'at'], coverage: ['below-3', 'below-2', 'below-1', 'at'] }[_kind] || [];
   var colLabel = function (c) { return c.pooled ? __('viz:heat.pooled') : (c.none ? _none : (c.label || '—')); };
   var rowsHead = __('viz:heat.rows_' + _kind);
   var margRowLabel = _kind === 'coverage' ? __('viz:heat.marg_row_coverage') : (_kind === 'deficit' ? __('viz:heat.marg_row_deficit') : __('viz:heat.marg_row'));
