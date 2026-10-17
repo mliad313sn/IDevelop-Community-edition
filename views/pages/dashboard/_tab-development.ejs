@@ -24,6 +24,10 @@
 </section>
 <% } %>
 
+<% if (P.devOutcomes) { %>
+<%- include('_dev-outcomes', { O: P.devOutcomes }) %>
+<% } %>
+
 <% if (P.blocks.indexOf('deficitHeat') >= 0) { %>
 <section class="ds-card" id="ds-deficit" aria-labelledby="ds-deficit-h">
     <h3 id="ds-deficit-h"><%= __('dash:d3_dv_heat_title', { unit: _unitName }) %></h3>

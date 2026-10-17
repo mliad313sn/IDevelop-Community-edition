@@ -27,6 +27,10 @@
 .ds-card > h3 { margin: 0 0 0.5rem; font-size: 1.05rem; }
 .ds-sub { margin: 0 0 0.75rem; color: var(--text-secondary); font-size: 0.875rem; max-width: 75ch; }
 .ds-note { color: var(--text-secondary); font-size: 0.875rem; margin: 0.5rem 0 0; }
+/* Development outcomes (K30): label / value pairs */
+.ds-kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; margin: 0.75rem 0 0; font-size: 0.875rem; }
+.ds-kv dt { color: var(--text-secondary); }
+.ds-kv dd { margin: 0; }
 .sr-only-ds { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ---- « In brief »: the hero band ----------------------------------------- */

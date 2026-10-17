@@ -193,6 +193,23 @@ const CONTRACTS = Object.freeze({
         unit: 'count',
         list: null,
     }),
+    // The development loop (4.0.0 port, wave 4): born on kpi-2.
+    K28: Object.freeze({
+        id: 'K28',
+        module: 'development',
+        owner: 'training',
+        freshness: 'live',
+        unit: 'pct',
+        list: null,
+    }),
+    K30: Object.freeze({
+        id: 'K30',
+        module: 'development',
+        owner: 'hr_director',
+        freshness: 'live',
+        unit: 'pct',
+        list: 'dev_plans',
+    }),
 });
 
 /**
@@ -1690,57 +1707,104 @@ async function k12Drift(scope) {
 // K13 Development uplift (development module)
 // ---------------------------------------------------------------------------
 
+/** The level credited against a requirement (capability rule, kpi-2); the raw level when none is required. */
+function creditedOrRaw(level, required) {
+    if (level === null || level === undefined) return null;
+    const r = Number(required);
+    return Number.isFinite(r) && r > 0
+        ? require('../utils/capability').credited(level, r)
+        : Number(level);
+}
+
 /**
- * K13 Development uplift. Actions: completed development-plan actions that
- * TARGET a skill and completed training-plan items, in the last
- * UPLIFT_LOOKBACK_DAYS. Prior level = the last measured level at or before
- * completion; no prior level puts the action out (a first measurement is
- * never an uplift; counted in noPriorActions). Uplift = a VALIDATED level >=
- * prior + 1 within UPLIFT_WINDOW_DAYS after completion. % = people with an
- * uplift / people whose window is CLOSED or who already progressed; open
- * windows are "pending" (outside the %). Informational: never a band.
+ * K13 Development uplift. Three sources of completed development in the last
+ * UPLIFT_LOOKBACK_DAYS, on a skill:
+ *   idp  completed development-plan actions; the skill is the action's own
+ *        link, else its objective's. When the line VALIDATED the action with
+ *        an observed level that became official (action_effectiveness
+ *        official, migration 191), that evidence decides at once: prior =
+ *        its measured level before, after = the observed level. Otherwise
+ *        prior = the last validated level strictly BEFORE the plan went live
+ *        (its last signature, else its creation; the completion if earlier)
+ *        and a validated level within UPLIFT_WINDOW_DAYS counts.
+ *   tpi  completed training-plan items (as before).
+ *   lms  LMS completions on a mapped course that no plan action ordered
+ *        (those count through their action); prior = the last level strictly
+ *        before the completion.
+ * Uplift = the CREDITED level (capability rule: never above the requirement
+ * of the person's role) rose by at least one. No prior level puts the action
+ * out (a first measurement is never an uplift; counted in noPriorActions).
+ * % = people with an uplift / people whose window is CLOSED or who already
+ * progressed; open windows are "pending" (outside the %). Informational:
+ * never a band.
  */
 async function k13Uplift(scope) {
     const pop = await resolvePopulation(scope);
     if (!pop.ids.length) return emptyResult('K13', { numeratorDrill: [], drillPending: [] });
     const rows = await db.all(
         `WITH acts AS (
-             SELECT p.employee_id, o.skill_id, a.completed_at
+             SELECT p.employee_id,
+                    COALESCE((SELECT l.skill_id FROM action_skill_links l WHERE l.action_id = a.id
+                               ORDER BY l.skill_id LIMIT 1), o.skill_id) AS skill_id,
+                    a.completed_at,
+                    LEAST(COALESCE((SELECT MAX(sg.signed_at) FROM idp_signoffs sg WHERE sg.idp_id = p.id),
+                                   p.created_at), a.completed_at) AS anchor_at,
+                    ae.rating_pre AS ev_pre, ae.rating_post AS ev_post,
+                    COALESCE(ae.official, false) AS ev_official,
+                    'idp'::text AS src
                FROM idp_actions a
-               JOIN idp_objectives o ON o.id = a.objective_id
                JOIN idp_plans p ON p.id = a.idp_id
+               LEFT JOIN idp_objectives o ON o.id = a.objective_id
+               LEFT JOIN action_effectiveness ae ON ae.action_id = a.id
               WHERE a.status::text = 'completed' AND a.completed_at IS NOT NULL
-                AND o.skill_id IS NOT NULL AND p.employee_id = ANY(?)
+                AND p.employee_id = ANY(?)
                 AND a.completed_at >= now() - (?::int * interval '1 day')
              UNION ALL
-             SELECT tp.employee_id, ti.skill_id, ti.completed_at
+             SELECT tp.employee_id, ti.skill_id, ti.completed_at, ti.completed_at,
+                    NULL::smallint, NULL::smallint, false, 'tpi'
                FROM training_plan_items ti
                JOIN training_plans tp ON tp.id = ti.training_plan_id
               WHERE ti.status::text = 'completed' AND ti.completed_at IS NOT NULL
                 AND ti.skill_id IS NOT NULL AND tp.employee_id = ANY(?)
                 AND ti.completed_at >= now() - (?::int * interval '1 day')
+             UNION ALL
+             SELECT c.employee_id, m.skill_id, c.completed_at, c.completed_at,
+                    NULL::smallint, NULL::smallint, false, 'lms'
+               FROM lms_completions c
+               JOIN course_skill_map m ON m.course_id = c.course_id
+              WHERE c.completed_at IS NOT NULL AND c.employee_id = ANY(?)
+                AND c.completed_at >= now() - (?::int * interval '1 day')
+                AND NOT EXISTS (SELECT 1 FROM lms_enrollments e
+                                 WHERE e.employee_id = c.employee_id AND e.course_id = c.course_id
+                                   AND e.source_action_id IS NOT NULL)
          ), prior AS (
-             SELECT a.employee_id, a.skill_id, a.completed_at,
-                    (SELECT h.new_level FROM assessment_history h
-                      WHERE h.employee_id = a.employee_id AND h.skill_id = a.skill_id
-                        AND h.assessed_at <= a.completed_at AND h.new_level IS NOT NULL
-                      ORDER BY h.assessed_at DESC, h.id DESC LIMIT 1) AS prior_level
+             SELECT a.*,
+                    (a.ev_official AND a.ev_post IS NOT NULL) AS by_evidence,
+                    CASE WHEN a.ev_official AND a.ev_post IS NOT NULL THEN a.ev_pre
+                         ELSE (SELECT h.new_level FROM assessment_history h
+                                WHERE h.employee_id = a.employee_id AND h.skill_id = a.skill_id
+                                  AND h.assessed_at < a.anchor_at AND h.new_level IS NOT NULL
+                                  AND h.source IS DISTINCT FROM 'self_assessment'
+                                ORDER BY h.assessed_at DESC, h.id DESC LIMIT 1) END AS prior_level
                FROM acts a
+              WHERE a.skill_id IS NOT NULL
          )
-         SELECT w.employee_id AS "employeeId", w.skill_id AS "skillId",
+         SELECT w.employee_id AS "employeeId", w.skill_id AS "skillId", w.src AS "src",
                 w.prior_level AS "priorLevel",
-                (w.completed_at + (?::int * interval '1 day') <= now()) AS "closed",
-                EXISTS (
-                    SELECT 1 FROM assessment_history h
-                     WHERE h.employee_id = w.employee_id AND h.skill_id = w.skill_id
-                       AND h.assessed_at > w.completed_at
-                       AND h.assessed_at <= w.completed_at + (?::int * interval '1 day')
-                       AND h.source IS DISTINCT FROM 'self_assessment'
-                       AND w.prior_level IS NOT NULL
-                       AND h.new_level >= w.prior_level + 1
-                ) AS "uplift"
-           FROM prior w`,
+                (w.by_evidence OR w.completed_at + (?::int * interval '1 day') <= now()) AS "closed",
+                CASE WHEN w.by_evidence THEN w.ev_post
+                     ELSE (SELECT MAX(h.new_level) FROM assessment_history h
+                            WHERE h.employee_id = w.employee_id AND h.skill_id = w.skill_id
+                              AND h.assessed_at >= w.anchor_at
+                              AND h.assessed_at <= w.completed_at + (?::int * interval '1 day')
+                              AND h.source IS DISTINCT FROM 'self_assessment') END AS "afterLevel",
+                rsr.required_level AS "required"
+           FROM prior w
+           JOIN employees e ON e.id = w.employee_id
+           LEFT JOIN role_skill_requirements rsr ON rsr.role_id = e.role_id AND rsr.skill_id = w.skill_id`,
         [
+            pop.ids,
+            P.UPLIFT_LOOKBACK_DAYS,
             pop.ids,
             P.UPLIFT_LOOKBACK_DAYS,
             pop.ids,
@@ -1752,7 +1816,9 @@ async function k13Uplift(scope) {
     const per = new Map();
     let noPrior = 0;
     let eligibleActions = 0;
+    const sources = { idp: 0, tpi: 0, lms: 0 };
     for (const r of rows || []) {
+        if (Object.prototype.hasOwnProperty.call(sources, r.src)) sources[r.src]++;
         if (r.priorLevel === null || r.priorLevel === undefined) {
             noPrior++;
             continue;
@@ -1760,7 +1826,9 @@ async function k13Uplift(scope) {
         eligibleActions++;
         const id = Number(r.employeeId);
         const g = per.get(id) || { up: false, closed: false };
-        if (truthy(r.uplift)) g.up = true;
+        const before = creditedOrRaw(Number(r.priorLevel), r.required);
+        const after = r.afterLevel == null ? null : creditedOrRaw(Number(r.afterLevel), r.required);
+        if (after != null && after >= before + 1) g.up = true;
         if (truthy(r.closed)) g.closed = true;
         per.set(id, g);
     }
@@ -1788,6 +1856,7 @@ async function k13Uplift(scope) {
                 pending: pending.length,
                 windowDays: P.UPLIFT_WINDOW_DAYS,
                 lookbackDays: P.UPLIFT_LOOKBACK_DAYS,
+                sources,
             },
             drillPending: pending,
         },
@@ -1795,6 +1864,308 @@ async function k13Uplift(scope) {
     // informational: never a status band (never red), whatever the value
     if (r.status !== STATUS.NOT_MEASURED && r.status !== STATUS.SMALL_N) r.status = null;
     return { ...r, drill: den, numeratorDrill: up };
+}
+
+// ---------------------------------------------------------------------------
+// K28 Effect of online training (development module)
+// ---------------------------------------------------------------------------
+
+const K28_WINDOW_DAYS = 365;
+const K28_AFTER_DAYS = 90;
+
+/**
+ * K28 Effect of online training: does a completed course on a skill move the
+ * person's VALIDATED level? Population: LMS completions of the last
+ * K28_WINDOW_DAYS by people of the scope. Per completion of a course mapped
+ * to a skill: before = the last validated level strictly before the
+ * completion; after = the highest validated level (never a self-rating)
+ * after it. Uplift = the credited level (capability rule) rose on at least
+ * one mapped skill. % = completions with an uplift / completions measured
+ * before AND after. Counted apart, never as 0: no level before, no level
+ * after once K28_AFTER_DAYS have passed, a level after still awaited, and
+ * courses mapped to no skill. No course catalogue and no LMS connector =
+ * not configured. Small n: fewer than 5 PEOPLE behind the measured
+ * completions. Informational: never a band.
+ */
+async function k28LmsEffect(scope) {
+    const pop = await resolvePopulation(scope);
+    const conf = await db
+        .get(
+            `SELECT (SELECT COUNT(*) FROM lms_integrations)::int AS "integrations",
+                    (SELECT COUNT(*) FROM lms_courses)::int AS "courses"`
+        )
+        .catch(() => null);
+    if (!conf || (!Number(conf.integrations) && !Number(conf.courses))) {
+        return {
+            ...emptyResult('K28', { numeratorDrill: [] }),
+            emptyScope: false,
+            status: STATUS.NOT_CONFIGURED,
+        };
+    }
+    if (!pop.ids.length) return emptyResult('K28', { numeratorDrill: [] });
+    const rows = await db.all(
+        `SELECT c.id AS "completionId", c.employee_id AS "employeeId", m.skill_id AS "skillId",
+                (SELECT h.new_level FROM assessment_history h
+                  WHERE h.employee_id = c.employee_id AND h.skill_id = m.skill_id
+                    AND h.assessed_at < c.completed_at AND h.new_level IS NOT NULL
+                    AND h.source IS DISTINCT FROM 'self_assessment'
+                  ORDER BY h.assessed_at DESC, h.id DESC LIMIT 1) AS "before",
+                (SELECT MAX(h.new_level) FROM assessment_history h
+                  WHERE h.employee_id = c.employee_id AND h.skill_id = m.skill_id
+                    AND h.assessed_at > c.completed_at
+                    AND h.source IS DISTINCT FROM 'self_assessment') AS "after",
+                rsr.required_level AS "required",
+                (c.completed_at + (?::int * interval '1 day') <= now()) AS "elapsed"
+           FROM lms_completions c
+           JOIN employees e ON e.id = c.employee_id
+           LEFT JOIN course_skill_map m ON m.course_id = c.course_id
+           LEFT JOIN role_skill_requirements rsr ON rsr.role_id = e.role_id AND rsr.skill_id = m.skill_id
+          WHERE c.employee_id = ANY(?) AND c.completed_at IS NOT NULL
+            AND c.completed_at >= now() - (?::int * interval '1 day')`,
+        [K28_AFTER_DAYS, pop.ids, K28_WINDOW_DAYS]
+    );
+    const per = new Map();
+    for (const r of rows || []) {
+        const id = Number(r.completionId);
+        const g = per.get(id) || {
+            employeeId: Number(r.employeeId),
+            mapped: false,
+            before: false,
+            measured: false,
+            up: false,
+            elapsed: truthy(r.elapsed),
+        };
+        if (r.skillId != null) {
+            g.mapped = true;
+            if (r.before != null) g.before = true;
+            if (r.before != null && r.after != null) {
+                g.measured = true;
+                const b = creditedOrRaw(Number(r.before), r.required);
+                const a = creditedOrRaw(Number(r.after), r.required);
+                if (a > b) g.up = true;
+            }
+        }
+        per.set(id, g);
+    }
+    let unmapped = 0;
+    let noBefore = 0;
+    let noAfterElapsed = 0;
+    let awaitingAfter = 0;
+    const measured = [];
+    const up = [];
+    for (const g of per.values()) {
+        if (!g.mapped) unmapped++;
+        else if (!g.before) noBefore++;
+        else if (!g.measured) {
+            if (g.elapsed) noAfterElapsed++;
+            else awaitingAfter++;
+        } else {
+            measured.push(g.employeeId);
+            if (g.up) up.push(g.employeeId);
+        }
+    }
+    const people = new Set(measured).size;
+    const r = pctResult('K28', up.length, measured.length, people, {
+        extra: {
+            breakdown: {
+                completions: per.size,
+                measured: measured.length,
+                uplifted: up.length,
+                noBefore,
+                noAfterElapsed,
+                awaitingAfter,
+                unmapped,
+                people,
+                windowDays: K28_WINDOW_DAYS,
+                afterDays: K28_AFTER_DAYS,
+            },
+        },
+    });
+    if (r.status !== STATUS.NOT_MEASURED && r.status !== STATUS.SMALL_N) r.status = null;
+    return {
+        ...r,
+        drill: [...new Set(measured)].sort(byId),
+        numeratorDrill: [...new Set(up)].sort(byId),
+    };
+}
+
+// ---------------------------------------------------------------------------
+// K30 Plan outcomes and development effort (development module)
+// ---------------------------------------------------------------------------
+
+const K30_WINDOW_DAYS = 365;
+
+/** The median of finite numbers, one decimal; null when there is none. */
+function medianOf(values) {
+    const v = values.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+    if (!v.length) return null;
+    const m = Math.floor(v.length / 2);
+    return round1(v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2);
+}
+
+/**
+ * K30 Plan outcomes, with the development effort beside them. Plans closed in
+ * the last K30_WINDOW_DAYS by people of the scope:
+ *   development plans  achieved = completed with every objective closed (no
+ *                      closing reason); not_achieved = completed WITH a
+ *                      reason for open objectives, or an ACTIVE plan archived
+ *                      (stopped, a reason is required); cancelled apart;
+ *                      archiving a completed plan is filing, not an outcome;
+ *   coaching plans     achieved = completed (validated); cancelled apart,
+ *                      never a failure.
+ * % = achieved / (achieved + not_achieved), small n on people (< 5).
+ * Medians in days: a development plan from going live (last signature, else
+ * creation) to its closing; a coaching plan from creation to validation.
+ * Ageing of ACTIVE plans past due (an open objective past its due date, a
+ * coaching past its target date), in bands up to 30, 31 to 90 and over 90 days.
+ * Effort: hours PLANNED (estimated_hours) and DONE (actual_hours of completed
+ * actions), never inferred: an action without hours is counted "not entered",
+ * and a total with no entry at all is null, never 0. Levels validated through
+ * development in the window (actions whose observed level became official
+ * with a rise, accepted training uplifts); levels per 100 hours only when
+ * hours were done and at least 5 people entered them. Informational: no band.
+ */
+async function k30PlanOutcomes(scope) {
+    const pop = await resolvePopulation(scope);
+    if (!pop.ids.length) return emptyResult('K30', { numeratorDrill: [], effort: null });
+    const ids = pop.ids;
+    const W = K30_WINDOW_DAYS;
+    const idp = await db.all(
+        `SELECT p.id, p.employee_id AS "employeeId", p.status::text AS "status",
+                p.close_reason AS "closeReason",
+                EXTRACT(EPOCH FROM (p.closed_at - COALESCE(
+                    (SELECT MAX(sg.signed_at) FROM idp_signoffs sg WHERE sg.idp_id = p.id),
+                    p.created_at))) / 86400.0 AS "days",
+                (SELECT ev.from_state FROM idp_plan_events ev
+                  WHERE ev.idp_id = p.id AND ev.action = 'plan_archived'
+                  ORDER BY ev.id DESC LIMIT 1) AS "archivedFrom"
+           FROM idp_plans p
+          WHERE p.employee_id = ANY(?) AND p.closed_at IS NOT NULL
+            AND p.closed_at >= now() - (?::int * interval '1 day')
+            AND p.status IN ('completed', 'archived', 'cancelled')`,
+        [ids, W]
+    );
+    const coach = await db.all(
+        `SELECT c.id, c.employee_id AS "employeeId", c.state::text AS "state",
+                EXTRACT(EPOCH FROM (c.validated_at - c.created_at)) / 86400.0 AS "days"
+           FROM coaching_plans c
+          WHERE c.employee_id = ANY(?)
+            AND ((c.state::text = 'completed' AND c.validated_at >= now() - (?::int * interval '1 day'))
+              OR (c.state::text = 'cancelled' AND c.updated_at >= now() - (?::int * interval '1 day')))`,
+        [ids, W, W]
+    );
+    const out = {
+        idp: { achieved: 0, notAchieved: 0, cancelled: 0, medianDays: null },
+        coaching: { achieved: 0, cancelled: 0, medianDays: null },
+    };
+    const achieved = [];
+    const closedPeople = [];
+    const idpDays = [];
+    for (const p of idp || []) {
+        const emp = Number(p.employeeId);
+        if (p.status === 'cancelled') {
+            out.idp.cancelled++;
+            continue;
+        }
+        if (p.status === 'archived' && p.archivedFrom !== 'active') continue;
+        if (p.days != null) idpDays.push(Number(p.days));
+        closedPeople.push(emp);
+        if (p.status === 'completed' && !p.closeReason) {
+            out.idp.achieved++;
+            achieved.push(emp);
+        } else out.idp.notAchieved++;
+    }
+    const coachDays = [];
+    for (const c of coach || []) {
+        const emp = Number(c.employeeId);
+        if (c.state === 'cancelled') {
+            out.coaching.cancelled++;
+            continue;
+        }
+        out.coaching.achieved++;
+        achieved.push(emp);
+        closedPeople.push(emp);
+        if (c.days != null) coachDays.push(Number(c.days));
+    }
+    out.idp.medianDays = medianOf(idpDays);
+    out.coaching.medianDays = medianOf(coachDays);
+    const numer = out.idp.achieved + out.coaching.achieved;
+    const denom = numer + out.idp.notAchieved;
+    const people = new Set(closedPeople).size;
+
+    const ageing = await db.all(
+        `SELECT (CURRENT_DATE - MIN(o.due_on))::int AS "days"
+           FROM idp_plans p JOIN idp_objectives o ON o.idp_id = p.id
+          WHERE p.employee_id = ANY(?) AND p.status = 'active'
+            AND o.state IN ('pending', 'in_progress') AND o.due_on < CURRENT_DATE
+          GROUP BY p.id
+         UNION ALL
+         SELECT (CURRENT_DATE - c.target_date)::int
+           FROM coaching_plans c
+          WHERE c.employee_id = ANY(?) AND c.state::text = 'active' AND c.target_date < CURRENT_DATE`,
+        [ids, ids]
+    );
+    const bands = { upTo30: 0, upTo90: 0, over90: 0 };
+    for (const a of ageing || []) {
+        const d = Number(a.days);
+        if (d <= 30) bands.upTo30++;
+        else if (d <= 90) bands.upTo90++;
+        else bands.over90++;
+    }
+
+    const eff = await db.get(
+        `SELECT COALESCE(SUM(a.estimated_hours), 0)::numeric AS "planned",
+                COUNT(*) FILTER (WHERE a.estimated_hours IS NOT NULL)::int AS "plannedActions",
+                COUNT(*) FILTER (WHERE a.estimated_hours IS NULL)::int AS "plannedMissing",
+                COALESCE(SUM(a.actual_hours) FILTER (WHERE a.status::text = 'completed'), 0)::numeric AS "done",
+                COUNT(*) FILTER (WHERE a.status::text = 'completed' AND a.actual_hours IS NOT NULL)::int AS "doneActions",
+                COUNT(*) FILTER (WHERE a.status::text = 'completed' AND a.actual_hours IS NULL)::int AS "doneMissing",
+                COUNT(DISTINCT p.employee_id) FILTER (WHERE a.status::text = 'completed'
+                    AND a.actual_hours IS NOT NULL)::int AS "donePeople"
+           FROM idp_actions a JOIN idp_plans p ON p.id = a.idp_id
+          WHERE p.employee_id = ANY(?) AND a.status::text <> 'cancelled'
+            AND (p.status IN ('draft', 'active')
+                 OR p.closed_at >= now() - (?::int * interval '1 day'))`,
+        [ids, W]
+    );
+    const lv = await db.get(
+        `SELECT
+           (SELECT COUNT(*) FROM action_effectiveness ae
+              JOIN idp_actions a ON a.id = ae.action_id JOIN idp_plans p ON p.id = a.idp_id
+             WHERE p.employee_id = ANY(?) AND ae.official AND ae.uplift > 0
+               AND a.completed_at >= now() - (?::int * interval '1 day'))::int AS "actions",
+           (SELECT COUNT(*) FROM lms_completions c
+             WHERE c.employee_id = ANY(?) AND c.applied = true
+               AND c.decided_at >= now() - (?::int * interval '1 day'))::int AS "lms"`,
+        [ids, W, ids, W]
+    );
+    const done = Number(eff && eff.done) || 0;
+    const levels = lv ? (Number(lv.actions) || 0) + (Number(lv.lms) || 0) : null;
+    const donePeople = Number(eff && eff.donePeople) || 0;
+    const effort = {
+        // "not entered" is null, never 0
+        plannedHours: eff && Number(eff.plannedActions) ? Number(eff.planned) : null,
+        plannedActions: Number(eff && eff.plannedActions) || 0,
+        plannedMissing: Number(eff && eff.plannedMissing) || 0,
+        doneHours: eff && Number(eff.doneActions) ? done : null,
+        doneActions: Number(eff && eff.doneActions) || 0,
+        doneMissing: Number(eff && eff.doneMissing) || 0,
+        donePeople,
+        levelsValidated: levels,
+        levelsPer100h:
+            levels != null && done > 0 && donePeople >= SMALL_N
+                ? round1((100 * levels) / done)
+                : null,
+    };
+    const r = pctResult('K30', numer, denom, people, {
+        extra: { breakdown: { ...out, ageing: bands, people }, effort },
+    });
+    if (r.status !== STATUS.NOT_MEASURED && r.status !== STATUS.SMALL_N) r.status = null;
+    return {
+        ...r,
+        drill: [...new Set(closedPeople)].sort(byId),
+        numeratorDrill: [...new Set(achieved)].sort(byId),
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -2523,6 +2894,8 @@ const KPI_FUNCTIONS = Object.freeze({
     K14: k14TimeToCompetence,
     K15: k15LevelUps,
     K16: k16ActivePlans,
+    K28: k28LmsEffect,
+    K30: k30PlanOutcomes,
 });
 
 function fnOf(kpiId) {
@@ -2654,6 +3027,8 @@ module.exports = {
     k11CurrentCampaign,
     k12Drift,
     k13Uplift,
+    k28LmsEffect,
+    k30PlanOutcomes,
     k14TimeToCompetence,
     kmQuantile,
     k1RoleExpected,

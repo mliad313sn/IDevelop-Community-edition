@@ -88,6 +88,14 @@ const BLOCKS = Object.freeze([
     // development
     { id: 'plans', tab: 'development', module: null, permission: 'plans', kpi: 'K16' },
     { id: 'devTiles', tab: 'development', module: 'development', permission: 'assess' },
+    // the development loop's outcomes: plans achieved, durations, effort (K30)
+    {
+        id: 'devOutcomes',
+        tab: 'development',
+        module: 'development',
+        permission: 'plans',
+        kpi: 'K30',
+    },
     { id: 'deficitHeat', tab: 'development', module: null, permission: 'skills', kpi: 'K2' },
     // assessments
     { id: 'campaign', tab: 'assessments', module: 'campaigns', permission: 'campaign', kpi: 'K11' },

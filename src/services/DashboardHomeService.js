@@ -625,6 +625,55 @@ function tileOf(ctx, kpi, ind, mv, t, { keepEmpty = false } = {}) {
     };
 }
 
+/**
+ * The development outcomes block (K30, with K28 beside it): plans achieved and
+ * not achieved, median durations, ageing of the plans past due, and the effort
+ * (hours planned and done; "not entered" is null, never 0). Aggregates only.
+ */
+function devOutcomesModel(k30, k28) {
+    if (!k30) return null;
+    const b = k30.breakdown || {};
+    const idp = b.idp || {};
+    const coaching = b.coaching || {};
+    const e = k30.effort || {};
+    const k28b = (k28 && k28.breakdown) || {};
+    return {
+        value: k30.value,
+        status: k30.status || null,
+        n: k30.n || 0,
+        idp: {
+            achieved: idp.achieved || 0,
+            notAchieved: idp.notAchieved || 0,
+            cancelled: idp.cancelled || 0,
+            medianDays: idp.medianDays == null ? null : idp.medianDays,
+        },
+        coaching: {
+            achieved: coaching.achieved || 0,
+            cancelled: coaching.cancelled || 0,
+            medianDays: coaching.medianDays == null ? null : coaching.medianDays,
+        },
+        ageing: b.ageing || { upTo30: 0, upTo90: 0, over90: 0 },
+        effort: {
+            plannedHours: e.plannedHours == null ? null : e.plannedHours,
+            plannedMissing: e.plannedMissing || 0,
+            doneHours: e.doneHours == null ? null : e.doneHours,
+            doneMissing: e.doneMissing || 0,
+            levelsValidated: e.levelsValidated == null ? null : e.levelsValidated,
+            levelsPer100h: e.levelsPer100h == null ? null : e.levelsPer100h,
+        },
+        lms: k28
+            ? {
+                  status: k28.status || null,
+                  value: k28.value,
+                  measured: k28b.measured || 0,
+                  noBefore: k28b.noBefore || 0,
+                  awaitingAfter: k28b.awaitingAfter || 0,
+                  unmapped: k28b.unmapped || 0,
+              }
+            : null,
+    };
+}
+
 /** The first row: configured, visible tiles, most severe first, canonical order otherwise. */
 function firstRow(tiles) {
     const order = new Map(T.TILE_ORDER.map((k, i) => [k, i]));
@@ -1695,12 +1744,17 @@ async function tabModel(ctx, tabId, { query = {}, t } = {}) {
         m.k = { K16: await Kpi.compute('K16', s) };
         m.tiles = ['K16'];
         if (want('devTiles')) {
-            for (const id of ['K12', 'K13', 'K15'])
+            for (const id of ['K12', 'K13', 'K15', 'K28', 'K30'])
                 if (Kpi.isAvailable(id, ctx.flags)) {
                     m.k[id] = await Kpi.compute(id, s);
                     m.tiles.push(id);
                 }
         }
+        if (want('devOutcomes') && Kpi.isAvailable('K30', ctx.flags))
+            m.devOutcomes = devOutcomesModel(
+                m.k.K30 || (await Kpi.compute('K30', s)),
+                m.k.K28 || (Kpi.isAvailable('K28', ctx.flags) ? await Kpi.compute('K28', s) : null)
+            );
         m.groupUnit = groupUnit(ctx);
         if (want('deficitHeat'))
             m.deficitCube = await capabilityHeat(ctx.pop.ids, m.groupUnit, 'subdomain');
