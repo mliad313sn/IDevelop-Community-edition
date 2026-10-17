@@ -15,15 +15,17 @@
  *   6. Current campaign completion            (cycle discipline)
  *
  * Sections render ONLY when non-empty, KPI chips give the 5-second read, and
- * each figure states where to act. Bilingual FR/EN throughout.
+ * each figure states where to act. One language per mail (the site's mail
+ * language), through the one renderer (renderEmail blocks); the subject is the
+ * catalogue's and carries no date and no figure.
  *
  * Cadence unchanged: hourly tick, fires on DIGEST_DOW at/after DIGEST_HOUR,
  * at most once per week (digestLastSentOn claim BEFORE sending). Delivery via
  * NotificationService (in-app always lands; email rides the master switch).
  */
 
-const PRODUCT = require('../config/product');
 const db = require('../config/database');
+const { fmtDate } = require('../utils/dateFormat');
 const { dayKey } = require('../utils/dayKey');
 
 const ENV_DOW = Number(process.env.DIGEST_DOW) || 1; // 1 = Monday
@@ -61,15 +63,11 @@ async function tick() {
          WHERE m.is_active = true AND e.is_active = true`);
 
     const EmployeeModel = require('../models/EmployeeModel');
-    const T = require('../utils/emailTemplate');
-    let branding = null;
-    try {
-        branding = await require('../utils/branding').getBranding();
-    } catch {
-        /* stock identity */
-    }
-    const appUrl = require('../utils/emailTemplate').baseUrl();
-    const link = (p) => (appUrl ? appUrl + p : null);
+    // ONE language per mail: the manager's own e-mail language, else the
+    // site's (resolved per recipient below); the subject is the catalogue's and
+    // carries no date and no figure.
+    const NotificationService = require('../services/NotificationService');
+    const siteLang = await require('../utils/emailTemplate').mailLang();
     let sent = 0;
 
     // Current open campaign (shared across managers; per-manager counts below).
@@ -80,6 +78,12 @@ async function tick() {
         try {
             const ids = await EmployeeModel.findGovernedIds(mgr.id);
             if (!ids.length) continue;
+            const lang = await require('../utils/emailTemplate').recipientLang(
+                'employee',
+                mgr.id,
+                siteLang
+            );
+            const T = require('../utils/emailTemplate').blocks(lang);
             const ph = ids.map(() => '?').join(',');
 
             // NO LIMIT here: TOTALS must reflect the whole sub-tree (a manager
@@ -88,17 +92,16 @@ async function tick() {
             const [reviews, idp, gaps, unmeasured, certs, campaign] = await Promise.all([
                 db.all(
                     `
-                    SELECT e.first_name || ' ' || e.last_name AS name, count(*)::int AS n
-                      FROM self_assessments sa JOIN employees e ON e.id = sa.employee_id
+                    SELECT sa.employee_id AS "employeeId", count(*)::int AS n
+                      FROM self_assessments sa
                      WHERE sa.employee_id IN (${ph}) AND sa.workflow_state IN ('submitted','under_review')
                      GROUP BY 1 ORDER BY n DESC`,
                     ids
                 ),
                 db.all(
                     `
-                    SELECT e.first_name || ' ' || e.last_name AS name, count(*)::int AS n
+                    SELECT p.employee_id AS "employeeId", count(*)::int AS n
                       FROM idp_actions a JOIN idp_plans p ON p.id = a.idp_id
-                      JOIN employees e ON e.id = p.employee_id
                      WHERE p.employee_id IN (${ph}) AND a.status NOT IN ('completed','cancelled')
                        AND p.status IN ('draft','active')
                      GROUP BY 1 ORDER BY n DESC`,
@@ -133,8 +136,7 @@ async function tick() {
                 db
                     .all(
                         `
-                    SELECT cc.full_name AS name, cc.skill_name AS skill,
-                           cc.days_to_expiry::int AS days, cc.expires_on AS "expiresOn"
+                    SELECT cc.employee_id AS "employeeId", cc.days_to_expiry::int AS days
                       FROM v_certification_current cc
                      WHERE cc.employee_id IN (${ph}) AND cc.expires_on IS NOT NULL AND cc.days_to_expiry <= 60
                      ORDER BY cc.days_to_expiry ASC`,
@@ -196,17 +198,17 @@ async function tick() {
             blocks.push(
                 T.kpis([
                     {
-                        label: 'Revues / Reviews',
+                        label: T.pick('Revues', 'Reviews'),
                         value: totals.reviews,
                         color: totals.reviews ? '#b45309' : '#15803d',
                     },
                     {
-                        label: 'Actions IDP',
+                        label: T.pick('Actions de développement', 'Development actions'),
                         value: totals.idp,
                         color: totals.idp ? '#b45309' : '#15803d',
                     },
                     {
-                        label: 'Écarts crit. / Gaps',
+                        label: T.pick('Écarts critiques', 'Critical gaps'),
                         value: totals.gaps,
                         color: totals.gaps ? '#b91c1c' : '#15803d',
                     },
@@ -214,24 +216,24 @@ async function tick() {
                     // proven competence shortfall. Green only when there is nothing left
                     // to measure.
                     {
-                        label: 'Non mesuré / Unmeasured',
+                        label: T.pick('Non mesuré', 'Not measured'),
                         value: totals.unmeasured,
                         color: totals.unmeasured ? '#b45309' : '#15803d',
                     },
                     {
-                        label: 'Certifs ≤60j',
+                        label: T.pick('Certifications ≤ 60 jours', 'Certifications ≤ 60 days'),
                         value: totals.certs,
                         color: totals.certs ? '#b45309' : '#15803d',
                     },
                     {
-                        label: 'Couverture / Coverage',
+                        label: T.pick('Couverture', 'Coverage'),
                         value: totals.breaches,
                         color: totals.breaches ? '#b91c1c' : '#15803d',
                     },
                     ...(campaignPct !== null
                         ? [
                               {
-                                  label: 'Campagne',
+                                  label: T.pick('Campagne', 'Campaign'),
                                   value: campaignPct + '%',
                                   color: campaignPct >= 80 ? '#15803d' : '#b45309',
                                   sub: `${cycle.code} · ${campaign.submitted}/${campaign.enrolled}`,
@@ -241,6 +243,8 @@ async function tick() {
                 ])
             );
 
+            // No person is named in a digest (wave 12, D3): counts only, and
+            // a link to the page that holds the list under its own guard.
             if (totals.reviews) {
                 blocks.push(
                     T.section(
@@ -250,17 +254,18 @@ async function tick() {
                     )
                 );
                 blocks.push(
-                    T.table(
-                        [
-                            { fr: 'Collaborateur', en: 'Employee' },
-                            { fr: 'En attente', en: 'Pending' },
-                        ],
-                        reviews.slice(0, 8).map((r) => [r.name, { text: String(r.n), bold: true }])
+                    T.para(
+                        `${totals.reviews} auto-évaluation(s) de ${reviews.length} personne(s) attendent votre revue.`,
+                        `${totals.reviews} self-assessment(s) from ${reviews.length} person(s) wait for your review.`
                     )
                 );
-                blocks.push(T.para('Agir : Équipe → Revues AE.', 'Act: Team → SA Reviews.'));
+                blocks.push(
+                    T.button('Voir la liste', 'See the list', '/supervisor/self-assessment-reviews')
+                );
             }
             if (certs.length) {
+                const people = new Set(certs.map((c) => c.employeeId)).size;
+                const soon = certs.filter((c) => c.days <= 30).length;
                 blocks.push(
                     T.section(
                         'Certifications à renouveler (≤60 jours)',
@@ -269,29 +274,12 @@ async function tick() {
                     )
                 );
                 blocks.push(
-                    T.table(
-                        [
-                            { fr: 'Collaborateur', en: 'Employee' },
-                            { fr: 'Certification' },
-                            { fr: 'Échéance', en: 'Due' },
-                        ],
-                        certs.slice(0, 8).map((c) => [
-                            c.name,
-                            c.skill,
-                            {
-                                text: `${new Date(c.expiresOn).toISOString().slice(0, 10)} (${c.days}j)`,
-                                color: c.days <= 30 ? '#b91c1c' : '#b45309',
-                                bold: c.days <= 30,
-                            },
-                        ])
-                    )
-                );
-                blocks.push(
                     T.para(
-                        'Planifiez la revalidation (VOC) avant la date — un recyclage LMS mappé est auto-assigné à 60 jours.',
-                        'Schedule the revalidation before the date — a mapped LMS refresher is auto-assigned at 60 days.'
+                        `${certs.length} certification(s) de ${people} personne(s) arrivent à échéance dans les 60 jours, dont ${soon} dans les 30 jours. Planifiez la revalidation avant la date — une formation de recyclage associée est assignée automatiquement à 60 jours.`,
+                        `${certs.length} certification(s) held by ${people} person(s) expire within 60 days, ${soon} of them within 30 days. Schedule the revalidation before the date — a mapped LMS refresher is auto-assigned at 60 days.`
                     )
                 );
+                blocks.push(T.button('Voir la liste', 'See the list', '/compliance'));
             }
             if (breaches.length || predicted.length) {
                 blocks.push(T.section('Couverture de postes', 'Position coverage', '#b91c1c'));
@@ -305,7 +293,7 @@ async function tick() {
                             ...breaches.map((b) => [
                                 b.name,
                                 {
-                                    text: `RUPTURE — ${b.qualifiedHeadcount}/${b.minHeadcount}`,
+                                    text: `${T.pick('Rupture', 'Breach')} — ${b.qualifiedHeadcount}/${b.minHeadcount}`,
                                     color: '#b91c1c',
                                     bold: true,
                                 },
@@ -313,7 +301,7 @@ async function tick() {
                             ...predicted.map((b) => [
                                 b.name,
                                 {
-                                    text: `prévue le ${new Date(b.predictedBreachOn).toISOString().slice(0, 10)} (${b.predictedQualified}/${b.minHeadcount})`,
+                                    text: `${T.pick('prévue le', 'predicted on')} ${fmtDate(b.predictedBreachOn)} (${b.predictedQualified}/${b.minHeadcount})`,
                                     color: '#b45309',
                                 },
                             ]),
@@ -323,14 +311,15 @@ async function tick() {
             }
             if (totals.idp) {
                 blocks.push(
-                    T.section('Actions de développement (IDP) ouvertes', 'Open IDP actions')
+                    T.section('Actions de développement ouvertes', 'Open development actions')
                 );
                 blocks.push(
-                    T.table(
-                        [{ fr: 'Collaborateur', en: 'Employee' }, { fr: 'Actions' }],
-                        idp.slice(0, 8).map((r) => [r.name, String(r.n)])
+                    T.para(
+                        `${totals.idp} action(s) ouvertes dans les plans de ${idp.length} personne(s).`,
+                        `${totals.idp} open action(s) in the plans of ${idp.length} person(s).`
                     )
                 );
+                blocks.push(T.button('Voir la liste', 'See the list', '/tasks'));
             }
             if (totals.gaps) {
                 blocks.push(T.section('Écarts de compétences critiques', 'Critical skill gaps'));
@@ -364,16 +353,14 @@ async function tick() {
                 );
             }
             if (campaignPct !== null && campaignPct < 100 && cycle) {
-                const closes = cycle.closesAt
-                    ? new Date(cycle.closesAt).toISOString().slice(0, 10)
-                    : null;
+                const closes = cycle.closesAt ? fmtDate(cycle.closesAt) : null;
                 // A LOCKED campaign is still followed: the employee window is
                 // shut, the manager's reviews are what is left.
                 const locked = cycle.status === 'locked';
                 blocks.push(
                     T.section(
                         `Campagne ${cycle.label}${locked ? ' — verrouillée, revues à finaliser' : ''}`,
-                        `Assessment campaign${locked ? ' — locked, reviews to finalise' : ''}`,
+                        `Campaign ${cycle.label}${locked ? ' — locked, reviews to finalise' : ''}`,
                         campaignPct >= 80 ? '#15803d' : '#b45309'
                     )
                 );
@@ -400,24 +387,6 @@ async function tick() {
                     );
                 }
             }
-            if (link('/dashboard'))
-                blocks.push(
-                    T.cta(
-                        'Ouvrir mon espace',
-                        'Open my workspace',
-                        link('/dashboard'),
-                        branding && branding.accentColor
-                    )
-                );
-
-            const html = T.wrap({
-                branding,
-                title: 'Récap équipe hebdo / Weekly team digest',
-                intro: `Bonjour ${mgr.firstName},`,
-                blocks,
-            });
-
-            const NotificationService = require('../services/NotificationService');
             const r = await NotificationService.notify({
                 userType: 'employee',
                 userId: mgr.id,
@@ -438,15 +407,14 @@ async function tick() {
                             : null,
                     week: today,
                 },
-                subject: `[${(branding && branding.appName) || PRODUCT.name}] Récap équipe hebdo / Weekly team digest — ${today}`,
-                html,
-                text:
-                    `Revues / Reviews: ${totals.reviews} · IDP: ${totals.idp} · Écarts critiques / Critical gaps: ${totals.gaps}` +
-                    ` · Non mesuré / Unmeasured: ${totals.unmeasured}` +
-                    ` · Certifs ≤60j: ${totals.certs} · Couverture / Coverage: ${totals.breaches}` +
-                    (campaignPct !== null
-                        ? ` · Campagne ${cycle.code}: ${campaignPct}% (${campaignFunnelFr})`
-                        : ''),
+                locale: lang,
+                title: T.pick(
+                    'Récapitulatif hebdomadaire de votre équipe',
+                    'Weekly summary of your team'
+                ),
+                blocks,
+                ctaUrl: '/dashboard',
+                ctaLabel: T.pick('Ouvrir mon espace', 'Open my workspace'),
             });
             if (r && r.inapp && r.inapp !== 'error') sent++;
         } catch (e) {

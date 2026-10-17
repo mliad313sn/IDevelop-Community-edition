@@ -23,29 +23,16 @@ const ah = require('../utils/asyncHandler');
 
 PipService.register();
 
-// Manager-managed model (no HR): a user may manage PIPs only for employees in
-// their governed set (super admin → all; local admin → scope; manager → reports).
-// The /v2/pip mount is already gated to manager/admin in routes/index.js.
-//
-// A VIEWER NEVER ACTS. The mount guard is by the SHAPE of the role
-// (requireManagerOrAdmin) and let a read-only delegation through: measured,
-// viewer 1035 POST /v2/pip/propose {employeeId:87} -> 200, pips 0 -> 1,
-// initiated_by = 1035. Every write route below goes through this predicate.
-//
-// And the LINE of the person behind an administration account counts: a
-// manager signed in on their linked admin account (admins.linked_employee_id)
-// was listed their team by scopeFilter and refused every one of them here
-// (getFilteredEmployees is clearance only). Same union as RBACService.scopeFilter.
+// Who may act on a PIP (SA-42): the plan authority, PipService.actingAuthority.
+// That is the person's direct manager (an employee manager, or the admin account
+// named as manager), a SuperAdmin, or an administrator whose clearance covers
+// the person. The same rule decides a 9-box approval. Refused, fail closed:
+// supervisors, managers higher up the line, read-only delegates and the person
+// themselves. This predicate used to accept the whole governed sub-tree,
+// supervisors included. Reading the console stays scoped by
+// RBACService.scopeFilter.
 async function canManage(user, employeeId) {
-    if (RBACService.isViewer(user)) return false;
-    if (RBACService.isSuperAdmin(user)) return true;
-    const emps = await RBACService.getFilteredEmployees(user);
-    if (emps.some((e) => Number(e.id) === Number(employeeId))) return true;
-    if (user && user.userType === 'admin') {
-        const line = await require('../services/GovernanceService').lineAuthorityEmployeeIds(user);
-        return line.some((id) => Number(id) === Number(employeeId));
-    }
-    return false;
+    return Boolean((await PipService.actingAuthority(user, employeeId)).canAct);
 }
 
 router.get(
@@ -59,10 +46,17 @@ router.get(
          WHERE 1=1 ${sc.clause} ORDER BY p.created_at DESC`,
             sc.params
         );
-        const employees = (await RBACService.getFilteredEmployees(req.user)).map((e) => ({
+        const scoped = await RBACService.getFilteredEmployees(req.user);
+        // « New in the role » (4.0.0 port, wave 5): said next to the name, so
+        // nobody opens a plan on someone who has just started without seeing it.
+        const nir = await require('../utils/newInRole')
+            .newInRoleIds(scoped.map((e) => e.id))
+            .catch(() => new Set());
+        const employees = scoped.map((e) => ({
             id: Number(e.id),
             name: `${e.firstName} ${e.lastName}`,
             number: e.employeeNumber || '',
+            newInRole: nir.has(Number(e.id)),
         }));
         // the tasks a low placement raised, waiting on THIS manager's decision.
         // Fail-soft — the console must still open if the queue query fails.
@@ -253,7 +247,7 @@ router.post(
         // `activate` reports whether it actually changed anything. Answering ok:true
         // regardless meant a second click, or a PIP already active or closed, was
         // confirmed as a fresh activation.
-        const activated = await PipService.activate(Number(req.params.id));
+        const activated = await PipService.activate(Number(req.params.id), req.user, req);
         if (!activated) {
             return res
                 .status(409)
@@ -297,6 +291,13 @@ router.post(
                     ? req.t('flash:pip_close_note_required', { defaultValue: e.message })
                     : e.message;
                 return res.status(400).json({ ok: false, error: msg });
+            }
+            if (e && e.code === 'PIP_NOT_ACTIVE') {
+                return res.status(409).json({
+                    ok: false,
+                    code: e.code,
+                    error: sayText(req, 'pip:err_close_not_active', e.message),
+                });
             }
             throw e;
         }

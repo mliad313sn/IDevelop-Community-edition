@@ -9,7 +9,7 @@ const svc = require('../services/SelfAssessmentWorkflowService');
 // runtime faults become one generic FR sentence + a request id and are logged.
 // See utils/apiErrors — the old inline wrapper returned err.message for EVERY
 // throw, so raw PostgreSQL text reached the browser.
-const { makeHandle, requireId } = require('../utils/apiErrors');
+const { makeHandle, requireId, sayError, toResponse } = require('../utils/apiErrors');
 
 const handle = makeHandle('SelfAssessmentWorkflowController');
 /** Route :id → positive integer, or a 400 "identifiant invalide" before any query. */
@@ -90,6 +90,39 @@ class SelfAssessmentWorkflowController {
     bulkApprove = handle(async (req) => ({
         result: await svc.bulkApproveForEmployee(id(req, 'employeeId'), req.user, req),
     }));
+    /**
+     * Approve the SELECTED skills of one person: `{ items: [{ id, supervisorLevel?,
+     * gapReason? }] }`. 200 `{ success, result: { employeeId, count, approved[] } }`;
+     * a refused round answers 409 `{ success:false, code:'BATCH_REFUSED', error,
+     * refused[] }` — nothing was approved, and every reason is listed so the
+     * reviewer can fix the lines and retry. Every other refusal goes through the
+     * shared JSON error discipline.
+     */
+    approveSelected = async (req, res) => {
+        try {
+            const result = await svc.approveSelected(
+                id(req, 'employeeId'),
+                req.body && req.body.items,
+                req.user,
+                req
+            );
+            res.json({ success: true, result });
+        } catch (err) {
+            if (res.headersSent) return;
+            if (err && err.code === 'BATCH_REFUSED') {
+                res.status(409).json({
+                    success: false,
+                    code: 'BATCH_REFUSED',
+                    error: sayError(req, err),
+                    refused: err.refused || [],
+                    approved: [],
+                });
+                return;
+            }
+            const { status, body } = toResponse(err, req, 'SelfAssessmentWorkflowController');
+            res.status(status).json(body);
+        }
+    };
     // Team-wide: only the AGREED ratings (svc.isAgreedRating); everything else
     // stays in the queue. Authority is re-checked per employee by the service.
     teamApproveAgreed = handle(async (req) => ({
@@ -118,9 +151,20 @@ class SelfAssessmentWorkflowController {
         } catch (_) {
             employees = null;
         }
+        // The multi-skill selection is offered only to whoever the bulk guard
+        // would let through (no checkbox that ends in a 403).
+        let canBulk = false;
+        try {
+            canBulk = Boolean(
+                await require('../middleware/requireBulkApproveRight').mayBulkApprove(req.user)
+            );
+        } catch (_) {
+            canBulk = false;
+        }
         res.render('pages/supervisor/self-assessment-review', {
             title: req.t ? req.t('chrome:pt_self_assessment_reviews') : 'Self-Assessment Reviews',
             employees,
+            canBulk,
         });
     };
     // Server-render the initial rows so the page is usable WITHOUT JS (slow/flaky

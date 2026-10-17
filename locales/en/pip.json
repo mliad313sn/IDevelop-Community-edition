@@ -43,5 +43,8 @@
   "tasks_reason_prompt": "Written reason (required) — why open an improvement plan for this person?",
   "tasks_dismiss_prompt": "Written reason (required) — why is no plan needed?",
   "withdraw": "Withdraw the plan",
-  "withdraw_prompt": "Written reason (required) — why is this plan being withdrawn? A withdrawal is not a failure."
+  "withdraw_prompt": "Written reason (required) — why is this plan being withdrawn? A withdrawal is not a failure.",
+  "err_close_not_active": "This plan was never activated, so it cannot be closed as met or not met. Withdraw it instead, with a reason.",
+  "new_in_role_tag": "new in the role",
+  "new_in_role_hint": "“New in the role”: the person started in the role recently (recorded start date, period set in the settings). A gap early in a role does not necessarily call for an improvement plan."
 }

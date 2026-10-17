@@ -17,7 +17,8 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
 process.env.APP_KEY = process.env.APP_KEY || 'hris-test-app-key-0123456789abcdef';
-const HAS_DB = /idevelop_test|idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''));
+const { isTestDatabaseUrl } = require('../helpers/testDatabase');
+const HAS_DB = isTestDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 jest.setTimeout(120000);
 
@@ -108,7 +109,8 @@ suite('HRIS sync on the real schema (rolled back)', () => {
             const row = await db.get(
                 `SELECT credentials FROM hris_connectors WHERE provider = 'personio'`
             );
-            expect(row.credentials.startsWith('enc:v1:')).toBe(true);
+            // secretBox v2, purpose-bound (v1 is read-only since SA-18 was closed).
+            expect(row.credentials.startsWith('enc:v2:hris:')).toBe(true);
             expect(row.credentials).not.toContain('s3cr3t-value');
             expect(row.credentials).not.toContain('cid-123');
             const masked = Hris.mask(await Hris.getRow('personio'));

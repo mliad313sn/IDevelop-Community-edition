@@ -26,9 +26,9 @@
           <td><%= fmtDate(d.openedAt) %></td>
           <% if (showActions) { %>
           <td style="white-space:nowrap">
-            <% if (canResolve && d.level === 'L0' && d.state === 'open') { %><button class="btn btn-sm btn-success" onclick="DSP.resolve(<%= d.id %>,'resolve-l0')"><%= __('talentx:dsp_resolve_l0') %></button><% } %>
-            <% if (canResolve && d.level === 'L1' && d.state === 'escalated') { %><button class="btn btn-sm btn-primary" onclick="DSP.resolve(<%= d.id %>,'resolve-l1')"><%= __('talentx:dsp_resolve_l1') %></button><% } %>
-            <% if (canArbitrate && d.level === 'L2' && (d.state === 'escalated' || d.state === 'open')) { %><button class="btn btn-sm btn-warning" onclick="DSP.resolve(<%= d.id %>,'resolve-l2')"><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('talentx:dsp_resolve_l2') %></button><% } %>
+            <% if (canResolve && d.level === 'L0' && d.state === 'open') { %><button class="btn btn-sm btn-success" data-on-click="DSP.resolve" data-args="<%= JSON.stringify([d.id, 'resolve-l0']) %>"><%= __('talentx:dsp_resolve_l0') %></button><% } %>
+            <% if (canResolve && d.level === 'L1' && d.state === 'escalated') { %><button class="btn btn-sm btn-primary" data-on-click="DSP.resolve" data-args="<%= JSON.stringify([d.id, 'resolve-l1']) %>"><%= __('talentx:dsp_resolve_l1') %></button><% } %>
+            <% if (canArbitrate && d.level === 'L2' && (d.state === 'escalated' || d.state === 'open')) { %><button class="btn btn-sm btn-warning" data-on-click="DSP.resolve" data-args="<%= JSON.stringify([d.id, 'resolve-l2']) %>"><i class="fas fa-user-shield" aria-hidden="true"></i> <%= __('talentx:dsp_resolve_l2') %></button><% } %>
           </td>
           <% } %>
         </tr>
@@ -89,4 +89,6 @@ const DSP = {
     location.reload();
   }
 };
+// CSP: the buttons are wired by csp-actions.js (data-on-click: DSP.resolve).
+window.DSP = DSP;
 </script>

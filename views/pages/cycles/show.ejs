@@ -591,7 +591,7 @@ const selected = function (arr, id) { return (arr || []).some(function (x) { ret
   .cyc-pill[data-s="cancelled"]{background:#7f1d1d}
   .cyc-overdue{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.6em;vertical-align:middle;
                background:rgba(200,81,75,.16);color:#c8514b;font-weight:600}
-  .cyc-tag{display:inline-block;margin-left:.3rem;padding:1px 6px;border-radius:8px;font-size:.7rem;
+  .cyc-tag{display:inline-block;margin-left:.3rem;padding:1px 6px;border-radius:8px;font-size:.75rem;
            background:rgba(180,83,9,.16);color:#b45309}
   .cyc-kpis{display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:.75rem}
   .cyc-kpi{flex:1;min-width:130px;padding:.75rem;text-align:center;text-decoration:none;color:inherit;
@@ -603,7 +603,7 @@ const selected = function (arr, id) { return (arr || []).some(function (x) { ret
   .cyc-k-in_review .cyc-kpi-n{color:#b45309}
   .cyc-k-approved .cyc-kpi-n{color:#0f8a3c}
   .cyc-k-in_progress .cyc-kpi-n{color:#5b8bd0}
-  .cyc-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1.25rem}
+  .cyc-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px, 100%), 1fr));gap:1.25rem}
   .cyc-by{display:inline-flex;gap:.25rem;font-size:.8rem;font-weight:400}
   .cyc-by a{padding:2px 8px;border-radius:10px;background:rgba(127,127,127,.14);text-decoration:none;color:inherit}
   .cyc-by a.on{background:var(--accent,#6656f0);color:#111}

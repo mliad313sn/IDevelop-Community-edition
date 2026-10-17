@@ -24,6 +24,7 @@
 
 const db = require('../config/database');
 const { dayKey } = require('../utils/dayKey');
+const { fmtDate } = require('../utils/dateFormat');
 
 /** Visible employee ids for a subscriber. null = unrestricted (superadmin). */
 async function scopeFor(sub) {
@@ -138,17 +139,13 @@ async function departmentStats(ids) {
 }
 
 /**
- * Branded departmental report (shared emailTemplate): KPI chips for the
- * aggregate picture, per-department table, and — when present — the live and
- * PREDICTED coverage-breach sections. Every figure states where to act.
+ * The departmental report as renderEmail blocks, in ONE language: key figures
+ * for the aggregate picture, the per-department table and — when present —
+ * the live and PREDICTED coverage-breach sections. Every figure states where to
+ * act. Returns { title, blocks }.
  */
-function renderHtml(
-    recipientName,
-    rows,
-    periodLabel,
-    { breaches = [], predicted = [], branding = null } = {}
-) {
-    const T = require('../utils/emailTemplate');
+function renderBlocks(rows, { lang = 'fr', frequency, breaches = [], predicted = [] } = {}) {
+    const T = require('../utils/emailTemplate').blocks(lang);
     const totals = rows.reduce(
         (a, r) => ({
             headcount: a.headcount + Number(r.headcount || 0),
@@ -168,23 +165,29 @@ function renderHtml(
     const blocks = [];
     blocks.push(
         T.kpis([
-            { label: 'Effectif / Headcount', value: totals.headcount },
+            { label: T.pick('Effectif', 'Headcount'), value: totals.headcount },
             {
-                label: 'Matrice / Matrix',
+                label: T.pick('Matrice', 'Matrix'),
                 value: avgCompletion == null ? '—' : avgCompletion + '%',
                 color: avgCompletion >= 80 ? '#15803d' : '#b45309',
             },
             {
-                label: 'Revues / Reviews',
+                label: T.pick('Revues', 'Reviews'),
                 value: totals.reviews,
                 color: totals.reviews ? '#b45309' : '#15803d',
             },
-            { label: 'PIP', value: totals.pips, color: totals.pips ? '#b45309' : '#15803d' },
             {
-                label: 'Couverture / Coverage',
+                label: T.pick('Plans de performance', 'Performance plans'),
+                value: totals.pips,
+                color: totals.pips ? '#b45309' : '#15803d',
+            },
+            {
+                label: T.pick('Couverture', 'Coverage'),
                 value: breaches.length,
                 color: breaches.length ? '#b91c1c' : '#15803d',
-                sub: predicted.length ? `+${predicted.length} prévue(s)` : undefined,
+                sub: predicted.length
+                    ? T.pick(`+${predicted.length} prévue(s)`, `+${predicted.length} predicted`)
+                    : undefined,
             },
         ])
     );
@@ -201,8 +204,8 @@ function renderHtml(
                 // read "62 %" as "62 % of the 14 of 96 requirements measured".
                 { fr: 'Couverture', en: 'Coverage' },
                 { fr: 'Revues', en: 'Reviews' },
-                { fr: 'PIP' },
-                { fr: 'IDP' },
+                { fr: 'Plans de performance', en: 'Performance plans' },
+                { fr: 'Actions de développement', en: 'Development actions' },
             ],
             rows.map((r) => [
                 { text: `${r.siteName} / ${r.departmentName}`, bold: true },
@@ -214,7 +217,7 @@ function renderHtml(
                           color: r.completionPct >= 80 ? '#15803d' : '#b45309',
                       },
                 r.avgReadiness == null
-                    ? { text: 'non mesuré / not measured', color: '#64748b' }
+                    ? { text: T.pick('non mesuré', 'not measured'), color: '#64748b' }
                     : r.avgReadiness + '%',
                 r.expectedSkills
                     ? {
@@ -245,7 +248,7 @@ function renderHtml(
                 ],
                 breaches.map((b) => [
                     {
-                        text: `${b.severity === 'critical' ? '🔴 ' : '🟠 '}${b.name} — ${b.skillName}`,
+                        text: `${b.severity === 'critical' ? T.pick('Critique', 'Critical') + ' — ' : ''}${b.name} — ${b.skillName}`,
                         bold: b.severity === 'critical',
                     },
                     {
@@ -268,9 +271,9 @@ function renderHtml(
                     { fr: 'Date prévue', en: 'Predicted date' },
                 ],
                 predicted.map((b) => [
-                    `⚠ ${b.name}`,
+                    b.name,
                     {
-                        text: `${new Date(b.predictedBreachOn).toISOString().slice(0, 10)} — ${b.predictedQualified}/${b.minHeadcount}`,
+                        text: `${fmtDate(b.predictedBreachOn)} — ${b.predictedQualified}/${b.minHeadcount}`,
                         color: '#b45309',
                     },
                 ])
@@ -284,16 +287,7 @@ function renderHtml(
         );
     }
 
-    const appUrl = require('../utils/emailTemplate').baseUrl();
-    if (appUrl)
-        blocks.push(
-            T.cta(
-                'Ouvrir la conformité',
-                'Open compliance',
-                appUrl + '/compliance',
-                branding && branding.accentColor
-            )
-        );
+    blocks.push(T.button('Ouvrir la conformité', 'Open compliance', '/compliance'));
     blocks.push(
         T.para(
             'Gérez cet abonnement sous Rapports → Programmations.',
@@ -301,12 +295,24 @@ function renderHtml(
         )
     );
 
-    return T.wrap({
-        branding,
-        title: `Rapport départemental (${periodLabel})`,
-        intro: `Bonjour ${recipientName},`,
+    const period =
+        frequency === 'monthly'
+            ? T.pick('mensuel', 'monthly')
+            : T.pick('toutes les deux semaines', 'every two weeks');
+    return {
+        title: T.pick(`Rapport départemental (${period})`, `Departmental report (${period})`),
         blocks,
-    });
+    };
+}
+
+/** The rendered HTML of the report (tests and previews; no database, stock branding). */
+function renderHtml(recipientName, rows, opts = {}) {
+    const lang = opts.lang || 'fr';
+    const { title, blocks } = renderBlocks(rows, { ...opts, lang });
+    return require('../utils/emailTemplate').compose(
+        { kind: 'dept_digest', title, blocks, locale: lang, ctaUrl: '/reports/dept-analytics' },
+        { brand: {}, recipientName }
+    ).html;
 }
 
 async function tick() {
@@ -377,8 +383,7 @@ async function tick() {
                 /* compliance module optional in older DBs */
             }
 
-            let name = '',
-                email = null,
+            let email = null,
                 employeeId = null,
                 adminId = null;
             if (sub.subscriberType === 'employee') {
@@ -387,7 +392,6 @@ async function tick() {
                     [sub.subscriberId]
                 );
                 if (!e) continue;
-                name = e.firstName;
                 email = e.email;
                 employeeId = sub.subscriberId;
             } else {
@@ -396,44 +400,41 @@ async function tick() {
                     [sub.subscriberId]
                 );
                 if (!a) continue;
-                name = a.username;
                 email = a.email;
                 adminId = sub.subscriberId;
             }
 
-            const periodLabel =
-                sub.frequency === 'monthly' ? 'mensuel / monthly' : 'bimensuel / bi-weekly';
-            let branding = null;
-            try {
-                branding = await require('../utils/branding').getBranding();
-            } catch {
-                /* stock identity */
-            }
-            const html = renderHtml(name, rows, periodLabel, { breaches, predicted, branding });
-            const subject = `[IDevelop] Rapport départemental / Departmental status report — ${today}`;
-            const text = rows
-                .map(
-                    (r) =>
-                        `${r.siteName}/${r.departmentName}: ${r.headcount} pers., matrice ${r.completionPct ?? '—'}%, ` +
-                        `préparation ${r.avgReadiness == null ? 'non mesuré' : r.avgReadiness + '%'} ` +
-                        `(sur ${r.assessedSkills}/${r.expectedSkills} exigences évaluées), ` +
-                        `revues ${r.pendingReviews}, PIP ${r.openPips}, IDP ${r.openIdpActions}`
-                )
-                .join('\n');
+            // ONE language per mail: the subscriber's own e-mail language,
+            // else the site's; the subject is the catalogue's (no date).
+            const NotificationService = require('../services/NotificationService');
+            const lang = employeeId
+                ? await require('../utils/emailTemplate').recipientLang('employee', employeeId)
+                : adminId
+                  ? await require('../utils/emailTemplate').recipientLang('admin', adminId)
+                  : await require('../utils/emailTemplate').mailLang();
+            const mail = renderBlocks(rows, {
+                lang,
+                frequency: sub.frequency,
+                breaches,
+                predicted,
+            });
+            const body = {
+                locale: lang,
+                title: mail.title,
+                blocks: mail.blocks,
+                ctaUrl: '/reports/dept-analytics',
+            };
 
             let delivered = false;
             if (employeeId) {
                 // Managers/supervisors: in-app notification always lands; email rides along.
-                const NotificationService = require('../services/NotificationService');
                 const r = await NotificationService.notify({
                     userType: 'employee',
                     userId: employeeId,
                     kind: 'dept_digest',
                     category: 'digest',
                     payload: { departments: rows.length, period: sub.frequency, date: today },
-                    subject,
-                    html,
-                    text,
+                    ...body,
                 });
                 delivered = !!(r && r.inapp && r.inapp !== 'error');
             } else if (adminId) {
@@ -444,20 +445,28 @@ async function tick() {
                 // never written to their bell, so it did not appear in-app either.
                 // The employee branch above always did this; the asymmetry was
                 // accidental.
-                const NotificationService = require('../services/NotificationService');
                 const r = await NotificationService.notify({
                     userType: 'admin',
                     userId: adminId,
                     kind: 'dept_digest',
                     category: 'digest',
                     payload: { departments: rows.length, period: sub.frequency, date: today },
-                    subject,
-                    html,
-                    text,
+                    ...body,
                 });
                 delivered = !!(r && r.inapp && r.inapp !== 'error');
             } else if (email) {
-                const r = await EmailService.send({ to: email, subject, html, text });
+                const m = await require('../utils/emailTemplate').renderEmail({
+                    kind: 'dept_digest',
+                    ...body,
+                });
+                const r = await EmailService.send({
+                    to: email,
+                    subject: m.subject,
+                    html: m.html,
+                    text: m.text,
+                    attachments: m.attachments,
+                    headers: m.headers,
+                });
                 delivered = !!(r && r.sent);
             }
 
@@ -486,4 +495,4 @@ async function tick() {
 // `tick` is the job surface. `__test` exposes the two pure-ish pieces so the
 // readiness figure and its "non mesuré" rendering can be asserted without
 // standing up a scheduler.
-module.exports = { tick, __test: { departmentStats, renderHtml } };
+module.exports = { tick, __test: { departmentStats, renderBlocks, renderHtml } };

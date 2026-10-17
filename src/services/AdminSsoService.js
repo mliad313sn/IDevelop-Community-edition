@@ -546,7 +546,7 @@ async function issueEnrolCode(adminId, actor) {
             action: 'ADMIN_MFA_ENROL_CODE_ISSUED',
             entityType: 'admin',
             entityId: Number(a.id),
-            details: `One-time MFA enrolment code issued for admin "${a.username}" (valid ${ENROL_CODE_TTL_H} h, single use)`,
+            details: `One-time MFA enrolment code issued for admin:${Number(a.id)} (valid ${ENROL_CODE_TTL_H} h, single use)`,
         });
     } catch (_) {
         /* audit best-effort */

@@ -9,36 +9,28 @@ const APP_ID = process.env.APP_ID || 'org.idevelop.community';
 // string.
 const APP_NAME = process.env.APP_NAME || 'IDevelop';
 
-// The deployment host is per-customer and therefore MUST come from the
-// environment. There is no sensible default: a hard-coded host is either wrong
-// for every deployment but one, or leaks whichever customer it was written for.
-// Missing SERVER_URL fails loudly at build time rather than silently shipping a
-// binary that points somewhere unintended.
-const serverUrl = process.env.SERVER_URL;
-if (!serverUrl) {
-    throw new Error(
-        'SERVER_URL is required to build the mobile shell. Set it to the ' +
-        'deployment origin, e.g. SERVER_URL=https://app.example.com'
-    );
-}
-
-// Navigation is restricted to the configured origin's host. Deriving it keeps
-// the allow-list and the endpoint from drifting apart, and means no customer
-// hostname is ever written into this file.
-const serverHost = new URL(serverUrl).host;
+// Every security-relevant value comes from ONE gate, scripts/check-server-url.js,
+// which throws (the build fails) unless SERVER_URL is https:// (http://localhost
+// only with MOBILE_BUILD=dev) and the generated native projects, if any, keep
+// Android allowBackup="false", no cleartext, not debuggable, and iOS App
+// Transport Security on. The deployment host is per-organisation, so there is
+// no default. The gate also derives: cleartext off, mixed content off,
+// navigation limited to the configured host (the identity provider opens in
+// the system browser), WebView debugging only in a development build.
+// A build is a release build unless MOBILE_BUILD=dev is set.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { buildMobileSecurity } = require('./scripts/check-server-url');
+const sec = buildMobileSecurity(process.env);
 
 const config: CapacitorConfig = {
     appId: APP_ID,
     appName: APP_NAME,
     webDir: '../public',
     bundledWebRuntime: false,
-    server: {
-        url: serverUrl,
-        cleartext: false,
-        allowNavigation: [serverHost],
-    },
-    android: { allowMixedContent: false },
-    ios: { contentInset: 'always' },
+    loggingBehavior: sec.release ? 'none' : 'debug',
+    server: sec.server,
+    android: { ...sec.android },
+    ios: { contentInset: 'always', ...sec.ios },
 };
 
 export default config;

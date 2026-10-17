@@ -194,7 +194,18 @@ class EmployeePortalController {
             const nineBoxVisible = await TalentConfidentialityService.nineBoxVisibleToEmployees();
             const nineBox = nineBoxVisible
                 ? await db.get(
-                      `SELECT performance, potential, box, box_label, approved_at
+                      // movement_direction (migration 175): the person sees the
+                      // DIRECTION of the move only, never the reason or the
+                      // calibration notes, and only when the PREVIOUS placement
+                      // was itself disclosed to them: a direction would otherwise
+                      // reveal an earlier box they were never shown.
+                      `SELECT performance, potential, box, box_label, approved_at,
+                              CASE WHEN movement_direction IN ('up', 'down', 'lateral', 'stable')
+                                    AND EXISTS (SELECT 1 FROM nine_box_evaluations pv
+                                                 WHERE pv.id = nine_box_evaluations.previous_evaluation_id
+                                                   AND pv.employee_id = nine_box_evaluations.employee_id
+                                                   AND pv.disclosed_to_employee = true)
+                                   THEN movement_direction END AS movement_direction
                          FROM nine_box_evaluations
                         WHERE employee_id = ? AND status = 'approved' AND disclosed_to_employee = true
                         ORDER BY approved_at DESC NULLS LAST, id DESC LIMIT 1`,
@@ -229,11 +240,29 @@ class EmployeePortalController {
         } catch (_) {
             /* optional */
         }
+        // « Next step »: the ONE thing to do now, from the person's own data;
+        // `lockedCycle` names the locked campaign that refuses every save when
+        // work was left in it. « What changed »: null when it cannot be
+        // established (the block is then hidden, never « nothing new »).
+        const Home = require('../services/EmployeeHomeService');
+        let nextStep = null;
+        let lockedCycle = null;
+        try {
+            const h = await Home.home(employeeId);
+            nextStep = h.next;
+            lockedCycle = h.locked;
+        } catch (_) {
+            nextStep = null;
+        }
+        const changes = await Home.changesFor(employeeId).catch(() => null);
         res.render('pages/employee/dashboard', {
             title: req.t ? req.t('employee:dashboard_title') : 'My workspace',
             employee,
             snapshot,
             targetGap,
+            nextStep,
+            lockedCycle,
+            changes,
         });
     }
 
@@ -287,7 +316,9 @@ class EmployeePortalController {
                 // the "answered vs unrated" logic works (a genuine saved 0 stays 0). With
                 // `|| 0` a fresh form loaded as 100%-complete — defeating the honest-zero UX.
                 selfRatedLevel: assessmentMap[req.skillId]?.selfRatedLevel ?? null,
-                currentSkillLevel: skillAssessmentMap[req.skillId]?.currentLevel || 0,
+                // A skill nobody ever assessed has NO validated level: null (the
+                // page prints « — »), never a 0 nobody observed.
+                currentSkillLevel: skillAssessmentMap[req.skillId]?.currentLevel ?? null,
                 status: assessmentMap[req.skillId]?.status || 'not_started',
             }));
             // 3.23.21: what each skill and each of its levels mean — two
@@ -340,18 +371,25 @@ class EmployeePortalController {
                 (s) => s.selfRatedLevel != null
             ).length;
             const saRemaining = saTotal - saRated;
+            // An honest range, 15 to 20 s per remaining skill, floor of one minute —
+            // the same rule the client uses while rating, so the figure never jumps.
+            const saEstimateLo = Math.max(1, Math.round((saRemaining * 15) / 60));
+            const saEstimateHi = Math.max(saEstimateLo, Math.round((saRemaining * 20) / 60));
             res.render('pages/employee/self-assessment', {
                 title: req.t ? req.t('employee:sa_title') : 'Self-Assessment',
                 employee,
                 skillsWithAssessments,
                 cycle,
                 lockedCycle,
+                // No open campaign and the person's latest campaign LOCKED: every
+                // save is refused (409 cycle_locked), so the page is read-only.
+                saReadOnly: !cycle && !!lockedCycle,
                 saTotal,
                 saRated,
                 saRemaining,
-                // ~8 s per remaining skill, floor of one minute — the same rule the
-                // client uses while rating, so the number never jumps on first keystroke.
-                saEstimateMin: Math.max(1, Math.round((saRemaining * 8) / 60)),
+                saEstimateMin: Math.max(1, Math.round((saRemaining * 15) / 60)),
+                saEstimateLo,
+                saEstimateHi,
             });
         } catch (error) {
             console.error('Self-assessment error:', error);
@@ -663,7 +701,8 @@ class EmployeePortalController {
                 );
                 const actRows = await db.all(
                     `SELECT a.id, a.idp_id, a.objective_id, a.type, a.title, a.description,
-                            a.status, a.completed_at
+                            a.status, a.completed_at, a.due_on, a.place, a.estimated_hours,
+                            a.actual_hours, a.reported_done_at, a.reported_note
                        FROM idp_actions a
                       WHERE a.idp_id IN (${marks})
                       ORDER BY a.idp_id, a.id`,
@@ -703,7 +742,13 @@ class EmployeePortalController {
                     // "High Performer")' on the plan its subject is asked to sign.
                     const objectives = (objBy[pid] || []).map((o) => ({
                         id: Number(o.id),
-                        smartText: safe(resolveSmart(o.smartText, o.dueOn)),
+                        // A machine-written objective, in the reader's language.
+                        smartText: safe(
+                            require('../utils/idpObjectiveText').display(
+                                resolveSmart(o.smartText, o.dueOn),
+                                req.t ? req.t.bind(req) : null
+                            )
+                        ),
                         dueOn: fmtDay(o.dueOn),
                         priority: o.priority,
                         state: o.state,
@@ -718,6 +763,14 @@ class EmployeePortalController {
                         status: a.status,
                         completedAt: fmtDay(a.completedAt),
                         isOpen: !['completed', 'cancelled'].includes(a.status),
+                        // The action loop: the person starts it and reports it
+                        // done from here (the partial idp-action-controls).
+                        dueOn: a.dueOn || null,
+                        place: a.place || null,
+                        estimatedHours: a.estimatedHours == null ? null : Number(a.estimatedHours),
+                        actualHours: a.actualHours == null ? null : Number(a.actualHours),
+                        reportedDoneAt: a.reportedDoneAt || null,
+                        reportedNote: a.reportedNote ? safe(a.reportedNote) : null,
                     }));
                     return {
                         id: pid,
@@ -736,6 +789,7 @@ class EmployeePortalController {
                         // Read-only unless the plan is still a draft awaiting my signature.
                         canSign: v2 && p.status === 'draft' && !mine,
                         detailUrl: v2 ? `/v2/idp/${pid}` : null,
+                        canMoveActions: v2 && p.status === 'active',
                     };
                 });
             }
@@ -784,6 +838,10 @@ class EmployeePortalController {
             hasAnything,
             loadError,
             disclosedPlacement,
+            // « Propose an action to my manager » (development module pages).
+            canPropose: await require('../services/ModuleService')
+                .isOn('development')
+                .catch(() => false),
         });
     }
 

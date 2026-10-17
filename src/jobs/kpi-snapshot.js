@@ -1,22 +1,31 @@
 'use strict';
 
 /**
- * kpi-snapshot — daily capture of the executive KPI strip into kpi_snapshots
- * (migration 82), org-wide and per site.
+ * kpi-snapshot — daily capture of the headline indicators into kpi_snapshots
+ * (migrations 82, 184, 187 and 189), organisation-wide, per site and per
+ * department (a department with at least one active person).
  *
- * Shaped exactly like the proven jobs/fit-history.js: unscoped org truth,
- * idempotent per day (unique key + ON CONFLICT DO NOTHING), cheap early exit,
- * registered hourly so the first run of the day is the one that writes.
+ * Shaped exactly like the proven jobs/fit-history.js: unscoped organisation
+ * truth, idempotent per day (unique key + ON CONFLICT DO NOTHING), cheap early
+ * exit, registered hourly so the first run of the day is the one that writes.
+ *
+ * WHERE THE FIGURES COME FROM
+ *   KpiService.snapshotMetrics, the same functions every report, the API and
+ *   the Power BI feed call: the snapshot of the day IS the indicator for the
+ *   same population. Each row carries the contract it was computed under
+ *   (kpi_contract), so a movement is never shown across a change of
+ *   definition (KpiSnapshotService.deltas).
  *
  * WHY UNSCOPED
  *   A snapshot is a fact about the organisation, not about whoever happened to
- *   trigger the tick. Reads are scoped at query time by the dashboard; storing
- *   a per-viewer history would make the same day disagree with itself.
+ *   trigger the tick. Reads are scoped at query time; storing a per-reader
+ *   history would make the same day disagree with itself.
  *
  * WHAT IT DELIBERATELY DOES NOT DO
  *   It never substitutes 0 for an unmeasured metric. avg_readiness stays NULL
- *   for a scope where nobody has an assessed requirement, so the delta layer can
- *   correctly render nothing instead of inventing a movement.
+ *   for a scope where nobody has an assessed requirement, certs_expired and
+ *   certs_expiring_90d stay NULL where no certification is required, so the
+ *   delta layer renders nothing instead of inventing a movement.
  */
 
 const db = require('../config/database');
@@ -35,50 +44,13 @@ async function tick() {
     }
 
     const DashboardModel = require('../models/DashboardModel');
-    const KeyPersonRiskService = require('../services/KeyPersonRiskService');
-    const CertificationService = safeRequire('../services/CertificationService');
-
-    // Superadmin-equivalent principal: org truth, no scoping.
-    const orgPrincipal = { userType: 'admin', role: 'superadmin', id: null };
-
     let captured = 0;
 
     // ---- Org-wide ----------------------------------------------------------
-    const orgKpis = await DashboardModel.getOverviewKPIs({});
-    const orgExposure = await safeSummary(KeyPersonRiskService, orgPrincipal, null);
-    const orgCerts = await safeCertExpiring(CertificationService, null);
-    const orgSignature = await safeSignature(DashboardModel, {});
-
-    await KpiSnapshotService.capture('org', 0, null, {
-        measuredSignature: orgSignature,
-        totalEmployees: orgKpis && orgKpis.totalEmployees,
-        measuredEmployees: orgKpis && orgKpis.measuredEmployees,
-        avgReadiness: orgKpis && orgKpis.avgReadiness,
-        avgReadinessAll: orgKpis && orgKpis.avgReadinessAllRequirements,
-        assessmentCoverage: orgKpis && orgKpis.assessmentCoverage,
-        assessedRequirements: orgKpis && orgKpis.assessedRequirements,
-        expectedRequirements: orgKpis && orgKpis.expectedRequirements,
-        criticalCompliance: orgKpis && orgKpis.criticalCompliance,
-        roleReadyCount: orgKpis && orgKpis.roleReadyCount,
-        rolesAtRisk: orgKpis && orgKpis.rolesAtRisk,
-        rolesUnmeasured: orgKpis && orgKpis.rolesUnmeasured,
-        soleHolderCount: orgExposure.soleHolder,
-        noQualifiedCount: orgExposure.noQualified,
-        certsExpiring90d: orgCerts,
-    });
+    await KpiSnapshotService.capture('org', 0, null, await metricsFor(DashboardModel, null));
     captured++;
 
     // ---- Per site ----------------------------------------------------------
-    // Per-site exposure comes from ONE org-wide sweep rolled up by site, so the
-    // site rows and the org row can never disagree about the same cell.
-    let exposureBySite = [];
-    try {
-        exposureBySite = await KeyPersonRiskService.exposureByUnit(orgPrincipal, { unit: 'site' });
-    } catch (_) {
-        exposureBySite = [];
-    }
-    const expIndex = new Map(exposureBySite.map((e) => [Number(e.unitId), e]));
-
     const sites = await db.all('SELECT id, name FROM sites ORDER BY name');
     const failed = [];
     for (const site of sites || []) {
@@ -86,12 +58,11 @@ async function tick() {
         // abandoned every remaining site, and because the org row was already
         // written the retry skipped the whole tick.
         try {
-            await captureSite(
-                KpiSnapshotService,
-                DashboardModel,
-                CertificationService,
-                expIndex,
-                site
+            await KpiSnapshotService.capture(
+                'site',
+                Number(site.id),
+                site.name,
+                await metricsFor(DashboardModel, Number(site.id))
             );
             captured++;
         } catch (e) {
@@ -99,41 +70,79 @@ async function tick() {
         }
     }
 
+    // ---- Per department (migration 187) ------------------------------------
+    // Departments holding at least one active, not-erased person: the same
+    // population rule as every other row. The KPI module's columns only; the
+    // legacy dashboard-model columns stay NULL, never borrowed from a site.
+    for (const dep of await departmentsToCapture()) {
+        try {
+            await KpiSnapshotService.capture(
+                'department',
+                Number(dep.id),
+                dep.name,
+                await departmentMetrics(Number(dep.id))
+            );
+            captured++;
+        } catch (e) {
+            failed.push({
+                department: dep.name,
+                error: String((e && e.message) || e).slice(0, 200),
+            });
+        }
+    }
+
     // Say what is missing rather than reporting a clean run over a hole.
     return failed.length ? { captured, failed } : { captured };
 }
 
-/** Capture one site's row. Extracted so a failure is catchable per site. */
-async function captureSite(
-    KpiSnapshotService,
-    DashboardModel,
-    CertificationService,
-    expIndex,
-    site
-) {
-    {
-        const kpis = await DashboardModel.getOverviewKPIs({ siteIds: [Number(site.id)] });
-        const exp = expIndex.get(Number(site.id)) || {};
-        const certs = await safeCertExpiring(CertificationService, Number(site.id));
-        const sig = await safeSignature(DashboardModel, { siteIds: [Number(site.id)] });
-        await KpiSnapshotService.capture('site', Number(site.id), site.name, {
-            measuredSignature: sig,
-            totalEmployees: kpis && kpis.totalEmployees,
-            measuredEmployees: kpis && kpis.measuredEmployees,
-            avgReadiness: kpis && kpis.avgReadiness,
-            avgReadinessAll: kpis && kpis.avgReadinessAllRequirements,
-            assessmentCoverage: kpis && kpis.assessmentCoverage,
-            assessedRequirements: kpis && kpis.assessedRequirements,
-            expectedRequirements: kpis && kpis.expectedRequirements,
-            criticalCompliance: kpis && kpis.criticalCompliance,
-            roleReadyCount: kpis && kpis.roleReadyCount,
-            rolesAtRisk: kpis && kpis.rolesAtRisk,
-            rolesUnmeasured: kpis && kpis.rolesUnmeasured,
-            soleHolderCount: exp.soleHolder,
-            noQualifiedCount: exp.noQualified,
-            certsExpiring90d: certs,
-        });
+/** The KPI-module metrics of one department (no legacy columns). */
+async function departmentMetrics(departmentId) {
+    const KpiService = require('../services/KpiService');
+    return KpiService.snapshotMetrics({ system: true, departmentId });
+}
+
+/** Departments holding at least one active, not-erased, not-cancelled person. */
+async function departmentsToCapture() {
+    return (
+        (await db.all(
+            `SELECT d.id, d.name
+               FROM departments d
+              WHERE EXISTS (SELECT 1 FROM employees e
+                             WHERE e.department_id = d.id
+                               AND e.is_active = true AND e.erased_at IS NULL
+                               AND e.cancelled_at IS NULL)
+              ORDER BY d.id`
+        )) || []
+    );
+}
+
+/**
+ * The metrics of one scope (siteId null = the organisation).
+ *
+ * The indicators come from KpiService.snapshotMetrics. The legacy columns the
+ * KPI module does not define (avg_readiness_all, roles_at_risk,
+ * roles_unmeasured) and the fingerprint of the measured population still come
+ * from the dashboard model, each degrading to null rather than failing the
+ * capture.
+ */
+async function metricsFor(DashboardModel, siteId) {
+    const KpiService = require('../services/KpiService');
+    const scope = siteId == null ? { system: true } : { system: true, siteId };
+    const m = await KpiService.snapshotMetrics(scope);
+    const filters = siteId == null ? {} : { siteIds: [siteId] };
+    let legacy = null;
+    try {
+        legacy = await DashboardModel.getOverviewKPIs(filters);
+    } catch (_) {
+        legacy = null;
     }
+    return {
+        ...m,
+        measuredSignature: await safeSignature(DashboardModel, filters),
+        avgReadinessAll: legacy ? legacy.avgReadinessAllRequirements : null,
+        rolesAtRisk: legacy ? legacy.rolesAtRisk : null,
+        rolesUnmeasured: legacy ? legacy.rolesUnmeasured : null,
+    };
 }
 
 /**
@@ -142,62 +151,23 @@ async function captureSite(
  */
 async function isDayComplete(KpiSnapshotService) {
     if (!(await KpiSnapshotService.hasToday('org', 0))) return false;
+    // A day missing a department row is not complete either (migration 187).
+    const deps = await departmentsToCapture();
+    if (deps.length) {
+        const d = await db.get(
+            `SELECT COUNT(*)::int AS got FROM kpi_snapshots
+              WHERE snapshot_date = CURRENT_DATE AND scope_type = 'department'
+                AND scope_id = ANY(?)`,
+            [deps.map((x) => Number(x.id))]
+        );
+        if (!d || Number(d.got) < deps.length) return false;
+    }
     const row = await db.get(
         `SELECT (SELECT COUNT(*) FROM sites)::int AS expected,
                 (SELECT COUNT(*) FROM kpi_snapshots
                   WHERE snapshot_date = CURRENT_DATE AND scope_type = 'site')::int AS got`
     );
     return Number(row.got) >= Number(row.expected);
-}
-
-function safeRequire(p) {
-    try {
-        return require(p);
-    } catch (_) {
-        return null;
-    }
-}
-
-/** Exposure counts, degrading to nulls rather than failing the whole tick. */
-async function safeSummary(KeyPersonRiskService, principal, siteId) {
-    try {
-        const { summary } = await KeyPersonRiskService.sweep(principal, {
-            unit: 'site',
-            band: 'all',
-            limit: 1,
-            ...(siteId ? { unitId: siteId } : {}),
-        });
-        return summary || {};
-    } catch (_) {
-        return {};
-    }
-}
-
-/**
- * Certificates expiring within 90 days. Optional: an instance with no
- * certificate register returns null (unknown), never 0 (a clean bill of health).
- */
-async function safeCertExpiring(CertificationService, siteId) {
-    try {
-        // Count the expiring certs AND the size of the register in the same pass.
-        // COUNT(*) alone returned 0 for a scope that tracks NO certificates at all
-        // — an absence of a register read as a clean bill of health (and it is
-        // delta-eligible, so the 0 would later drive a spurious "improvement").
-        // A register with rows but none expiring is a real 0; an empty register is
-        // null (unknown).
-        const row = await db.get(
-            `SELECT SUM(CASE WHEN c.days_to_expiry IS NOT NULL AND c.days_to_expiry BETWEEN 0 AND 90 THEN 1 ELSE 0 END) AS expiring,
-                    COUNT(*) AS total
-               FROM v_certification_current c
-              WHERE 1 = 1
-                ${siteId ? 'AND c.site_id = ?' : ''}`,
-            siteId ? [siteId] : []
-        );
-        if (!row || Number(row.total) === 0) return null; // no register in scope → unknown
-        return Number(row.expiring) || 0;
-    } catch (_) {
-        return null;
-    }
 }
 
 /**
@@ -213,6 +183,7 @@ async function safeSignature(DashboardModel, filters) {
     }
 }
 
-// safeCertExpiring is exported for the test: the null-vs-0 distinction (empty
-// register is unknown, not a clean bill of health) is the whole point of J11.
-module.exports = { tick, __test: { safeCertExpiring } };
+module.exports = {
+    tick,
+    __test: { metricsFor, departmentMetrics, departmentsToCapture, isDayComplete },
+};

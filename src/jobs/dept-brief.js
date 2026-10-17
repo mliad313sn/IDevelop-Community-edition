@@ -581,7 +581,7 @@ function _cmp(a, b) {
     return a[0] - b[0] || a[1] - b[1];
 }
 
-/** One section rendered as a bilingual table: the unit, then its figures. */
+/** One section rendered as a table in the mail's language: the unit, then its figures. */
 function _sectionBlocks(T, section, lines) {
     const keys = [];
     for (const l of lines) {
@@ -589,16 +589,16 @@ function _sectionBlocks(T, section, lines) {
             if (_isCell(v) && !keys.includes(k)) keys.push(k);
         }
     }
-    const blocks = [T.section(section.title.fr, section.title.en, _sectionColor(section, lines))];
+    const blocks = [T.section(section.title, null, _sectionColor(section, lines))];
     const headers = [{ fr: 'Unité', en: 'Unit' }, ...keys.map((k) => _fieldLabel(k, section))];
     const rows = lines.map((l) => {
-        const label = l.label ? l.label.fr : l.skillName || '—';
+        const label = l.label ? T.pick(l.label) : l.skillName || '—';
         const first = { text: label, bold: true };
         const cells = keys.map((k) => {
             const c = l[k];
             if (!_isCell(c)) return '—';
             return {
-                text: c.text.fr,
+                text: T.pick(c.text),
                 color: c.color || undefined,
                 bold: c.state === 'measured' && Number(c.value) > 0,
             };
@@ -627,7 +627,7 @@ function _sectionBlocks(T, section, lines) {
  * ordered by R8. A section left with no line is OMITTED, never rendered as "0";
  * what was dropped is COUNTED and stated, never silently lost.
  */
-function _actionBlocks(T, p, { maxLines, unitById, base, accent }) {
+function _actionBlocks(T, p, { maxLines, unitById }) {
     const pb = p.blocks || {};
     const sections = [...(pb.A || []), ...(pb.B || []), ...(pb.C || [])];
     const ranked = [];
@@ -641,7 +641,7 @@ function _actionBlocks(T, p, { maxLines, unitById, base, accent }) {
         const lines = s.lines.filter((l) => kept.has(l));
         if (!lines.length) continue;
         out.push(..._sectionBlocks(T, s, lines));
-        if (s.cta && base) out.push(T.cta('Ouvrir', 'Open', base + s.cta, accent));
+        if (s.cta) out.push(T.button('Ouvrir', 'Open', s.cta));
     }
     if (omitted > 0) {
         out.push(
@@ -663,8 +663,8 @@ function _footerBlocks(T, p) {
         T.table(
             [{ fr: 'Unité', en: 'Unit' }, ...keys.map(_fieldLabel)],
             p.footer.units.map((u) => [
-                { text: u.label.fr, bold: true },
-                ...keys.map((k) => ({ text: u[k].text.fr, color: u[k].color || undefined })),
+                { text: T.pick(u.label), bold: true },
+                ...keys.map((k) => ({ text: T.pick(u[k].text), color: u[k].color || undefined })),
             ])
         )
     );
@@ -691,20 +691,19 @@ function _footerBlocks(T, p) {
  * byte-identical to the original send, and what makes the whole rendering
  * testable with no database and no scheduler (the dept-digest.__test contract).
  *
- * BARE BLOCKS. The three existing digests hand NotificationService a COMPLETE
- * `<!doctype html>` document produced by emailTemplate.wrap, and _render
- * re-wraps it in _shell — so those emails ship a full HTML document nested
- * inside a table cell, with two brand headers and two footers. This one returns
- * the concatenated blocks and lets _shell dress them exactly once (AC-23).
+ * BLOCKS, in ONE language (`opts.lang`, default French): the renderEmail
+ * blocks of the mail ({ title, blocks }), plus their bare HTML and plain-text
+ * rendering ({ html, text }) for previews and tests. NotificationService
+ * composes the document exactly once (one header, one footer). The subject is
+ * the catalogue's: it carries no period and no figure.
  */
 function renderBlocks(payload, opts = {}) {
-    const T = require('../utils/emailTemplate');
+    const lang = opts.lang === 'en' ? 'en' : 'fr';
+    const T = require('../utils/emailTemplate').blocks(lang);
     // A-07 — required here (not at module scope) for the same reason as `T`:
     // this file is loaded by the scheduler before the service graph is warm.
     const { resolveFlowTitle } = require('../services/DeptBriefService');
-    const appName = opts.appName || PRODUCT.name;
-    const accent = opts.accent || '#2563eb';
-    const base = opts.baseUrl || '';
+    const accent = opts.accent || null;
     const maxLines = Math.max(3, Math.min(12, Number(opts.maxLines) || 7));
     const cad = CADENCE_LABEL[payload.cadence] || CADENCE_LABEL.monthly;
     const unitById = {};
@@ -716,7 +715,7 @@ function renderBlocks(payload, opts = {}) {
     const titleEn = `${cad.en.charAt(0).toUpperCase()}${cad.en.slice(1)} brief — ${cad.unit.en} ${payload.period} (${startTxt} → ${endTxt} inclusive)`;
 
     const blocks = [];
-    blocks.push(T.section(titleFr, titleEn, accent));
+    const title = T.pick(titleFr, titleEn);
 
     // §4.7 — the absorbed windows are named in the header, never silently merged.
     if (Array.isArray(payload.absorbed) && payload.absorbed.length) {
@@ -746,8 +745,8 @@ function renderBlocks(payload, opts = {}) {
     }
 
     // The units, each carrying its own population.
-    for (const u of payload.units || []) blocks.push(T.para(u.label.fr, u.label.en));
-    blocks.push(T.para(payload.natureOfFigures.fr, payload.natureOfFigures.en));
+    for (const u of payload.units || []) blocks.push(T.para(u.label));
+    blocks.push(T.para(payload.natureOfFigures));
 
     // KPI chips — the five-second read, taken from the FOOTER totals.
     const totals = payload.footer && payload.footer.totals;
@@ -755,19 +754,22 @@ function renderBlocks(payload, opts = {}) {
         blocks.push(
             T.kpis([
                 {
-                    label: 'Couverture d’évaluation / Assessment coverage',
-                    value: totals.coverage.text.fr,
+                    label: T.pick('Couverture d’évaluation', 'Assessment coverage'),
+                    value: T.pick(totals.coverage.text),
                     color: totals.coverage.color || undefined,
                 },
                 {
-                    label: 'Personnes mesurées / People measured',
-                    value: totals.measuredPeople.text.fr,
+                    label: T.pick('Personnes mesurées', 'People measured'),
+                    value: T.pick(totals.measuredPeople.text),
                     color: totals.measuredPeople.color || undefined,
                 },
                 {
-                    label: 'Départements / Departments',
+                    label: T.pick('Départements', 'Departments'),
                     value: String(totals.departments),
-                    sub: `${totals.contributingDepartments} avec exigences`,
+                    sub: T.pick(
+                        `${totals.contributingDepartments} avec exigences`,
+                        `${totals.contributingDepartments} with requirements`
+                    ),
                 },
             ])
         );
@@ -783,7 +785,7 @@ function renderBlocks(payload, opts = {}) {
         );
 
     // ---- A / B / C, capped at deptBriefMaxLines ACTION lines ----------
-    blocks.push(..._actionBlocks(T, payload, { maxLines, unitById, base, accent }));
+    blocks.push(..._actionBlocks(T, payload, { maxLines, unitById }));
 
     // ---- FLOW (§2.6) — the only real window block --------------------------
     const flow = payload.flow;
@@ -816,10 +818,10 @@ function renderBlocks(payload, opts = {}) {
                         // page, recomputed from the line's metric. Twelve archived
                         // briefs froze « self_assessment ouverts »; a resend (or a
                         // catch-up run) would have posted the database token again.
-                        { text: resolveFlowTitle(l).fr, bold: true },
+                        { text: T.pick(resolveFlowTitle(l)), bold: true },
                         String(l.now),
                         String(l.before),
-                        _deltaText(l.delta),
+                        _deltaText(l.delta, T),
                     ])
                 )
             );
@@ -855,12 +857,10 @@ function renderBlocks(payload, opts = {}) {
     // ---- The SECOND labelled section (§3.4), with its own units and figures.
     if (payload.team) {
         blocks.push(T.section('Votre équipe', 'Your team', accent));
-        for (const u of payload.team.units || []) blocks.push(T.para(u.label.fr, u.label.en));
+        for (const u of payload.team.units || []) blocks.push(T.para(u.label));
         const teamUnits = {};
         for (const u of payload.team.units || []) teamUnits[u.unitId] = u;
-        blocks.push(
-            ..._actionBlocks(T, payload.team, { maxLines, unitById: teamUnits, base, accent })
-        );
+        blocks.push(..._actionBlocks(T, payload.team, { maxLines, unitById: teamUnits }));
         blocks.push(..._footerBlocks(T, payload.team));
     }
 
@@ -872,13 +872,12 @@ function renderBlocks(payload, opts = {}) {
         )
     );
 
-    if (base && payload.briefId) {
+    if (payload.briefId) {
         blocks.push(
-            T.cta(
+            T.button(
                 'Ouvrir le bilan complet',
                 'Open the full brief',
-                `${base}/reports/dept-brief/${payload.briefId}`,
-                accent
+                `/reports/dept-brief/${payload.briefId}`
             )
         );
     }
@@ -888,7 +887,7 @@ function renderBlocks(payload, opts = {}) {
             'Manage the frequency of this brief: My account → Notifications.'
         )
     );
-    blocks.push(T.para(payload.disclaimer.fr, payload.disclaimer.en));
+    blocks.push(T.para(payload.disclaimer));
     blocks.push(
         T.para(
             `Chiffres figés au ${fmtPeriodBound(payload.computedAt)} — un recalcul ultérieur peut différer, les données de référence évoluent.`,
@@ -896,13 +895,16 @@ function renderBlocks(payload, opts = {}) {
         )
     );
 
-    const subject = `${appName} — Bilan ${cad.fr} — ${payload.period}`;
-    const text = _textOf(payload, cad, maxLines, unitById);
-    return { subject, html: blocks.join(''), text };
+    // The preview (html / text) puts the title first, as the mail's headline does.
+    const { html, text } = require('../utils/emailTemplate').renderBlocks(
+        [{ type: 'h', text: title }, ...blocks],
+        { lang, accent }
+    );
+    return { lang, title, blocks, html, text };
 }
 
 /** An arrow only when the comparison is real; a WORD whenever it is not. */
-function _deltaText(d) {
+function _deltaText(d, T) {
     if (!d) return '—';
     switch (d.state) {
         case 'value':
@@ -913,15 +915,15 @@ function _deltaText(d) {
         case 'stable':
             return 'stable';
         case 'first_measure':
-            return 'première mesure';
+            return T.pick('première mesure', 'first measurement');
         case 'measure_lost':
-            return 'mesure perdue';
+            return T.pick('mesure perdue', 'measurement lost');
         case 'scope_changed':
-            return 'périmètre modifié';
+            return T.pick('périmètre modifié', 'scope changed');
         case 'suppressed':
-            return 'évolution supprimée';
+            return T.pick('évolution supprimée', 'change suppressed');
         default:
-            return 'évolution indisponible';
+            return T.pick('évolution indisponible', 'change unavailable');
     }
 }
 
@@ -937,39 +939,6 @@ function _deltaBasisText(deltas, lang, cad) {
         return 'Évolution non comparable — le périmètre a changé entre les deux bilans.';
     if (!start) return 'Première période mesurée — pas de comparaison.';
     return `La série de vos bilans ${cad.fr}s a commencé le ${start}. La comparaison est disponible à partir du deuxième bilan.`;
-}
-
-/** The plain-text twin. Same content, same cap, no markup. */
-function _textOf(payload, cad, maxLines, unitById) {
-    const out = [
-        `Bilan ${cad.fr} — ${payload.period} (${fmtPeriodBound(payload.periodStart)} → ${fmtPeriodBound(payload.displayEnd)} inclus)`,
-    ];
-    for (const u of payload.units || []) out.push(u.label.fr);
-    // « twin » means twin: the HTML part publishes the §2.1 sentence
-    // right after the unit labels (:638) and the text part published NOTHING,
-    // so a reader on a text-only client never learned what A, B and C mean nor
-    // which day B was observed on. Same position, same sentence, same source.
-    if (payload.natureOfFigures && payload.natureOfFigures.fr) out.push(payload.natureOfFigures.fr);
-    const pb = payload.blocks || {};
-    const sections = [...(pb.A || []), ...(pb.B || []), ...(pb.C || [])];
-    const ranked = [];
-    for (const s of sections) for (const l of s.lines) ranked.push({ s, l, r: _rank(l, unitById) });
-    ranked.sort((a, b) => _cmp(a.r, b.r));
-    for (const { s, l } of ranked.slice(0, maxLines)) {
-        const figures = Object.entries(l)
-            .filter(([, v]) => _isCell(v))
-            .map(([k, v]) => `${_fieldLabel(k, s).fr} ${v.text.fr}`)
-            .join(', ');
-        out.push(`- [${s.id}] ${l.label ? l.label.fr : l.skillName || ''} : ${figures || '—'}`);
-    }
-    if (ranked.length > maxLines) out.push(`+${ranked.length - maxLines} autres actions.`);
-    const t = payload.footer && payload.footer.totals;
-    if (t)
-        out.push(
-            `État mesuré — couverture ${t.coverage.text.fr}, personnes mesurées ${t.measuredPeople.text.fr}.`
-        );
-    out.push(payload.disclaimer.fr);
-    return out.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -997,7 +966,7 @@ function landed(r) {
  * else: NotificationService._notify fans every event out to
  * WebhookService.emit BEFORE the in-app write, before the tier, before the
  * opt-out and before the category — with no scope and no clearance check. Every
- * figure lives in subject/html/text, which the webhook never sees.
+ * figure lives in the mail blocks, which the webhook never sees.
  */
 async function deliver(recipient, cadence, payload, rendered, { inAppOnly }) {
     const NotificationService = require('../services/NotificationService');
@@ -1028,9 +997,10 @@ async function deliver(recipient, cadence, payload, rendered, { inAppOnly }) {
         kind: 'dept_brief',
         category: 'digest',
         payload: notifPayload,
-        subject: rendered.subject,
-        html: rendered.html,
-        text: rendered.text,
+        locale: rendered.lang,
+        title: rendered.title,
+        blocks: rendered.blocks,
+        ctaUrl: notifPayload.link,
     });
 }
 
@@ -1422,11 +1392,9 @@ async function _oneRecipient(recipient, due, emitted, { settings, force, result,
         result.superseded += await supersede(recipient);
 
         const branding = await _branding();
-        const T = require('../utils/emailTemplate');
         const rendered = renderBlocks(emittedRow.payload, {
-            appName: branding.appName,
+            lang: await require('../utils/emailTemplate').mailLang(),
             accent: branding.accent,
-            baseUrl: T.baseUrl(),
             maxLines: settings.maxLines,
             recomputedAt: emittedRow.recomputed ? new Date() : null,
         });
@@ -1596,12 +1564,10 @@ async function _resendOne({ cadence, period, only }, result) {
     );
     payload.briefId = Number(row.id);
     const branding = await _branding();
-    const T = require('../utils/emailTemplate');
     const settings = await _settings();
     const rendered = renderBlocks(payload, {
-        appName: branding.appName,
+        lang: await require('../utils/emailTemplate').mailLang(),
         accent: branding.accent,
-        baseUrl: T.baseUrl(),
         maxLines: settings.maxLines,
     });
     const recipient = { type: only.userType, id: Number(only.userId) };

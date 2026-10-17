@@ -1,143 +1,124 @@
+<%#
+    /reports/readiness — K1 Role-ready rate (src/services/KpiService.js).
+    Every figure comes from KpiService.k1RoleReady through
+    ReportBuilderService.k1Report: headline Ready ÷ (Ready + Not ready) "of N
+    assessed · coverage Y %"; "Partially assessed" and "Not assessed" are
+    counts beside it, never in the %. Each row's status IS its K1 state, with
+    the reason that explains it. A never-assessed person is "Not assessed",
+    never "Not ready". Server-rendered, no script.
+%>
+<%
+  var k1 = report.k1 || {};
+  var b = k1.breakdown || {};
+  var nb = function (v) { var s = kf.num(v, 0); return s === null ? '—' : s; };
+  var pct = function (v) { var s = kf.pct(v, 1); return s === null ? __('reports:dr_unmeasured') : s; };
+  var coverageText = k1.coverage == null ? __('reports:dr_unmeasured') : pct(k1.coverage);
+  var STATUS_CLASS = { compliant: 'badge-ready', watch: 'badge-warning', at_risk: 'badge-not-ready' };
+  var STATE_CLASS = { ready: 'badge-ready', not_ready: 'badge-not-ready', partial: 'badge-warning', not_assessed: 'badge-secondary', no_requirement: 'badge-secondary' };
+  var siteLabel = function (s) { return s.noSite ? __('kpi:no_site') : s.name; };
+  var qs = selectedSite ? '&site=' + encodeURIComponent(selectedSite) : '';
+  var headline;
+  if (k1.value != null) headline = pct(k1.value);
+  else if (k1.status === 'small_n' && k1.denominator) headline = __('reports:dr_count_of', { num: nb(k1.numerator), den: nb(k1.denominator) });
+  else headline = __('kpi:status_not_measured');
+-%>
 <div class="page-header">
     <h1><%= __('reports:readiness_title') %></h1>
     <div class="page-actions">
-        <a href="/reports/readiness?format=csv" class="btn btn-secondary"><%= __('reports:export_csv') %></a>
-        <a href="/reports/readiness?format=json" class="btn btn-secondary"><%= __('reports:export_json') %></a>
+        <a href="/reports/readiness?format=csv<%= qs %>" class="btn btn-secondary"><%= __('reports:export_csv') %></a>
+        <a href="/reports/readiness?format=json<%= qs %>" class="btn btn-secondary"><%= __('reports:export_json') %></a>
     </div>
 </div>
+
+<% if (filterError) { %>
+<div class="alert alert-warning" role="alert" data-dr-filter-error="<%= filterError %>"><%= __('reports:dr_filter_out_of_perimeter') %></div>
+<% } %>
+
+<form method="GET" action="/reports/readiness" class="dr-scope" aria-label="<%= __('reports:dr_scope_label') %>">
+    <label for="drSite"><%= __('reports:dr_scope_site') %></label>
+    <select id="drSite" name="site" class="form-control form-control-sm">
+        <option value=""><%= __('reports:dr_scope_all_sites') %></option>
+        <% sites.forEach(function (s) { %>
+        <option value="<%= s.id %>"<%= String(s.id) === String(selectedSite) ? ' selected' : '' %>><%= siteLabel(s) %></option>
+        <% }); %>
+    </select>
+    <button type="submit" class="btn btn-sm btn-secondary"><%= __('reports:dr_scope_apply') %></button>
+    <% if (selectedSite) { %><a class="btn btn-sm btn-link" href="/reports/readiness"><%= __('reports:dr_scope_reset') %></a><% } %>
+    <span class="text-muted">
+        <%= __('reports:dr_scope_people', { n: nb(report.population) }) %> ·
+        <%= __('reports:dr_scope_coverage', { coverage: coverageText }) %>
+    </span>
+</form>
 
 <div class="report-summary">
     <h2><%= __('reports:summary') %></h2>
     <div class="stats-grid">
-        <div class="stat-card">
-            <h3><%= __('reports:total_employees') %></h3>
-            <p class="stat-value">
-                <%= organizationalReadiness.totalEmployees %>
-            </p>
+        <div class="stat-card" data-kpi="K1" data-status="<%= k1.status || '' %>">
+            <h3><%= __('reports:dr_kpi_k1') %></h3>
+            <p class="stat-value"><%= headline %></p>
+            <% if (k1.denominator) { %>
+            <p class="text-muted"><%= __('reports:dr_k1_sub', { n: nb(k1.denominator), coverage: coverageText }) %></p>
+            <% } else if (report.population > 0) { %>
+            <p class="text-muted"><%= __('reports:dr_k1_unmeasured') %></p>
+            <% } %>
+            <% if (k1.status) { %>
+            <span class="badge <%= STATUS_CLASS[k1.status] || 'badge-secondary' %>"><%= __('kpi:status_' + k1.status) %></span>
+            <% } %>
         </div>
-        <div class="stat-card">
-            <h3><%= __('reports:ready') %></h3>
-            <p class="stat-value">
-                <%= organizationalReadiness.readyCount %>
-            </p>
-        </div>
-        <div class="stat-card">
-            <h3><%= __('reports:not_ready') %></h3>
-            <p class="stat-value">
-                <%= organizationalReadiness.notReadyCount %>
-            </p>
-        </div>
-        <div class="stat-card">
-            <h3><%= __('reports:pct_role_ready') %></h3>
-            <p class="stat-value">
-                <%= organizationalReadiness.overallReadinessPercent %>%
-            </p>
-        </div>
+        <div class="stat-card" data-state="ready"><h3><%= __('kpi:state_ready') %></h3><p class="stat-value"><%= nb(b.ready || 0) %></p></div>
+        <div class="stat-card" data-state="not_ready"><h3><%= __('kpi:state_not_ready') %></h3><p class="stat-value"><%= nb(b.notReady || 0) %></p></div>
+        <div class="stat-card" data-state="partial"><h3><%= __('kpi:state_partial') %></h3><p class="stat-value"><%= nb(b.partial || 0) %></p></div>
+        <div class="stat-card" data-state="not_assessed"><h3><%= __('kpi:state_not_assessed') %></h3><p class="stat-value"><%= nb(b.notAssessed || 0) %></p></div>
+        <% if (b.noRequirement) { %>
+        <div class="stat-card" data-state="no_requirement"><h3><%= __('kpi:state_no_requirement') %></h3><p class="stat-value"><%= nb(b.noRequirement) %></p></div>
+        <% } %>
     </div>
+    <p class="text-muted">
+        <%= __('reports:dr_k1_rule', { threshold: nb(report.threshold) }) %>
+        <a href="/kpi/glossary#K1"><%= __('reports:dr_how_computed') %></a>
+    </p>
 </div>
 
+<% if (report.rows && report.rows.length > 0) { %>
 <div class="report-section">
-    <h2><%= __('reports:readiness_distribution') %></h2>
-    <div class="readiness-bars">
-        <div class="readiness-bar">
-            <span class="bar-label">0-20%</span>
-            <div class="bar-container">
-                <div class="bar"
-                    style="width: <%= organizationalReadiness.totalEmployees > 0 ? (organizationalReadiness.readinessDistribution['0-20'] / organizationalReadiness.totalEmployees * 100) : 0 %>%">
-                </div>
-            </div>
-            <span class="bar-value">
-                <%= organizationalReadiness.readinessDistribution['0-20'] %>
-            </span>
-        </div>
-        <div class="readiness-bar">
-            <span class="bar-label">21-40%</span>
-            <div class="bar-container">
-                <div class="bar"
-                    style="width: <%= organizationalReadiness.totalEmployees > 0 ? (organizationalReadiness.readinessDistribution['21-40'] / organizationalReadiness.totalEmployees * 100) : 0 %>%">
-                </div>
-            </div>
-            <span class="bar-value">
-                <%= organizationalReadiness.readinessDistribution['21-40'] %>
-            </span>
-        </div>
-        <div class="readiness-bar">
-            <span class="bar-label">41-60%</span>
-            <div class="bar-container">
-                <div class="bar"
-                    style="width: <%= organizationalReadiness.totalEmployees > 0 ? (organizationalReadiness.readinessDistribution['41-60'] / organizationalReadiness.totalEmployees * 100) : 0 %>%">
-                </div>
-            </div>
-            <span class="bar-value">
-                <%= organizationalReadiness.readinessDistribution['41-60'] %>
-            </span>
-        </div>
-        <div class="readiness-bar">
-            <span class="bar-label">61-79%</span>
-            <div class="bar-container">
-                <div class="bar"
-                    style="width: <%= organizationalReadiness.totalEmployees > 0 ? (organizationalReadiness.readinessDistribution['61-79'] / organizationalReadiness.totalEmployees * 100) : 0 %>%">
-                </div>
-            </div>
-            <span class="bar-value">
-                <%= organizationalReadiness.readinessDistribution['61-79'] %>
-            </span>
-        </div>
-        <div class="readiness-bar">
-            <span class="bar-label">80-100%</span>
-            <div class="bar-container">
-                <div class="bar"
-                    style="width: <%= organizationalReadiness.totalEmployees > 0 ? (organizationalReadiness.readinessDistribution['80-100'] / organizationalReadiness.totalEmployees * 100) : 0 %>%">
-                </div>
-            </div>
-            <span class="bar-value">
-                <%= organizationalReadiness.readinessDistribution['80-100'] %>
-            </span>
-        </div>
+    <h2><%= __('reports:employee_readiness_details') %></h2>
+    <div class="table-responsive">
+    <table class="table" data-dr-readiness-rows>
+        <thead>
+            <tr>
+                <th scope="col"><%= __('reports:employee_number') %></th>
+                <th scope="col"><%= __('reports:name') %></th>
+                <th scope="col"><%= __('reports:role') %></th>
+                <th scope="col"><%= __('reports:dr_col_readiness') %></th>
+                <th scope="col"><%= __('reports:dr_col_assessed') %></th>
+                <th scope="col"><%= __('reports:status') %></th>
+                <th scope="col"><%= __('reports:dr_col_reason') %></th>
+            </tr>
+        </thead>
+        <tbody>
+            <% report.rows.forEach(function (rd) { %>
+            <tr data-state="<%= rd.state %>">
+                <td><%= rd.employee.employeeNumber %></td>
+                <td><%= rd.employee.firstName %> <%= rd.employee.lastName %></td>
+                <td><%= rd.employee.roleName %></td>
+                <td><%= rd.readinessPercent == null ? __('reports:dr_unmeasured') : pct(rd.readinessPercent) %></td>
+                <td>
+                    <% if (rd.totalRequired > 0) { %>
+                    <%= __('reports:dr_assessed_of', { assessed: nb(rd.assessedRequired), total: nb(rd.totalRequired) }) %>
+                    <% if (rd.skillsMet != null) { %><br><span class="text-muted"><%= __('reports:dr_met_of', { met: nb(rd.skillsMet), assessed: nb(rd.assessedRequired) }) %></span><% } %>
+                    <% } else { %>—<% } %>
+                </td>
+                <td><span class="badge <%= STATE_CLASS[rd.state] || 'badge-secondary' %>"><%= __('kpi:state_' + rd.state) %></span></td>
+                <td>
+                    <%= rd.reason ? __('reports:dr_reason_' + rd.reason) : '' %>
+                    <% if (rd.state === 'not_ready' && rd.criticalNotMet > 0) { %>
+                    <span class="text-muted">(<%= __('reports:dr_critical_not_met_n', { n: nb(rd.criticalNotMet) }) %>)</span>
+                    <% } %>
+                </td>
+            </tr>
+            <% }); %>
+        </tbody>
+    </table>
     </div>
 </div>
-
-<% if (organizationalReadiness.readinessData && organizationalReadiness.readinessData.length> 0) { %>
-    <div class="report-section">
-        <h2><%= __('reports:employee_readiness_details') %></h2>
-        <table class="table">
-            <thead>
-                <tr>
-                    <th><%= __('reports:employee_number') %></th>
-                    <th><%= __('reports:name') %></th>
-                    <th><%= __('reports:role') %></th>
-                    <th><%= __('reports:readiness_pct') %></th>
-                    <th><%= __('reports:skills_met') %></th>
-                    <th><%= __('reports:status') %></th>
-                </tr>
-            </thead>
-            <tbody>
-                <% organizationalReadiness.readinessData.forEach(function(rd) { %>
-                    <tr>
-                        <td>
-                            <%= rd.employee.employeeNumber %>
-                        </td>
-                        <td>
-                            <%= rd.employee.firstName %>
-                                <%= rd.employee.lastName %>
-                        </td>
-                        <td>
-                            <%= rd.employee.roleName %>
-                        </td>
-                        <td>
-                            <%= rd.readinessPercent == null ? __('dash:rd_not_measured') : rd.readinessPercent + '%' %>
-                        </td>
-                        <td>
-                            <%= rd.skillsMet %> / <%= rd.totalRequired %>
-                        </td>
-                        <td>
-                            <span class="badge <%= rd.isReady ? 'badge-ready' : 'badge-not-ready' %>">
-                                <%= rd.isReady ? __('reports:ready') : __('reports:not_ready') %>
-                            </span>
-                        </td>
-                    </tr>
-                    <% }); %>
-            </tbody>
-        </table>
-    </div>
-    <% } %>
+<% } %>

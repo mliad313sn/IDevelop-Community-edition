@@ -13,7 +13,7 @@
  *   GET  /compliance/evidence/:id             download evidence (clean only)
  *   POST /compliance/rules                    create coverage rule
  *   POST /compliance/rules/:id/toggle         activate/deactivate rule
- *   POST /compliance/rules/:id/delete         delete ONE coverage rule
+ *   POST /compliance/rules/:id/delete         deactivate ONE coverage rule (reason; never deleted)
  *
  * RBAC: reads are scoped BEFORE aggregation via rbacScope (managers see their
  * sub-tree, local admins their assigned scopes, SuperAdmin everything).
@@ -28,6 +28,7 @@
  * manager the forms they can actually submit and hides the ones they cannot.
  */
 
+const { uploadedPath, discardUpload } = require('../utils/uploadTempPath');
 const fs = require('fs');
 const db = require('../config/database');
 const CertificationService = require('../services/CertificationService');
@@ -35,6 +36,20 @@ const CoverageService = require('../services/CoverageService');
 const LogService = require('../services/LogService');
 const { scopedEmployeeIds } = require('../utils/rbacScope');
 const RBACService = require('../services/RBACService');
+
+/** 'admin:<id>' | 'employee:<id>', stored as deactivated_by. */
+function actorRefOf(user) {
+    if (!user || user.id == null) return null;
+    return `${user.userType === 'admin' ? 'admin' : 'employee'}:${Number(user.id)}`;
+}
+/** A date column as YYYY-MM-DD for an audit line (pg returns a Date). */
+function ymd(d) {
+    if (!d) return '—';
+    return d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+}
+function reasonRequired(req) {
+    return req.t ? req.t('compliance:err_deactivate_reason_required') : 'A reason is required.';
+}
 
 class ComplianceController {
     /** Page shell with initial data (tables render server-side; no SPA needed). */
@@ -96,8 +111,20 @@ class ComplianceController {
               )
             : [];
 
+        // Which antivirus scans the evidence files (alert when none). Only for the
+        // people who upload or configure; a failure never blocks the page.
+        let malwareScan = null;
+        if (canRecord || canConfigure) {
+            try {
+                malwareScan = await require('../services/MalwareScanService').status();
+            } catch (_) {
+                malwareScan = null;
+            }
+        }
+
         res.render('pages/compliance/index', {
             title: req.t ? req.t('chrome:pt_operational_compliance') : 'Operational Compliance',
+            malwareScan,
             counts,
             expiring,
             lapsed,
@@ -198,7 +225,7 @@ class ComplianceController {
             // Scope check: the target employee must be visible to the actor.
             const ids = await scopedEmployeeIds(req.user);
             if (ids !== null && !ids.includes(Number(employeeId))) {
-                if (req.file) fs.unlink(req.file.path, () => {});
+                discardUpload(req.file);
                 return res.status(403).json({ error: 'Employee outside your scope' });
             }
             const cert = await CertificationService.record(
@@ -229,7 +256,7 @@ class ComplianceController {
             );
             res.redirect('/compliance');
         } catch (e) {
-            if (req.file) fs.unlink(req.file.path, () => {});
+            discardUpload(req.file);
             if (this._wantsJson(req)) return res.status(400).json({ error: e.message });
             req.flash(
                 'error',
@@ -263,7 +290,7 @@ class ComplianceController {
         res.json({ success: true });
     }
 
-    /** Evidence download — clean files only (pending/quarantined/scan_error refused). */
+    /** Evidence download: clean files, or not-scanned files to a restricted audience. */
     async evidence(req, res) {
         const cert = await db.get('SELECT * FROM employee_certifications WHERE id = ?', [
             req.params.id,
@@ -272,9 +299,28 @@ class ComplianceController {
         const ids = await scopedEmployeeIds(req.user);
         if (ids !== null && !ids.includes(Number(cert.employeeId)))
             return res.status(403).send('Access denied');
-        if (cert.avStatus !== 'clean')
-            return res.status(409).send('Evidence not available (virus scan not clean)');
-        res.download(cert.fileUri, cert.originalName || 'evidence');
+        // clean -> served; not_scanned -> restricted (uploader, reporting line,
+        // manage_compliance); anything else refused. Always an attachment,
+        // never inline (MalwareScanService.sendStoredFile).
+        const a = await CertificationService.evidenceAccess(cert, req.user);
+        if (!a.allow)
+            return res
+                .status(a.status)
+                .send(
+                    req.t
+                        ? req.t(
+                              a.reason === 'not_scanned_restricted'
+                                  ? 'compliance:evidence_not_scanned_restricted'
+                                  : 'compliance:evidence_not_clean'
+                          )
+                        : 'Evidence not available'
+                );
+        return require('../services/MalwareScanService').sendStoredFile(
+            res,
+            cert.fileUri,
+            cert.originalName || 'evidence',
+            { mime: cert.mime, unscanned: a.unscanned }
+        );
     }
 
     /** Download the certifications bulk-import Excel template. */
@@ -300,11 +346,11 @@ class ComplianceController {
         const dryRun = String(req.body.dryRun || '') === '1';
         try {
             const CertificationService = require('../services/CertificationService');
-            const results = await CertificationService.importWorkbook(req.file.path, {
+            const results = await CertificationService.importWorkbook(uploadedPath(req.file), {
                 dryRun,
                 actor: req.user,
             });
-            fs.unlink(req.file.path, () => {});
+            discardUpload(req.file);
             if (!dryRun) {
                 await LogService.log({
                     adminId: req.user.userType === 'admin' ? req.user.id : null,
@@ -317,7 +363,7 @@ class ComplianceController {
             }
             res.json({ success: true, dryRun, results });
         } catch (e) {
-            fs.unlink(req.file.path, () => {});
+            discardUpload(req.file);
             res.status(400).json({ error: e.message });
         }
     }
@@ -377,17 +423,27 @@ class ComplianceController {
         if (ids !== null && !ids.includes(Number(absence.employeeId))) {
             return res.status(403).json({ error: 'Employee outside your scope' });
         }
-        await CoverageService.deleteAbsence(absence.id);
+        // Never deleted (SA-43): cancelled with its reason, and audited.
+        const reason = String((req.body && req.body.reason) || '').trim();
+        if (!reason)
+            return res.status(400).json({ error: reasonRequired(req), code: 'reason_required' });
+        const row = await CoverageService.deactivateAbsence(
+            absence.id,
+            reason,
+            actorRefOf(req.user)
+        );
+        if (!row) return res.status(404).json({ error: 'Absence not found' });
         await LogService.log({
             adminId: req.user.userType === 'admin' ? req.user.id : null,
-            action: 'ABSENCE_REMOVED',
+            actorRef: actorRefOf(req.user),
+            action: 'ABSENCE_DEACTIVATED',
             entityType: 'employee',
             entityId: absence.employeeId,
-            details: `Planned absence ${absence.id} removed (${absence.startsOn} → ${absence.endsOn})`,
+            details: `Planned absence ${absence.id} cancelled (${ymd(absence.startsOn)} → ${ymd(absence.endsOn)}); reason: ${reason.slice(0, 200)}`,
             ipAddress: req.ip,
             userAgent: req.get('user-agent'),
         });
-        res.json({ success: true });
+        res.json({ success: true, deactivated: Number(absence.id) });
     }
 
     async createRule(req, res) {
@@ -474,15 +530,15 @@ class ComplianceController {
     }
 
     /**
-     * Delete ONE coverage rule. The bulk generator can create a grid of
+     * Remove ONE coverage rule from use. The bulk generator can create a grid of
      * hundreds; until now there was no way to remove a single bad rule short of
      * a DB console, so operators disabled them and lived with the noise.
      *
-     * Deleting is destructive, so it is: permission-gated at the route,
-     * scope-checked here (a rule naming an org unit outside the caller's scope
-     * is invisible to them and stays undeletable), and audited with the FULL
-     * rule definition — a safe-shift rule must never vanish without a record of
-     * what it required.
+     * The rule is deactivated with a written reason, never deleted (SA-43). It
+     * is permission-gated at the route, scope-checked here (a rule naming an org
+     * unit outside the caller's scope is invisible to them and stays out of
+     * reach), and audited with the FULL rule definition: a safe-shift rule must
+     * never leave use without a record of what it required.
      */
     async deleteRule(req, res) {
         const rule = await CoverageService.findRule(req.params.id);
@@ -499,20 +555,37 @@ class ComplianceController {
         const scopeLabel =
             [rule.siteName, rule.departmentName, rule.serviceName].filter(Boolean).join(' / ') ||
             'whole organization';
-        await CoverageService.deleteRule(rule.id);
+        // Never deleted (SA-43): deactivated with its reason (state and reason
+        // on the row). It leaves the lists, the evaluation and the prediction,
+        // which read active rules only.
+        const reason = String((req.body && req.body.reason) || '').trim();
+        if (!reason) {
+            if (this._wantsJson(req))
+                return res
+                    .status(400)
+                    .json({ error: reasonRequired(req), code: 'reason_required' });
+            req.flash('error', reasonRequired(req));
+            return res.redirect('/compliance');
+        }
+        const row = await CoverageService.deactivateRule(rule.id, reason, actorRefOf(req.user));
+        if (!row) return res.status(404).json({ error: 'Rule not found' });
         await LogService.log({
             adminId: req.user.userType === 'admin' ? req.user.id : null,
-            action: 'COVERAGE_RULE_DELETED',
+            actorRef: actorRefOf(req.user),
+            action: 'COVERAGE_RULE_DEACTIVATED',
             entityType: 'coverage_rule',
             entityId: rule.id,
             details:
-                `Coverage rule "${rule.name}" DELETED (${scopeLabel}): required >=${rule.minHeadcount} at level>=${rule.minLevel} in ${rule.skillName}` +
-                `${rule.requireValidCert ? ' with a valid certification' : ''}, severity ${rule.severity}`,
+                `Coverage rule "${rule.name}" DEACTIVATED (${scopeLabel}): required >=${rule.minHeadcount} at level>=${rule.minLevel} in ${rule.skillName}` +
+                `${rule.requireValidCert ? ' with a valid certification' : ''}, severity ${rule.severity}; reason: ${reason.slice(0, 200)}`,
             ipAddress: req.ip,
             userAgent: req.get('user-agent'),
         });
-        if (this._wantsJson(req)) return res.json({ success: true, deleted: Number(rule.id) });
-        req.flash('success', req.t ? req.t('flash:cmp_rule_deleted') : 'Coverage rule deleted');
+        if (this._wantsJson(req)) return res.json({ success: true, deactivated: Number(rule.id) });
+        req.flash(
+            'success',
+            req.t ? req.t('compliance:rule_deactivated') : 'Coverage rule deactivated'
+        );
         res.redirect('/compliance');
     }
 
@@ -528,6 +601,7 @@ class ComplianceController {
         res.render('pages/compliance/register', {
             title: req.t ? req.t('compliance:reg_title') : 'Employee-representative register',
             reg,
+            privacy: await require('./PrivacyController').registerLocals(req),
         });
     }
 
@@ -545,6 +619,7 @@ class ComplianceController {
         res.render('pages/employee/my-data', {
             title: req.t ? req.t('compliance:mydata_title') : 'What is recorded about me',
             mine,
+            privacy: await require('./PrivacyController').myDataLocals(req),
         });
     }
 

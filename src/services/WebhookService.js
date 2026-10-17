@@ -2,7 +2,8 @@
 
 /**
  * WebhookService — OUTBOUND event webhooks. External systems subscribe to events
- * (employee.created, ninebox.approved, pip.opened, readiness.changed, …) and
+ * (lifecycle.joiner, cycle.opened, sa.approved, …: the allow-list
+ * EMITTABLE_EVENTS below; confidential kinds never leave) and
  * receive signed JSON POSTs. This makes IDevelop event-driven for integration,
  * not just pull-only. Dispatch is best-effort + recorded for observability.
  */
@@ -109,6 +110,103 @@ async function deliver(raw, body, headers) {
     });
 }
 
+/**
+ * The ONLY notification kinds an outgoing webhook carries by default:
+ * operational workflow events whose payload is reduced to ids, dates and an
+ * in-app link (minimisePayload). Everything else, and in particular every
+ * confidential kind, stays inside the application whatever a subscription asks
+ * for ('*' included).
+ */
+const EMITTABLE_EVENTS = new Set([
+    'lifecycle.joiner',
+    'lifecycle.mover',
+    'lifecycle.leaver',
+    'cycle.opened',
+    'cycle.closed',
+    'sa.submitted',
+    'sa.approved',
+    'sa.manager_validated',
+    'review.completed',
+    'idp.created',
+    'idp.activated',
+    'coaching.created',
+    'coaching.validated',
+    'lms.assigned',
+    'lms.due',
+    // The development loop (4.0.0 port): the payload is minimised below.
+    'idp.action_due',
+    'idp.action_reported',
+    'idp.action_validated',
+    'idp.completed',
+    'idp.proposal_received',
+    'idp.proposal_decided',
+    'lms.uplift_accepted',
+    'lms.uplift_declined',
+    'cert.expiry',
+    'certification.revoked',
+    'coverage.breach',
+    'coverage.predicted',
+    'mobility.opportunity_posted',
+]);
+
+/** Families that never leave the application, even if a kind were listed by mistake. */
+const BLOCKED_FAMILIES = /^(pip|ninebox|retention|privacy)(\.|_|$)/;
+
+/**
+ * Families that leave only when a SuperAdmin lists them in the security-class
+ * setting `webhookOptInEvents` (comma-separated: a kind such as
+ * `feedback360.released`, or a whole family such as `feedback360.*`).
+ */
+const OPT_IN_FAMILIES = ['feedback360.', 'oneonone.', 'hris.sync.'];
+
+function parseOptIn(raw) {
+    return String(raw || '')
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .filter((s) => OPT_IN_FAMILIES.some((f) => s.startsWith(f)));
+}
+
+/**
+ * May this event leave the application at all?
+ * @param {string} event
+ * @param {string[]} [optIn] parsed `webhookOptInEvents`
+ */
+function isEmittable(event, optIn = []) {
+    const ev = String(event || '');
+    if (ev === 'test.ping') return true;
+    if (BLOCKED_FAMILIES.test(ev)) return false;
+    if (EMITTABLE_EVENTS.has(ev)) return true;
+    if (!OPT_IN_FAMILIES.some((f) => ev.startsWith(f))) return false;
+    return (optIn || []).some(
+        (o) => o === ev || (o.endsWith('.*') && ev.startsWith(o.slice(0, -1)))
+    );
+}
+
+/**
+ * The payload an outgoing webhook may carry: ids, dates and an in-app link,
+ * never figures or free text (a reason, a name, a comment, a rating).
+ *   link               an in-app path (starts with "/")
+ *   ...Id / id         an integer or a string of digits
+ *   ...At / ...On / ...Date   a Date or an ISO date / timestamp string
+ */
+function minimisePayload(payload) {
+    const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+    const out = {};
+    const isoDate = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+    for (const [k, v] of Object.entries(p)) {
+        if (k === 'link') {
+            if (typeof v === 'string' && v.startsWith('/') && !v.startsWith('//')) out.link = v;
+        } else if (/(^id$|Id$|_id$)/.test(k)) {
+            if (Number.isInteger(v) || (typeof v === 'string' && /^\d{1,18}$/.test(v))) out[k] = v;
+        } else if (/(At|_at|On|_on|Date|_date)$/.test(k)) {
+            if (v instanceof Date && !Number.isNaN(v.getTime())) out[k] = v.toISOString();
+            else if (typeof v === 'string' && isoDate.test(v)) out[k] = v;
+        }
+    }
+    return out;
+}
+
 const FORMATS = ['json', 'slack', 'teams'];
 
 // Chat channels are wide audiences: a chat message carries the event name, a
@@ -187,7 +285,7 @@ class WebhookService {
         if (!FORMATS.includes(format)) throw new Error('format must be json, slack or teams');
         assertSafeWebhookUrl(url);
         // Encrypt the signing secret at rest (decrypted only to sign on emit).
-        const storedSecret = secret ? secretBox.encrypt(String(secret)) : null;
+        const storedSecret = secret ? secretBox.encrypt(String(secret), 'webhook') : null;
         return db.get(
             `INSERT INTO webhook_subscriptions (label, url, secret, events, format, created_by_admin_id)
              VALUES (?, ?, ?, ?, ?, ?) RETURNING id, label, url, events, format, enabled`,
@@ -220,6 +318,21 @@ class WebhookService {
         return deliver(url, body, headers);
     }
 
+    /** The SuperAdmin opt-in list (feedback360 / oneonone / hris.sync kinds); [] on any doubt. */
+    async _optIn() {
+        try {
+            const AppSettingsModel = require('../models/AppSettingsModel');
+            return parseOptIn(await AppSettingsModel.getValue('webhookOptInEvents', ''));
+        } catch (_) {
+            return [];
+        }
+    }
+
+    /** May this event leave the application at all? (see EMITTABLE_EVENTS) */
+    isEmittable(event, optIn = []) {
+        return isEmittable(event, optIn);
+    }
+
     _matches(events, event) {
         const arr = Array.isArray(events) ? events : [];
         return arr.includes('*') || arr.includes(event);
@@ -231,6 +344,9 @@ class WebhookService {
      * throws to callers — emitting must not break the originating action.
      */
     async emit(event, data = {}) {
+        if (!isEmittable(event, await this._optIn())) {
+            return { delivered: 0, skipped: 'not_emittable' };
+        }
         try {
             const subs = await db.all('SELECT * FROM webhook_subscriptions WHERE enabled = true');
             const targets = subs.filter((s) => this._matches(s.events, event));
@@ -301,3 +417,7 @@ module.exports.FORMATS = FORMATS;
 module.exports.assertSafeWebhookUrl = assertSafeWebhookUrl;
 module.exports.resolveTarget = resolveTarget;
 module.exports.deliver = deliver;
+module.exports.EMITTABLE_EVENTS = EMITTABLE_EVENTS;
+module.exports.OPT_IN_FAMILIES = OPT_IN_FAMILIES;
+module.exports.parseOptIn = parseOptIn;
+module.exports.minimisePayload = minimisePayload;

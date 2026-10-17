@@ -113,10 +113,37 @@ describe('F3 — an undecryptable stored secret never falls back to .env', () =>
 });
 
 describe('F4 / F5 — metadata fetch', () => {
-    test('the pinned lookup answers the {all:true} form Node >= 22 uses', () => {
-        expect(read('src/services/SamlMetadataService.js')).toMatch(
-            /opts && opts\.all\s*\?\s*cb\(null, \[\{ address: pinned\.address, family: pinned\.family \}\]\)/
-        );
+    test('the request connects to the CHECKED address, keeping the name for TLS and Host', async () => {
+        const dns = require('dns');
+        const https = require('https');
+        const { EventEmitter } = require('events');
+        const look = jest
+            .spyOn(dns.promises, 'lookup')
+            .mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+        let seen;
+        const get = jest.spyOn(https, 'get').mockImplementation((opts) => {
+            seen = opts;
+            const req = new EventEmitter();
+            req.destroy = (err) => req.emit('error', err || new Error('destroyed'));
+            setImmediate(() => req.emit('error', new Error('no network in tests')));
+            return req;
+        });
+        try {
+            const Md = require('../../src/services/SamlMetadataService');
+            await Md.fetchMetadata('https://login.example:8443/md?x=1');
+            expect(seen).toMatchObject({
+                host: '93.184.216.34',
+                family: 4,
+                port: 8443,
+                path: '/md?x=1',
+                servername: 'login.example',
+            });
+            expect(seen.headers.Host).toBe('login.example:8443');
+            expect(seen.lookup).toBeUndefined();
+        } finally {
+            look.mockRestore();
+            get.mockRestore();
+        }
     });
     test('special-purpose IPv4/IPv6 forms are private; public addresses are not', () => {
         for (const a of [
@@ -151,27 +178,43 @@ describe('F4 / F5 — metadata fetch', () => {
 
 describe('SCIM — reachable by a real identity provider', () => {
     test('an opaque Bearer token is accepted as an API key (JWTs stay for Entra)', () => {
+        // One resolver, presentedApiKey: header, then an OPAQUE bearer, then
+        // ?apiKey= (reported as 'query', honoured only for flagged keys, migration 163).
         const m = code('src/middleware/apiAuth.js');
-        expect(m).toMatch(
-            /const opaqueBearer = bearer && !sso\.looksLikeJwt\(bearer\) \? bearer : null;/
+        expect(m).toMatch(/function presentedApiKey/);
+        const { presentedApiKey } = require('../../src/middleware/apiAuth');
+        expect(presentedApiKey({ headers: { authorization: 'Bearer opaque-scim-token' } })).toEqual(
+            { key: 'opaque-scim-token', source: 'bearer' }
         );
-        expect(m).toMatch(/req\.headers\['x-api-key'\] \|\| opaqueBearer \|\| req\.query\.apiKey/);
+        expect(
+            presentedApiKey({ headers: { authorization: 'Bearer aaa.bbb.ccc' }, query: {} })
+        ).toBeNull();
+        expect(presentedApiKey({ headers: {}, query: { apiKey: 'k' } })).toEqual({
+            key: 'k',
+            source: 'query',
+        });
     });
     test('application/scim+json is JSON for the parser, the origin guard and the CSRF skip', () => {
+        // The JSON media types and the predicate moved to
+        // src/middleware/httpHardening.js, shared by the parser (server.js), the
+        // origin guard and the CSRF skip; the predicate is now anchored on the
+        // MIME essence.
         const s = read('server.js');
-        expect(s).toMatch(/const _JSON_TYPES = \['application\/json', 'application\/\*\+json'\];/);
+        const H = require('../../src/middleware/httpHardening');
+        expect(H.JSON_TYPES).toEqual(['application/json', 'application/*+json']);
+        expect(s).toMatch(/const _JSON_TYPES = \[\.\.\.httpHardening\.JSON_TYPES\];/);
         expect(s).toMatch(/express\.json\(\{[^}]*type: _JSON_TYPES/);
-        const isJson = new Function(
-            'ct',
-            'return ' +
-                /const _isJsonType = \(ct\) => (.*);/
-                    .exec(s)[1]
-                    .replace(/String\(ct \|\| ''\)/, "String(ct || '')")
-        );
-        expect(isJson('application/scim+json; charset=utf-8')).toBe(true);
-        expect(isJson('application/json')).toBe(true);
-        expect(isJson('application/x-www-form-urlencoded')).toBe(false);
-        expect((s.match(/_isJsonType\(req\.headers\['content-type'\]\)/g) || []).length).toBe(2);
+        expect(H.isJsonType('application/scim+json; charset=utf-8')).toBe(true);
+        expect(H.isJsonType('application/json')).toBe(true);
+        expect(H.isJsonType('application/x-www-form-urlencoded')).toBe(false);
+        const hh = read('src/middleware/httpHardening.js');
+        expect(
+            (
+                hh.match(
+                    /isJsonType\(req\.headers(\['content-type'\]| && req\.headers\['content-type'\])\)/g
+                ) || []
+            ).length
+        ).toBe(2);
     });
     test('a PATCH without Operations is 400 invalidSyntax, never a silent 200', () => {
         expect(code('src/routes/scim.js')).toMatch(
@@ -195,7 +238,7 @@ describe('Test sign-in explains refusals too', () => {
         expect(s).toMatch(/SsoTest\.setResult\(testTok\.nonce, \{\s*ok: false,\s*code/);
     });
     test('a library-level rejection (signature, InResponseTo) during a test is reported too', () => {
-        expect(code('src/controllers/SsoController.js')).toMatch(/code: 'sso_saml_invalid'/);
+        expect(code('src/controllers/SsoController.js')).toMatch(/code: samlRefusalCode\(err\),/);
     });
     test('every refusal code has a translated explanation', () => {
         for (const lng of ['fr', 'en']) {

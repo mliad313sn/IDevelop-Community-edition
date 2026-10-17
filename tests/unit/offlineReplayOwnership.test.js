@@ -94,7 +94,7 @@ describe('a draft cannot be re-filed into a later campaign (L5-5)', () => {
         expect(sync).toMatch(/cycleId: row\.cycleId \|\| null/);
         const view = read('views/pages/employee/self-assessment.ejs');
         expect(view).toMatch(
-            /const SA_CYCLE_ID = '<%= typeof cycle !== "undefined" && cycle && cycle\.id \? cycle\.id : "" %>'/
+            /const SA_CYCLE_ID = <%- JSON\.stringify\(typeof cycle !== "undefined" && cycle && cycle\.id != null \? String\(cycle\.id\) : null\) %>;/
         );
     });
 

@@ -61,18 +61,9 @@ describe('criticalCompliance is NULL when unmeasured, never 0', () => {
 });
 
 describe('every consumer renders an unmeasured value as unmeasured', () => {
-    test('the dashboard KPI card prints an em dash, not 0%', () => {
-        const js = fs.readFileSync(path.join(__dirname, '../../public/js/dashboard.js'), 'utf8');
-        expect(js).toMatch(/kpis\.criticalCompliance == null \? '—'/);
-    });
+    // the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)
 
-    test('the board pack prints an em dash for a null KPI', () => {
-        const ejs = fs.readFileSync(
-            path.join(__dirname, '../../views/pages/exec/board-pack.ejs'),
-            'utf8'
-        );
-        expect(ejs).toMatch(/function pv\(v, suffix\)[\s\S]{0,120}undefined\)\s*\?\s*'—'/);
-    });
+    // the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)
 
     test('the snapshot service stores the KPI without coercing null to a number', () => {
         const svc = fs.readFileSync(

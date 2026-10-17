@@ -20,7 +20,8 @@ const CLEAN_ORDER = [
     'coaching_plan_actions',
     'coaching_sessions',
     'coaching_plans',
-    // IDP
+    // IDP (dev_proposals, migration 192, points at plans and actions: first)
+    'dev_proposals',
     'idp_signoffs',
     'action_effectiveness',
     'action_evidence',
@@ -101,6 +102,14 @@ const IMMUTABLE_TABLES = new Set([
     // Migration 116 — trg_sa_events_immutable / trg_sa_events_no_truncate.
     'self_assessment_events',
     'selfAssessmentEvents',
+    // Migration 186 — trg_kpi_targets_immutable: a target decision is never
+    // rewritten or deleted.
+    'kpi_targets',
+    'kpiTargets',
+    // Migration 193 — trg_review_records_no_delete: an end-of-campaign record
+    // is never deleted (only the person's comment changes, its own guard).
+    'review_records',
+    'reviewRecords',
 ]);
 
 const BACKUP_DIR = path.resolve(__dirname, '../../data/backups');

@@ -34,6 +34,7 @@ router.get('/site-exposure', ah(ExecDecisionController.siteExposurePage));
 router.get('/api/site-exposure', ah(ExecDecisionController.siteExposureApi));
 
 // ---- Board pack ------------------------------------------------------------
-router.get('/board-pack', ah(ExecDecisionController.boardPackPage));
+// counts only, the same figures as the dashboard (DashboardHomeService)
+router.get('/board-pack', ah(require('../controllers/DashboardHomeController').boardPack));
 
 module.exports = router;

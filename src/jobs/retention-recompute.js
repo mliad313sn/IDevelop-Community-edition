@@ -90,9 +90,26 @@ async function tick() {
     // Managers whose team gained a newly-high risk tonight → count per manager.
     const byManager = new Map();
 
+    // Objection to profiling (GDPR art. 21): people who objected are SKIPPED,
+    // never scored, and their stored automated verdict stays withdrawn ("not
+    // computed: objection", never a low score). Read ONCE, before the loop, and
+    // FAIL CLOSED: if the objections cannot be read the sweep throws, the day is
+    // not claimed, and the next hourly tick retries.
+    const objectors = await require('../services/PrivacyService').activeObjectorIds();
+    out.skippedObjection = 0;
+
     for (const p of people) {
         const empId = Number(p.id);
         const prior = p.priorBand ?? p.prior_band ?? null;
+        if (objectors.has(empId)) {
+            out.skippedObjection++;
+            try {
+                await RetentionRiskService.suppressForObjection(empId);
+            } catch (_) {
+                /* idempotent; retried tomorrow, and the person is still not scored */
+            }
+            continue;
+        }
         let row;
         try {
             row = await RetentionRiskService.computeFor(empId);
@@ -157,7 +174,7 @@ async function tick() {
 
     if (process.env.NODE_ENV !== 'test') {
         console.log(
-            `[retention-recompute] computed:${out.computed} failed:${out.failed} crossed:${out.crossedToHigh} notified:${out.notified}`
+            `[retention-recompute] computed:${out.computed} failed:${out.failed} objection:${out.skippedObjection} crossed:${out.crossedToHigh} notified:${out.notified}`
         );
     }
     return out;

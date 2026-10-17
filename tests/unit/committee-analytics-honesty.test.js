@@ -54,7 +54,10 @@ jest.mock('../../src/services/LogService', () => ({ log: jest.fn() }));
 const SUPER = { id: 1, userType: 'admin', role: 'superadmin' };
 const lastSql = (fn) => String(fn.mock.calls[fn.mock.calls.length - 1][0]);
 const mockRes = () => {
-    const r = { code: 200 };
+    const r = { code: 200, headers: {} };
+    r.setHeader = (k, v) => {
+        r.headers[k] = v;
+    };
     r.status = (c) => {
         r.code = c;
         return r;
@@ -733,25 +736,5 @@ describe('F12 DashboardModel: a role nobody measured is unmeasured, not at risk'
         );
     });
 
-    test('the KPI card renders the unmeasured roles with dash:rd_not_measured, outside the risk count', () => {
-        const js = read('public/js/dashboard.js');
-        // A8: the card now prefers the KPI-query rolesAtRisk (is_role_ready, measured
-        // occupants — the same value persisted to the trend), and only falls back to
-        // the staffing derivation, which likewise excludes the unmeasured roles.
-        const jsFlat = js.replace(/\s+/g, ' ');
-        expect(jsFlat).toMatch(
-            /const riskCount = kpis\.rolesAtRisk != null \? num\(kpis\.rolesAtRisk, 0\) : staffing\.filter\(\(r\) => r\.isRisk && !r\.isUnmeasured\)\.length;/
-        );
-        const card = js.slice(
-            js.indexOf("I18N.kpiRolesAtRisk || 'Roles at Risk'"),
-            js.indexOf("I18N.kpiRolesAtRisk || 'Roles at Risk'") + 900
-        );
-        expect(card).toMatch(/I18N\.rdNotMeasured \|\| 'Not measured'/);
-        expect(card).toMatch(/I18N\.rdNotMeasuredTitle/);
-        expect(card).toMatch(/unmeasuredRoles > 0/);
-        // and the staffing table's Risk column says "not measured" instead of a ✓
-        expect(js).toMatch(
-            /row && row\.isUnmeasured\s*\?[\s\S]*I18N\.rdNotMeasured \|\| 'Not measured'/
-        );
-    });
+    // the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)
 });

@@ -16,10 +16,14 @@
                     package that must not carry this appliance's postgres credential). By
                     default the standard password SHIPS, unchanged since 3.22.85, so a
                     Patch / Migrate on the appliance runs unattended.
+.PARAMETER SkipOfflineCache Do not build <package>\npm-cache (a quick local build only).
+                    Without the cache the installer needs the npm registry; ship a
+                    package built WITH it.
 .EXAMPLE  powershell -ExecutionPolicy Bypass -File .\Build-Package.ps1 -Stamp phase8-okr-20260617
 #>
 [CmdletBinding()]
-param([string]$OutDir, [string]$Stamp, [switch]$SkipData, [switch]$IncludeData, [switch]$ScrubPgPassword)
+param([string]$OutDir, [string]$Stamp, [switch]$SkipData, [switch]$IncludeData, [switch]$ScrubPgPassword,
+      [switch]$SkipOfflineCache)
 
 # Community Edition default: NEVER bundle a database snapshot unless explicitly
 # requested with -IncludeData. A fresh install then creates and seeds an empty
@@ -28,6 +32,52 @@ if (-not $IncludeData) { $SkipData = $true }
 
 $ErrorActionPreference = 'Stop'
 $here    = Split-Path -Parent $MyInvocation.MyCommand.Path   # ...\installer
+
+# ---------------------------------------------------------------------------
+# SECRET-ROW GUARD (-IncludeData only; the default package carries no data).
+# Rows in these tables are never product data: live sessions, reset tokens,
+# SAML caches, MFA secrets, API keys, SSO links, sign-in history and the
+# credentials of the integrations (LMS, webhooks, HRIS connectors). Their DATA
+# is excluded from the dump, and the dump is then READ to prove it: a row in
+# any of them fails the build in every mode. Wildcards use PowerShell -like.
+# ---------------------------------------------------------------------------
+$script:SecretTablePatterns = @('session', 'password_reset_tokens', 'password_history', 'saml_*',
+    'mfa_*', 'admin_mfa_enrol_codes', 'api_keys', 'user_identities', 'sso_*',
+    'webhook_subscriptions', 'lms_integrations', 'login_attempts', 'hris_connectors')
+
+function Test-TableLike([string]$Name, [string[]]$Patterns) {
+    foreach ($p in $Patterns) { if ($Name -like $p) { return $true } }
+    return $false
+}
+
+# Rows per table in a plain-SQL pg_dump: every 'COPY <schema>.<table> ... FROM stdin;'
+# block up to its '\.' terminator. Table names are returned unqualified and unquoted.
+function Get-DumpTableRowCounts([string]$DumpFile) {
+    $counts = @{}
+    $cur = $null
+    foreach ($line in [System.IO.File]::ReadLines($DumpFile)) {
+        if ($null -eq $cur) {
+            $m = [regex]::Match($line, '^COPY\s+(?:"?[A-Za-z0-9_]+"?\.)?"?([A-Za-z0-9_]+)"?\s*(?:\([^)]*\))?\s+FROM\s+stdin;')
+            if ($m.Success) { $cur = $m.Groups[1].Value; if (-not $counts.ContainsKey($cur)) { $counts[$cur] = 0 } }
+            continue
+        }
+        if ($line -eq '\.') { $cur = $null; continue }
+        $counts[$cur]++
+    }
+    return $counts
+}
+
+# The guard: every secret table that carries rows in the dump (empty = may ship).
+function Get-SecretRowViolations([hashtable]$Counts) {
+    $v = @()
+    foreach ($t in @($Counts.Keys | Sort-Object)) {
+        $n = [int]$Counts[$t]
+        if ($n -gt 0 -and (Test-TableLike $t $script:SecretTablePatterns)) {
+            $v += "$t ($n rows): secret/runtime table - never shipped"
+        }
+    }
+    return , $v
+}
 $appRoot = Split-Path -Parent $here                          # ...\IDevelop-V3 (the app)
 $version = (Get-Content (Join-Path $appRoot 'package.json') -Raw | ConvertFrom-Json).version
 if (-not $Stamp)  { $Stamp  = Get-Date -Format 'yyyyMMdd' }
@@ -61,6 +111,16 @@ $installerScripts = @('Setup-Wizard.bat', 'Setup-Wizard.ps1', 'Setup.bat', 'Inst
 foreach ($f in $installerScripts) {
     $src = Join-Path $here $f
     if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $staging $f) -Force }
+}
+# The operator documents the installer points at (the rollback runbook and the
+# backup guide) -> <package>\docs\. The app payload leaves docs\ out, so without
+# this the log would name a page the server does not have. Missing = no build.
+$opDocs = Join-Path $staging 'docs'
+New-Item -ItemType Directory -Force -Path $opDocs | Out-Null
+foreach ($d in @('ROLLBACK.md', 'BACKUPS.md')) {
+    $src = Join-Path $appRoot "docs\$d"
+    if (-not (Test-Path -LiteralPath $src)) { throw "Refusing to package: operator document docs\$d is missing." }
+    Copy-Item -LiteralPath $src -Destination (Join-Path $opDocs $d) -Force
 }
 # A script the installer copies into <InstallDir>\maintenance but that never
 # reached the package would leave "Modify" in Apps & features pointing at a file
@@ -122,10 +182,20 @@ $excludeDirs = @('node_modules', '.git', '.github', '.husky', '.claude', '.vscod
 # config, container recipes and developer batch helpers are not part of a
 # Windows on-premise deployment, and shipping them invites an operator to run
 # one. 'manage.bat' IS the product's own maintenance entry point and stays.
-$excludeFiles = @('.editorconfig', '.eslintrc.json', '.prettierrc', '.prettierignore',
+#
+# '.gitleaks.toml' (the CI secret-scan config) and '.dockerignore' (the container
+# recipe's ignore file) are repository tooling, never product. '.git' is listed
+# as a FILE too: in a git worktree it is a file pointing at the main repository,
+# and the directory exclusion above would not catch it.
+$excludeFiles = @('.editorconfig', '.git', '.gitleaks.toml', '.dockerignore', '.eslintrc.json',
+    '.prettierrc', '.prettierignore',
     '.gitattributes', '.gitignore', 'commitlint.config.js', 'playwright.config.js',
     'jest.config.js', 'Dockerfile', 'docker-compose.yml',
-    'install_and_run.bat', 'restart_server.bat', 'Requirements_Document.html')
+    'install_and_run.bat', 'restart_server.bat', 'Requirements_Document.html',
+    # CI and container build configuration: the secret-scan rules (they list
+    # what the scanner ignores) and the Docker build-context filter have no
+    # consumer on an installed server.
+    '.gitleaks.toml', '.dockerignore')
 
 # GUARD - stray root-level scripts must never ship.
 # The exclude list above covers DIRECTORIES only, so any loose .js dropped in the
@@ -139,14 +209,34 @@ $excludeFiles = @('.editorconfig', '.eslintrc.json', '.prettierrc', '.prettierig
 # Shipping either is a data-integrity and privacy incident, so this is a hard
 # FAILURE rather than a silent skip: a new root script must be added here
 # deliberately, or moved into scripts\ where it belongs.
-$allowedRootJs = @('server.js', 'jest.config.js', 'playwright.config.js', 'commitlint.config.js')
-$strayRootJs = Get-ChildItem -LiteralPath $appRoot -File -Filter '*.js' |
-    Where-Object { $allowedRootJs -notcontains $_.Name }
-if ($strayRootJs) {
-    $names = ($strayRootJs | ForEach-Object { $_.Name }) -join ', '
-    throw ("Refusing to package: unexpected root-level script(s) [$names]. " +
-           "Move them to scripts\, delete them, or add them to `$allowedRootJs in Build-Package.ps1 " +
-           "if they are genuinely part of the product.")
+#
+# EVERY EXTENSION, and directories too. A .js-only check let any other stray
+# file through: a working copy of an account export (.json), a query result
+# (.csv / .sql), a scratch note (.txt), an archive (.zip) left at the root by a
+# working session would have shipped in the next package. The root is therefore
+# an ALLOW-list: each entry either ships ($shipRootFiles / $shipRootDirs) or is
+# excluded above ($excludeFiles / $excludeDirs); anything else FAILS the build.
+$shipRootFiles = @('server.js', 'package.json', 'package-lock.json', 'manage.bat', '.env.example',
+    'LICENSE', 'NOTICE', 'README.md', 'CHANGELOG.md', 'SECURITY.md', 'CONTRIBUTING.md',
+    'CODE_OF_CONDUCT.md')
+$shipRootDirs = @('db', 'locales', 'private', 'public', 'scripts', 'src', 'views', 'uploads')
+$strayRoot = @(Get-ChildItem -LiteralPath $appRoot -Force | Where-Object {
+        $n = $_.Name
+        if ($_.PSIsContainer) { ($shipRootDirs -notcontains $n) -and ($excludeDirs -notcontains $n) }
+        else { ($shipRootFiles -notcontains $n) -and ($excludeFiles -notcontains $n) -and ($n -ne '.env') }
+    } | ForEach-Object { $_.Name })
+if ($strayRoot.Count) {
+    throw ("Refusing to package: unexpected root-level entr" + $(if ($strayRoot.Count -eq 1) { 'y' } else { 'ies' }) +
+           " [" + ($strayRoot -join ', ') + "]. Move them out of the project root (scripts\ for a " +
+           "product script), delete them, or classify them in Build-Package.ps1 (`$shipRootFiles / " +
+           "`$shipRootDirs ship; `$excludeFiles / `$excludeDirs do not).")
+}
+# uploads\ ships EMPTY: whatever the build machine uploaded (evidence files of
+# development employees) is customer-class data.
+$devUploads = @(Get-ChildItem -LiteralPath (Join-Path $appRoot 'uploads') -Recurse -File -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne '.gitkeep' })
+if ($devUploads.Count) {
+    throw "Refusing to package: uploads\ holds $($devUploads.Count) file(s) from the build machine - they would ship. Move them out and rebuild."
 }
 
 Get-ChildItem -LiteralPath $appRoot -Force |
@@ -236,6 +326,8 @@ $productScripts = @(
     'set-admin-password.js',   # installer (fresh DB admin password) + PostgresDatabase
     'reapply-erasures.js',     # Manage -Restore: re-apply erasure tombstones after a restore
     'rotate-app-key.js',       # server.js points the operator at it (APP_KEY rotation)
+    'backup-key.js',           # backup encryption key: init, export, import, verify, pipe (docs/BACKUPS.md)
+    'pre-upgrade-dump.js',     # installer: encrypted, verified dump before an upgrade's migrations (SA-57)
     'seed-cert-policies.js',   # apply a default certification policy (dry-run + --commit)
     'seed-starter-framework.js', # optional generic starter capability framework (npm run db:seed:starter)
     'import-esco.js',          # ESCO CSV -> framework JSON for seed-starter-framework --file (npm run import:esco)
@@ -250,7 +342,9 @@ $devOnlyScripts = @(
     'backfill-access-profiles.js', 'v3-merge-duplicate-skills.js',
     # QA and documentation tooling
     '_emoji-inventory.js', '_emoji-to-icons.js', '_scan-emoji.js', 'build-user-guide.js',
-    'check-icons.js', 'export-contracts.js', 'export-security-measures.js', 'export-skills-framework.js', 'export-v3-matrix.js', 'loadtest-readiness.js', 'security-check.js'
+    'check-icons.js', 'export-contracts.js', 'export-security-measures.js', 'export-skills-framework.js', 'export-v3-matrix.js', 'loadtest-readiness.js', 'render-notification-samples.js', 'security-check.js',
+    # release tooling: builds <package>\npm-cache from the lockfile (run by this script)
+    'build-offline-cache.js'
 )
 $devOnlyDirs = @('_lib')
 $stagedScripts = Get-ChildItem -LiteralPath (Join-Path $appDest 'scripts') -File -ErrorAction SilentlyContinue
@@ -335,7 +429,15 @@ if ($SkipData) {
     # tripped the de-branding guard; the real defect was shipping sessions at all.
     $runtimeOnly = @('public.session', 'public.password_reset_tokens',
         'public.saml_request_cache', 'public.saml_assertion_seen')
-    $excludeData = $runtimeOnly | ForEach-Object { "--exclude-table-data=$_" }
+    # Every secret table's DATA too (the schema still ships). The list is read
+    # from the source database, so a table added later is caught by its name.
+    $allTables = @(& $psqlExe $dbUrl -At -v ON_ERROR_STOP=1 -c "SELECT schemaname || '.' || tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema') ORDER BY 1")
+    if ($LASTEXITCODE -ne 0 -or -not $allTables.Count) {
+        & $psqlExe $dbUrl -q -c $testGuardOff | Out-Null
+        throw "Could not list the tables of the source database - refusing to build a snapshot blind."
+    }
+    $secretData = @($allTables | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and (Test-TableLike (($_ -split '\.', 2)[-1]) $script:SecretTablePatterns) })
+    $excludeData = @(@($runtimeOnly) + @($secretData) | Select-Object -Unique) | ForEach-Object { "--exclude-table-data=$_" }
     $dumpExit = 1
     try {
         & $pgDump --no-owner --no-privileges @excludeData --file $dumpFile $dbUrl
@@ -346,6 +448,16 @@ if ($SkipData) {
     if ($dumpExit -ne 0) { throw "pg_dump failed (exit $dumpExit)" }
     $tables = (Select-String -LiteralPath $dumpFile -Pattern '^CREATE TABLE' -AllMatches).Count
     Write-Host "  [OK] Snapshot: $([math]::Round((Get-Item $dumpFile).Length/1MB,1)) MB, $tables tables" -ForegroundColor Gray
+
+    # SECRET-ROW GUARD - read what the dump ACTUALLY carries, not what pg_dump
+    # was asked for: rows in a secret table fail the build.
+    $rowCounts = Get-DumpTableRowCounts $dumpFile
+    $violations = Get-SecretRowViolations $rowCounts
+    if ($violations.Count) {
+        throw ("Refusing to package: the data snapshot carries secret rows it must never ship:`n  " +
+               ($violations -join "`n  "))
+    }
+    Write-Host "  [OK] Secret-row guard: no session, token, MFA, API-key, SSO or integration-credential row in the snapshot" -ForegroundColor Gray
 
     # 3a. DEMO-LOGIN GUARD - a fresh install restores this snapshot, so any
     #     ENABLED test/demo/probe account in it becomes a real, reachable login
@@ -378,6 +490,24 @@ if ($SkipData) {
                "Deactivate them on a development database and rebuild.")
     }
     Write-Host "  [OK] Demo-login guard: no enabled test/demo account in the snapshot" -ForegroundColor Gray
+}
+
+# 3a. OFFLINE DEPENDENCY CACHE. <package>\npm-cache holds every PRODUCTION
+#     tarball of the shipped package-lock.json, stored under its sha512
+#     integrity. The installer runs `npm ci --offline --cache <package>\npm-cache`
+#     first, so a server without registry access installs and upgrades; npm
+#     still checks every tarball against the lockfile. The registry is only the
+#     fallback. The cache sits beside app\, outside the release manifest: npm's
+#     own integrity check is what protects it. -SkipOfflineCache: a quick local
+#     build only (the package then needs the registry on the server).
+if (-not $SkipOfflineCache) {
+    $ocDir = Join-Path $staging 'npm-cache'
+    $ocOut = & node (Join-Path $appRoot 'scripts\build-offline-cache.js') --root $appDest --out $ocDir
+    if ($LASTEXITCODE -ne 0) { throw "Refusing to package: the offline dependency cache is incomplete (scripts\build-offline-cache.js exit $LASTEXITCODE): $ocOut" }
+    $ocMB = [math]::Round(((Get-ChildItem -LiteralPath $ocDir -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB, 1)
+    Write-Host "  [OK] Offline npm cache: npm-cache\ ($ocMB MB) $ocOut" -ForegroundColor Gray
+} else {
+    Write-Host '  [note] -SkipOfflineCache: no npm-cache\ - the installer will need registry access. Do not ship this package.' -ForegroundColor Yellow
 }
 
 # 3b. DENYLIST GUARD - an optional, git-ignored installer\denylist.txt lists
@@ -413,6 +543,34 @@ if ($brandHits) {
            "`nRemove it (or, for a genuine third-party false positive, exempt the path above) and rebuild.")
 }
 Write-Host ("  [OK] Denylist guard: " + $(if ($denyRx.Count) { "$($denyRx.Count) pattern(s), no match" } else { 'no installer\denylist.txt - skipped' })) -ForegroundColor Gray
+
+# 3c. RELEASE MANIFEST - app\release-manifest.sha256 lists EVERY file the
+#     application payload ships ('<sha256>  <relative/path>', the sha256sum
+#     format). Install-IDevelop.ps1 verifies the payload against it BEFORE it
+#     stops or copies anything (an altered, missing or added file refuses the
+#     install), then compares the install directory with it: a file outside the
+#     customer folders that the release does not list is reported (moved out with
+#     -EnforceManifest). Written LAST, once the payload is final (scripts purged,
+#     icon generated, guards passed), and it does not list itself. Nothing may
+#     write under app\ after this point.
+function Write-ReleaseManifest([string]$AppDir, [string]$OutFile, [string]$Version) {
+    $root = [IO.Path]::GetFullPath($AppDir).TrimEnd('\')
+    $self = [IO.Path]::GetFullPath($OutFile)
+    $lines = New-Object System.Collections.Generic.List[string]
+    $files = @(Get-ChildItem -LiteralPath $root -Recurse -File -Force | Where-Object { $_.FullName -ne $self } |
+        Sort-Object { $_.FullName.Substring($root.Length + 1).ToLowerInvariant() })
+    foreach ($f in $files) {
+        $rel = $f.FullName.Substring($root.Length + 1) -replace '\\', '/'
+        $h = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        $lines.Add("$h  $rel")
+    }
+    $head = "# IDevelop release manifest version=$Version files=$($files.Count) algorithm=sha256"
+    [IO.File]::WriteAllText($OutFile, (@($head) + $lines -join "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
+    return $files.Count
+}
+$manifestFile = Join-Path $appDest 'release-manifest.sha256'
+$manifestCount = Write-ReleaseManifest $appDest $manifestFile $version
+Write-Host "  [OK] Release manifest: app\release-manifest.sha256 ($manifestCount files, sha256)" -ForegroundColor Gray
 
 # 4. zip
 $zip = Join-Path $OutDir "$pkgName.zip"

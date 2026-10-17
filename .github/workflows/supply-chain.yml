@@ -52,6 +52,21 @@ jobs:
           output: trivy-fs.sarif
           limit-severities-for-sarif: true
           exit-code: '1'
+      # The SARIF goes to code scanning only; when the gate fails, print the same
+      # findings as a table so they can be read in the job log too.
+      - name: trivy fs findings (table)
+        if: failure()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          skip-dirs: node_modules,tests/fixtures
+          format: table
+          exit-code: '0'
       - name: upload SARIF
         if: always() && hashFiles('trivy-fs.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2

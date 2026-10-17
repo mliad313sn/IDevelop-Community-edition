@@ -21,7 +21,7 @@
     <% if (typeof externalFonts !== 'undefined' && externalFonts === true) { %>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" media="print" data-async-css>
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"></noscript>
     <% } %>
     <!-- App Styles -->
@@ -30,6 +30,8 @@
     <!-- Accessibility & polish layer (loaded last so it refines the theme) -->
     <link rel="stylesheet" href="/css/a11y-polish.css?v=<%= assetVersion %>">
     <link rel="stylesheet" href="/css/horizon.css?v=<%= assetVersion %>">
+    <!-- Data-visualisation layer: charts, heatmaps, radars, gap bars (Open Horizon tokens) -->
+    <link rel="stylesheet" href="/css/viz.css?v=<%= assetVersion %>">
     <% if (_brand.accentCss) { %>
     <!-- White-label accent: overrides the gold token family with the customer's brand color -->
     <style nonce="<%= cspNonce %>"><%- _brand.accentCss %></style>
@@ -42,15 +44,32 @@
 
 <body class="<%= typeof user !== 'undefined' && user ? 'has-sidebar' : 'no-sidebar' %>">
     <a href="#main-content" class="skip-link"><%= __('chrome:skip_to_main') %></a>
+    <%# The header comes BEFORE the sidebar in the DOM so the tab order is skip
+        link → header → sidebar → main. Both are position:fixed, so the visual
+        layout does not change. %>
     <% if (typeof user !=='undefined' && user) { %>
-        <%- include('../partials/sidebar') %>
-            <%- include('../partials/header') %>
+        <%- include('../partials/header') %>
+            <%- include('../partials/sidebar') %>
                 <% } %>
 
                     <main id="main-content" class="main-content" role="main" tabindex="-1">
                         <div class="content-wrapper">
                             <%- include('../partials/breadcrumbs') %>
                                 <%- include('../partials/flash') %>
+                                    <%# Two-factor grace countdown: set by middleware/mfaEnforcement only
+                                        while an unenrolled account is inside its upgrade grace period. The
+                                        same sentence also arrives once per session as a warning flash: the
+                                        banner is skipped on that page so it is not said twice. %>
+                                    <% if (typeof mfaGrace !== 'undefined' && mfaGrace && mfaGrace.daysLeft) {
+                                        const _mgText = __('auth:mfa_grace_notice', { count: mfaGrace.daysLeft, date: mfaGrace.date });
+                                        const _mgFlashed = typeof warnings !== 'undefined' && Array.isArray(warnings) && warnings.indexOf(_mgText) !== -1; %>
+                                        <% if (!_mgFlashed) { %>
+                                        <div class="card hz-callout hz-mfa-grace" role="status" id="mfa-grace-banner">
+                                            <p><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= _mgText %></p>
+                                            <a href="/v2/uam/mfa/setup" class="btn btn-sm btn-primary"><%= __('auth:mfa_grace_cta') %></a>
+                                        </div>
+                                        <% } %>
+                                    <% } %>
                                     <%# — appliance-licence warning strip. It wraps EVERY authenticated
                                         page, so it is written defensively: `entitlement` is null for employees and
                                         whenever the status lookup failed (server.js), every property is read through
@@ -113,15 +132,31 @@
                                         confirmTitle: __('chrome:uif_confirm_title'), promptTitle: __('chrome:uif_prompt_title'),
                                         confirm: __('chrome:uif_confirm'), cancel: __('chrome:uif_cancel'), ok: __('chrome:uif_ok'),
                                         reasonRequired: __('chrome:uif_reason_required'), resetFilters: __('chrome:uif_reset_filters'),
-                                        sortBy: __('chrome:uif_sort_by'), close: __('chrome:flash_close')
+                                        sortBy: __('chrome:uif_sort_by'), close: __('chrome:flash_close'),
+                                        scrollTop: __('chrome:hdr_scroll_top'), reasonLabel: __('chrome:uif_reason_label'),
+                                        selectedCount: __('chrome:bulk_selected_count'), scrollHint: __('chrome:tbl_scroll_hint'),
+                                        toastSuccess: __('chrome:toast_success'), toastError: __('chrome:toast_error'),
+                                        toastWarn: __('chrome:toast_warn'), toastInfo: __('chrome:toast_info')
                                     } }) %>;
                                 </script>
+                                <script src="/js/csp-actions.js?v=<%= assetVersion %>" defer></script>
                                 <script src="/js/ui-feedback.js?v=<%= assetVersion %>" defer></script>
+                                <script src="/js/status-badge.js?v=<%= assetVersion %>" defer></script>
                                 <script src="/js/enum-labels.js?v=<%= assetVersion %>" defer></script>
                                 <script src="/js/main.js?v=<%= assetVersion %>" defer></script>
+                                <script src="/js/notif-open.js?v=<%= assetVersion %>" defer></script>
                                 <script src="/js/date-format.js?v=<%= assetVersion %>" defer></script>
                                 <script src="/js/table-search.js?v=<%= assetVersion %>" defer></script>
                                 <script src="/js/list-tools.js?v=<%= assetVersion %>" defer></script>
+<% if (typeof sharedDevice !== 'undefined' && sharedDevice) { %>
+<script src="/js/shared-device.js?v=<%= assetVersion %>" defer data-mode="session"
+    data-beacon-token="<%= sharedDevice.beaconToken %>" data-render-at="<%= sharedDevice.renderAt %>"
+    data-idle-minutes="<%= sharedDevice.idleMinutes %>" data-draft-owner="<%= sharedDevice.draftOwner %>"
+    data-label="<%= __('auth:kiosk_badge') %>" data-logout-label="<%= __('auth:kiosk_logout') %>"
+    data-drafts-warning="<%= __('auth:kiosk_drafts_warning') %>" data-idle-warning="<%= __('auth:kiosk_idle_warning') %>"
+    data-stay-label="<%= __('auth:kiosk_stay') %>"
+    data-confirm-yes="<%= __('auth:kiosk_confirm_yes') %>" data-confirm-no="<%= __('auth:kiosk_confirm_no') %>"></script>
+<% } %>
 </body>
 
 </html>

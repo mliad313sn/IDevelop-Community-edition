@@ -235,6 +235,8 @@ class BaseModel {
     async create(data) {
         const tx = this._translateConditions(data);
         const keys = Object.keys(tx);
+        // Same identifier guard as update(): keys are interpolated into the SQL.
+        keys.forEach((k) => BaseModel._assertCol(k));
         const placeholders = keys.map(() => '?').join(', ');
         const values = keys.map((k) => tx[k]);
 

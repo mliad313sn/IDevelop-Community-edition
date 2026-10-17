@@ -80,6 +80,7 @@ const KEEP = new Set([
     // employees (identity + core profile)
     'employees',
     'employee_demographics',
+    'dei_consents',
     // admin accounts + authentication + identity + delegation of authority
     'admins',
     'admin_scopes',
@@ -112,7 +113,21 @@ const KEEP = new Set([
     'app_settings',
     'report_templates',
     'report_schedules',
+    // SA-38: the recipient accounts of a schedule are part of its configuration.
+    'report_schedule_recipients',
     'notification_preferences',
+    // Migration 183: each person's notification settings and category grid are
+    // their own choices, kept like notification_preferences.
+    'notification_user_settings',
+    'notification_category_prefs',
+    // Migration 185: each person's last dashboard scope, a screen preference
+    // re-validated on every read, kept like the notification settings.
+    'dashboard_scope_prefs',
+    // Migration 187: each person's digest cadence, kept like the notification
+    // settings. Migration 186: the KPI targets are governance decisions
+    // (append-only by trigger), kept like the report schedules.
+    'persona_digest_prefs',
+    'kpi_targets',
     'webhook_subscriptions',
     'lms_integrations',
     // HRIS sync (migration 160): the connector settings and the value mappings
@@ -136,6 +151,16 @@ const KEEP = new Set([
     // and the retention ledger is the record of what the purge did.
     'erasure_tombstones',
     'retention_ledger',
+    // Privacy (migration 165): the notice (configuration), who acknowledged
+    // which version, the people's objections to profiling (a right they
+    // exercised) and the record of their self-service downloads: registers, kept.
+    'privacy_notice_versions',
+    'privacy_notice_acks',
+    'profiling_objections',
+    'privacy_self_exports',
+    // Erasure under legal hold (migration 166): the two-person override
+    // requests are a legal register, kept like dsr_requests.
+    'erasure_override_requests',
 ]);
 
 // Tables to WIPE: assessment, talent, performance, workflow and operational data.
@@ -185,10 +210,20 @@ const WIPE = new Set([
     // IDP lifecycle journal (migration 146): follows its plans.
     'idp_plan_events',
     'idp_signoffs',
+    // Development proposals (migration 192): follow the plans they fed.
+    'dev_proposals',
+    // End-of-campaign records (migration 193): follow the campaigns they
+    // describe. Row triggers only (no TRUNCATE guard), so the wipe needs none lifted.
+    'review_records',
     'job_runs',
     'hris_links',
     'hris_sync_runs',
     'kpi_snapshots',
+    // Migration 186: alert states and transitions follow the figures they
+    // describe. Migration 187: the archived digests follow the notifications.
+    'kpi_alert_states',
+    'kpi_alert_events',
+    'persona_digests',
     // SAML replay protection (migration 145): short-lived operational state.
     'saml_request_cache',
     'saml_assertion_seen',
@@ -213,9 +248,14 @@ const WIPE = new Set([
     'pips',
     'planned_absences',
     'post_approval_reviews',
+    // Privacy (migration 165): 9-box development triggers held for review follow
+    // the 9-box evaluations they came from (wiped here).
+    'privacy_paused_triggers',
     'readiness_snapshots',
     'recognitions',
     'reminder_log',
+    // SA-38: in-app copies of scheduled reports hold pilot data: wiped.
+    'report_schedule_runs',
     'retention_risk',
     'review_signatures',
     'review_summaries',
@@ -235,6 +275,9 @@ const WIPE = new Set([
     'safety_gate_status',
     'safety_gate_status_history',
     'safety_gate_webhook_deliveries',
+    // Waivers and contests (migration 174): decisions taken on pre-go-live data.
+    'safety_gate_waivers',
+    'safety_gate_contests',
     'successors',
     'supervisor_reviews',
     // Who a survey was sent to (migration 147): follows its responses.

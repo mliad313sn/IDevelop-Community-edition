@@ -135,9 +135,14 @@ class DeptAnalyticsController {
             const ids = await scopedEmployeeIds(req.user);
             let cycle;
             if (req.query.cycleId) {
+                // A malformed ?cycleId= is the caller's error (400), not a NaN
+                // bound into the query (it answered 500).
+                const raw = req.query.cycleId;
+                const cycleId = typeof raw === 'string' && /^\d{1,15}$/.test(raw) ? Number(raw) : 0;
+                if (!(cycleId > 0)) return res.status(400).json({ error: 'invalid cycleId' });
                 cycle = await db.get(
                     'SELECT id, code, label, opened_at AS "openedAt", closes_at AS "closesAt", status FROM assessment_cycles WHERE id = ?',
-                    [parseInt(req.query.cycleId, 10)]
+                    [cycleId]
                 );
             } else {
                 // Open first, else the most recent LOCKED campaign — the review

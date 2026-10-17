@@ -1,0 +1,80 @@
+<%#
+    « My summaries » (/digests, migration 187): the archive of the person's
+    « What changed » summaries and their frequency. Server-rendered, no script,
+    no inline handler. A summary holds figures and links, never a name.
+%>
+<%
+  var _rows = (typeof rows !== 'undefined' && rows) ? rows : [];
+  var _cads = (typeof cadences !== 'undefined' && cadences) ? cadences : ['daily', 'weekly', 'off'];
+  var _cad = (typeof cadence !== 'undefined' && cadence) ? cadence : 'weekly';
+%>
+<div class="page-header">
+    <h1><i class="fas fa-newspaper" aria-hidden="true"></i> <%= __('dash:dg_page_title') %></h1>
+</div>
+<p class="text-muted dg-lead"><%= __('dash:dg_page_lead') %></p>
+<% if (!enabled) { %>
+<p class="dg-note" id="dg-off"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('dash:dg_off_org') %></p>
+<% } %>
+
+<% if (stepdown) { %>
+<section class="card dg-card" id="dg-stepdown" aria-labelledby="dg-stepdown-h">
+    <p id="dg-stepdown-h"><i class="fas fa-pause" aria-hidden="true"></i> <%= __('dash:dg_stepped_down', { date: stepdown.date }) %></p>
+    <form method="POST" action="/digests/preferences">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="restore" value="1">
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-rotate-left" aria-hidden="true"></i> <%= __('dash:dg_reactivate') %></button>
+    </form>
+</section>
+<% } %>
+
+<section class="card dg-card" aria-labelledby="dg-cad-h">
+    <h2 id="dg-cad-h" class="h3"><%= __('dash:dg_cadence_title') %></h2>
+    <form method="POST" action="/digests/preferences" class="dg-cad">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <fieldset>
+            <legend><%= __('dash:dg_cadence_label') %></legend>
+            <% _cads.forEach(function (c) { %>
+            <label class="dg-radio"><input type="radio" name="cadence" value="<%= c %>"<%= c === _cad ? ' checked' : '' %>> <%= __('dash:dg_cadence_' + c) %></label>
+            <% }); %>
+        </fieldset>
+        <button type="submit" class="btn btn-secondary btn-sm"><%= __('dash:dg_cadence_save') %></button>
+    </form>
+</section>
+
+<section class="card dg-card dg-wrap" aria-labelledby="dg-list-h">
+    <h2 id="dg-list-h" class="h3 dg-h"><%= __('dash:dg_list_title') %></h2>
+    <% if (!_rows.length) { %>
+    <p class="text-muted dg-h" id="dg-empty"><%= __('dash:dg_list_empty') %></p>
+    <% } else { %>
+    <div class="table-responsive">
+    <table class="table" id="dg-table">
+        <caption class="sr-only"><%= __('dash:dg_list_title') %></caption>
+        <thead><tr>
+            <th scope="col"><%= __('dash:dg_col_date') %></th>
+            <th scope="col"><%= __('dash:dg_col_title') %></th>
+            <th scope="col"><%= __('dash:dg_col_opened') %></th>
+        </tr></thead>
+        <tbody>
+        <% _rows.forEach(function (r) { %>
+            <tr>
+                <td><%= r.date %></td>
+                <th scope="row"><a href="/digests/<%= r.id %>"><%= r.title || __('dash:dg_page_title') %></a></th>
+                <td><%= r.opened ? __('dash:dg_opened_yes') : __('dash:dg_opened_no') %></td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table>
+    </div>
+    <% } %>
+</section>
+
+<style>
+.dg-lead{max-width:72ch}
+.dg-note{display:flex;gap:.5rem;align-items:flex-start;max-width:72ch}
+.dg-card{margin-top:1rem}
+.dg-cad fieldset{border:0;margin:0 0 .75rem;padding:0;display:flex;flex-wrap:wrap;gap:.75rem 1.25rem}
+.dg-cad legend{font-weight:600;margin-bottom:.5rem}
+.dg-radio{display:inline-flex;align-items:center;gap:.4rem;min-height:44px}
+.dg-wrap{padding:0}
+.dg-h{padding:.75rem 1rem 0;margin:0}
+</style>

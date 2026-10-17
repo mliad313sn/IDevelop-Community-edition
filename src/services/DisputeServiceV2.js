@@ -325,6 +325,7 @@ class DisputeServiceV2 {
             currentLevel: Number(decidedRating),
             assessedBy,
             notes: 'Set by dispute resolution (final decided rating).',
+            validation: 'manager_validated',
         });
     }
 

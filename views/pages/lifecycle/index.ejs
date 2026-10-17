@@ -27,7 +27,7 @@
   <h3 style="margin-top:0"><%= __('talentx:lc_record_heading') %></h3>
   <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end">
     <div style="flex:1 1 18rem">
-      <label for="lc-emp"><%= __('talentx:employee') %> *</label><br>
+      <label for="lc-emp" class="required"><%= __('talentx:employee') %></label><br>
       <input id="lc-emp" list="lc-emp-list" class="form-control" autocomplete="off" placeholder="<%= __('talentx:lc_pick_employee_ph') %>">
       <datalist id="lc-emp-list">
         <% (employees||[]).forEach(function(e){ %>
@@ -36,7 +36,7 @@
       </datalist>
     </div>
     <div>
-      <label for="lc-kind"><%= __('talentx:lc_event') %> *</label><br>
+      <label for="lc-kind" class="required"><%= __('talentx:lc_event') %></label><br>
       <select id="lc-kind" class="form-control">
         <option value="joiner"><%= __('talentx:lc_joiner') %></option>
         <option value="mover"><%= __('talentx:lc_mover') %></option>
@@ -50,7 +50,7 @@
     </div>
     <div style="flex:1 1 16rem">
       <label for="lc-reason"><%= __('talentx:lc_reason_label') %></label><br>
-      <input id="lc-reason" type="text" class="form-control" maxlength="500" placeholder="<%= __('talentx:lc_reason_ph') %>">
+      <input id="lc-reason" type="text" class="form-control" maxlength="500" required aria-required="true" placeholder="<%= __('talentx:lc_reason_ph') %>">
     </div>
     <button class="btn btn-primary" id="lc-record-btn"><%= __('talentx:lc_record') %></button>
   </div>
@@ -187,8 +187,9 @@
     var reason = (document.getElementById('lc-reason').value || '').trim();
     var effectiveAt = document.getElementById('lc-effective').value || null;
     if (!employeeId) { (window.toast || alert)(T.pick, 'error'); return; }
+    // Every kind (joiner, mover, leaver) needs a reason: the server refuses without one.
+    if (!reason) { (window.toast || alert)(T.reasonRequired, 'error'); document.getElementById('lc-reason').focus(); return; }
     if (kind === 'leaver') {
-      if (!reason) { (window.toast || alert)(T.reasonRequired, 'error'); return; }
       var ok = await window.confirmDialog(canDecide ? T.leaverConfirm : T.requestConfirm, { danger: canDecide });
       if (!ok) return;
     }

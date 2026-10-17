@@ -33,6 +33,10 @@ x-hardening: &hardening
 services:
   db:
     <<: *hardening
+    # Stays on 17: a major bump does not upgrade an existing pgdata volume, and
+    # the 18 image moved its data path (mount /var/lib/postgresql instead). CI
+    # proves 18; README "Moving the compose database to PostgreSQL 18" has the
+    # dump/restore path.
     image: postgres:17-alpine
     # Run directly as the image's postgres user (uid 70 on Alpine): the entrypoint
     # then needs no CHOWN/SETUID capability. A fresh named volume inherits the
@@ -62,7 +66,11 @@ services:
 
   redis:
     <<: *hardening
-    image: redis:7-alpine
+    image: redis:8-alpine
+    # Licence: Redis 8 is offered under RSALv2, SSPLv1 or AGPLv3 at the user's
+    # option (7.4, which redis:7-alpine resolved to, was RSALv2/SSPLv1 only); this
+    # stack uses it under AGPLv3, the project's own licence. The app talks to it
+    # over the network only. Valkey is a BSD-licensed drop-in if that is preferred.
     # redis user (uid 999 on Alpine); no persistence (`--save ''`), queues are
     # rebuilt by the app. /data is the working directory only.
     user: '999:999'

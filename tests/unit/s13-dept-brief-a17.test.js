@@ -168,13 +168,15 @@ describe('A-17 residual — an ARCHIVED brief names the day it was observed on',
 
 // ===========================================================================
 describe('A-17 residual — the e-mail says the same thing in both its parts', () => {
-    const render = (p) =>
-        renderBlocks(p, { appName: 'IDevelop', accent: '#2563eb', baseUrl: '', maxLines: 7 });
+    // One language per mail: the French brief, and the English one.
+    const render = (p, lang = 'fr') => renderBlocks(p, { lang, accent: '#2563eb', maxLines: 7 });
 
     test('« Renvoyer » (repair → renderBlocks) e-mails the DATED sentence, FR and EN', () => {
         const out = render(S.repairFrozenPayload(archived()));
         expect(DATE_FR.exec(out.html)[1]).toBe('14/09/2026');
-        expect(DATE_EN.exec(out.html)[1]).toBe('14/09/2026');
+        const en = render(S.repairFrozenPayload(archived()), 'en');
+        expect(DATE_EN.exec(en.html)[1]).toBe('14/09/2026');
+        expect(en.html).not.toContain(GEN_EN);
         expect(out.html).not.toContain(GEN_FR);
         expect(out.html).not.toContain(GEN_EN);
         // …and the frozen note two lines below names the SAME day: the page and
@@ -184,7 +186,7 @@ describe('A-17 residual — the e-mail says the same thing in both its parts', (
 
     test('the plain-text twin carries the §2.1 sentence too, right after the units', () => {
         const out = render(S.repairFrozenPayload(archived()));
-        const lines = out.text.split('\n');
+        const lines = out.text.split('\n').filter(Boolean);
         expect(lines[1]).toBe('Riverside / IT');
         expect(lines[2]).toContain('A = ce qui s’est passé pendant la période');
         expect(DATE_FR.exec(out.text)[1]).toBe('14/09/2026');

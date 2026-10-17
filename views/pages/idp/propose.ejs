@@ -1,0 +1,74 @@
+<%#
+  « Propose an action to my manager » (4.0.0 port, wave 4). The person never
+  acts on their own plan; they PROPOSE an action (a 70-20-10 type, one
+  sentence, optionally one of their role's skills). Their line accepts it into
+  the plan or declines it with a reason, shown below. With no line, the
+  proposal goes to HR.
+  Locals: skills [{id, name, required, current}], proposals (DevelopmentLoopService),
+          preSkillId, actionTypes.
+%><%
+  const _skills = Array.isArray(skills) ? skills : [];
+  const _props = Array.isArray(proposals) ? proposals : [];
+  const _types = (typeof actionTypes !== 'undefined' && Array.isArray(actionTypes) && actionTypes.length)
+      ? actionTypes : ['training', 'coaching', 'mentoring', 'on_the_job', 'self_study', 'certification', 'stretch'];
+  const _pre = (typeof preSkillId !== 'undefined') ? preSkillId : null;
+  const _day = (v) => (v ? (typeof fmtDate === 'function' ? fmtDate(v) : String(v).slice(0, 10)) : '');
+  const _status = { pending: 'pending', accepted: 'approved', declined: 'rejected', withdrawn: 'cancelled' };
+%>
+<link rel="stylesheet" href="/css/idp.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
+<div class="page-header">
+    <h1><i class="fas fa-lightbulb" aria-hidden="true"></i> <%= __('idp:propose_title') %></h1>
+    <a href="/employee/my-development" class="btn btn-sm btn-secondary">← <%= __('idp:back_mine') %></a>
+</div>
+<p class="help-text"><%= __('idp:propose_intro') %></p>
+
+<section class="card" style="padding:1.25rem" aria-labelledby="idp-propose-h">
+    <h2 id="idp-propose-h"><%= __('idp:propose_form_title') %></h2>
+    <form method="post" action="/v2/idp/proposals">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="idp-form-row">
+            <div class="form-group">
+                <label for="idp-prop-type"><%= __('idp:action_type') %></label>
+                <select id="idp-prop-type" name="type" class="form-control">
+                    <% _types.forEach(function (t) { %><option value="<%= t %>"><%= __('idp:act_' + t) %></option><% }); %>
+                </select>
+                <p class="help-text"><%= __('idp:propose_type_hint') %></p>
+            </div>
+            <div class="form-group">
+                <label for="idp-prop-skill"><%= __('idp:action_skill') %> (<%= __('idp:optional') %>)</label>
+                <select id="idp-prop-skill" name="skillId" class="form-control">
+                    <option value=""><%= __('idp:propose_no_skill') %></option>
+                    <% _skills.forEach(function (sk) { %>
+                        <option value="<%= sk.id %>"<%= Number(_pre) === Number(sk.id) ? ' selected' : '' %>><%= sk.name %> — <%= sk.current != null ? __('idp:level_n', { level: sk.current }) : __('idp:not_assessed') %> / <%= __('idp:level_required_n', { level: sk.required }) %></option>
+                    <% }); %>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="idp-prop-text" class="required"><%= __('idp:propose_text') %></label>
+            <textarea id="idp-prop-text" name="text" rows="3" required maxlength="500" class="form-control"></textarea>
+            <p class="help-text"><%= __('idp:propose_text_hint') %></p>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('idp:propose_send') %></button>
+    </form>
+</section>
+
+<section class="card" style="padding:1.25rem" aria-labelledby="idp-mine-h">
+    <h2 id="idp-mine-h"><%= __('idp:propose_mine_title') %></h2>
+    <% if (!_props.length) { %>
+        <p class="text-muted"><%= __('idp:propose_mine_none') %></p>
+    <% } else { %>
+    <ul class="idp-proposals">
+        <% _props.forEach(function (pr) { %>
+        <li>
+            <%- include('../../partials/status-badge', { state: _status[pr.status] || 'pending', label: __('idp:prop_st_' + pr.status) }) %>
+            <%= pr.text %>
+            <span class="idp-meta"><%= __('idp:act_' + pr.actionType) %><% if (pr.skillName) { %> · <%= pr.skillName %><% } %> · <%= _day(pr.createdAt) %><% if (pr.routedTo === 'hr') { %> · <%= __('idp:proposal_routed_hr') %><% } %></span>
+            <% if (pr.status !== 'pending') { %>
+                <span class="idp-meta"><%= __('idp:proposal_decided_on', { date: _day(pr.decidedAt) }) %><% if (pr.decidedByName) { %> · <%= __('idp:proposal_decided_by', { name: pr.decidedByName }) %><% } %><% if (pr.decisionReason) { %> — « <%= pr.decisionReason %> »<% } %><% if (pr.status === 'accepted' && pr.idpId) { %> · <a href="/v2/idp/<%= pr.idpId %><%= pr.createdActionId ? '#action-' + pr.createdActionId : '' %>"><%= __('idp:proposal_open_plan') %></a><% } %></span>
+            <% } %>
+        </li>
+        <% }); %>
+    </ul>
+    <% } %>
+</section>

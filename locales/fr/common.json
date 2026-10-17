@@ -18,6 +18,7 @@
   "close": "Fermer",
   "colon": " :",
   "err_not_authorized_employee": "Vous n'êtes pas autorisé à agir sur ce collaborateur.",
+  "err_csrf_session": "Jeton de sécurité absent ou expiré : rechargez la page.",
   "edp_grow_heading": "Démarche GROW",
   "edp_grow_goal": "G — Objectif (Goal)",
   "edp_grow_reality": "R — Réalité",
@@ -31,5 +32,14 @@
   "edp_sign_coach": "Coach / mentor",
   "edp_sign_hr": "Partenaire RH",
   "choose_placeholder": "— Choisir —",
-  "choose_required_fields": "Choisissez une valeur pour chaque champ obligatoire (*)."
+  "choose_required_fields": "Choisissez une valeur pour chaque champ obligatoire (*).",
+  "sensitive_setting": "Réglage sensible",
+  "form_required_legend": "Les champs marqués d'un astérisque sont obligatoires.",
+  "loading_skeleton_sr": "Chargement en cours…",
+  "av_status_pending": "Analyse antivirus en attente",
+  "av_status_clean": "Fichier sain",
+  "av_status_infected": "Fichier infecté, bloqué",
+  "av_status_quarantined": "Fichier en quarantaine",
+  "av_status_scan_error": "Échec de l’analyse antivirus",
+  "av_status_not_scanned": "Non analysé (aucun antivirus disponible)"
 }

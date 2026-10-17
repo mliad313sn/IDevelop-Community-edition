@@ -4,6 +4,8 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+const { guardUpload, extensionFilter } = require('../middleware/uploadGuard');
 
 const {
     requireAuth,
@@ -15,8 +17,10 @@ const {
 const EvidenceService = require('../services/EvidenceService');
 const DisputeServiceV2 = require('../services/DisputeServiceV2');
 const RBACService = require('../services/RBACService');
+const AuthorityService = require('../services/AuthorityService');
 const db = require('../config/database');
 const ah = require('../utils/asyncHandler');
+const { containedUploadPath } = require('../utils/uploadTempPath');
 
 // A dispute may only be resolved by someone who governs the disputed employee
 // (super admin → all; manager/local-admin → their span). Returns an Express
@@ -27,7 +31,13 @@ const ah = require('../utils/asyncHandler');
 // assessment_disputes.employee_id: scoping on the dispute row let whoever
 // opened a dispute on somebody else's review route its resolution to THEIR OWN
 // manager, who then rewrote the victim's official skill level.
-async function guardDisputeScope(req, res) {
+//
+// Levels 0 and 1 (the `level` argument) also go through the authority ladder
+// (AuthorityService 'dispute.l0' / 'dispute.l1', same reach in both modes):
+// nobody decides a dispute about their own record, by either of their accounts
+// or through an unlinked admin account sharing their identity, and the rung the
+// decision used is noted for its audit line.
+async function guardDisputeScope(req, res, level = null) {
     const empId = await DisputeServiceV2.employeeFor(Number(req.params.id));
     if (empId === null) {
         res.status(404).json({
@@ -48,7 +58,63 @@ async function guardDisputeScope(req, res) {
         });
         return false;
     }
+    if (level) {
+        const rel = await AuthorityService.relation(req.user, empId);
+        if (rel && (rel.isSelf || rel.selfByIdentity)) {
+            res.status(403).json({
+                ok: false,
+                code: 'DISPUTE_OWN_RECORD',
+                error: say(
+                    req,
+                    'talentx:dsp_err_own_record',
+                    'You cannot decide a dispute about your own assessment.'
+                ),
+            });
+            return false;
+        }
+        // In scope: the manager's governed sub-tree. The rung it stands for.
+        const as = !rel
+            ? null
+            : rel.isDirectManager
+              ? 'manager'
+              : rel.isSupervisor
+                ? 'supervisor'
+                : rel.isLineAbove
+                  ? 'manager'
+                  : null;
+        // 'dispute.l0' / 'dispute.l1' keep this reach in both ladder modes.
+        AuthorityService.noteAs(req.user, empId, as);
+        req.disputeEmployeeId = empId;
+    }
     return true;
+}
+
+/**
+ * The L0 / L1 decisions on the journal, with the rung the decision used
+ * (` as=<rung>`, AuthorityService), and the direct manager told in the app
+ * when someone above them decided (LineNoticeService). Best-effort.
+ */
+async function ladderAudit(req, action, details) {
+    try {
+        const u = req.user || {};
+        const isAdmin = u.userType === 'admin';
+        await require('../services/LogService').log({
+            adminId: isAdmin ? u.id : null,
+            actorRef: u.id != null ? `${isAdmin ? 'admin' : 'employee'}:${Number(u.id)}` : null,
+            action,
+            entityType: 'assessment_dispute',
+            entityId: Number(req.params.id),
+            details: AuthorityService.withAs(details, req.user, req.disputeEmployeeId),
+        });
+    } catch (_) {
+        /* best-effort */
+    }
+    if (req.disputeEmployeeId != null)
+        await require('../services/LineNoticeService').actedAbove(
+            req.user,
+            req.disputeEmployeeId,
+            action === 'DISPUTE_L0_RESOLVED' ? 'dispute_l0' : 'dispute_l1'
+        );
 }
 
 /**
@@ -168,34 +234,50 @@ router.get(
     })
 );
 
+// guardUpload: parser errors become 4xx, and the CONTENT must match the
+// extension (magic bytes; OOXML [Content_Types].xml; zip-bomb caps). ASVS 12.2.1.
 const upload = multer({
     dest: path.resolve('tmp'),
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-        const allowed = ['.pdf', '.jpg', '.jpeg', '.png', '.docx', '.xlsx'];
-        cb(null, allowed.includes(path.extname(file.originalname).toLowerCase()));
-    },
+    preservePath: true, // the upload guard refuses a client name carrying a path
+    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+    fileFilter: extensionFilter(['.pdf', '.jpg', '.jpeg', '.png', '.docx', '.xlsx']),
+});
+const evidenceUpload = guardUpload(upload.single('file'), {
+    kinds: ['pdf', 'jpeg', 'png', 'docx', 'xlsx'],
 });
 
 // Upload evidence for a self-assessment row (max 3 enforced here).
 router.post(
     '/evidence/:selfAssessmentId',
     requireEmployee,
-    upload.single('file'),
+    evidenceUpload,
     ah(async (req, res) => {
+        if (!req.file)
+            return res.status(400).json({ ok: false, code: 'UPLOAD_NO_FILE', error: 'no file' });
+        // A refused request must not leave its temp file behind.
+        const discard = () => {
+            const p = containedUploadPath(req.file.path);
+            if (p) fs.unlink(p, () => {});
+        };
         const said = Number(req.params.selfAssessmentId);
         // Only the owning employee may attach evidence to their assessment row.
         const sa = await db.get(`SELECT employee_id FROM self_assessments WHERE id = ?`, [said]);
-        if (!sa) return res.status(404).json({ error: 'assessment not found' });
+        if (!sa) {
+            discard();
+            return res.status(404).json({ error: 'assessment not found' });
+        }
         if (Number(sa.employeeId) !== Number(req.user.id)) {
+            discard();
             return res.status(403).json({ error: 'not authorized for this assessment' });
         }
         const row = await db.get(
             `SELECT count(*) AS rows FROM assessment_evidence WHERE self_assessment_id = ?`,
             [said]
         );
-        if (row && row.rows >= 3)
+        if (row && row.rows >= 3) {
+            discard();
             return res.status(400).json({ error: 'max 3 evidences per skill' });
+        }
         const result = await EvidenceService.accept({
             file: req.file,
             selfAssessmentId: said,
@@ -238,7 +320,7 @@ router.post(
     '/disputes/:id/resolve-l0',
     requireManager,
     ah(async (req, res) => {
-        if (!(await guardDisputeScope(req, res))) return;
+        if (!(await guardDisputeScope(req, res, 'L0'))) return;
         let r0;
         try {
             r0 = await DisputeServiceV2.resolveL0({
@@ -262,6 +344,7 @@ router.post(
                 ),
             });
         }
+        await ladderAudit(req, 'DISPUTE_L0_RESOLVED', 'L0 decision recorded');
         res.json({ ok: true });
     })
 );
@@ -270,7 +353,7 @@ router.post(
     '/disputes/:id/resolve-l1',
     requireManager,
     ah(async (req, res) => {
-        if (!(await guardDisputeScope(req, res))) return;
+        if (!(await guardDisputeScope(req, res, 'L1'))) return;
         let r1;
         try {
             r1 = await DisputeServiceV2.resolveL1({
@@ -294,6 +377,7 @@ router.post(
                 ),
             });
         }
+        await ladderAudit(req, 'DISPUTE_L1_RESOLVED', 'L1 decision recorded');
         res.json({ ok: true });
     })
 );

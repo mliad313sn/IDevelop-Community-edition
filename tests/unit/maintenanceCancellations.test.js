@@ -255,7 +255,9 @@ describe('cancelling an IDP', () => {
             entityId: 87,
             reason: 'wrong employee',
         });
-        expect(mockDb.runInSavepoint).toHaveBeenCalledTimes(1);
+        // The cascade, the movement row and the audit line each run in their
+        // own savepoint.
+        expect(mockDb.runInSavepoint).toHaveBeenCalledTimes(3);
         expect(mockCancellation.cascadePlanCancellation).toHaveBeenCalledWith('idp', 87);
         // No private copy of the cascade SQL may survive in this service.
         expect(ranMatching(/UPDATE IDP_(ACTIONS|OBJECTIVES)/)).toHaveLength(0);
@@ -272,7 +274,8 @@ describe('cancelling an IDP', () => {
             entityId: 9,
             reason: 'duplicate',
         });
-        expect(mockDb.runInSavepoint).not.toHaveBeenCalled();
+        // Only the movement row and the audit line: no cascade savepoint.
+        expect(mockDb.runInSavepoint).toHaveBeenCalledTimes(2);
         expect(mockCancellation.cascadePlanCancellation).not.toHaveBeenCalled();
     });
 

@@ -20,12 +20,26 @@ const path = require('path');
 const read = (p) => fs.readFileSync(path.join(__dirname, '../..', p), 'utf8');
 
 describe('dense trends break at a null instead of bridging it', () => {
-    test('the benchmark role fit-trend uses spanGaps:false on both datasets', () => {
+    test('the benchmark role fit-trend is a viz line, and every viz line breaks at a null', () => {
+        // The trend is drawn by the viz layer (views/partials/viz/chart.ejs):
+        // every dataset of a `line` gets spanGaps:false there.
         const v = read('views/pages/benchmark/role.ejs');
-        // both the fit and coverage datasets
-        const falses = (v.match(/spanGaps:\s*false/g) || []).length;
-        expect(falses).toBeGreaterThanOrEqual(2);
+        expect(v).toMatch(/id: 'rb-fit-trend'[\s\S]{0,200}kind: 'line'/);
         expect(v).not.toMatch(/spanGaps:\s*true/);
+        const viz = read('public/js/viz.js');
+        expect(viz).toMatch(/ds\.spanGaps = false;/);
+        expect(viz).not.toMatch(/spanGaps\s*[:=]\s*true/);
+        const Viz = require('../../public/js/viz.js');
+        const cfg = Viz.buildChartConfig({
+            kind: 'line',
+            labels: ['a', 'b', 'c'],
+            series: [
+                { key: 'fit', data: [60, null, 70] },
+                { key: 'coverage', data: [null, 50, 55] },
+            ],
+        });
+        cfg.data.datasets.forEach((ds) => expect(ds.spanGaps).toBe(false));
+        expect(cfg.data.datasets[0].data).toEqual([60, null, 70]);
     });
 
     test('the department monthly-level trend uses spanGaps:false', () => {

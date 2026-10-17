@@ -2,54 +2,69 @@
 
 /**
  * Re-audit J11 — certsExpiring90d wrote 0 for a scope that tracks NO certificates
- * at all. COUNT(*) over an empty register is 0, and the docstring promises null
- * (unknown) there — 0 reads as "a clean bill of health", and the value is
- * delta-eligible, so the phantom 0 would later drive a spurious "improvement".
- * Now: an empty register is null; a register with rows but none expiring is a
- * real 0.
+ * at all. 0 reads as "a clean bill of health", and the value is delta-eligible,
+ * so the phantom 0 would later drive a spurious "improvement".
+ *
+ * The snapshot now takes K8 from the KPI module: a scope where no certification
+ * is REQUIRED is "not configured" and its two certificate columns are null
+ * (unknown); a scope with required certificates and none expiring is a real 0.
  */
 
 process.env.DATABASE_URL =
     process.env.DATABASE_URL || 'postgres://placeholder:placeholder@localhost:5432/placeholder';
 
-const mockGet = jest.fn();
+let mockRequired = [];
+const mockAll = jest.fn(async (sql) => {
+    if (/FROM employees e\s+LEFT JOIN sites/.test(sql))
+        return [{ id: 1, siteId: 1, siteName: 'North', departmentId: 1, roleId: 1 }];
+    if (/WITH pop AS/.test(sql)) return mockRequired;
+    return [];
+});
+const mockGet = jest.fn(async (sql) => {
+    if (/app_readiness_threshold/.test(sql)) return { t: 80 };
+    if (/CURRENT_DATE, 'YYYY-MM-DD'/.test(sql)) return { d: '2026-10-15' };
+    return { events: 0, firstMeasurements: 0 };
+});
 jest.mock('../../src/config/database', () => ({
     get: (...a) => mockGet(...a),
-    all: jest.fn(async () => []),
+    all: (...a) => mockAll(...a),
     run: jest.fn(async () => ({})),
 }));
+jest.mock('../../src/services/SafetyGateService', () => ({ computeFor: jest.fn(async () => []) }));
 
-const { safeCertExpiring } = require('../../src/jobs/kpi-snapshot').__test;
+const K = require('../../src/services/KpiService');
 
-beforeEach(() => mockGet.mockReset());
+beforeEach(() => {
+    mockRequired = [];
+});
 
-describe('J11 — an empty certificate register is unknown, not zero', () => {
-    test('no certificates tracked in scope → null (unknown)', async () => {
-        mockGet.mockResolvedValue({ expiring: null, total: 0 });
-        expect(await safeCertExpiring({}, null)).toBeNull();
+describe('J11 — no required certificate is unknown, not zero', () => {
+    test('no certification required in scope → K8 not configured, value null', async () => {
+        const r = await K.k8Certifications({ system: true });
+        expect(r.status).toBe('not_configured');
+        expect(r.value).toBeNull();
     });
 
-    test('register has rows but none expiring in 90 days → a real 0', async () => {
-        mockGet.mockResolvedValue({ expiring: 0, total: 42 });
-        expect(await safeCertExpiring({}, null)).toBe(0);
+    test('the snapshot writes null for both certificate columns, never 0', async () => {
+        const m = await K.snapshotMetrics({ system: true });
+        expect(m.certsExpiring90d).toBeNull();
+        expect(m.certsExpired).toBeNull();
     });
 
-    test('some expiring → the count', async () => {
-        mockGet.mockResolvedValue({ expiring: 7, total: 42 });
-        expect(await safeCertExpiring({}, 3)).toBe(7);
+    test('required certificates, none expiring within 90 days → a real 0', async () => {
+        mockRequired = [{ employeeId: 1, skillId: 7, certId: 3, expiresOn: '2027-12-31' }];
+        const m = await K.snapshotMetrics({ system: true });
+        expect(m.certsExpiring90d).toBe(0);
+        expect(m.certsExpired).toBe(0);
     });
 
-    test('a query error is unknown, never a fabricated 0', async () => {
-        mockGet.mockRejectedValue(new Error('view missing'));
-        expect(await safeCertExpiring({}, null)).toBeNull();
-    });
-
-    test('the query counts the whole register, not only certs with an expiry date', async () => {
-        mockGet.mockResolvedValue({ expiring: 0, total: 5 });
-        await safeCertExpiring({}, null);
-        const sql = mockGet.mock.calls[0][0];
-        // total = COUNT(*) with no days_to_expiry filter in the WHERE
-        expect(sql).toMatch(/COUNT\(\*\) AS total/);
-        expect(sql).not.toMatch(/WHERE c\.days_to_expiry IS NOT NULL/);
+    test('one expiring within 90 days → the count of PEOPLE', async () => {
+        mockRequired = [
+            { employeeId: 1, skillId: 7, certId: 3, expiresOn: '2026-11-01' },
+            { employeeId: 1, skillId: 8, certId: 4, expiresOn: '2026-11-20' },
+        ];
+        const r = await K.k8Certifications({ system: true });
+        expect(r.breakdown.expiringPeople).toBe(1);
+        expect(r.breakdown.expiringCerts).toBe(2);
     });
 });

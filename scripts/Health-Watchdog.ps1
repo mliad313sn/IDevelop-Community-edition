@@ -92,7 +92,7 @@ if ($healthy) {
     } catch { }
     if ($state.failures -ge $Threshold -and -not $state.alerted) {
         Send-Alert '[IDevelop] DOWN - health probe failing' `
-            ("IDevelop has failed {0} consecutive health probes.`nLast error: {1}`nHost: {2}`nTime: {3}{4}`n`nCheck: Get-Service IDevelop - logs under C:\Program Files\IDevelop\service\ - C:\ProgramData\IDevelop\logs" -f $state.failures, $detail, $env:COMPUTERNAME, (Get-Date), $svcNote)
+            ("IDevelop has failed {0} consecutive health probes.`nLast error: {1}`nHost: {2}`nTime: {3}{4}`n`nCheck: Get-Service IDevelop - logs under C:\Program Files\IDevelop\service\logs\ - C:\ProgramData\IDevelop\logs" -f $state.failures, $detail, $env:COMPUTERNAME, (Get-Date), $svcNote)
         $state.alerted = $true
     }
 }

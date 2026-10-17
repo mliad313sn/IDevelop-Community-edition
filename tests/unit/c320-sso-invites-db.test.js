@@ -13,6 +13,7 @@
  * E-mail is stubbed (EmailService.send) — nothing leaves the machine. The
  * rolled-back part never survives; the committed part deletes its own rows.
  */
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 require('dotenv').config();
 process.env.SSO_INVITE_PAUSE_MS = '0';
 
@@ -30,7 +31,7 @@ let EmailService;
 let Inv;
 
 beforeAll(async () => {
-    if (!/idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''))) return;
+    if (!isFixturesDatabaseUrl(process.env.DATABASE_URL)) return;
     db = require('../../src/config/database');
     try {
         await db.connect();
@@ -113,7 +114,7 @@ const ident = (type, id, provider, uid, method) =>
     );
 
 test('the outbox table really is on the test database (not vacuous)', () => {
-    if (!/idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''))) return;
+    if (!isFixturesDatabaseUrl(process.env.DATABASE_URL)) return;
     expect(ready).toBe(true);
 });
 

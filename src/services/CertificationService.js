@@ -8,14 +8,17 @@
  *     skill-currency decay horizon.
  *   - Issued certification records per (employee, skill) with VOC sign-off
  *     and ONE evidence file (certificate scan / VOC checklist photo). The
- *     evidence goes through the SAME ClamAV pipeline as assessment evidence:
- *     pending → clean | quarantined | scan_error (fail-closed: anything not
- *     'clean' is never served back for download).
+ *     evidence goes through the scanner chain (MalwareScanService):
+ *     pending → clean | quarantined | not_scanned | scan_error. 'clean' is
+ *     served to the scoped reader; 'not_scanned' only to the uploader, the
+ *     holder's reporting line and manage_compliance admins (evidenceAccess);
+ *     everything else is never served back.
  *   - Expiry logic lives in v_certification_current (computed cert_status);
  *     re-issuing a certification simply inserts a newer record — history is
  *     append-only and the view picks the latest non-revoked row.
  */
 
+const { containedUploadPath } = require('../utils/uploadTempPath');
 const fs = require('fs');
 const path = require('path');
 const db = require('../config/database');
@@ -52,8 +55,6 @@ function addMonthsClamped(iso, months) {
 }
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.resolve('uploads');
-const QUARANTINE_DIR = process.env.QUARANTINE_DIR || path.resolve('uploads', '_quarantine');
-const CLAMD_SOCKET = process.env.CLAMD_SOCKET || '/var/run/clamav/clamd.sock';
 
 function ensureDir(p) {
     if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
@@ -171,19 +172,32 @@ class CertificationService {
         );
 
         if (file) await this._attachEvidence(row.id, file);
+        // Measurement (migration 183): this person's expiry alert on that skill
+        // was acted upon. Best-effort, never throws.
+        await Promise.resolve()
+            .then(() =>
+                require('./NotificationService').actedQuietly({
+                    refType: 'skill',
+                    refId: Number(skillId),
+                    userType: 'employee',
+                    userId: Number(employeeId),
+                })
+            )
+            .catch(() => 0);
         return db.get('SELECT * FROM employee_certifications WHERE id = ?', [row.id]);
     }
 
     /** Attach + AV-scan the evidence file for a certification record. */
     static async _attachEvidence(certId, file) {
         ensureDir(UPLOADS_DIR);
-        ensureDir(QUARANTINE_DIR);
         const ext = path.extname(file.originalname || '').slice(0, 10);
         const dest = path.join(
             UPLOADS_DIR,
             `cert-${certId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`
         );
-        fs.renameSync(file.path, dest);
+        const src = containedUploadPath(file && file.path);
+        if (!src) throw new Error('The upload is not where uploads are kept.');
+        fs.renameSync(src, dest);
         await db.run(
             `UPDATE employee_certifications
                 SET file_uri = ?, original_name = ?, mime = ?, size_bytes = ?, av_status = 'pending', updated_at = now()
@@ -191,33 +205,48 @@ class CertificationService {
             [dest, file.originalname, file.mimetype, file.size, certId]
         );
 
-        try {
-            const ClamScan = require('clamscan');
-            const scanner = await new ClamScan().init({ clamdscan: { socket: CLAMD_SOCKET } });
-            const { isInfected, viruses } = await scanner.scanFile(dest);
-            if (isInfected) {
-                const qPath = path.join(QUARANTINE_DIR, path.basename(dest));
-                fs.renameSync(dest, qPath);
-                await db.run(
-                    `UPDATE employee_certifications
-                        SET av_status = 'quarantined', av_signature = ?, quarantine_uri = ?, scanned_at = now()
-                      WHERE id = ?`,
-                    [(viruses || []).join(','), qPath, certId]
-                );
-            } else {
-                await db.run(
-                    "UPDATE employee_certifications SET av_status = 'clean', scanned_at = now() WHERE id = ?",
-                    [certId]
-                );
-            }
-        } catch (e) {
-            // Fail-closed: 'scan_error' evidence is kept but never served back.
-            await db.run(
-                "UPDATE employee_certifications SET av_status = 'scan_error', scanned_at = now() WHERE id = ?",
-                [certId]
-            );
-            console.error('[certification] clamav scan failed:', e.message);
-        }
+        // The scanner CHAIN: clamd -> Microsoft Defender -> 'not_scanned' (or
+        // 'scan_error', held and re-queued, when scanning is required). Never throws.
+        return require('./MalwareScanService').scanAndRecord(
+            'employee_certifications',
+            certId,
+            dest,
+            file.avScan || null // the upload gate's verdict on this file, if any
+        );
+    }
+
+    /**
+     * Evidence download decision for a certification row.
+     *   clean        -> anyone the caller's route already scoped in
+     *   not_scanned  -> only the uploader, the holder's reporting line, and
+     *                   admins holding manage_compliance; served as an
+     *                   attachment with a "not virus-scanned" marker
+     *   anything else (pending / scan_error / quarantined) -> refused
+     * @returns {Promise<{allow:boolean, status?:number, reason?:string, unscanned?:boolean}>}
+     */
+    static async evidenceAccess(cert, user) {
+        if (!cert || !cert.fileUri) return { allow: false, status: 404, reason: 'none' };
+        if (cert.avStatus === 'clean') return { allow: true, unscanned: false };
+        if (cert.avStatus !== 'not_scanned')
+            return { allow: false, status: 409, reason: 'not_clean' };
+        const MalwareScanService = require('./MalwareScanService');
+        // The recorder IS the uploader: record() stamps verified_by_type/verified_by
+        // from the actor who attached the file (a manager records as 'employee').
+        const uploader =
+            cert.verifiedBy != null
+                ? {
+                      type: cert.verifiedByType === 'admin' ? 'admin' : 'employee',
+                      id: cert.verifiedBy,
+                  }
+                : null;
+        const ok = await MalwareScanService.canDownloadUnscanned(user, {
+            subjectEmployeeId: cert.employeeId,
+            uploader,
+            managePermission: 'manage_compliance',
+        });
+        return ok
+            ? { allow: true, unscanned: true }
+            : { allow: false, status: 403, reason: 'not_scanned_restricted' };
     }
 
     static async revoke(certId, reason, _actor) {

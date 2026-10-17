@@ -87,7 +87,7 @@
                 <td><%= review.reviewedAt ? new Date(review.reviewedAt).toLocaleDateString(typeof lang!=='undefined'&&lang==='en'?'en-GB':'fr-FR') : '-' %></td>
                 <td>
                     <% if (review.status === 'completed') { %>
-                        <button class="btn btn-sm btn-warning" onclick="disputeReview(<%= review.id %>)">
+                        <button class="btn btn-sm btn-warning" data-on-click="disputeReview" data-args="<%= JSON.stringify([review.id]) %>">
                             <%= __('employee:btn_dispute') %>
                         </button>
                     <% } else if (review.status === 'disputed') { %>

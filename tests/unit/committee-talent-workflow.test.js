@@ -185,7 +185,11 @@ describe('F2: every calibration move goes through the 9-box path', () => {
     test('the facilitator is the actor, and applyCalibration receives session, cycle, box and rationale', async () => {
         wire();
         mockDb.all.mockResolvedValue([
-            { employeeId: 68963, toBox: 'high-low', rationale: 'committee decision' },
+            {
+                employeeId: 68963,
+                toBox: 'high-low',
+                rationale: 'committee decision on the placement',
+            },
         ]);
         const spy = jest.spyOn(NineBox, 'applyCalibration');
         const r = await Calib.finalizeCalibration(13);
@@ -194,7 +198,7 @@ describe('F2: every calibration move goes through the 9-box path', () => {
             {
                 employeeId: 68963,
                 toBox: 'high-low',
-                reason: 'committee decision',
+                reason: 'committee decision on the placement',
                 sessionId: 13,
                 cycleId: 9,
             },
@@ -222,7 +226,7 @@ describe('F2: every calibration move goes through the 9-box path', () => {
         const out = await NineBox.applyCalibration(SUPER, {
             employeeId: 68963,
             toBox: 'high-low',
-            reason: 'committee decision',
+            reason: 'committee decision on the placement',
             sessionId: 13,
             cycleId: 9,
         });
@@ -255,7 +259,7 @@ describe('F2: every calibration move goes through the 9-box path', () => {
             'low',
             7,
             'Diamond in the rough',
-            'Calibration: committee decision',
+            'Calibration: committee decision on the placement',
             51,
         ]);
         expect(seq[iUpd]).toMatch(/WHERE id = \? AND status = 'approved'/);
@@ -277,8 +281,10 @@ describe('F2: every calibration move goes through the 9-box path', () => {
             from: 1,
             to: 7,
             sessionId: 13,
-            reason: 'committee decision',
+            // Ids only: the rationale is not copied into the event.
+            reasonRecorded: true,
         });
+        expect(JSON.parse(evtParams[7]).reason).toBeUndefined();
 
         // The mirror lands in the session's cycle with the consumer vocabulary, as an override.
         expect(runs()[iMir][1].slice(0, 5)).toEqual([68963, 9, 'high-low', 'up', 'override']);
@@ -317,12 +323,17 @@ describe('F2: every calibration move goes through the 9-box path', () => {
         const out = await NineBox.applyCalibration(SUPER, {
             employeeId: 68963,
             toBox: 'high-low',
-            reason: 'r',
+            reason: 'committee decision on the placement',
             sessionId: 13,
             cycleId: 9,
         });
         expect(out.autoTrigger).toEqual({ error: 'coaching authority' });
-        expect(runsMatching(/UPDATE nine_box_evaluations/)).toHaveLength(1);
+        // Migration 175: the box change also records its movement, with one
+        // extra UPDATE of the movement columns and still ONE event.
+        expect(runsMatching(/UPDATE nine_box_evaluations SET potential/)).toHaveLength(1);
+        expect(runsMatching(/UPDATE nine_box_evaluations SET previous_evaluation_id/)).toHaveLength(
+            1
+        );
         expect(runsMatching(/INSERT INTO nine_box_events/)).toHaveLength(1);
         expect(runsMatching(/INSERT INTO talent_placements/)).toHaveLength(1);
     });
@@ -332,7 +343,7 @@ describe('F2: every calibration move goes through the 9-box path', () => {
         const out = await NineBox.applyCalibration(SUPER, {
             employeeId: 87,
             toBox: 'low-low',
-            reason: 'r',
+            reason: 'committee decision on the placement',
             sessionId: 1,
             cycleId: 9,
         });

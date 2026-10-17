@@ -13,7 +13,7 @@ useDefault = true
 description = "unit-test fixture credentials (not real secrets)"
 regexTarget = "match"
 regexes = [
-  '''sk_live_opaqueapikey''',       # tests/unit/ssoConfig.test.js: opaque-key vs JWT detection
+  '''sk[_]live_opaqueapikey''',    # tests/unit/ssoConfig.test.js: opaque-key vs JWT detection
   '''legacy-env-key-0123456789''',  # tests/unit/c321-L2-apikey-feed-scope.test.js: legacy env key
 ]
 
@@ -24,6 +24,16 @@ description = "illustrative first-run password in installer/MANUAL-DEPLOY.md"
 paths = ['''^installer/MANUAL-DEPLOY\.md$''']
 regexTarget = "match"
 regexes = ['''password\s*:\s*d5ekGa8-Usi4I_OHIdr_qElS''']
+
+# generic-api-key false positive: a log sentence in scripts/rotate-app-key.js
+# (commit 1335024) matched as a key. The text was reworded later, but the commit
+# stays in history and the CI scan covers the full history.
+[[allowlists]]
+description = "rotate-app-key.js warning sentence (log text, not a key)"
+condition = "AND"
+paths = ['''^scripts/rotate-app-key\.js$''']
+regexTarget = "line"
+regexes = ['''WARN: (current APP_KEY is empty|no current APP_KEY was set)''']
 
 # generic-api-key false positives: script file names in the packaging lists and
 # i18n message keys (identifiers, not secrets).

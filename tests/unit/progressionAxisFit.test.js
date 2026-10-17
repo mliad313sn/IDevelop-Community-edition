@@ -67,8 +67,8 @@ describe('fitRange — level 0-4', () => {
 
 describe('every progression chart uses the shared fit (source guard)', () => {
     const CHARTS = [
-        { file: 'public/js/dashboard.js', page: 'views/pages/dashboard.ejs' },
-        { file: 'views/pages/benchmark/role.ejs', page: 'views/pages/benchmark/role.ejs' },
+        // the role fit trend is a viz line with `fitAxis`: viz.js applies the rule
+        { file: 'public/js/viz.js', page: 'views/partials/viz/scripts.ejs' },
         { file: 'views/pages/employees/progress.ejs', page: 'views/pages/employees/progress.ejs' },
         {
             file: 'views/pages/reports/dept-analytics.ejs',
@@ -80,6 +80,35 @@ describe('every progression chart uses the shared fit (source guard)', () => {
     });
     test.each(CHARTS)('$page loads chart-axis-fit.js', ({ page }) => {
         expect(read(page)).toMatch(/<script src="\/js\/chart-axis-fit\.js/);
+    });
+    test('the dashboard trend asks the viz layer for the fitted axis', () => {
+        expect(read('views/pages/dashboard/_tab-overview.ejs')).toMatch(
+            /kind: 'line',[\s\S]{0,200}fitAxis: true/
+        );
+        expect(read('views/pages/dashboard/index.ejs')).toMatch(/axisFit: needsChart/);
+        expect(read('public/js/dashboard-tabs.js')).toMatch(/'\/js\/chart-axis-fit\.js'/);
+    });
+    test('the benchmark role trend asks the viz layer for the fitted axis', () => {
+        const role = read('views/pages/benchmark/role.ejs');
+        expect(role).toMatch(/kind: 'line',[\s\S]{0,120}fitAxis: true/);
+        expect(role).toMatch(/axisFit: true/);
+        const Viz = require('../../public/js/viz.js');
+        const cfg = Viz.buildChartConfig({
+            kind: 'line',
+            unit: 'pct',
+            fitAxis: true,
+            labels: ['a', 'b', 'c'],
+            series: [{ key: 'fit', data: [96.8, null, 97.9] }],
+        });
+        expect([cfg.options.scales.y.min, cfg.options.scales.y.max]).toEqual([90, 100]);
+        // without the option a percentage keeps its fixed 0-100 axis (bars, levels)
+        const fixed = Viz.buildChartConfig({
+            kind: 'line',
+            unit: 'pct',
+            labels: ['a'],
+            series: [{ key: 'fit', data: [97] }],
+        });
+        expect([fixed.options.scales.y.min, fixed.options.scales.y.max]).toEqual([0, 100]);
     });
     test('the trend charts no longer pin a 0-100 or 0-4 y-axis', () => {
         expect(read('views/pages/benchmark/role.ejs')).not.toMatch(

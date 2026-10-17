@@ -43,5 +43,8 @@
   "tasks_reason_prompt": "Motif écrit (obligatoire) — pourquoi ouvrir un plan d’amélioration pour cette personne ?",
   "tasks_dismiss_prompt": "Motif écrit (obligatoire) — pourquoi aucun plan n’est-il nécessaire ?",
   "withdraw": "Retirer le plan",
-  "withdraw_prompt": "Motif écrit (obligatoire) — pourquoi ce plan est-il retiré ? Un retrait n’est pas un échec."
+  "withdraw_prompt": "Motif écrit (obligatoire) — pourquoi ce plan est-il retiré ? Un retrait n’est pas un échec.",
+  "err_close_not_active": "Ce plan n’a jamais été activé : il ne peut donc pas être clôturé comme atteint ou non atteint. Retirez-le plutôt, avec un motif.",
+  "new_in_role_tag": "nouveau dans le poste",
+  "new_in_role_hint": "« Nouveau dans le poste » : la personne a pris son poste récemment (date d’entrée enregistrée, durée fixée dans les paramètres). Un écart en début de poste n’appelle pas forcément un plan d’amélioration."
 }

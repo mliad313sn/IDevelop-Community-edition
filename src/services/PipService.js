@@ -29,6 +29,64 @@ class PipService {
         });
     }
 
+    /**
+     * Who may act on a PIP (SA-42): the plan authority, the rule the 9-box
+     * approval applies (NineBoxService.resolveAuthority, canApprove):
+     *   - the person's direct manager: an employee manager (manager_type
+     *     'employee', compared with the person behind the account) or the
+     *     admin account named as manager (manager_type 'admin');
+     *   - a SuperAdmin, or an administrator whose clearance covers the person.
+     * Refused, fail closed: the supervisor (a PIP is the manager's decision),
+     * managers higher up the line (they read, they do not act — unless a
+     * SuperAdmin chose the extended authority ladder), a read-only
+     * delegate, the person themselves from either of their accounts, and
+     * anyone when the person cannot be found or a lookup fails.
+     */
+    static async actingAuthority(user, employeeId) {
+        const no = (why) => ({ canAct: false, why });
+        try {
+            if (!user || employeeId == null) return no('no_user');
+            const RBACService = require('./RBACService');
+            if (RBACService.isViewer(user)) return no('viewer');
+            const GovernanceService = require('./GovernanceService');
+            const personId = await GovernanceService.actingPersonId(user);
+            if (personId != null && Number(personId) === Number(employeeId)) return no('subject');
+            const emp = await require('../models/EmployeeModel').findById(Number(employeeId));
+            if (!emp) return no('not_found');
+            const isAdmin = user.userType === 'admin';
+            const A = require('./AuthorityService');
+            // The rung each pre-ladder grant stands for, on the audit line.
+            const yes = (why, as) => {
+                A.noteAs(user, employeeId, as);
+                return { canAct: true, why };
+            };
+            if (isAdmin && RBACService.isSuperAdmin(user)) return yes('superadmin', 'superadmin');
+            if (isAdmin && (await RBACService.canAccessEmployeeData(user, emp)))
+                return yes('clearance', 'localadmin');
+            if (
+                isAdmin &&
+                emp.managerType === 'admin' &&
+                emp.managerId != null &&
+                Number(emp.managerId) === Number(user.id)
+            )
+                return yes('manager', 'manager');
+            if (
+                personId != null &&
+                emp.managerType === 'employee' &&
+                emp.managerId != null &&
+                Number(emp.managerId) === Number(personId)
+            )
+                return yes('manager', 'manager');
+            // The authority ladder, extended mode only (AuthorityService): the
+            // line above acts as the manager. Strict mode adds nothing.
+            const wide = await A.widen(user, 'pip.act', emp);
+            if (wide.ok) return { canAct: true, why: 'ladder' };
+            return no('not_direct_manager');
+        } catch (_) {
+            return no('error'); // fail closed
+        }
+    }
+
     // pips.initiated_by → admins(id). A manager (employee) isn't an admin, so
     // fall back to the system admin while the manager owns the lifecycle.
     static async _actorAdminId(user) {
@@ -205,7 +263,7 @@ class PipService {
         return row;
     }
 
-    static async activate(pipId) {
+    static async activate(pipId, actor = null, req = null) {
         // Manager activates straight from 'proposed' (or a legacy 'approved').
         // RETURNING + a row check, exactly as `close` below already does. Without
         // it a second click — or activating a PIP that is already active or long
@@ -217,6 +275,12 @@ class PipService {
             [pipId]
         );
         if (!row) return false;
+        // Activation is when the plan starts to run against the person, so it
+        // names its author in the journal (actor_ref), as close() and withdraw()
+        // already do. It left no trace before.
+        await PipService._journal(actor, req, 'PIP_ACTIVATED', pipId, 'activated by its manager');
+        // The direct manager learns when someone above them activated it.
+        await require('./LineNoticeService').actedAbove(actor, row.employeeId, 'pip_activated');
         // Awaited: un-awaited, this query overlapped the caller's next statement on
         // the same transaction client.
         await this._notifyEmployee(row.employeeId, 'pip.activated', {});
@@ -313,7 +377,8 @@ class PipService {
                     action,
                     entityType: 'pip',
                     entityId: Number(pipId),
-                    details,
+                    // The rung the act used (AuthorityService), when one was resolved.
+                    details: require('./AuthorityService').withAs(details, actor),
                     ipAddress: req ? req.ip : null,
                     userAgent: req && req.get ? req.get('user-agent') : null,
                 })
@@ -349,15 +414,28 @@ class PipService {
             e.expose = true;
             throw e;
         }
-        // Close from any OPEN state (active, or a proposed/approved PIP that was
-        // never activated) — previously only 'active' closed, so closing a proposed
-        // PIP silently no-op'd while the API still reported success. Returns the
-        // closed row, or null when nothing matched (already closed / bad id).
+        // A verdict (met or not met) only applies to a plan that ran: state
+        // 'active'. A proposed or approved plan never ran, so it can neither be
+        // met nor failed; it is withdrawn instead (state 'cancelled' with a
+        // reason). Returns the closed row, or null when nothing matched (already
+        // closed, unknown id); a plan that never ran is refused in words (409).
         const row = await db.get(
             `UPDATE pips SET state=?, outcome=?, closed_by_ref=?, closed_at=now()
-              WHERE id=? AND state IN ('active','proposed','approved') RETURNING id, employee_id`,
+              WHERE id=? AND state = 'active' RETURNING id, employee_id`,
             [newState, outcome || null, PipService.actorRefOf(actor), pipId]
         );
+        if (!row) {
+            const cur = await db.get('SELECT state FROM pips WHERE id = ?', [pipId]);
+            if (cur && ['proposed', 'approved'].includes(String(cur.state))) {
+                const e = new Error(
+                    'This plan was never activated, so it cannot be closed as met or not met. Withdraw it instead, with a reason.'
+                );
+                e.code = 'PIP_NOT_ACTIVE';
+                e.status = 409;
+                e.expose = true;
+                throw e;
+            }
+        }
         if (row) {
             await PipService._journal(
                 actor,

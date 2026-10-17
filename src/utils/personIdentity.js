@@ -69,13 +69,56 @@ async function isSamePerson(user, ref) {
     // people (an admin account links to at most one employee and each employee to
     // at most one admin account — idx_admins_linked_employee). No lookup needed.
     if (userKind === refKind) return Number(user.id) === refId;
-    // Mixed: the admin side is the same person only through its link.
+    // Mixed: the admin side is the same person through its link, or — for an
+    // admin account linked to nobody — through a shared identity (below).
     if (userKind === 'admin') {
         const linked = await linkedPersonOfAdmin(user.id);
-        return linked != null && linked === refId;
+        if (linked != null) return linked === refId;
+        return adminMatchesEmployee(user.id, refId);
     }
     const linked = await linkedPersonOfAdmin(refId);
-    return linked != null && linked === Number(user.id);
+    if (linked != null) return linked === Number(user.id);
+    return adminMatchesEmployee(refId, user.id);
 }
 
-module.exports = { personIdOf, isSamePerson, linkedPersonOfAdmin };
+/**
+ * An administration account that is NOT linked to an employee record is still
+ * the same human as an employee when the two share an identity: the same
+ * e-mail (case- and space-insensitive), the same external (SSO) id, or an SSO
+ * identity of one account (user_identities) that is the other's inline SSO id.
+ *
+ * Used ONLY to REFUSE self-action and to keep two-person rules two people —
+ * never to grant anything. A lookup error answers "not matched" (the reads
+ * that would grant the action fail on the same outage).
+ * @returns {Promise<boolean>}
+ */
+async function adminMatchesEmployee(adminId, employeeId) {
+    const a = Number(adminId);
+    const e = Number(employeeId);
+    if (!Number.isInteger(a) || !Number.isInteger(e) || a <= 0 || e <= 0) return false;
+    try {
+        const row = await db.get(
+            `SELECT 1 AS "hit"
+               FROM admins a, employees e
+              WHERE a.id = ? AND e.id = ?
+                AND ((a.email IS NOT NULL AND btrim(a.email) <> ''
+                      AND lower(btrim(a.email)) = lower(btrim(coalesce(e.email, ''))))
+                  OR (a.external_id IS NOT NULL AND btrim(a.external_id) <> ''
+                      AND a.external_id = e.external_id)
+                  OR EXISTS (SELECT 1 FROM user_identities ia
+                              WHERE ia.subject_type = 'admin' AND ia.subject_id = a.id
+                                AND ia.sso_provider = e.auth_provider
+                                AND ia.sso_uid = e.external_id)
+                  OR EXISTS (SELECT 1 FROM user_identities ie
+                              WHERE ie.subject_type = 'employee' AND ie.subject_id = e.id
+                                AND ie.sso_provider = a.auth_provider
+                                AND ie.sso_uid = a.external_id))`,
+            [a, e]
+        );
+        return Boolean(row && Number(row.hit) === 1);
+    } catch (_) {
+        return false;
+    }
+}
+
+module.exports = { personIdOf, isSamePerson, linkedPersonOfAdmin, adminMatchesEmployee };

@@ -25,9 +25,10 @@ const fs = require('fs');
 const ROOT = path.join(__dirname, '../..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 // Needs a POPULATED database (several sites, assessed people, reviews): runs
 // only against an opt-in fixture database — see CONTRIBUTING.md.
-const HAS_DB = /idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''));
+const HAS_DB = isFixturesDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 const db = HAS_DB ? require('../../src/config/database') : null;
 const DashboardModel = HAS_DB ? require('../../src/models/DashboardModel') : null;
@@ -128,10 +129,5 @@ describe('the source no longer builds a two-population radar', () => {
         expect(flat).not.toMatch(/_getCategoryRadar[\s\S]{0,600}?FROM v_domain_capability c/);
     });
 
-    test('the renderer maps null to null, not through num()', () => {
-        const js = read('public/js/dashboard.js').replace(/\s+/g, ' ');
-        expect(js).toMatch(/const rNum = \(v\) => \(v == null \? null : Number\(v\)\)/);
-        expect(js).toMatch(/data: avr\.map\(\(d\) => rNum\(d\.avgActual\)\)/);
-        expect(js).toMatch(/data: domData\.map\(\(d\) => rNum\(d\.avgActual\)\)/);
-    });
+    // the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)
 });

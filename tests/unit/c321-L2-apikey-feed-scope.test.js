@@ -16,12 +16,12 @@ process.env.DATABASE_URL =
 jest.mock('../../src/config/sso', () => ({
     looksLikeJwt: (t) => /^ey/.test(String(t || '')),
     isEntraBearerEnabled: () => true,
-    authenticateEntraBearer: jest.fn(async () => ({
-        id: 12,
-        userType: 'admin',
-        role: 'localadmin',
-        apiScope: 'entra.bearer',
-    })),
+    // Like the real one: a bearer that is not JWT-shaped is not Entra's.
+    authenticateEntraBearer: jest.fn(async (req) =>
+        /^Bearer\s+ey/i.test(String((req && req.headers && req.headers.authorization) || ''))
+            ? { id: 12, userType: 'admin', role: 'localadmin', apiScope: 'entra.bearer' }
+            : null
+    ),
 }));
 jest.mock('../../src/services/ApiKeyService', () => ({
     validate: jest.fn(),

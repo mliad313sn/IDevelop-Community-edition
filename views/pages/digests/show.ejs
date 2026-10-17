@@ -1,0 +1,62 @@
+<%#
+    One « What changed » summary (/digests/:id), printed from its STORED
+    payload: the sentences were written when the summary was sent and are
+    printed as they are; nothing is recomputed and no 0 is invented. Links are
+    app-relative only (DigestController). Modes: one, out_of_scope (the units
+    it describes are no longer inside the reader's clearance), forbidden,
+    notfound. No script, no inline handler.
+%>
+<% var _mode = (typeof mode !== 'undefined' && mode) ? mode : 'notfound'; %>
+<% var D = (typeof digest !== 'undefined' && digest) ? digest : null; %>
+<div class="page-header">
+    <h1><i class="fas fa-newspaper" aria-hidden="true"></i> <%= D && D.title ? D.title : __('dash:dg_page_title') %></h1>
+</div>
+<p><a class="btn btn-secondary btn-sm" href="/digests"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('dash:dg_back') %></a></p>
+
+<% if (_mode === 'forbidden') { %>
+<div class="card dg-card" id="dg-forbidden"><p role="alert"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('dash:dg_forbidden') %></p></div>
+<% } else if (_mode === 'notfound') { %>
+<div class="card dg-card" id="dg-notfound"><p role="alert"><%= __('dash:dg_notfound') %></p></div>
+<% } else if (_mode === 'out_of_scope') { %>
+<p class="text-muted"><%= D.period %></p>
+<div class="card dg-card" id="dg-out"><p role="alert"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('dash:dg_out_of_scope') %></p></div>
+<% } else { %>
+<p class="text-muted" id="dg-period"><%= D.period %></p>
+<% if (D.changes.length) { %>
+<section class="card dg-card" id="dg-changes" aria-labelledby="dg-changes-h">
+    <h2 id="dg-changes-h" class="h3"><%= __('dash:nar_dg_changes') %></h2>
+    <% if (D.line) { %><p class="text-muted"><%= D.line %></p><% } %>
+    <ul class="dg-list">
+        <% D.changes.forEach(function (c) { %>
+        <li class="dg-item"><span class="dg-mark dg-mark--<%= c.polarity %>" aria-hidden="true"><%= c.polarity === 'better' ? '▲' : '▼' %></span><span class="sr-only"><%= __('dash:nar_' + c.polarity) %>: </span><% if (c.href) { %><a href="<%= c.href %>"><%= c.text %></a><% } else { %><span><%= c.text %></span><% } %></li>
+        <% }); %>
+    </ul>
+</section>
+<% } else if (D.history.length) { %>
+<section class="card dg-card" id="dg-history">
+    <% D.history.forEach(function (h) { %><p class="text-muted"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= h %></p><% }); %>
+</section>
+<% } %>
+<% if (D.actions.length) { %>
+<section class="card dg-card" id="dg-todo" aria-labelledby="dg-todo-h">
+    <h2 id="dg-todo-h" class="h3"><%= __('dash:nar_dg_todo') %></h2>
+    <ul class="dg-list">
+        <% D.actions.forEach(function (a) { %>
+        <li class="dg-item"><% if (a.href) { %><a href="<%= a.href %>"><%= a.text %></a><% } else { %><span><%= a.text %></span><% } %></li>
+        <% }); %>
+    </ul>
+</section>
+<% } %>
+<% if (!D.changes.length && !D.actions.length && !D.history.length) { %>
+<p class="text-muted"><%= __('dash:dg_nothing') %></p>
+<% } %>
+<% } %>
+
+<style>
+.dg-card{margin-top:1rem}
+.dg-list{list-style:none;margin:0;padding:0;display:grid;gap:.5rem}
+.dg-item{display:flex;gap:.5rem;align-items:flex-start;line-height:1.45}
+.dg-mark{flex:0 0 1.25rem;text-align:center;font-weight:700;color:var(--viz-neutral,#64748b)}
+.dg-mark--better{color:var(--viz-good,#15803d)}
+.dg-mark--worse{color:var(--viz-risk,#b91c1c)}
+</style>

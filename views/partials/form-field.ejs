@@ -1,0 +1,57 @@
+<%#
+  form-field — the shared form row: a label tied to its control, an optional
+  hint and an error message both announced through aria-describedby.
+  include('../partials/form-field', { id, name, label, type, value, required, hint, error, options, attrs })
+    id        required — the control id; the label points at it (label[for] ↔ id)
+    name      defaults to id
+    label     TEXT (translated); the required « * » is drawn by CSS, never typed here
+    type      text | email | password | number | date | time | textarea | select (default text)
+    value     current value (string); for select: the selected option value
+    options   select only: [{ value, label }]
+    required  true → required attribute
+    hint      helper text under the control (aria-describedby)
+    error     error text; when present the control carries aria-invalid="true".
+              No red before the person has interacted: an empty required field is
+              only marked once the server or the page says it is wrong.
+    attrs     extra attributes as an OBJECT, e.g. { minlength: 12, autocomplete: 'off' }.
+              Every name must be a plain attribute name (no on* handler, no
+              id/name/type/value override) and every value is escaped.
+  No unescaped output: every value goes through the escaping tag.
+%>
+<%
+  const _ffId = String(id);
+  const _ffName = (typeof name !== 'undefined' && name) ? String(name) : _ffId;
+  const _ffType = (typeof type !== 'undefined' && type) ? String(type) : 'text';
+  const _ffVal = (typeof value !== 'undefined' && value != null) ? String(value) : '';
+  const _ffReq = typeof required !== 'undefined' && !!required;
+  const _ffHint = (typeof hint !== 'undefined' && hint) ? String(hint) : '';
+  const _ffErr = (typeof error !== 'undefined' && error) ? String(error) : '';
+  const _ffOpts = (typeof options !== 'undefined' && Array.isArray(options)) ? options : [];
+  const _ffDesc = [_ffHint ? _ffId + '-hint' : '', _ffErr ? _ffId + '-err' : ''].filter(Boolean).join(' ');
+  const _ffReserved = ['id', 'name', 'type', 'value', 'required', 'class', 'style', 'aria-describedby', 'aria-invalid'];
+  const _ffExtra = [];
+  if (typeof attrs !== 'undefined' && attrs && typeof attrs === 'object' && !Array.isArray(attrs)) {
+      Object.keys(attrs).forEach(function (k) {
+          const key = String(k).toLowerCase();
+          if (!/^[a-z][a-z0-9-]{0,40}$/.test(key) || /^on/.test(key) || _ffReserved.indexOf(key) !== -1) return;
+          const v = attrs[k];
+          if (v === false || v == null) return;
+          _ffExtra.push([key, v === true ? '' : String(v)]);
+      });
+  }
+%>
+<% function _ffAttrs() { %> id="<%= _ffId %>" name="<%= _ffName %>"<% if (_ffReq) { %> required<% } %><% if (_ffDesc) { %> aria-describedby="<%= _ffDesc %>"<% } %><% if (_ffErr) { %> aria-invalid="true"<% } %><% _ffExtra.forEach(function (a) { %> <%= a[0] %>="<%= a[1] %>"<% }); %><% } %>
+<div class="form-field<%= _ffErr ? ' has-error' : '' %>">
+    <label class="form-field-label<%= _ffReq ? ' is-required' : '' %>" for="<%= _ffId %>"><%= label %></label>
+    <% if (_ffType === 'textarea') { %>
+    <textarea class="form-control"<% _ffAttrs(); %>><%= _ffVal %></textarea>
+    <% } else if (_ffType === 'select') { %>
+    <select class="form-control"<% _ffAttrs(); %>>
+        <% _ffOpts.forEach(function (o) { %><option value="<%= o.value %>"<%= String(o.value) === _ffVal ? ' selected' : '' %>><%= o.label %></option><% }); %>
+    </select>
+    <% } else { %>
+    <input class="form-control" type="<%= _ffType %>"<% _ffAttrs(); %> value="<%= _ffVal %>">
+    <% } %>
+    <% if (_ffHint) { %><p class="form-field-hint" id="<%= _ffId %>-hint"><%= _ffHint %></p><% } %>
+    <% if (_ffErr) { %><p class="form-field-error" id="<%= _ffId %>-err" role="alert"><i class="fas fa-circle-exclamation" aria-hidden="true"></i> <%= _ffErr %></p><% } %>
+</div>

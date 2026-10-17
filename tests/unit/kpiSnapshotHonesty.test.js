@@ -29,7 +29,8 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const HAS_DB = !!process.env.DATABASE_URL;
+const { isTestDatabaseUrl } = require('../helpers/testDatabase');
+const HAS_DB = isTestDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 const db = HAS_DB ? require('../../src/config/database') : null;
 const KpiSnapshotService = HAS_DB ? require('../../src/services/KpiSnapshotService') : null;
@@ -199,15 +200,16 @@ suite('24 — a day with a hole in it is not a finished day', () => {
     }, 20000);
 
     test('one failing site does not cost the others their day', async () => {
-        const DashboardModel = require('../../src/models/DashboardModel');
-        const real = DashboardModel.getOverviewKPIs.bind(DashboardModel);
+        // The indicators of a site come from the KPI module: make one site's
+        // computation throw.
+        const KpiService = require('../../src/services/KpiService');
+        const real = KpiService.snapshotMetrics;
         const sites = await db.all('SELECT id FROM sites ORDER BY name');
         const doomed = Number(sites[0].id);
 
-        DashboardModel.getOverviewKPIs = async (filters) => {
-            if (filters && Array.isArray(filters.siteIds) && Number(filters.siteIds[0]) === doomed)
-                throw new Error('simulated site failure');
-            return real(filters);
+        KpiService.snapshotMetrics = async (scope) => {
+            if (scope && Number(scope.siteId) === doomed) throw new Error('simulated site failure');
+            return real(scope);
         };
         try {
             await rolledBack(async () => {
@@ -224,7 +226,7 @@ suite('24 — a day with a hole in it is not a finished day', () => {
                 expect(Number(n.n)).toBe(sites.length - 1);
             });
         } finally {
-            DashboardModel.getOverviewKPIs = real;
+            KpiService.snapshotMetrics = real;
         }
     }, 20000); // job.tick() over every scope — heavy; see the note above.
 });

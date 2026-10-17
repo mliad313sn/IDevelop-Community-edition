@@ -83,64 +83,44 @@ document.addEventListener('DOMContentLoaded', () => {
     // ---------------------------------------------------------------------------
     const HELP_CONTENT = {
         '/dashboard': {
-            title: L('Workforce Capability Dashboard', 'Tableau de bord des capacités'),
+            title: L('Dashboard', 'Tableau de bord'),
             why: L(
-                '<strong>Process:</strong> The decision cockpit. It aggregates skills, readiness, talent and engagement data into one scannable view so managers and admins can spot risk and act. Tabs: <em>Executive Overview</em> (risk index, health scorecard, Workforce &amp; Talent measures), <em>Training Priorities</em>, <em>Talent Development</em> (coaching/IDP/PIP/9-box rollups), <em>Capability Map</em>, <em>Comparator</em>.',
-                "<strong>Processus :</strong> le cockpit de décision. Il regroupe les données de compétences, de préparation, de talent et d'engagement dans une vue unique et lisible, pour que managers et administrateurs repèrent les risques et agissent. Onglets : <em>Vue exécutive</em> (indice de risque, tableau de santé, mesures Effectif &amp; Talent), <em>Priorités de formation</em>, <em>Développement des talents</em> (synthèses coaching/PDI/PIP/9-box), <em>Carte des capacités</em>, <em>Comparateur</em>."
+                '<strong>Process:</strong> One dashboard adapted to your rights: what needs attention in your scope, in figures. No person is named here: every count has a <em>See the list</em> link to the list behind it. Context tabs (overview, role readiness, safety and certifications, talent, succession, development, assessments) load when you open them; a tab of a module that is switched off is not shown.',
+                "<strong>Processus :</strong> un seul tableau de bord adapté à vos droits : ce qui demande votre attention dans votre périmètre, en chiffres. Aucune personne n'y est nommée : chaque chiffre a un lien <em>Voir la liste</em> vers la liste qui le compose. Les onglets de contexte (vue d'ensemble, préparation aux postes, sécurité et habilitations, talents, relève, développement, évaluations) se chargent à l'ouverture ; l'onglet d'un module désactivé n'apparaît pas."
             ),
             steps: [
                 {
                     text: L(
-                        '<strong>Filter first:</strong> set Site / Department / Service at the top, then Apply — every chart and measure re-scopes to that population.',
-                        "<strong>Filtrez d'abord :</strong> réglez Site / Département / Service en haut, puis Appliquer — chaque graphique et mesure se recentre sur cette population."
+                        '<strong>Choose the scope</strong> in the bar at the top (a site or a department of your own population). Your choice is remembered for your account, never on the computer.',
+                        "<strong>Choisissez le périmètre</strong> dans la barre du haut (un site ou un département de votre propre population). Votre choix est mémorisé pour votre compte, jamais sur l'ordinateur."
                     ),
                 },
                 {
                     text: L(
-                        '<strong>Read the Risk Index:</strong> the gauge blends readiness, coverage, compliance, staffing and freshness into one 0-100 score.',
-                        "<strong>Lisez l'indice de risque :</strong> la jauge combine préparation, couverture, conformité, effectif et fraîcheur en un score unique de 0 à 100."
+                        '<strong>Read « In brief »</strong>, then the key indicators: a movement compares with a recorded snapshot of the same definition only.',
+                        '<strong>Lisez « En bref »</strong>, puis les indicateurs clés : une évolution ne se compare qu’à un relevé enregistré de la même définition.'
                     ),
                 },
                 {
                     text: L(
-                        '<strong>Scan the Health Scorecard + Workforce &amp; Talent measures</strong> for headcount, span of control, 9-box placement, active coaching/IDP/PIP, goals and check-in cadence.',
-                        "<strong>Parcourez le tableau de santé + les mesures Effectif &amp; Talent</strong> : effectif, périmètre d'encadrement, positionnement 9-box, coaching/PDI/PIP actifs, objectifs et cadence des points."
-                    ),
-                },
-                {
-                    text: L(
-                        "<strong>Read the Sub-Domain Capability radar</strong> (Executive tab): actual vs required proficiency by competency element. Pick a pillar from the selector to drill the axes into that pillar's sub-domains.",
-                        '<strong>Lisez le radar des capacités par sous-domaine</strong> (onglet Exécutif) : niveau réel vs requis par élément de compétence. Choisissez un pilier dans le sélecteur pour détailler les axes en sous-domaines de ce pilier.'
-                    ),
-                },
-                {
-                    text: L(
-                        '<strong>Switch tabs</strong> to drill from the executive summary into training priorities and the talent-development rollup.',
-                        "<strong>Changez d'onglet</strong> pour passer de la synthèse exécutive aux priorités de formation et à la synthèse du développement des talents."
+                        '<strong>Open a tab</strong> to explore; « See the list » opens the population behind a figure, counted by site and role.',
+                        '<strong>Ouvrez un onglet</strong> pour explorer ; « Voir la liste » ouvre la population derrière un chiffre, comptée par site et par poste.'
                     ),
                 },
             ],
             practices: [
                 L(
-                    'Review weekly, not annually — the data is continuous.',
-                    'Consultez-le chaque semaine, pas une fois par an — les données sont continues.'
+                    '« Not measured » is never a zero, and fewer than 5 people never get a percentage.',
+                    '« Non mesuré » n’est jamais un zéro, et moins de 5 personnes n’ont jamais de pourcentage.'
                 ),
                 L(
-                    'Use the Sub-Domain radar to target the widest actual-vs-required gaps per competency element.',
-                    'Servez-vous du radar par sous-domaine pour cibler les plus grands écarts réel-vs-requis par élément de compétence.'
-                ),
-                L(
-                    'Always set the org filter before reading numbers, so you are looking at your own population.',
-                    'Réglez toujours le filtre organisationnel avant de lire les chiffres, pour ne voir que votre population.'
-                ),
-                L(
-                    'Treat the Risk Index as a trigger to drill down, not as a final verdict.',
-                    "Traitez l'indice de risque comme un déclencheur d'analyse, pas comme un verdict final."
+                    'Print everything or open the board pack for a committee: the same figures, counts only.',
+                    'Tout imprimer ou ouvrir le dossier de comité : les mêmes chiffres, des effectifs seulement.'
                 ),
             ],
             value: L(
-                'Use the dashboard as your standing agenda: each weak metric points to a concrete action (assess, calibrate, coach, set goals) you can launch from the relevant module.',
-                'Utilisez le tableau de bord comme ordre du jour permanent : chaque indicateur faible pointe vers une action concrète (évaluer, calibrer, coacher, fixer des objectifs) lançable depuis le module concerné.'
+                'One page, one set of definitions: the dashboard, the reports and the board pack can never disagree.',
+                'Une page, une seule définition par indicateur : le tableau de bord, les rapports et le dossier de comité ne peuvent pas se contredire.'
             ),
         },
 
@@ -2455,28 +2435,22 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         '/supervisor/dashboard': {
-            title: L('My Team (Supervisor Home)', 'Mon équipe (accueil superviseur)'),
+            title: L('Dashboard (my team)', 'Tableau de bord (mon équipe)'),
             why: L(
-                '<strong>Process:</strong> Your landing page as a supervisor/manager: your team roster with each person\'s readiness, pending self-assessment reviews waiting on you, and shortcuts into reviews, gap analysis and coaching. It is the "what needs me today?" page.',
-                "<strong>Processus :</strong> votre page d'accueil de superviseur/manager : la liste de votre équipe avec la préparation de chacun, les revues d'auto-évaluation en attente de vous, et des raccourcis vers les revues, l'analyse des écarts et le coaching. C'est la page « qu'attend-on de moi aujourd'hui ? »."
+                '<strong>Process:</strong> Your landing page as a manager: your team in figures — role readiness, self-assessments waiting for you, certificates, plans — and the next steps. No one is named here; « See my team » opens the named roster.',
+                "<strong>Processus :</strong> votre page d'accueil de manager : votre équipe en chiffres — préparation au poste, auto-évaluations qui vous attendent, habilitations, plans — et les prochaines étapes. Personne n'y est nommé ; « Voir mon équipe » ouvre la liste nominative."
             ),
             steps: [
                 {
                     text: L(
-                        'Check <strong>pending reviews</strong> first — people are waiting on your approval to make their level official.',
-                        "Vérifiez d'abord les <strong>revues en attente</strong> — des personnes attendent votre approbation pour officialiser leur niveau."
+                        'Start with <strong>Validate self-assessments</strong>: people are waiting on your approval.',
+                        'Commencez par <strong>Valider des auto-évaluations</strong> : des personnes attendent votre approbation.'
                     ),
                 },
                 {
                     text: L(
-                        'Scan team <strong>readiness</strong>: anyone sliding down gets a conversation before it becomes a PIP.',
-                        "Parcourez la <strong>préparation</strong> de l'équipe : quiconque décline mérite une conversation avant que cela ne devienne un PIP."
-                    ),
-                },
-                {
-                    text: L(
-                        "Use the shortcuts to jump into <strong>SA Reviews</strong>, <strong>Gap analysis</strong> or a person's profile.",
-                        "Utilisez les raccourcis pour accéder aux <strong>Revues d'auto-évaluation</strong>, à l'<strong>Analyse des écarts</strong> ou à la fiche d'une personne."
+                        'Read the <strong>most frequent gaps</strong> and plan training from the gap analysis.',
+                        "Lisez les <strong>écarts les plus fréquents</strong> et planifiez les formations depuis l'analyse des écarts."
                     ),
                 },
             ],
@@ -2485,14 +2459,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     'Clear your review queue within a few days — a stale queue stalls the whole assessment cycle for your team.',
                     "Videz votre file de revue en quelques jours — une file en retard bloque tout le cycle d'évaluation de votre équipe."
                 ),
+            ],
+            value: L(
+                'One glance tells you what your team needs from you today.',
+                "Un coup d'œil vous dit ce que votre équipe attend de vous aujourd'hui."
+            ),
+        },
+
+        '/supervisor/team': {
+            title: L('My team', 'Mon équipe'),
+            why: L(
+                '<strong>Process:</strong> One row per person who reports to you: their review state, readiness over the assessed requirements, critical gaps, the last one-to-one and the next step.',
+                "<strong>Processus :</strong> une ligne par personne qui vous est rattachée : l'état de sa revue, sa préparation sur les exigences évaluées, ses écarts critiques, le dernier entretien individuel et la prochaine étape."
+            ),
+            steps: [
+                {
+                    text: L(
+                        'Use the <strong>next step</strong> button of a row to act for that person.',
+                        "Utilisez le bouton de <strong>prochaine étape</strong> d'une ligne pour agir pour cette personne."
+                    ),
+                },
+            ],
+            practices: [
                 L(
-                    'If you receive the weekly digest email, treat this page as the deep-dive behind that summary.',
-                    "Si vous recevez la synthèse hebdomadaire par e-mail, considérez cette page comme l'approfondissement de ce résumé."
+                    '« Not measured » means nothing was assessed yet — never a 0 %.',
+                    "« Non mesuré » signifie que rien n'a encore été évalué — jamais 0 %."
                 ),
             ],
             value: L(
-                'One glance tells you what your team needs from you today, so nothing waits silently in a queue.',
-                "Un coup d'œil vous dit ce que votre équipe attend de vous aujourd'hui, pour que rien n'attende en silence dans une file."
+                'The names behind your dashboard, under your own rights.',
+                'Les noms derrière votre tableau de bord, sous vos propres droits.'
             ),
         },
 
@@ -2853,38 +2849,134 @@ document.addEventListener('DOMContentLoaded', () => {
                 "Rapport de préparation (vue prête à l'emploi)"
             ),
             why: L(
-                '<strong>Process:</strong> The pre-built answer to "who is ready for their role?" — readiness % per person/role against the threshold set in Settings, with the distribution across the population. No configuration needed; for custom columns use the Report Builder.',
-                '<strong>Processus :</strong> la réponse préconstruite à « qui est prêt pour son poste ? » — % de préparation par personne/poste face au seuil défini dans les Paramètres, avec la répartition sur la population. Aucune configuration requise ; pour des colonnes personnalisées, utilisez le Générateur de rapports.'
+                '<strong>Process:</strong> The pre-built answer to "who is ready for their role?". Each person has one of four states: <strong>Ready</strong> (every required skill assessed, readiness at or above the threshold of the Settings, every critical skill met), <strong>Not ready</strong>, <strong>Partially assessed</strong> or <strong>Not assessed</strong>. The rate is Ready ÷ (Ready + Not ready); the two other states are counts beside it, never a failure. The same figure appears in the report builder, the API and the Power BI feed.',
+                "<strong>Processus :</strong> la réponse préconstruite à « qui est prêt pour son poste ? ». Chaque personne a l'un de quatre états : <strong>Prêt</strong> (toutes les compétences requises évaluées, préparation au moins égale au seuil des Paramètres, toutes les compétences critiques atteintes), <strong>Non prêt</strong>, <strong>Partiellement évalué</strong> ou <strong>Non évalué</strong>. Le taux est Prêts ÷ (Prêts + Non prêts) ; les deux autres états sont des effectifs à côté, jamais un échec. Le même chiffre apparaît dans le générateur de rapports, l'API et le flux Power BI."
             ),
             steps: [
                 {
                     text: L(
-                        'Filter to your <strong>site/department</strong>, read the distribution, then the individuals below the bar.',
-                        'Filtrez sur votre <strong>site/département</strong>, lisez la répartition, puis les individus sous la barre.'
+                        'Choose a <strong>site</strong> of your perimeter, read the rate « of N with a verdict · coverage Y % », then the reason given on each row.',
+                        'Choisissez un <strong>site</strong> de votre périmètre, lisez le taux « sur N ayant un verdict · couverture Y % », puis le motif donné sur chaque ligne.'
                     ),
                 },
                 {
                     text: L(
-                        'For each low-readiness person, jump to their profile → <strong>Development</strong> to see the plan (or the absence of one).',
-                        'Pour chaque personne à faible préparation, allez à sa fiche → <strong>Développement</strong> pour voir le plan (ou son absence).'
+                        'For « Partially assessed » and « Not assessed », the action is to finish the assessment, not to train.',
+                        "Pour « Partiellement évalué » et « Non évalué », l'action est de terminer l'évaluation, pas de former."
                     ),
                 },
                 {
                     text: L(
-                        '<strong>Export</strong> for the management review pack.',
-                        '<strong>Exportez</strong> pour le dossier de revue de direction.'
+                        '<strong>Export</strong> (CSV or JSON) for the management review pack.',
+                        '<strong>Exportez</strong> (CSV ou JSON) pour le dossier de revue de direction.'
                     ),
                 },
             ],
             practices: [
                 L(
-                    'Readiness moves after assessment cycles — date your exports so period-over-period comparisons are honest.',
-                    "La préparation bouge après les cycles d'évaluation — datez vos exports pour que les comparaisons d'une période à l'autre soient honnêtes."
+                    'Below 5 people with a verdict the rate is not shown, only the counts: do not compare a small team with a percentage.',
+                    "En dessous de 5 personnes ayant un verdict, le taux n'est pas affiché, seulement les effectifs : ne comparez pas une petite équipe à un pourcentage."
                 ),
             ],
             value: L(
-                'The single number leadership asks for, computed the same way every time.',
-                'Le chiffre unique que réclame la direction, calculé de la même façon à chaque fois.'
+                'The single number leadership asks for, computed the same way everywhere.',
+                'Le chiffre unique que réclame la direction, calculé de la même façon partout.'
+            ),
+        },
+
+        '/kpi/glossary': {
+            title: L('How is it calculated?', 'Comment est-ce calculé ?'),
+            why: L(
+                '<strong>Process:</strong> The definition of every indicator: what it counts, what it divides by, who is included or left out, its thresholds and who owns it. One definition is used by the reports, the report builder, the API, Power BI and the daily history. Indicators of a module switched off for your organisation are not listed.',
+                "<strong>Processus :</strong> la définition de chaque indicateur : ce qu'il compte, par quoi il divise, qui est inclus ou exclu, ses seuils et son responsable. Une seule définition sert aux rapports, au générateur de rapports, à l'API, à Power BI et à l'historique quotidien. Les indicateurs d'un module désactivé pour votre organisation ne sont pas listés."
+            ),
+            steps: [
+                {
+                    text: L(
+                        'Open the indicator from the list at the top; each one has its own anchor, so you can share a link to it.',
+                        "Ouvrez l'indicateur depuis la liste en haut ; chacun a sa propre ancre, vous pouvez donc partager un lien vers lui."
+                    ),
+                },
+                {
+                    text: L(
+                        '« See the list » opens the page that lists the people or items behind the figure, when your access allows it.',
+                        '« Voir la liste » ouvre la page qui liste les personnes ou éléments derrière le chiffre, quand vos accès le permettent.'
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'When two figures seem to disagree, compare their definitions here first: a different denominator explains most gaps.',
+                    "Quand deux chiffres semblent se contredire, comparez d'abord leurs définitions ici : un dénominateur différent explique la plupart des écarts."
+                ),
+            ],
+            value: L(
+                'Figures people trust, because everyone can read how they are made.',
+                'Des chiffres auxquels on se fie, parce que chacun peut lire comment ils sont faits.'
+            ),
+        },
+
+        '/kpi/targets': {
+            title: L('Indicator targets', 'Cibles des indicateurs'),
+            why: L(
+                '<strong>Process:</strong> One target per indicator, for the organisation or a site, from a date, with a reason. A decision is never edited or deleted: a change or a withdrawal adds a line to the history. The daily alerts compare each indicator with its target and its bands.',
+                "<strong>Processus :</strong> une cible par indicateur, pour l'organisation ou un site, à partir d'une date, avec un motif. Une décision n'est jamais modifiée ni effacée : un changement ou un retrait ajoute une ligne à l'historique. Les alertes quotidiennes comparent chaque indicateur à sa cible et à ses seuils."
+            ),
+            steps: [
+                {
+                    text: L(
+                        'Choose the indicator, the scope and the date, type the target (empty withdraws it) and the reason, then record the decision.',
+                        "Choisissez l'indicateur, le périmètre et la date, saisissez la cible (vide pour la retirer) et le motif, puis enregistrez la décision."
+                    ),
+                },
+                {
+                    text: L(
+                        "A site without its own target follows the organisation's; the table says so.",
+                        "Un site sans cible propre suit celle de l'organisation ; le tableau l'indique."
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'Write the reason for the next reader: the history keeps it with the decision.',
+                    "Écrivez le motif pour le prochain lecteur : l'historique le garde avec la décision."
+                ),
+            ],
+            value: L(
+                'Alerts that fire when it matters, against targets everyone can trace.',
+                'Des alertes qui partent quand cela compte, sur des cibles que chacun peut retracer.'
+            ),
+        },
+
+        '/digests': {
+            title: L('My summaries', 'Mes récapitulatifs'),
+            why: L(
+                '<strong>Process:</strong> The « What changed » summaries: the movements of your scope and what is left to do, in figures, or your next step. Each one stays readable here, even without e-mail. They are sent only when your organisation switched them on.',
+                '<strong>Processus :</strong> les récapitulatifs « Ce qui a changé » : les évolutions de votre périmètre et ce qui reste à faire, en chiffres, ou votre prochaine étape. Chacun reste consultable ici, même sans e-mail. Ils ne sont envoyés que si votre organisation les a activés.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        'Choose how often you receive your summary: every day, every week or never.',
+                        'Choisissez la fréquence de votre récapitulatif : chaque jour, chaque semaine ou jamais.'
+                    ),
+                },
+                {
+                    text: L(
+                        'Open a summary from the archive; its links lead to the lists behind the figures.',
+                        "Ouvrez un récapitulatif depuis l'archive ; ses liens mènent aux listes derrière les chiffres."
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'If summaries pile up unread, they slow down on their own; « Restore » puts the frequency back.',
+                    "Si des récapitulatifs s'accumulent sans être lus, ils ralentissent d'eux-mêmes ; « Rétablir » remet la fréquence."
+                ),
+            ],
+            value: L(
+                'What moved, in a few lines, without a name.',
+                'Ce qui a bougé, en quelques lignes, sans un nom.'
             ),
         },
 
@@ -3266,6 +3358,102 @@ document.addEventListener('DOMContentLoaded', () => {
             ),
         },
 
+        '/tasks': {
+            title: L('Tasks', 'À traiter'),
+            why: L(
+                '<strong>Process:</strong> everything waiting for you to act — assessments to review, plans to start, training to approve, accounts to process — grouped by type, with how many and what to do. The number on the bell counts exactly this list.',
+                '<strong>Processus :</strong> tout ce qui attend une action de votre part — évaluations à valider, plans à démarrer, formations à valider, comptes à traiter — regroupé par type, avec le nombre et ce qu’il faut faire. Le chiffre de la cloche compte exactement cette liste.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        '<strong>Start at the top:</strong> assessments first, then plans, training and accounts.',
+                        '<strong>Commencez par le haut :</strong> les évaluations d’abord, puis les plans, les formations et les comptes.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Use the button on each line</strong> to open the page where you act; the line goes once the work is done.',
+                        '<strong>Utilisez le bouton de chaque ligne</strong> pour ouvrir la page où agir ; la ligne disparaît une fois le travail fait.'
+                    ),
+                },
+                {
+                    text: L(
+                        'Messages and reminders are in <strong>Notifications</strong>, the second tab of the bell.',
+                        'Les messages et rappels sont dans <strong>Notifications</strong>, le deuxième onglet de la cloche.'
+                    ),
+                },
+            ],
+            value: L(
+                'One place for your to-do list: nothing waits unseen, and every link opens a page you are allowed to use.',
+                'Un seul endroit pour ce qui vous attend : rien ne patiente sans être vu, et chaque lien ouvre une page à laquelle vous avez accès.'
+            ),
+        },
+
+        '/reports/dept-brief': {
+            title: L('Department brief', 'Fiche département'),
+            why: L(
+                'One page that sums up a department: completion, gaps, talent placements and open actions, computed on the data of your scope.',
+                'Une page qui résume un département : avancement, écarts, positionnements talents et actions ouvertes, calculés sur les données de votre périmètre.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        'Pick a department in the list to open its latest brief.',
+                        'Choisissez un département dans la liste pour ouvrir sa dernière fiche.'
+                    ),
+                },
+                {
+                    text: L(
+                        'Recompute it after a campaign closes to see the new figures.',
+                        'Recalculez-la après la clôture d’une campagne pour voir les nouveaux chiffres.'
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'A figure that is not measured is shown as such — never read an empty cell as zero.',
+                    'Une valeur non mesurée est signalée comme telle : ne lisez jamais une case vide comme un zéro.'
+                ),
+            ],
+            value: L(
+                'Prepare a department review meeting in minutes.',
+                'Préparez une revue de département en quelques minutes.'
+            ),
+        },
+
+        '/admin/integrations/hris': {
+            title: L('HRIS sync', 'Synchronisation SIRH'),
+            why: L(
+                '<strong>Process:</strong> feed people from your HRIS. Joiners, movers and leavers are prepared in a dry run, reviewed, then applied with the same rules as the employee record.',
+                '<strong>Processus :</strong> alimentez les collaborateurs depuis votre SIRH. Arrivées, mobilités et départs sont préparés dans un essai à blanc, relus, puis appliqués avec les mêmes règles que la fiche collaborateur.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        '<strong>Configure the connector</strong> and test it.',
+                        '<strong>Configurez le connecteur</strong> et testez-le.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Run a dry run</strong> or upload a file, then read the plan: what will be created, changed or closed, and what could not be matched.',
+                        '<strong>Lancez un essai à blanc</strong> ou déposez un fichier, puis lisez le plan : ce qui sera créé, modifié ou clôturé, et ce qui n’a pas pu être rapproché.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Apply</strong> the plan once it is right; every change is recorded in the audit log.',
+                        '<strong>Appliquez</strong> le plan quand il est juste ; chaque changement est tracé dans le journal d’audit.'
+                    ),
+                },
+            ],
+            value: L(
+                'The people in the platform stay those of the organisation, without retyping.',
+                'Les collaborateurs de la plateforme restent ceux de l’organisation, sans ressaisie.'
+            ),
+        },
+
         '/admin/modules': {
             title: L('Modules &amp; adoption stage', 'Modules et étape d’adoption'),
             why: L(
@@ -3482,6 +3670,31 @@ document.addEventListener('DOMContentLoaded', () => {
             value: L(
                 'Seeing your own trajectory keeps development motivating and concrete.',
                 'Voir votre trajectoire rend le développement motivant et concret.'
+            ),
+        },
+        '/employee/review-record': {
+            title: L('End-of-campaign records', 'Comptes rendus de fin de campagne'),
+            why: L(
+                '<strong>Process:</strong> Once a campaign is locked or closed, what was decided for you in it: your rating, the validated level and the reason for a difference, a dispute still open, your plans.',
+                '<strong>Processus :</strong> une fois une campagne verrouillée ou clôturée, ce qui a été décidé pour vous : votre note, le niveau validé et la raison d’un écart, une contestation en cours, vos plans.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        '<strong>Open a campaign</strong> and read the record.',
+                        '<strong>Ouvrez une campagne</strong> et lisez le compte rendu.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Say you have read it</strong> — this is not an agreement — and add a comment if you wish; you can change it later.',
+                        '<strong>Indiquez l’avoir lu</strong> — ce n’est pas un accord — et ajoutez un commentaire si vous le souhaitez ; vous pourrez le modifier.'
+                    ),
+                },
+            ],
+            value: L(
+                'You keep a dated record of what was decided, in your own words.',
+                'Vous gardez une trace datée de ce qui a été décidé, avec vos propres mots.'
             ),
         },
         '/notifications': {
@@ -4122,19 +4335,42 @@ document.addEventListener('DOMContentLoaded', () => {
         return html;
     }
 
+    // The canonical page names the rail emits (views/partials/sidebar.ejs, from
+    // src/config/navigation.js), in the session language.
+    const NAV_TITLES = (() => {
+        try {
+            const node = document.getElementById('navGlossary');
+            const v = node ? JSON.parse(node.textContent || '{}') : {};
+            return v && typeof v === 'object' ? v : {};
+        } catch (_) {
+            return {};
+        }
+    })();
+    const navTitle = (k) =>
+        k && Object.prototype.hasOwnProperty.call(NAV_TITLES, k) ? NAV_TITLES[k] : null;
+    const escHtml = (v) =>
+        String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
     function updateGuideContent() {
         const path = window.location.pathname;
         // Normalise numeric segments so detail pages can have their OWN entry
         // (e.g. /employees/123/assessments -> /employees/:id/assessments).
         const norm = path.replace(/\/\d+(?=\/|$)/g, '/:id');
         let content = HELP_CONTENT[path] || HELP_CONTENT[norm];
+        let matchedKey = HELP_CONTENT[path] ? path : HELP_CONTENT[norm] ? norm : null;
         if (!content) {
             // longest matching prefix wins (e.g. /employees/123 -> /employees)
             const key = Object.keys(HELP_CONTENT)
                 .filter((k) => path.startsWith(k) || norm.startsWith(k))
                 .sort((a, b) => b.length - a.length)[0];
             if (key) content = HELP_CONTENT[key];
+            matchedKey = key || null;
         }
+        // The help title is the page's canonical name — the one the rail, the
+        // page title and the palette use. The help CONTENT is unchanged.
+        const glossTitle = navTitle(path) || navTitle(norm) || navTitle(matchedKey);
+        if (content && glossTitle)
+            content = Object.assign({}, content, { title: escHtml(glossTitle) });
         const box = document.getElementById('guide-content');
         if (!box) return;
         box.innerHTML = content

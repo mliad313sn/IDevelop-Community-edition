@@ -62,9 +62,7 @@ describe('the digest respects the recipient preferences (L5-8)', () => {
     });
 
     test('adminId is actually resolved', () => {
-        expect(jobFlat).toMatch(
-            /name = a\.username; email = a\.email; adminId = sub\.subscriberId;/
-        );
+        expect(jobFlat).toMatch(/email = a\.email; adminId = sub\.subscriberId;/);
     });
 
     test('the direct-email path remains only as a last resort', () => {

@@ -64,13 +64,13 @@
                     </td>
                     <td>
                         <% if (r.employeeId) { %><a href="/employees/<%= r.employeeId %>"><%= r.employeeName %></a><% } else { %><span class="text-muted">—</span><% } %>
-                        <div style="font-size:.74rem;color:var(--text-muted);"><%= r.employeeNumber || '' %><% if (r.siteName) { %> · <%= r.siteName %><% } %></div>
+                        <div style="font-size:.75rem;color:var(--text-muted);"><%= r.employeeNumber || '' %><% if (r.siteName) { %> · <%= r.siteName %><% } %></div>
                     </td>
                     <td style="font-size:.85rem;"><%= r.makerName || '—' %></td>
                     <td style="font-size:.8rem;"><%= fmtDateTime(r.createdAt) %></td>
                     <td>
                         <span class="badge <%= r.state === 'pending' ? 'badge-warning' : (r.state === 'rejected' || r.state === 'failed' ? 'badge-danger' : 'badge-success') %>"><%= __('admin:mcq_state_' + r.state) %></span>
-                        <% if (r.error) { %><div style="font-size:.74rem;color:#b91c1c;margin-top:.2rem;"><%= __('admin:mcq_error') %><%= colon %> <%= r.error %></div><% } %>
+                        <% if (r.error) { %><div style="font-size:.75rem;color:#b91c1c;margin-top:.2rem;"><%= __('admin:mcq_error') %><%= colon %> <%= r.error %></div><% } %>
                     </td>
                     <td style="text-align:right;white-space:nowrap;">
                         <% if (r.state === 'pending' && me && me.id !== r.makerId) { %>
@@ -93,7 +93,7 @@
                         </form>
                         <% } else if (r.checkerName) { %>
                         <div style="font-size:.78rem;color:var(--text-muted);"><%= __('admin:mcq_decided_by') %> <%= r.checkerName %><% if (r.decidedAt) { %> · <%= fmtDate(r.decidedAt) %><% } %></div>
-                        <% if (r.reason) { %><div style="font-size:.74rem;color:var(--text-muted);"><%= r.reason %></div><% } %>
+                        <% if (r.reason) { %><div style="font-size:.75rem;color:var(--text-muted);"><%= r.reason %></div><% } %>
                         <% } else { %><span class="text-muted">—</span><% } %>
                     </td>
                 </tr>
@@ -122,6 +122,6 @@
 </p>
 
 <style>
-.mcq-tag{display:inline-block;font-size:.68rem;letter-spacing:.04em;
+.mcq-tag{display:inline-block;font-size:.75rem;letter-spacing:.04em;
     border-radius:4px;padding:1px 6px;background:var(--bg-subtle,#f1f5f9);border:1px solid var(--border,#cbd5e1)}
 </style>

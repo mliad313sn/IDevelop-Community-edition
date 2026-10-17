@@ -10,6 +10,29 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const db = require('../config/database');
+// COMPLETENESS IS SCHEMA-DRIVEN: the registry lists every table / column that
+// holds data about an employee, with its treatment on erasure and export; the
+// test erasureRegistry-db.test.js introspects the real schema and fails when a
+// table or an employee column is missing from it.
+const {
+    SUBJECT_DATA_REGISTRY,
+    TABLES_WITHOUT_SUBJECT_COLUMN,
+    ERASED_MARKER,
+    registryWhere,
+    registrySet,
+} = require('./erasureRegistry');
+
+/** Is `p` inside `dir` (both resolved)? Refuses anything that escapes it. */
+function insideDir(dir, p) {
+    const root = path.resolve(dir);
+    const abs = path.resolve(root, String(p));
+    return abs !== root && abs.startsWith(root + path.sep);
+}
+
+/** The uploads folder the evidence and certificate services write to. */
+function uploadsDir() {
+    return process.env.UPLOADS_DIR || path.resolve('uploads');
+}
 
 /**
  * RÉTENTION (S-07 ; lois 2008-12 Sénégal, 2013-450 Côte d'Ivoire, 2013-015 Mali,
@@ -116,7 +139,15 @@ const REDACTED_ON_ERASURE = [
             'is_account_active',
             'erased_at',
         ],
-        kept: ['id', 'role_id', 'site_id', 'department_id', 'service_id', 'cancelled_at'],
+        kept: [
+            'id',
+            'role_id',
+            'role_start_date',
+            'site_id',
+            'department_id',
+            'service_id',
+            'cancelled_at',
+        ],
     },
     // A-04 — les quatre catégories que l'effacement DÉTRUISAIT sans
     // que l'export les rende jamais, mesurées sur le sujet 138 : `username`
@@ -202,7 +233,16 @@ const REDACTED_ON_ERASURE = [
         // `disclosure_reason` REJOINT comments/evidence/calibration_notes
         // (résidu A-04) : c'est le motif écrit par un tiers pour divulguer la
         // case au sujet, du texte libre sur la personne comme les trois autres.
-        erased: ['comments', 'evidence', 'calibration_notes', 'disclosure_reason'],
+        // The written reason of a 9-box move (migration 175) is free text by a
+        // third party about the person, like the four above. The movement
+        // record itself (previous box, direction, dates) is kept.
+        erased: [
+            'comments',
+            'evidence',
+            'calibration_notes',
+            'disclosure_reason',
+            'movement_justification',
+        ],
         kept: [
             'id',
             'performance',
@@ -212,6 +252,10 @@ const REDACTED_ON_ERASURE = [
             'status',
             'disclosed_to_employee',
             'disclosed_at',
+            'previous_box',
+            'movement_direction',
+            'movement_justified_at',
+            'approved_at',
             'created_at',
         ],
     },
@@ -319,6 +363,222 @@ const REDACTED_ON_ERASURE = [
         erased: ['flight_risk', 'impact_of_loss', 'risk_factors', 'computed_score'],
         kept: [],
     },
+    // CERTIFICATIONS: the certificate number, the free text and the evidence
+    // file name go (the file itself is deleted after the erasure commits); the
+    // fact of the certification (skill, dates, state) stays as a safety record.
+    {
+        key: 'certifications',
+        table: 'employee_certifications',
+        erased: ['cert_number', 'revoked_reason', 'notes', 'original_name'],
+        kept: [
+            'id',
+            'skill_id',
+            'issued_on',
+            'expires_on',
+            'is_revoked',
+            'av_status',
+            'created_at',
+        ],
+    },
+    // CAREER ASPIRATIONS: what the person said they want. Deleted.
+    {
+        key: 'aspirations',
+        table: 'employee_aspirations',
+        deleted: true,
+        erased: ['target_role_id', 'interests', 'open_to_mobility', 'updated_at'],
+        kept: [],
+    },
+    // INTERNAL APPLICATIONS: the person's note and the decision note go; the
+    // application itself (which opening, state, dates) stays.
+    {
+        key: 'opportunityApplications',
+        table: 'opportunity_applications',
+        erased: ['note', 'decision_note'],
+        kept: ['id', 'opportunity_id', 'status', 'created_at', 'decided_at'],
+    },
+    // PLANNED ABSENCES: the note and the reason a cancellation was given go;
+    // the dates and the state stay (cover planning).
+    {
+        key: 'plannedAbsences',
+        table: 'planned_absences',
+        erased: ['note', 'deactivated_reason'],
+        kept: ['id', 'starts_on', 'ends_on', 'kind', 'is_active', 'deactivated_at'],
+    },
+    // DECISIONS ON THE PERSON'S PROPOSED SKILL UPLIFTS (migration 180): the
+    // reason a supervisor wrote is about the person, so it goes ('[erased]',
+    // never NULL: a decline must keep a reason); who decided and when stay.
+    // THE DEVELOPMENT LOOP (migrations 191, 192): the person's own « done »
+    // note and the validator's note on their plan actions go (NULL); the
+    // dates and hours stay. Their proposals keep their state and dates; the
+    // sentence and the answer's reason go ('[erased]': the text is NOT NULL).
+    {
+        key: 'idpActionNotes',
+        table: 'idp_actions',
+        erased: ['reported_note', 'validation_note'],
+        kept: ['id', 'idp_id', 'reported_done_at', 'actual_hours'],
+    },
+    {
+        key: 'devProposals',
+        table: 'dev_proposals',
+        erased: ['proposal_text', 'decision_reason'],
+        kept: ['id', 'action_type', 'status', 'routed_to', 'created_at', 'decided_at'],
+    },
+    // THE END-OF-CAMPAIGN RECORDS (migration 193): the person's own comment
+    // goes ('[erased]'); the record stays. Its snapshot carries ids, levels,
+    // states and dates only — no free text to redact (owner decision 8).
+    {
+        key: 'reviewRecords',
+        table: 'review_records',
+        erased: ['employee_comment'],
+        kept: ['id', 'cycle_id', 'snapshot', 'acknowledged_at', 'comment_at'],
+    },
+    {
+        key: 'lmsUpliftDecisions',
+        table: 'lms_completions',
+        erased: ['decision_reason'],
+        kept: ['id', 'decided_at'],
+    },
+    // THE PERSON'S OWN NOTIFICATIONS: deleted.
+    {
+        key: 'notifications',
+        table: 'notifications',
+        deleted: true,
+        erased: [
+            'id',
+            'channel',
+            'kind',
+            'payload',
+            'created_at',
+            'read_at',
+            'sent_at',
+            'email_status',
+            'email_attempts',
+            'last_error',
+            // migration 183: the measurement of the person's own notifications
+            'event_id',
+            'ref_type',
+            'ref_id',
+            'opened_at',
+            'acted_at',
+        ],
+        kept: [],
+    },
+    // NOTIFICATION SETTINGS (migration 183): the person's own summary cadence
+    // and step-down, e-mail language and .ics switch, and their category ×
+    // e-mail grid. Deleted.
+    // DASHBOARD SCOPE (migration 185): the last scope the person chose on a
+    // dashboard page (ids of a site or department). Deleted.
+    {
+        key: 'dashboardScope',
+        table: 'dashboard_scope_prefs',
+        deleted: true,
+        erased: ['page', 'scope', 'updated_at'],
+        kept: [],
+    },
+    // « WHAT CHANGED » DIGESTS (migration 187): the person's archived digests
+    // (aggregates and unit ids, never a name) and their digest cadence. Deleted.
+    {
+        key: 'personaDigests',
+        table: 'persona_digests',
+        deleted: true,
+        erased: [
+            'id',
+            'persona',
+            'cadence',
+            'window_days',
+            'period_key',
+            'state',
+            'payload',
+            'opened_at',
+            'created_at',
+        ],
+        kept: [],
+    },
+    {
+        key: 'personaDigestPrefs',
+        table: 'persona_digest_prefs',
+        deleted: true,
+        erased: ['cadence', 'stepdown_at', 'stepdown_from', 'reactivated_at', 'updated_at'],
+        kept: [],
+    },
+    {
+        key: 'notificationSettings',
+        table: 'notification_user_settings',
+        deleted: true,
+        erased: [
+            'digest_cadence',
+            'email_locale',
+            'ics_enabled',
+            'digest_stepdown_at',
+            'digest_stepdown_from',
+            'digest_streak_from',
+            'updated_at',
+        ],
+        kept: [],
+    },
+    {
+        key: 'notificationCategoryPrefs',
+        table: 'notification_category_prefs',
+        deleted: true,
+        erased: ['category', 'channel', 'enabled', 'updated_at'],
+        kept: [],
+    },
+    // HRIS LINKS: the person's identifier in the HR system. Deleted.
+    {
+        key: 'hrisLinks',
+        table: 'hris_links',
+        deleted: true,
+        erased: ['id', 'provider', 'external_id', 'last_seen_at', 'created_at'],
+        kept: [],
+    },
+    // OBJECTION TO PROFILING (migration 165): the person's reasons and the
+    // review stamp. The rows are deleted on erasure (see `erase`).
+    {
+        key: 'profilingObjections',
+        table: 'profiling_objections',
+        deleted: true,
+        erased: [
+            'id',
+            'reason',
+            'created_at',
+            'withdrawn_at',
+            'withdrawn_reason',
+            'hr_reviewed_at',
+        ],
+        kept: [],
+    },
+    // SAFETY GATE (migration 174): waivers and contests about the person. The
+    // rows are kept as a safety record; the free text goes on erasure.
+    {
+        key: 'safetyWaivers',
+        table: 'safety_gate_waivers',
+        erased: ['reason', 'ended_reason'],
+        kept: [
+            'id',
+            'skill_id',
+            'granted_via',
+            'state',
+            'starts_at',
+            'expires_at',
+            'ended_at',
+            'renewal_of',
+            'created_at',
+        ],
+    },
+    {
+        key: 'safetyContests',
+        table: 'safety_gate_contests',
+        erased: ['reason', 'decision_reason', 'correction_pointer'],
+        kept: [
+            'id',
+            'contested_as',
+            'status_at_contest',
+            'state',
+            'remedy',
+            'created_at',
+            'decided_at',
+        ],
+    },
     // ASYMÉTRIE INVERSE TRANCHÉE :
     // l'export rendait ces trois catégories et l'effacement n'y touchait PAS.
     // Décision : une note de revue NOMINATIVE est une donnée personnelle du
@@ -393,6 +653,13 @@ const REDACTED_ON_ERASURE = [
  * sur la personne — le test le vérifie.
  */
 const DISCLOSED_ABOUT_SUBJECT = [
+    // The DEI consent ledger (migration 171): field names, consent-text version
+    // and dates, never a value — the proof of the consent and of its withdrawal.
+    {
+        key: 'deiConsents',
+        table: 'dei_consents',
+        kept: ['fields', 'text_version', 'locale', 'granted_at', 'withdrawn_at', 'end_reason'],
+    },
     {
         key: 'lifecycleEvents',
         table: 'lifecycle_events',
@@ -424,6 +691,27 @@ const DISCLOSED_ABOUT_SUBJECT = [
         table: 'feedback360_subjects',
         kept: ['id', 'round_id', 'status', 'created_at'],
     },
+    // PRIVACY NOTICE (migration 165): which version the person acknowledged and
+    // when. No free text; kept after erasure as the evidence that the person
+    // was informed.
+    {
+        key: 'privacyNoticeAcks',
+        table: 'privacy_notice_acks',
+        kept: ['version', 'locale', 'acknowledged_at'],
+    },
+    // TRAINING: enrolments and completions (course, state, dates, score). No
+    // free text is exported; the raw provider payload is dropped by the
+    // registry on erasure.
+    {
+        key: 'lmsEnrollments',
+        table: 'lms_enrollments',
+        kept: ['id', 'course_id', 'status', 'created_at', 'due_at', 'completed_at'],
+    },
+    {
+        key: 'lmsCompletions',
+        table: 'lms_completions',
+        kept: ['id', 'provider', 'course_id', 'completed_at', 'score'],
+    },
 ];
 
 class DSRService {
@@ -434,6 +722,19 @@ class DSRService {
     /** Ce qui est écrit sur la personne et que l'export doit rendre aussi. */
     static get DISCLOSED_ABOUT_SUBJECT() {
         return DISCLOSED_ABOUT_SUBJECT;
+    }
+    /** Every table / column holding data about an employee (erasureRegistry). */
+    static get SUBJECT_DATA_REGISTRY() {
+        return SUBJECT_DATA_REGISTRY;
+    }
+    /** Every other table, and why it needs no per-subject treatment. */
+    static get TABLES_WITHOUT_SUBJECT_COLUMN() {
+        return TABLES_WITHOUT_SUBJECT_COLUMN;
+    }
+
+    async _tableExists(table) {
+        const row = await db.get('SELECT to_regclass(?) AS t', [`public.${table}`]);
+        return Boolean(row && row.t);
     }
 
     /** Full personal-data export for a subject (access / portability). */
@@ -459,7 +760,7 @@ class DSRService {
         // divulguer serait une faille, pas une conformité.
         out.profile = await db
             .get(
-                `SELECT id, employee_number, username, first_name, last_name, email, phone, role_id, site_id, department_id, service_id,
+                `SELECT id, employee_number, username, first_name, last_name, email, phone, role_id, role_start_date, site_id, department_id, service_id,
                     external_id, auth_provider, is_active, is_account_active, cancelled_at, cancel_reason, erased_at
              FROM employees WHERE id = ?`,
                 [employeeId]
@@ -544,7 +845,8 @@ class DSRService {
             'nineBox',
             `SELECT id, performance, potential, box, box_label, comments, evidence,
                     calibration_notes, status, disclosed_to_employee, disclosed_at, disclosure_reason,
-                    created_at
+                    previous_box, movement_direction, movement_justification, movement_justified_at,
+                    approved_at, created_at
                FROM nine_box_evaluations WHERE employee_id = ?`,
             [employeeId]
         );
@@ -614,6 +916,32 @@ class DSRService {
               WHERE p.employee_id = ?`,
             [employeeId]
         );
+        // Migrations 191 and 192: the person's own "done" notes and the
+        // validators' notes on their plan actions, and the actions they
+        // proposed to their line (erased with them, so returned here).
+        await q(
+            'idpActionNotes',
+            `SELECT a.id, a.idp_id, a.reported_done_at, a.reported_note, a.validation_note,
+                    a.actual_hours
+               FROM idp_actions a
+               JOIN idp_plans p ON p.id = a.idp_id
+              WHERE p.employee_id = ?
+                AND (a.reported_note IS NOT NULL OR a.validation_note IS NOT NULL)`,
+            [employeeId]
+        );
+        await q(
+            'devProposals',
+            `SELECT id, action_type, proposal_text, status, routed_to, created_at, decided_at,
+                    decision_reason
+               FROM dev_proposals WHERE employee_id = ?`,
+            [employeeId]
+        );
+        await q(
+            'reviewRecords',
+            `SELECT id, cycle_id, snapshot, acknowledged_at, employee_comment, comment_at
+               FROM review_records WHERE employee_id = ?`,
+            [employeeId]
+        );
         await q('pips', 'SELECT id, state, summary, outcome FROM pips WHERE employee_id = ?', [
             employeeId,
         ]);
@@ -638,6 +966,14 @@ class DSRService {
             'SELECT gender, ethnicity, age_band, disability, nationality FROM employee_demographics WHERE employee_id = ?',
             [employeeId]
         );
+        // The DEI consent ledger (migration 171): what the person consented to,
+        // when, and when it ended — field names only, never a value.
+        await q(
+            'deiConsents',
+            `SELECT fields, text_version, locale, granted_at, withdrawn_at, end_reason
+               FROM dei_consents WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
         // HISTORIQUE DE CYCLE DE VIE — arrivée, mutation, départ, avec leurs motifs.
         await q(
             'lifecycleEvents',
@@ -650,6 +986,137 @@ class DSRService {
             'SELECT flight_risk, impact_of_loss, risk_factors, computed_score FROM retention_risk WHERE employee_id = ?',
             [employeeId]
         );
+        await q(
+            'certifications',
+            `SELECT id, skill_id, cert_number, issued_on, expires_on, is_revoked, revoked_reason, notes,
+                    original_name, av_status, created_at
+               FROM employee_certifications WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'aspirations',
+            'SELECT target_role_id, interests, open_to_mobility, updated_at FROM employee_aspirations WHERE employee_id = ?',
+            [employeeId]
+        );
+        await q(
+            'opportunityApplications',
+            `SELECT id, opportunity_id, note, status, created_at, decided_at, decision_note
+               FROM opportunity_applications WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'plannedAbsences',
+            `SELECT id, starts_on, ends_on, kind, note, is_active, deactivated_at, deactivated_reason
+               FROM planned_absences WHERE employee_id = ? ORDER BY starts_on`,
+            [employeeId]
+        );
+        await q(
+            'lmsUpliftDecisions',
+            `SELECT id, decided_at, decision_reason
+               FROM lms_completions WHERE employee_id = ? AND decided_at IS NOT NULL ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'notifications',
+            `SELECT id, channel, kind, payload, created_at, read_at, sent_at,
+                    email_status, email_attempts, last_error,
+                    event_id, ref_type, ref_id, opened_at, acted_at
+               FROM notifications
+              WHERE user_id = ? AND user_type::text = 'employee' ORDER BY id`,
+            [employeeId]
+        );
+        // The person's own notification settings (migration 183): summary
+        // cadence and step-down, e-mail language, .ics switch, and the
+        // category × e-mail grid. Settings about the person only.
+        await q(
+            'notificationSettings',
+            `SELECT digest_cadence, email_locale, ics_enabled, digest_stepdown_at,
+                    digest_stepdown_from, digest_streak_from, updated_at
+               FROM notification_user_settings
+              WHERE user_type = 'employee' AND user_id = ?`,
+            [employeeId]
+        );
+        await q(
+            'notificationCategoryPrefs',
+            `SELECT category, channel, enabled, updated_at
+               FROM notification_category_prefs
+              WHERE user_type = 'employee' AND user_id = ? ORDER BY category, channel`,
+            [employeeId]
+        );
+        // The last scope the person chose on the dashboard (migration 185):
+        // ids of a site or department, their own screen preference.
+        await q(
+            'dashboardScope',
+            `SELECT page, scope, updated_at
+               FROM dashboard_scope_prefs
+              WHERE user_type = 'employee' AND user_id = ? ORDER BY page`,
+            [employeeId]
+        );
+        // The person's archived « What changed » digests and their cadence
+        // (migration 187): figures and unit ids only.
+        await q(
+            'personaDigests',
+            `SELECT id, persona, cadence, window_days, period_key, state, payload, opened_at, created_at
+               FROM persona_digests
+              WHERE user_type = 'employee' AND user_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'personaDigestPrefs',
+            `SELECT cadence, stepdown_at, stepdown_from, reactivated_at, updated_at
+               FROM persona_digest_prefs
+              WHERE user_type = 'employee' AND user_id = ?`,
+            [employeeId]
+        );
+        await q(
+            'hrisLinks',
+            'SELECT id, provider, external_id, last_seen_at, created_at FROM hris_links WHERE employee_id = ?',
+            [employeeId]
+        );
+        await q(
+            'lmsEnrollments',
+            `SELECT id, course_id, status, created_at, due_at, completed_at
+               FROM lms_enrollments WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'lmsCompletions',
+            `SELECT id, provider, course_id, completed_at, score
+               FROM lms_completions WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        // PRIVACY (migration 165): the person's objections to profiling (open
+        // and withdrawn), the notice versions they acknowledged and their own
+        // self-service downloads. Who reviewed an objection is an id, not a name.
+        await q(
+            'profilingObjections',
+            `SELECT id, reason, created_at, withdrawn_at, withdrawn_reason, hr_reviewed_at
+               FROM profiling_objections WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        // SAFETY GATE (migration 174): the waivers and contests about the
+        // person, with their reasons and the decision. Who granted, ended or
+        // decided is an id reference, not a name.
+        await q(
+            'safetyWaivers',
+            `SELECT id, skill_id, granted_via, reason, state, starts_at, expires_at, ended_at,
+                    ended_reason, renewal_of, created_at
+               FROM safety_gate_waivers WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'safetyContests',
+            `SELECT id, contested_as, reason, status_at_contest, state, decision_reason, remedy,
+                    correction_pointer, created_at, decided_at
+               FROM safety_gate_contests WHERE employee_id = ? ORDER BY id`,
+            [employeeId]
+        );
+        await q(
+            'privacyNoticeAcks',
+            `SELECT version, locale, acknowledged_at FROM privacy_notice_acks
+              WHERE subject_type = 'employee' AND subject_id = ? ORDER BY version`,
+            [employeeId]
+        );
         return out;
     }
 
@@ -658,16 +1125,103 @@ class DSRService {
      * special-category data, keeping the append-only audit chain intact (it
      * references ids, not names). Returns a summary. Irreversible.
      */
+    /**
+     * The legal hold in force on a subject, or null: on the person themselves
+     * (migration 157, set before departure) or on their open retention job.
+     */
+    async legalHoldOf(employeeId) {
+        const id = Number(employeeId);
+        const e = await db.get(
+            'SELECT legal_hold_at, legal_hold_by, legal_hold_reason FROM employees WHERE id = ?',
+            [id]
+        );
+        if (e && e.legalHoldAt)
+            return {
+                at: e.legalHoldAt,
+                by: e.legalHoldBy || null,
+                reason: e.legalHoldReason || null,
+                level: 'employee',
+            };
+        const j = await db.get(
+            `SELECT legal_hold_at, legal_hold_by, legal_hold_reason FROM pii_cleanup_jobs
+              WHERE employee_id = ? AND completed_at IS NULL AND legal_hold_at IS NOT NULL
+              ORDER BY legal_hold_at DESC LIMIT 1`,
+            [id]
+        );
+        if (j && j.legalHoldAt)
+            return {
+                at: j.legalHoldAt,
+                by: j.legalHoldBy || null,
+                reason: j.legalHoldReason || null,
+                level: 'retention_job',
+            };
+        return null;
+    }
+
+    /**
+     * An approved two-person override for THIS subject, or a refusal. Checked
+     * here, not trusted from the caller: approved, same employee, approver is a
+     * different admin than the requester (migration 166).
+     */
+    async _verifyOverride(employeeId, requestId) {
+        const r = await db.get(
+            `SELECT id, employee_id, state, requested_by_admin_id, decided_by_admin_id
+               FROM erasure_override_requests WHERE id = ?`,
+            [Number(requestId)]
+        );
+        const ok =
+            r &&
+            Number(r.employeeId) === Number(employeeId) &&
+            r.state === 'approved' &&
+            r.decidedByAdminId != null &&
+            Number(r.decidedByAdminId) !== Number(r.requestedByAdminId);
+        if (!ok) {
+            const err = new Error('erasure_override_invalid');
+            err.code = 'erasure_override_invalid';
+            err.status = 409;
+            err.expose = true;
+            err.userMessage =
+                'Erasure refused: the legal-hold override is not an approved two-person request for this employee.';
+            throw err;
+        }
+        return r;
+    }
+
     async erase(
         employeeId,
         actorAdminId = null,
-        { reason = null, method = 'dsr_erase', reapply = false } = {}
+        { reason = null, method = 'dsr_erase', reapply = false, legalHoldOverride = null } = {}
     ) {
         const emp = await db.get(
-            'SELECT id, is_active, email, employee_number FROM employees WHERE id = ?',
+            'SELECT id, is_active, email, employee_number, username FROM employees WHERE id = ?',
             [employeeId]
         );
         if (!emp) throw new Error(`Employee ${employeeId} not found`);
+        // LEGAL HOLD: no erasure while a hold is set (the held data may be
+        // evidence), whatever the entry point: the maintenance panel, the
+        // capability API, the retention purge. The one way through is an
+        // APPROVED two-person override (a written reason, and a second,
+        // different SuperAdmin), re-verified here. A re-application after a
+        // restore is not a new erasure: the person was erased before the hold
+        // the restored backup brought back, so it proceeds.
+        if (!reapply) {
+            const hold = await this.legalHoldOf(employeeId);
+            if (hold && legalHoldOverride == null) {
+                const err = new Error('erasure_legal_hold');
+                err.code = 'erasure_legal_hold';
+                err.status = 409;
+                err.expose = true;
+                err.hold = hold;
+                const on = hold.at ? new Date(hold.at).toISOString().slice(0, 10) : '?';
+                err.userMessage =
+                    `Erasure refused: legal hold set by ${hold.by || 'unknown'} on ${on}` +
+                    (hold.reason ? ` (reason: ${hold.reason})` : '') +
+                    '. Release the hold, or request a two-person override (Maintenance panel).';
+                throw err;
+            }
+            if (legalHoldOverride != null)
+                await this._verifyOverride(employeeId, legalHoldOverride);
+        }
         // Read BEFORE the pseudonymisation below: the SSO-migration history is
         // searched with the real identifiers.
         const origEmail = String(emp.email || '')
@@ -676,8 +1230,17 @@ class DSRService {
         const origNumber = String(emp.employeeNumber ?? emp.employee_number ?? '')
             .trim()
             .toLowerCase();
+        const origUsername = String(emp.username || '')
+            .trim()
+            .toLowerCase();
+        // Paths of the person's uploaded files, deleted once the erasure commits.
+        const filesToDelete = [];
         const out = await db.runTransaction(async () => {
             const tag = `erased-${employeeId}`;
+            // The person's identifiers as they are NOW, for the audit-log
+            // redaction at the end of this transaction.
+            const AuditRetention = require('./AuditRetentionService');
+            const auditNeedles = await AuditRetention.collectNeedles(employeeId);
             // erasure is at least the LEAVER cascade. A subject
             // still active goes through deprovision first — sessions (both
             // buckets), linked admin accounts, their API keys and sessions, the
@@ -836,6 +1399,20 @@ class DSRService {
                 "UPDATE pips SET summary = '[erased]', outcome = NULL WHERE employee_id = ?",
                 [employeeId]
             );
+            // SA-38: the in-app copies of scheduled reports produced over a scope
+            // containing this person, or over everyone (an unrestricted scope is
+            // JSON null), are emptied; the row stays for the audit and its link
+            // answers « copy expired ». A database without migration 173 has no
+            // such table to empty.
+            if (await this._tableExists('report_schedule_runs'))
+                await db.run(
+                    `UPDATE report_schedule_runs
+                        SET content = NULL, purged_at = now(), purge_reason = 'erasure'
+                      WHERE purged_at IS NULL
+                        AND (scope_ids IS NULL OR jsonb_typeof(scope_ids) = 'null'
+                             OR scope_ids @> jsonb_build_array(CAST(? AS integer)))`,
+                    [Number(employeeId)]
+                );
             await db.run('UPDATE survey_responses SET text_answer = NULL WHERE employee_id = ?', [
                 employeeId,
             ]);
@@ -870,7 +1447,7 @@ class DSRService {
             // `disclosed_to_employee` est vrai → marqueur quand il y en avait un,
             // NULL quand il n'y en avait pas ; jamais un NULL qui ferait avorter.
             await db.run(
-                "UPDATE nine_box_evaluations SET comments = NULL, evidence = NULL, calibration_notes = NULL, disclosure_reason = CASE WHEN disclosure_reason IS NULL THEN NULL ELSE '[erased]' END WHERE employee_id = ?",
+                "UPDATE nine_box_evaluations SET comments = NULL, evidence = NULL, calibration_notes = NULL, disclosure_reason = CASE WHEN disclosure_reason IS NULL THEN NULL ELSE '[erased]' END, movement_justification = CASE WHEN movement_justification IS NULL THEN NULL ELSE '[erased]' END WHERE employee_id = ?",
                 [employeeId]
             );
             await db.run(
@@ -882,6 +1459,30 @@ class DSRService {
             // personne, aucune référence entrante, jamais recalculé après le
             // départ. Supprimée comme la démographie, et pour la même raison.
             await db.run('DELETE FROM retention_risk WHERE employee_id = ?', [employeeId]);
+            // PRIVACY (migration 165): the objection rows carry the person's own
+            // free text and the reviewer's note about them; once erased, nobody
+            // profiles the person any more (inactive, risk row gone), so the rows
+            // go. The held development triggers about them go with them. A
+            // notice acknowledgement is kept (no free text): it is the evidence
+            // that the person was informed (accountability).
+            await inSavepoint(() =>
+                db.run('DELETE FROM profiling_objections WHERE employee_id = ?', [employeeId])
+            ).catch(() => {});
+            await inSavepoint(() =>
+                db.run('DELETE FROM privacy_paused_triggers WHERE employee_id = ?', [employeeId])
+            ).catch(() => {});
+            // SAFETY GATE (migration 174): the rows stay (a safety record: who
+            // was let through by waiver, when, and what was decided on a
+            // contest); the free text written about the person goes. The
+            // columns are NOT NULL or CHECKed non-empty, so a marker, not NULL.
+            await db.run(
+                `UPDATE safety_gate_waivers SET reason = '[erased]', ended_reason = CASE WHEN ended_reason IS NULL THEN NULL ELSE '[erased]' END WHERE employee_id = ?`,
+                [employeeId]
+            );
+            await db.run(
+                `UPDATE safety_gate_contests SET reason = '[erased]', decision_reason = CASE WHEN decision_reason IS NULL THEN NULL ELSE '[erased]' END, correction_pointer = CASE WHEN correction_pointer IS NULL THEN NULL ELSE '[erased]' END WHERE employee_id = ?`,
+                [employeeId]
+            );
             // A-04, asymétrie inverse TRANCHÉE : ce que l'export restitue déjà et
             // que l'effacement laissait intact — le texte libre écrit SUR la
             // personne, ou PAR elle, dans la revue, le litige et la demande de
@@ -912,6 +1513,177 @@ class DSRService {
                            WHERE employee_id = ?`,
                 [employeeId]
             );
+            // ---- the categories added with the registry (export keys above) ----
+            const hrisIds = (
+                await db.all('SELECT external_id FROM hris_links WHERE employee_id = ?', [
+                    employeeId,
+                ])
+            )
+                .map((r) => String(r.externalId ?? r.external_id ?? '').trim())
+                .filter(Boolean);
+            for (const r of await db.all(
+                'SELECT file_uri, quarantine_uri FROM employee_certifications WHERE employee_id = ?',
+                [employeeId]
+            ))
+                for (const v of Object.values(r))
+                    if (v && v !== ERASED_MARKER) filesToDelete.push(String(v));
+            await db.run(
+                `UPDATE employee_certifications SET cert_number = NULL, notes = NULL,
+                        revoked_reason = CASE WHEN revoked_reason IS NULL THEN NULL ELSE '[erased]' END,
+                        original_name = CASE WHEN original_name IS NULL THEN NULL ELSE '[erased]' END,
+                        file_uri = CASE WHEN file_uri IS NULL THEN NULL ELSE '[erased]' END,
+                        quarantine_uri = NULL
+                  WHERE employee_id = ?`,
+                [employeeId]
+            );
+            await db.run('DELETE FROM employee_aspirations WHERE employee_id = ?', [employeeId]);
+            await db.run(
+                `UPDATE opportunity_applications SET note = NULL,
+                        decision_note = CASE WHEN decision_note IS NULL THEN NULL ELSE '[erased]' END
+                  WHERE employee_id = ?`,
+                [employeeId]
+            );
+            await db.run(
+                `UPDATE planned_absences SET note = NULL,
+                        deactivated_reason = CASE WHEN deactivated_reason IS NULL THEN NULL ELSE '[erased]' END
+                  WHERE employee_id = ?`,
+                [employeeId]
+            );
+            await db.run(
+                `UPDATE idp_actions SET reported_note = NULL, validation_note = NULL
+                  WHERE idp_id IN (SELECT id FROM idp_plans WHERE employee_id = ?)`,
+                [employeeId]
+            );
+            await db.run(
+                `UPDATE dev_proposals SET proposal_text = '[erased]',
+                        decision_reason = CASE WHEN decision_reason IS NULL THEN NULL ELSE '[erased]' END,
+                        updated_at = now()
+                  WHERE employee_id = ?`,
+                [employeeId]
+            );
+            // The guard of migration 193 lets the comment change, nothing else.
+            await db.run(
+                `UPDATE review_records
+                    SET employee_comment = CASE WHEN employee_comment IS NULL THEN NULL ELSE '[erased]' END
+                  WHERE employee_id = ?`,
+                [employeeId]
+            );
+            await db.run(
+                `UPDATE lms_completions
+                    SET decision_reason = CASE WHEN decision_reason IS NULL THEN NULL ELSE '[erased]' END
+                  WHERE employee_id = ?`,
+                [employeeId]
+            );
+            await db.run(
+                "DELETE FROM notifications WHERE user_id = ? AND user_type::text = 'employee'",
+                [employeeId]
+            );
+            await db.run('DELETE FROM hris_links WHERE employee_id = ?', [employeeId]);
+            // The person's own notification settings and category grid (migration 183).
+            await db.run(
+                "DELETE FROM notification_user_settings WHERE user_type = 'employee' AND user_id = ?",
+                [employeeId]
+            );
+            await db.run(
+                "DELETE FROM notification_category_prefs WHERE user_type = 'employee' AND user_id = ?",
+                [employeeId]
+            );
+            // The person's last dashboard scope (migration 185).
+            await db.run(
+                "DELETE FROM dashboard_scope_prefs WHERE user_type = 'employee' AND user_id = ?",
+                [employeeId]
+            );
+            // The person's archived digests and their digest cadence (migration 187).
+            await db.run(
+                "DELETE FROM persona_digests WHERE user_type = 'employee' AND user_id = ?",
+                [employeeId]
+            );
+            await db.run(
+                "DELETE FROM persona_digest_prefs WHERE user_type = 'employee' AND user_id = ?",
+                [employeeId]
+            );
+            // ---- EVERY OTHER REGISTERED COLUMN (erasureRegistry) -----------------
+            // Each 'erase' / 'delete' entry becomes one statement. A table absent
+            // from this schema is skipped; a statement that fails on a present
+            // table aborts the whole erasure (fail closed).
+            for (const entry of SUBJECT_DATA_REGISTRY) {
+                if (entry.treatment !== 'erase' && entry.treatment !== 'delete') continue;
+                if (!(await this._tableExists(entry.table))) continue;
+                const { sql, params } = registryWhere(entry, employeeId);
+                if (entry.files) {
+                    const rows = await db.all(
+                        `SELECT ${entry.files.join(', ')} FROM ${entry.table} WHERE ${sql}`,
+                        params
+                    );
+                    for (const r of rows)
+                        for (const v of Object.values(r))
+                            if (v && v !== ERASED_MARKER) filesToDelete.push(String(v));
+                }
+                if (entry.treatment === 'delete')
+                    await db.run(`DELETE FROM ${entry.table} WHERE ${sql}`, params);
+                else
+                    await db.run(
+                        `UPDATE ${entry.table} SET ${registrySet(entry)} WHERE ${sql}`,
+                        params
+                    );
+            }
+            // ---- the 'custom' registry entries ------------------------------------
+            // Notifications sent to OTHER people about the subject: the notice
+            // stays with its recipient, the name / address / free text go.
+            await db.run(
+                `UPDATE notifications
+                    SET payload = (payload - 'name' - 'employee' - 'employeeName' - 'email'
+                                   - 'comment' - 'reason' - 'gapReason' - 'title' - 'request'
+                                   - 'outcome' - '__pendingEmail') || '{"subjectErased": true}'::jsonb
+                  WHERE payload->>'employeeId' = ?::text
+                     OR (? <> '' AND lower(payload->>'email') = ?)`,
+                [String(employeeId), origEmail, origEmail]
+            );
+            // Sign-in history: the login name the person typed, and where from.
+            const logins = [origUsername, origEmail].filter(Boolean);
+            if (logins.length)
+                await db.run(
+                    `UPDATE login_attempts SET username = ?, ip_address = NULL
+                      WHERE lower(username::text) = ANY(?)`,
+                    [tag, logins]
+                );
+            // Sign-up applications: by the account they created, or by address.
+            await db.run(
+                `UPDATE onboarding_requests
+                    SET email = ('erased-onb-' || id || '@erased.local'), first_name = NULL, last_name = NULL,
+                        password_hash = NULL, external_id = NULL, decision_note = NULL
+                  WHERE created_employee_id = ? OR (? <> '' AND lower(email::text) = ?)`,
+                [employeeId, origEmail, origEmail]
+            );
+            // Other people's movement history names the subject when they were
+            // someone's manager or supervisor: relabel to the pseudonym.
+            await db.run(
+                `UPDATE employee_movements
+                    SET from_label = CASE WHEN from_id = ? THEN ? ELSE from_label END,
+                        to_label   = CASE WHEN to_id   = ? THEN ? ELSE to_label END
+                  WHERE kind IN ('manager', 'supervisor') AND (from_id = ? OR to_id = ?)`,
+                [
+                    employeeId,
+                    `Erased ${employeeId}`,
+                    employeeId,
+                    `Erased ${employeeId}`,
+                    employeeId,
+                    employeeId,
+                ]
+            );
+            // HRIS run logs: a stored plan / records line carrying the person's
+            // e-mail, employee number or HRIS id is dropped (the run stays).
+            const needles = [origEmail, origNumber, ...hrisIds.map((x) => x.toLowerCase())].filter(
+                (x) => x && x.length >= 3
+            );
+            for (const needle of needles)
+                await db.run(
+                    `UPDATE hris_sync_runs SET plan = NULL, records = NULL
+                      WHERE (plan IS NOT NULL OR records IS NOT NULL)
+                        AND (strpos(lower(COALESCE(plan::text, '')), ?) > 0
+                             OR strpos(lower(COALESCE(records::text, '')), ?) > 0)`,
+                    [needle, needle]
+                );
             // Terminate any live session for the erased subject so an open browser
             // can't keep an authenticated view onto the now-anonymized record. The
             // deserialize gate (is_active/is_account_active=false) is the backstop;
@@ -923,6 +1695,12 @@ class DSRService {
             } catch (_) {
                 /* best-effort; deserialize gate backstops it */
             }
+            // The override that allowed this erasure is now spent.
+            if (legalHoldOverride != null && !reapply)
+                await db.run(
+                    "UPDATE erasure_override_requests SET state = 'executed', executed_at = now() WHERE id = ? AND state = 'approved'",
+                    [Number(legalHoldOverride)]
+                );
             // THE TOMBSTONE (S-07): the erasure outlives any backup restored
             // later. No FK to employees, so a snapshot restore's wipe keeps it;
             // a re-application only stamps `last_reapplied_at`.
@@ -940,6 +1718,9 @@ class DSRService {
                         (linked.length
                             ? `; ${linked.length} linked admin account(s) pseudonymised and switched off`
                             : '') +
+                        (legalHoldOverride != null && !reapply
+                            ? `; legal hold overridden by two-person request #${Number(legalHoldOverride)}`
+                            : '') +
                         (reason ? ` — reason: ${reason}` : ''),
                     severity: 'warning',
                     category: 'maintenance',
@@ -948,15 +1729,54 @@ class DSRService {
             } catch (_) {
                 /* best-effort */
             }
+            // Pseudonymise the person's names / login / e-mail in the immutable
+            // audit log through the chained, vouched redaction path (migration
+            // 170). Fails the erasure if it fails: an erasure that leaves the
+            // name in the audit log is not complete.
+            const auditRedaction = await AuditRetention.redactErasedSubject(
+                employeeId,
+                auditNeedles,
+                {
+                    actorRef: actorAdminId ? `admin:${actorAdminId}` : null,
+                    reason: reapply ? `${method} (re-applied)` : method,
+                }
+            );
             return {
                 erased: true,
                 employeeId: Number(employeeId),
+                auditRowsRedacted: auditRedaction.rows,
                 linkedAdminsErased: linked.length,
             };
         });
         // Mirror outside the database, once the transaction has committed.
         if (!reapply) this._appendTombstoneFile('employee', employeeId, method);
+        // Uploaded evidence / certificates: the rows now say '[erased]', the
+        // files go too, only inside the uploads folder, never a path that
+        // escapes it.
+        out.filesDeleted = this._deleteUploadedFiles(filesToDelete);
         return out;
+    }
+
+    /** Delete files that resolve inside the uploads folder. Returns the count. */
+    _deleteUploadedFiles(paths, dir = uploadsDir()) {
+        let n = 0;
+        for (const p of paths) {
+            if (!insideDir(dir, p)) {
+                console.error(
+                    '[dsr] file outside the uploads folder NOT deleted:',
+                    path.basename(String(p))
+                );
+                continue;
+            }
+            try {
+                fs.unlinkSync(path.resolve(dir, p));
+                n += 1;
+            } catch (e) {
+                if (!e || e.code !== 'ENOENT')
+                    console.error('[dsr] evidence file not deleted:', e && e.message);
+            }
+        }
+        return n;
     }
 
     // ===================== Erasure tombstones (S-07) ==========================
@@ -1255,6 +2075,12 @@ class DSRService {
                         id,
                     ])
                     .catch(() => {});
+                // A hold set on the PERSON (not on the job) is a skip, not a failure.
+                if (e && e.code === 'erasure_legal_hold') {
+                    await this._ledger(runId, cat, id, effective, 'skipped_legal_hold', where);
+                    bump('skipped_legal_hold');
+                    continue;
+                }
                 await this._ledger(
                     runId,
                     cat,

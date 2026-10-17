@@ -187,6 +187,21 @@
     --transition-slow: 0.35s ease;
     --transition-base: var(--transition-normal);
     /* backward compat */
+
+    /* ──── LAYERS: the 8-step z-index scale ────
+       Every z-index of the chrome (this file, a11y-polish, help, horizon, login,
+       the chrome partials and the chrome scripts) is one of these steps — or 0,
+       1 or auto for a stacking order local to a component. A new layer picks a
+       step; it never invents a number (tests/unit/layoutGuards.test.js). */
+    --z-dropdown: 100;
+    --z-sticky: 200;
+    --z-fixed: 300;
+    --z-drawer: 400;
+    --z-modal-backdrop: 500;
+    --z-modal: 600;
+    --z-popover: 700;
+    --z-toast: 800;
+    --overlay: rgba(2, 6, 23, 0.55);
 }
 
 /* ── Reset & Base ────────────────────────────────────────────────── */
@@ -377,7 +392,7 @@ body.no-sidebar .main-content {
     width: var(--sidebar-width);
     background: var(--bg-panel);
     color: var(--text-primary);
-    z-index: 200;
+    z-index: var(--z-fixed);
     display: flex;
     flex-direction: column;
     transition: width var(--transition-slow);
@@ -484,7 +499,7 @@ body.no-sidebar .main-content {
        compact for a dense admin sidebar, but no longer a sliver to aim at. */
     min-height: 34px;
     padding: var(--space-2) var(--space-4);
-    font: 600 11px/1 var(--font-data);
+    font: 600 12px/1 var(--font-data);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     color: var(--text-muted);
@@ -508,13 +523,11 @@ body.no-sidebar .main-content {
 /* Collapsed: hide the links, rotate the affordance. The links stay in the DOM
    so the command palette and any in-page search can still find them. */
 .sidebar-section-label[aria-expanded="false"] .sidebar-section-chevron { transform: rotate(-90deg); }
-.sidebar-section-label[aria-expanded="false"] ~ .sidebar-link,
-.sidebar-section-label[aria-expanded="false"] ~ .sidebar-entry { display: none; }
+.sidebar-section-label[aria-expanded="false"] + .sidebar-section-items { display: none; }
 
 /* A collapsed section that contains the CURRENT page would hide the user's own
    location, so it is marked and always rendered open. */
-.sidebar-section.has-current .sidebar-link { display: flex; }
-.sidebar-section.has-current .sidebar-entry { display: block; }
+.sidebar-section.has-current > .sidebar-section-items { display: block; }
 
 /* 3.23.18 (UX-03) — task entries. An entry is either a link to its main page
    with a chevron that folds its related pages (.sidebar-entry-row), or a HUB:
@@ -614,10 +627,31 @@ button.sidebar-hub-toggle {
     border-radius: var(--radius-md);
     position: relative;
     transition: color 0.15s, background 0.15s;
-    white-space: nowrap;
+    /* A label is never cut: it wraps on two lines instead of ending in « … »
+       (every link also carries its full name in title=). */
+    white-space: normal;
+    line-height: 1.25;
     overflow: hidden;
     margin: 1px 8px;
 }
+
+.sidebar-link-text { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.sidebar-logo-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* « À traiter » count in the rail: the same number as the bell. */
+.sidebar-badge {
+    margin-left: auto;
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--brand);
+    color: var(--text-inverse);
+    font: 700 12px/20px var(--font-body);
+    text-align: center;
+}
+.sidebar-badge[hidden],
+.sidebar-collapsed .sidebar-badge { display: none; }
+.nav-backdrop { display: none; }
 
 .sidebar-link i {
     width: 20px;
@@ -708,7 +742,7 @@ button.sidebar-hub-toggle {
 }
 
 .sidebar-user-role {
-    font-size: 0.7rem;
+    font-size: .75rem;
     color: rgba(255, 255, 255, 0.5);
     text-transform: capitalize;
 }
@@ -754,7 +788,7 @@ a.sidebar-user:focus-visible {
     align-items: center;
     justify-content: space-between;
     padding: 0 24px;
-    z-index: 150;
+    z-index: var(--z-fixed);
     transition: left var(--transition-slow);
 }
 
@@ -849,7 +883,7 @@ a.sidebar-user:focus-visible {
     min-width: 200px;
     margin-top: 8px;
     overflow: hidden;
-    z-index: 1000;
+    z-index: var(--z-dropdown);
     border: 1px solid var(--border);
 }
 
@@ -1252,6 +1286,14 @@ a.sidebar-user:focus-visible {
     color: var(--text-primary);
 }
 
+/* A checkbox or a radio inside a form group keeps its own size: stretched to
+   100 % it pushed its label (« Effacer ») out of a phone screen. */
+.form-group input[type='checkbox'],
+.form-group input[type='radio'] {
+    width: auto;
+    padding: 0;
+}
+
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
@@ -1427,14 +1469,14 @@ a.sidebar-user:focus-visible {
 .table th {
     padding: 10px 14px;
     text-align: left;
-    font: 600 11px/1 var(--font-data);
+    font: 600 12px/1 var(--font-data);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-muted);
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
-    z-index: 10;
+    z-index: var(--z-sticky);
     background: var(--bg-card);
 }
 
@@ -1601,7 +1643,7 @@ a.sidebar-user:focus-visible {
     gap: var(--space-1);
     padding: 3px 10px;
     border-radius: var(--radius-pill);
-    font: 600 11px/1 var(--font-data);
+    font: 600 12px/1 var(--font-data);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     white-space: nowrap;
@@ -1672,7 +1714,7 @@ a.sidebar-user:focus-visible {
 /* ── Stat Cards (Dashboard) ───────────────────────────────────────── */
 .dashboard-stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
     gap: 0.875rem;
     margin-bottom: 1.25rem;
 }
@@ -1721,7 +1763,7 @@ a.sidebar-user:focus-visible {
 }
 
 .stat-card h3 {
-    font: 600 11px/1 var(--font-data);
+    font: 600 12px/1 var(--font-data);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-muted);
@@ -1832,7 +1874,7 @@ a.sidebar-user:focus-visible {
 .modal {
     display: none;
     position: fixed;
-    z-index: 2000;
+    z-index: var(--z-modal);
     left: 0;
     top: 0;
     width: 100%;
@@ -1993,7 +2035,7 @@ a.sidebar-user:focus-visible {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
     gap: 1rem;
 }
 
@@ -2009,6 +2051,30 @@ a.sidebar-user:focus-visible {
 .report-section h2 {
     margin-bottom: 1.25rem;
     color: var(--text-primary);
+}
+
+/* Readiness report scope bar and the KPI definitions page. */
+.dr-scope {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.dr-scope select {
+    width: auto;
+    max-width: 100%;
+}
+
+.kpi-glossary-entry dt {
+    font-weight: 600;
+    margin-top: 0.75rem;
+}
+
+.kpi-glossary-entry dd {
+    margin-left: 0;
+    overflow-wrap: anywhere;
 }
 
 /* ── Error Page ───────────────────────────────────────────────────── */
@@ -2084,7 +2150,7 @@ a.sidebar-user:focus-visible {
     height: 100%;
     background: rgba(10, 12, 24, 0.85);
     backdrop-filter: blur(2px);
-    z-index: 9999;
+    z-index: var(--z-popover);
     align-items: center;
     justify-content: center;
     flex-direction: column;
@@ -2138,7 +2204,7 @@ a.sidebar-user:focus-visible {
     pointer-events: none;
     transition: opacity 0.2s;
     margin-bottom: 6px;
-    z-index: 1000;
+    z-index: var(--z-popover);
 }
 
 .tooltip:hover::after {
@@ -2150,9 +2216,11 @@ a.sidebar-user:focus-visible {
     font-size: 0.8rem;
     color: var(--text-tertiary);
     margin-top: 6px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    /* A block, not a flex row: a help sentence holding <strong> or <a> runs
+       wraps like any paragraph instead of laying its pieces out in one line
+       wider than a phone. */
+    display: block;
+    overflow-wrap: anywhere;
 }
 
 .help-text::before {
@@ -2160,6 +2228,7 @@ a.sidebar-user:focus-visible {
     font-family: 'Font Awesome 6 Free';
     font-weight: 900;
     font-size: 0.85rem;
+    margin-right: 6px;
 }
 
 /* ── Keyboard Shortcuts ───────────────────────────────────────────── */
@@ -2171,7 +2240,7 @@ a.sidebar-user:focus-visible {
     background: var(--bg-subtle);
     border: 1px solid var(--border);
     border-radius: 4px;
-    font-size: 0.7rem;
+    font-size: .75rem;
     font-family: 'SF Mono', 'Fira Code', monospace;
     color: var(--text-secondary);
     margin-left: 6px;
@@ -2335,6 +2404,25 @@ body.has-sidebar.sidebar-collapsed .app-footer {
         visibility: visible;
         transition: transform var(--transition-slow), visibility 0s linear 0s;
     }
+
+    /* The open drawer is a modal dialog (public/js/nav-rail.js): a backdrop
+       covers the page, the page does not scroll behind it, and every row is a
+       44 px target. */
+    body.has-sidebar.sidebar-open .nav-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: calc(var(--z-drawer) - 1);
+        background: var(--overlay);
+    }
+    body.has-sidebar.sidebar-open .sidebar { z-index: var(--z-drawer); }
+    body.nav-drawer-lock { overflow: hidden; }
+    .sidebar-link,
+    .sidebar-link.sidebar-sublink { min-height: 44px; }
+    .sidebar-entry-toggle { width: 44px; height: 44px; }
+    .sidebar-section-label { min-height: 44px; }
+    .sidebar-toggle,
+    .sidebar-logo { min-height: 44px; }
 
     body.has-sidebar .main-content,
     body.has-sidebar .app-footer {
@@ -2701,7 +2789,7 @@ body.has-sidebar.sidebar-collapsed .app-footer {
     position: fixed;
     top: calc(var(--topbar-height) + 16px);
     right: 24px;
-    z-index: 9999;
+    z-index: var(--z-toast);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -2827,7 +2915,7 @@ body.has-sidebar.sidebar-collapsed .app-footer {
     visibility: hidden;
     transform: translateY(12px);
     transition: all var(--transition-base);
-    z-index: 100;
+    z-index: var(--z-fixed);
 }
 
 .scroll-to-top.visible {
@@ -3919,7 +4007,7 @@ textarea.form-control {
     padding: 2px var(--space-2);
     border-radius: var(--radius-pill);
     border: 1px solid rgba(127, 127, 127, 0.18);
-    font: 600 0.6875rem/1.4 var(--font-data);
+    font: 600 .75rem/1.4 var(--font-data);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     white-space: nowrap;
@@ -4080,4 +4168,426 @@ textarea.form-control {
 .table th.sortable .th-sort:focus-visible {
     outline: 2px solid var(--brand);
     outline-offset: 2px;
+}
+
+/* ── Shared computer (kiosk) mode: badge and idle warning (shared-device.js) ── */
+.kiosk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-right: var(--space-2);
+    padding: 2px var(--space-1) 2px var(--space-3);
+    border-radius: var(--radius-pill);
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: var(--brand-dim);
+    border: 1px solid var(--border-active);
+    color: var(--brand-text);
+    white-space: nowrap;
+}
+
+.kiosk-badge .btn {
+    border-radius: var(--radius-pill);
+    font-size: 0.85rem;
+}
+
+.kiosk-badge--floating {
+    position: fixed;
+    top: var(--space-2);
+    right: var(--space-2);
+    z-index: var(--z-popover);
+}
+
+.kiosk-idle {
+    position: sticky;
+    top: var(--topbar-height);
+    z-index: var(--z-popover);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-3);
+    background: var(--warning-bg);
+    color: var(--amber-text);
+    border-left: 3px solid var(--amber);
+    flex-wrap: wrap;
+}
+
+.kiosk-idle .btn {
+    margin-left: auto;
+    min-height: 44px;
+}
+
+/* ── App settings: the sensitive-settings band (nationality, shared computer, MFA) ── */
+.settings-sensitive-band {
+    border: 1px solid var(--amber);
+    border-left-width: 4px;
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    background: var(--warning-bg);
+}
+
+.setting-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-left: var(--space-1);
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--amber-text);
+    border: 1px solid var(--amber);
+    white-space: nowrap;
+}
+
+.setting-consequence {
+    margin: var(--space-1) 0 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    max-width: 48ch;
+}
+
+/* ══ Shared components ═══════════════════════════════════════════════
+   One look per notion, on IDevelop's own tokens (Open Horizon): the status
+   badge, the form field and its legend, the bulk-action bar, the loading
+   skeleton, the page table of contents and the table pattern. The markup
+   lives in views/partials/*.ejs and public/js/status-badge.js. */
+
+/* ── Status badge (partials/status-badge.ejs, js/status-badge.js) ──
+   An icon AND a text, never colour alone; text at 12 px or more; the
+   `-text` tokens hold 4.5:1 on their own tint in both themes. */
+.badge .badge-ic {
+    font-size: 0.75rem;
+}
+
+.badge .badge-n {
+    margin-left: var(--space-1);
+    font-variant-numeric: tabular-nums;
+}
+
+.badge--ok {
+    background: var(--emerald-dim);
+    color: var(--emerald-text);
+}
+
+.badge--warn {
+    background: var(--amber-dim);
+    color: var(--amber-text);
+}
+
+.badge--risk {
+    background: var(--red-dim);
+    color: var(--red-text);
+}
+
+.badge--info {
+    background: var(--blue-dim);
+    color: var(--blue-text);
+}
+
+.badge--accent {
+    background: var(--brand-dim);
+    color: var(--brand-text);
+}
+
+.badge--neutral {
+    background: var(--bg-subtle);
+    color: var(--text-secondary);
+}
+
+/* « Not measured » is never red or green: a dashed outline. */
+.badge--unmeasured {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px dashed var(--border);
+}
+
+.badge--text {
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: var(--font-body);
+    white-space: normal;
+}
+
+/* ── Form field (partials/form-field.ejs) and its legend ──────────── */
+.form-field {
+    margin-bottom: var(--space-4);
+}
+
+.form-field-label {
+    display: block;
+    margin-bottom: var(--space-2);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ONE required marker, drawn here: a label of a required control never
+   carries a typed « * ». */
+.form-field-label.is-required::after,
+label.required::after {
+    content: ' *';
+    color: var(--red-text);
+}
+
+.form-field-hint {
+    margin: var(--space-1) 0 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.form-field-error {
+    margin: var(--space-1) 0 0;
+    font-size: 0.85rem;
+    color: var(--red-text);
+}
+
+/* No red before interaction: only a field the server or the page marked as
+   wrong (aria-invalid) is outlined. */
+.form-field.has-error .form-control,
+.form-control[aria-invalid='true'] {
+    border-color: var(--red);
+}
+
+.form-legend {
+    margin: 0 0 var(--space-4);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.form-legend-star {
+    color: var(--red-text);
+    font-weight: 700;
+}
+
+/* ── Bulk-action bar (partials/bulk-bar.ejs; list-tools.js) ───────── */
+.bulk-bar {
+    position: sticky;
+    bottom: var(--space-3);
+    z-index: var(--z-sticky);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    margin: var(--space-3) 0;
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+}
+
+.bulk-bar[hidden] {
+    display: none;
+}
+
+.bulk-bar:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+.bulk-bar-count {
+    font-weight: 700;
+}
+
+.bulk-bar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-left: auto;
+}
+
+/* ── Loading skeleton (partials/skeleton.ejs) ──────────────────────── */
+.skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2) 0;
+}
+
+.skeleton-row {
+    display: flex;
+    gap: var(--space-3);
+}
+
+.skeleton-line {
+    flex: 1;
+    height: 12px;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(90deg, var(--bg-subtle), var(--bg-elevated), var(--bg-subtle));
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton--compact .skeleton-line {
+    flex: 0 1 60%;
+}
+
+.skeleton--table .skeleton-line {
+    height: 16px;
+}
+
+@keyframes skeleton-shimmer {
+    from {
+        background-position: 100% 0;
+    }
+
+    to {
+        background-position: -100% 0;
+    }
+}
+
+/* Under prefers-reduced-motion the global switch above stops the shimmer. */
+
+/* ── « Sur cette page » (partials/page-toc.ejs) ────────────────────── */
+.page-toc {
+    margin: 0 0 var(--space-5);
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+}
+
+.page-toc-h {
+    margin: 0 0 var(--space-1);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+}
+
+.page-toc ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+}
+
+/* A pill never exceeds its row: a long French entry wraps. */
+.page-toc li {
+    max-width: 100%;
+    min-width: 0;
+}
+
+.page-toc a {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: 100%;
+    min-height: 40px;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border);
+    text-decoration: none;
+    color: inherit;
+    font-size: 0.875rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.page-toc a:hover,
+.page-toc a:focus-visible {
+    border-color: var(--brand);
+    background: var(--brand-subtle);
+}
+
+.dashboard-section[id] {
+    scroll-margin-top: calc(var(--topbar-height) + var(--space-4));
+}
+
+/* ── Table pattern ──────────────────────────────────────────────────
+   .table-wrapper          the scroll container of a wide table; while the
+                           table overflows, main.js sets .is-scrollable (edge
+                           shadows + the written « Faites défiler → » cue) and
+                           .is-scrolled after the first scroll
+   td/th.col-actions       the actions column, sticky on the right from 768 px
+                           (also: .table-sticky-actions → its last column)
+   .table-cards            under 768 px each row becomes a labelled card
+                           (horizon.css; main.js fills data-label) */
+.table :is(th, td).col-actions {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: var(--bg-card);
+    box-shadow: -8px 0 12px -10px rgba(0, 0, 0, 0.35);
+    white-space: nowrap;
+}
+
+/* The scroll box is the containing block of what it holds: an absolutely
+   positioned child (a screen-reader-only label in a header cell) is clipped
+   with the table instead of widening the whole page on a phone. */
+.table-wrapper {
+    position: relative;
+}
+
+.table-wrapper.is-scrollable {
+    background:
+        linear-gradient(90deg, var(--bg-surface) 30%, transparent) left,
+        linear-gradient(270deg, var(--bg-surface) 30%, transparent) right,
+        radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.18), transparent) left,
+        radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.18), transparent) right;
+    background-repeat: no-repeat;
+    background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
+}
+
+.table-wrapper.is-scrollable:not(.is-scrolled)::after {
+    content: attr(data-scroll-hint);
+    position: sticky;
+    left: 0;
+    display: block;
+    width: max-content;
+    margin: var(--space-1) auto var(--space-2);
+    padding: 2px var(--space-3);
+    border-radius: var(--radius-pill);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    pointer-events: none;
+}
+
+.table-wrapper:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+}
+
+@media (max-width: 767.98px) {
+    .table.table-cards :is(th, td).col-actions {
+        position: static;
+        box-shadow: none;
+        white-space: normal;
+    }
+}
+
+/* ── Phones: nothing is wider than the screen ────────────────────────
+   A tab bar wraps instead of pushing the page sideways; a long code value
+   (a token, a URL, an identifier) breaks inside its box. */
+@media (max-width: 767.98px) {
+    .tabs,
+    [role='tablist'] {
+        flex-wrap: wrap;
+    }
+
+    .main-content code {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        white-space: normal;
+    }
+
+    /* A long status label wraps inside its chip instead of widening the page. */
+    .main-content .badge {
+        max-width: 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    /* A button whose label is long (French often is) wraps on two lines
+       rather than pushing the page sideways. */
+    .main-content .btn {
+        max-width: 100%;
+        white-space: normal;
+    }
 }

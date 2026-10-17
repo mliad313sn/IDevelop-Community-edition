@@ -160,6 +160,7 @@ describe('SelfAssessmentService.completeSupervisorReview', () => {
                 employeeId: EMPLOYEE,
                 skillId: SKILL,
                 reviewedBy: 136,
+                status: 'pending',
             })),
             update: jest.fn(async () => ({})),
         };
@@ -183,6 +184,7 @@ describe('SelfAssessmentService.completeSupervisorReview', () => {
         selfRatedLevel: 3,
         notes: 'x',
         supersededAt: null,
+        workflowState: 'submitted',
     };
     const replacedRound = { ...currentRound, supersededAt: '2026-09-13T14:44:34.989Z' };
 
@@ -305,6 +307,7 @@ describe('SelfAssessmentService.completeSupervisorReview', () => {
             /INSERT INTO self_assessment_events/.test(sql)
         );
         expect(ev).toBeDefined();
-        expect(JSON.parse(ev[1][2])).toEqual(expect.objectContaining({ supersededRound: true }));
+        expect(JSON.parse(ev[1][3])).toEqual(expect.objectContaining({ supersededRound: true }));
+        expect(ev[1][2]).toBe('submitted'); // the real from_state
     });
 });

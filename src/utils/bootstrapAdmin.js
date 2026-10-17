@@ -66,4 +66,21 @@ function weaknessesIn(candidate) {
     }
 }
 
-module.exports = { seedAdminPassword };
+/**
+ * Print a GENERATED first-run SuperAdmin password once, for the operator to
+ * copy from the install log. This is the one place it is ever written out
+ * (accepted by design: docs/SECURITY-AUDIT.md, « the first-run password »).
+ * @param {string} password
+ */
+function printFirstRunBanner(password) {
+    console.log('');
+    console.log('  ============================================================');
+    console.log('   FIRST-RUN SUPERADMIN — copy this now, it is shown ONCE');
+    console.log('     username : admin');
+    console.log(`     password : ${password}`);
+    console.log('   A password change is required at first sign-in.');
+    console.log('  ============================================================');
+    console.log('');
+}
+
+module.exports = { seedAdminPassword, printFirstRunBanner };

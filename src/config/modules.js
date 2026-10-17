@@ -134,6 +134,7 @@ const CORE_PREFIXES = Object.freeze([
     '/employee/self-assessment',
     '/employee/assessment-status',
     '/employee/my-development',
+    '/employee/review-record',
     '/employee/my-learning',
     '/supervisor/reviews',
     '/supervisor/self-assessment-reviews',
@@ -146,9 +147,15 @@ const CORE_PREFIXES = Object.freeze([
     '/reports/readiness',
     '/reports/gaps',
     '/reports/dept-analytics',
+    // Indicator definitions: core, but module-aware (an indicator whose module
+    // is off is not listed).
+    '/kpi/glossary',
     '/v2/slf',
     '/v2/uam',
     '/v2/cap/dsr',
+    // The person's own diversity data: consent must stay withdrawable whatever
+    // the talent module says (outside every CAP_PATHS prefix).
+    '/v2/cap/my-diversity',
     '/v2/cap/webhooks',
     '/v2/cap/skills',
     '/app-settings',

@@ -1,0 +1,33 @@
+<%#
+  « Development outcomes » (4.0.0 port, wave 4): what the development plans
+  and coaching achieved over twelve months (K30), how long they took, the
+  plans past due, and the effort (hours planned and done). « Not entered » is
+  said in words, never printed as 0. The effect of online training (K28)
+  beside it when the learning platform is configured. Aggregates only, never
+  a name. Locals: O (DashboardHomeService.devOutcomesModel).
+-%><%
+  var _F = numFmt;
+  var _h = function (v) { return v == null ? __('kpi:k30_not_entered') : _F.num(v, 1) + ' h'; };
+  var _d = function (v) { return v == null ? '—' : __('kpi:k30_days', { n: _F.num(v, 0) }); };
+-%>
+<section class="ds-card" id="ds-dev-outcomes" aria-labelledby="ds-dev-outcomes-h">
+    <h3 id="ds-dev-outcomes-h"><%= __('kpi:k30_block_title') %></h3>
+    <p class="ds-note"><%= O.value == null ? (O.status === 'small_n' ? __('kpi:status_small_n') : __('kpi:status_not_measured')) : __('kpi:k30_value_line', { pct: _F.num(O.value, 1) }) %></p>
+    <div class="ds-table-wrap"><table class="ds-table">
+        <thead><tr><th scope="col"></th><th scope="col" class="num"><%= __('kpi:k30_achieved') %></th><th scope="col" class="num"><%= __('kpi:k30_not_achieved') %></th><th scope="col" class="num"><%= __('kpi:k30_cancelled') %></th><th scope="col" class="num"><%= __('kpi:k30_median') %></th></tr></thead>
+        <tbody>
+            <tr><th scope="row"><%= __('kpi:k30_row_idp') %></th><td class="num"><%= _F.num(O.idp.achieved, 0) %></td><td class="num"><%= _F.num(O.idp.notAchieved, 0) %></td><td class="num"><%= _F.num(O.idp.cancelled, 0) %></td><td class="num"><%= _d(O.idp.medianDays) %></td></tr>
+            <tr><th scope="row"><%= __('kpi:k30_row_coaching') %></th><td class="num"><%= _F.num(O.coaching.achieved, 0) %></td><td class="num">—</td><td class="num"><%= _F.num(O.coaching.cancelled, 0) %></td><td class="num"><%= _d(O.coaching.medianDays) %></td></tr>
+        </tbody>
+    </table></div>
+    <p class="ds-note"><%= __('kpi:k30_ageing_line', { a: _F.num(O.ageing.upTo30, 0), b: _F.num(O.ageing.upTo90, 0), c: _F.num(O.ageing.over90, 0) }) %></p>
+    <dl class="ds-kv">
+        <dt><%= __('kpi:k30_hours_planned') %></dt><dd><%= _h(O.effort.plannedHours) %><% if (O.effort.plannedMissing) { %> · <%= __('kpi:k30_missing', { n: _F.num(O.effort.plannedMissing, 0) }) %><% } %></dd>
+        <dt><%= __('kpi:k30_hours_done') %></dt><dd><%= _h(O.effort.doneHours) %><% if (O.effort.doneMissing) { %> · <%= __('kpi:k30_missing', { n: _F.num(O.effort.doneMissing, 0) }) %><% } %></dd>
+        <dt><%= __('kpi:k30_levels') %></dt><dd><%= O.effort.levelsValidated == null ? '—' : _F.num(O.effort.levelsValidated, 0) %><% if (O.effort.levelsPer100h != null) { %> · <%= __('kpi:k30_per_100h', { n: _F.num(O.effort.levelsPer100h, 1) }) %><% } %></dd>
+        <% if (O.lms) { %>
+        <dt><%= __('kpi:k28_name') %></dt><dd><%= O.lms.status === 'not_configured' ? __('kpi:status_not_configured') : (O.lms.value == null ? (O.lms.status === 'small_n' ? __('kpi:status_small_n') : __('kpi:status_not_measured')) : _F.num(O.lms.value, 1) + ' %') %><% if (O.lms.status !== 'not_configured') { %> · <%= __('kpi:k28_apart', { a: _F.num(O.lms.noBefore, 0), b: _F.num(O.lms.awaitingAfter, 0), c: _F.num(O.lms.unmapped, 0) }) %><% } %></dd>
+        <% } %>
+    </dl>
+    <p class="ds-note"><a href="/kpi/glossary#K30"><%= __('kpi:k30_how') %></a></p>
+</section>

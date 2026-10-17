@@ -31,6 +31,7 @@ const RBACService = require('./RBACService');
 // administration account. The queue (RBACService.scopeFilter) and the reviewable
 // set both go through it too, so the list and this guard cannot drift apart.
 const GovernanceService = require('./GovernanceService');
+const AuthorityService = require('./AuthorityService');
 
 const VALID_STATES = [
     'draft',
@@ -52,6 +53,20 @@ const VALID_STATES = [
  * verrouillage. Une campagne CLOSE refuse les deux.
  */
 const REVIEW_WRITE_STATES = ['under_review', 'reviewed', 'arbitration', 'approved', 'rejected'];
+/**
+ * Reset for redo (SuperAdmin maintenance): the states a SuperAdmin may send
+ * back to the draft pair. A draft is left as it is, and a cancelled row
+ * (cancelled_at set) is skipped.
+ */
+const RESETTABLE_STATES = [
+    'submitted',
+    'under_review',
+    'reviewed',
+    'approved',
+    'rejected',
+    'changes_requested',
+    'arbitration',
+];
 
 /**
  * ATTACHER LE CATALOGUE À UN REFUS (constat M-02).
@@ -160,83 +175,40 @@ class SelfAssessmentWorkflowService {
         const employee = await EmployeeModel.findById(employeeId);
         if (!employee)
             throw say(new Error('Employee not found'), 'assess:saw_err_employee_not_found');
-        const isAdmin = Boolean(user && user.userType === 'admin');
-        const isSuper = RBACService.isSuperAdmin(user);
-        const isLocalAdmin = RBACService.isLocalAdmin(user);
-        const isViewer = RBACService.isViewer(user);
-        // THE PERSON, NOT THE ACCOUNT.
+        // THE PERSON, NOT THE ACCOUNT, and the facts of the relation, through the
+        // ONE resolver every review service shares (AuthorityService.relation).
         //
-        // `!isAdmin &&` used to prefix the two lines below, so the moment
-        // userType was 'admin' the reporting line was ERASED and only the
-        // clearance was left. A supervisor or manager who also holds an admin
-        // account — promote-to-admin, account linking, the SSO "explicit admin
-        // connect" path, or simply typing their admin login — therefore lost
-        // their WHOLE team on the review console: measured on a development
-        // database, the same human went from 15 reviewable people to 5, none of
-        // them theirs, with the page rendering 200 and saying nothing. And the
-        // login strategy tries the ADMIN table FIRST, so a person whose two
-        // accounts share a login lands there without having chosen anything.
+        // `!isAdmin &&` used to prefix the two line tests, so the moment userType
+        // was 'admin' the reporting line was ERASED and only the clearance was
+        // left: a supervisor or manager who also holds an admin account lost their
+        // WHOLE team on the review console (measured on a development database:
+        // 15 reviewable people became 5, none of them theirs). The person behind
+        // an account is `admins.linked_employee_id` (GovernanceService
+        // .actingPersonId, null for an account naming nobody or someone no longer
+        // active). Two authorities held by one human ADD UP; a clearance grants a
+        // perimeter, it never takes one away.
         //
-        // The database already knew: `admins.linked_employee_id` names the
-        // person, uniquely. GovernanceService.actingPersonId reads it — and
-        // returns null for an account that names nobody, or names someone no
-        // longer active. Two authorities held by one human ADD UP; a clearance
-        // grants a perimeter, it never takes one away.
-        const personId = await GovernanceService.actingPersonId(user);
-        const isSelf = personId != null && personId === Number(employeeId);
-        const isSupervisor = Boolean(
-            personId != null &&
-            employee.supervisorId != null &&
-            personId === Number(employee.supervisorId)
-        );
-        // `manager_type` is NOT optional here. `manager_id` is polymorphic — it
-        // points at an EMPLOYEE or at an ADMIN — and the two id spaces overlap
-        // (employees 84..68963, admins 1..666). Without the discriminator, the
-        // ordinary employee whose id happens to equal the ADMIN id managing this
-        // person was handed isManager = true, i.e. canSupervise AND canManage
-        // over a stranger. `findGovernedIds` has always filtered it, so the LIST
-        // excluded that person correctly while this function let them act: the
-        // list and the authority disagreed, in the dangerous direction.
+        // `manager_type` is NOT optional: `manager_id` points at an EMPLOYEE or at
+        // an ADMIN and the two id spaces overlap; the admin account NAMED manager
+        // of a person (manager_type 'admin') holds the manager rung over them.
         //
-        // The other half of the same discriminator: `manager_type = 'admin'`
-        // names an ADMIN ACCOUNT, and that designation drew no authority at all
-        // — the admin named manager of a person saw none of their assessments.
-        // Either the field means something or the form must not offer it.
-        const isManager = Boolean(
-            (personId != null &&
-                employee.managerId != null &&
-                employee.managerType === 'employee' &&
-                personId === Number(employee.managerId)) ||
-            (isAdmin &&
-                employee.managerId != null &&
-                employee.managerType === 'admin' &&
-                Number(user.id) === Number(employee.managerId))
-        );
-        // CLEARANCE — admin scopes, and nothing else. Kept apart from `inScope`
-        // on purpose: clearance is the ONLY thing a bounded admin's right to ACT
-        // rests on, and the house rule is that a bounded admin stays bounded on
-        // every path.
-        const inClearance = isSuper
-            ? true
-            : isAdmin
-              ? await RBACService.canAccessEmployeeData(user, employee)
-              : false;
-        // READING scope — the UNION of the clearance and the reporting line.
-        //
-        // The sub-tree, not the direct link. The review console lists everyone in
-        // the sub-tree (middleware/rbac.js → EmployeeModel.findGovernedIds, a
-        // transitive BFS), while this function recognised only the DIRECT
-        // supervisor/manager. An N+2 reviewer therefore saw their indirect
-        // reports in the queue and was refused 403 on every detail and every
-        // action — reported from production as "some supervisors and managers
-        // cannot see the detail of a review", and it explains the "some": a
-        // first-line supervisor never meets it.
-        //
-        // CoachingPlanService.resolveAuthority already carries this exact fix,
-        // with the same comment; the self-assessment workflow never received it.
-        // Following that precedent deliberately: the sub-tree grants READ
-        // (canView), never the right to ACT. Approving an indirect report stays
-        // with the direct supervisor/manager.
+        // An administration account linked to NOBODY is still this person when it
+        // shares their identity (e-mail, SSO id): `selfByIdentity`, which only
+        // ever refuses. Kept apart from `isSelf`, which also GRANTS the subject's
+        // own rights (reading, asking for a change).
+        const rel = await AuthorityService.relation(user, employee);
+        const isAdmin = rel.isAdmin;
+        const isSuper = rel.isSuper;
+        const isLocalAdmin = rel.isLocalAdmin;
+        const isViewer = rel.isViewer;
+        const personId = rel.personId;
+        const isSelf = rel.isSelf;
+        const selfByIdentity = rel.selfByIdentity;
+        const isSupervisor = rel.isSupervisor;
+        const isManager = Boolean(rel.isDirectManager || rel.isAdminManager);
+        // CLEARANCE — admin scopes, and nothing else: the only thing a bounded
+        // admin's right to ACT rests on.
+        const inClearance = rel.inClearance;
         // The reviewer explicitly named on the campaign console, for THIS cycle
         // only (see _assignedCycles). Never on oneself. Only looked up when it
         // would ADD a right to review — someone who already reviews this person
@@ -249,20 +221,19 @@ class SelfAssessmentWorkflowService {
                 ? []
                 : await this._assignedCycles(user, personId, employeeId, cycleId);
         const isAssignedReviewer = assignedCycleIds.length > 0;
+        // READING scope — the UNION of the clearance and the reporting line, the
+        // whole SUB-TREE (the console lists the sub-tree: EmployeeModel
+        // .findGovernedIds). An N+2 reviewer saw their indirect reports in the
+        // queue and was refused the detail; the sub-tree grants reading.
         const inScope = Boolean(
-            inClearance ||
-            isSupervisor ||
-            isManager ||
-            isAssignedReviewer ||
-            (personId != null && (await EmployeeModel.governs(personId, employeeId)))
+            inClearance || isSupervisor || isManager || isAssignedReviewer || rel.inLine
         );
-        // ACTING. A local admin acts inside their CLEARANCE (never on the line
-        // sub-tree, which only grants reading); a supervisor/manager acts on
-        // their DIRECT link. `!isViewer` keeps a read-only delegation read-only
-        // on every path, including one that carries a reporting line.
-        // An explicitly assigned campaign reviewer reviews like a supervisor
-        // (canSupervise), never like a manager: arbitration stays above them.
-        const canSupervise = Boolean(
+        // ACTING, strict (today's rule): a local admin acts inside their
+        // CLEARANCE, a supervisor/manager on their DIRECT link, an explicitly
+        // assigned campaign reviewer like a supervisor (never like a manager).
+        // `!isViewer` keeps a read-only delegation read-only on every path.
+        // The ladder (extended mode only) adds the line above, as the manager.
+        const strictSupervise = Boolean(
             !isViewer &&
             (isSuper ||
                 (isLocalAdmin && inClearance) ||
@@ -270,17 +241,26 @@ class SelfAssessmentWorkflowService {
                 isManager ||
                 isAssignedReviewer)
         );
-        const canManage = Boolean(
+        const strictManage = Boolean(
             !isViewer && (isSuper || (isLocalAdmin && inClearance) || isManager)
         );
+        const supervise = AuthorityService.allows(rel, 'sa.approve', {
+            strict: strictSupervise,
+            as: !alreadyReviews && isAssignedReviewer ? 'reviewer' : null,
+        });
+        const manage = AuthorityService.allows(rel, 'sa.validate', { strict: strictManage });
+        const canSupervise = supervise.ok;
+        const canManage = manage.ok;
         // Read access, deliberately wider than the right to act: the subject
         // themselves, or anyone whose scope covers this employee — which is
         // exactly the population the console already LISTS. A reviewer must
         // never be shown a line they are then refused the detail of.
         const canView = Boolean(isSelf || inScope);
+        // The line above acting by the ladder records as a manager.
+        const actsAsManager = Boolean(isManager || (rel.isLineAbove && manage.by === 'ladder'));
         const actorType = isAdmin
             ? 'admin'
-            : isManager
+            : actsAsManager
               ? 'manager'
               : isSupervisor || isAssignedReviewer
                 ? 'supervisor'
@@ -292,6 +272,7 @@ class SelfAssessmentWorkflowService {
             isAdmin,
             isViewer,
             isSelf,
+            selfByIdentity,
             isSupervisor,
             isManager,
             isAssignedReviewer,
@@ -300,6 +281,7 @@ class SelfAssessmentWorkflowService {
             canManage,
             canView,
             actorType,
+            as: (canManage ? manage.as : canSupervise ? supervise.as : null) || 'none',
         };
     }
 
@@ -619,43 +601,51 @@ class SelfAssessmentWorkflowService {
         // guardFrom = the source states checked above: a stale request-changes
         // must not pull an assessment another reviewer has since APPROVED back
         // to the employee (measured: approved → changes_requested, status draft).
-        await this._setState(
-            selfAssessmentId,
-            'changes_requested',
-            reopenApproved
-                ? // Un-approve: the approval stamp and the finalised lock go, so the
-                  // cycle roster and the IDP generator stop treating it as decided.
-                  // `approved_by_ref` follows `approved_by`: the approval it named no
-                  // longer stands, and the trail keeps who it was (migration 116).
-                  {
-                      status: 'draft',
-                      approved_by: null,
-                      approved_by_ref: null,
-                      approved_at: null,
-                      locked_state: 'provisional',
-                  }
-                : { status: 'draft' },
-            sources,
-            { cycleId: sa.cycleId, req }
-        );
-        if (comment) await this.addComment(selfAssessmentId, user, comment, null, auth);
-        await db.run(
-            reopenApproved
-                ? // The review that approved it is reopened too, or the supervisor
-                  // console would show a decided review over an assessment that is
-                  // back in the employee's hands.
-                  `UPDATE supervisor_reviews SET decision='request_changes', status='pending', decided_at=now() WHERE self_assessment_id=?`
-                : `UPDATE supervisor_reviews SET decision='request_changes', decided_at=now() WHERE self_assessment_id=?`,
-            [selfAssessmentId]
-        );
-        await this._event(
-            selfAssessmentId,
-            auth,
-            reopenApproved ? 'reopen_after_approval' : 'request_changes',
-            sa.workflowState,
-            'changes_requested',
-            { comment: comment || null, ...(reopenApproved ? { superadminOverride: true } : {}) }
-        );
+        // State, comment, review row and event commit together (SA-42): a failure
+        // half-way left 'changes_requested' with no event, or a review still
+        // 'pending' over an assessment back in the employee's hands.
+        await db.runTransaction(async () => {
+            await this._setState(
+                selfAssessmentId,
+                'changes_requested',
+                reopenApproved
+                    ? // Un-approve: the approval stamp and the finalised lock go, so the
+                      // cycle roster and the IDP generator stop treating it as decided.
+                      // `approved_by_ref` follows `approved_by`: the approval it named no
+                      // longer stands, and the trail keeps who it was (migration 116).
+                      {
+                          status: 'draft',
+                          approved_by: null,
+                          approved_by_ref: null,
+                          approved_at: null,
+                          locked_state: 'provisional',
+                      }
+                    : { status: 'draft' },
+                sources,
+                { cycleId: sa.cycleId, req }
+            );
+            if (comment) await this.addComment(selfAssessmentId, user, comment, null, auth);
+            await db.run(
+                reopenApproved
+                    ? // The review that approved it is reopened too, or the supervisor
+                      // console would show a decided review over an assessment that is
+                      // back in the employee's hands.
+                      `UPDATE supervisor_reviews SET decision='request_changes', status='pending', decided_at=now() WHERE self_assessment_id=?`
+                    : `UPDATE supervisor_reviews SET decision='request_changes', decided_at=now() WHERE self_assessment_id=?`,
+                [selfAssessmentId]
+            );
+            await this._event(
+                selfAssessmentId,
+                auth,
+                reopenApproved ? 'reopen_after_approval' : 'request_changes',
+                sa.workflowState,
+                'changes_requested',
+                {
+                    comment: comment || null,
+                    ...(reopenApproved ? { superadminOverride: true } : {}),
+                }
+            );
+        });
         await this._audit(
             req,
             reopenApproved ? 'SA_REOPENED_AFTER_APPROVAL' : 'SA_REQUEST_CHANGES',
@@ -666,6 +656,137 @@ class SelfAssessmentWorkflowService {
         );
         await this._notifyEmployee(sa, 'sa.changes_requested', { comment: comment || null });
         return this.getAssessment(selfAssessmentId);
+    }
+
+    /**
+     * Reset for redo: the SuperAdmin gives the employee and their supervisor or
+     * manager the chance to do one assessment again. Called only by
+     * MaintenanceService.resetAssessment, which owns the SuperAdmin check, the
+     * mandatory reason, the campaign gate and the enclosing transaction; this
+     * method owns the dual state machine.
+     *
+     * Per row, nothing is deleted:
+     *   - status and workflow_state go back to the draft pair; the approval
+     *     stamp, the review stamp and the finalised lock (locked_state back to
+     *     'provisional') are lifted;
+     *   - the employee's previous self-rating and notes are kept: they prefill
+     *     the redo and stay editable;
+     *   - the official level (skill_assessments) is not touched: it stays as
+     *     last decided until a new approval replaces it;
+     *   - the supervisor_reviews row goes back to 'pending' with its decision,
+     *     rating, gap and dates cleared; the cleared values travel in the event
+     *     detail (`priorReview`);
+     *   - an open dispute (open or escalated) is closed 'resolved', named to the
+     *     SuperAdmin who reset it, with the employee's words untouched; a
+     *     pending change request is closed 'withdrawn' with decision_reason
+     *     'reset_by_superadmin';
+     *   - one self_assessment_events row 'reset_for_redo' (superadminOverride,
+     *     from_state, reason, priorReview, closed dispute and request ids).
+     *
+     * Returns `{ id, employeeId, fromState, reviewerId, closedDisputes,
+     * closedRequests }`, or `{ id, skipped }` for a cancelled row or a draft.
+     */
+    async resetForRedo(selfAssessmentId, user, reason, req = null) {
+        const why = String(reason == null ? '' : reason).trim();
+        if (!why)
+            throw say(
+                new Error('A reason is required to reset an assessment.'),
+                'assess:saw_err_reset_reason_required'
+            );
+        if (!RBACService.isSuperAdmin(user))
+            throw say(
+                new Error('Not authorized: SuperAdmin only'),
+                'assess:saw_err_superadmin_only'
+            );
+        const sa = await db.get(
+            `SELECT id, employee_id AS "employeeId", skill_id AS "skillId", cycle_id AS "cycleId",
+                    workflow_state AS "workflowState", status::text AS "status",
+                    cancelled_at AS "cancelledAt"
+               FROM self_assessment_rounds WHERE id = ? AND superseded_at IS NULL`,
+            [selfAssessmentId]
+        );
+        if (!sa) throw say(new Error('Self-assessment not found'), 'assess:acr_err_sa_not_found');
+        if (sa.cancelledAt != null) return { id: Number(sa.id), skipped: 'cancelled' };
+        if (sa.workflowState === 'draft') return { id: Number(sa.id), skipped: 'draft' };
+        if (!RESETTABLE_STATES.includes(sa.workflowState))
+            throw say(
+                new Error(`Cannot reset from '${sa.workflowState}'`),
+                'assess:saw_err_cannot_reset',
+                { stateRaw: sa.workflowState }
+            );
+        const auth = {
+            isAdmin: true,
+            actorType: 'admin',
+            _userId: user && user.id != null ? user.id : null,
+        };
+        const prior = await db.get(
+            `SELECT id, status, decision, recommendation, supervisor_rated_level AS "supervisorRatedLevel",
+                    gap, gap_reason AS "gapReason", reviewed_by AS "reviewedBy", reviewed_at AS "reviewedAt",
+                    decided_at AS "decidedAt"
+               FROM supervisor_reviews WHERE self_assessment_id = ?`,
+            [selfAssessmentId]
+        );
+        // guardFrom = the states checked above: a concurrent transition wins
+        // (STALE_STATE) instead of being silently overwritten.
+        await this._setState(
+            selfAssessmentId,
+            'draft',
+            {
+                status: 'draft',
+                approved_by: null,
+                approved_by_ref: null,
+                approved_at: null,
+                reviewed_at: null,
+                reviewed_by: null,
+                reviewed_by_ref: null,
+                locked_state: 'provisional',
+            },
+            RESETTABLE_STATES,
+            { cycleId: sa.cycleId, req }
+        );
+        let closedDisputes = [];
+        if (prior) {
+            const ds = await db.all(
+                `UPDATE assessment_disputes
+                    SET state = 'resolved', resolved_at = now(), decided_by_admin_id = ?
+                  WHERE supervisor_review_id = ? AND state IN ('open', 'escalated')
+                  RETURNING id`,
+                [user && user.id != null ? user.id : null, prior.id]
+            );
+            closedDisputes = (ds || []).map((r) => Number(r.id));
+            await db.run(
+                `UPDATE supervisor_reviews
+                    SET status = 'pending', decision = NULL, recommendation = NULL, decided_at = NULL,
+                        supervisor_rated_level = NULL, gap = NULL, gap_reason = NULL, reviewed_at = NULL
+                  WHERE id = ?`,
+                [prior.id]
+            );
+        }
+        const crs = await db.all(
+            `UPDATE assessment_change_requests
+                SET status = 'withdrawn', decided_by_ref = ?, decided_by_role = 'admin',
+                    decided_at = now(), decision_reason = 'reset_by_superadmin', updated_at = now()
+              WHERE self_assessment_id = ? AND status = 'pending'
+              RETURNING id`,
+            [this._actorRef(auth, user) || 'admin:0', selfAssessmentId]
+        );
+        const closedRequests = (crs || []).map((r) => Number(r.id));
+        await this._event(selfAssessmentId, auth, 'reset_for_redo', sa.workflowState, 'draft', {
+            superadminOverride: true,
+            reason: why,
+            priorReview: prior || null,
+            closedDisputes,
+            closedRequests,
+            officialLevelUnchanged: true,
+        });
+        return {
+            id: Number(sa.id),
+            employeeId: Number(sa.employeeId),
+            fromState: sa.workflowState,
+            reviewerId: prior && prior.reviewedBy != null ? Number(prior.reviewedBy) : null,
+            closedDisputes,
+            closedRequests,
+        };
     }
 
     /**
@@ -732,25 +853,34 @@ class SelfAssessmentWorkflowService {
         // Legacy `status` back in lockstep: 'submitted' is what the pending-
         // review queries select on, so the file reappears in the queue. guardFrom
         // = the states checked above (a concurrent approve wins → STALE_STATE).
-        await this._setState(selfAssessmentId, 'submitted', { status: 'submitted' }, WITHDRAWABLE, {
-            cycleId: sa.cycleId,
-            req,
+        // State, review reset and event commit together (SA-42).
+        await db.runTransaction(async () => {
+            await this._setState(
+                selfAssessmentId,
+                'submitted',
+                { status: 'submitted' },
+                WITHDRAWABLE,
+                {
+                    cycleId: sa.cycleId,
+                    req,
+                }
+            );
+            await db.run(
+                `UPDATE supervisor_reviews
+                    SET status = 'pending', decision = NULL, recommendation = NULL, decided_at = NULL,
+                        supervisor_rated_level = NULL, gap = NULL, gap_reason = NULL, reviewed_at = NULL
+                  WHERE self_assessment_id = ?`,
+                [selfAssessmentId]
+            );
+            await this._event(
+                selfAssessmentId,
+                auth,
+                'review_withdrawn',
+                sa.workflowState,
+                'submitted',
+                { superadminOverride: true, reason: why, priorReview: prior || null }
+            );
         });
-        await db.run(
-            `UPDATE supervisor_reviews
-                SET status = 'pending', decision = NULL, recommendation = NULL, decided_at = NULL,
-                    supervisor_rated_level = NULL, gap = NULL, gap_reason = NULL, reviewed_at = NULL
-              WHERE self_assessment_id = ?`,
-            [selfAssessmentId]
-        );
-        await this._event(
-            selfAssessmentId,
-            auth,
-            'review_withdrawn',
-            sa.workflowState,
-            'submitted',
-            { superadminOverride: true, reason: why, priorReview: prior || null }
-        );
         await this._audit(
             req,
             'SA_REVIEW_WITHDRAWN',
@@ -797,7 +927,7 @@ class SelfAssessmentWorkflowService {
                 new Error('Not authorized: supervisor/manager/admin only'),
                 'assess:acr_err_not_authorized_reviewer'
             );
-        if (auth.isSelf)
+        if (auth.isSelf || auth.selfByIdentity)
             throw say(
                 new Error('Not authorized: cannot cancel your own assessment'),
                 'assess:acr_err_cancel_own'
@@ -989,8 +1119,14 @@ class SelfAssessmentWorkflowService {
         user,
         recommendation = null,
         req = null,
-        supervisorLevel = null
+        supervisorLevel = null,
+        opts = {}
     ) {
+        // `opts.batch`: one skill of approveSelected(). Every check and every write
+        // below runs exactly as for a single approval; only the two per-person side
+        // effects (the employee's notification, the reviewer's "acted" mark) are
+        // left to the caller, which sends ONE of each after the round commits.
+        const inBatch = Boolean(opts && opts.batch);
         // `recommendation` accepts either the legacy plain string (bulk approve,
         // older callers) OR `{ recommendation, gapReason }` — gapReason being the
         // supervisor's SHORT REASON for overriding the employee's self-rating.
@@ -1011,7 +1147,7 @@ class SelfAssessmentWorkflowService {
                 new Error('Not authorized: supervisor/manager/admin only'),
                 'assess:acr_err_not_authorized_reviewer'
             );
-        if (auth.isSelf)
+        if (auth.isSelf || auth.selfByIdentity)
             throw say(
                 new Error('Not authorized: cannot review your own assessment'),
                 'assess:saw_err_review_own'
@@ -1120,11 +1256,29 @@ class SelfAssessmentWorkflowService {
             `approved (${auth.actorType})` +
                 (isOverride ? ` — override ${sa.selfRatedLevel}→${mgrLevel}: ${gapReason}` : '')
         );
+        if (inBatch) return this.getAssessment(selfAssessmentId);
         await this._notifyEmployee(sa, 'sa.approved', {
             recommendation: recommendation || null,
             gapReason: gapReason || null,
         });
+        await this._reviewerActed(user);
         return this.getAssessment(selfAssessmentId);
+    }
+
+    /**
+     * Measurement (migration 183): the reviewer acted on « to review » (a
+     * decision was taken). Best-effort, never throws.
+     */
+    async _reviewerActed(user) {
+        await Promise.resolve()
+            .then(() =>
+                require('./NotificationService').actedQuietly({
+                    userType: user && user.userType === 'admin' ? 'admin' : 'employee',
+                    userId: Number(user && user.id),
+                    kinds: ['sa.submitted', 'sa.review_reset'],
+                })
+            )
+            .catch(() => 0);
     }
 
     /**
@@ -1147,13 +1301,21 @@ class SelfAssessmentWorkflowService {
      * and travels everywhere.
      */
     async _promoteToSkillAssessment(sa, user, auth, level = null) {
+        // Both best-effort blocks run inside a SAVEPOINT (SA-42). They are called
+        // from inside the approval transaction: a failed statement there used to
+        // be swallowed by the catch while PostgreSQL had already aborted the
+        // whole transaction, so every statement after it (event, review
+        // finalisation, commit) failed with "current transaction is aborted".
+        const sp = (fn) => (typeof db.runInSavepoint === 'function' ? db.runInSavepoint(fn) : fn());
         try {
             if (level == null && sa && sa.id != null) {
-                const review = await db.get(
-                    `SELECT supervisor_rated_level AS "lvl" FROM supervisor_reviews
+                const review = await sp(() =>
+                    db.get(
+                        `SELECT supervisor_rated_level AS "lvl" FROM supervisor_reviews
                       WHERE self_assessment_id = ? AND supervisor_rated_level IS NOT NULL
                       ORDER BY id DESC LIMIT 1`,
-                    [sa.id]
+                        [sa.id]
+                    )
                 );
                 if (review && review.lvl != null) level = Number(review.lvl);
             }
@@ -1161,33 +1323,37 @@ class SelfAssessmentWorkflowService {
             /* fall through to the self-rating rather than blocking the approval */
         }
         try {
-            const SkillAssessmentModel = require('../models/SkillAssessmentModel');
-            // skill_assessments.assessed_by references admins(id) — a supervisor/
-            // manager is an EMPLOYEE, so attribute to the acting admin when one is
-            // acting, otherwise to the default system admin.
-            let assessedBy = auth && auth.isAdmin && user && user.id ? user.id : null;
-            if (!assessedBy) {
-                const a =
-                    (await db.get(
-                        "SELECT id FROM admins WHERE username = 'admin' AND is_active = true LIMIT 1"
-                    )) || (await db.get('SELECT id FROM admins ORDER BY id LIMIT 1'));
-                assessedBy = a ? a.id : null;
-            }
-            if (!assessedBy) return; // nothing valid to attribute to — skip, don't fail
-            // Re-validate the 0–4 range at promotion time: a row created by any other
-            // path (import/legacy/direct SQL) must not push an invalid level into the
-            // official skill profile (which feeds readiness, gaps and the 9-box).
-            const lvl = Number(level != null ? level : sa.selfRatedLevel);
-            if (!Number.isInteger(lvl) || lvl < 0 || lvl > 4) return;
-            await SkillAssessmentModel.upsert({
-                employeeId: sa.employeeId,
-                skillId: sa.skillId,
-                currentLevel: lvl,
-                assessedBy,
-                notes:
-                    level != null
-                        ? 'Set from supervisor-validated rating'
-                        : 'Set from approved self-assessment',
+            await sp(async () => {
+                const SkillAssessmentModel = require('../models/SkillAssessmentModel');
+                // skill_assessments.assessed_by references admins(id) — a supervisor/
+                // manager is an EMPLOYEE, so attribute to the acting admin when one is
+                // acting, otherwise to the default system admin.
+                let assessedBy = auth && auth.isAdmin && user && user.id ? user.id : null;
+                if (!assessedBy) {
+                    const a =
+                        (await db.get(
+                            "SELECT id FROM admins WHERE username = 'admin' AND is_active = true LIMIT 1"
+                        )) || (await db.get('SELECT id FROM admins ORDER BY id LIMIT 1'));
+                    assessedBy = a ? a.id : null;
+                }
+                if (!assessedBy) return; // nothing valid to attribute to — skip, don't fail
+                // Re-validate the 0–4 range at promotion time: a row created by any other
+                // path (import/legacy/direct SQL) must not push an invalid level into the
+                // official skill profile (which feeds readiness, gaps and the 9-box).
+                const lvl = Number(level != null ? level : sa.selfRatedLevel);
+                if (!Number.isInteger(lvl) || lvl < 0 || lvl > 4) return;
+                await SkillAssessmentModel.upsert({
+                    employeeId: sa.employeeId,
+                    skillId: sa.skillId,
+                    currentLevel: lvl,
+                    assessedBy,
+                    notes:
+                        level != null
+                            ? 'Set from supervisor-validated rating'
+                            : 'Set from approved self-assessment',
+                    // Promoted by an approval: a reviewer decided this level.
+                    validation: 'manager_validated',
+                });
             });
         } catch (_) {
             /* never block an approval on the skill-profile update */
@@ -1213,6 +1379,13 @@ class SelfAssessmentWorkflowService {
             throw say(
                 new Error('Not authorized: supervisor/manager/admin only'),
                 'assess:acr_err_not_authorized_reviewer'
+            );
+        // Nobody approves their own record in bulk either (approve() refuses each
+        // row too; this answers once, before anything is read).
+        if (auth.isSelf || auth.selfByIdentity)
+            throw say(
+                new Error('Not authorized: cannot review your own assessment'),
+                'assess:saw_err_review_own'
             );
         // Authority that comes ONLY from a campaign assignment (resolveAuthority
         // looks one up only when nothing else grants review) covers only the
@@ -1346,6 +1519,211 @@ class SelfAssessmentWorkflowService {
         return { employees: ids.length, approved, held, failed, skippedEmployees, perEmployee };
     }
 
+    /**
+     * APPROVE THE SELECTED SKILLS OF ONE PERSON, IN ONE ACTION (4.0.0 port, wave 2).
+     *
+     *  - each item is approved AT THE LEVEL PROPOSED on its line: the self level,
+     *    or the reviewer's own (`supervisorLevel`), which, as for a single
+     *    approval, needs its written reason (`gapReason`);
+     *  - EVERY item goes through approve() itself — its authority, state, range,
+     *    reason and campaign checks, its writes and its per-skill audit row. There
+     *    is no second code path to drift;
+     *  - ALL OR NOTHING per person: one transaction; one refused item rolls the
+     *    whole round back and nothing is approved. Every item is still tried (each
+     *    in its own savepoint), so the reviewer gets every reason in one answer;
+     *  - more than one item never sweeps an `arbitration` row (a dispute is
+     *    decided on its own, as in bulkApproveForEmployee); one item alone is a
+     *    single approval and approve() decides it;
+     *  - after the commit: one summary audit row (SA_BULK_APPROVE), ONE
+     *    notification to the employee (sa.approved, payload `count`), one
+     *    "acted" mark for the reviewer.
+     *
+     * @param {number} employeeId the person whose skills are decided
+     * @param {Array<{id:number, supervisorLevel?:number|null, gapReason?:string|null}>} items
+     * @returns {Promise<{employeeId:number, count:number, approved:Array}>}
+     * @throws a 409 `BATCH_REFUSED` error carrying `refused: [{id, code, reason}]`
+     */
+    async approveSelected(employeeId, items, user, req = null) {
+        const MAX = SelfAssessmentWorkflowService.MAX_BATCH;
+        const bad = (msg, key, vars) => {
+            const e = say(new Error(msg), key, vars);
+            e.status = 400;
+            e.expose = true;
+            return e;
+        };
+        if (!Array.isArray(items) || !items.length)
+            throw bad('No skill selected.', 'talentx:sab_err_empty');
+        if (items.length > MAX)
+            throw bad(`Too many skills in one action (max ${MAX}).`, 'talentx:sab_err_too_many', {
+                max: MAX,
+            });
+        // One entry per id (the last one wins); a malformed id is a 400 before any query.
+        const byId = new Map();
+        for (const raw of items) {
+            const it = raw && typeof raw === 'object' ? raw : { id: raw };
+            const n = Number(it.id);
+            if (!Number.isInteger(n) || n <= 0)
+                throw bad('Invalid assessment id.', 'talentx:sab_err_bad_id');
+            const lvl =
+                it.supervisorLevel === undefined ||
+                it.supervisorLevel === null ||
+                it.supervisorLevel === ''
+                    ? null
+                    : it.supervisorLevel;
+            const why = it.gapReason != null ? String(it.gapReason).trim() : '';
+            byId.set(n, { id: n, supervisorLevel: lvl, gapReason: why || null });
+        }
+        const list = Array.from(byId.values());
+
+        // Fail fast on the PERSON (the same resolveAuthority every item meets again
+        // inside approve()): nobody approves their own skills, and someone with no
+        // right to act on this person gets a 403 before anything is read.
+        const auth = await this._auth(user, employeeId, { cycleId: 'any' });
+        if (auth.isSelf || auth.selfByIdentity)
+            throw say(
+                new Error('Not authorized: cannot review your own assessment'),
+                'assess:saw_err_review_own'
+            );
+        if (!auth.canSupervise && !auth.canManage)
+            throw say(
+                new Error('Not authorized: supervisor/manager/admin only'),
+                'assess:acr_err_not_authorized_reviewer'
+            );
+
+        const { sayError, isInternal, GENERIC_FR } = require('../utils/apiErrors');
+        const reasonOf = (e) => {
+            if (isInternal(e)) {
+                try {
+                    require('../middleware/logger').logger.error(
+                        `[approveSelected] ${String((e && e.message) || '').slice(0, 300)}`
+                    );
+                } catch (_) {
+                    /* logger optional */
+                }
+                return req && typeof req.t === 'function'
+                    ? req.t('talentx:sab_err_technical', { defaultValue: GENERIC_FR })
+                    : GENERIC_FR;
+            }
+            return sayError(req, e) || String((e && e.message) || '');
+        };
+        const codeOf = (e) => {
+            const k = (e && e.i18n && e.i18n.key) || '';
+            if (e && e.code === 'STALE_STATE') return 'stale';
+            if (k.includes('review_own')) return 'own';
+            if (k.includes('not_authorized') || k.includes('manager_only')) return 'forbidden';
+            if (k.includes('cannot_approve')) return 'state';
+            if (k.includes('reason_required')) return 'reason_required';
+            if (k.includes('rating_range')) return 'level';
+            if (k.includes('not_found')) return 'not_found';
+            if (e && e.gate) return 'campaign';
+            return isInternal(e) ? 'error' : 'refused';
+        };
+
+        const multi = list.length > 1;
+        const refused = [];
+        const approved = [];
+        let firstSa = null;
+        const ROLLBACK = new Error('__sa_batch_rollback__');
+        try {
+            // runTransaction BEGINs at top level; the inner savepoint keeps the round
+            // atomic even when the caller already holds a transaction (a nested
+            // runTransaction reuses the client without one).
+            await db.runTransaction(() =>
+                db.runInSavepoint(async () => {
+                    for (const it of list) {
+                        const sa = await this.getAssessment(it.id);
+                        if (!sa || Number(sa.employeeId) !== Number(employeeId)) {
+                            const e = say(
+                                new Error('This skill is not part of this person’s assessments.'),
+                                'talentx:sab_err_not_in_round'
+                            );
+                            refused.push({ id: it.id, code: 'not_in_round', reason: reasonOf(e) });
+                            continue;
+                        }
+                        if (multi && sa.workflowState === 'arbitration') {
+                            const e = say(
+                                new Error(
+                                    'A dispute is in progress: decide this skill on its own.'
+                                ),
+                                'talentx:sab_err_arbitration'
+                            );
+                            refused.push({
+                                id: it.id,
+                                code: 'arbitration_individual',
+                                reason: reasonOf(e),
+                            });
+                            continue;
+                        }
+                        try {
+                            const after = await db.runInSavepoint(() =>
+                                this.approve(
+                                    it.id,
+                                    user,
+                                    it.gapReason ? { gapReason: it.gapReason } : null,
+                                    req,
+                                    it.supervisorLevel,
+                                    { batch: true }
+                                )
+                            );
+                            if (!firstSa) firstSa = sa;
+                            const lvl =
+                                it.supervisorLevel != null
+                                    ? Number(it.supervisorLevel)
+                                    : sa.selfRatedLevel != null
+                                      ? Number(sa.selfRatedLevel)
+                                      : null;
+                            approved.push({
+                                id: it.id,
+                                skillId: sa.skillId != null ? Number(sa.skillId) : null,
+                                fromState: sa.workflowState,
+                                workflowState: after ? after.workflowState : 'approved',
+                                status: after ? after.status : 'approved',
+                                level: lvl,
+                            });
+                        } catch (e) {
+                            refused.push({ id: it.id, code: codeOf(e), reason: reasonOf(e) });
+                        }
+                    }
+                    if (refused.length) throw ROLLBACK;
+                    // The summary row commits WITH the round, or not at all.
+                    await this._audit(
+                        req,
+                        'SA_BULK_APPROVE',
+                        Number(employeeId),
+                        `approved ${approved.length} selected skill(s) in one action (${auth.actorType}): ` +
+                            approved.map((a) => `#${a.id}`).join(', '),
+                        'employee'
+                    );
+                })
+            );
+        } catch (e) {
+            if (e !== ROLLBACK) throw e;
+        }
+        if (refused.length) {
+            const err = say(
+                new Error(
+                    `Nothing was approved: ${refused.length} skill(s) could not be approved.`
+                ),
+                'talentx:sab_err_refused',
+                { n: refused.length }
+            );
+            err.code = 'BATCH_REFUSED';
+            err.status = 409;
+            err.refused = refused;
+            throw err;
+        }
+        // ONE notification for the round, after the commit (never for a round that
+        // was rolled back). Payload: whitelisted numbers only.
+        if (firstSa) {
+            await this._notifyEmployee(firstSa, 'sa.approved', {
+                skillId: approved.length === 1 ? approved[0].skillId : null,
+                count: approved.length,
+            });
+        }
+        await this._reviewerActed(user);
+        return { employeeId: Number(employeeId), count: approved.length, approved };
+    }
+
     /** Supervisor or manager rejects (terminal). */
     async reject(selfAssessmentId, user, reason, req = null) {
         const sa = await this.getAssessment(selfAssessmentId);
@@ -1353,7 +1731,7 @@ class SelfAssessmentWorkflowService {
         const auth = await this._auth(user, sa.employeeId, { cycleId: sa.cycleId });
         if (!auth.canSupervise && !auth.canManage)
             throw say(new Error('Not authorized'), 'assess:acr_err_not_authorized_reviewer');
-        if (auth.isSelf)
+        if (auth.isSelf || auth.selfByIdentity)
             throw say(
                 new Error('Not authorized: cannot review your own assessment'),
                 'assess:saw_err_review_own'
@@ -1401,6 +1779,7 @@ class SelfAssessmentWorkflowService {
         });
         await this._audit(req, 'SA_REJECT', selfAssessmentId, `rejected (${auth.actorType})`);
         await this._notifyEmployee(sa, 'sa.rejected', { reason: reason || null });
+        await this._reviewerActed(user);
         return this.getAssessment(selfAssessmentId);
     }
 
@@ -1414,7 +1793,7 @@ class SelfAssessmentWorkflowService {
                 new Error('Not authorized: manager/admin only'),
                 'assess:saw_err_manager_only'
             );
-        if (auth.isSelf)
+        if (auth.isSelf || auth.selfByIdentity)
             throw say(
                 new Error('Not authorized: cannot review your own assessment'),
                 'assess:saw_err_review_own'
@@ -1479,7 +1858,7 @@ class SelfAssessmentWorkflowService {
                 new Error('Not authorized: manager/admin only'),
                 'assess:saw_err_manager_only'
             );
-        if (auth.isSelf)
+        if (auth.isSelf || auth.selfByIdentity)
             throw say(
                 new Error('Not authorized: cannot arbitrate your own assessment'),
                 'assess:saw_err_arbitrate_own'
@@ -1498,6 +1877,34 @@ class SelfAssessmentWorkflowService {
             );
         const toState =
             outcome === 'approve' ? 'approved' : outcome === 'reject' ? 'rejected' : 'arbitration';
+        // A rejection decided in arbitration is an unfavourable decision: it
+        // carries its reason, as reject() and a refused change request do. The
+        // reason is the arbitration note (SA-42).
+        const why = String(note == null ? '' : note).trim();
+        if (toState === 'rejected' && !why)
+            throw say(
+                new Error('A reason is required to reject an assessment in arbitration.'),
+                'assess:saw_err_arbitrate_reject_reason'
+            );
+        // The neutral outcome ("in arbitration") only exists to settle a dispute.
+        // Without an open dispute (open or escalated) on this assessment's review
+        // it froze the measurement in a disputed state nobody had opened.
+        if (toState === 'arbitration') {
+            const open = await db.get(
+                `SELECT ad.id FROM assessment_disputes ad
+                   JOIN supervisor_reviews sr ON sr.id = ad.supervisor_review_id
+                  WHERE sr.self_assessment_id = ? AND ad.state IN ('open', 'escalated')
+                  LIMIT 1`,
+                [selfAssessmentId]
+            );
+            if (!open)
+                throw say(
+                    new Error(
+                        `Cannot move to arbitration from '${sa.workflowState}' without an open dispute`
+                    ),
+                    'assess:saw_err_arbitrate_no_dispute'
+                );
+        }
         // Une issue « approuvée » est une validation : elle nomme son auteur.
         const actorRef = this._actorRef(auth, user);
         if (toState === 'approved' && !actorRef)
@@ -1537,6 +1944,12 @@ class SelfAssessmentWorkflowService {
             });
         });
         await this._audit(req, 'SA_ARBITRATE', selfAssessmentId, `manager arbitrated → ${toState}`);
+        // The employee learns the outcome of an arbitration that decides their
+        // measurement, as on the approve and reject paths.
+        if (toState === 'approved')
+            await this._notifyEmployee(sa, 'sa.approved', { via: 'arbitration' });
+        else if (toState === 'rejected')
+            await this._notifyEmployee(sa, 'sa.rejected', { reason: why, via: 'arbitration' });
         return this.getAssessment(selfAssessmentId);
     }
 
@@ -1932,7 +2345,7 @@ class SelfAssessmentWorkflowService {
      * entière de défaut : un audit délibérément avalé ne peut plus empoisonner la
      * transaction de son appelant.
      */
-    async _audit(req, action, entityId, details) {
+    async _audit(req, action, entityId, details, entityType = 'selfAssessment') {
         const u = req && req.user;
         try {
             await db.runInSavepoint(() =>
@@ -1943,9 +2356,10 @@ class SelfAssessmentWorkflowService {
                             ? `${u.userType === 'admin' ? 'admin' : 'employee'}:${u.id}`
                             : null,
                     action,
-                    entityType: 'selfAssessment',
+                    entityType,
                     entityId,
-                    details,
+                    // The rung the act used (AuthorityService), when one was resolved.
+                    details: AuthorityService.withAs(details, u),
                     ipAddress: req ? req.ip : null,
                     userAgent: req && req.get ? req.get('user-agent') : null,
                 })
@@ -1955,6 +2369,9 @@ class SelfAssessmentWorkflowService {
         }
     }
 }
+
+/** Upper bound of one multi-skill approval (a role's requirement set is far below it). */
+SelfAssessmentWorkflowService.MAX_BATCH = 200;
 
 const _instance = new SelfAssessmentWorkflowService();
 // The approve-all filter rule, exposed for the tests and the team endpoint.

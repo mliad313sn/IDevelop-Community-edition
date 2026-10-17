@@ -256,7 +256,7 @@ describe('excludeBulk — one request, one audit row per person, category + reas
             expect(a.details).toContain('absence longue durée'); // the FR label of long_leave
             expect(a.details).toContain('Rotation site');
             expect(a.details).toContain("jusqu'au 2026-12-31");
-            expect(a.details).toContain('par admin admin'); // actor named on every row
+            expect(a.details).toContain('par admin:1'); // actor named on every row, by ref (ids only)
         });
 
         // ONE statement excuses the whole selection (RETURNING drives the audit loop).

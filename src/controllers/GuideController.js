@@ -37,7 +37,7 @@ const ROUTE_MAP = {
     'Two-factor authentication (2FA) — optional but recommended': '/v2/uam/mfa/manage',
     'The built-in manual and contextual help': '/guide',
     'Self-assessment reviews': '/supervisor/self-assessment-reviews',
-    'Detailed review and retained level': '/supervisor/reviews',
+    'Detailed review and retained level': '/supervisor/self-assessment-reviews',
     '9-Box grid — draft the proposal': '/talent/nine-box',
     'Gap analysis for their team': '/supervisor/gap-analysis',
     'Coaching and development plans': '/coaching/plans',

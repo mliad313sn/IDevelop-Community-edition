@@ -1,0 +1,7 @@
+<%#
+  sensitive-chip — the « Sensitive setting » chip placed next to the name of a
+  sensitive switch (nationality, shared computer, MFA) on /app-settings. The row
+  itself takes class="setting setting--sensitive" and carries a
+  <p class="setting-consequence"> with the consequence in the viewer's language.
+  include('../partials/sensitive-chip')
+%><span class="setting-chip"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('common:sensitive_setting') %></span>

@@ -1,0 +1,42 @@
+<%#
+  The privacy notice in force (GDPR art. 13/14). Every signed-in person is held
+  here by middleware/privacyNotice until they acknowledge the published version.
+  The text is stored as plain text and arrives as escaped blocks
+  (PrivacyService.toBlocks): no HTML from the database reaches the page.
+%>
+<div class="pn-doc">
+<div class="page-header">
+  <h1><i class="fas fa-user-shield" aria-hidden="true"></i> <%= notice.title %></h1>
+  <p class="text-muted"><%= __('compliance:privacy_notice_version', { version: notice.version, date: fmtDate(notice.publishedAt) }) %></p>
+</div>
+
+<section class="card pn-card">
+  <% (notice.blocks || []).forEach(function (b) { %>
+    <% if (b.type === 'h') { %><h2><%= b.text %></h2>
+    <% } else if (b.type === 'ul') { %><ul><% b.items.forEach(function (it) { %><li><%= it %></li><% }); %></ul>
+    <% } else { %><p><%= b.text %></p><% } %>
+  <% }); %>
+</section>
+
+<section class="card pn-card">
+  <% if (acknowledged) { %>
+    <p><span class="badge badge-success"><%= __('compliance:privacy_notice_acknowledged') %></span></p>
+    <a class="btn btn-secondary" href="/"><%= __('compliance:privacy_notice_continue') %></a>
+  <% } else { %>
+    <p><%= __('compliance:privacy_notice_ack_intro') %></p>
+    <form method="POST" action="/privacy/notice/acknowledge">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="version" value="<%= notice.version %>">
+      <button type="submit" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i> <%= __('compliance:privacy_notice_ack_button') %></button>
+    </form>
+  <% } %>
+  <p class="text-muted pn-note"><%= __('compliance:privacy_notice_rights_hint') %></p>
+</section>
+</div>
+
+<style>
+.pn-doc .pn-card { margin-bottom: 1rem; padding: 1rem 1.15rem; }
+.pn-doc .pn-card h2 { font-size: 1.02rem; margin: 1rem 0 .4rem; }
+.pn-doc .pn-card h2:first-child { margin-top: 0; }
+.pn-doc .pn-note { font-size: .88rem; margin: .7rem 0 0; }
+</style>

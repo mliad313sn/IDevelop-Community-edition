@@ -600,9 +600,13 @@ describe('cadence merge — four due, ONE message', () => {
         // The LONGEST wins, and the message says which windows it absorbed.
         expect(r.cadence).toBe('yearly');
         const sent = mockNotify.notify.mock.calls[0][0];
-        expect(sent.subject).toContain('Bilan annuel');
-        expect(sent.html).toContain('Inclut');
-        expect(sent.html).toMatch(/trimestre 2026-Q4/);
+        // The subject is the catalogue's; the title and the blocks say which
+        // windows the brief absorbed.
+        expect(sent.subject).toBeUndefined();
+        expect(sent.title).toContain('Bilan annuel');
+        const body = JSON.stringify(sent.blocks);
+        expect(body).toContain('Inclut');
+        expect(body).toMatch(/trimestre 2026-Q4/);
     });
 
     test('a recipient who is both a supervisor and a manager is ONE recipient, not two', async () => {
@@ -986,7 +990,7 @@ describe('manual replay', () => {
                 only: { userType: 'admin', userId: 3 },
             },
         });
-        const [a, b] = mockNotify.notify.mock.calls.map((c) => c[0].html);
+        const [a, b] = mockNotify.notify.mock.calls.map((c) => JSON.stringify(c[0].blocks));
         expect(a).toBe(b);
     });
 
@@ -1004,7 +1008,7 @@ describe('manual replay', () => {
         const r = await job.tick({ force: true, cadence: 'quarterly', period: '2026-Q2' });
         expect(state.updates.some((u) => u.forced)).toBe(true);
         expect(r.sent).toBe(1);
-        expect(mockNotify.notify.mock.calls[0][0].html).toMatch(/Recalculé le/);
+        expect(JSON.stringify(mockNotify.notify.mock.calls[0][0].blocks)).toMatch(/Recalculé le/);
     });
 
     test('a forced run NEVER deletes the archived brief it re-versioned', async () => {
@@ -1045,38 +1049,42 @@ describe('the e-mail body', () => {
             ...opts,
         });
 
-    test('it is BARE BLOCKS — no second document inside the shell', () => {
-        const { html } = render();
+    test('it is BLOCKS — the document is composed once, by the one renderer', () => {
+        const { html, blocks } = render();
         expect(html).not.toMatch(/<!doctype/i);
         expect(html).not.toMatch(/<html/i);
         expect(html).not.toMatch(/<body/i);
-        // The three existing digests hand _render a COMPLETE wrap() document,
-        // which _shell then wraps again: two brand headers, two footers.
-        const T = require('../../src/utils/emailTemplate');
-        expect(T.wrap({ branding: {}, title: 't', intro: 'i', blocks: [] })).toMatch(/<body/i);
+        expect(Array.isArray(blocks)).toBe(true);
+        expect(blocks.every((b) => b && typeof b.type === 'string')).toBe(true);
     });
 
-    test('after _render there is exactly ONE shell footer', () => {
-        jest.unmock('../../src/services/NotificationService');
-        const Real = jest.requireActual('../../src/services/NotificationService');
-        const { subject, html, text } = render();
-        const out = Real._render({
-            kind: 'dept_brief',
-            payload: {},
-            subject,
-            html,
-            text,
-            brand: { appName: 'ACME' },
-            recipientName: 'X',
-            locale: 'fr',
-        });
+    test('composed by the renderer, there is exactly ONE footer and ONE document', () => {
+        const T = jest.requireActual('../../src/utils/emailTemplate');
+        const { title, blocks } = render();
+        const out = T.compose(
+            { kind: 'dept_brief', title, blocks, locale: 'fr' },
+            { brand: { appName: 'ACME' }, recipientName: 'X' }
+        );
         expect((out.html.match(/Ceci est un message automatique/g) || []).length).toBe(1);
-        expect((out.html.match(/<!doctype/gi) || []).length).toBeLessThanOrEqual(1);
+        expect((out.html.match(/<!doctype/gi) || []).length).toBe(1);
     });
 
-    test('the subject is branded from settings, never a hard-coded [IDevelop]', () => {
-        expect(render().subject).toBe('ACME — Bilan mensuel — 2026-08');
+    test('the subject is the catalogue’s: branded, no period, no figure, never [IDevelop]', () => {
+        const T = jest.requireActual('../../src/utils/emailTemplate');
+        const { title, blocks } = render();
+        const out = T.compose(
+            { kind: 'dept_brief', title, blocks, locale: 'fr' },
+            { brand: { appName: 'ACME' } }
+        );
+        expect(out.subject).toBe('ACME — Bilan de votre département');
+        expect(out.subject).not.toMatch(/\d/);
         expect(JOB_SRC).not.toMatch(/\[IDevelop\]/);
+    });
+
+    test('one language per mail: the English brief carries no French', () => {
+        const { html } = render(payload(), { lang: 'en' });
+        expect(html).toMatch(/Monthly brief/);
+        expect(html).not.toMatch(/Bilan mensuel|Gérer la fréquence/);
     });
 
     test('the header carries the period with INCLUSIVE bounds, in UTC', () => {
@@ -1120,10 +1128,11 @@ describe('the e-mail body', () => {
         ];
         const { html } = render(p);
         const head = html.slice(
-            html.indexOf('Certifications') - 120,
+            html.indexOf('Certifications') - 200,
             html.indexOf('Certifications')
         );
-        expect(head).toContain('#64748b');
+        // Headings are never amber (one neutral heading style for every section).
+        expect(head).toContain('<h2');
         expect(head).not.toContain('#b45309');
     });
 
@@ -1166,9 +1175,10 @@ describe('the e-mail body', () => {
         ];
         // 3 is the floor deptBriefMaxLines accepts (3-12), so three of four survive.
         const { text } = render(p, { maxLines: 3 });
-        const kept = text.split('\n').filter((l) => l.startsWith('- '));
-        expect(kept[0]).toContain('old');
-        expect(kept[1]).toContain('less-old');
+        const at = (label) => text.indexOf(`\n${label} | `);
+        expect(at('old')).toBeGreaterThan(-1);
+        expect(at('less-old')).toBeGreaterThan(at('old'));
+        expect(at('middling')).toBeGreaterThan(at('less-old'));
         expect(text).not.toContain('fresh');
     });
 
@@ -1276,7 +1286,7 @@ describe('notification wiring', () => {
         // is invisible to the suite: the comment is the guard.
         expect(Real.KIND_POLICY.dept_brief).toBeUndefined();
         const src = fs.readFileSync(
-            path.join(__dirname, '../../src/services/NotificationService.js'),
+            path.join(__dirname, '../../src/services/notificationCatalogue.js'),
             'utf8'
         );
         expect(src).toMatch(/'dept_brief' is DELIBERATELY ABSENT/);

@@ -69,7 +69,7 @@
             <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>">
 
             <div class="form-group">
-                <label for="admUsername"><%= __('admin:username') %> *</label>
+                <label for="admUsername" class="required"><%= __('admin:username') %></label>
                 <input type="text" name="username" id="admUsername" value="<%= v('username', admin.username) %>" required>
             </div>
 
@@ -99,8 +99,8 @@
                 </div>
             <% } else { %>
             <div class="form-group">
-                <label for="role-selector"><%= __('admin:role_account') %> *</label>
-                <select name="role" id="role-selector" required onchange="onRoleChange(this.value)">
+                <label for="role-selector" class="required"><%= __('admin:role_account') %></label>
+                <select name="role" id="role-selector" required data-on-change="onRoleChange" data-args='["$value"]'>
                     <% const roleNow = v('role', admin.role); %>
                     <% if ((typeof granterIsSuper === 'undefined' || granterIsSuper) || admin.role==='superadmin') { %>
                         <option value="superadmin" <%=roleNow==='superadmin' ? 'selected' : '' %>><%= __('admin:superadmin_label') %></option>
@@ -132,7 +132,7 @@
 
             <div class="form-group">
                 <label>
-                    <input type="checkbox" id="change-password-toggle" onchange="togglePasswordFields()"> <%= __('admin:change_password') %>
+                    <input type="checkbox" id="change-password-toggle" data-on-change="togglePasswordFields" data-args='[]'> <%= __('admin:change_password') %>
                 </label>
                 <% if (!self) { %><small class="text-muted" style="display:block"><%= __('admin:adm_password_by_other_hint') %></small><% } %>
             </div>
@@ -143,7 +143,7 @@
                     <div style="position: relative; display: flex; align-items: center;">
                         <input type="password" name="newPassword" id="newPassword" minlength="12"
                             autocomplete="new-password" style="flex: 1; padding-right: 35px;">
-                        <button type="button" onclick="togglePasswordVisibility('newPassword')"
+                        <button type="button" data-on-click="togglePasswordVisibility" data-args='["newPassword"]'
                             style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px 8px;"
                             title="<%= __('admin:toggle_visibility') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
                     </div>
@@ -157,7 +157,7 @@
                     <div style="position: relative; display: flex; align-items: center;">
                         <input type="password" name="newPasswordConfirm" id="newPasswordConfirm" minlength="12"
                             autocomplete="new-password" style="flex: 1; padding-right: 35px;">
-                        <button type="button" onclick="togglePasswordVisibility('newPasswordConfirm')"
+                        <button type="button" data-on-click="togglePasswordVisibility" data-args='["newPasswordConfirm"]'
                             style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px 8px;"
                             title="<%= __('admin:toggle_visibility') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
                     </div>
@@ -184,7 +184,7 @@
                             <div class="scope-item">
                                 <%# A scope row repeats: a visible label per row would be noise,
                                     so each select carries its own name for a screen reader. %>
-                                <select name="scopes[<%= index %>][type]" onchange="updateScopeOptions(this)"
+                                <select name="scopes[<%= index %>][type]" data-on-change="updateScopeOptions" data-args='["$el"]'
                                     aria-label="<%= __('admin:a11y_scope_type') %>"
                                     data-scope-value="<%= scopeValue %>">
                                     <% if (_regions.length) { %><option value="region" <%=scope.scopeType==='region' ? 'selected' : '' %>><%= __('admin:adm_region') %></option><% } %>
@@ -201,13 +201,13 @@
                                 <% if (scope.expired) { %><span class="adm-chip adm-chip-warn" title="<%= __('admin:adm_scope_expired_title') %>"><%= __('admin:adm_scope_expired', { date: fmtDate(scope.expiresAt) }) %></span><% } %>
                                 <% if (scope.unitInactive) { %><span class="adm-chip adm-chip-warn" title="<%= __('admin:adm_chip_site_inactive_title') %>"><%= __('admin:adm_scope_unit_inactive') %></span><% } %>
                                 <button type="button" class="btn btn-sm btn-danger"
-                                    onclick="this.parentElement.remove()"><%= __('admin:remove') %></button>
+                                    data-remove-parent><%= __('admin:remove') %></button>
                             </div>
                             <% } %>
                             <% }); %>
                                 <% } %>
                 </div>
-                <button type="button" class="btn btn-sm" onclick="addScope()"><%= __('admin:add_scope') %></button>
+                <button type="button" class="btn btn-sm" data-on-click="addScope" data-args='[]'><%= __('admin:add_scope') %></button>
             </div>
 
             <%# ---- Durée de l'accès ---------------------------------------------
@@ -326,7 +326,7 @@
                                             <%= granted.indexOf(p.slug) !== -1 ? 'checked' : '' %>>
                                         <span>
                                             <strong><%= p.label %></strong>
-                                            <% if (p.write) { %><span class="badge badge-warning" style="font-size:0.65rem;"><%= __('admin:write_badge') %></span><% } %>
+                                            <% if (p.write) { %><span class="badge badge-warning" style="font-size:.75rem;"><%= __('admin:write_badge') %></span><% } %>
                                             <br><small style="color:#888;"><%= p.description %></small>
                                         </span>
                                     </label>
@@ -364,7 +364,7 @@
             <label for="admNewPassword" class="sr-only"><%= __('admin:new_password_placeholder') %></label>
             <input type="password" id="admNewPassword" name="newPassword" autocomplete="new-password"
                 placeholder="<%= __('admin:new_password_placeholder') %>" style="padding:6px 8px; min-width:230px;">
-            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('admNewPassword', this)"
+            <button type="button" class="btn btn-secondary" data-on-click="togglePasswordVisibility" data-args='["admNewPassword","$el"]'
                 aria-pressed="false" title="<%= __('admin:toggle_visibility') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
             <button type="submit" class="btn btn-warning"><i class="fas fa-key" aria-hidden="true"></i> <%= __('admin:set_reset_password') %></button>
         </form>
@@ -527,7 +527,7 @@
         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <% var _wsTabs = wsComponents.filter(function(c){ return c.group==='tab'; }); %>
         <% var _wsNav  = wsComponents.filter(function(c){ return c.group==='nav'; }); %>
-        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1.5rem;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(min(280px, 100%), 1fr)); gap:1.5rem;">
             <div>
                 <h3 style="margin:.25rem 0 .5rem;"><i class="fas fa-window-maximize" aria-hidden="true"></i> <%= __('admin:workspace_tabs') %></h3>
                 <% _wsTabs.forEach(function(c){ %>
@@ -850,7 +850,7 @@
         const div = document.createElement('div');
         div.className = 'scope-item';
         div.innerHTML = `
-        <select name="scopes[${index}][type]" onchange="updateScopeOptions(this)" aria-label="${<%- JSON.stringify(__('admin:a11y_scope_type')) %>}">
+        <select name="scopes[${index}][type]" data-on-change="updateScopeOptions" data-args='["$el"]' aria-label="${<%- JSON.stringify(__('admin:a11y_scope_type')) %>}">
             <% if (_regions.length) { %><option value="region">${<%- JSON.stringify(__('admin:adm_region_widest')) %>}</option><% } %>
             <% if (countries && countries.length) { %><option value="country">${<%- JSON.stringify(__('admin:country_widest')) %>}</option><% } %>
             <option value="site">${<%- JSON.stringify(__('admin:site')) %>}</option>
@@ -858,10 +858,32 @@
             <option value="service">${<%- JSON.stringify(__('admin:service')) %>}</option>
         </select>
         <select name="scopes[${index}][value]" aria-label="${<%- JSON.stringify(__('admin:a11y_scope_value')) %>}"></select>
-        <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">${<%- JSON.stringify(__('admin:remove')) %>}</button>
+        <button type="button" class="btn btn-sm btn-danger" data-remove-parent>${<%- JSON.stringify(__('admin:remove')) %>}</button>
     `;
         container.appendChild(div);
         updateScopeOptions(div.querySelector('select[name*="[type]"]'));
+    }
+
+    // Scope names travel as JSON data and are set as option TEXT: a region,
+    // site, department or service name can never become markup or script
+    // here (EJS escaping inside a JavaScript string left a \u003c escape live).
+    const SCOPE_SELECT_LABEL = <%- JSON.stringify(__('admin:select_label')) %>;
+    const SCOPE_OPTIONS = <%- include('../../partials/json-script', { v: {
+        region: (_regions).map(function (r) { return { id: r.id, label: r.name }; }),
+        country: (countries || []).map(function (c) { return { id: c.id, label: c.name }; }),
+        site: (sites || []).map(function (s) { return { id: s.id, label: s.name + (s.isActive === false ? ' ' + __('admin:adm_site_inactive_suffix') : '') }; }),
+        department: (departments || []).map(function (d) { return { id: d.id, label: d.siteName + ' - ' + d.name }; }),
+        service: (services || []).map(function (s) { return { id: s.id, label: s.siteName + ' - ' + s.departmentName + ' - ' + s.name }; })
+    } }) %>;
+
+    function fillScopeValues(valueSelect, type, currentValue) {
+        valueSelect.options.length = 0;
+        valueSelect.add(new Option(SCOPE_SELECT_LABEL, ''));
+        (SCOPE_OPTIONS[type] || []).forEach(function (o) {
+            const opt = new Option(o.label, String(o.id));
+            if (currentValue && parseInt(currentValue, 10) === Number(o.id)) opt.selected = true;
+            valueSelect.add(opt);
+        });
     }
 
     function updateScopeOptions(select) {
@@ -870,54 +892,7 @@
         const initialValue = valueSelect.getAttribute('data-initial-value');
         const scopeValue = select.getAttribute('data-scope-value');
         const currentValue = initialValue || scopeValue;
-
-        valueSelect.innerHTML = '<option value="">' + <%- JSON.stringify(__('admin:select_label')) %> + '</option>';
-
-    <% if (_regions.length > 0) { %>
-    if (type === 'region') {
-        <% _regions.forEach(function (r) { %>
-        var selected = currentValue && parseInt(currentValue) === <%= r.id %> ? 'selected' : '';
-            valueSelect.innerHTML += '<option value="<%= r.id %>" ' + selected + '><%= r.name %></option>';
-        <% }); %>
-    }
-    <% } %>
-
-    <% if (countries && countries.length > 0) { %>
-    if (type === 'country') {
-        <% countries.forEach(function (c) { %>
-        var selected = currentValue && parseInt(currentValue) === <%= c.id %> ? 'selected' : '';
-            valueSelect.innerHTML += '<option value="<%= c.id %>" ' + selected + '><%= c.name %></option>';
-        <% }); %>
-    }
-    <% } %>
-
-    <% if (sites && sites.length > 0) { %>
-    if (type === 'site') {
-        <%# A deactivated site that is already assigned stays offered, flagged. %>
-        <% sites.forEach(function (site) { %>
-        var selected = currentValue && parseInt(currentValue) === <%= site.id %> ? 'selected' : '';
-            valueSelect.innerHTML += '<option value="<%= site.id %>" ' + selected + '><%= site.name %><%= site.isActive === false ? ' ' + __('admin:adm_site_inactive_suffix') : '' %></option>';
-        <% }); %>
-    }
-    <% } %>
-
-    <% if (departments && departments.length > 0) { %>
-    if (type === 'department') {
-        <% departments.forEach(function (dept) { %>
-        var selected = currentValue && parseInt(currentValue) === <%= dept.id %> ? 'selected' : '';
-                valueSelect.innerHTML += '<option value="<%= dept.id %>" ' + selected + '><%= dept.siteName %> - <%= dept.name %></option>';
-        <% }); %>
-    }
-    <% } %>
-
-    <% if (services && services.length > 0) { %>
-    if (type === 'service') {
-        <% services.forEach(function (service) { %>
-        var selected = currentValue && parseInt(currentValue) === <%= service.id %> ? 'selected' : '';
-                    valueSelect.innerHTML += '<option value="<%= service.id %>" ' + selected + '><%= service.siteName %> - <%= service.departmentName %> - <%= service.name %></option>';
-        <% }); %>
-    }
-    <% } %>
+        fillScopeValues(valueSelect, type, currentValue);
 
     // Clear the data attributes after first use
     if (initialValue) {

@@ -271,14 +271,11 @@ function actorRef(actor) {
 }
 function actorLabel(actor) {
     if (!actor) return 'système';
-    const who =
-        actor.username ||
-        actor.displayName ||
-        [actor.firstName, actor.lastName].filter(Boolean).join(' ') ||
-        `#${actor.id}`;
-    return actor.userType === 'admin'
-        ? `admin ${who}`
-        : `${actor.userType || 'utilisateur'} ${who}`;
+    // Ids only in the audit log. The ref form (`admin:3`, `employee:84`) is what
+    // SystemLogModel.resolvePeople turns into the person's name when the log is
+    // READ ("Erased person #id" once they are erased).
+    const type = actor.userType === 'admin' ? 'admin' : 'employee';
+    return `${type}:${actor.id}`;
 }
 async function audit(entry) {
     try {
@@ -1770,7 +1767,8 @@ class CycleService {
 
     static _excludeLine(cycle, employeeId, name, x, actor) {
         return (
-            `Cycle #${cycle.id} (${cycle.code || ''}) — ${name || 'participant'} (#${employeeId}) excusé(e) (personne) : ` +
+            // Ids only: `name` is no longer written (resolved when the log is read).
+            `Cycle #${cycle.id} (${cycle.code || ''}) — participant employee:${employeeId} excusé(e) (personne) : ` +
             `${CATEGORY_FR[x.category] || x.category} — ${x.reason.slice(0, 200)}` +
             (x.until ? ` — jusqu'au ${x.until}` : '') +
             ` — par ${actorLabel(actor)}`
@@ -1860,13 +1858,12 @@ class CycleService {
         );
         const changed = res && res.changes ? res.changes : 0;
         if (changed) {
-            const names = await CycleService._names([Number(employeeId)]);
             await audit({
                 adminId: actorId(actor),
                 action: 'cycle_participant_included',
                 entityType: 'cycle_participant',
                 entityId: Number(employeeId),
-                details: `Cycle #${cycle.id} (${cycle.code || ''}) — ${names.get(Number(employeeId)) || 'participant'} (#${employeeId}) réintégré(e) à la campagne par ${actorLabel(actor)}`,
+                details: `Cycle #${cycle.id} (${cycle.code || ''}) — participant employee:${employeeId} réintégré(e) à la campagne par ${actorLabel(actor)}`,
             });
         }
         return { changed };
@@ -1918,7 +1915,7 @@ class CycleService {
                     Number(employeeId),
                 ]
             );
-            line = `${[sup.firstName, sup.lastName].filter(Boolean).join(' ')} (#${sup.id})`;
+            line = `employee:${Number(sup.id)}`;
         } else if (Number(adminId) > 0) {
             const adm = await db.get(
                 'SELECT id, username FROM admins WHERE id = ? AND COALESCE(is_active, true) = true',
@@ -1938,7 +1935,7 @@ class CycleService {
                     Number(employeeId),
                 ]
             );
-            line = `admin ${adm.username} (#${adm.id})`;
+            line = `admin:${Number(adm.id)}`;
         } else {
             throw err('reviewer_invalid');
         }
