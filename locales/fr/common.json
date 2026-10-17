@@ -18,6 +18,7 @@
   "close": "Fermer",
   "colon": " :",
   "err_not_authorized_employee": "Vous n'êtes pas autorisé à agir sur ce collaborateur.",
+  "err_csrf_session": "Jeton de sécurité absent ou expiré : rechargez la page.",
   "edp_grow_heading": "Démarche GROW",
   "edp_grow_goal": "G — Objectif (Goal)",
   "edp_grow_reality": "R — Réalité",

@@ -366,6 +366,7 @@ router.get('/onboarding/pending', OnboardingController.pending);
 const { requireApiKey } = require('../middleware/apiAuth');
 // ASVS 3.7.1: recent sign-in or current password for sensitive actions.
 const { requireRecentAuth } = require('../middleware/recentAuth');
+const requireSessionCsrf = require('../middleware/requireSessionCsrf');
 router.get('/api/powerbi/employees', requireApiKey, ReportController.powerbIEmployees);
 router.get('/api/powerbi/assessments', requireApiKey, ReportController.powerbIAssessments);
 router.get('/api/powerbi/readiness', requireApiKey, ReportController.powerbIReadiness);
@@ -567,6 +568,9 @@ router.get(
 router.post(
     '/api/self-assessment/employee/:employeeId/approve-all',
     requireManagerOrAnyPermission('approve_assessments'),
+    // Many official levels in one request: the session's CSRF token is
+    // required on top of the same-origin guard that covers /api/*.
+    requireSessionCsrf,
     SelfAssessmentWorkflowController.bulkApprove
 );
 // "Approve all agreed ratings for my team": same guard and the same JSON/CSRF
@@ -575,6 +579,7 @@ router.post(
 router.post(
     '/api/self-assessment/team/approve-all',
     requireManagerOrAnyPermission('approve_assessments'),
+    requireSessionCsrf,
     SelfAssessmentWorkflowController.teamApproveAgreed
 );
 // Per-employee assessment movement timeline (employee ↔ reviewer handoffs).

@@ -18,6 +18,7 @@
   "close": "Close",
   "colon": ":",
   "err_not_authorized_employee": "You are not authorized to act on this employee.",
+  "err_csrf_session": "Security token missing or expired: reload the page.",
   "edp_grow_heading": "GROW model",
   "edp_grow_goal": "G — Goal",
   "edp_grow_reality": "R — Reality",
