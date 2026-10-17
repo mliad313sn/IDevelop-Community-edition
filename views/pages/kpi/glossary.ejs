@@ -44,6 +44,8 @@
         <li><%= __('kpi:common_delta') %></li>
         <li><%= __('kpi:common_drill') %></li>
         <li><%= __('kpi:common_modules') %></li>
+        <li id="capability-rule"><%= __('kpi:common_capability') %></li>
+        <li id="freshness"><%= __('kpi:common_fresh_assessed') %></li>
     </ul>
 </section>
 
@@ -80,3 +82,4 @@
 <% }) %>
 
 <p class="text-muted"><%= __('kpi:glossary_contract', { version: contractVersion }) %></p>
+<p class="text-muted" id="contract-changes"><%= __('kpi:glossary_contract_changed') %></p>

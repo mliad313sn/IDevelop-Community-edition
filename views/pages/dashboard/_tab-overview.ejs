@@ -29,6 +29,7 @@
         <h3 id="ds-health-h"><%= __('dash:d3_ov_gauge_title') %></h3>
         <p class="ds-sub"><%= __('dash:d3_ov_gauge_sub') %></p>
         <%- include('_gauge', { G: G, threshold: P.threshold }) %>
+        <%- include('_measurability', { MZ: P.measurability || null }) %>
         <h4 class="sr-only-ds"><%= __('dash:d3_ov_axes') %></h4>
         <ul class="ds-axes" id="ds-health-axes">
             <% ((P.profile && P.profile.axes) || []).forEach(function (a) { %>

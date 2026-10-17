@@ -3,7 +3,10 @@
  * heatBins — the ONE colour scale of every heatmap (views/partials/viz/heat.ejs,
  * public/css/viz.css .vh-*). Pure; shared by the server, the views and the tests.
  *
- *   attain   r = demonstrated ÷ required        — DIVERGING around 100 %
+ *   attain   r = Σ credited ÷ Σ required (credited = min(demonstrated,
+ *            required), src/utils/capability.js) — one-sided, at most 100 %:
+ *            at or above the requirement is ONE state, « met »; there is no
+ *            « above » step, a surplus is never coloured and never offsets a gap
  *   deficit  d = required − demonstrated, in levels — one-sided (below only)
  *   coverage c = at level ÷ assessed             — one-sided (below only)
  *   level    a required or demonstrated level 0-4 (benchmark matrices)
@@ -15,7 +18,7 @@
  */
 
 const BINS = Object.freeze({
-    attain: Object.freeze(['below-3', 'below-2', 'below-1', 'at', 'above-1', 'above-2']),
+    attain: Object.freeze(['below-3', 'below-2', 'below-1', 'at']),
     deficit: Object.freeze(['below-3', 'below-2', 'below-1', 'at']),
     coverage: Object.freeze(['below-3', 'below-2', 'below-1', 'at']),
     level: Object.freeze(['seq-0', 'seq-1', 'seq-2', 'seq-3', 'seq-4']),
@@ -36,10 +39,8 @@ function binOf(kind, value) {
         case 'attain':
             if (v < 0.6) return 'below-3';
             if (v < 0.8) return 'below-2';
-            if (v < 0.95) return 'below-1';
-            if (v <= 1.05) return 'at';
-            if (v <= 1.2) return 'above-1';
-            return 'above-2';
+            if (v < 1) return 'below-1';
+            return 'at'; // at or above the requirement: met
         case 'deficit':
             if (v >= 1) return 'below-3';
             if (v >= 0.5) return 'below-2';

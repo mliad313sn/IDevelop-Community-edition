@@ -230,7 +230,11 @@ describe('render: the Overview strip', () => {
     });
     test('the « Whole framework » row only: one cell per column and « Overall »', () => {
         expect((h.match(/<li class="vh-strip-c/g) || []).length).toBe(S.cols.length + 1);
-        expect(h).toMatch(/Site B[\s\S]*?105%/); // Site A is masked: the pooled cell cannot be worked out
+        // Site A is masked: the pooled cell cannot be worked out. Site B's raw sums
+        // carry a surplus (105 %): no level is credited above the requirement, so it
+        // prints « 100% » (src/utils/capability.js)
+        expect(h).toMatch(/Site B[\s\S]*?100%/);
+        expect(h).not.toMatch(/105%/);
         expect(h).toMatch(/vh-strip-c--total[\s\S]*?Overall[\s\S]*?81%/);
         expect(h).not.toMatch(/Operations/);
     });

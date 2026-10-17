@@ -81,11 +81,11 @@ describe('1 — bins: exact edges (inclusive low, exclusive high)', () => {
         [0.5999, 'below-3'],
         [0.6, 'below-2'],
         [0.8, 'below-1'],
-        [0.95, 'at'],
-        [1.05, 'at'],
-        [1.0501, 'above-1'],
-        [1.2, 'above-1'],
-        [1.2001, 'above-2'],
+        // at or above the requirement is ONE state (src/utils/capability.js):
+        // a gap remains below 100 %, and there is no « above » step any more
+        [0.9999, 'below-1'],
+        [1, 'at'],
+        [1.3, 'at'],
     ])('attain %p → %p', (v, b) => expect(HB.binOf('attain', v)).toBe(b));
     test.each([
         [0.0999, 'at'],

@@ -121,17 +121,21 @@ suite('dashboard building blocks on the real database', () => {
         expect(dist.population).toBe(dist.measured + dist.unmeasured + dist.noRequirement);
     });
 
-    test('assessment freshness counts K3’s expected requirements', async () => {
+    test('assessment freshness is over the ASSESSED requirements (kpi-2); K3 keeps the expected ones', async () => {
         const { fr, k3 } = await tx(async (q) => {
             const w = await W.world(db, F, q);
             const s = scopeOf(w);
             return { fr: await K.assessmentFreshness(s), k3: await K.k3Coverage(s) };
         });
-        expect(fr.denominator).toBe(k3.breakdown.expectedRequirements);
+        // coverage is K3's job: freshness never counts a never-assessed requirement
+        expect(fr.denominator).toBe(k3.breakdown.assessedRequirements);
         expect(fr.breakdown.assessed).toBe(k3.breakdown.assessedRequirements);
+        expect(fr.breakdown.expected).toBe(k3.breakdown.expectedRequirements);
         expect(fr.breakdown.fresh).toBe(fr.breakdown.assessed); // assessed today
+        expect(fr.value).toBe(100);
         expect(fr.breakdown.stale).toBe(0);
-        expect(fr.bySite.reduce((a, r) => a + r.expected, 0)).toBe(fr.denominator);
+        expect(fr.bySite.reduce((a, r) => a + r.expected, 0)).toBe(fr.breakdown.expected);
+        expect(fr.bySite.reduce((a, r) => a + r.assessed, 0)).toBe(fr.denominator);
     });
 
     test('nothing required: the certificate calendar is « not configured », like K8', async () => {

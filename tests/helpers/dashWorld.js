@@ -13,7 +13,7 @@
  *   site N. Three of them have a self-assessment waiting for validation.
  *   9-box: 7 approved positions high/high, 2 medium/medium (merged with the
  *   next smallest, never alone), 1 low/low.
- *   Recorded snapshots (contract kpi-1) for the organisation 95, 65 and 35
+ *   Recorded snapshots (the current KPI contract) for the organisation 95, 65 and 35
  *   days ago: the first row's movement and the sparkline read them.
  *   A viewer account without any scope; one temporary admin per access
  *   profile (config/accessProfiles.js) scoped to site N.
@@ -196,9 +196,9 @@ async function world(db) {
             `INSERT INTO kpi_snapshots (snapshot_date, scope_type, scope_id, total_employees, measured_employees,
                                         role_ready_count, not_ready_count, partial_count, unassessed_count,
                                         assessment_coverage, kpi_contract)
-             VALUES (CURRENT_DATE - ?::int, 'org', 0, 28, 25, ?, ?, 3, 3, 70.0, 'kpi-1')
+             VALUES (CURRENT_DATE - ?::int, 'org', 0, 28, 25, ?, ?, 3, 3, 70.0, ?)
              ON CONFLICT DO NOTHING`,
-            [days, ready, notReady]
+            [days, ready, notReady, require('../../src/services/KpiService').CONTRACT_VERSION]
         );
     // a viewer without any scope
     const v = await db.get(

@@ -105,7 +105,10 @@ function evalK1(k1, k3, target) {
     const t =
         target && target.value !== null && target.value !== undefined ? Number(target.value) : null;
     if (k1.status === 'at_risk') return measured('at_risk', 2, v, t);
-    if (t !== null && v < t) return measured('below_target', 1, v, t);
+    // decided on the whole % the tile PRINTS: 79.6 reads « 80 % », which is not
+    // « below » a target of 80 % (utils/displayedValue)
+    if (t !== null && require('../utils/displayedValue').below(v, t, 'pct'))
+        return measured('below_target', 1, v, t);
     return measured('ok', 0, v, t);
 }
 
@@ -153,11 +156,19 @@ function evalK11(c) {
         : measured('ok', 0, v, null);
 }
 
+/** The stored state of an alert that had one OK evaluation and waits for a second. */
+const RECOVERING = 'recovering';
+
 /**
  * The transition between the stored state and a new evaluation (pure).
- * @param {object|null} prev { level, peakLevel } or null (never seen)
+ * Hysteresis: an alert « recovers » only after TWO consecutive OK
+ * evaluations. The first OK holds it (`hold`: state 'recovering', level
+ * kept), so an indicator hovering on its threshold does not raise and recover
+ * every day; a relapse while holding is not a new « raised ».
+ * @param {object|null} prev { state, level, peakLevel } or null (never seen)
  * @param {object} next an evaluation
- * @returns {{ transition: null|'raised'|'worsened'|'recovered', persist: boolean, peakLevel: number }}
+ * @returns {{ transition: null|'raised'|'worsened'|'recovered', persist: boolean,
+ *            peakLevel: number, hold?: {state: string, level: number} }}
  */
 function transition(prev, next) {
     if (!next || !next.measured) {
@@ -175,6 +186,13 @@ function transition(prev, next) {
             return { transition: 'worsened', persist: true, peakLevel: next.level };
         return { transition: null, persist: true, peakLevel: peak };
     }
+    if (prevLevel > 0 && !(prev && prev.state === RECOVERING))
+        return {
+            transition: null,
+            persist: true,
+            peakLevel: peak,
+            hold: { state: RECOVERING, level: prevLevel },
+        };
     if (prevLevel > 0) return { transition: 'recovered', persist: true, peakLevel: 0 };
     return { transition: null, persist: true, peakLevel: 0 };
 }
@@ -566,7 +584,13 @@ async function run({ today, flags } = {}) {
             const prev = await readState(e.ruleKey, e.scope);
             const tr = transition(prev, e.ev);
             if (!tr.persist) continue;
-            await writeState(e.ruleKey, e.kpiId, e.scope, e.ev, tr.peakLevel);
+            await writeState(
+                e.ruleKey,
+                e.kpiId,
+                e.scope,
+                tr.hold ? { ...e.ev, state: tr.hold.state, level: tr.hold.level } : e.ev,
+                tr.peakLevel
+            );
             if (!tr.transition) continue;
             const id = await createEvent(e.ruleKey, e.kpiId, e.scope, tr.transition, prev, e.ev);
             if (!id) continue;

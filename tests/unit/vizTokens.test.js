@@ -138,8 +138,6 @@ describe('heatmap steps', () => {
         'below-2',
         'below-1',
         'at',
-        'above-1',
-        'above-2',
         'seq-0',
         'seq-1',
         'seq-2',
@@ -161,7 +159,7 @@ describe('heatmap steps', () => {
             expect(v[0]).toBeGreaterThanOrEqual(3);
         });
         test('adjacent steps are distinct (>= 1.1:1)', () => {
-            const seq = ['below-3', 'below-2', 'below-1', 'at', 'above-1', 'above-2'];
+            const seq = ['below-3', 'below-2', 'below-1', 'at'];
             for (let i = 1; i < seq.length; i++)
                 expect(ratio(T['--vh-' + seq[i - 1]], T['--vh-' + seq[i]])).toBeGreaterThanOrEqual(
                     1.1

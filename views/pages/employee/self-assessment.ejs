@@ -98,6 +98,12 @@
         </dl>
     </div>
     <p class="sa-scale-ref"><strong><%= __('employee:th_required_level') %></strong> <%= __('employee:sa_req_note_mid') %> <span class="sa-crit-key"><%= __('employee:critical_badge') %></span> <%= __('employee:sa_req_note_post') %></p>
+    <%# The capability rule (src/utils/capability.js) in the employee's words:
+        reaching the required level is « met »; a higher level never offsets a gap. %>
+    <details class="sa-scale-ref sa-rule" id="saRule">
+        <summary><%= __('employee:sa_rule_sum') %></summary>
+        <p><%= __('employee:sa_rule_body') %></p>
+    </details>
     <p class="sa-scale-ref sa-estimate">
         <i class="fas fa-clock" aria-hidden="true"></i>
         <%# rendered server-side, so the first paint already says

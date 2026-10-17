@@ -5,8 +5,10 @@
  * and nothing else decides a colour, a mask or an order.
  *
  * Kinds
- *   attain    demonstrated ÷ required (summed levels), DIVERGING around 100 %
- *   deficit   required − demonstrated, in levels (mean over the measured rows)
+ *   attain    Σ credited ÷ Σ required (credited = min(demonstrated, required),
+ *             src/utils/capability.js): at most 100 %, « met » is ONE state
+ *   deficit   required − credited, in levels (mean over the measured rows):
+ *             never negative, a surplus never offsets a gap
  *   coverage  people at the required level ÷ people ASSESSED (an unassessed
  *             holder is never a gap), printed as counts « a of r »
  *
@@ -31,6 +33,7 @@
  *            actual?, required?, available?, measured?, href? }
  */
 const HB = require('./heatBins');
+const CAP = require('./capability');
 const { displayedValue } = require('./displayedValue');
 
 const HEAT_MIN_N = 5;
@@ -47,19 +50,27 @@ const isNum = (v) =>
 
 const byLabel = (a, b) => String(a || '').localeCompare(String(b || ''), 'fr');
 
-/** One heat cell from summed levels: attain = Σdemonstrated ÷ Σrequired, deficit = mean gap. */
+/**
+ * One heat cell from summed levels: attain = Σ credited ÷ Σ required, deficit =
+ * mean gap. The cubes sum the CREDITED level LEAST(actual, required); the cell
+ * clamps again (capped ratio, actual never above required) so a caller that
+ * hands raw sums still never prints a surplus.
+ */
 function heatCellOf(kind, x) {
     if (!x) return { state: 'na' };
     if (!x.measured || !isNum(x.sumRequired) || Number(x.sumRequired) <= 0)
         return { state: 'unmeasured', n: x.n || 0 };
     if ((x.n || 0) < HEAT_MIN_N) return { state: 'masked', n: null };
-    const actual = displayedValue(Number(x.sumActual) / x.measured, 'level');
     const required = displayedValue(Number(x.sumRequired) / x.measured, 'level');
+    const actual = CAP.cappedLevel(
+        displayedValue(Number(x.sumActual) / x.measured, 'level'),
+        required
+    );
     // the deficit is decided on the same one-decimal levels the cell prints
     const value =
         kind === 'deficit'
             ? displayedValue(Math.max(0, required - actual), 'level')
-            : Number(x.sumActual) / Number(x.sumRequired);
+            : CAP.cappedRatio(x.sumActual, x.sumRequired);
     const shown = kind === 'attain' ? displayedValue(value, 'ratio') : value;
     return {
         state: 'ok',
@@ -570,6 +581,64 @@ function capabilityMapModel(rows, tree, opts = {}) {
     };
 }
 
+/** A map cell carrying K2 (a % of 0-100), on the same bins and ▼ as any attain cell. Pure. */
+function k2Cell(base, r) {
+    if (!base || base.state !== 'ok' || !r) return base;
+    if (!isNum(r.value)) return { state: 'masked', n: null };
+    const value = Math.min(1, Math.max(0, Number(r.value) / 100));
+    const shown = displayedValue(value, 'ratio');
+    return {
+        ...base,
+        value,
+        n: r.n,
+        estimator: 'K2',
+        bin: HB.binOf('attain', shown),
+        below: HB.belowMark('attain', shown),
+    };
+}
+
+/**
+ * The capability map's « Whole framework » row (one cell per unit) and its
+ * overall figure print K2 — the mean of the person ratios, the ONE « % of the
+ * requirement » estimator (KpiService.k2ByUnit) — so the map, the readiness
+ * tiles and the site-exposure page never name different « weakest » units.
+ * The pillar and sub-domain cells keep Σ credited ÷ Σ required. The columns
+ * are re-ordered worst first on the K2 values (the pooled column last), the
+ * SAME permutation on every row. Mutates and returns the map. Pure.
+ * @param {object} map capabilityMapModel(...)
+ * @param {{org: object|null, units: Map<string, object>}|null} k2
+ */
+function withK2Margins(map, k2) {
+    if (!map || map.empty || !k2 || !k2.units) return map;
+    for (const c of map.cols || []) {
+        if (c.pooled) continue;
+        c.marg = k2Cell(c.marg, k2.units.get(String(c.key)));
+    }
+    // a unit whose K2 is masked must not be worked out from the others
+    heatComplement([(map.cols || []).map((c) => c.marg)]);
+    if (k2.org) map.total = k2Cell(map.total, k2.org);
+    const ok = (c) => (c.marg && c.marg.state === 'ok' ? c.marg.value : Infinity);
+    const perm = (map.cols || [])
+        .map((c, j) => ({ c, j }))
+        .sort((a, b) =>
+            a.c.pooled || b.c.pooled ? (a.c.pooled ? 1 : -1) : ok(a.c) - ok(b.c) || a.j - b.j
+        )
+        .map((x) => x.j);
+    const reorder = (cells) => (Array.isArray(cells) ? perm.map((j) => cells[j]) : cells);
+    map.cols = reorder(map.cols);
+    for (const r of map.rows || []) {
+        r.cells = reorder(r.cells);
+        for (const ch of r.children || []) ch.cells = reorder(ch.cells);
+    }
+    const bins = new Set(map.binsPresent || []);
+    map.cols.forEach((c) => c.marg && c.marg.bin && bins.add(c.marg.bin));
+    if (map.total && map.total.bin) bins.add(map.total.bin);
+    map.binsPresent = [...bins];
+    map.hasMasked = map.hasMasked || map.cols.some((c) => c.marg && c.marg.state === 'masked');
+    map.estimator = 'K2';
+    return map;
+}
+
 /**
  * The « Whole framework » row of a capability map alone, for the Overview
  * tab: one cell per column and the overall figure. null when the map is
@@ -611,4 +680,5 @@ module.exports = {
     coverageHeatModel,
     capabilityMapModel,
     capabilityMapStrip,
+    withK2Margins,
 };
