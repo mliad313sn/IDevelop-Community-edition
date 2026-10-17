@@ -118,6 +118,8 @@
   "scale_4_title": "Maîtrise — peut exécuter et former les autres",
   "sa_req_note_mid": "est le minimum exigé par votre poste. Les compétences marquées",
   "sa_req_note_post": "doivent être atteintes quel que soit votre niveau de préparation global.",
+  "sa_rule_sum": "Comment une compétence est-elle comptée ?",
+  "sa_rule_body": "Une compétence est atteinte dès que vous atteignez le niveau requis. Un niveau plus élevé est une force et reste enregistré tel quel, mais il ne compense jamais une autre compétence restée en dessous de son niveau : votre préparation au poste ne dépasse jamais 100 %.",
   "sa_progress_of": "sur",
   "sa_progress_rated": "compétences évaluées",
   "sa_save_draft": "Enregistrer le brouillon",

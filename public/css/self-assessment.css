@@ -436,6 +436,18 @@ textarea.sa-locked {
     cursor: help;
     border-bottom: 1px dotted currentColor;
 }
+/* « How is a skill counted? »: the capability rule, folded by default */
+.sa-rule summary {
+    cursor: pointer;
+    font-weight: 600;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+}
+.sa-rule p {
+    margin: var(--space-1) 0 0;
+    max-width: 70ch;
+}
 /* « Critique » key: text and outline, never colour alone */
 .sa-crit-key {
     display: inline-block;

@@ -233,3 +233,48 @@ describe('5 — another role re-evaluates every skill against ITS requirement', 
         for (const x of own.rows) expect(x.gap).toBeGreaterThanOrEqual(0);
     });
 });
+
+describe('6 — the employee reads the rule on the self-assessment page (FR / EN)', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const ejs = require('ejs');
+    const { tr } = require('../helpers/vizRender');
+    const file = path.join(__dirname, '..', '..', 'views/pages/employee/self-assessment.ejs');
+    const page = (lang) =>
+        ejs.render(
+            fs.readFileSync(file, 'utf8'),
+            {
+                __: tr(lang),
+                lang,
+                colon: ' :',
+                cspNonce: 'n',
+                csrfToken: 'c',
+                assetVersion: '1',
+                user: { id: 1 },
+                skillHelpCore: require('../../src/utils/skillHelp'),
+                enumLabel: (a, b) => String(b),
+                employee: { roleName: 'R' },
+                skillsWithAssessments: [],
+                cycle: null,
+                lockedCycle: null,
+            },
+            { filename: file }
+        );
+    test.each([
+        ['fr', /Comment une compétence est-elle comptée/, /ne compense jamais/],
+        ['en', /How is a skill counted\?/, /never makes up for another skill/],
+    ])(
+        '%s: a folded « how is it counted » note, at most 100 % said in words',
+        (lang, sum, body) => {
+            const html = page(lang);
+            const at = html.indexOf('id="saRule"');
+            expect(at).toBeGreaterThan(0);
+            const block = html.slice(at, html.indexOf('</details>', at));
+            expect(block).toMatch(sum);
+            expect(block).toMatch(body);
+            expect(block).toMatch(/100 %/);
+            // folded by default: the note never pushes the form down
+            expect(html.slice(html.lastIndexOf('<details', at), at)).not.toMatch(/\bopen\b/);
+        }
+    );
+});

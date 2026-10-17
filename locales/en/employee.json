@@ -118,6 +118,8 @@
   "scale_4_title": "Mastery — can perform and coach others",
   "sa_req_note_mid": "is the minimum your role needs. Skills marked",
   "sa_req_note_post": "must be met regardless of your overall readiness.",
+  "sa_rule_sum": "How is a skill counted?",
+  "sa_rule_body": "A skill counts as met as soon as you reach its required level. A higher level is a strength and stays recorded as it is, but it never makes up for another skill below its level: your readiness for the role never goes above 100 %.",
   "sa_progress_of": "of",
   "sa_progress_rated": "skills rated",
   "sa_save_draft": "Save Draft",
