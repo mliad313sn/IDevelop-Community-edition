@@ -43,10 +43,42 @@ describe('service worker cache tied to the deploy', () => {
         expect(probe.CACHE).toMatch(/^app-shell-v\d+$/);
         expect(probe.SHELL).toContain('/css/style.css');
     });
-    test('pwa-head registers the worker with the asset version', () => {
-        expect(read('views/partials/pwa-head.ejs')).toMatch(
-            /\/service-worker\.js\?v=<%= encodeURIComponent\(typeof assetVersion !== 'undefined' \? assetVersion : ''\) %>/
+    test('pwa-head registers the worker with the asset version (a meta tag, not script text)', () => {
+        const ejs = require('ejs');
+        const file = path.join(ROOT, 'views/partials/pwa-head.ejs');
+        const html = ejs.render(
+            read('views/partials/pwa-head.ejs'),
+            {
+                assetVersion: 'abc123',
+                cspNonce: 'n',
+                lang: 'fr',
+            },
+            { filename: file }
         );
+        expect(html).toContain('<meta name="asset-version" content="abc123">');
+        const m = /<script nonce="n">([\s\S]*?)<\/script>/.exec(html);
+        expect(m).not.toBeNull();
+        expect(m[1]).not.toMatch(/abc123/);
+        const registered = [];
+        let onLoad = null;
+        const meta = { getAttribute: (k) => (k === 'content' ? 'abc123' : null) };
+        vm.runInNewContext(m[1], {
+            navigator: {
+                serviceWorker: {
+                    register: (u) => {
+                        registered.push(u);
+                        return { catch: () => {} };
+                    },
+                },
+            },
+            document: {
+                querySelector: (q) => (q === 'meta[name="asset-version"]' ? meta : null),
+            },
+            window: { addEventListener: (k, fn) => (onLoad = fn) },
+            encodeURIComponent,
+        });
+        onLoad();
+        expect(registered).toEqual(['/service-worker.js?v=abc123']);
     });
 });
 

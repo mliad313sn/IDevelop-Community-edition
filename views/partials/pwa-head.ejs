@@ -33,20 +33,24 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="<%= _pwaName %>">
 <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<meta name="asset-version" content="<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
 <script nonce="<%= typeof cspNonce !== 'undefined' ? cspNonce : '' %>">
     // Deferred to `load` so it never competes with first paint. Failures are
     // swallowed on purpose: a browser without service workers, or an insecure
     // origin where they are refused, must get the normal online app rather than
     // a console full of errors.
     if ('serviceWorker' in navigator) {
+        // ?v= names the worker's cache after this deploy (public/service-worker.js);
+        // read from the asset-version meta above, never interpolated into the script.
+        var swMeta = document.querySelector('meta[name="asset-version"]');
+        var swVersion = (swMeta && swMeta.getAttribute('content')) || '';
         window.addEventListener('load', function () {
             // updateViaCache:'none' is not optional here. Without it the browser may
             // keep serving the PREVIOUS worker script from its HTTP cache, so a
             // deployed change to the caching rules silently never reaches the user.
             // Observed directly in testing: an edited worker registered "successfully"
             // while the old code kept running and cached nothing.
-            // ?v= names the worker's cache after this deploy (public/service-worker.js).
-            navigator.serviceWorker.register('/service-worker.js?v=<%= encodeURIComponent(typeof assetVersion !== 'undefined' ? assetVersion : '') %>', { updateViaCache: 'none' })
+            navigator.serviceWorker.register('/service-worker.js' + (swVersion ? '?v=' + encodeURIComponent(swVersion) : ''), { updateViaCache: 'none' })
                 .catch(function () { /* offline shell unavailable — app still works online */ });
         });
     }
