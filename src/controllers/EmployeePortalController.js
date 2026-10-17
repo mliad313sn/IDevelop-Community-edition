@@ -371,18 +371,25 @@ class EmployeePortalController {
                 (s) => s.selfRatedLevel != null
             ).length;
             const saRemaining = saTotal - saRated;
+            // An honest range, 15 to 20 s per remaining skill, floor of one minute —
+            // the same rule the client uses while rating, so the figure never jumps.
+            const saEstimateLo = Math.max(1, Math.round((saRemaining * 15) / 60));
+            const saEstimateHi = Math.max(saEstimateLo, Math.round((saRemaining * 20) / 60));
             res.render('pages/employee/self-assessment', {
                 title: req.t ? req.t('employee:sa_title') : 'Self-Assessment',
                 employee,
                 skillsWithAssessments,
                 cycle,
                 lockedCycle,
+                // No open campaign and the person's latest campaign LOCKED: every
+                // save is refused (409 cycle_locked), so the page is read-only.
+                saReadOnly: !cycle && !!lockedCycle,
                 saTotal,
                 saRated,
                 saRemaining,
-                // ~8 s per remaining skill, floor of one minute — the same rule the
-                // client uses while rating, so the number never jumps on first keystroke.
-                saEstimateMin: Math.max(1, Math.round((saRemaining * 8) / 60)),
+                saEstimateMin: Math.max(1, Math.round((saRemaining * 15) / 60)),
+                saEstimateLo,
+                saEstimateHi,
             });
         } catch (error) {
             console.error('Self-assessment error:', error);

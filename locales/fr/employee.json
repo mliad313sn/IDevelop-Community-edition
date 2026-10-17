@@ -605,5 +605,19 @@
   "prog_validated": "Niveau validé",
   "prog_pending": "en attente",
   "prog_delta_note": "L’évolution compare les niveaux validés seulement : une note en attente de décision n’y entre pas.",
-  "dev_history_sum": "Historique — plans terminés ({{count}})"
+  "dev_history_sum": "Historique — plans terminés ({{count}})",
+  "sa_readonly_note": "Cette page est en lecture seule : rien ne peut être enregistré tant qu’aucune campagne n’est ouverte.",
+  "sa_estimate_range": "{{lo}} à {{hi}}",
+  "sa_estimate_split": "vous pouvez le faire en plusieurs fois, rien n’est perdu.",
+  "sa_seg_aria": "Votre niveau pour {{skill}}",
+  "sa_add_note": "Ajouter une note",
+  "sync_synced": "✓ Enregistré",
+  "sync_online": "En ligne",
+  "sync_offline": "Hors ligne — vos réponses restent sur cet appareil",
+  "sync_offline_one": "Hors ligne — {{n}} réponse conservée sur cet appareil",
+  "sync_offline_other": "Hors ligne — {{n}} réponses conservées sur cet appareil",
+  "sync_syncing_one": "Envoi de {{n}} réponse…",
+  "sync_syncing_other": "Envoi de {{n}} réponses…",
+  "sync_failed_one": "⚠ {{n}} réponse NON enregistrée — nouvel essai automatique",
+  "sync_failed_other": "⚠ {{n}} réponses NON enregistrées — nouvel essai automatique"
 }

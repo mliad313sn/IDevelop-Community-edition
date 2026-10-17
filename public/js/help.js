@@ -3672,6 +3672,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 'Voir votre trajectoire rend le développement motivant et concret.'
             ),
         },
+        '/employee/review-record': {
+            title: L('End-of-campaign records', 'Comptes rendus de fin de campagne'),
+            why: L(
+                '<strong>Process:</strong> Once a campaign is locked or closed, what was decided for you in it: your rating, the validated level and the reason for a difference, a dispute still open, your plans.',
+                '<strong>Processus :</strong> une fois une campagne verrouillée ou clôturée, ce qui a été décidé pour vous : votre note, le niveau validé et la raison d’un écart, une contestation en cours, vos plans.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        '<strong>Open a campaign</strong> and read the record.',
+                        '<strong>Ouvrez une campagne</strong> et lisez le compte rendu.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Say you have read it</strong> — this is not an agreement — and add a comment if you wish; you can change it later.',
+                        '<strong>Indiquez l’avoir lu</strong> — ce n’est pas un accord — et ajoutez un commentaire si vous le souhaitez ; vous pourrez le modifier.'
+                    ),
+                },
+            ],
+            value: L(
+                'You keep a dated record of what was decided, in your own words.',
+                'Vous gardez une trace datée de ce qui a été décidé, avec vos propres mots.'
+            ),
+        },
         '/notifications': {
             title: L('Notifications', 'Notifications'),
             why: L(

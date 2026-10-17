@@ -61,14 +61,18 @@ describe('the page does not offer to edit what the server will refuse', () => {
         expect(view).toMatch(
             /saLocked = \['submitted', 'reviewed', 'approved'\]\.includes\(skill\.status\)/
         );
-        expect(view).toMatch(/saLocked \? 'disabled' : ''/);
+        // 4.0.0 port (wave 5): a locked campaign makes the whole page read-only,
+        // so the control reads `rowRO = saLocked || _ro` — the row lock is part of it.
+        expect(view).toMatch(/const rowRO = saLocked \|\| _ro;/);
+        expect(view).toMatch(/rowRO \? 'disabled' : ''/);
     });
 
     test('locked rows are excluded from what the form posts', () => {
         // data-answered drives collect(); leaving it '1' is what made one save
         // resubmit the entire approved set.
+        expect(view).toMatch(/const rowRO = saLocked \|\| _ro;/);
         expect(view).toMatch(
-            /data-answered="<%= \(skill\.selfRatedLevel != null && !saLocked\) \? '1' : '0' %>"/
+            /data-answered="<%= \(skill\.selfRatedLevel != null && !rowRO\) \? '1' : '0' %>"/
         );
     });
 

@@ -484,14 +484,14 @@ describe('D4 — declined rows are reported, not swallowed', () => {
 
     test('the note on a locked row is READ-ONLY in the markup', () => {
         // The whole <td> that carries the notes textarea.
+        // 4.0.0 port (wave 5): a locked CAMPAIGN makes the whole page read-only,
+        // so the row lock became `rowRO = saLocked || _ro` — still part of it.
+        expect(VIEW).toMatch(/const rowRO = saLocked \|\| _ro;/);
         const td = VIEW.slice(
-            VIEW.indexOf(
-                'th_notes\') %>">',
-                VIEW.indexOf('<td data-label="<%= __(\'employee:th_notes')
-            )
+            VIEW.indexOf('th_notes\') %>">', VIEW.indexOf('data-label="<%= __(\'employee:th_notes'))
         );
         const cell = td.slice(0, td.indexOf('</td>'));
-        expect(cell).toMatch(/<%=\s*saLocked\s*\?\s*'readonly'\s*:\s*''\s*%>/);
+        expect(cell).toMatch(/<%=\s*rowRO\s*\?\s*'readonly'\s*:\s*''\s*%>/);
     });
 
     test('the client branches on `skipped` instead of always claiming success', () => {

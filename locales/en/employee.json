@@ -605,5 +605,19 @@
   "prog_validated": "Validated level",
   "prog_pending": "pending",
   "prog_delta_note": "The evolution compares validated levels only: a rating still awaiting a decision is not counted.",
-  "dev_history_sum": "History — finished plans ({{count}})"
+  "dev_history_sum": "History — finished plans ({{count}})",
+  "sa_readonly_note": "This page is read-only: nothing can be saved until a campaign is open.",
+  "sa_estimate_range": "{{lo}} to {{hi}}",
+  "sa_estimate_split": "you can do it in several sittings, nothing is lost.",
+  "sa_seg_aria": "Your level for {{skill}}",
+  "sa_add_note": "Add a note",
+  "sync_synced": "✓ Saved",
+  "sync_online": "Online",
+  "sync_offline": "Offline — your answers stay on this device",
+  "sync_offline_one": "Offline — {{n}} answer kept on this device",
+  "sync_offline_other": "Offline — {{n}} answers kept on this device",
+  "sync_syncing_one": "Sending {{n}} answer…",
+  "sync_syncing_other": "Sending {{n}} answers…",
+  "sync_failed_one": "⚠ {{n}} answer NOT saved — it will be retried",
+  "sync_failed_other": "⚠ {{n}} answers NOT saved — they will be retried"
 }

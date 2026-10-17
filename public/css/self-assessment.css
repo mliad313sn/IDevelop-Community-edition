@@ -341,7 +341,14 @@ body.sa-show-current .sa-col-current {
         color: var(--text-secondary);
         font-size: 0.8rem;
     }
-    body.sa-show-current .sa-col-current {
+    /* The anti-anchoring rule holds on a phone too: the card rule above
+       (`.sa-section[open] .sa-table td`) outranked `.sa-col-current`, so the
+       validated level showed while the person rated. Same specificity plus one
+       class, then the opt-in. */
+    .sa-section[open] .sa-table td.sa-col-current {
+        display: none;
+    }
+    body.sa-show-current .sa-section[open] .sa-table td.sa-col-current {
         display: block;
     }
     .sa-skill-cell {
@@ -458,4 +465,178 @@ textarea.sa-locked {
     border-radius: var(--radius-pill);
     padding: 0 var(--space-2);
     vertical-align: middle;
+}
+
+/* ======================================================================
+   Rating on a phone, the read-only page and the sync status
+   (4.0.0 port, wave 5). Tokens only.
+   ====================================================================== */
+
+/* --- five large 0-4 buttons (shown by the page script on phones / touch) --- */
+.sa-seg {
+    display: none;
+}
+.sa-seg-b {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 52px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: var(--space-1);
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font: inherit;
+    line-height: 1.1;
+}
+.sa-seg-b:hover {
+    background: var(--bg-subtle);
+}
+.sa-seg-b:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+}
+.sa-seg-b[aria-checked='true'] {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: var(--text-inverse);
+}
+.sa-seg-b:disabled {
+    opacity: 0.62;
+    cursor: not-allowed;
+}
+.sa-seg-n {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+.sa-seg-w {
+    font-size: 0.75rem;
+    text-align: center;
+    hyphens: auto;
+}
+.sa-note-add {
+    display: none;
+}
+
+@media (max-width: 780px), (pointer: coarse) {
+    .sa-seg-js .sa-seg {
+        display: flex;
+        gap: var(--space-1);
+        margin: var(--space-1) 0;
+    }
+    /* the list stays in the DOM (value holder, no-JS fallback, keyboard) */
+    .sa-seg-js td select.self-rating-select {
+        display: none;
+    }
+}
+
+@media (max-width: 780px) {
+    /* the note folds behind « Add a note » unless it already holds text */
+    .sa-seg-js .sa-note-add {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+        min-height: 44px;
+    }
+    .sa-seg-js .sa-table textarea:not(.sa-note-has):not(.sa-note-open):not(.sa-locked) {
+        display: none;
+    }
+    .sa-seg-js td.sa-rate-cell::before {
+        content: none;
+    }
+    .sa-seg-js td.sa-req-cell:not([data-revealed]) {
+        display: none;
+    }
+    .sa-seg-js td.sa-status-cell[data-status='not_started'] {
+        display: none;
+    }
+    .sa-seg-js td.sa-notes-cell.sa-notes-empty {
+        display: none;
+    }
+    .sa-seg-js .sa-level-line:empty {
+        display: none;
+    }
+    /* the action bar moves to the BOTTOM (thumb zone): progress + « Submit » */
+    .sa-bar {
+        position: fixed;
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        margin: 0;
+        border-radius: 0;
+        border-width: 1px 0 0;
+        padding: var(--space-2) var(--space-3) calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+        z-index: var(--z-sticky);
+    }
+    .sa-bar-row {
+        flex-wrap: nowrap;
+    }
+    .sa-progress-sub {
+        display: none;
+    }
+    .sa-bar-actions {
+        width: auto;
+        flex-wrap: nowrap;
+    }
+    /* the autosave keeps the work; « Submit » remains */
+    .sa-bar-actions #saveDraftBtn,
+    .sa-bar-actions .sa-autosave {
+        display: none;
+    }
+    #selfAssessmentForm {
+        padding-bottom: 96px;
+    }
+}
+
+/* --- the sync status (sync-indicator.js), docked in the bar, quiet by default --- */
+.sa-sync-slot:empty {
+    display: none;
+}
+#sync-pill.sync-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 2px var(--space-3);
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+}
+#sync-pill.sync-pill[hidden] {
+    display: none;
+}
+#sync-pill.sync-pill--ok {
+    color: var(--emerald-text);
+    background: var(--emerald-dim);
+}
+#sync-pill.sync-pill--busy {
+    color: var(--blue-text);
+    background: var(--blue-dim);
+}
+#sync-pill.sync-pill--offline {
+    color: var(--red-text);
+    background: var(--red-dim);
+}
+#sync-pill.sync-pill--failed {
+    color: var(--amber-text);
+    background: var(--amber-dim);
+}
+/* a page without a dock (no #saSyncSlot): the pill floats, like a toast */
+body > #sync-pill.sync-pill {
+    position: fixed;
+    bottom: var(--space-4);
+    right: var(--space-4);
+    z-index: var(--z-toast, 800);
+}
+@media (max-width: 780px) {
+    #sync-pill.sync-pill {
+        white-space: normal;
+    }
 }
