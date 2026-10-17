@@ -119,6 +119,7 @@ router.post(
                 smartText: req.body && req.body.smartText,
                 skillId: req.body && req.body.skillId,
                 dueOn: req.body && req.body.dueOn,
+                locale: String(req.language || 'fr').slice(0, 2) === 'en' ? 'en' : 'fr',
             }),
             back: planPage(req) + '#idp-objectives',
         }),
@@ -142,6 +143,9 @@ router.post(
                 type: req.body && req.body.type,
                 description: req.body && req.body.description,
                 objectiveId: req.body && req.body.objectiveId,
+                skillId: req.body && req.body.skillId,
+                plannedHours: req.body && req.body.plannedHours,
+                dueOn: req.body && req.body.dueOn,
             }),
             back: planPage(req) + '#idp-actions',
         }),
@@ -149,6 +153,179 @@ router.post(
             successKey: 'idp:flash_action_added',
             successFallback: 'Action added.',
             backTo: planPage,
+        }
+    )
+);
+
+// ---------------------------------------------------------------------------
+// THE ACTION LOOP (4.0.0 port, wave 4): start / report done / validate / give
+// a training. Plain HTML forms from the plan page and the person's development
+// page. Who may do what is decided by IDPService (the person starts and
+// reports, only the line validates); these handlers only answer.
+// ---------------------------------------------------------------------------
+
+/**
+ * Where a form comes back to: a FIXED set of relative paths, never a URL taken
+ * from the request. `back=mine` is the person's development page; anything
+ * else is the plan page (at the action).
+ */
+function backFor(req, fallback) {
+    const b = String((req.body && req.body.back) || '');
+    if (b === 'mine') return '/employee/my-development';
+    if (b === 'manage') return '/v2/idp/manage#proposals';
+    if (b === 'propose') return '/v2/idp/propose';
+    return fallback;
+}
+
+async function planOfAction(actionId) {
+    const db = require('../config/database');
+    const row = await db.get('SELECT idp_id AS "idpId" FROM idp_actions WHERE id = ?', [
+        Number(actionId),
+    ]);
+    return row ? Number(row.idpId) : null;
+}
+
+function actionRoute(path, run, successKey, successFallback) {
+    router.post(
+        '/actions/:aid(\\d+)/' + path,
+        requireAuth,
+        ah(async (req, res, next) => {
+            const idpId = await planOfAction(req.params.aid);
+            const anchor =
+                idpId != null
+                    ? `/v2/idp/${idpId}#action-${Number(req.params.aid)}`
+                    : '/employee/my-development';
+            return handle(async (r) => ({ result: await run(r), back: backFor(r, anchor) }), {
+                successKey,
+                successFallback,
+                backTo: (r) => backFor(r, anchor),
+            })(req, res, next);
+        })
+    );
+}
+
+actionRoute(
+    'start',
+    (req) => IDPService.startAction({ actionId: Number(req.params.aid), user: req.user }),
+    'idp:flash_action_started',
+    'Action started.'
+);
+actionRoute(
+    'done',
+    (req) =>
+        IDPService.reportActionDone({
+            actionId: Number(req.params.aid),
+            user: req.user,
+            note: req.body && req.body.note,
+            hours: req.body && req.body.hours,
+        }),
+    'idp:flash_action_reported',
+    'Noted: your manager will validate this action.'
+);
+actionRoute(
+    'validate',
+    (req) =>
+        IDPService.validateAction({
+            actionId: Number(req.params.aid),
+            user: req.user,
+            observedLevel: req.body && req.body.observedLevel,
+            note: req.body && req.body.note,
+            actualHours: req.body && req.body.actualHours,
+        }),
+    'idp:flash_action_validated',
+    'Action validated.'
+);
+actionRoute(
+    'training',
+    (req) =>
+        IDPService.planTraining({
+            actionId: Number(req.params.aid),
+            user: req.user,
+            courseId: req.body && req.body.courseId,
+            dueOn: req.body && req.body.dueOn,
+            place: req.body && req.body.place,
+            plannedHours: req.body && req.body.plannedHours,
+        }),
+    'idp:flash_training_planned',
+    'Training planned.'
+);
+
+// ---------------------------------------------------------------------------
+// PROPOSALS (4.0.0 port, wave 4): the person proposes an action to their line;
+// the line accepts it into the plan or declines it with a reason.
+// ---------------------------------------------------------------------------
+router.get(
+    '/propose',
+    requireAuth,
+    ah(async (req, res) => {
+        // An administration account proposes nothing for itself: the team console.
+        if (req.user.userType === 'admin') return res.redirect('/v2/idp/manage');
+        const db = require('../config/database');
+        const me = Number(req.user.id);
+        const skills = await db.all(
+            `SELECT s.id, s.name, rsr.required_level AS "required", sa.current_level AS "current"
+               FROM employees e
+               JOIN role_skill_requirements rsr ON rsr.role_id = e.role_id AND rsr.required_level > 0
+               JOIN skills s ON s.id = rsr.skill_id
+               LEFT JOIN skill_assessments sa ON sa.employee_id = e.id AND sa.skill_id = s.id
+              WHERE e.id = ? ORDER BY s.name`,
+            [me]
+        );
+        const mine = await require('../services/DevelopmentLoopService')
+            .proposals(me)
+            .catch(() => []);
+        const pre = Number(req.query.skillId) || null;
+        res.render('pages/idp/propose', {
+            skills,
+            proposals: mine,
+            preSkillId: skills.some((x) => Number(x.id) === pre) ? pre : null,
+            actionTypes: IDPService.ACTION_TYPES,
+            title: req.t ? req.t('idp:propose_title') : 'Propose an action',
+        });
+    })
+);
+
+router.post(
+    '/proposals',
+    requireAuth,
+    handle(
+        async (req) => ({
+            result: await IDPService.proposeAction({
+                user: req.user,
+                skillId: req.body && req.body.skillId,
+                type: req.body && req.body.type,
+                text: req.body && req.body.text,
+            }),
+            back: backFor(req, '/v2/idp/propose'),
+        }),
+        {
+            successKey: 'idp:flash_proposal_sent',
+            successFallback: 'Your proposal was sent.',
+            backTo: (req) => backFor(req, '/v2/idp/propose'),
+        }
+    )
+);
+
+router.post(
+    '/proposals/:pid(\\d+)/decide',
+    requireAuth,
+    handle(
+        async (req) => {
+            const r = await IDPService.decideProposal({
+                proposalId: Number(req.params.pid),
+                user: req.user,
+                decision: req.body && req.body.decision,
+                reason: req.body && req.body.reason,
+            });
+            return {
+                result: r,
+                back: r && r.idpId ? '/v2/idp/' + Number(r.idpId) : '/v2/idp/manage#proposals',
+            };
+        },
+        {
+            successKey: 'idp:flash_proposal_decided',
+            successFallback: 'Decision recorded.',
+            backTo: () => '/v2/idp/manage#proposals',
         }
     )
 );

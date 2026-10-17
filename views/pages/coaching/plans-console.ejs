@@ -168,6 +168,9 @@ const CP_T = {
   confirmValidate: <%- include('../../partials/json-script', { v: { title: __('coaching:confirm_validate_title'), body: __('coaching:confirm_validate_body'), yes: __('coaching:confirm_validate_yes'), no: __('common:cancel') } }) %>,
   th: <%- include('../../partials/json-script', { v: { employee: __('common:employee'), role: __('coaching:th_role'), serviceSite: __('coaching:th_service_site'), activePlans: __('coaching:th_active_plans'), kind: __('coaching:kind'), title: __('common:title'), context: __('coaching:th_context'), target: __('coaching:th_target'), state: __('coaching:th_state'), progress: __('coaching:th_progress'), actions: __('common:actions') } }) %>,
   btnValidate: <%- JSON.stringify(__('coaching:btn_validate')) %>,
+  promptObserved: <%- JSON.stringify(__('coaching:prompt_observed_level')) %>,
+  observedLabel: <%- JSON.stringify(__('coaching:observed_level_label')) %>,
+  observedBad: <%- JSON.stringify(__('coaching:observed_level_bad')) %>,
   btnCancel: <%- JSON.stringify(__('coaching:btn_cancel')) %>,
   monitorOverdue: <%- JSON.stringify(__('coaching:monitor_overdue')) %>,
   st: <%- include('../../partials/json-script', { v: { draft: __('coaching:st_draft'), active: __('coaching:st_active'), completed: __('coaching:st_completed'), cancelled: __('coaching:st_cancelled') } }) %>,
@@ -289,7 +292,17 @@ const CP = {
         ? await window.confirmDialog({ title:C.title, body:C.body, confirmLabel:C.yes, cancelLabel:C.no })
         : false;
       if(!ok) return;
-      await this.api('/api/coaching/'+id+'/validate','POST',{});
+      // A coaching on a skill re-measures it: the level observed (0-4), or
+      // nothing (cannot judge yet: no official level moves).
+      const body={};
+      if(kind==='skill'){
+        const v=await ask(CP_T.promptObserved,'',{label:CP_T.observedLabel});
+        if(v===null) return;
+        const t=String(v).trim();
+        if(t!==''&&!(t.length===1&&t>='0'&&t<='4')){this.toast(CP_T.observedBad,'error');return;}
+        if(t!=='') body.observedLevel=Number(t);
+      }
+      await this.api('/api/coaching/'+id+'/validate','POST',body);
     }
     if(action==='cancel'){
       // Cancellation is a governed action (two-person rule): request it, a local
@@ -314,7 +327,7 @@ const CP = {
     const T=CP_T.th;
     tb.innerHTML=q.items.length?q.items.map(p=>'<tr><td data-label="'+esc(T.employee)+'">'+esc((p.firstName||'')+' '+(p.lastName||''))+'</td><td data-label="'+esc(T.kind)+'">'+esc(this.lbl(CP_T.kind,p.kind))+'</td><td data-label="'+esc(T.title)+'">'+esc(p.title)+'</td><td data-label="'+esc(T.context)+'">'+(p.contextLabel?cpBadge('info', p.contextLabel, null, {text:true}):'<span class="text-muted">—</span>')+'</td><td data-label="'+esc(T.target)+'">'+(p.targetDate?esc(String(p.targetDate).slice(0,10)):'—')+'</td><td data-label="'+esc(T.state)+'">'+this.badge(p.state)+'</td><td data-label="'+esc(T.progress)+'">'+Number(p.progress)+' %</td><td class="col-actions cell-actions">'+
       '<button class="btn btn-sm btn-secondary"'+cpOn('click','CP.act',[p.id,'session'])+'>'+esc(CP_T.btnNote)+'</button> '+
-      (p.state==='active'?'<button class="btn btn-sm btn-success"'+cpOn('click','CP.act',[p.id,'validate'])+'>'+esc(CP_T.btnValidate)+'</button> <button class="btn btn-sm btn-danger" data-kind="'+((p.kind==='mentoring'||p.kind==='mentor')?'mentoring':'coaching')+'"'+cpOn('click','CP.cancelBtn',['$el',Number(p.id)])+'>'+esc(CP_T.btnCancel)+'</button>':'')+
+      (p.state==='active'?'<button class="btn btn-sm btn-success"'+cpOn('click','CP.act',[p.id,'validate',(p.skillId!=null?'skill':'')])+'>'+esc(CP_T.btnValidate)+'</button> <button class="btn btn-sm btn-danger" data-kind="'+((p.kind==='mentoring'||p.kind==='mentor')?'mentoring':'coaching')+'"'+cpOn('click','CP.cancelBtn',['$el',Number(p.id)])+'>'+esc(CP_T.btnCancel)+'</button>':'')+
       '</td></tr>').join(''):'<tr><td colspan="8"><em>'+esc(CP_T.noPlans)+'</em></td></tr>';
     document.getElementById('cp-monitor-body').innerHTML=(m.monitor.byState||[]).map(s=>this.badge(s.state, Number(s.n))).join(' ')+' <span aria-hidden="true">|</span> '+esc(CP_T.monitorOverdue)+': '+Number(m.monitor.overdue.length);
   }

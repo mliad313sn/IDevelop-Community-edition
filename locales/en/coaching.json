@@ -77,5 +77,8 @@
   "cancel_dialog": "Close without creating",
   "confirm_validate_title": "Validate this plan?",
   "confirm_validate_body": "The plan is closed as completed. Its actions can no longer be added or changed.",
-  "confirm_validate_yes": "Validate the plan"
+  "confirm_validate_yes": "Validate the plan",
+  "prompt_observed_level": "This coaching works on a skill. Which level did you observe? Enter 0 to 4, or leave it empty if you cannot judge yet (no official level changes).",
+  "observed_level_label": "Observed level (0 to 4)",
+  "observed_level_bad": "The observed level is a whole number from 0 to 4, or empty."
 }

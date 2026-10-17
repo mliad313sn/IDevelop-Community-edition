@@ -132,9 +132,27 @@ async function careerPathPage(req, res) {
         roleId: e.roleId,
     }));
     const roles = await db.all('SELECT id, name FROM roles ORDER BY name');
+    // Arrive pre-filled (?employeeId=&targetRoleId=) from a person's stated
+    // target role or a successor plan. Without a target role in the link, the
+    // person's own stated target role (employee_aspirations). Only a person
+    // the reader may see and a role that exists are pre-selected.
+    const preEmp = Number(req.query.employeeId) || null;
+    const inScope = Boolean(preEmp && employees.some((e) => e.id === preEmp));
+    let preRole = Number(req.query.targetRoleId) || null;
+    if (inScope && !preRole) {
+        const asp = await db
+            .get(
+                'SELECT target_role_id AS "targetRoleId" FROM employee_aspirations WHERE employee_id = ?',
+                [preEmp]
+            )
+            .catch(() => null);
+        preRole = asp && asp.targetRoleId ? Number(asp.targetRoleId) : null;
+    }
+    if (preRole && !roles.some((r) => Number(r.id) === preRole)) preRole = null;
     res.render('pages/talent/career-path', {
         employees,
         roles,
+        pre: { employeeId: inScope ? preEmp : null, targetRoleId: inScope ? preRole : null },
         title: req.t ? req.t('chrome:pt_career_path') : 'Career Path',
     });
 }

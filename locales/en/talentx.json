@@ -1324,5 +1324,7 @@
   "sar_rate_my": "My rating",
   "sar_done_section": "Already handled ({n})",
   "sar_filters_label": "Filters",
-  "sar_thread_input_label": "Your comment"
+  "sar_thread_input_label": "Your comment",
+  "cp_create_plan": "Create the development plan towards this role",
+  "cp_create_plan_hint": "The target role's unmet requirements become objectives of the person's plan, tagged with this role. An open plan is extended rather than replaced."
 }

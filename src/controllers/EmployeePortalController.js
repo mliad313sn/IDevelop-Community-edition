@@ -682,7 +682,8 @@ class EmployeePortalController {
                 );
                 const actRows = await db.all(
                     `SELECT a.id, a.idp_id, a.objective_id, a.type, a.title, a.description,
-                            a.status, a.completed_at
+                            a.status, a.completed_at, a.due_on, a.place, a.estimated_hours,
+                            a.actual_hours, a.reported_done_at, a.reported_note
                        FROM idp_actions a
                       WHERE a.idp_id IN (${marks})
                       ORDER BY a.idp_id, a.id`,
@@ -722,7 +723,13 @@ class EmployeePortalController {
                     // "High Performer")' on the plan its subject is asked to sign.
                     const objectives = (objBy[pid] || []).map((o) => ({
                         id: Number(o.id),
-                        smartText: safe(resolveSmart(o.smartText, o.dueOn)),
+                        // A machine-written objective, in the reader's language.
+                        smartText: safe(
+                            require('../utils/idpObjectiveText').display(
+                                resolveSmart(o.smartText, o.dueOn),
+                                req.t ? req.t.bind(req) : null
+                            )
+                        ),
                         dueOn: fmtDay(o.dueOn),
                         priority: o.priority,
                         state: o.state,
@@ -737,6 +744,14 @@ class EmployeePortalController {
                         status: a.status,
                         completedAt: fmtDay(a.completedAt),
                         isOpen: !['completed', 'cancelled'].includes(a.status),
+                        // The action loop: the person starts it and reports it
+                        // done from here (the partial idp-action-controls).
+                        dueOn: a.dueOn || null,
+                        place: a.place || null,
+                        estimatedHours: a.estimatedHours == null ? null : Number(a.estimatedHours),
+                        actualHours: a.actualHours == null ? null : Number(a.actualHours),
+                        reportedDoneAt: a.reportedDoneAt || null,
+                        reportedNote: a.reportedNote ? safe(a.reportedNote) : null,
                     }));
                     return {
                         id: pid,
@@ -755,6 +770,7 @@ class EmployeePortalController {
                         // Read-only unless the plan is still a draft awaiting my signature.
                         canSign: v2 && p.status === 'draft' && !mine,
                         detailUrl: v2 ? `/v2/idp/${pid}` : null,
+                        canMoveActions: v2 && p.status === 'active',
                     };
                 });
             }
@@ -803,6 +819,10 @@ class EmployeePortalController {
             hasAnything,
             loadError,
             disclosedPlacement,
+            // « Propose an action to my manager » (development module pages).
+            canPropose: await require('../services/ModuleService')
+                .isOn('development')
+                .catch(() => false),
         });
     }
 

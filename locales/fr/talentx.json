@@ -1324,5 +1324,7 @@
   "sar_rate_my": "Ma note",
   "sar_done_section": "Déjà traitées ({n})",
   "sar_filters_label": "Filtres",
-  "sar_thread_input_label": "Votre commentaire"
+  "sar_thread_input_label": "Votre commentaire",
+  "cp_create_plan": "Créer le plan de développement vers ce poste",
+  "cp_create_plan_hint": "Les exigences du poste visé non encore atteintes deviennent des objectifs du plan de la personne, marqués de ce poste. Un plan ouvert est complété, jamais remplacé."
 }

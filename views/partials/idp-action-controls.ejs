@@ -1,0 +1,167 @@
+<%#
+  idp-action-controls — the controls of ONE development-plan action (the action
+  loop, 4.0.0 port wave 4).
+  Locals:
+    action      idp_actions row (camelCased)
+    info        the plan page's actionInfo entry, or {} (skill, levels, training, evidence)
+    canAct      the reader is the plan's line (validate, give a training)
+    isSubject   the reader is the person the plan is for (start, report done)
+    planStatus  the plan's status
+    back        '' (the plan page) or 'mine' (the person's development page)
+    courses     { list, bySkill } for the line, or null
+  The person starts their action and reports it done; only the line validates
+  it, with the level it OBSERVED (0-4), or "cannot judge yet" (evidence only).
+  Plain forms and <details>: no inline handler (strict CSP).
+%><%
+  const _a = action || {};
+  const _i = (typeof info !== 'undefined' && info) ? info : {};
+  const _can = (typeof canAct !== 'undefined') && Boolean(canAct);
+  const _sub = (typeof isSubject !== 'undefined') && Boolean(isSubject);
+  const _ps = (typeof planStatus !== 'undefined') ? String(planStatus) : 'active';
+  const _back = (typeof back !== 'undefined' && back === 'mine') ? 'mine' : '';
+  const _courses = (typeof courses !== 'undefined' && courses) ? courses : null;
+  const _st = String(_a.status || 'pending');
+  const _reported = _a.reportedDoneAt || null;
+  const _closed = _st === 'completed' || _st === 'cancelled';
+  const _day = (v) => (v ? (typeof fmtDate === 'function' ? fmtDate(v) : String(v).slice(0, 10)) : '');
+  const _aid = Number(_a.id);
+  const _isTraining = _a.type === 'training' || _a.type === 'certification';
+  const _map = (_courses && _courses.bySkill && _i.skillId != null && _courses.bySkill[_i.skillId]) || {};
+  const _all = (_courses && Array.isArray(_courses.list)) ? _courses.list : [];
+  const _sorted = _all.filter(function (c) { return _map[Number(c.id)] != null; })
+      .concat(_all.filter(function (c) { return _map[Number(c.id)] == null; }));
+  const _planned = _a.estimatedHours != null ? _a.estimatedHours : null;
+%>
+<div class="idp-ctl" data-action-id="<%= _aid %>">
+  <% if (_i.training) { %>
+    <p class="idp-meta"><i class="fas fa-graduation-cap" aria-hidden="true"></i>
+      <%= __('idp:training_line', { title: _i.training.title, status: __('idp:enr_' + _i.training.status, { defaultValue: _i.training.status }), due: _i.training.dueAt ? _day(_i.training.dueAt) : __('idp:no_due') }) %></p>
+  <% } else if (_a.dueOn || _a.place || _planned != null) { %>
+    <p class="idp-meta"><i class="fas fa-calendar-day" aria-hidden="true"></i>
+      <%= [_a.dueOn ? __('idp:due_on') + ' ' + _day(_a.dueOn) : null, _a.place || null, _planned != null ? __('idp:hours_planned_n', { count: Number(_planned) }) : null].filter(Boolean).join(' · ') %></p>
+  <% } %>
+
+  <% if (_closed) { %>
+    <p class="idp-meta">
+      <% if (_i.ratingPost != null) { %>
+        <%= __('idp:validated_level', { level: _i.ratingPost }) %>
+        (<%= _i.ratingPre != null ? __('idp:was_level', { level: _i.ratingPre }) : __('idp:was_unmeasured') %>)
+      <% } else if (_st === 'completed') { %>
+        <%= __('idp:validated_evidence_only') %>
+      <% } %>
+      <% if (_st === 'completed' && _i.validatedByName) { %> · <%= __('idp:validated_by', { name: _i.validatedByName }) %><% } %>
+      <% if (_a.actualHours != null) { %> · <%= __('idp:hours_done_n', { count: Number(_a.actualHours) }) %><% } %>
+    </p>
+  <% } else if (_ps === 'active') { %>
+    <% if (_reported) { %>
+      <p class="idp-meta"><%- include('status-badge', { tone: 'warn', label: __('idp:awaiting_validation') }) %>
+        <%= __('idp:reported_on', { date: _day(_reported) }) %><% if (_i.reportedBySystem) { %> (<%= __('idp:reported_by_training') %>)<% } %><% if (_a.reportedNote) { %> — « <%= _a.reportedNote %> »<% } %></p>
+    <% } %>
+    <% if (_sub && !_can) { %>
+      <div class="idp-ctl-actions">
+      <% if (_st === 'pending') { %>
+        <form method="post" action="/v2/idp/actions/<%= _aid %>/start" class="idp-inline-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <% if (_back) { %><input type="hidden" name="back" value="<%= _back %>"><% } %>
+          <button type="submit" class="btn btn-sm btn-secondary"><%= __('idp:action_start') %></button>
+        </form>
+      <% } %>
+      <% if (!_reported) { %>
+        <details class="idp-ctl-panel">
+          <summary class="btn btn-sm btn-primary"><%= __('idp:action_done') %></summary>
+          <form method="post" action="/v2/idp/actions/<%= _aid %>/done" class="idp-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <% if (_back) { %><input type="hidden" name="back" value="<%= _back %>"><% } %>
+            <div class="form-group">
+              <label for="idp-done-note-<%= _aid %>"><%= __('idp:done_note') %></label>
+              <textarea id="idp-done-note-<%= _aid %>" name="note" rows="2" maxlength="1000" class="form-control"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="idp-done-hours-<%= _aid %>"><%= __('idp:hours_spent') %> (<%= __('idp:optional') %>)</label>
+              <input id="idp-done-hours-<%= _aid %>" name="hours" type="number" min="0" max="2000" step="0.5" inputmode="decimal" class="form-control">
+            </div>
+            <p class="help-text"><%= __('idp:done_hint') %></p>
+            <button type="submit" class="btn btn-primary"><%= __('idp:action_done_send') %></button>
+          </form>
+        </details>
+      <% } %>
+      </div>
+    <% } %>
+    <% if (_can) { %>
+      <div class="idp-ctl-actions">
+        <details class="idp-ctl-panel"<%= _reported ? ' open' : '' %>>
+          <summary class="btn btn-sm btn-primary"><%= __('idp:action_validate') %></summary>
+          <form method="post" action="/v2/idp/actions/<%= _aid %>/validate" class="idp-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <% if (_i.skillId != null) { %>
+              <div class="form-group">
+                <label for="idp-obs-<%= _aid %>"><%= __('idp:observed_level', { skill: _i.skillName || '' }) %></label>
+                <select id="idp-obs-<%= _aid %>" name="observedLevel" class="form-control">
+                  <option value="" selected><%= __('idp:cannot_judge_yet') %></option>
+                  <% for (let l = 0; l <= 4; l++) { %>
+                    <option value="<%= l %>"><%= __('idp:level_n', { level: l }) %><%= _i.required === l ? ' — ' + __('idp:level_required') : '' %></option>
+                  <% } %>
+                </select>
+                <p class="help-text"><%= _i.current != null ? __('idp:current_official', { level: _i.current }) : __('idp:current_unmeasured') %></p>
+              </div>
+            <% } else { %>
+              <p class="help-text"><%= __('idp:no_skill_evidence_only') %></p>
+            <% } %>
+            <div class="form-group">
+              <label for="idp-val-note-<%= _aid %>"><%= __('idp:validation_note') %> (<%= __('idp:optional') %>)</label>
+              <textarea id="idp-val-note-<%= _aid %>" name="note" rows="2" maxlength="1000" class="form-control"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="idp-val-hours-<%= _aid %>"><%= __('idp:hours_spent') %> (<%= __('idp:optional') %>)</label>
+              <input id="idp-val-hours-<%= _aid %>" name="actualHours" type="number" min="0" max="2000" step="0.5" inputmode="decimal" class="form-control" value="<%= _a.actualHours != null ? _a.actualHours : '' %>">
+            </div>
+            <button type="submit" class="btn btn-primary"><%= __('idp:action_validate') %></button>
+          </form>
+        </details>
+        <% if (_isTraining && !_i.training) { %>
+        <details class="idp-ctl-panel">
+          <summary class="btn btn-sm btn-secondary"><%= __('idp:attach_training') %></summary>
+          <% if (_sorted.length) { %>
+          <form method="post" action="/v2/idp/actions/<%= _aid %>/training" class="idp-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="form-group">
+              <label for="idp-course-<%= _aid %>"><%= __('idp:course') %></label>
+              <select id="idp-course-<%= _aid %>" name="courseId" class="form-control" required>
+                <% _sorted.forEach(function (c) { var lv = _map[Number(c.id)]; %>
+                  <option value="<%= c.id %>"><%= c.title %><%= lv != null ? ' — ' + __('idp:course_proposes_level', { level: lv }) : '' %></option>
+                <% }); %>
+              </select>
+              <% if (_i.skillId != null && !Object.keys(_map).length) { %><p class="help-text"><%= __('idp:no_mapped_course') %></p><% } %>
+            </div>
+            <div class="form-group">
+              <label for="idp-course-due-<%= _aid %>"><%= __('idp:due_on') %></label>
+              <input id="idp-course-due-<%= _aid %>" name="dueOn" type="date" class="form-control">
+            </div>
+            <button type="submit" class="btn btn-primary"><%= __('idp:assign_course') %></button>
+          </form>
+          <% } %>
+          <form method="post" action="/v2/idp/actions/<%= _aid %>/training" class="idp-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <p class="help-text"><%= _sorted.length ? __('idp:offline_or') : __('idp:offline_no_lms') %></p>
+            <div class="idp-form-row">
+              <div class="form-group">
+                <label for="idp-off-due-<%= _aid %>"><%= __('idp:due_on') %></label>
+                <input id="idp-off-due-<%= _aid %>" name="dueOn" type="date" class="form-control" required>
+              </div>
+              <div class="form-group">
+                <label for="idp-off-place-<%= _aid %>"><%= __('idp:place') %></label>
+                <input id="idp-off-place-<%= _aid %>" name="place" type="text" maxlength="200" class="form-control">
+              </div>
+              <div class="form-group">
+                <label for="idp-off-hours-<%= _aid %>"><%= __('idp:hours_planned') %></label>
+                <input id="idp-off-hours-<%= _aid %>" name="plannedHours" type="number" min="0" max="2000" step="1" class="form-control">
+              </div>
+            </div>
+            <button type="submit" class="btn btn-secondary"><%= __('idp:plan_offline') %></button>
+          </form>
+        </details>
+        <% } %>
+      </div>
+    <% } %>
+  <% } %>
+</div>

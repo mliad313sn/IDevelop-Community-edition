@@ -32,9 +32,18 @@
     const types = (typeof actionTypes !== 'undefined' && Array.isArray(actionTypes) && actionTypes.length)
         ? actionTypes : ['training', 'coaching', 'mentoring', 'on_the_job', 'self_study', 'certification', 'stretch'];
     const typeLabel = (t) => (types.includes(String(t)) ? __('idp:act_' + t) : (t || '—'));
+    // The action loop (4.0.0 port): per action its skill, training and
+    // evidence; per objective its live level. A machine-written objective is
+    // printed in the reader's language (displayText, set by the route).
+    const aInfo = (typeof actionInfo !== 'undefined' && actionInfo) ? actionInfo : {};
+    const oProg = (typeof objectiveProgress !== 'undefined' && objectiveProgress) ? objectiveProgress : {};
+    const isPerson = (typeof viewerIsPerson !== 'undefined') && Boolean(viewerIsPerson);
+    const objText = (o) => String(o.displayText != null ? o.displayText : (pick(o, 'smartText', 'smart_text') || ''));
 %>
+<link rel="stylesheet" href="/css/idp.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
 <div class="page-header">
     <h1><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('idp:detail_title', { name: name }) %></h1>
+    <div class="idp-print-actions"><button type="button" class="btn btn-secondary" data-print><i class="fas fa-print" aria-hidden="true"></i> <%= __('idp:print_plan') %></button></div>
     <p><strong><%= __('idp:status') %>:</strong> <%= statusLabel[plan.status] || plan.status %></p>
     <% if (closedAt) { %>
         <p class="text-muted"><%= __('idp:closed_on') %> <%= fmtDay(closedAt) %><% if (closeReason) { %> — <%= __('idp:close_reason') %><%= colon %> <%= closeReason %><% } %></p>
@@ -47,10 +56,17 @@
         <%- include('../../partials/empty-state', { icon: 'fa-bullseye', title: __('idp:no_objectives'), text: canAdd ? __('idp:objectives_empty_msg') : '', ctaHref: canAdd ? '#idp-add-objective' : '', ctaLabel: __('idp:add_objective') }) %>
     <% } %>
     <ul style="list-style:none;padding-left:0">
-        <% objectives.forEach(function(o){ var oText = String(pick(o, 'smartText', 'smart_text') || '').slice(0, 80); %>
+        <% objectives.forEach(function(o){ var oFull = objText(o); var oText = oFull.slice(0, 80); var op = oProg[Number(o.id)]; %>
             <li style="margin-bottom:.75rem">
                 <span class="badge <%= objBadge[o.state] || 'badge-secondary' %>"><%= objLabel[o.state] || o.state %></span>
-                <%= pick(o, 'smartText', 'smart_text') %> — <%= __('idp:due_on') %><%= colon %> <%= fmtDay(pick(o, 'dueOn', 'due_on')) %>
+                <%= oFull %> — <%= __('idp:due_on') %><%= colon %> <%= fmtDay(pick(o, 'dueOn', 'due_on')) %>
+                <% if (op && op.skillId != null) { %>
+                    <span class="idp-meta">
+                        <% if (op.targetRoleName) { %><%- include('../../partials/status-badge', { tone: 'info', label: __('idp:target_role_tag', { role: op.targetRoleName }) }) %> <% } %>
+                        <%= __('idp:live_level') %><%= colon %> <%= op.current != null ? __('idp:level_n', { level: op.current }) : __('idp:not_assessed') %><% if (op.required != null) { %> / <%= __('idp:level_required_n', { level: op.required }) %><% } %>
+                        <% if (op.met && (o.state === 'pending' || o.state === 'in_progress')) { %> <%- include('../../partials/status-badge', { tone: 'ok', label: __('idp:objective_met_hint') }) %><% } %>
+                    </span>
+                <% } %>
                 <% if (canAct && plan.status === 'active' && (o.state === 'pending' || o.state === 'in_progress')) { %>
                     <span style="display:inline-flex;gap:.4rem;margin-left:.5rem">
                         <% if (o.state === 'pending') { %>
@@ -106,13 +122,14 @@
     <% } else { %>
     <div class="table-wrapper">
     <table class="table">
-        <thead><tr><th scope="col"><%= __('common:title') %></th><th scope="col"><%= __('idp:action_type') %></th><th scope="col"><%= __('common:status') %></th></tr></thead>
+        <thead><tr><th scope="col"><%= __('common:title') %></th><th scope="col"><%= __('idp:action_type') %></th><th scope="col"><%= __('common:status') %></th><th scope="col"><%= __('idp:action_next') %></th></tr></thead>
         <tbody>
-            <% actions.forEach(function(a){ %>
-                <tr>
-                    <td><%= a.title %><% if (a.description) { %><div class="text-muted" style="font-size:.85em"><%= a.description %></div><% } %></td>
+            <% actions.forEach(function(a){ var ai = aInfo[Number(a.id)] || {}; var waiting = Boolean(a.reportedDoneAt && a.status !== 'completed' && a.status !== 'cancelled'); %>
+                <tr id="action-<%= a.id %>">
+                    <td><%= a.title %><% if (a.description) { %><div class="text-muted idp-meta"><%= a.description %></div><% } %><% if (ai.skillName) { %><div class="idp-meta"><%= __('idp:action_skill') %><%= colon %> <%= ai.skillName %><% if (ai.required != null) { %> · <%= __('idp:level_required_n', { level: ai.required }) %><% } %></div><% } %></td>
                     <td><%= typeLabel(a.type) %></td>
-                    <td><%= objLabel[a.status] || statusLabel[a.status] || a.status %></td>
+                    <td><%- include('../../partials/status-badge', { state: waiting ? 'pending' : a.status, label: waiting ? __('idp:awaiting_validation') : (objLabel[a.status] || statusLabel[a.status] || a.status) }) %></td>
+                    <td><%- include('../../partials/idp-action-controls', { action: a, info: ai, canAct: canAct, isSubject: isPerson, planStatus: plan.status, back: '', courses: (typeof courses !== 'undefined' ? courses : null) }) %></td>
                 </tr>
             <% }); %>
         </tbody>
@@ -140,8 +157,25 @@
                     <label for="idp-act-obj"><%= __('idp:action_objective') %></label>
                     <select id="idp-act-obj" name="objectiveId" class="form-control">
                         <option value=""><%= __('idp:action_objective_none') %></option>
-                        <% objectives.forEach(function (o) { %><option value="<%= o.id %>"><%= String(pick(o, 'smartText', 'smart_text') || '').slice(0, 70) %></option><% }); %>
+                        <% objectives.forEach(function (o) { %><option value="<%= o.id %>"><%= objText(o).slice(0, 70) %></option><% }); %>
                     </select>
+                </div>
+            </div>
+            <div class="idp-form-row">
+                <div class="form-group">
+                    <label for="idp-act-skill"><%= __('idp:action_skill') %></label>
+                    <select id="idp-act-skill" name="skillId" class="form-control">
+                        <option value=""><%= __('idp:action_skill_from_objective') %></option>
+                        <% skills.forEach(function (sk) { %><option value="<%= sk.id %>"><%= sk.name %></option><% }); %>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="idp-act-hours"><%= __('idp:hours_planned') %></label>
+                    <input id="idp-act-hours" name="plannedHours" type="number" min="0" max="2000" step="1" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label for="idp-act-due"><%= __('idp:due_on') %></label>
+                    <input id="idp-act-due" name="dueOn" type="date" class="form-control">
                 </div>
             </div>
             <div class="form-group">
@@ -152,13 +186,19 @@
         </form>
     </details>
     <% } %>
+    <% if (isPerson && planOpen) { %>
+    <p class="idp-propose-link"><a class="btn btn-secondary" href="/v2/idp/propose"><i class="fas fa-lightbulb" aria-hidden="true"></i> <%= __('idp:propose_cta') %></a></p>
+    <% } %>
 </div>
 
 <%# Signing is a DRAFT-only act (IDPService.signOff refuses anything else with
     409 IDP_NOT_DRAFT). A button that can only be refused is worse than none:
     render the form solely while the plan is still a draft. %>
 <% if (plan.status === 'draft') { %>
-<div class="card" style="padding:1.25rem">
+<div class="card idp-sign-card" style="padding:1.25rem">
+    <% if (!actions.length || objectives.some(function (o) { return !pick(o, 'dueOn', 'due_on'); })) { %>
+        <p class="help-text"><%= __('idp:sign_needs_hint') %></p>
+    <% } %>
     <form method="post" action="/v2/idp/<%= plan.id %>/sign">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <button type="submit" class="btn btn-primary"><%= __('idp:sign_off') %></button>
@@ -193,3 +233,20 @@
     </form>
 </div>
 <% } %>
+
+<%# On paper only (idp.css hides it on screen): the signature block of the
+    printed plan. %>
+<section class="idp-print-sign" aria-hidden="true">
+    <h2><%= __('idp:print_sign_title') %></h2>
+    <div class="idp-print-sign-grid">
+        <% [['idp:print_sign_employee', name], ['idp:print_sign_manager', null]].forEach(function (r) { %>
+        <div class="idp-print-sign-box">
+            <p><strong><%= __(r[0]) %></strong><% if (r[1]) { %> — <%= r[1] %><% } %></p>
+            <p><%= __('idp:print_sign_date') %><%= colon %> ____ / ____ / ________</p>
+            <p><%= __('idp:print_sign_signature') %><%= colon %></p>
+        </div>
+        <% }) %>
+    </div>
+    <p class="idp-print-sign-note"><%= __('idp:print_sign_note') %></p>
+</section>
+<script src="/js/idp-detail.js?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>"></script>

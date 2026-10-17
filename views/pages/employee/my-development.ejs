@@ -210,6 +210,10 @@ const toSign = idps.filter(function (p) { return p.canSign; });
         <% if (!idps.length) { %>
             <p><em><%= __('employee:dev_idp_none') %></em></p>
         <% } %>
+        <% if (typeof canPropose !== 'undefined' && canPropose) { %>
+            <link rel="stylesheet" href="/css/idp.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
+            <p class="idp-propose-link"><a class="btn btn-secondary" href="/v2/idp/propose"><i class="fas fa-lightbulb" aria-hidden="true"></i> <%= __('idp:propose_cta') %></a></p>
+        <% } %>
 
         <% idps.forEach(function (plan) { %>
             <section class="card" style="padding:1rem;margin-top:1rem;<%= plan.isOpen ? '' : 'opacity:.85;' %>">
@@ -265,6 +269,7 @@ const toSign = idps.filter(function (p) { return p.canSign; });
                                     <th scope="col"><%= __('employee:dev_th_type') %></th>
                                     <th scope="col"><%= __('employee:dev_th_state') %></th>
                                     <th scope="col"><%= __('employee:dev_th_completed') %></th>
+                                    <% if (plan.canMoveActions) { %><th scope="col"><%= __('idp:action_next') %></th><% } %>
                                 </tr>
                             </thead>
                             <tbody>
@@ -279,6 +284,7 @@ const toSign = idps.filter(function (p) { return p.canSign; });
                                         <td><%= actionType[a.type] || enumLabel(a.type) %></td>
                                         <td><span class="badge <%= badge(itemState, a.status).cls %>"><%= badge(itemState, a.status).label %></span></td>
                                         <td><%= a.completedAt || '—' %></td>
+                                        <% if (plan.canMoveActions) { %><td><%- include('../../partials/idp-action-controls', { action: a, info: {}, canAct: false, isSubject: true, planStatus: plan.status, back: 'mine', courses: null }) %></td><% } %>
                                     </tr>
                                 <% }); %>
                             </tbody>
