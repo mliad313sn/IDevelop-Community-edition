@@ -324,9 +324,17 @@ const ORPHANS = [
     '/kpi/glossary',
 ];
 const ADDED = {
-    employee: ['/safety-gate/me'],
+    // 4.0.0 port (wave 5): the person's own end-of-campaign records
+    employee: ['/safety-gate/me', '/employee/review-record'],
     // « My team » (wave 12 D3): the named roster that left the manager's dashboard
-    manager: ['/tasks', ...ORPHANS, '/safety-gate', '/safety-gate/me', '/supervisor/team'],
+    manager: [
+        '/tasks',
+        ...ORPHANS,
+        '/safety-gate',
+        '/safety-gate/me',
+        '/supervisor/team',
+        '/employee/review-record',
+    ],
     localadmin_ops: ['/tasks', ...ORPHANS, '/kpi/targets', '/safety-gate'],
     localadmin_people: ['/tasks', ...ORPHANS, '/kpi/targets'],
     localadmin_none: ['/tasks', ...ORPHANS, '/kpi/targets'],

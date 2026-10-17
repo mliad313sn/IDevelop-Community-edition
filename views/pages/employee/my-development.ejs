@@ -215,7 +215,15 @@ const toSign = idps.filter(function (p) { return p.canSign; });
             <p class="idp-propose-link"><a class="btn btn-secondary" href="/v2/idp/propose"><i class="fas fa-lightbulb" aria-hidden="true"></i> <%= __('idp:propose_cta') %></a></p>
         <% } %>
 
-        <% idps.forEach(function (plan) { %>
+        <%# The plans in progress first; the finished ones fold into a
+            « History » after them (open plans are what the person acts on). %>
+        <% const _openIdps = idps.filter(function (p) { return p.isOpen; });
+           const _pastIdps = idps.filter(function (p) { return !p.isOpen; }); %>
+        <link rel="stylesheet" href="/css/emp-loop.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
+        <div id="devIdp">
+        <% [[_openIdps, false], [_pastIdps, true]].forEach(function (grp) { if (!grp[0].length) return; %>
+        <% if (grp[1]) { %><details class="card dev-history" id="devHistory"><summary><%= __('employee:dev_history_sum', { count: grp[0].length }) %></summary><% } %>
+        <% grp[0].forEach(function (plan) { %>
             <section class="card" style="padding:1rem;margin-top:1rem;<%= plan.isOpen ? '' : 'opacity:.85;' %>">
                 <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;justify-content:space-between;">
                     <h3 style="margin:0;font-size:1.05rem;"><%= __('employee:dev_idp_item_title') %></h3>
@@ -334,6 +342,9 @@ const toSign = idps.filter(function (p) { return p.canSign; });
                 <% } %>
             </section>
         <% }); %>
+        <% if (grp[1]) { %></details><% } %>
+        <% }); %>
+        </div>
     </div>
 
     <!-- ── Coaching pointer ──────────────────────────────────────────────── -->

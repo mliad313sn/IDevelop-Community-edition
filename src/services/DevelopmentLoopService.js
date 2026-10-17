@@ -5,7 +5,9 @@
  * wave 4): where a person's plan actions stand, what they proposed to their
  * line and what their closed plans achieved. The weekly reminder of due
  * actions (jobs/reminders.js), the proposal page and the person's development
- * page read it here; nothing else re-derives it.
+ * page read it here; nothing else re-derives it. The employee home reads it
+ * through EmployeeLoopAdapter (wave 5): the levels validated and the actions
+ * done since a date, and the person's one development step.
  *
  * Rules:
  *   - the person reads only themself (callers pass their own id);
@@ -235,11 +237,164 @@ async function planOutcomes(employeeId) {
     }, []);
 }
 
+/**
+ * Where an official level came from, from the history row the trigger wrote
+ * (fn_log_skill_assessment_change, migration 11): a training completion the
+ * line accepted, a level observed on a plan action or a coaching, else a
+ * review of the person's ratings. Anything unknown is 'other' — never an
+ * invented provenance.
+ */
+function upliftSourceOf(source, notes) {
+    const n = String(notes || '').toLowerCase();
+    if (n.includes('training completion')) return 'training';
+    if (n.startsWith('auto: coaching')) return 'coaching';
+    if (source === 'action_uplift') return 'observation';
+    if (source === 'self_assessment' || source === 'supervisor_review') return 'review';
+    return 'other';
+}
+
+/**
+ * The OFFICIAL levels that went up (or were set for the first time) since
+ * `since`, newest first: [{skillId, skillName, from, to, at, source}].
+ * Read from the assessment history, which only the validation paths write;
+ * a self-rating or a draft never appears here. `from` is null for a first
+ * measurement (never 0).
+ */
+async function validatedUpliftsSince(employeeId, since) {
+    const t = isoInstant(since);
+    if (!t) return [];
+    const rows = await db.all(
+        `SELECT h.skill_id AS "skillId", s.name AS "skillName",
+                h.previous_level AS "from", h.new_level AS "to",
+                h.assessed_at AS "at", h.source, h.notes
+           FROM assessment_history h
+           JOIN skills s ON s.id = h.skill_id
+          WHERE h.employee_id = ? AND h.assessed_at >= ?::timestamptz
+            AND (h.previous_level IS NULL OR h.new_level > h.previous_level)
+          ORDER BY h.assessed_at DESC, h.id DESC`,
+        [Number(employeeId), t]
+    );
+    return (rows || []).map((r) => ({
+        skillId: Number(r.skillId),
+        skillName: r.skillName || null,
+        from: r.from == null ? null : Number(r.from),
+        to: r.to == null ? null : Number(r.to),
+        at: isoInstant(r.at),
+        source: upliftSourceOf(r.source, r.notes),
+    }));
+}
+
+/** The person's plan actions completed since `since`: [{id, idpId, title, completedAt}]. */
+async function actionsDoneSince(employeeId, since) {
+    const t = isoInstant(since);
+    if (!t) return [];
+    const rows = await db.all(
+        `SELECT a.id, a.idp_id AS "idpId", a.title, a.completed_at AS "completedAt"
+           FROM idp_actions a
+           JOIN idp_plans p ON p.id = a.idp_id
+          WHERE p.employee_id = ? AND a.status::text = 'completed'
+            AND a.completed_at >= ?::timestamptz
+          ORDER BY a.completed_at DESC, a.id DESC`,
+        [Number(employeeId), t]
+    );
+    return (rows || []).map((r) => ({
+        id: Number(r.id),
+        idpId: Number(r.idpId),
+        title: r.title,
+        completedAt: isoInstant(r.completedAt),
+    }));
+}
+
+/** The plan page of one action (ids from the database, digits only). */
+function actionHref(a) {
+    return `/v2/idp/${Number(a.idpId)}#action-${Number(a.id)}`;
+}
+
+/**
+ * The person's ONE development step, or { kind: 'none' }:
+ *   action_due     an action of their active plan due within 7 days, or overdue;
+ *   training       a course assigned to them, due within 7 days or overdue;
+ *   validate_wait  an action they reported done, waiting for their line;
+ *   gap_no_plan    a MEASURED gap and no open plan: propose an action.
+ * The first two are urgent (the home ranks them before a survey). Every link
+ * is a fixed path built from database ids.
+ */
+async function nextDevelopmentStep(employeeId, { now = new Date(), days = 7 } = {}) {
+    const me = Number(employeeId);
+    const st = await actionStates(me, { now });
+    if (!st || st.available === false) return { kind: 'none' };
+    const today = todayIso(now);
+    const horizon = todayIso(new Date(now.getTime() + Number(days) * 86400000));
+    const due = st.open
+        .filter(
+            (a) =>
+                a.state !== 'awaiting_validation' &&
+                a.planStatus === 'active' &&
+                a.dueOn &&
+                a.dueOn <= horizon
+        )
+        .sort((x, y) => (x.dueOn < y.dueOn ? -1 : x.dueOn > y.dueOn ? 1 : x.id - y.id));
+    if (due.length) {
+        const a = due[0];
+        return {
+            kind: 'action_due',
+            href: actionHref(a),
+            vars: { title: a.title, dueOn: a.dueOn, overdue: a.dueOn < today },
+        };
+    }
+    const course = await db
+        .get(
+            `SELECT c.title, e.due_at AS "dueAt"
+               FROM lms_enrollments e JOIN lms_courses c ON c.id = e.course_id
+              WHERE e.employee_id = ? AND e.status::text NOT IN ('completed', 'cancelled', 'failed')
+                AND e.due_at IS NOT NULL AND e.due_at::date <= ?::date
+              ORDER BY e.due_at, e.id LIMIT 1`,
+            [me, horizon]
+        )
+        .catch(() => null);
+    if (course) {
+        return {
+            kind: 'training',
+            href: '/employee/my-learning',
+            vars: { title: course.title, dueAt: isoInstant(course.dueAt) },
+        };
+    }
+    const waiting = st.open.find((a) => a.state === 'awaiting_validation');
+    if (waiting) {
+        return { kind: 'validate_wait', href: actionHref(waiting), vars: { title: waiting.title } };
+    }
+    const hasPlan = await db.get(
+        "SELECT 1 AS x FROM idp_plans WHERE employee_id = ? AND status IN ('draft', 'active') LIMIT 1",
+        [me]
+    );
+    if (!hasPlan) {
+        const gap = await db.get(
+            `SELECT g.skill_id AS "skillId", g.skill_name AS "skillName"
+               FROM v_employee_skill_gaps g
+              WHERE g.employee_id = ? AND g.is_assessed = 1 AND g.gap > 0
+              ORDER BY g.is_critical DESC, g.gap DESC, g.skill_name LIMIT 1`,
+            [me]
+        );
+        if (gap) {
+            return {
+                kind: 'gap_no_plan',
+                href: `/v2/idp/propose?skillId=${Number(gap.skillId)}`,
+                vars: { skill: gap.skillName },
+            };
+        }
+    }
+    return { kind: 'none' };
+}
+
 module.exports = {
     ACTION_STATES,
     actionStates,
     dueActions,
     proposals,
     planOutcomes,
+    validatedUpliftsSince,
+    actionsDoneSince,
+    nextDevelopmentStep,
     _stateOf: stateOf,
+    _upliftSourceOf: upliftSourceOf,
 };

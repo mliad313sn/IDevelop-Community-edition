@@ -5,12 +5,24 @@
 
 <%# Wave 12 (D3) — « Next step »: the ONE thing to do now (EmployeeHomeService),
     from the person's own data; the destination is a fixed path. %>
-<% if (typeof nextStep !== 'undefined' && nextStep) { %>
-<section class="card emp-next" id="empNext" aria-labelledby="empNextH">
+<link rel="stylesheet" href="/css/emp-loop.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
+<% if (typeof nextStep !== 'undefined' && nextStep) {
+   const _nx = nextStep.extra || {};
+   const _lk = (typeof lockedCycle !== 'undefined' && lockedCycle) ? lockedCycle : null; %>
+<section class="card emp-next" id="empNext" aria-labelledby="empNextH" data-next="<%= nextStep.key %>">
     <h2 id="empNextH" class="emp-section-h"><i class="fas fa-arrow-right" aria-hidden="true"></i> <%= __('employee:next_title') %></h2>
-    <p class="emp-sub"><%= __('employee:next_' + nextStep.key) %></p>
+    <p class="emp-sub"><%= __('employee:next_' + nextStep.key) %><% if (_nx.title) { %> — <strong><%= _nx.title %></strong><% } %></p>
+    <% if (_nx.date) { %><p class="emp-sub"><%= __('employee:next_due_on', { date: typeof fmtDate === 'function' ? fmtDate(_nx.date) : _nx.date }) %></p><% } %>
+    <% if (nextStep.key === 'dev_gaps_open' && _nx.count) { %><p class="emp-sub"><%= __('employee:next_gaps_count', { count: _nx.count }) %></p><% } %>
+    <% if (nextStep.key === 'sa_locked' && _lk) { %><p class="emp-sub" data-sa-locked="1"><%= __('employee:next_sa_locked_named', { label: _lk.label || _lk.code || '' }) %></p><% } %>
     <a class="btn btn-primary" href="<%= nextStep.href %>"><%= __('employee:next_' + nextStep.key + '_cta') %></a>
 </section>
+<% } %>
+
+<%# « What changed since your last summary » — validated levels, gaps closed,
+    actions and trainings done. Hidden when it could not be established. %>
+<% if (typeof changes !== 'undefined' && changes) { %>
+<%- include('../../partials/emp-changes', { chg: changes }) %>
 <% } %>
 
 <%# 3.23.18 (UX-03) — « À faire ». The rail's first entry lands here, so the page
@@ -108,12 +120,26 @@
   <a href="/employee/self-assessment" class="btn btn-primary emp-firstrun-cta"><i class="fas fa-play" aria-hidden="true"></i> <%= __('employee:firstrun_cta') %></a>
 </div>
 <% } %>
+<%# Where the person stands, in one sentence. Never « 0 skills met » for
+    skills nobody has assessed: with nothing assessed, it says so. %>
+<% if (snapshot.total > 0) {
+   const _assessed = snapshot.total - (snapshot.unmeasured || 0);
+   const _st = !_assessed ? 'none_assessed' : (!snapshot.met ? 'none_met' : (snapshot.met === snapshot.total ? 'all_met' : 'met')); %>
+<p class="emp-status-line" data-st="<%= _st %>">
+  <% if (_st === 'none_assessed') { %><%= snapshot.total === 1 ? __('employee:st_none_assessed_one') : __('employee:st_none_assessed', { total: snapshot.total }) %>
+  <% } else if (_st === 'none_met') { %><%= __('employee:st_none_met', { assessed: _assessed }) %>
+  <% } else if (_st === 'all_met') { %><%= __('employee:st_all_met', { total: snapshot.total }) %>
+  <% } else { %><%= __('employee:st_met', { met: snapshot.met, total: snapshot.total }) %><% } %>
+  <% if (_assessed && snapshot.unmeasured) { %> <%= __('employee:st_unassessed', { count: snapshot.unmeasured }) %><% } %>
+</p>
+<details class="sa-rule emp-status-line" id="empRule"><summary><%= __('employee:sa_rule_sum') %></summary><p><%= __('employee:sa_rule_body') %></p></details>
+<% } %>
 <!-- Snapshot stat cards -->
 <div class="emp-cards<%= nbVisible ? '' : ' emp-cards-3' %>">
   <div class="emp-stat">
     <div class="emp-n" style="color:#2563eb"><%= snapshot.readiness === null ? '—' : snapshot.readiness + '%' %></div>
     <div class="emp-l"><%= __('employee:stat_role_readiness') %></div>
-    <div class="emp-sub"><%= snapshot.met %>/<%= snapshot.total %> <%= __('employee:stat_skills_met') %><% if (snapshot.coverage && snapshot.coverage.expectedSkills > 0 && snapshot.coverage.assessedSkills < snapshot.coverage.expectedSkills) { %> · <span title="<%= __('employee:stat_coverage_title') %>"><%= snapshot.coverage.assessedSkills %>/<%= snapshot.coverage.expectedSkills %> <%= __('employee:stat_coverage_assessed') %></span><% } %></div>
+    <div class="emp-sub"><% if (snapshot.coverage && snapshot.coverage.expectedSkills > 0 && snapshot.coverage.assessedSkills === 0) { %><%= __('employee:stat_none_assessed') %><% } else { %><%= snapshot.met %>/<%= snapshot.total %> <%= __('employee:stat_skills_met') %><% } %><% if (snapshot.coverage && snapshot.coverage.expectedSkills > 0 && snapshot.coverage.assessedSkills < snapshot.coverage.expectedSkills) { %> · <span title="<%= __('employee:stat_coverage_title') %>"><%= snapshot.coverage.assessedSkills %>/<%= snapshot.coverage.expectedSkills %> <%= __('employee:stat_coverage_assessed') %></span><% } %></div>
   </div>
   <div class="emp-stat">
     <div class="emp-n" style="color:<%= snapshot.gaps ? '#b45309' : '#0f8a3c' %>"><%= snapshot.gaps %></div>

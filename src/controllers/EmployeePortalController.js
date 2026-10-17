@@ -240,19 +240,29 @@ class EmployeePortalController {
         } catch (_) {
             /* optional */
         }
-        // « Next step »: the ONE thing to do now, from the person's own data
+        // « Next step »: the ONE thing to do now, from the person's own data;
+        // `lockedCycle` names the locked campaign that refuses every save when
+        // work was left in it. « What changed »: null when it cannot be
+        // established (the block is then hidden, never « nothing new »).
+        const Home = require('../services/EmployeeHomeService');
         let nextStep = null;
+        let lockedCycle = null;
         try {
-            nextStep = await require('../services/EmployeeHomeService').nextStep(employeeId);
+            const h = await Home.home(employeeId);
+            nextStep = h.next;
+            lockedCycle = h.locked;
         } catch (_) {
             nextStep = null;
         }
+        const changes = await Home.changesFor(employeeId).catch(() => null);
         res.render('pages/employee/dashboard', {
             title: req.t ? req.t('employee:dashboard_title') : 'My workspace',
             employee,
             snapshot,
             targetGap,
             nextStep,
+            lockedCycle,
+            changes,
         });
     }
 
@@ -306,7 +316,9 @@ class EmployeePortalController {
                 // the "answered vs unrated" logic works (a genuine saved 0 stays 0). With
                 // `|| 0` a fresh form loaded as 100%-complete — defeating the honest-zero UX.
                 selfRatedLevel: assessmentMap[req.skillId]?.selfRatedLevel ?? null,
-                currentSkillLevel: skillAssessmentMap[req.skillId]?.currentLevel || 0,
+                // A skill nobody ever assessed has NO validated level: null (the
+                // page prints « — »), never a 0 nobody observed.
+                currentSkillLevel: skillAssessmentMap[req.skillId]?.currentLevel ?? null,
                 status: assessmentMap[req.skillId]?.status || 'not_started',
             }));
             // 3.23.21: what each skill and each of its levels mean — two
