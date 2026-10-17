@@ -581,6 +581,64 @@ function capabilityMapModel(rows, tree, opts = {}) {
     };
 }
 
+/** A map cell carrying K2 (a % of 0-100), on the same bins and ▼ as any attain cell. Pure. */
+function k2Cell(base, r) {
+    if (!base || base.state !== 'ok' || !r) return base;
+    if (!isNum(r.value)) return { state: 'masked', n: null };
+    const value = Math.min(1, Math.max(0, Number(r.value) / 100));
+    const shown = displayedValue(value, 'ratio');
+    return {
+        ...base,
+        value,
+        n: r.n,
+        estimator: 'K2',
+        bin: HB.binOf('attain', shown),
+        below: HB.belowMark('attain', shown),
+    };
+}
+
+/**
+ * The capability map's « Whole framework » row (one cell per unit) and its
+ * overall figure print K2 — the mean of the person ratios, the ONE « % of the
+ * requirement » estimator (KpiService.k2ByUnit) — so the map, the readiness
+ * tiles and the site-exposure page never name different « weakest » units.
+ * The pillar and sub-domain cells keep Σ credited ÷ Σ required. The columns
+ * are re-ordered worst first on the K2 values (the pooled column last), the
+ * SAME permutation on every row. Mutates and returns the map. Pure.
+ * @param {object} map capabilityMapModel(...)
+ * @param {{org: object|null, units: Map<string, object>}|null} k2
+ */
+function withK2Margins(map, k2) {
+    if (!map || map.empty || !k2 || !k2.units) return map;
+    for (const c of map.cols || []) {
+        if (c.pooled) continue;
+        c.marg = k2Cell(c.marg, k2.units.get(String(c.key)));
+    }
+    // a unit whose K2 is masked must not be worked out from the others
+    heatComplement([(map.cols || []).map((c) => c.marg)]);
+    if (k2.org) map.total = k2Cell(map.total, k2.org);
+    const ok = (c) => (c.marg && c.marg.state === 'ok' ? c.marg.value : Infinity);
+    const perm = (map.cols || [])
+        .map((c, j) => ({ c, j }))
+        .sort((a, b) =>
+            a.c.pooled || b.c.pooled ? (a.c.pooled ? 1 : -1) : ok(a.c) - ok(b.c) || a.j - b.j
+        )
+        .map((x) => x.j);
+    const reorder = (cells) => (Array.isArray(cells) ? perm.map((j) => cells[j]) : cells);
+    map.cols = reorder(map.cols);
+    for (const r of map.rows || []) {
+        r.cells = reorder(r.cells);
+        for (const ch of r.children || []) ch.cells = reorder(ch.cells);
+    }
+    const bins = new Set(map.binsPresent || []);
+    map.cols.forEach((c) => c.marg && c.marg.bin && bins.add(c.marg.bin));
+    if (map.total && map.total.bin) bins.add(map.total.bin);
+    map.binsPresent = [...bins];
+    map.hasMasked = map.hasMasked || map.cols.some((c) => c.marg && c.marg.state === 'masked');
+    map.estimator = 'K2';
+    return map;
+}
+
 /**
  * The « Whole framework » row of a capability map alone, for the Overview
  * tab: one cell per column and the overall figure. null when the map is
@@ -622,4 +680,5 @@ module.exports = {
     coverageHeatModel,
     capabilityMapModel,
     capabilityMapStrip,
+    withK2Margins,
 };

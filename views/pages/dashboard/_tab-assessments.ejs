@@ -13,10 +13,11 @@
 -%>
 <section class="ds-card" id="ds-freshness" aria-labelledby="ds-fresh-h">
     <h3 id="ds-fresh-h"><%= __('dash:d3_as_fresh_title') %></h3>
-    <% if (!b || !b.expected) { %>
+    <%# kpi-2: the share is over the ASSESSED requirements; the never-assessed ones belong to the coverage %>
+    <% if (!b || !b.assessed) { %>
         <p class="ds-note"><%= __('viz:unmeasured') %></p>
     <% } else { %>
-        <p class="ds-sub"><%= __('dash:d3_as_fresh_sub', { fresh: _F.num(b.fresh, 0), expected: _F.num(b.expected, 0), stale: _F.num(b.stale, 0), unassessed: _F.num(b.unassessed, 0) }) %></p>
+        <p class="ds-sub"><%= __('dash:d3_as_fresh_sub', { fresh: _F.num(b.fresh, 0), assessed: _F.num(b.assessed, 0), expected: _F.num(b.expected, 0), stale: _F.num(b.stale, 0), unassessed: _F.num(b.unassessed, 0) }) %></p>
         <% if ((Fr.bySite || []).length > 1) { %>
         <div class="ds-table-wrap"><table class="ds-table">
             <thead><tr><th scope="col"><%= __('dash:d3_col_site') %></th><th scope="col" class="num"><%= __('dash:d3_col_people') %></th><th scope="col" class="num">&lt; 12</th><th scope="col" class="num">&ge; 12</th></tr></thead>

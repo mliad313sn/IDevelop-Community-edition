@@ -107,8 +107,14 @@ async function snapshots() {
             `INSERT INTO kpi_snapshots (snapshot_date, scope_type, scope_id, total_employees,
                                         role_ready_count, not_ready_count, assessment_coverage,
                                         certs_expired, safety_fit_pct, safety_fit_n, kpi_contract)
-             VALUES (CURRENT_DATE - ?::int, 'org', 0, 80, ?, ?, 64.2, ?, 96, 25, 'kpi-1')`,
-            [days, ready, notReady, expired]
+             VALUES (CURRENT_DATE - ?::int, 'org', 0, 80, ?, ?, 64.2, ?, 96, 25, ?)`,
+            [
+                days,
+                ready,
+                notReady,
+                expired,
+                require('../../src/services/KpiService').CONTRACT_VERSION,
+            ]
         );
     await ins(0, 36, 21, 1);
     await ins(30, 34, 23, 4);
@@ -332,7 +338,8 @@ suite('department snapshots (rolled back)', () => {
                   WHERE snapshot_date = CURRENT_DATE AND scope_type = 'department' ORDER BY scope_id`
             );
             expect(got.map((x) => Number(x.id))).toEqual(deps.map((x) => Number(x.id)));
-            for (const g of got) expect(g.c).toBe('kpi-1');
+            for (const g of got)
+                expect(g.c).toBe(require('../../src/services/KpiService').CONTRACT_VERSION);
             expect(await job.tick()).toEqual({ captured: 0, skipped: 'already_today' });
         });
     });

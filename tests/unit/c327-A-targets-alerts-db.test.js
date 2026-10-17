@@ -329,13 +329,17 @@ suite('KPI alert engine (rolled back, KpiService stubbed)', () => {
             const r3 = await A.run({ today: '2026-10-06' });
             expect(r3.worsened).toBe(2);
 
-            // back to normal, once
+            // back to normal, once — after TWO OK passes (hysteresis, kpi-2):
+            // the first OK pass holds the alert and says nothing
             state.k8 = 0;
             N.notify.mockClear();
-            const r4 = await A.run({ today: '2026-10-07' });
+            const r4a = await A.run({ today: '2026-10-07' });
+            expect(r4a.raised + r4a.worsened + r4a.recovered).toBe(0);
+            expect(N.notify).not.toHaveBeenCalled();
+            const r4 = await A.run({ today: '2026-10-08' });
             expect(r4.recovered).toBe(2);
             expect(calls().every((m) => m.kind === 'kpi.recovered')).toBe(true);
-            const r5 = await A.run({ today: '2026-10-08' });
+            const r5 = await A.run({ today: '2026-10-09' });
             expect(r5.recovered).toBe(0);
 
             const ev = await db.get(

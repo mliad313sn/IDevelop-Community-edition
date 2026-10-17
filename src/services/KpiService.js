@@ -56,8 +56,14 @@ const P = require('../utils/kpiPredicates');
  * Version of the KPI definitions. Written on every snapshot row
  * (kpi_snapshots.kpi_contract, migration 184): a change across versions is
  * never shown as a movement.
+ *   kpi-1  the first definitions of the KPI module.
+ *   kpi-2  the capability rule (no level credited above the requirement,
+ *          src/utils/capability.js); assessment freshness over the ASSESSED
+ *          requirements; K14 a Kaplan–Meier median (people not yet ready are
+ *          censored, not dropped); one K2 per unit for the capability map.
+ *          Movements and « What changed » restart from the first kpi-2 snapshot.
  */
-const CONTRACT_VERSION = 'kpi-1';
+const CONTRACT_VERSION = 'kpi-2';
 const { STATUS, SMALL_N, READINESS: R } = P;
 
 /**
@@ -549,6 +555,116 @@ async function k2AvgReadiness(scope) {
     out.coverage = coverageOf(people).pct;
     if (n < SMALL_N) return { ...out, value: null, rawValue: mean, status: STATUS.SMALL_N };
     return { ...out, value: mean, rawValue: mean, status: P.statusBand(mean, 'K2', { threshold }) };
+}
+
+/**
+ * K1 by site « with a comparable role mix » (indirect standardisation on the
+ * organisation's role rates): a site staffed with roles that are hard to be
+ * ready in is not « worst » because of its role mix.
+ *   expected(site) = Σ over the site's K1 denominator of rate_org(role) ÷ n(site)
+ * over K1's own denominator (people « ready » or « not ready »). Computable only
+ * when the site has at least 5 people in that denominator AND every role behind
+ * it has an organisation rate on at least 5 people; otherwise state 'na'
+ * (« not computable »), never a guess.
+ * @returns {Promise<Map<string, {expected:number|null, observed:number|null, n:number, state:'ok'|'na'}>>}
+ *   keyed by site id, 'none' = people without a site
+ */
+async function k1RoleExpected(scope) {
+    const { pop, people } = await readinessBundle(scope);
+    const out = new Map();
+    if (!pop.ids.length) return out;
+    const den = people.filter((p) => p.state === R.READY || p.state === R.NOT_READY);
+    const keyOf = (v) => (v === null || v === undefined ? 'none' : String(v));
+    const role = new Map();
+    for (const p of den) {
+        const k = keyOf(p.roleId);
+        const r = role.get(k) || { ready: 0, n: 0 };
+        r.n++;
+        if (p.state === R.READY) r.ready++;
+        role.set(k, r);
+    }
+    const bySite = new Map();
+    for (const p of den) {
+        const k = keyOf(p.siteId);
+        if (!bySite.has(k)) bySite.set(k, []);
+        bySite.get(k).push(p);
+    }
+    for (const [k, list] of bySite) {
+        const n = list.length;
+        const ready = list.filter((p) => p.state === R.READY).length;
+        const observed = round1((100 * ready) / n);
+        const rates = list.map((p) => role.get(keyOf(p.roleId)));
+        if (n < SMALL_N || rates.some((r) => !r || r.n < SMALL_N)) {
+            out.set(k, { expected: null, observed: n < SMALL_N ? null : observed, n, state: 'na' });
+            continue;
+        }
+        const exp = rates.reduce((a, r) => a + r.ready / r.n, 0) / n;
+        out.set(k, { expected: round1(100 * exp), observed, n, state: 'ok' });
+    }
+    return out;
+}
+
+/** The org-unit column of a K2-per-unit read (fixed whitelist: never caller text in SQL). */
+const K2_UNIT_COLUMNS = Object.freeze({
+    site: 'e.site_id',
+    department: 'e.department_id',
+    service: 'e.service_id',
+});
+
+/**
+ * K2 per org unit: the ONE « demonstrated level as a % of the requirement »
+ * estimator (the mean of the person ratios over their assessed requirements,
+ * credited at most at the requirement). The capability map's « Whole
+ * framework » row and column print it, so no surface ranks units on another
+ * estimator. unit = site | department | service.
+ * @returns {Promise<{org: object|null, units: Map<string, {value, rawValue, n, status}>}>}
+ *   unit key 'none' = people without that unit; fewer than 5 people ⇒ value null, 'small_n'.
+ */
+async function k2ByUnit(scope, unit = 'site') {
+    const col = Object.prototype.hasOwnProperty.call(K2_UNIT_COLUMNS, unit)
+        ? K2_UNIT_COLUMNS[unit]
+        : null;
+    if (!col) throw new Error('KpiService: unknown unit');
+    const { pop, threshold, people } = await readinessBundle(scope);
+    const units = new Map();
+    if (!pop.ids.length) return { org: null, units };
+    const rows = await db.all(
+        `SELECT e.id AS "id", ${col} AS "u" FROM employees e WHERE e.id = ANY(?)`,
+        [pop.ids]
+    );
+    const unitOf = new Map(
+        (rows || []).map((r) => [
+            Number(r.id),
+            r.u === null || r.u === undefined ? 'none' : String(r.u),
+        ])
+    );
+    const acc = new Map();
+    let sum = 0;
+    let n = 0;
+    for (const p of people) {
+        if (!(p.facts && p.facts.assessed > 0 && p.readinessAssessed != null)) continue;
+        const k = unitOf.get(p.id) || 'none';
+        const a = acc.get(k) || { s: 0, n: 0 };
+        a.s += p.readinessAssessed;
+        a.n += 1;
+        acc.set(k, a);
+        sum += p.readinessAssessed;
+        n += 1;
+    }
+    const cell = (total, count) => {
+        if (!count) return { value: null, rawValue: null, n: 0, status: STATUS.NOT_MEASURED };
+        const mean = round1(total / count);
+        if (count < SMALL_N)
+            return { value: null, rawValue: mean, n: count, status: STATUS.SMALL_N };
+        return {
+            value: mean,
+            rawValue: mean,
+            n: count,
+            status: P.statusBand(mean, 'K2', { threshold }),
+        };
+    };
+    for (const [k, a] of acc) units.set(k, cell(a.s, a.n));
+    return { org: cell(sum, n), units, threshold };
 }
 
 // ---------------------------------------------------------------------------
@@ -1766,8 +1882,48 @@ function firstReadyDay(reqs, events, startDay, threshold) {
 }
 
 /**
+ * Kaplan–Meier quantile of a duration with right-censoring (pure). `events`
+ * are the durations that ended (a person reached « ready »), `censored` the
+ * durations still running (a person not yet ready, followed up to today).
+ * Dropping the censored ones biases the median DOWN: the slow cases are
+ * exactly those still open. Returns the smallest event time t with
+ * S(t) <= 1 − q, or null when the survival curve never gets there (« beyond »
+ * the longest follow-up). Events come before censorings at the same time.
+ */
+function kmQuantile(events, censored, q = 0.5) {
+    const pts = [];
+    for (const d of events || []) if (Number.isFinite(Number(d))) pts.push([Number(d), 1]);
+    for (const d of censored || []) if (Number.isFinite(Number(d))) pts.push([Number(d), 0]);
+    if (!pts.length) return null;
+    pts.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+    let atRisk = pts.length;
+    let S = 1;
+    let i = 0;
+    while (i < pts.length) {
+        const t = pts[i][0];
+        let d = 0;
+        let c = 0;
+        while (i < pts.length && pts[i][0] === t) {
+            if (pts[i][1]) d++;
+            else c++;
+            i++;
+        }
+        if (d) {
+            S *= 1 - d / atRisk;
+            if (S <= 1 - q + 1e-12) return round1(t);
+        }
+        atRisk -= d + c;
+    }
+    return null;
+}
+
+/**
  * K14 Time to competence: median days from role start to the first "ready"
- * (K1 rule on the current role, replayed from assessment_history). Needs a
+ * (K1 rule on the current role, replayed from assessment_history), a
+ * Kaplan–Meier median: people with a start date who are not ready yet are
+ * CENSORED at their time in role so far, never dropped. When fewer than half
+ * have become ready the median is not reached: value null, 'not_measured',
+ * breakdown.medianBeyond = the longest follow-up (« beyond N days »). Needs a
  * CAPTURED role start date (employees.role_start_date, migration 188), never
  * imputed: it is stamped going forward by a role change (database trigger,
  * whatever the path: the employee form, a move, an import, the HRIS sync) and
@@ -1854,18 +2010,33 @@ async function k14TimeToCompetence(scope) {
     const breakdown = { captured, reached: n, notYet: captured - n, minN: P.K14_MIN_N };
     if (!n) return { ...unmeasured(captured), breakdown };
     const d = drill.map((x) => x.days).sort((a, b) => a - b);
-    const median =
-        d.length % 2
-            ? d[(d.length - 1) / 2]
-            : Math.round((d[d.length / 2 - 1] + d[d.length / 2]) / 2);
+    const reached = new Set(drill.map((x) => x.employeeId));
+    const today = dayOf(await dbToday());
+    // censored: still on the way (a role without requirements can never be
+    // « ready », so it is outside the duration altogether)
+    const cens = people
+        .filter(
+            (p) =>
+                !reached.has(Number(p.id)) &&
+                dayOf(p.start) !== null &&
+                (reqsByRole.get(Number(p.roleId)) || []).length > 0
+        )
+        .map((p) => Math.max(0, Math.round((today - dayOf(p.start)) / dayMs)));
+    breakdown.censored = cens.length;
+    const km = kmQuantile(d, cens, 0.5);
+    if (km === null && cens.length) breakdown.medianBeyond = Math.max(...d, ...cens);
+    const median = km === null ? null : Math.round(km);
     const small = n < P.K14_MIN_N;
+    let status = null;
+    if (small) status = STATUS.SMALL_N;
+    else if (median === null) status = STATUS.NOT_MEASURED;
     return {
         ...out,
         value: small ? null : median,
         rawValue: median,
         numerator: null,
         n,
-        status: small ? STATUS.SMALL_N : null,
+        status,
         breakdown,
         drill,
     };
@@ -2069,13 +2240,15 @@ async function certExpiryCalendar(scope) {
 const FRESHNESS_MONTHS = 12;
 
 /**
- * Assessment freshness: the share of the EXPECTED requirements (the full
- * requirement set of the scope, as K3) whose latest evidence — an official
- * assessment, its history or an approved self-assessment — is under 12
- * months old. « Stale » = assessed requirements whose latest evidence is
- * older; never-assessed requirements are neither fresh nor stale (K3 counts
- * them). Fewer than 5 people with requirements ⇒ no %, 'small_n'. bySite:
- * stale / assessed / expected per site, the « No site » row apart.
+ * Assessment freshness: the share of the ASSESSED requirements of the scope
+ * whose latest evidence — an official assessment, its history or an approved
+ * self-assessment — is under 12 months old (kpi-2). Coverage is K3's job:
+ * over the EXPECTED requirements this figure equalled K3 on a base younger
+ * than the window, and the health score counted coverage twice. « Stale » =
+ * assessed requirements whose latest evidence is older; never-assessed
+ * requirements are neither fresh nor stale (K3 counts them); nothing assessed
+ * ⇒ not measured. Fewer than 5 people with requirements ⇒ no %, 'small_n'.
+ * bySite: stale / assessed / expected per site, the « No site » row apart.
  */
 async function assessmentFreshness(scope) {
     const pop = await resolvePopulation(scope);
@@ -2086,18 +2259,24 @@ async function assessmentFreshness(scope) {
              SELECT g.employee_id, g.skill_id, g.is_assessed
                FROM v_employee_skill_gaps g
               WHERE g.employee_id = ANY(?)
+         ),
+         -- one grouped pass per evidence table (same semantics as three
+         -- correlated sub-queries per requirement, a fraction of the cost)
+         sa AS (
+             SELECT employee_id, skill_id, MAX(assessed_at) AS at FROM skill_assessments
+              WHERE employee_id = ANY(?) GROUP BY employee_id, skill_id
+         ), ah AS (
+             SELECT employee_id, skill_id, MAX(assessed_at) AS at FROM assessment_history
+              WHERE employee_id = ANY(?) GROUP BY employee_id, skill_id
+         ), sf AS (
+             SELECT employee_id, skill_id, MAX(created_at) AS at FROM self_assessments
+              WHERE employee_id = ANY(?) AND status = 'approved' GROUP BY employee_id, skill_id
          ), ev AS (
-             SELECT r.employee_id, r.is_assessed,
-                    GREATEST(
-                        (SELECT MAX(sa.assessed_at) FROM skill_assessments sa
-                          WHERE sa.employee_id = r.employee_id AND sa.skill_id = r.skill_id),
-                        (SELECT MAX(ah.assessed_at) FROM assessment_history ah
-                          WHERE ah.employee_id = r.employee_id AND ah.skill_id = r.skill_id),
-                        (SELECT MAX(sf.created_at) FROM self_assessments sf
-                          WHERE sf.employee_id = r.employee_id AND sf.skill_id = r.skill_id
-                            AND sf.status = 'approved')
-                    ) AS last_at
+             SELECT r.employee_id, r.is_assessed, GREATEST(sa.at, ah.at, sf.at) AS last_at
                FROM req r
+               LEFT JOIN sa ON sa.employee_id = r.employee_id AND sa.skill_id = r.skill_id
+               LEFT JOIN ah ON ah.employee_id = r.employee_id AND ah.skill_id = r.skill_id
+               LEFT JOIN sf ON sf.employee_id = r.employee_id AND sf.skill_id = r.skill_id
          )
          SELECT e.site_id AS "siteId",
                 COUNT(*)::int AS "expected",
@@ -2110,7 +2289,7 @@ async function assessmentFreshness(scope) {
                                         OR ev.last_at < CURRENT_DATE - make_interval(months => ?::int)))::int AS "stale"
            FROM ev JOIN employees e ON e.id = ev.employee_id
           GROUP BY e.site_id`,
-        [pop.ids, FRESHNESS_MONTHS, FRESHNESS_MONTHS]
+        [pop.ids, pop.ids, pop.ids, pop.ids, FRESHNESS_MONTHS, FRESHNESS_MONTHS]
     );
     const siteName = new Map(pop.rows.map((r) => [r.siteId, r.siteName]));
     let expected = 0;
@@ -2143,7 +2322,7 @@ async function assessmentFreshness(scope) {
             (a.noSite === b.noSite ? 0 : a.noSite ? 1 : -1) ||
             String(a.siteName || '').localeCompare(String(b.siteName || ''))
     );
-    const r = pctResult('K3', fresh, expected, people, {
+    const r = pctResult('K3', fresh, assessed, people, {
         threshold,
         extra: {
             threshold,
@@ -2476,6 +2655,9 @@ module.exports = {
     k12Drift,
     k13Uplift,
     k14TimeToCompetence,
+    kmQuantile,
+    k1RoleExpected,
+    k2ByUnit,
     k15LevelUps,
     k16ActivePlans,
     approvedOutsideCampaign,

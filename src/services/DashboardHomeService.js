@@ -904,6 +904,67 @@ function globalGauge(profile, threshold = 80) {
     return out;
 }
 
+/**
+ * « Measurability » under the health score: on how many people of the scope
+ * the score is actually computed — K1's own denominator (people with a
+ * verdict, « ready » or « not ready ») — with, apart and never folded into
+ * one « not measurable » figure: the people whose role has no requirement,
+ * the partly assessed and the « not yet assessed » (measurable, just not
+ * assessed yet). The health axes not measured yet are named. Counts only,
+ * never a name; fewer than 5 people ⇒ counts, no %. `complete` only at 100 %:
+ * the chip is coloured below it and calm at it. Pure.
+ * @returns {null|{population, scored, pct, complete, smallN, noRequirement,
+ *          partial, notAssessed, axesMissing: string[], emptyScope?: true}}
+ */
+function measurability(k1, profile) {
+    if (!k1) return null;
+    const missing = ((profile && profile.axes) || [])
+        .filter(
+            (a) => a.state === 'unmeasured' || a.state === 'not_configured' || a.state === 'small_n'
+        )
+        .map((a) => a.key);
+    if (k1.emptyScope) return { emptyScope: true, population: 0, axesMissing: missing };
+    const b = k1.breakdown || {};
+    const population = Number(b.population) || 0;
+    if (!population) return { emptyScope: true, population: 0, axesMissing: missing };
+    const scored = Math.max(0, Math.min(population, Number(k1.denominator) || 0));
+    const smallN = population < SMALL_N;
+    return {
+        population,
+        scored,
+        pct: smallN ? null : round1((100 * scored) / population),
+        complete: scored === population,
+        smallN,
+        noRequirement: Number(b.noRequirement) || 0,
+        partial: Number(b.partial) || 0,
+        notAssessed: Number(b.notAssessed) || 0,
+        axesMissing: missing,
+    };
+}
+
+/**
+ * The « comparable role mix » rows beside K1 by site (KpiService.k1RoleExpected),
+ * in the order of the K1 ranking; sites with nothing to say are left out. Pure.
+ */
+function expectedRows(groups, exp) {
+    if (!exp || typeof exp.get !== 'function') return [];
+    return (groups || [])
+        .map((g) => {
+            const e = exp.get(g.none ? 'none' : String(g.id));
+            if (!e) return null;
+            return {
+                key: g.key,
+                label: g.label,
+                none: !!g.none,
+                observed: g.value,
+                expected: e.expected,
+                state: e.state,
+                n: e.n,
+            };
+        })
+        .filter(Boolean);
+}
+
 /** The bell curve: hidden below 20 people; the reference normal curve has the same mean and sd. */
 const BELL_MIN_N = 20;
 function bellCurve(values, scale = { min: 0, max: 100, width: 10 }) {
@@ -999,9 +1060,17 @@ function nineBoxPie(nb) {
  * The reconstructed trend: K1 and K3 replayed month by month from the dated
  * assessments of the CURRENT population (assumption: the same people all
  * along). An ESTIMATE, drawn dashed and labelled; never a delta. A month
- * before any evidence, or with fewer than 5 people behind it, is a gap. Pure.
+ * before any evidence, or with fewer than 5 people behind it, is a gap.
+ * The CURRENT month is not reconstructed when `live` is given: it is the live
+ * K1 / K3 of the tiles beside the chart (certificate lapses, approved
+ * self-assessments, the same rules), so the dashed line ends exactly on the
+ * tile value instead of a little away from it (a move that did not happen).
+ * Pure.
  */
-function backcastSeries({ reqs, events }, { threshold = 80, months = 12, now = Date.now() } = {}) {
+function backcastSeries(
+    { reqs, events },
+    { threshold = 80, months = 12, now = Date.now(), live = null } = {}
+) {
     const Kpi = K();
     const ev = new Map();
     for (const x of events || []) {
@@ -1077,6 +1146,13 @@ function backcastSeries({ reqs, events }, { threshold = 80, months = 12, now = D
                     ? round1((100 * assessed) / expected)
                     : null,
         });
+    }
+    if (live && out.length) {
+        const last = out[out.length - 1];
+        const val = (r) => (r && !r.emptyScope && isNum(r.value) ? Number(r.value) : null);
+        if (live.K1 !== undefined) last.K1 = val(live.K1);
+        if (live.K3 !== undefined) last.K3 = val(live.K3);
+        last.live = true;
     }
     return out;
 }
@@ -1514,12 +1590,18 @@ async function tabModel(ctx, tabId, { query = {}, t } = {}) {
             }
             const mv = current ? await movements(ctx, current) : { series: [] };
             m.recorded = (mv.series || []).filter((p) => isNum(p.K1) || isNum(p.K3));
-            m.reconstructed = backcastSeries(await backcastInputs(ctx.pop.ids), { threshold });
+            m.reconstructed = backcastSeries(await backcastInputs(ctx.pop.ids), {
+                threshold,
+                live: { K1: k1, K3: k3 },
+            });
         }
+        // « Measurability »: on how many people the score above is computed
+        m.measurability = measurability(k1, m.profile);
         if (want('capStrip')) {
             m.groupUnit = groupUnit(ctx);
             m.mapCube = await capabilityMap(ctx.pop.ids, m.groupUnit);
             m.mapTree = await frameworkTree();
+            m.mapK2 = await Kpi.k2ByUnit(s, m.groupUnit);
             m.stripOnly = true;
         }
         if (want('siteStatus') && ctx.caps.multiSite) {
@@ -1545,9 +1627,14 @@ async function tabModel(ctx, tabId, { query = {}, t } = {}) {
         m.groupUnit = unit;
         const byGroup = await Kpi.computeBlock('k1ByGroup', s, unit);
         m.byGroup = byGroup;
+        // K1 by site « with a comparable role mix »: the organisation's role
+        // rates applied to each site's roles, beside the observed rate
+        if (byGroup && unit === 'site' && ctx.caps.multiSite)
+            m.expected = expectedRows(byGroup.rows, await Kpi.k1RoleExpected(s));
         if (want('capabilityMap')) {
             m.mapCube = await capabilityMap(ctx.pop.ids, unit);
             m.mapTree = await frameworkTree();
+            m.mapK2 = await Kpi.k2ByUnit(s, unit);
         }
         if (want('compare') && byGroup && byGroup.rows.length >= 2) {
             const options = unit === 'site' ? ctx.opts.sites : ctx.opts.departments;
@@ -1641,6 +1728,7 @@ async function tabModel(ctx, tabId, { query = {}, t } = {}) {
             unitLabel,
             hrefOf: (unitKey, part) => domHref(ctx, m.groupUnit, unitKey, part),
         });
+        H.withK2Margins(map, m.mapK2);
         if (m.stripOnly) m.capStrip = H.capabilityMapStrip(map);
         else m.capabilityMap = map.empty ? null : map;
     }
@@ -1649,6 +1737,7 @@ async function tabModel(ctx, tabId, { query = {}, t } = {}) {
     if (m.coverage) m.coverageHeat = H.coverageHeatModel(m.coverage);
     delete m.mapCube;
     delete m.mapTree;
+    delete m.mapK2;
     delete m.stripOnly;
     delete m.deficitCube;
     return m;
@@ -1927,6 +2016,8 @@ module.exports = {
     bellCurve,
     nineBoxPie,
     backcastSeries,
+    measurability,
+    expectedRows,
     defaultCompare,
     pairProfiles,
     rankSkillGaps,

@@ -38,7 +38,9 @@
   var tipLines = function (c) {
       var l = [];
       if (c.state === 'ok') {
-          l.push(__('viz:heat.tip_level', { a: _L1(c.actual), r: _L1(c.required), p: _P0(c.value) }));
+          // the « Whole framework » cells carry K2 (mean of the people, capped at 100 %)
+          if (c.estimator === 'K2') l.push(__('viz:heat.tip_k2', { p: _P0(c.value) }));
+          else l.push(__('viz:heat.tip_level', { a: _L1(c.actual), r: _L1(c.required), p: _P0(c.value) }));
           l.push(__('viz:heat.tip_n', { n: _N(c.n) }));
           if (c.href) l.push(__('viz:heat.tip_drill'));
       } else if (c.state === 'masked') l.push(__('viz:heat.tip_masked'));
@@ -128,6 +130,7 @@
         <% if (_H.hasUnmeasured) { %><span class="vh-key"><span class="vh-sw viz-hatch" aria-hidden="true"></span><%= __('viz:unmeasured') %></span><% } %>
         <% if (_H.hasNa) { %><span class="vh-key"><span class="vh-sw vh-sw--na" aria-hidden="true">·</span><%= __('viz:heat.map_na') %></span><% } %>
     </p>
+    <% if (_H.estimator === 'K2') { %><p class="vh-legend" data-estimator="K2"><%= __('viz:heat.map_k2_note', { row: totalLabel }) %></p><% } %>
     <div role="tooltip" class="vh-tip" id="<%= _id %>-tip" hidden></div>
     <details class="viz-data">
         <summary class="viz-data-toggle btn btn-sm btn-secondary"><%= __('viz:chart.toggle_show') %></summary>

@@ -45,6 +45,13 @@ describe('evalK1', () => {
         });
         expect(S.evalK1(k1(75, 'watch'), k3(90), { value: 75 })).toMatchObject({ level: 0 });
     });
+    test('decided on the whole % the tile prints: 79.6 reads « 80 % », not below 80', () => {
+        expect(S.evalK1(k1(79.6, 'watch'), k3(90), { value: 80 })).toMatchObject({ level: 0 });
+        expect(S.evalK1(k1(79.4, 'watch'), k3(90), { value: 80 })).toMatchObject({
+            state: 'below_target',
+            level: 1,
+        });
+    });
     test('coverage below 50 % reports « coverage too low » instead of any K1 verdict', () => {
         expect(S.evalK1(k1(20, 'at_risk'), k3(42), { value: 80 })).toMatchObject({
             state: 'coverage_low',
@@ -125,8 +132,23 @@ describe('transition', () => {
         expect(S.transition(at(1, 3), ev(2))).toMatchObject({ transition: null, peakLevel: 3 });
         expect(S.transition(at(2, 3), ev(3))).toMatchObject({ transition: null, peakLevel: 3 });
     });
-    test('leaving the band is recovered; nothing measured is never a recovery', () => {
-        expect(S.transition(at(2), ev(0))).toMatchObject({ transition: 'recovered', peakLevel: 0 });
+    test('leaving the band is recovered after TWO OK passes; nothing measured is never a recovery', () => {
+        // the first OK pass holds the alert (hysteresis): no message, the level is kept
+        expect(S.transition(at(2), ev(0))).toMatchObject({
+            transition: null,
+            persist: true,
+            peakLevel: 2,
+            hold: { state: 'recovering', level: 2 },
+        });
+        const holding = { level: 2, peakLevel: 2, state: 'recovering' };
+        expect(S.transition(holding, ev(0))).toMatchObject({
+            transition: 'recovered',
+            peakLevel: 0,
+        });
+        // a relapse while holding is not a new « raised », and resets the hold
+        const relapse = S.transition(holding, ev(2));
+        expect(relapse.transition).toBeNull();
+        expect(relapse.hold).toBeUndefined();
         expect(S.transition(at(2), { measured: false })).toMatchObject({
             transition: null,
             persist: false,

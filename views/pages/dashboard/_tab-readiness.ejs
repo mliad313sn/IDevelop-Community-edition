@@ -31,6 +31,18 @@
     } }) %>
     <% } %>
 </div>
+<% var _X = P.expected || []; if (_X.length) { %>
+<details class="ds-card" id="ds-expected">
+    <summary><strong><%= __('dash:d3_rd_exp_title') %></strong></summary>
+    <p class="ds-sub"><%= __('dash:d3_rd_exp_sub') %></p>
+    <div class="ds-table-wrap"><table class="ds-table" id="ds-expected-table">
+        <thead><tr><th scope="col"><%= _unitName %></th><th scope="col" class="num"><%= __('dash:d3_rd_exp_observed') %></th><th scope="col" class="num"><%= __('dash:d3_rd_exp_expected') %></th></tr></thead>
+        <tbody>
+        <% _X.forEach(function (x) { %><tr data-state="<%= x.state %>"><th scope="row"><%= x.none ? _noneLabel : (x.label || '—') %></th><td class="num"><%= _num(x.observed) ? _F.pct(x.observed, 1) : '—' %></td><td class="num"><% if (x.state === 'ok' && _num(x.expected)) { %><%= _F.pct(x.expected, 1) %><% } else { %><span class="ds-axis-state"><%= __('dash:d3_rd_exp_na') %></span><% } %></td></tr><% }); %>
+        </tbody>
+    </table></div>
+</details>
+<% } %>
 
 <% if (C) { %>
 <h3 class="ds-section-h"><%= __('dash:d3_rd_h_compare') %></h3>
