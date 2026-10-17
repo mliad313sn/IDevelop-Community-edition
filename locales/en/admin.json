@@ -465,6 +465,8 @@
   "lc_succession": "Succession",
   "lc_view_succession": "View succession candidates for this role",
   "lc_no_expats": "No expatriate-held positions in scope (or nationalities not yet recorded).",
+  "lc_masked_small": "Fewer than 5 people: masked",
+  "lc_masked_complement": "Also masked, so that a small group cannot be worked out from the total",
   "setup_title": "Getting started",
   "setup_help": "Complete these steps to get {{brand}} ready for your organisation. Each step links to the right screen.",
   "setup_complete": "Setup complete — your platform is ready.",
@@ -1174,6 +1176,10 @@
     "manage_kpi_targets": {
       "label": "Manage indicator targets",
       "desc": "Set, change or withdraw the target of an indicator for a site of the assigned scope (the whole organisation needs an unrestricted scope). Every decision is dated, has a reason and is kept."
+    },
+    "view_local_content": {
+      "label": "View the local content (nationalisation) report",
+      "desc": "Open the local content report of the assigned scope: nationals and expatriates by country, department and site (groups of fewer than 5 people are masked), and the expatriate-held positions. Only while the local content module is on."
     }
   },
   "ap_extend_self": "You cannot extend your own access. Ask another administrator to re-certify it.",

@@ -361,8 +361,12 @@ const MODULE_ADDITIONS = {
  *    sidebar footer for the profile);
  *  - a manager's /employee/dashboard (« À faire »): replaced by « À traiter »,
  *    which lists the manager's own actions too;
- *  - read-only accounts: the work queues (they cannot act on them).
+ *  - read-only accounts: the work queues (they cannot act on them);
+ *  - the local content report (nationality by unit): a SuperAdmin or an
+ *    admin holding view_local_content only — the page itself refuses the
+ *    others now, so this one is a removal of access, not only of a link.
  */
+const LOCAL_CONTENT = '/reports/local-content';
 const READ_ONLY_QUEUES = [
     '/movements',
     '/supervisor/self-assessment-reviews',
@@ -375,11 +379,11 @@ const READ_ONLY_QUEUES = [
 ];
 const REMOVED = {
     employee: ['/notifications', '/account', '/employee/my-data'],
-    manager: ['/notifications', '/employee/dashboard', '/employee/my-data'],
-    localadmin_ops: ['/notifications'],
-    localadmin_people: ['/notifications'],
-    localadmin_none: ['/notifications'],
-    viewer: ['/notifications', ...READ_ONLY_QUEUES],
+    manager: ['/notifications', '/employee/dashboard', '/employee/my-data', LOCAL_CONTENT],
+    localadmin_ops: ['/notifications', LOCAL_CONTENT],
+    localadmin_people: ['/notifications', LOCAL_CONTENT],
+    localadmin_none: ['/notifications', LOCAL_CONTENT],
+    viewer: ['/notifications', ...READ_ONLY_QUEUES, LOCAL_CONTENT],
     superadmin: ['/notifications'],
 };
 

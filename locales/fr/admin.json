@@ -465,6 +465,8 @@
   "lc_succession": "Succession",
   "lc_view_succession": "Voir les candidats à la succession pour ce poste",
   "lc_no_expats": "Aucun poste tenu par un expatrié dans le périmètre (ou nationalités non renseignées).",
+  "lc_masked_small": "Moins de 5 personnes : masqué",
+  "lc_masked_complement": "Masqué aussi, pour qu’un petit groupe ne puisse pas se déduire du total",
   "setup_title": "Premiers pas",
   "setup_help": "Complétez ces étapes pour préparer {{brand}} pour votre organisation. Chaque étape renvoie au bon écran.",
   "setup_complete": "Configuration terminée — votre plateforme est prête.",
@@ -1174,6 +1176,10 @@
     "manage_kpi_targets": {
       "label": "Gérer les cibles des indicateurs",
       "desc": "Fixer, modifier ou retirer la cible d’un indicateur pour un site de son périmètre (l’organisation entière demande un périmètre sans restriction). Chaque décision est datée, motivée et conservée."
+    },
+    "view_local_content": {
+      "label": "Voir le rapport de contenu local (nationalisation)",
+      "desc": "Ouvrir le rapport de contenu local de son périmètre : nationaux et expatriés par pays, service et site (les groupes de moins de 5 personnes sont masqués), et les postes tenus par des expatriés. Seulement quand le module de contenu local est activé."
     }
   },
   "ap_extend_self": "Vous ne pouvez pas prolonger votre propre accès. Demandez à un autre administrateur de le recertifier.",

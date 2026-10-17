@@ -42,7 +42,8 @@
     <%= __('admin:lc_help') %>
 </div>
 
-<% if (!home) { %>
+<%# Only when people really have no operating country (a site without a country, no fallback). %>
+<% if (!home && kpi && Number(kpi.noCountry) > 0) { %>
     <div class="card" style="padding:14px 18px;border-left:3px solid var(--amber,#F5A623);margin-bottom:1.25rem;">
         <i class="fas fa-triangle-exclamation" aria-hidden="true" style="color:var(--amber,#F5A623);"></i>
         <%= __('admin:lc_no_home_country') %> <a href="/app-settings"><%= __('admin:lc_open_settings') %></a>
@@ -67,9 +68,13 @@
                     <% (typeof byCountry !== 'undefined' ? byCountry : []).forEach(function(r){ %>
                         <tr>
                             <td><strong><%= r.name %></strong></td>
+                            <% if (r.masked) { %>
+                            <td colspan="3" class="lc-muted"><%= __(r.masked === 'small' ? 'admin:lc_masked_small' : 'admin:lc_masked_complement') %></td>
+                            <% } else { %>
                             <td style="text-align:center;"><%= r.headcount %></td>
                             <td><%- natBar(r.nationals, r.expats) %></td>
                             <td style="text-align:center;<%= r.expats>0?'color:var(--amber-text);font-weight:600;':'' %>"><%= r.expats %></td>
+                            <% } %>
                         </tr>
                     <% }); %>
                 </tbody>
@@ -85,9 +90,13 @@
                     <% (byDepartment||[]).forEach(function(r){ %>
                         <tr>
                             <td><strong><%= r.name %></strong></td>
+                            <% if (r.masked) { %>
+                            <td colspan="3" class="lc-muted"><%= __(r.masked === 'small' ? 'admin:lc_masked_small' : 'admin:lc_masked_complement') %></td>
+                            <% } else { %>
                             <td style="text-align:center;"><%= r.headcount %></td>
                             <td><%- natBar(r.nationals, r.expats) %></td>
                             <td style="text-align:center;<%= r.expats>0?'color:var(--amber-text);font-weight:600;':'' %>"><%= r.expats %></td>
+                            <% } %>
                         </tr>
                     <% }); %>
                 </tbody>
@@ -103,9 +112,13 @@
                     <% (byFamily||[]).forEach(function(r){ %>
                         <tr>
                             <td><strong><%= r.name %></strong></td>
+                            <% if (r.masked) { %>
+                            <td colspan="3" class="lc-muted"><%= __(r.masked === 'small' ? 'admin:lc_masked_small' : 'admin:lc_masked_complement') %></td>
+                            <% } else { %>
                             <td style="text-align:center;"><%= r.headcount %></td>
                             <td><%- natBar(r.nationals, r.expats) %></td>
                             <td style="text-align:center;<%= r.expats>0?'color:var(--amber-text);font-weight:600;':'' %>"><%= r.expats %></td>
+                            <% } %>
                         </tr>
                     <% }); %>
                 </tbody>
@@ -121,9 +134,13 @@
                     <% (bySite||[]).forEach(function(r){ %>
                         <tr>
                             <td><strong><%= r.name %></strong></td>
+                            <% if (r.masked) { %>
+                            <td colspan="3" class="lc-muted"><%= __(r.masked === 'small' ? 'admin:lc_masked_small' : 'admin:lc_masked_complement') %></td>
+                            <% } else { %>
                             <td style="text-align:center;"><%= r.headcount %></td>
                             <td><%- natBar(r.nationals, r.expats) %></td>
                             <td style="text-align:center;"><%= r.expats %></td>
+                            <% } %>
                         </tr>
                     <% }); %>
                 </tbody>

@@ -774,7 +774,9 @@ function gates(c) {
         benchmark: gMainDash,
         site_exposure: gMainDash,
         board_pack: gMainDash,
-        local_content: gTools && lc,
+        // Nationality by unit: SuperAdmin or view_local_content only (the
+        // controller refuses everyone else), and only with the module on.
+        local_content: gTools && lc && isAdm && can('view_local_content'),
 
         organization: wsCfg && can('manage_organization'),
         domains_skills: wsCfg && can('view_domains_skills'),
