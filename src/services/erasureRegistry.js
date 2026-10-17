@@ -603,6 +603,10 @@ const SUBJECT_DATA_REGISTRY = [
     // Migration 192: the development actions the person proposed to their line.
     // Their own sentence and the decider's reason go; status and dates stay.
     red('dev_proposals', 'employee_id', 'devProposals'),
+    // Migration 193: the person's end-of-campaign records. The snapshot holds
+    // ids, levels, states and dates only (no free text, owner decision 8); the
+    // person's own comment goes, the record and its dates stay.
+    red('review_records', 'employee_id', 'reviewRecords'),
     {
         scope: 'evidence of the subject’s development actions',
         table: 'action_evidence',

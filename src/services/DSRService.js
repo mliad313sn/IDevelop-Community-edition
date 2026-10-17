@@ -423,6 +423,15 @@ const REDACTED_ON_ERASURE = [
         erased: ['proposal_text', 'decision_reason'],
         kept: ['id', 'action_type', 'status', 'routed_to', 'created_at', 'decided_at'],
     },
+    // THE END-OF-CAMPAIGN RECORDS (migration 193): the person's own comment
+    // goes ('[erased]'); the record stays. Its snapshot carries ids, levels,
+    // states and dates only — no free text to redact (owner decision 8).
+    {
+        key: 'reviewRecords',
+        table: 'review_records',
+        erased: ['employee_comment'],
+        kept: ['id', 'cycle_id', 'snapshot', 'acknowledged_at', 'comment_at'],
+    },
     {
         key: 'lmsUpliftDecisions',
         table: 'lms_completions',
@@ -925,6 +934,12 @@ class DSRService {
             `SELECT id, action_type, proposal_text, status, routed_to, created_at, decided_at,
                     decision_reason
                FROM dev_proposals WHERE employee_id = ?`,
+            [employeeId]
+        );
+        await q(
+            'reviewRecords',
+            `SELECT id, cycle_id, snapshot, acknowledged_at, employee_comment, comment_at
+               FROM review_records WHERE employee_id = ?`,
             [employeeId]
         );
         await q('pips', 'SELECT id, state, summary, outcome FROM pips WHERE employee_id = ?', [
@@ -1543,6 +1558,13 @@ class DSRService {
                 `UPDATE dev_proposals SET proposal_text = '[erased]',
                         decision_reason = CASE WHEN decision_reason IS NULL THEN NULL ELSE '[erased]' END,
                         updated_at = now()
+                  WHERE employee_id = ?`,
+                [employeeId]
+            );
+            // The guard of migration 193 lets the comment change, nothing else.
+            await db.run(
+                `UPDATE review_records
+                    SET employee_comment = CASE WHEN employee_comment IS NULL THEN NULL ELSE '[erased]' END
                   WHERE employee_id = ?`,
                 [employeeId]
             );

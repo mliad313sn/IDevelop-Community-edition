@@ -431,5 +431,6 @@
   "rule_deactivated": "Coverage rule deactivated",
   "cat_lmsUpliftDecisions": "Decisions on proposed skill uplifts",
   "cat_idpActionNotes": "Notes on development actions (reported done, validation)",
-  "cat_devProposals": "Development actions proposed to the manager"
+  "cat_devProposals": "Development actions proposed to the manager",
+  "cat_reviewRecords": "End-of-campaign records (reading acknowledged, comment)"
 }

@@ -212,6 +212,9 @@ const WIPE = new Set([
     'idp_signoffs',
     // Development proposals (migration 192): follow the plans they fed.
     'dev_proposals',
+    // End-of-campaign records (migration 193): follow the campaigns they
+    // describe. Row triggers only (no TRUNCATE guard), so the wipe needs none lifted.
+    'review_records',
     'job_runs',
     'hris_links',
     'hris_sync_runs',

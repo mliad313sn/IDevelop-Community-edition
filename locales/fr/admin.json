@@ -3809,5 +3809,7 @@
   "enum_admin_role_country_admin": "Administrateur pays (réservé)",
   "enum_admin_role_site_admin": "Administrateur de site (réservé)",
   "enum_admin_role_hr_bp": "Partenaire RH (réservé)",
-  "cyc_status_cancelled": "Annulée"
+  "cyc_status_cancelled": "Annulée",
+  "set_name_newInRoleMonths": "Nouveau dans le poste — durée (mois)",
+  "set_desc_newInRoleMonths": "Pendant combien de mois après la date d’entrée dans le poste enregistrée une personne est signalée « nouvelle dans le poste » sur la 9-box et les plans d’amélioration (0 = jamais). Sans date d’entrée enregistrée, personne ne l’est."
 }

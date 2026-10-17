@@ -106,6 +106,10 @@ const IMMUTABLE_TABLES = new Set([
     // rewritten or deleted.
     'kpi_targets',
     'kpiTargets',
+    // Migration 193 — trg_review_records_no_delete: an end-of-campaign record
+    // is never deleted (only the person's comment changes, its own guard).
+    'review_records',
+    'reviewRecords',
 ]);
 
 const BACKUP_DIR = path.resolve(__dirname, '../../data/backups');

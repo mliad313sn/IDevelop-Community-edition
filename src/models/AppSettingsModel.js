@@ -169,6 +169,9 @@ const CATALOG = {
     // 3.23.18: retention purge — 'report' (default) never erases anyone.
     retentionPurgeMode: { enum: ['report', 'apply'] },
     nineBoxReassessMonths: { min: 1, max: 60, integer: true },
+    // 4.0.0 port (wave 5): months a person is « new in the role » after
+    // employees.role_start_date (utils/newInRole). 0 = never. Not security-class.
+    newInRoleMonths: { min: 0, max: 60, integer: true },
     // Off = employees never see the 9-box, even a disclosed placement
     // (TalentConfidentialityService.nineBoxVisibleToEmployees). Default on.
     nineBoxVisibleToEmployees: { type: 'boolean' },
@@ -556,6 +559,15 @@ class AppSettingsModel {
                 type: 'boolean',
                 description:
                     'Show employees their own 9-box placement once it has been disclosed to them. Off: the 9-box is hidden from every employee page.',
+                category: 'readiness',
+            },
+            {
+                // Also seeded by migration 193. Read by utils/newInRole.
+                key: 'newInRoleMonths',
+                value: '6',
+                type: 'number',
+                description:
+                    'For how many months after the recorded start date in the role a person is shown as « new in the role » on the 9-box and PIP screens (0 = never). Without a recorded start date, nobody is.',
                 category: 'readiness',
             },
             {

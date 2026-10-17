@@ -3809,5 +3809,7 @@
   "enum_admin_role_country_admin": "Country admin (reserved)",
   "enum_admin_role_site_admin": "Site admin (reserved)",
   "enum_admin_role_hr_bp": "HR business partner (reserved)",
-  "cyc_status_cancelled": "Cancelled"
+  "cyc_status_cancelled": "Cancelled",
+  "set_name_newInRoleMonths": "New in the role — duration (months)",
+  "set_desc_newInRoleMonths": "For how many months after the recorded start date in the role a person is shown as “new in the role” on the 9-box and the improvement plans (0 = never). Without a recorded start date, nobody is."
 }
