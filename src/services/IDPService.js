@@ -36,6 +36,14 @@ function dueLabel(iso, locale) {
         : `${d}/${m}/${y}`;
 }
 
+/** A YYYY-MM-DD string kept as is, anything else null (a date input's value). */
+function isoDayOrNull(v) {
+    const t = String(v == null ? '' : v).trim();
+    if (t.length !== 10 || t[4] !== '-' || t[7] !== '-') return null;
+    const d = new Date(t + 'T00:00:00Z');
+    return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== t ? null : t;
+}
+
 // `current` may be null: the skill has never been assessed. The text must then
 // say so rather than assert level 0 — an IDP objective is a document the employee
 // signs, and claiming a measured incompetence on an unmeasured competency is the
@@ -145,7 +153,15 @@ class IDPService {
      * admin, never the subject), on a draft or active plan only; every add is
      * journalled.
      */
-    static async addObjective({ idpId, user, smartText, skillId = null, dueOn = null }) {
+    static async addObjective({
+        idpId,
+        user,
+        smartText,
+        skillId = null,
+        dueOn = null,
+        locale = 'fr',
+        seedAction = true,
+    }) {
         const text = String(smartText == null ? '' : smartText)
             .trim()
             .slice(0, 2000);
@@ -179,8 +195,53 @@ class IDPService {
                 null,
                 { skillId: skill }
             );
+            // An objective on a skill gets one seeded action (the createManualPlan
+            // shape), so there is something to do and to validate: an objective
+            // with no action could never move a level.
+            if (skill && seedAction) {
+                const actionId = await IDPService._seedAction(plan, id, skill, locale);
+                if (actionId)
+                    await IDPService._planEvent(
+                        plan.id,
+                        id,
+                        'action_added',
+                        null,
+                        'pending',
+                        user,
+                        null,
+                        { actionId, type: DEFAULT_TYPE, skillId: skill, seeded: true }
+                    );
+            }
         });
         return { objectiveId: Number(id), idpId: Number(plan.id) };
+    }
+
+    /** The default action of a skill objective (title in the plan's locale) + its skill link. */
+    static async _seedAction(plan, objectiveId, skillId, locale) {
+        const info = await db.get(
+            `SELECT s.name AS "name", rsr.required_level AS "required"
+               FROM skills s
+               LEFT JOIN employees e ON e.id = ?
+               LEFT JOIN role_skill_requirements rsr
+                      ON rsr.role_id = COALESCE(?, e.role_id) AND rsr.skill_id = s.id
+              WHERE s.id = ?`,
+            [Number(plan.employeeId), plan.targetRoleId || null, Number(skillId)]
+        );
+        if (!info) return null;
+        const title =
+            info.required != null
+                ? (ACTION_TITLE[locale] || ACTION_TITLE.fr)(info.name, info.required)
+                : String(info.name);
+        const a = await db.get(
+            `INSERT INTO idp_actions (idp_id, objective_id, type, title, status)
+             VALUES (?, ?, ?, ?, 'pending') RETURNING id`,
+            [Number(plan.id), Number(objectiveId), DEFAULT_TYPE, title]
+        );
+        await db.run(
+            'INSERT INTO action_skill_links (action_id, skill_id) VALUES (?, ?) ON CONFLICT DO NOTHING',
+            [Number(a.id), Number(skillId)]
+        );
+        return Number(a.id);
     }
 
     /** Add an action to a plan, optionally linked to one of ITS objectives. */
@@ -191,6 +252,9 @@ class IDPService {
         type = DEFAULT_TYPE,
         description = null,
         objectiveId = null,
+        skillId = null,
+        plannedHours = null,
+        dueOn = null,
     }) {
         const text = String(title == null ? '' : title)
             .trim()
@@ -208,30 +272,59 @@ class IDPService {
         IDPService._assertOpen(plan);
         // An objective id only counts when it belongs to THIS plan.
         let obj = null;
+        let objSkill = null;
         if (Number(objectiveId)) {
-            const row = await db.get('SELECT id FROM idp_objectives WHERE id = ? AND idp_id = ?', [
-                Number(objectiveId),
-                plan.id,
-            ]);
+            const row = await db.get(
+                'SELECT id, skill_id FROM idp_objectives WHERE id = ? AND idp_id = ?',
+                [Number(objectiveId), plan.id]
+            );
             obj = row ? Number(row.id) : null;
+            objSkill = row && row.skillId != null ? Number(row.skillId) : null;
         }
+        // An action carries a skill (the one chosen, else its objective's) so
+        // that its validation can measure it. Without one it still closes, as
+        // evidence only. A chosen skill must exist.
+        let skill = Number(skillId) || null;
+        if (skill) {
+            const ok = await db.get('SELECT id FROM skills WHERE id = ?', [skill]);
+            if (!ok) skill = null;
+        }
+        if (!skill) skill = objSkill;
+        const hours = IDPService._hours(plannedHours, 'plannedHours');
+        const due = isoDayOrNull(dueOn);
         const desc = String(description == null ? '' : description)
             .trim()
             .slice(0, 2000);
         let id = null;
         await db.runTransaction(async () => {
             const r = await db.get(
-                `INSERT INTO idp_actions (idp_id, objective_id, type, title, description, status)
-                 VALUES (?, ?, ?, ?, ?, 'pending') RETURNING id`,
-                [plan.id, obj, kind, text, desc || null]
+                `INSERT INTO idp_actions (idp_id, objective_id, type, title, description, status,
+                                          estimated_hours, due_on)
+                 VALUES (?, ?, ?, ?, ?, 'pending', ?, ?) RETURNING id`,
+                [
+                    plan.id,
+                    obj,
+                    kind,
+                    text,
+                    desc || null,
+                    hours == null ? null : Math.round(hours),
+                    due,
+                ]
             );
             id = r ? Number(r.id) : null;
+            if (skill) {
+                await db.run(
+                    'INSERT INTO action_skill_links (action_id, skill_id) VALUES (?, ?) ON CONFLICT DO NOTHING',
+                    [id, skill]
+                );
+            }
             await IDPService._planEvent(plan.id, obj, 'action_added', null, 'pending', user, null, {
                 actionId: Number(id),
                 type: kind,
+                skillId: skill,
             });
         });
-        return { actionId: Number(id), idpId: Number(plan.id) };
+        return { actionId: Number(id), idpId: Number(plan.id), skillId: skill };
     }
 
     static _assertOpen(plan) {
@@ -547,6 +640,8 @@ class IDPService {
         locale = 'fr',
         dueOn = null,
         dueDays = DEFAULT_DUE_DAYS,
+        targetRoleId = null,
+        user = null,
     }) {
         const template = SMART_TEMPLATES[locale] || SMART_TEMPLATES.fr;
         // An explicit due date from the manager wins; otherwise the default horizon.
@@ -562,7 +657,35 @@ class IDPService {
         // action titles are meaningful. Only keep genuine gaps for this employee's role.
         let gaps = [];
         const ids = (skillIds || []).map(Number).filter(Boolean);
-        if (ids.length) {
+        let target = Number(targetRoleId) || null;
+        if (target) {
+            const role = await db.get('SELECT id FROM roles WHERE id = ?', [target]);
+            if (!role) target = null;
+        }
+        if (target) {
+            // A plan TOWARDS a target role (career path). A skill the target role
+            // requires is measured against the TARGET's level and tagged with it
+            // (idp_objectives.target_role_id); a skill only the current role
+            // requires stays against the current role. Nothing chosen is dropped.
+            // No skill chosen: every target-role requirement not met yet, the
+            // never-assessed ones included (not assessed, never level 0).
+            const pick = ids.length
+                ? `AND rsr.skill_id IN (${ids.map(() => '?').join(',')})`
+                : 'AND rsr.role_id = ? AND (sa.current_level IS NULL OR sa.current_level < rsr.required_level)';
+            gaps = await db.all(
+                `SELECT DISTINCT ON (s.id) s.id AS skill_id, s.name AS skill_name,
+                        rsr.required_level AS required_level, sa.current_level AS current_level,
+                        CASE WHEN rsr.role_id = ? THEN ?::bigint END AS target_role_id
+                   FROM employees e
+                   JOIN role_skill_requirements rsr ON rsr.role_id IN (e.role_id, ?)
+                   JOIN skills s ON s.id = rsr.skill_id
+                   LEFT JOIN skill_assessments sa ON sa.employee_id = e.id AND sa.skill_id = rsr.skill_id
+                  WHERE e.id = ? AND rsr.required_level > 0
+                    ${pick}
+                  ORDER BY s.id, (rsr.role_id = ?) DESC`,
+                [target, target, target, eid, ...(ids.length ? ids : [target]), target]
+            );
+        } else if (ids.length) {
             gaps = await db.all(
                 `SELECT s.id AS skill_id, s.name AS skill_name, rsr.required_level AS required_level,
                         sa.current_level AS current_level
@@ -580,20 +703,80 @@ class IDPService {
         // raw 23505 as an HTTP 500. Pre-check for the ordinary case, and keep a
         // 23505 catch below as the race fallback — both answer the same 409.
         const open = await db.get(
-            `SELECT id FROM idp_plans WHERE employee_id = ? AND status IN ('draft', 'active') LIMIT 1`,
+            `SELECT id, status::text AS "status" FROM idp_plans
+              WHERE employee_id = ? AND status IN ('draft', 'active') LIMIT 1`,
             [eid]
         );
+        // "Create the plan towards this role" on someone who already has an open
+        // plan ADDS the target-role objectives to it (an active plan, or a draft
+        // nobody signed yet) instead of refusing; skills that already carry an
+        // open objective are skipped. A draft one party signed is refused as
+        // before: the second signature must never activate unseen objectives.
+        if (open && target) {
+            const signed = await db.get(
+                'SELECT COUNT(*)::int AS n FROM idp_signoffs WHERE idp_id = ?',
+                [open.id]
+            );
+            if (!(open.status === 'draft' && signed && Number(signed.n) > 0)) {
+                const have = await db.all(
+                    `SELECT skill_id FROM idp_objectives
+                      WHERE idp_id = ? AND state IN ('pending', 'in_progress') AND skill_id IS NOT NULL`,
+                    [open.id]
+                );
+                const has = new Set((have || []).map((h) => Number(h.skillId)));
+                let added = 0;
+                await db.runTransaction(async () => {
+                    await db.run('UPDATE idp_plans SET target_role_id = ? WHERE id = ?', [
+                        target,
+                        open.id,
+                    ]);
+                    for (const g of gaps) {
+                        if (has.has(Number(g.skillId))) continue;
+                        await IDPService._writePlanObjective(open.id, g, {
+                            template,
+                            dueTxt,
+                            due,
+                            prio,
+                            locale,
+                        });
+                        added++;
+                    }
+                    await IDPService._planEvent(
+                        open.id,
+                        null,
+                        'target_role_merged',
+                        open.status,
+                        open.status,
+                        user,
+                        null,
+                        { targetRoleId: target, objectives: added }
+                    );
+                });
+                return { idpId: Number(open.id), objectives: added, merged: true };
+            }
+        }
         if (open) throw openPlanError(eid, open.id);
 
         let idpId = null;
         try {
             await db.runTransaction(async () => {
                 const r = await db.run(
-                    `INSERT INTO idp_plans (employee_id, status, priority) VALUES (?, 'draft', ?)`,
-                    [eid, prio]
+                    `INSERT INTO idp_plans (employee_id, status, priority, target_role_id)
+                     VALUES (?, 'draft', ?, ?)`,
+                    [eid, prio, target]
                 );
                 idpId = r.lastID;
                 for (const g of gaps) {
+                    if (target) {
+                        await IDPService._writePlanObjective(idpId, g, {
+                            template,
+                            dueTxt,
+                            due,
+                            prio,
+                            locale,
+                        });
+                        continue;
+                    }
                     const smart = template(g.skillName, g.currentLevel, g.requiredLevel, dueTxt);
                     const obj = await db.run(
                         `INSERT INTO idp_objectives (idp_id, skill_id, smart_text, due_on, priority, state)
@@ -641,6 +824,38 @@ class IDPService {
             /* never block */
         }
         return { idpId, objectives: gaps.length };
+    }
+
+    /** An objective (tagged with its target role when it has one), its seeded action and skill link. */
+    static async _writePlanObjective(idpId, g, { template, dueTxt, due, prio, locale }) {
+        const smart = template(g.skillName, g.currentLevel, g.requiredLevel, dueTxt);
+        const obj = await db.get(
+            `INSERT INTO idp_objectives (idp_id, skill_id, smart_text, due_on, priority, state, target_role_id)
+             VALUES (?, ?, ?, ?, ?, 'pending', ?) RETURNING id`,
+            [
+                Number(idpId),
+                g.skillId,
+                smart,
+                due,
+                prio,
+                g.targetRoleId == null ? null : Number(g.targetRoleId),
+            ]
+        );
+        const act = await db.get(
+            `INSERT INTO idp_actions (idp_id, objective_id, type, title, status)
+             VALUES (?, ?, ?, ?, 'pending') RETURNING id`,
+            [
+                Number(idpId),
+                Number(obj.id),
+                DEFAULT_TYPE,
+                (ACTION_TITLE[locale] || ACTION_TITLE.fr)(g.skillName, g.requiredLevel),
+            ]
+        );
+        await db.run('INSERT INTO action_skill_links (action_id, skill_id) VALUES (?, ?)', [
+            Number(act.id),
+            g.skillId,
+        ]);
+        return Number(obj.id);
     }
 
     /**
@@ -819,7 +1034,9 @@ class IDPService {
 
     static async _loadPlan(idpId) {
         const plan = await db.get(
-            `SELECT id, employee_id AS "employeeId", status::text AS "status" FROM idp_plans WHERE id = ?`,
+            `SELECT id, employee_id AS "employeeId", status::text AS "status",
+                    target_role_id AS "targetRoleId"
+               FROM idp_plans WHERE id = ?`,
             [Number(idpId)]
         );
         if (!plan) throw lifecycleError('IDP_NOT_FOUND', 404, 'IDP not found', 'idp:err_not_found');
@@ -885,7 +1102,8 @@ class IDPService {
                     user && user.userType !== 'admin' && user.id != null
                         ? `${user.userType}:${user.id}`
                         : null,
-                details,
+                // the authority-ladder rung the act used (` as=<rung>`)
+                details: require('./AuthorityService').withAs(details, user),
             });
         } catch (_) {
             /* the journal row is the record of truth */
@@ -922,6 +1140,16 @@ class IDPService {
                 { count: openObjectives }
             );
         }
+        // What the plan achieved, recorded with the completion: skills at the
+        // required level out of the plan's skills (live official levels; a
+        // never-assessed skill is not met and is counted apart, never as 0).
+        const prog = await IDPService.objectivesProgress(plan.id).catch(() => ({}));
+        const withSkill = Object.values(prog).filter((p) => p.skillId != null);
+        const outcome = {
+            skillsTotal: withSkill.length,
+            skillsMet: withSkill.filter((p) => p.met).length,
+            skillsUnmeasured: withSkill.filter((p) => p.current == null).length,
+        };
         await db.runTransaction(async () => {
             const row = await db.get(
                 `UPDATE idp_plans
@@ -946,8 +1174,12 @@ class IDPService {
                 'completed',
                 user,
                 why,
-                { openObjectives }
+                { openObjectives, ...outcome }
             );
+        });
+        await IDPService._notify('employee', plan.employeeId, 'idp.completed', {
+            link: '/v2/idp/' + Number(plan.id),
+            ...outcome,
         });
         await IDPService._audit(
             user,
@@ -958,7 +1190,7 @@ class IDPService {
                     ? ` avec ${openObjectives} objectif(s) encore ouvert(s) — motif : ${why}`
                     : '')
         );
-        return { completed: true, openObjectives };
+        return { completed: true, openObjectives, ...outcome };
     }
 
     /** active | completed → archived. */
@@ -1099,6 +1331,926 @@ class IDPService {
             );
         });
         return { objectiveId: Number(obj.id), from: obj.state, to: target };
+    }
+
+    // =====================================================================
+    //  THE ACTION LOOP (4.0.0 port, wave 4).
+    //
+    //  An action used to be a static line: nobody could start it, say it was
+    //  done or validate it, so a plan never moved a level. Now:
+    //    pending --start--> in_progress --reported done (the person)-->
+    //    in_progress + reported_done_at --validate (the line)--> completed
+    //  The PERSON starts their action and reports it done; only the line
+    //  validates it (planAuthority: the direct line, a local administrator in
+    //  clearance, a SuperAdmin, and the line above only in the extended mode
+    //  of the authority ladder), with the level it OBSERVED on the action's
+    //  skill (0-4), or "cannot judge yet" (evidence only, no level). An
+    //  observed level becomes the official one through
+    //  ActionEffectivenessService (history trigger, real actor) in the same
+    //  transaction as the validation. Every move is an idp_plan_events row.
+    // =====================================================================
+
+    static async _loadAction(actionId) {
+        const a = await db.get(
+            `SELECT a.id, a.idp_id AS "idpId", a.objective_id AS "objectiveId",
+                    a.status::text AS "status", a.type::text AS "type", a.title,
+                    a.reported_done_at AS "reportedDoneAt"
+               FROM idp_actions a WHERE a.id = ?`,
+            [Number(actionId)]
+        );
+        if (!a)
+            throw lifecycleError(
+                'IDP_ACTION_NOT_FOUND',
+                404,
+                'Action not found',
+                'idp:err_action_not_found'
+            );
+        return a;
+    }
+
+    /** Is this account the plan's person (by either of their accounts)? */
+    static async _isSubject(user, plan) {
+        if (!user || user.id == null) return false;
+        const { personIdOf } = require('../utils/personIdentity');
+        const pid = await personIdOf(user);
+        return pid != null && Number(pid) === Number(plan.employeeId);
+    }
+
+    static _assertActionOpen(plan, act) {
+        if (plan.status !== 'active') {
+            throw lifecycleError(
+                'IDP_NOT_ACTIVE',
+                409,
+                `Actions move only on an active plan (this one is '${plan.status}').`,
+                'idp:err_not_active',
+                { status: plan.status }
+            );
+        }
+        if (act.status === 'completed' || act.status === 'cancelled') {
+            throw lifecycleError(
+                'IDP_ACTION_CLOSED',
+                409,
+                `This action is already '${act.status}'.`,
+                'idp:err_action_closed'
+            );
+        }
+    }
+
+    /** Hours as entered (comma or point), 0-2000, one decimal; empty = null (not entered). */
+    static _hours(v, field = 'hours') {
+        if (v === undefined || v === null || String(v).trim() === '') return null;
+        const n = Number(String(v).trim().replace(',', '.'));
+        if (!Number.isFinite(n) || n < 0 || n > 2000) {
+            throw lifecycleError(
+                'IDP_HOURS',
+                400,
+                `${field} must be a number of hours between 0 and 2000.`,
+                'idp:err_hours'
+            );
+        }
+        return Math.round(n * 10) / 10;
+    }
+
+    /** pending -> in_progress: the person, or the line. */
+    static async startAction({ actionId, user }) {
+        const act = await IDPService._loadAction(actionId);
+        const plan = await IDPService._loadPlan(act.idpId);
+        if (!(await IDPService._isSubject(user, plan)))
+            await IDPService._assertAuthority(user, plan);
+        IDPService._assertActionOpen(plan, act);
+        if (act.status !== 'pending') {
+            throw lifecycleError(
+                'IDP_ACTION_TRANSITION',
+                409,
+                `Cannot start an action from '${act.status}'.`,
+                'idp:err_action_transition'
+            );
+        }
+        await db.runTransaction(async () => {
+            const row = await db.get(
+                `UPDATE idp_actions SET status = 'in_progress', started_at = COALESCE(started_at, now()),
+                        updated_at = now()
+                  WHERE id = ? AND status = 'pending' RETURNING id`,
+                [act.id]
+            );
+            if (!row)
+                throw lifecycleError(
+                    'IDP_STALE',
+                    409,
+                    'This action was changed by someone else meanwhile.',
+                    'idp:err_stale'
+                );
+            await IDPService._planEvent(
+                plan.id,
+                act.objectiveId,
+                'action_started',
+                'pending',
+                'in_progress',
+                user,
+                null,
+                { actionId: Number(act.id) }
+            );
+        });
+        return { actionId: Number(act.id), idpId: Number(plan.id), status: 'in_progress' };
+    }
+
+    /**
+     * The PERSON reports the action done, with a short note and the hours spent.
+     * No official effect: the action waits for the line's validation, and the
+     * line is told (idp.action_reported).
+     */
+    static async reportActionDone({ actionId, user, note = null, hours = null }) {
+        const act = await IDPService._loadAction(actionId);
+        const plan = await IDPService._loadPlan(act.idpId);
+        if (!(await IDPService._isSubject(user, plan))) {
+            throw lifecycleError(
+                'IDP_NOT_SUBJECT',
+                403,
+                'Only the person the plan is for reports an action done; the line validates it.',
+                'idp:err_not_subject'
+            );
+        }
+        IDPService._assertActionOpen(plan, act);
+        if (act.reportedDoneAt) {
+            throw lifecycleError(
+                'IDP_ACTION_REPORTED',
+                409,
+                'This action was already reported done; it waits for validation.',
+                'idp:err_action_reported'
+            );
+        }
+        const why = String(note == null ? '' : note)
+            .trim()
+            .slice(0, 1000);
+        const spent = IDPService._hours(hours);
+        await db.runTransaction(async () => {
+            const row = await db.get(
+                `UPDATE idp_actions
+                    SET status = 'in_progress', started_at = COALESCE(started_at, now()),
+                        reported_done_at = now(), reported_note = ?, reported_by_type = ?,
+                        reported_by_id = ?, actual_hours = COALESCE(?, actual_hours), updated_at = now()
+                  WHERE id = ? AND status IN ('pending', 'in_progress') AND reported_done_at IS NULL
+                  RETURNING id`,
+                [
+                    why || null,
+                    user.userType === 'admin' ? 'admin' : String(user.userType),
+                    Number(user.id),
+                    spent,
+                    act.id,
+                ]
+            );
+            if (!row)
+                throw lifecycleError(
+                    'IDP_STALE',
+                    409,
+                    'This action was changed by someone else meanwhile.',
+                    'idp:err_stale'
+                );
+            await IDPService._planEvent(
+                plan.id,
+                act.objectiveId,
+                'action_reported_done',
+                act.status,
+                'in_progress',
+                user,
+                why || null,
+                { actionId: Number(act.id), hours: spent }
+            );
+        });
+        await IDPService._markDueActed(plan.employeeId);
+        await IDPService._notifyLine(plan, 'idp.action_reported', {
+            link: `/v2/idp/${Number(plan.id)}#action-${Number(act.id)}`,
+            actionId: Number(act.id),
+            employeeId: Number(plan.employeeId),
+        });
+        return { actionId: Number(act.id), idpId: Number(plan.id), reported: true };
+    }
+
+    /**
+     * The line validates an action with the level it OBSERVED on the action's
+     * skill (0-4), or with no level ("cannot judge yet": evidence only).
+     * Never the person. The observed level goes through
+     * ActionEffectivenessService (rating before and after, official level when
+     * it is higher, history trigger) in ONE transaction with the validation.
+     */
+    static async validateAction({
+        actionId,
+        user,
+        observedLevel = null,
+        note = null,
+        actualHours = null,
+    }) {
+        const act = await IDPService._loadAction(actionId);
+        const plan = await IDPService._loadPlan(act.idpId);
+        await IDPService._assertAuthority(user, plan);
+        IDPService._assertActionOpen(plan, act);
+        let level = null;
+        if (observedLevel !== null && observedLevel !== undefined && String(observedLevel) !== '') {
+            level = Number(observedLevel);
+            if (!Number.isInteger(level) || level < 0 || level > 4) {
+                throw lifecycleError(
+                    'IDP_LEVEL',
+                    400,
+                    'The observed level must be an integer between 0 and 4.',
+                    'idp:err_level'
+                );
+            }
+        }
+        const hours = IDPService._hours(actualHours, 'actualHours');
+        const why = String(note == null ? '' : note)
+            .trim()
+            .slice(0, 1000);
+        const AE = require('./ActionEffectivenessService');
+        const skill = await AE.skillOfAction(act.id);
+        const measured = level != null && skill != null;
+        const assessedBy = measured ? await AE.assessorAdminId(user) : null;
+        let effect = null;
+        const work = async () => {
+            if (measured) {
+                effect = await AE.onActionClose({
+                    actionId: act.id,
+                    postRating: level,
+                    employeeId: plan.employeeId,
+                    assessedByAdminId: assessedBy,
+                    updateOfficial: true,
+                    evidenceSource: 'observation',
+                });
+            } else {
+                await db.run(
+                    `UPDATE idp_actions SET status = 'completed', completed_at = now(),
+                            started_at = COALESCE(started_at, now()), updated_at = now()
+                      WHERE id = ?`,
+                    [act.id]
+                );
+            }
+            await db.run(
+                `UPDATE idp_actions
+                    SET validated_by_type = ?, validated_by_id = ?, validation_note = ?,
+                        actual_hours = COALESCE(?, actual_hours)
+                  WHERE id = ?`,
+                [
+                    user.userType === 'admin' ? 'admin' : String(user.userType),
+                    Number(user.id),
+                    why || null,
+                    hours,
+                    act.id,
+                ]
+            );
+            await IDPService._planEvent(
+                plan.id,
+                act.objectiveId,
+                'action_validated',
+                act.status,
+                'completed',
+                user,
+                why || null,
+                {
+                    actionId: Number(act.id),
+                    skillId: skill ? skill.skillId : null,
+                    observedLevel: measured ? level : null,
+                    ratingPre: effect ? effect.ratingPre : null,
+                    officialUpdated: Boolean(effect && effect.officialUpdated),
+                    source: 'observation',
+                    hours,
+                }
+            );
+        };
+        // withActor opens the transaction and tags it with the real actor, so the
+        // history trigger records the validator (a nested call would not).
+        await db.withActor(user, work);
+        await IDPService._audit(
+            user,
+            'IDP_ACTION_VALIDATED',
+            plan.id,
+            `action #${Number(act.id)}` +
+                (measured
+                    ? `; skill #${skill.skillId}: ${effect && effect.ratingPre != null ? effect.ratingPre : 'not assessed'} -> observed ${level}${effect && effect.officialUpdated ? ' (official)' : ''}`
+                    : '; evidence only')
+        );
+        await IDPService._markDueActed(plan.employeeId);
+        await require('./NotificationService').actedQuietly({
+            refType: 'idp_action',
+            refId: Number(act.id),
+        });
+        await IDPService._notify('employee', plan.employeeId, 'idp.action_validated', {
+            link: `/v2/idp/${Number(plan.id)}#action-${Number(act.id)}`,
+            actionId: Number(act.id),
+        });
+        const objective = act.objectiveId
+            ? await IDPService.objectiveProgress(act.objectiveId)
+            : null;
+        return {
+            actionId: Number(act.id),
+            idpId: Number(plan.id),
+            observedLevel: measured ? level : null,
+            evidenceOnly: !measured,
+            ratingPre: effect ? effect.ratingPre : null,
+            officialUpdated: Boolean(effect && effect.officialUpdated),
+            objectiveMet: Boolean(objective && objective.met),
+        };
+    }
+
+    /**
+     * Give an action a training. With `courseId` the course is assigned through
+     * the LMS with this action as its source (its accepted completion later
+     * closes the action). Without an LMS the action keeps a date, a place and
+     * planned hours (an offline training): never a dead button.
+     */
+    static async planTraining({
+        actionId,
+        user,
+        courseId = null,
+        dueOn = null,
+        place = null,
+        plannedHours = null,
+    }) {
+        const act = await IDPService._loadAction(actionId);
+        const plan = await IDPService._loadPlan(act.idpId);
+        await IDPService._assertAuthority(user, plan);
+        if (
+            !['draft', 'active'].includes(plan.status) ||
+            ['completed', 'cancelled'].includes(act.status)
+        ) {
+            throw lifecycleError(
+                'IDP_ACTION_CLOSED',
+                409,
+                'This action can no longer be planned.',
+                'idp:err_action_closed'
+            );
+        }
+        const due = isoDayOrNull(dueOn);
+        const hours = IDPService._hours(plannedHours, 'plannedHours');
+        const where = String(place == null ? '' : place)
+            .trim()
+            .slice(0, 200);
+        const course = Number(courseId) || null;
+        if (!course && !due) {
+            throw lifecycleError(
+                'IDP_TRAINING_DATE',
+                400,
+                'An offline training needs a date.',
+                'idp:err_training_date'
+            );
+        }
+        if (course) {
+            const known = await db.get('SELECT id FROM lms_courses WHERE id = ?', [course]);
+            if (!known)
+                throw lifecycleError(
+                    'IDP_COURSE_NOT_FOUND',
+                    404,
+                    'Course not found',
+                    'idp:err_course_not_found'
+                );
+        }
+        let enrollment = null;
+        if (course) {
+            const { actorAdminId } = require('../utils/actorAdminId');
+            enrollment = await require('./LmsService').assignCourse(plan.employeeId, course, {
+                assignedBy: await actorAdminId(user),
+                sourceActionId: Number(act.id),
+                dueAt: due,
+            });
+        }
+        await db.runTransaction(async () => {
+            await db.run(
+                `UPDATE idp_actions
+                    SET due_on = COALESCE(?, due_on), place = COALESCE(?, place),
+                        estimated_hours = COALESCE(?, estimated_hours), updated_at = now()
+                  WHERE id = ?`,
+                [due, where || null, hours == null ? null : Math.round(hours), act.id]
+            );
+            await IDPService._planEvent(
+                plan.id,
+                act.objectiveId,
+                'action_training_planned',
+                act.status,
+                act.status,
+                user,
+                null,
+                {
+                    actionId: Number(act.id),
+                    courseId: course,
+                    dueOn: due,
+                    plannedHours: hours,
+                    offline: !course,
+                }
+            );
+        });
+        return {
+            actionId: Number(act.id),
+            idpId: Number(plan.id),
+            enrollmentId: enrollment ? Number(enrollment.id) : null,
+            pushState: enrollment ? enrollment.pushState : null,
+        };
+    }
+
+    /**
+     * A training completion whose uplift the line ACCEPTED closes the plan
+     * actions that ordered the course (lms_enrollments.source_action_id), with
+     * an action_effectiveness row (source "training"). Called by
+     * LmsService.decideUplift inside its transaction. Returns the closed ids.
+     */
+    static async closeActionsFromTraining({ employeeId, courseId, raised = [], user = null }) {
+        const rows = await db.all(
+            `SELECT a.id, a.idp_id AS "idpId", a.objective_id AS "objectiveId", a.status::text AS "status"
+               FROM lms_enrollments e
+               JOIN idp_actions a ON a.id = e.source_action_id
+               JOIN idp_plans p ON p.id = a.idp_id
+              WHERE e.employee_id = ? AND e.course_id = ? AND p.employee_id = e.employee_id
+                AND a.status::text NOT IN ('completed', 'cancelled')`,
+            [Number(employeeId), Number(courseId)]
+        );
+        const AE = require('./ActionEffectivenessService');
+        const closed = [];
+        for (const a of rows || []) {
+            const skill = await AE.skillOfAction(a.id);
+            const hit = skill
+                ? raised.find((r) => Number(r.skillId) === Number(skill.skillId))
+                : null;
+            if (hit) {
+                await AE._writeEffectiveness(a.id, {
+                    ratingPre: hit.from == null ? null : Number(hit.from),
+                    postRating: Number(hit.to),
+                    uplift: hit.from == null ? null : Number(hit.to) - Number(hit.from),
+                    evidenceSource: 'training',
+                    official: true,
+                });
+            }
+            await db.run(
+                `UPDATE idp_actions SET status = 'completed', completed_at = now(),
+                        started_at = COALESCE(started_at, now()), updated_at = now(),
+                        validated_by_type = ?, validated_by_id = ?
+                  WHERE id = ?`,
+                [
+                    user ? (user.userType === 'admin' ? 'admin' : String(user.userType)) : null,
+                    user && user.id != null ? Number(user.id) : null,
+                    a.id,
+                ]
+            );
+            await IDPService._planEvent(
+                a.idpId,
+                a.objectiveId,
+                'action_validated',
+                a.status,
+                'completed',
+                user,
+                null,
+                {
+                    actionId: Number(a.id),
+                    source: 'training',
+                    courseId: Number(courseId),
+                    skillId: skill ? skill.skillId : null,
+                    observedLevel: hit ? Number(hit.to) : null,
+                }
+            );
+            closed.push(Number(a.id));
+        }
+        if (closed.length) await IDPService._markDueActed(employeeId);
+        return closed;
+    }
+
+    /**
+     * A finished course with nothing to propose (no skill mapping, or the level
+     * is already reached) is still evidence: the plan action it served is
+     * marked reported done ("system") for the line to validate. It never
+     * closes itself: the line names the level.
+     */
+    static async reportActionsFromTraining({ employeeId, courseId }) {
+        const r = await db.all(
+            `UPDATE idp_actions a SET reported_done_at = COALESCE(a.reported_done_at, now()),
+                    status = 'in_progress', started_at = COALESCE(a.started_at, now()),
+                    reported_by_type = COALESCE(a.reported_by_type, 'system'), updated_at = now()
+               FROM lms_enrollments e
+               JOIN idp_plans p ON p.employee_id = e.employee_id
+              WHERE e.source_action_id = a.id AND e.employee_id = ? AND e.course_id = ?
+                AND p.id = a.idp_id AND p.status = 'active'
+                AND a.status::text NOT IN ('completed', 'cancelled')
+             RETURNING a.id`,
+            [Number(employeeId), Number(courseId)]
+        );
+        return (r || []).map((x) => Number(x.id));
+    }
+
+    /**
+     * The live state of one objective: its skill, the level required (of the
+     * target role when the objective carries one, else of the person's role),
+     * the person's current OFFICIAL level (null = not assessed) and whether it
+     * is met.
+     */
+    static async objectiveProgress(objectiveId) {
+        const o = await db.get(
+            `SELECT o.id, o.skill_id AS "skillId", o.state::text AS "state",
+                    sa.current_level AS "current", rsr.required_level AS "required"
+               FROM idp_objectives o
+               JOIN idp_plans p ON p.id = o.idp_id
+               JOIN employees e ON e.id = p.employee_id
+               LEFT JOIN skill_assessments sa ON sa.employee_id = p.employee_id AND sa.skill_id = o.skill_id
+               LEFT JOIN role_skill_requirements rsr
+                      ON rsr.role_id = COALESCE(o.target_role_id, e.role_id) AND rsr.skill_id = o.skill_id
+              WHERE o.id = ?`,
+            [Number(objectiveId)]
+        );
+        if (!o || o.skillId == null) return null;
+        const current = o.current == null ? null : Number(o.current);
+        const required = o.required == null ? null : Number(o.required);
+        return {
+            objectiveId: Number(o.id),
+            skillId: Number(o.skillId),
+            state: o.state,
+            current,
+            required,
+            met: current != null && required != null && current >= required,
+        };
+    }
+
+    /** The live progress of every objective of a plan: a Map-like object keyed by objective id. */
+    static async objectivesProgress(idpId) {
+        const rows = await db.all(
+            `SELECT o.id, o.skill_id AS "skillId", s.name AS "skillName",
+                    sa.current_level AS "current", rsr.required_level AS "required",
+                    o.target_role_id AS "targetRoleId", r.name AS "targetRoleName"
+               FROM idp_objectives o
+               JOIN idp_plans p ON p.id = o.idp_id
+               JOIN employees e ON e.id = p.employee_id
+               LEFT JOIN skills s ON s.id = o.skill_id
+               LEFT JOIN roles r ON r.id = o.target_role_id
+               LEFT JOIN skill_assessments sa ON sa.employee_id = p.employee_id AND sa.skill_id = o.skill_id
+               LEFT JOIN role_skill_requirements rsr
+                      ON rsr.role_id = COALESCE(o.target_role_id, e.role_id) AND rsr.skill_id = o.skill_id
+              WHERE o.idp_id = ?`,
+            [Number(idpId)]
+        );
+        // Keys are database ids (numbers), never client input.
+        const out = Object.create(null);
+        for (const r of rows || []) {
+            const current = r.current == null ? null : Number(r.current);
+            const required = r.required == null ? null : Number(r.required);
+            out[Number(r.id)] = {
+                skillId: r.skillId == null ? null : Number(r.skillId),
+                skillName: r.skillName || null,
+                current,
+                required,
+                met:
+                    r.skillId != null && current != null && required != null && current >= required,
+                targetRoleId: r.targetRoleId == null ? null : Number(r.targetRoleId),
+                targetRoleName: r.targetRoleName || null,
+            };
+        }
+        return out;
+    }
+
+    static async _notify(userType, userId, kind, payload) {
+        try {
+            await require('./NotificationService')
+                .notify({
+                    userType,
+                    userId: Number(userId),
+                    kind,
+                    category: 'development',
+                    payload,
+                })
+                .catch(() => {});
+        } catch (_) {
+            /* a notification never blocks the act */
+        }
+    }
+
+    /**
+     * An action reported, validated or closed by a training closes the weekly
+     * "development actions due" reminder of its person (reminder
+     * effectiveness counts it as acted).
+     */
+    static async _markDueActed(employeeId) {
+        try {
+            await require('./NotificationService')
+                .markActed({
+                    userType: 'employee',
+                    userId: Number(employeeId),
+                    kinds: ['idp.action_due'],
+                })
+                .catch(() => 0);
+        } catch (_) {
+            /* never block */
+        }
+    }
+
+    static async _notifyLine(plan, kind, payload) {
+        try {
+            const recipients = await require('./ReportingLineService')
+                .lineRecipients(Number(plan.employeeId))
+                .catch(() => []);
+            for (const r of recipients || [])
+                await IDPService._notify(r.userType, r.id, kind, payload);
+        } catch (_) {
+            /* never block */
+        }
+    }
+
+    // =====================================================================
+    //  PROPOSALS (4.0.0 port, wave 4). The person PROPOSES (never acts on
+    //  their plan); the line accepts the proposal into the plan or declines it
+    //  with a reason. With no line, the proposal goes to HR: the local
+    //  administrators whose clearance covers the person. Table dev_proposals
+    //  (migration 192).
+    // =====================================================================
+
+    static async proposeAction({ user, skillId = null, type = DEFAULT_TYPE, text }) {
+        const { personIdOf } = require('../utils/personIdentity');
+        const emp = user && user.userType !== 'admin' ? await personIdOf(user) : null;
+        if (emp == null) {
+            throw lifecycleError(
+                'IDP_PROPOSAL_EMPLOYEE_ONLY',
+                403,
+                'Only an employee proposes an action for their own development.',
+                'idp:err_proposal_employee'
+            );
+        }
+        const body = String(text == null ? '' : text)
+            .trim()
+            .slice(0, 500);
+        if (!body)
+            throw lifecycleError(
+                'IDP_TEXT_REQUIRED',
+                400,
+                'Text required',
+                'idp:err_text_required'
+            );
+        const kind = ACTION_TYPES.includes(String(type)) ? String(type) : DEFAULT_TYPE;
+        // A skill counts only when the person is measured on it (their role) or
+        // their plan aims at a role that requires it; anything else is dropped.
+        let skill = Number(skillId) || null;
+        if (skill) {
+            const ok = await db.get(
+                `SELECT 1 AS "ok" FROM employees e
+                  WHERE e.id = ? AND (
+                        EXISTS (SELECT 1 FROM role_skill_requirements r
+                                 WHERE r.role_id = e.role_id AND r.skill_id = ?)
+                     OR EXISTS (SELECT 1 FROM idp_plans p
+                                  JOIN role_skill_requirements r ON r.role_id = p.target_role_id
+                                 WHERE p.employee_id = e.id AND p.status IN ('draft', 'active')
+                                   AND r.skill_id = ?))`,
+                [Number(emp), skill, skill]
+            );
+            if (!ok) skill = null;
+        }
+        const line = await require('./ReportingLineService')
+            .lineRecipients(Number(emp))
+            .catch(() => []);
+        const routedTo = line && line.length ? 'line' : 'hr';
+        // A double submit of the same sentence is the same proposal.
+        const dup = await db.get(
+            `SELECT id FROM dev_proposals WHERE employee_id = ? AND status = 'pending'
+                AND proposal_text = ? AND COALESCE(skill_id, 0) = COALESCE(?::bigint, 0)`,
+            [Number(emp), body, skill]
+        );
+        if (dup) return { proposalId: Number(dup.id), routedTo, duplicate: true };
+        const row = await db.get(
+            `INSERT INTO dev_proposals (employee_id, skill_id, action_type, proposal_text, routed_to)
+             VALUES (?, ?, ?, ?, ?) RETURNING id`,
+            [Number(emp), skill, kind, body, routedTo]
+        );
+        const payload = {
+            link: '/v2/idp/manage#proposals',
+            proposalId: Number(row.id),
+            employeeId: Number(emp),
+        };
+        if (routedTo === 'line') {
+            for (const r of line)
+                await IDPService._notify(r.userType, r.id, 'idp.proposal_received', payload);
+        } else {
+            for (const a of await IDPService._hrRecipients(Number(emp)))
+                await IDPService._notify('admin', a, 'idp.proposal_received', payload);
+        }
+        return { proposalId: Number(row.id), routedTo };
+    }
+
+    /** Local administrators whose clearance covers the person (the HR fallback). */
+    static async _hrRecipients(employeeId) {
+        try {
+            const admins = await db.all(
+                `SELECT id, role::text AS "role" FROM admins
+                  WHERE is_active = true AND role::text = 'localadmin' ORDER BY id`
+            );
+            const out = [];
+            const RBACService = require('./RBACService');
+            for (const a of admins || []) {
+                const acct = { id: Number(a.id), userType: 'admin', role: a.role };
+                const ok = await RBACService.canAccessEmployee(acct, Number(employeeId)).catch(
+                    () => false
+                );
+                if (ok) out.push(Number(a.id));
+            }
+            return out;
+        } catch (_) {
+            return [];
+        }
+    }
+
+    /** The pending proposals this reader may decide (line, or HR by clearance). */
+    static async pendingProposalsFor(user) {
+        let rows = [];
+        try {
+            rows = await db.all(
+                `SELECT dp.id, dp.employee_id AS "employeeId", dp.skill_id AS "skillId", s.name AS "skillName",
+                        dp.action_type AS "actionType", dp.proposal_text AS "text", dp.routed_to AS "routedTo",
+                        dp.created_at AS "createdAt", e.first_name AS "firstName", e.last_name AS "lastName"
+                   FROM dev_proposals dp
+                   JOIN employees e ON e.id = dp.employee_id AND e.is_active AND e.erased_at IS NULL
+                   LEFT JOIN skills s ON s.id = dp.skill_id
+                  WHERE dp.status = 'pending'
+                  ORDER BY dp.created_at, dp.id`
+            );
+        } catch (_) {
+            return [];
+        }
+        const out = [];
+        for (const r of rows || []) {
+            const auth = await IDPService.planAuthority(user, { employeeId: r.employeeId }).catch(
+                () => ({ canAct: false })
+            );
+            if (auth.canAct) out.push(r);
+        }
+        return out;
+    }
+
+    /**
+     * Accept (an action in the person's open plan; a draft plan is created
+     * when none is open) or decline (a reason is required; the person reads it).
+     */
+    static async decideProposal({ proposalId, user, decision, reason = null }) {
+        const p = await db.get(
+            `SELECT id, employee_id AS "employeeId", skill_id AS "skillId", action_type AS "actionType",
+                    proposal_text AS "text", status FROM dev_proposals WHERE id = ?`,
+            [Number(proposalId)]
+        );
+        if (!p)
+            throw lifecycleError(
+                'IDP_PROPOSAL_NOT_FOUND',
+                404,
+                'Proposal not found',
+                'idp:err_proposal_not_found'
+            );
+        await IDPService._assertAuthority(user, { employeeId: p.employeeId });
+        if (p.status !== 'pending') {
+            throw lifecycleError(
+                'IDP_PROPOSAL_DECIDED',
+                409,
+                'This proposal was already decided.',
+                'idp:err_proposal_decided'
+            );
+        }
+        if (decision !== 'accept' && decision !== 'decline')
+            throw lifecycleError('IDP_BAD_DECISION', 400, 'Bad decision', 'idp:err_bad_decision');
+        const why = String(reason == null ? '' : reason)
+            .trim()
+            .slice(0, 1000);
+        const decider = user.userType === 'admin' ? 'admin' : String(user.userType);
+        if (decision === 'decline') {
+            if (!why)
+                throw lifecycleError(
+                    'IDP_REASON_REQUIRED',
+                    400,
+                    'A reason is required to decline.',
+                    'idp:err_decline_reason_required'
+                );
+            const row = await db.get(
+                `UPDATE dev_proposals SET status = 'declined', decided_by_type = ?, decided_by_id = ?,
+                        decided_at = now(), decision_reason = ?, updated_at = now()
+                  WHERE id = ? AND status = 'pending' RETURNING id`,
+                [decider, Number(user.id), why, p.id]
+            );
+            if (!row)
+                throw lifecycleError(
+                    'IDP_PROPOSAL_DECIDED',
+                    409,
+                    'This proposal was already decided.',
+                    'idp:err_proposal_decided'
+                );
+            await IDPService._notify('employee', p.employeeId, 'idp.proposal_decided', {
+                link: '/v2/idp/propose',
+            });
+            await IDPService._markProposalActed(p.id);
+            return { proposalId: Number(p.id), decision: 'decline' };
+        }
+        let plan = await db.get(
+            `SELECT id, employee_id AS "employeeId", status::text AS "status" FROM idp_plans
+              WHERE employee_id = ? AND status IN ('draft', 'active') ORDER BY id DESC LIMIT 1`,
+            [p.employeeId]
+        );
+        let created = null;
+        await db.runTransaction(async () => {
+            if (!plan) {
+                const r = await db.get(
+                    `INSERT INTO idp_plans (employee_id, status, priority) VALUES (?, 'draft', 'medium')
+                     RETURNING id`,
+                    [p.employeeId]
+                );
+                plan = { id: Number(r.id), employeeId: p.employeeId, status: 'draft' };
+                await IDPService._planEvent(
+                    plan.id,
+                    null,
+                    'plan_created_from_proposal',
+                    null,
+                    'draft',
+                    user,
+                    null,
+                    { proposalId: Number(p.id) }
+                );
+            }
+            let objectiveId = null;
+            if (p.skillId) {
+                const o = await db.get(
+                    `SELECT id FROM idp_objectives WHERE idp_id = ? AND skill_id = ?
+                        AND state IN ('pending', 'in_progress') ORDER BY id LIMIT 1`,
+                    [plan.id, p.skillId]
+                );
+                objectiveId = o ? Number(o.id) : null;
+            }
+            const a = await db.get(
+                `INSERT INTO idp_actions (idp_id, objective_id, type, title, status)
+                 VALUES (?, ?, ?, ?, 'pending') RETURNING id`,
+                [plan.id, objectiveId, p.actionType, p.text]
+            );
+            created = Number(a.id);
+            if (p.skillId) {
+                await db.run(
+                    'INSERT INTO action_skill_links (action_id, skill_id) VALUES (?, ?) ON CONFLICT DO NOTHING',
+                    [created, p.skillId]
+                );
+            }
+            const row = await db.get(
+                `UPDATE dev_proposals SET status = 'accepted', idp_id = ?, created_action_id = ?,
+                        decided_by_type = ?, decided_by_id = ?, decided_at = now(),
+                        decision_reason = ?, updated_at = now()
+                  WHERE id = ? AND status = 'pending' RETURNING id`,
+                [plan.id, created, decider, Number(user.id), why || null, p.id]
+            );
+            if (!row)
+                throw lifecycleError(
+                    'IDP_PROPOSAL_DECIDED',
+                    409,
+                    'This proposal was already decided.',
+                    'idp:err_proposal_decided'
+                );
+            await IDPService._planEvent(
+                plan.id,
+                objectiveId,
+                'action_added',
+                null,
+                'pending',
+                user,
+                null,
+                { actionId: created, type: p.actionType, fromProposal: Number(p.id) }
+            );
+        });
+        await IDPService._notify('employee', p.employeeId, 'idp.proposal_decided', {
+            link: '/v2/idp/' + Number(plan.id),
+        });
+        await IDPService._markProposalActed(p.id);
+        return {
+            proposalId: Number(p.id),
+            decision: 'accept',
+            idpId: Number(plan.id),
+            actionId: created,
+        };
+    }
+
+    /** A decided proposal closes the "proposal received" notices sent about it. */
+    static async _markProposalActed(proposalId) {
+        try {
+            await require('./NotificationService')
+                .markActed({ refType: 'dev_proposal', refId: Number(proposalId) })
+                .catch(() => 0);
+        } catch (_) {
+            /* never block */
+        }
+    }
+
+    /**
+     * A plan is never signed EMPTY: at least one action, and a due date on
+     * every objective. 409 with a stable code and the catalogue key.
+     */
+    static async assertSignable(idpId) {
+        const id = Number(idpId);
+        const r = await db.get(
+            `SELECT (SELECT COUNT(*) FROM idp_actions a WHERE a.idp_id = ?)::int AS "actions",
+                    (SELECT COUNT(*) FROM idp_objectives o
+                      WHERE o.idp_id = ? AND o.due_on IS NULL)::int AS "undated"`,
+            [id, id]
+        );
+        const missing = [];
+        if (!r || !Number(r.actions)) missing.push('action');
+        if (r && Number(r.undated) > 0) missing.push('due_date');
+        if (!missing.length) return true;
+        const e = lifecycleError(
+            'IDP_NOT_SIGNABLE',
+            409,
+            'This plan cannot be signed yet: add at least one action and a due date to every objective.',
+            missing.includes('action') ? 'idp:err_not_signable_action' : 'idp:err_not_signable_due',
+            { count: Number(r && r.undated) || 0 }
+        );
+        e.missing = missing;
+        throw e;
     }
 
     /** Tests / migration runner: forget what we learned about idp_signoffs. */

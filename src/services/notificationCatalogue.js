@@ -66,6 +66,16 @@ const WEBHOOK_DEFAULT = [
     'coaching.validated',
     'lms.assigned',
     'lms.due',
+    // The development loop (4.0.0 port): ids, dates and a link only
+    // (WebhookService.minimisePayload); a reason never leaves.
+    'idp.action_due',
+    'idp.action_reported',
+    'idp.action_validated',
+    'idp.completed',
+    'idp.proposal_received',
+    'idp.proposal_decided',
+    'lms.uplift_accepted',
+    'lms.uplift_declined',
     'cert.expiry',
     'certification.revoked',
     'coverage.breach',
@@ -264,6 +274,15 @@ const catalogue = {
             'pip.closed': 'A Performance Improvement Plan was closed',
             'idp.created': 'An Individual Development Plan was created',
             'idp.activated': 'Your Individual Development Plan is now active',
+            // The development loop (4.0.0 port, wave 4)
+            'idp.action_due': 'Your development actions are due',
+            'idp.action_reported': 'A development action is waiting for your validation',
+            'idp.action_validated': 'Your development action was validated',
+            'idp.completed': 'Your development plan is complete',
+            'idp.proposal_received': 'A development action was proposed to you',
+            'idp.proposal_decided': 'Your proposed development action has an answer',
+            'lms.uplift_accepted': 'Your level was validated',
+            'lms.uplift_declined': 'Your training was not accepted as evidence of level',
             'coaching.created': 'A coaching plan was created',
             'coaching.validated': 'A coaching plan was completed',
             'feedback360.nominate': 'Choose who gives you 360° feedback',
@@ -539,6 +558,56 @@ const catalogue = {
                 title: {
                     fr: 'Votre plan de développement est actif',
                     en: 'Your development plan is now active',
+                },
+            },
+            // The development loop (4.0.0 port, wave 4). No title carries a
+            // name; the emitter's payload.link (the plan, the action) wins.
+            'idp.action_due': {
+                icon: 'fa-list-check',
+                link: '/employee/my-development',
+                title: {
+                    fr: 'Avancez vos actions de développement',
+                    en: 'Move your development actions forward',
+                },
+            },
+            'idp.action_reported': {
+                icon: 'fa-clipboard-check',
+                link: '/v2/idp/manage',
+                title: {
+                    fr: 'Une action de développement terminée attend votre validation',
+                    en: 'A completed development action is waiting for your validation',
+                },
+            },
+            'idp.action_validated': {
+                icon: 'fa-circle-check',
+                link: '/v2/idp',
+                title: {
+                    fr: 'Votre action de développement a été validée',
+                    en: 'Your development action was validated',
+                },
+            },
+            'idp.completed': {
+                icon: 'fa-flag-checkered',
+                link: '/v2/idp',
+                title: {
+                    fr: 'Votre plan de développement est terminé',
+                    en: 'Your development plan is complete',
+                },
+            },
+            'idp.proposal_received': {
+                icon: 'fa-lightbulb',
+                link: '/v2/idp/manage',
+                title: {
+                    fr: 'Une action de développement vous est proposée',
+                    en: 'A development action was proposed to you',
+                },
+            },
+            'idp.proposal_decided': {
+                icon: 'fa-comment-dots',
+                link: '/v2/idp/propose',
+                title: {
+                    fr: 'Votre proposition d’action a reçu une réponse',
+                    en: 'Your proposed action has an answer',
                 },
             },
             'coaching.created': {
@@ -893,6 +962,24 @@ const catalogue = {
                 title: {
                     fr: 'Une formation terminée propose une élévation de niveau à valider',
                     en: 'A completed course proposes a level increase for your decision',
+                },
+            },
+            // The LEARNER is told what their line decided (4.0.0 port, wave 4).
+            // The reason of a refusal stays in the app (present, withReason).
+            'lms.uplift_accepted': {
+                icon: 'fa-circle-check',
+                link: '/employee/my-learning',
+                title: {
+                    fr: 'Votre niveau a été validé',
+                    en: 'Your level was validated',
+                },
+            },
+            'lms.uplift_declined': {
+                icon: 'fa-comment-dots',
+                link: '/employee/my-learning',
+                title: {
+                    fr: 'Votre formation n’a pas été retenue comme preuve de niveau',
+                    en: 'Your training was not accepted as evidence of level',
                 },
             },
             // Recipient-appropriate landings. These four go to EMPLOYEES, and
@@ -1328,6 +1415,16 @@ const catalogue = {
             'idp.created': 'digest',
             'idp.activated': 'digest',
             'idp.signoff_needed': 'digest',
+            // The development loop (4.0.0 port, wave 4): in the app now, in the
+            // daily digest by e-mail, never a standalone mail.
+            'idp.action_due': 'digest',
+            'idp.action_reported': 'digest',
+            'idp.action_validated': 'digest',
+            'idp.completed': 'digest',
+            'idp.proposal_received': 'digest',
+            'idp.proposal_decided': 'digest',
+            'lms.uplift_accepted': 'digest',
+            'lms.uplift_declined': 'digest',
             'coaching.created': 'digest',
             'coaching.validated': 'digest',
             'feedback360.nominate': 'digest',
@@ -1500,7 +1597,29 @@ const catalogue = {
             if (!Object.prototype.hasOwnProperty.call(ACTED_ABOVE, a)) return null;
             return String(lang || 'fr').startsWith('en') ? ACTED_ABOVE[a].en : ACTED_ABOVE[a].fr;
         };
+        const inEn = (lang) => String(lang || 'fr').startsWith('en');
+        const plural = (k, one, many) => (k > 1 ? many : one);
         return {
+            // The development loop (4.0.0 port): counts only, never a skill or a name.
+            'idp.action_due': (p, lang) => {
+                const k = n(p && p.count);
+                if (!k) return null;
+                const late = n(p && p.overdue);
+                if (inEn(lang))
+                    return late
+                        ? `${k} ${plural(k, 'action', 'actions')}, ${late} overdue`
+                        : `${k} ${plural(k, 'action', 'actions')} due soon`;
+                return late
+                    ? `${k} ${plural(k, 'action', 'actions')}, dont ${late} en retard`
+                    : `${k} ${plural(k, 'action', 'actions')} à échéance`;
+            },
+            'lms.uplift_accepted': (p, lang) => {
+                const k = n(p && p.skills);
+                if (!k) return null;
+                return inEn(lang)
+                    ? `${k} ${plural(k, 'skill', 'skills')} at the validated level`
+                    : `${k} ${plural(k, 'compétence', 'compétences')} au niveau validé`;
+            },
             'line.acted_above': actedAbove,
             'kpi.alert': kpiAlert,
             'safety.kpi_alert': kpiAlert,
@@ -1701,6 +1820,32 @@ const catalogue = {
                 fr: 'Un plan de développement attend votre signature pour pouvoir démarrer.',
                 en: 'A development plan is waiting for your sign-off before it can start.',
             },
+            // The development loop (4.0.0 port, wave 4): no name, no skill, no
+            // level and no reason in a body that may leave by e-mail.
+            'idp.action_due': {
+                fr: 'Des actions de votre plan de développement arrivent à échéance. Chaque action menée vous rapproche du niveau visé : signalez-la comme faite dès qu’elle l’est.',
+                en: 'Actions in your development plan are coming due. Each action you carry out brings you closer to the target level: report it done as soon as it is.',
+            },
+            'idp.action_reported': {
+                fr: 'Une personne que vous accompagnez indique avoir terminé une action de son plan de développement. Validez-la en indiquant le niveau que vous avez observé : c’est ce qui fait évoluer son niveau officiel.',
+                en: 'Someone you support reports having completed an action of their development plan. Validate it and record the level you observed: that is what moves their official level.',
+            },
+            'idp.action_validated': {
+                fr: 'Votre responsable a validé une action de votre plan de développement. Le détail est dans votre plan.',
+                en: 'Your manager validated an action of your development plan. The details are in your plan.',
+            },
+            'idp.completed': {
+                fr: 'Votre plan de développement est terminé. Ce qu’il a fait progresser est indiqué dans votre plan.',
+                en: 'Your development plan is complete. What it moved forward is shown in your plan.',
+            },
+            'idp.proposal_received': {
+                fr: 'Une personne de votre équipe vous propose une action de développement. Acceptez-la pour l’ajouter à son plan, ou expliquez votre refus.',
+                en: 'Someone in your team proposed a development action to you. Accept it to add it to their plan, or explain your refusal.',
+            },
+            'idp.proposal_decided': {
+                fr: 'Votre proposition d’action de développement a reçu une réponse. Le détail est dans l’application.',
+                en: 'Your proposed development action has an answer. The details are in the app.',
+            },
             'coaching.created': {
                 fr: 'Un plan de coaching a été créé pour vous accompagner.',
                 en: 'A coaching plan has been created to support you.',
@@ -1831,6 +1976,14 @@ const catalogue = {
             'lms.uplift_proposed': {
                 fr: "Une formation terminée par une personne que vous encadrez propose une élévation de niveau. Le niveau officiel reste inchangé tant que vous ne l'avez pas validée.",
                 en: 'A course completed by someone you supervise proposes a level increase. The official level stays unchanged until you validate it.',
+            },
+            'lms.uplift_accepted': {
+                fr: 'Votre responsable a validé le niveau atteint grâce à votre formation. Votre niveau officiel est à jour.',
+                en: 'Your manager validated the level you reached through your training. Your official level is up to date.',
+            },
+            'lms.uplift_declined': {
+                fr: 'Votre responsable n’a pas retenu votre formation comme preuve d’un nouveau niveau. Son explication est dans l’application.',
+                en: 'Your manager did not accept your training as evidence of a new level. Their explanation is in the app.',
             },
 
             // ---- Mobility, surveys, recognition ----
@@ -2070,6 +2223,10 @@ const catalogue = {
             en: 'A decision was made on your submitted action',
         };
         const followUp = { fr: 'Un suivi vous concerne', en: 'A follow-up concerns you' };
+        const devUpdate = {
+            fr: 'Du nouveau sur votre développement',
+            en: 'An update on your development',
+        };
         const mySafety = {
             fr: 'Votre habilitation sécurité : à consulter',
             en: 'Your safety clearance: please read',
@@ -2093,6 +2250,13 @@ const catalogue = {
             'sa.change_request_refused': decisionOnRequest,
             'mc.approved': decisionOnAction,
             'mc.rejected': decisionOnAction,
+            // The development loop (4.0.0 port, wave 4): the title states the
+            // decision, the subject only says something moved.
+            'idp.action_validated': devUpdate,
+            'idp.completed': devUpdate,
+            'idp.proposal_decided': devUpdate,
+            'lms.uplift_accepted': devUpdate,
+            'lms.uplift_declined': devUpdate,
             'pip.created': followUp,
             'pip.activated': followUp,
             'pip.closed': followUp,
@@ -2161,6 +2325,7 @@ const catalogue = {
                 'succession.review_due',
                 'ninebox.reassess_due',
                 'dispute.escalated',
+                'idp.action_due',
                 'feedback360.reminder',
                 'survey.respond',
             ],
@@ -2176,6 +2341,8 @@ const catalogue = {
                 'review.due',
                 'onboarding.submitted',
                 'idp.signoff_needed',
+                'idp.action_reported',
+                'idp.proposal_received',
                 'lms.assigned',
                 'lms.uplift_proposed',
                 'access.review',
@@ -2215,6 +2382,9 @@ const catalogue = {
                 'coaching.validated',
                 'continuity.successor_ready',
                 'safety.waiver_granted',
+                'idp.action_validated',
+                'idp.completed',
+                'lms.uplift_accepted',
             ],
         };
         const out = {};
@@ -2266,6 +2436,16 @@ const catalogue = {
             'digest.persona.manager': null,
             'digest.persona.employee': null,
             'digest.persona.paused': null,
+            // The development loop (4.0.0 port, wave 4): never emitted while
+            // the development module is off.
+            'idp.action_due': 'development',
+            'idp.action_reported': 'development',
+            'idp.action_validated': 'development',
+            'idp.completed': 'development',
+            'idp.proposal_received': 'development',
+            'idp.proposal_decided': 'development',
+            'lms.uplift_accepted': 'development',
+            'lms.uplift_declined': 'development',
         };
     },
 

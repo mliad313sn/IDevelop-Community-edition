@@ -408,11 +408,57 @@ class CoachingPlanService {
         // progress 100 by one click, with the cancellation trail still saying it
         // was cancelled. Positive check: anything but 'active' is refused.
         if (plan.state !== 'active') throw new Error(`Cannot validate from '${plan.state}'`);
+        // A coaching on a SKILL re-measures it (4.0.0 port, wave 4): the
+        // validator may give the level they OBSERVED (0-4). It becomes the
+        // official level through the same path as a plan action (history
+        // trigger, real actor) when it is higher or the skill was never
+        // assessed; left empty ("cannot judge yet"), nothing official moves.
+        // Never the person themself, by either of their accounts.
+        const body = (req && req.body) || {};
+        let observed = null;
+        if (
+            plan.skillId != null &&
+            body.observedLevel !== undefined &&
+            body.observedLevel !== null &&
+            String(body.observedLevel).trim() !== ''
+        ) {
+            observed = Number(body.observedLevel);
+            if (!Number.isInteger(observed) || observed < 0 || observed > 4) {
+                const e = new Error('The observed level must be an integer between 0 and 4.');
+                e.status = 400;
+                e.expose = true;
+                throw e;
+            }
+            const { personIdOf } = require('../utils/personIdentity');
+            if ((await personIdOf(user)) === Number(plan.employeeId)) {
+                throw new Error('Not authorized: one never rates oneself');
+            }
+        }
+        let levelResult = null;
+        if (observed != null) {
+            levelResult = await require('./ActionEffectivenessService').recordObservedLevel({
+                employeeId: Number(plan.employeeId),
+                skillId: Number(plan.skillId),
+                level: observed,
+                actor: user,
+                source: 'coaching',
+            });
+        }
         await db.run(
             'UPDATE coaching_plans SET state = ?, progress = 100, validated_by = ?, validated_at = now(), updated_at = now() WHERE id = ?',
             ['completed', auth.isAdmin ? null : user.id, planId]
         );
-        await this._audit(req, 'COACHING_PLAN_VALIDATED', planId, 'completion validated');
+        await this._audit(
+            req,
+            'COACHING_PLAN_VALIDATED',
+            planId,
+            'completion validated' +
+                (levelResult
+                    ? `; skill #${Number(plan.skillId)} observed ${observed} (before: ${
+                          levelResult.ratingPre == null ? 'not assessed' : levelResult.ratingPre
+                      }${levelResult.officialUpdated ? ', official' : ''})`
+                    : '')
+        );
         // Tell the employee their coaching plan was completed/validated.
         try {
             await require('./NotificationService')

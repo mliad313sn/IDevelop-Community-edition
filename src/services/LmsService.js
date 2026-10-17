@@ -550,7 +550,25 @@ class LmsService {
             // nagging about a course that was already done).
             const enrollment = await this._closeEnrollment(employeeId, courseId, completedAt);
             const applied = await this._proposeSkillUplifts(row.id, employeeId, courseId);
+            // Nothing to propose (the course maps no skill, or the level is
+            // already reached): the completion is still EVIDENCE. The plan action
+            // it served is reported done for the line to validate; it never
+            // closes itself and never moves a level. In a savepoint: a plan-side
+            // failure never costs the completion.
+            let reportedActions = [];
+            if (
+                employeeId &&
+                courseId &&
+                (applied.reason === 'no_mapping' || applied.reason === 'already_met')
+            ) {
+                reportedActions = await db
+                    .runInSavepoint(() =>
+                        require('./IDPService').reportActionsFromTraining({ employeeId, courseId })
+                    )
+                    .catch(() => []);
+            }
             return {
+                reportedActions,
                 completionId: row.id,
                 employeeId,
                 courseId,
@@ -874,12 +892,14 @@ class LmsService {
                 [decidedBy, why, id]
             );
             await this._auditDecision(user, id, c.employeeId, 'decline', why, []);
+            await this._tellLearner(Number(c.employeeId), id, 'decline', 0, why);
             return { completionId: id, decision: 'decline', raisedSkills: [] };
         }
 
         const proposals = await this._proposalFor(id);
         const adminId = await this._decidingAdminId(user);
         const raised = [];
+        let closedActions = [];
         await db.withActor(user, async () => {
             for (const p of proposals) {
                 await db.run(
@@ -899,11 +919,55 @@ class LmsService {
                   WHERE id = ?`,
                 [raised.length > 0, decidedBy, why || null, id]
             );
+            // The accepted completion closes the plan action that ordered the
+            // course (lms_enrollments.source_action_id), with its evidence row
+            // (source "training"), in the same transaction as the level.
+            if (c.courseId) {
+                closedActions = await require('./IDPService').closeActionsFromTraining({
+                    employeeId: Number(c.employeeId),
+                    courseId: Number(c.courseId),
+                    raised,
+                    user,
+                });
+            }
         });
         await this._auditDecision(user, id, c.employeeId, 'accept', why, raised);
         // Benches move only once a human has accepted the level.
         if (raised.length) await this._reevaluateSuccessors(Number(c.employeeId));
-        return { completionId: id, decision: 'accept', raisedSkills: raised };
+        await this._tellLearner(Number(c.employeeId), id, 'accept', raised.length, null);
+        return { completionId: id, decision: 'accept', raisedSkills: raised, closedActions };
+    }
+
+    /**
+     * The LEARNER is told what their line decided: the level validated on N
+     * skills, or the training not accepted as evidence, with the written
+     * reason readable in the app only (payload.reason: the notification centre
+     * shows it, a mail never carries it). The proposal the line received is
+     * marked acted. Counts only: no skill, no level, no name. Never blocks.
+     */
+    static async _tellLearner(employeeId, completionId, decision, count, reason) {
+        try {
+            const NotificationService = require('./NotificationService');
+            await NotificationService.markActed({
+                refType: 'lms_completion',
+                refId: Number(completionId),
+            });
+            const accept = decision === 'accept';
+            if (accept && !(count > 0)) return;
+            await NotificationService.notify({
+                userType: 'employee',
+                userId: Number(employeeId),
+                kind: accept ? 'lms.uplift_accepted' : 'lms.uplift_declined',
+                category: 'development',
+                payload: {
+                    link: '/employee/my-learning',
+                    completionId: Number(completionId),
+                    ...(accept ? { skills: Number(count) } : { reason: reason || null }),
+                },
+            });
+        } catch (_) {
+            /* never block the decision on a notification */
+        }
     }
 
     /** One audit line per uplift decision, accepted or declined (ids, levels, reason). */
@@ -922,7 +986,7 @@ class LmsService {
                     raised && raised.length
                         ? `; ${raised.map((p) => `skill #${p.skillId}: ${p.from == null ? 'not assessed' : p.from} -> ${p.to}`).join(', ')}`
                         : ''
-                }${why ? `; reason: ${why.slice(0, 200)}` : ''}`,
+                }${why ? `; reason: ${why.slice(0, 200)}` : ''}${require('./AuthorityService').auditAs(user, employeeId)}`,
             });
         } catch (e) {
             console.error('[lms] decision audit failed:', e && e.message);
@@ -996,6 +1060,30 @@ class LmsService {
              LIMIT 1`,
             [skillId]
         );
+    }
+
+    /**
+     * The courses a plan action can be given: those mapped to the action's
+     * skill first (with the level they propose), then the rest of the
+     * catalogue. { mapped, others, catalogue }: catalogue = number of courses
+     * known (0 = no LMS: the action is planned offline instead).
+     */
+    static async coursesForSkill(skillId, { limit = 200 } = {}) {
+        const sid = Number(skillId) || 0;
+        const cap = Math.min(Math.max(Number(limit) || 200, 1), 500);
+        const rows = await db.all(
+            `SELECT c.id, c.title, c.provider, c.duration_minutes AS "durationMinutes",
+                    m.level_delta AS "levelTo"
+               FROM lms_courses c
+               LEFT JOIN course_skill_map m ON m.course_id = c.id AND m.skill_id = ?
+              ORDER BY (m.skill_id IS NULL), c.title
+              LIMIT ?`,
+            [sid, cap]
+        );
+        const mapped = [];
+        const others = [];
+        for (const r of rows || []) (r.levelTo != null ? mapped : others).push(r);
+        return { mapped, others, catalogue: (rows || []).length };
     }
 
     /**

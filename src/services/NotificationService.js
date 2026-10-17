@@ -938,6 +938,11 @@ class NotificationService {
             'cycle.closed': { type: 'cycle', key: 'cycleId' },
             'cert.expiry': { type: 'skill', key: 'skillId' },
             'cert.expiry.team': { type: 'skill', key: 'skillId' },
+            // The development loop (4.0.0 port): the action to validate, the
+            // proposal to decide, the completion whose level to decide.
+            'idp.action_reported': { type: 'idp_action', key: 'actionId' },
+            'idp.proposal_received': { type: 'dev_proposal', key: 'proposalId' },
+            'lms.uplift_proposed': { type: 'lms_completion', key: 'completionId' },
         };
     }
 
@@ -969,6 +974,11 @@ class NotificationService {
             'sa.review_reset',
             'cert.expiry',
             'succession.review_due',
+            // The development loop (4.0.0 port, wave 4)
+            'idp.action_due',
+            'idp.action_reported',
+            'idp.proposal_received',
+            'lms.uplift_proposed',
         ];
     }
 
