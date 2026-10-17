@@ -170,13 +170,14 @@ const CATEGORIES = [
             },
             {
                 id: 'csrf',
-                fr: 'Jeton anti-CSRF sur chaque formulaire et appel qui modifie des données, dépôts de fichiers compris (le jeton voyage dans un en-tête, ou dans l’adresse d’un formulaire de dépôt classique ; aucun dépôt n’en est dispensé) ; contrôle de l’origine sur toute requête qui modifie des données (une origine « null » est refusée).',
-                en: 'Anti-CSRF token on every form and call that changes data, file uploads included (the token travels in a header, or in the address of a plain upload form; no upload is exempt); an origin check on every state-changing request (a "null" origin is refused).',
+                fr: 'Jeton anti-CSRF sur chaque formulaire et appel qui modifie des données, dépôts de fichiers compris (le jeton voyage dans un en-tête, ou dans l’adresse d’un formulaire de dépôt classique ; aucun dépôt n’en est dispensé) ; contrôle de l’origine sur toute requête qui modifie des données (une origine « null » est refusée) ; les validations groupées demandent aussi le jeton de la session.',
+                en: 'Anti-CSRF token on every form and call that changes data, file uploads included (the token travels in a header, or in the address of a plain upload form; no upload is exempt); an origin check on every state-changing request (a "null" origin is refused); bulk approvals also ask for the session token.',
                 evidence: ['server.js', 'src/middleware/httpHardening.js', 'public/js/main.js'],
                 tests: [
                     'webSecurityBaseline.test.js',
                     'httpHardening.test.js',
                     'csrfMultipart.test.js',
+                    'approveAllSessionCsrf.test.js',
                 ],
             },
             {
@@ -342,18 +343,20 @@ const CATEGORIES = [
             },
             {
                 id: 'special-category',
-                fr: 'Données de diversité déclarées par la personne seule, avec un consentement explicite et retirable (registre des consentements) ; origine ethnique désactivée sauf validation juridique saisie par un super-administrateur ; handicap jamais visible d’un manager ni analysé ; nationalité collectée et analysée seulement quand le module Contenu local est activé ; les réglages sensibles sont regroupés et chaque changement est confirmé.',
-                en: 'Diversity data declared by the person only, with explicit, withdrawable consent (consent ledger); ethnicity off unless a super-administrator records a legal sign-off; disability never visible to a manager nor analysed; nationality collected and analysed only while the Local content module is on; the sensitive settings are grouped and every change is confirmed.',
+                fr: 'Données de diversité déclarées par la personne seule, avec un consentement explicite et retirable (registre des consentements) ; origine ethnique désactivée sauf validation juridique saisie par un super-administrateur ; handicap jamais visible d’un manager ni analysé ; nationalité collectée et analysée seulement quand le module Contenu local est activé, et le rapport de contenu local ouvert seulement à un super-administrateur ou à la permission « voir le contenu local », les groupes de moins de 5 personnes masqués ; les réglages sensibles sont regroupés et chaque changement est confirmé.',
+                en: 'Diversity data declared by the person only, with explicit, withdrawable consent (consent ledger); ethnicity off unless a super-administrator records a legal sign-off; disability never visible to a manager nor analysed; nationality collected and analysed only while the Local content module is on, and the local content report open only to a super-administrator or the "view local content" permission, with groups of fewer than 5 people masked; the sensitive settings are grouped and every change is confirmed.',
                 evidence: [
                     'src/services/DEIService.js',
                     'db/postgres/171_dei_consent_self_declaration.sql',
                     'src/utils/featureFlags.js',
                     'views/pages/app-settings/index.ejs',
+                    'src/controllers/LocalContentController.js',
                 ],
                 tests: [
                     'deiConsentSelfDeclaration.test.js',
                     'deiConsent-db.test.js',
                     'nationalitySwitch.test.js',
+                    'localContentAccessMasking.test.js',
                     'sensitiveSettingsBand.test.js',
                 ],
             },
