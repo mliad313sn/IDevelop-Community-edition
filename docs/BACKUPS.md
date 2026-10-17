@@ -3,7 +3,9 @@
 This page is for whoever runs an IDevelop server. It covers the daily database
 backup, the SQL-console restore points, the key that encrypts them, and what to
 do when a backup will not restore. Security record: SA-39 in
-[SECURITY-AUDIT.md](SECURITY-AUDIT.md).
+[SECURITY-AUDIT.md](SECURITY-AUDIT.md) (SA-57 for the dump the Windows installer
+takes before an upgrade's migrations). Going back after an upgrade, and
+rebuilding on a new server: [ROLLBACK.md](ROLLBACK.md).
 
 **The rule to remember: a backup whose key is lost is lost.** Encryption protects
 a copy of the HR database that leaves the server. It also means the key must be
@@ -18,6 +20,7 @@ kept as carefully as the backups, and apart from them.
 | `sql-restore-points/<db>/<name>.dump.enc` (+ manifest, + `.json` sidecar) | the SQL console before a destructive script   | same format                                                                            |
 | `<db>-<date>.dump` (no `.enc`)                                            | versions before SA-39                         | plaintext; kept, listed as **not encrypted**, removed by the usual retention           |
 | `restore-points/rp-<version>-<date>/database.sql.enc` (+ manifest)        | `Manage-IDevelop.ps1 -Backup` (Windows)       | plain `pg_dump` encrypted with the same key, then the plain file deleted (SA-54)       |
+| `pre-upgrade-<db>-<old>-to-<new>-<stamp>.dump.enc` (+ manifest)           | the Windows installer, before the migrations  | same format as the daily backup; never removed by the daily retention (SA-57)          |
 
 The format is a chunked AES-256-GCM stream: every file has its own random data
 key, wrapped by the backup **master key**. Chunks cannot be altered, reordered,
@@ -147,6 +150,35 @@ stops the service or drops the database, and refuses a changed or truncated
 file. It then streams the decrypted SQL into `psql` (`backup-key.js pipe`):
 nothing clear is written to disk. Plain `database.sql` points from earlier
 versions are restored as they are, with a warning.
+
+## Before an upgrade (Windows installer)
+
+On an upgrade of an existing install (`-Patch`, `-Migrate`, or a plain re-run
+that applies migrations; never `-Reinstall`), Setup runs
+`scripts\pre-upgrade-dump.js` after the migration pre-flight and **before the
+first migration**. It writes
+`%ProgramData%\IDevelop\backups\pre-upgrade-<db>-<old>-to-<new>-<stamp>.dump.enc`
+with the daily job's pipeline (`pg_dump -Fc` on stdout, encrypted as it is
+produced, signed manifest), restricts the file and its manifest, then verifies
+it like a daily backup (manifest, every chunk, `pg_restore --list` on the
+decrypted stream). The summary names it (`DB dump (pre)`).
+
+It fails closed. Any of these stops the upgrade before a single migration
+statement runs, removes whatever was written, and leaves the database as it
+was; Setup then puts the previous code back:
+
+- no backup key (production on Windows: DPAPI unavailable);
+- not enough free space: the folder must have the table data of the database
+  (heap and TOAST, without indexes) plus 256 MB free; the compressed dump is
+  normally much smaller;
+- a `pg_dump` error, an empty dump, or a failed verification;
+- `scripts\pre-upgrade-dump.js` missing from the install directory.
+
+`-SkipPreMigrationDump` goes past it, logged as a warning: only for a very large
+database that already has its own verified backup. The file name does not start
+with `<db>-`, so the daily retention never removes it: delete old ones yourself
+once the version they lead back to is no longer a candidate. How to use it to
+go back: [ROLLBACK.md](ROLLBACK.md).
 
 ## Off-host copy
 

@@ -547,3 +547,47 @@ describe('the servicing config.psd1 is closed to SYSTEM and Administrators', () 
         expect(fn(INST, 'Get-AppAclTargets')).not.toMatch(/Join-Path \$InstallDir 'maintenance'\)/);
     });
 });
+
+describe('the rollback runbook and the VM rehearsal', () => {
+    const RB = read('docs', 'ROLLBACK.md');
+    const README = read('installer', 'README.md');
+
+    test('the runbook verifies first, sets the database aside, restores without a clear copy', () => {
+        const verify = RB.indexOf('backup-key.js verify --in');
+        const rename = RB.indexOf('RENAME TO');
+        const pipe = RB.indexOf('backup-key.js pipe --in');
+        const purge = RB.indexOf('Remove the newer migration files');
+        const code = RB.indexOf('Put the previous code back');
+        const erase = RB.indexOf('reapply-erasures.js');
+        for (const i of [verify, rename, pipe, purge, code, erase]) expect(i).toBeGreaterThan(0);
+        expect(verify).toBeLessThan(rename);
+        expect(rename).toBeLessThan(pipe);
+        expect(pipe).toBeLessThan(purge);
+        expect(purge).toBeLessThan(code);
+        expect(code).toBeLessThan(erase);
+        // nothing is dropped by the runbook, and no password on a command line
+        expect(RB).not.toMatch(/DROP DATABASE/);
+        expect(RB).toMatch(/\$env:PGPASSWORD = Read-Host/);
+        expect(RB).toMatch(/-SkipPreMigrationDump/);
+        expect(RB).toMatch(/backup-key\.js import --in <recovery file> --current/);
+    });
+
+    test('BACKUPS.md and the installer README describe the dump and link the runbook', () => {
+        const B = read('docs', 'BACKUPS.md');
+        expect(B).toMatch(/pre-upgrade-<db>-<old>-to-<new>-<stamp>\.dump\.enc/);
+        expect(B).toMatch(/\(ROLLBACK\.md\)/);
+        expect(README).toMatch(/\| `-SkipPreMigrationDump` +\|/);
+        expect(README).toMatch(/\(\.\.\/docs\/ROLLBACK\.md\)/);
+    });
+
+    test('the Windows VM checklist has the four new rehearsal steps', () => {
+        const list = README.slice(
+            README.indexOf('### Release rehearsal on a Windows VM'),
+            README.indexOf('## Troubleshooting')
+        );
+        expect(list).toMatch(/^9\. \*\*Pre-migration dump, success and refusal\.\*\*/m);
+        expect(list).toMatch(/^10\. \*\*Rollback from the dump\*\*/m);
+        expect(list).toMatch(/^11\. \*\*Offline dependencies and code copies\.\*\*/m);
+        expect(list).toMatch(/^12\. \*\*Servicing config\.\*\*/m);
+    });
+});

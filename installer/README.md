@@ -75,6 +75,7 @@ No SMTP server is installed or required by the installer.
 | `-EnableAuditOwnerSeparation` | Turn on audit-trail ownership separation (off by default; see below)                                        |
 | `-ApplyPgHardening`           | Apply the recommended PostgreSQL settings on a server Setup did not create (see below)                      |
 | `-EnforceManifest`            | Move files the release does not list out of the install directory (never deletes; see below)                |
+| `-SkipPreMigrationDump`       | Upgrade: skip the encrypted database dump taken before the migrations (logged; see below)                   |
 
 Defaults live in **`config.psd1`**.
 
@@ -296,8 +297,9 @@ decrypts it straight into `psql`; nothing clear is written to disk. Older plain
 
 The installer's PowerShell is checked by the test suite from its source text,
 and its functions are run by the tests on Windows only. Changes to the service
-account, the ACLs, the PostgreSQL hardening, the release manifest or the backup
-key **must be rehearsed on a clean Windows Server VM before a release**. Keep
+account, the ACLs, the PostgreSQL hardening, the release manifest, the backup
+key, the pre-migration dump, the offline dependency cache or the code copies
+**must be rehearsed on a clean Windows Server VM before a release**. Keep
 the log, the `…summary.txt` and the transcript of each run with the release
 notes.
 
@@ -352,6 +354,42 @@ notes.
    before stopping the service. Run `scripts\Verify-BackupRestore.ps1`. On a
    second VM, import the recovery file (`backup-key.js import --in`) and restore
    a copied backup there.
+9. **Pre-migration dump, success and refusal.** From step 2's data, run this
+   package with `-Migrate`. Check: the log shows `Taking the encrypted pre-migration database dump` **before** `Applying database migrations...`;
+   the summary shows `DB dump (pre)` with a
+   `%ProgramData%\IDevelop\backups\pre-upgrade-<db>-<old>-to-<new>-<stamp>.dump.enc`
+   and its `.manifest.json`; `icacls` on both shows SYSTEM, Administrators and
+   the owner only; `backup-key.js verify --in <file> --pg-restore <pg_restore.exe>`
+   exits 0; the next daily backup does not remove it. Then force a refusal on a
+   fresh copy of the old install (for example rename `pg_dump.exe` for the run,
+   or fill the backup volume): Setup stops with `Pre-migration database dump FAILED`, `schema_meta` is unchanged, the previous code is back and healthy.
+   Re-run with `-SkipPreMigrationDump`: a `WARN` line, the summary says
+   `SKIPPED`, the migrations run. Repeat once with
+   `-EnableAuditOwnerSeparation` already on, so `pg_dump` runs as the app role
+   against tables the audit owner owns.
+10. **Rollback from the dump** ([docs/ROLLBACK.md](../docs/ROLLBACK.md)). After a
+    successful step 9 upgrade, add a person, then follow the runbook to the
+    previous version. Check: the person count, skills, assessments,
+    `schema_meta` and the table list equal those before the upgrade; the
+    migration files the old package does not ship are gone from `db\postgres`;
+    `reapply-erasures.js` exits 0 (erase someone after the dump and before the
+    rollback to see it erased again); `/health` answers; About shows the old
+    version; the renamed database is still there. Time the run and keep the
+    figure with the release notes.
+11. **Offline dependencies and code copies.** Build the package without
+    `-SkipOfflineCache` and check `npm-cache\` is in it. On a VM with no route
+    to the npm registry (block it in the firewall), upgrade: the log shows
+    `Installing dependencies OFFLINE`, the summary `Dependencies : offline (package npm-cache)`, and the app comes up. Delete `npm-cache\` from an
+    extracted package and upgrade with the registry reachable: `online (npm registry)`. With six or more `app-*` folders under `app-backups` (and one
+    `retired-*`), upgrade: the five newest, including the one just taken,
+    remain; each removed folder is named in the log; `retired-*` is untouched;
+    and the new copy holds neither `uploads` nor `backups`.
+12. **Servicing config.** After a fresh install and after an upgrade, `icacls "C:\Program Files\IDevelop\maintenance\config.psd1"` lists only SYSTEM and
+    Administrators (no `Users`, no `NT SERVICE\IDevelop`), and the other files of
+    `maintenance` stay readable by `Users`. As a standard administrator (UAC on,
+    not elevated): Apps & features → Modify opens the maintenance window after
+    the elevation prompt, Uninstall starts, and the Start Menu "Maintenance"
+    shortcut works. `Manage -SetPgPassword` still reads the standard password.
 
 ---
 
@@ -426,9 +464,48 @@ IDevelop — both **keep the database, all data and `.env`**:
 What a patch does, in order: stops the service → **backs up the current app code**
 to `C:\ProgramData\IDevelop\app-backups\app-<oldVersion>-<timestamp>\` → overlays
 the new code (keeping `.env`, `node_modules`, `logs`, `data`) → installs any new
-dependencies → applies only **pending** migrations (idempotent) → restarts the
-service → **verifies the new version answers its health check** → reports
-`installed → package` versions in the log and `…summary.txt`.
+dependencies (offline from the package first) → **takes an encrypted, verified
+dump of the database** → applies only **pending** migrations (idempotent) →
+restarts the service → **verifies the new version answers its health check** →
+reports `installed → package` versions in the log and `…summary.txt`.
+
+### Before the migrations: the database dump
+
+On every upgrade of an existing install (never on `-Reinstall`, never on an
+app-only `-Patch -SkipMigrations`), Setup takes an encrypted, verified dump of
+the database **before the first migration** (`scripts\pre-upgrade-dump.js`: the
+daily backup's key and pipeline, then `pg_restore --list` on the decrypted
+stream; nothing clear on disk) into
+`%ProgramData%\IDevelop\backups\pre-upgrade-<db>-<old>-to-<new>-<stamp>.dump.enc`.
+The summary line `DB dump (pre)` names it. It is the database half of a
+rollback: once the new schema is in, the pre-flight refuses the older package,
+and the code copy alone cannot go back. How to use it:
+[docs/ROLLBACK.md](../docs/ROLLBACK.md).
+
+**If the dump fails, no migration runs** and the installation stops: the
+database is unchanged and the automatic rollback puts the previous code back.
+The usual causes are the backup key (see below), `pg_dump`, and disk space (the
+folder needs the database's table data plus 256 MB free). Fix the cause and run
+Setup again. `-SkipPreMigrationDump` goes past it, logged as a warning, for a
+very large database that already has its own verified backup. The daily
+retention never removes these dumps; delete old ones yourself.
+
+### Dependencies offline, and the code copies
+
+The package carries `npm-cache\` (every production tarball of the lockfile,
+stored under its sha512; built by `Build-Package.ps1`). Setup runs
+`npm ci --offline --cache <package>\npm-cache` first, so a server without access
+to the npm registry installs and upgrades; npm still checks every tarball
+against the lockfile. The registry is the fallback only, and the summary line
+`Dependencies` says which one was used. `Build-Package.ps1 -SkipOfflineCache`
+builds a package without the cache, for local use only.
+
+The code copies under `app-backups` no longer carry `uploads` and `backups`
+(they are not code, and a rollback must never put older evidence files back over
+newer ones). Setup keeps the newest `AppBackupKeep` copies (`config.psd1`,
+default 5; `0` keeps all), never removes the one it just took or a `retired-*`
+folder, and logs the name of every copy it removes (summary line
+`Code backups`).
 
 A patch **never** drops/recreates the database, never re-imports the data
 snapshot, and never resets the admin password (existing logins are preserved).
@@ -492,8 +569,11 @@ version.
 - **Manual rollback** (e.g. to undo an upgrade that _did_ come up healthy): stop the
   app host, copy the backed-up `app-…` folder back over the install directory, then
   restart it — `Start-Service IDevelop` for the default WinSW service host, or
-  `Start-ScheduledTask IDevelop` if hosted as a Scheduled Task. (Roll the DB back from
-  your own PostgreSQL backup only if a migration must be undone.)
+  `Start-ScheduledTask IDevelop` if hosted as a Scheduled Task. If a migration must
+  be undone too, the database goes back from the pre-migration dump first:
+  [docs/ROLLBACK.md](../docs/ROLLBACK.md) has the steps (verify the dump, set the
+  current database aside, restore, remove the newer migration files, put the
+  previous code back, re-apply the erasures).
 
 > `-Repair` is different: it force-rebuilds `node_modules` and regenerates a
 > broken `.env`. Use `-Patch` for routine version updates; `-Repair` to fix a
@@ -564,14 +644,23 @@ machines with no desktop, not as a quicker deployment mode.
 A completed install now declares itself to Windows the way a per-machine
 application is expected to:
 
-| What                            | Where                                                                                                                                                                |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Apps & features** entry       | `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\IDevelop` — name, version, publisher, install location and date, measured size, icon, help and about links |
-| **Uninstall / Quiet uninstall** | `UninstallString` and `QuietUninstallString` (the `-Silent` form Settings and management tools prefer)                                                               |
-| **Modify / repair**             | `ModifyPath` opens the **modern maintenance window** (`Maintain-IDevelop.ps1`); `NoModify`/`NoRepair` are 0                                                          |
-| **Start Menu**                  | `%ProgramData%\...\Start Menu\Programs\IDevelop` — the app (a `.url` to `http://localhost:3000/`), Maintenance, and Uninstall                                        |
-| **Servicing copy**              | `<InstallDir>\maintenance\` holds the uninstaller, `config.psd1`, the maintenance script, `Maintain-IDevelop.ps1` and `Installer-Gui.ps1`                            |
-| **Application icon**            | `<InstallDir>\public\icons\idevelop.ico`, generated at build time from `icon-512.png` at 6 sizes                                                                     |
+| What                            | Where                                                                                                                                                                      |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Apps & features** entry       | `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\IDevelop` — name, version, publisher, install location and date, measured size, icon, help and about links       |
+| **Uninstall / Quiet uninstall** | `UninstallString` and `QuietUninstallString` (the `-Silent` form Settings and management tools prefer)                                                                     |
+| **Modify / repair**             | `ModifyPath` opens the **modern maintenance window** (`Maintain-IDevelop.ps1`); `NoModify`/`NoRepair` are 0                                                                |
+| **Start Menu**                  | `%ProgramData%\...\Start Menu\Programs\IDevelop` — the app (a `.url` to `http://localhost:3000/`), Maintenance, and Uninstall                                              |
+| **Servicing copy**              | `<InstallDir>\maintenance\` holds the uninstaller, `config.psd1` (SYSTEM and Administrators only), the maintenance script, `Maintain-IDevelop.ps1` and `Installer-Gui.ps1` |
+| **Application icon**            | `<InstallDir>\public\icons\idevelop.ico`, generated at build time from `icon-512.png` at 6 sizes                                                                           |
+
+The servicing `config.psd1` is what `Manage -SetPgPassword` and
+`-SetAdminPassword` read, so it holds `StandardPgSuperPassword` and
+`StandardAdminPassword` when you fill them. Setup cuts that file down to SYSTEM
+and Administrators right after the copy, with nothing for the service account,
+and every Setup and `Manage` run checks it again. Only the file: the scripts
+beside it start unelevated from Apps & features and the Start Menu and elevate
+themselves, so they stay readable, and each reads `config.psd1` only once it is
+elevated.
 
 Why the servicing copy exists: the `UninstallString` must point at a path that
 survives. The extracted package under `%ProgramData%\IDevelop\installer` is

@@ -539,13 +539,15 @@ const CATEGORIES = [
             },
             {
                 id: 'backups',
-                fr: 'Sauvegardes quotidiennes et points de restauration chiffrés (AES-256-GCM, manifeste signé contrôlé avant toute restauration), vérifiés après chaque sauvegarde, avec contrôle d’accès, copie hors serveur possible et exercices de restauration ; une rotation d’APP_KEY garde les anciennes sauvegardes lisibles.',
-                en: 'Daily backups and restore points encrypted (AES-256-GCM, signed manifest checked before any restore), verified after each backup, with access control, an optional off-host copy and restore drills; an APP_KEY rotation keeps older backups readable.',
+                fr: 'Sauvegardes quotidiennes et points de restauration chiffrés (AES-256-GCM, manifeste signé contrôlé avant toute restauration), vérifiés après chaque sauvegarde, avec contrôle d’accès, copie hors serveur possible et exercices de restauration ; une rotation d’APP_KEY garde les anciennes sauvegardes lisibles ; l’installateur Windows prend une copie chiffrée et vérifiée de la base avant les migrations d’une mise à jour et s’arrête s’il ne peut pas.',
+                en: 'Daily backups and restore points encrypted (AES-256-GCM, signed manifest checked before any restore), verified after each backup, with access control, an optional off-host copy and restore drills; an APP_KEY rotation keeps older backups readable; the Windows installer takes an encrypted, verified dump before an upgrade’s migrations and stops if it cannot.',
                 evidence: [
                     'src/services/BackupCryptoService.js',
                     'scripts/backup-key.js',
                     'scripts/Verify-BackupRestore.ps1',
+                    'scripts/pre-upgrade-dump.js',
                     'docs/BACKUPS.md',
+                    'docs/ROLLBACK.md',
                 ],
                 tests: [
                     'backupCrypto.test.js',
@@ -554,6 +556,8 @@ const CATEGORIES = [
                     'backupKeyringAcl.test.js',
                     'c317-D-ops-security-backup-acl.test.js',
                     'installerRestoreAndPatchProof.test.js',
+                    'installerUpgradeSafetyNet.test.js',
+                    'preUpgradeDump-db.test.js',
                 ],
             },
             {
@@ -625,8 +629,8 @@ const CATEGORIES = [
             },
             {
                 id: 'installer-least-privilege',
-                fr: 'Installateur Windows : une nouvelle installation tourne sous le compte virtuel du service, en lecture seule sur le code et en écriture sur les seuls dossiers de données ; une mise à jour sous LocalSystem se voit proposer la bascule, annulée d’elle-même si le service ne répond plus ; paquet vérifié contre son manifeste SHA-256 avant tout arrêt ou copie ; durcissement PostgreSQL appliqué sur un serveur créé par l’installateur, proposé ailleurs, avec un rapport à chaque passage ; clé de sauvegarde créée à l’installation et points de restauration chiffrés.',
-                en: 'Windows installer: a new install runs as the service’s virtual account, read-only on the code and writing to the data folders only; an upgrade on LocalSystem is offered the switch, undone by itself if the service stops answering; the package is checked against its SHA-256 manifest before anything is stopped or copied; PostgreSQL hardening applied on a server the installer created, offered elsewhere, with a report on every run; the backup key created at install and restore points encrypted.',
+                fr: 'Installateur Windows : une nouvelle installation tourne sous le compte virtuel du service, en lecture seule sur le code et en écriture sur les seuls dossiers de données ; une mise à jour sous LocalSystem se voit proposer la bascule, annulée d’elle-même si le service ne répond plus ; paquet vérifié contre son manifeste SHA-256 avant tout arrêt ou copie ; durcissement PostgreSQL appliqué sur un serveur créé par l’installateur, proposé ailleurs, avec un rapport à chaque passage ; clé de sauvegarde créée à l’installation et points de restauration chiffrés ; la copie de service de config.psd1 réservée à SYSTEM et aux administrateurs.',
+                en: 'Windows installer: a new install runs as the service’s virtual account, read-only on the code and writing to the data folders only; an upgrade on LocalSystem is offered the switch, undone by itself if the service stops answering; the package is checked against its SHA-256 manifest before anything is stopped or copied; PostgreSQL hardening applied on a server the installer created, offered elsewhere, with a report on every run; the backup key created at install and restore points encrypted; the servicing copy of config.psd1 closed to SYSTEM and Administrators.',
                 evidence: [
                     'installer/Install-IDevelop.ps1',
                     'installer/Manage-IDevelop.ps1',
