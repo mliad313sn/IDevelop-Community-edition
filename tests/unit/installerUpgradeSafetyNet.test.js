@@ -7,6 +7,8 @@
  *    migration, -SkipPreMigrationDump is the logged way past it;
  *  - code copies under app-backups pruned to the newest AppBackupKeep, without
  *    uploads and backups;
+ *  - an offline dependency cache in the package (scripts/build-offline-cache.js),
+ *    tried before the npm registry;
  *
  * Static contracts on the PowerShell source (it is not executed here) and the
  * pure helpers and fail-closed paths of the new scripts (pg_dump and pg_restore
@@ -310,5 +312,184 @@ describe('code copies: pruned to AppBackupKeep, without uploads and backups', ()
     test('the rollback still restores the copy just taken', () => {
         expect(INST).toMatch(/robocopy \$script:BackupDir \$cfg\.InstallDir \/E /);
         expect(block).toMatch(/\$script:BackupDir = \$backupDir/);
+    });
+});
+
+describe('offline dependency cache', () => {
+    const OC = require('../../scripts/build-offline-cache');
+
+    test('production tarballs only, one per integrity, http(s) resolved', () => {
+        const lock = {
+            packages: {
+                '': { name: 'app' },
+                'node_modules/a': {
+                    version: '1.0.0',
+                    resolved: 'https://r/a.tgz',
+                    integrity: 'sha512-A',
+                },
+                'node_modules/b': {
+                    version: '1.0.0',
+                    resolved: 'https://r/b.tgz',
+                    integrity: 'sha512-B',
+                    dev: true,
+                },
+                'node_modules/x/node_modules/a': {
+                    version: '1.0.0',
+                    resolved: 'https://r/a.tgz',
+                    integrity: 'sha512-A',
+                },
+                'node_modules/l': { link: true, resolved: 'lib/l' },
+                'node_modules/f': {
+                    version: '1.0.0',
+                    resolved: 'file:../f',
+                    integrity: 'sha512-F',
+                },
+                'node_modules/o': {
+                    version: '2.0.0',
+                    resolved: 'https://r/o.tgz',
+                    integrity: 'sha512-O',
+                    optional: true,
+                },
+            },
+        };
+        const t = OC.productionTarballs(lock);
+        expect(t.map((x) => x.name)).toEqual(['a', 'o']);
+        expect(t[1].optional).toBe(true);
+        expect(OC.productionTarballs(null)).toEqual([]);
+    });
+
+    test('the real lockfile: every production package has an integrity', () => {
+        const lock = JSON.parse(read('package-lock.json'));
+        const prod = Object.entries(lock.packages).filter(
+            ([k, p]) => k && !p.dev && !p.link && p.resolved && /^https?:/.test(p.resolved)
+        );
+        expect(prod.length).toBeGreaterThan(50);
+        expect(prod.filter(([, p]) => !p.integrity).map(([k]) => k)).toEqual([]);
+        expect(OC.productionTarballs(lock).length).toBeGreaterThan(50);
+    });
+
+    describe('build(): from the local npm cache, else a download, every tarball checked', () => {
+        let dir;
+        let cacache;
+        let ssri;
+        const tgz = (n) => Buffer.from(`fake tarball ${n} `.repeat(50));
+        beforeEach(() => {
+            dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idv-offline-'));
+            cacache = OC.npmModule('cacache');
+            ssri = OC.npmModule('ssri');
+        });
+        afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+        function world(entries) {
+            const root = path.join(dir, 'app');
+            fs.mkdirSync(root, { recursive: true });
+            const packages = { '': { name: 'app' } };
+            for (const [name, body, extra] of entries) {
+                packages[`node_modules/${name}`] = {
+                    version: '1.0.0',
+                    resolved: `https://registry.example/${name}.tgz`,
+                    integrity: ssri.fromData(body, { algorithms: ['sha512'] }).toString(),
+                    ...extra,
+                };
+            }
+            fs.writeFileSync(
+                path.join(root, 'package-lock.json'),
+                JSON.stringify({ lockfileVersion: 3, packages })
+            );
+            return root;
+        }
+
+        test('cached by digest; the dev entry left out; a download checked before it is kept', async () => {
+            const a = tgz('a');
+            const b = tgz('b');
+            const root = world([
+                ['a', a],
+                ['b', b],
+                ['devonly', tgz('d'), { dev: true }],
+            ]);
+            const from = path.join(dir, 'npm-home');
+            const integrityA = ssri.fromData(a, { algorithms: ['sha512'] }).toString();
+            await cacache.put(path.join(from, '_cacache'), 'some-key', a, {
+                integrity: integrityA,
+            });
+            const fetched = [];
+            const out = path.join(dir, 'npm-cache');
+            const r = await OC.build({
+                root,
+                out,
+                from,
+                fetch: (url) => {
+                    fetched.push(url);
+                    return b;
+                },
+            });
+            expect(r).toMatchObject({ total: 2, fromCache: 1, downloaded: 1, missing: [] });
+            expect(r.required_missing).toEqual([]);
+            expect(fetched).toEqual(['https://registry.example/b.tgz']);
+            const got = await cacache.get.byDigest(path.join(out, '_cacache'), integrityA);
+            expect(Buffer.compare(got, a)).toBe(0);
+        });
+
+        test('a tampered download fails the build; a missing optional one does not', async () => {
+            const root = world([['a', tgz('a')]]);
+            await expect(
+                OC.build({
+                    root,
+                    out: path.join(dir, 'c1'),
+                    from: path.join(dir, 'empty'),
+                    fetch: () => tgz('evil'),
+                })
+            ).rejects.toThrow(/integrity mismatch for a@1\.0\.0/);
+
+            const root2 = world([
+                ['req', tgz('r')],
+                ['opt', tgz('o'), { optional: true }],
+            ]);
+            const r = await OC.build({
+                root: root2,
+                out: path.join(dir, 'c2'),
+                from: path.join(dir, 'empty'),
+                fetch: () => {
+                    throw new Error('offline');
+                },
+            });
+            expect(r.missing.sort()).toEqual(['opt@1.0.0 (optional)', 'req@1.0.0']);
+            expect(r.required_missing).toEqual(['req@1.0.0']);
+        });
+    });
+
+    test('Build-Package builds npm-cache before the denylist scan; the script is dev tooling', () => {
+        expect(BUILD).toMatch(/scripts\\build-offline-cache\.js'\) --root \$appDest --out \$ocDir/);
+        expect(BUILD).toMatch(
+            /if \(\$LASTEXITCODE -ne 0\) \{ throw "Refusing to package: the offline dependency cache is incomplete/
+        );
+        expect(BUILD).toMatch(/\[switch\]\$SkipOfflineCache\)/);
+        expect(BUILD.indexOf('# 3a. OFFLINE DEPENDENCY CACHE')).toBeLessThan(
+            BUILD.indexOf('# 3b. DENYLIST GUARD')
+        );
+        const dev = BUILD.slice(
+            BUILD.indexOf('$devOnlyScripts = @('),
+            BUILD.indexOf('$devOnlyDirs')
+        );
+        expect(dev).toMatch(/'build-offline-cache\.js'/);
+    });
+
+    test('the installer tries npm ci --offline from the package cache first, the registry after', () => {
+        const step = INST.slice(
+            INST.indexOf("$npmCommon = @('--omit=dev'"),
+            INST.indexOf('Log "Dependencies installed (')
+        );
+        const off = step.indexOf("@('ci', '--offline', '--cache', $offlineCache) + $npmCommon");
+        const online = step.indexOf('$code = Invoke-Logged -File $npmCmd -Arguments $npmArgs');
+        expect(off).toBeGreaterThan(0);
+        expect(online).toBeGreaterThan(off);
+        expect(step).toMatch(/\$offlineCache = Join-Path \$ScriptRoot 'npm-cache'/);
+        // only with a lockfile: --offline npm ci is still npm ci against it
+        expect(step).toMatch(
+            /if \(\$hasLock -and \(Test-Path -LiteralPath \(Join-Path \$offlineCache '_cacache'\)\)\) \{/
+        );
+        // a failed offline attempt clears the partial tree before the registry run
+        expect(step.slice(off, online)).toMatch(/Remove-Item -Recurse -Force \$nmPath/);
+        expect(INST).toMatch(/"Dependencies {2}: \$\(\$script:DepsSource\)"/);
     });
 });

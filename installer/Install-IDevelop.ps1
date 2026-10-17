@@ -3308,7 +3308,29 @@ if (($Repair -or $ForceDeps) -and (Test-Path $nmPath)) {
 $npmCommon = @('--omit=dev', '--no-audit', '--no-fund', '--loglevel=error', '--ignore-scripts')
 $hasLock = Test-Path (Join-Path $cfg.InstallDir 'package-lock.json')
 $npmArgs = if ($hasLock) { @('ci') + $npmCommon } else { @('install') + $npmCommon }
-$code = Invoke-Logged -File $npmCmd -Arguments $npmArgs -WorkDir $cfg.InstallDir -EnvVars $childEnv
+# OFFLINE FIRST. The package carries npm-cache\ (every production tarball of the
+# lockfile, stored under its sha512; Build-Package.ps1 step 3a). With it, a
+# server without registry access installs and upgrades, and the service is
+# down for less time. npm still checks each tarball against the lockfile. The
+# registry path below is only the fallback, and the summary says which ran.
+$code = 1
+$script:DepsSource = $null
+$offlineCache = Join-Path $ScriptRoot 'npm-cache'
+if ($hasLock -and (Test-Path -LiteralPath (Join-Path $offlineCache '_cacache'))) {
+    Log "Installing dependencies OFFLINE from the package cache ($offlineCache)..."
+    $code = Invoke-Logged -File $npmCmd -Arguments (@('ci', '--offline', '--cache', $offlineCache) + $npmCommon) -WorkDir $cfg.InstallDir -EnvVars $childEnv
+    if ($code -eq 0) { $script:DepsSource = 'offline (package npm-cache)' }
+    else {
+        Log "Offline npm ci failed (exit $code) - removing the partial node_modules and falling back to the registry..." 'WARN'
+        Remove-Item -Recurse -Force $nmPath -ErrorAction SilentlyContinue
+    }
+} else {
+    Log 'No npm-cache\ in this package - dependencies come from the npm registry.' 'WARN'
+}
+if ($code -ne 0) {
+    $code = Invoke-Logged -File $npmCmd -Arguments $npmArgs -WorkDir $cfg.InstallDir -EnvVars $childEnv
+    if ($code -eq 0) { $script:DepsSource = 'online (npm registry)' }
+}
 # `npm ci` is strict: it fails if node_modules/lockfile are out of sync (common
 # on a partially-installed repair). Fall back to `npm install`, which reconciles.
 if ($code -ne 0 -and $hasLock) {
@@ -3325,7 +3347,8 @@ if ($code -ne 0) {
     $code = Invoke-Logged -File $npmCmd -Arguments (@('install') + $npmCommon) -WorkDir $cfg.InstallDir -EnvVars $childEnv
 }
 if ($code -ne 0) { Fail "npm install failed (exit $code). See the captured output above in $LogFile (common causes: no registry access - point npm at an internal mirror or vendor node_modules; or a package-lock mismatch)." }
-Log 'Dependencies installed.' 'OK'
+if (-not $script:DepsSource) { $script:DepsSource = 'online (npm install fallback)' }
+Log "Dependencies installed ($($script:DepsSource))." 'OK'
 
 # Refresh the self-hosted browser assets (public\vendor\chart.umd.min.js) from the
 # freshly installed node_modules so the served file always matches package.json.
@@ -4052,6 +4075,7 @@ finally {
         if ($script:ManifestSummary) { $sum += "Manifest      : $($script:ManifestSummary)" }
         if ($script:BackupKeyResult) { $sum += "Backup key    : $($script:BackupKeyResult)" }
         if ($script:PreUpgradeDump) { $sum += "DB dump (pre) : $($script:PreUpgradeDump)" }
+        if ($script:DepsSource) { $sum += "Dependencies  : $($script:DepsSource)" }
         if (-not $script:InstallSucceeded) {
             $sum += "Failed at     : Step $($script:CurrentStep)/$($script:TotalSteps) - $($script:CurrentName)"
         }

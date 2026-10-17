@@ -16,10 +16,14 @@
                     package that must not carry this appliance's postgres credential). By
                     default the standard password SHIPS, unchanged since 3.22.85, so a
                     Patch / Migrate on the appliance runs unattended.
+.PARAMETER SkipOfflineCache Do not build <package>\npm-cache (a quick local build only).
+                    Without the cache the installer needs the npm registry; ship a
+                    package built WITH it.
 .EXAMPLE  powershell -ExecutionPolicy Bypass -File .\Build-Package.ps1 -Stamp phase8-okr-20260617
 #>
 [CmdletBinding()]
-param([string]$OutDir, [string]$Stamp, [switch]$SkipData, [switch]$IncludeData, [switch]$ScrubPgPassword)
+param([string]$OutDir, [string]$Stamp, [switch]$SkipData, [switch]$IncludeData, [switch]$ScrubPgPassword,
+      [switch]$SkipOfflineCache)
 
 # Community Edition default: NEVER bundle a database snapshot unless explicitly
 # requested with -IncludeData. A fresh install then creates and seeds an empty
@@ -328,7 +332,9 @@ $devOnlyScripts = @(
     'backfill-access-profiles.js', 'v3-merge-duplicate-skills.js',
     # QA and documentation tooling
     '_emoji-inventory.js', '_emoji-to-icons.js', '_scan-emoji.js', 'build-user-guide.js',
-    'check-icons.js', 'export-contracts.js', 'export-security-measures.js', 'export-skills-framework.js', 'export-v3-matrix.js', 'loadtest-readiness.js', 'render-notification-samples.js', 'security-check.js'
+    'check-icons.js', 'export-contracts.js', 'export-security-measures.js', 'export-skills-framework.js', 'export-v3-matrix.js', 'loadtest-readiness.js', 'render-notification-samples.js', 'security-check.js',
+    # release tooling: builds <package>\npm-cache from the lockfile (run by this script)
+    'build-offline-cache.js'
 )
 $devOnlyDirs = @('_lib')
 $stagedScripts = Get-ChildItem -LiteralPath (Join-Path $appDest 'scripts') -File -ErrorAction SilentlyContinue
@@ -474,6 +480,24 @@ if ($SkipData) {
                "Deactivate them on a development database and rebuild.")
     }
     Write-Host "  [OK] Demo-login guard: no enabled test/demo account in the snapshot" -ForegroundColor Gray
+}
+
+# 3a. OFFLINE DEPENDENCY CACHE. <package>\npm-cache holds every PRODUCTION
+#     tarball of the shipped package-lock.json, stored under its sha512
+#     integrity. The installer runs `npm ci --offline --cache <package>\npm-cache`
+#     first, so a server without registry access installs and upgrades; npm
+#     still checks every tarball against the lockfile. The registry is only the
+#     fallback. The cache sits beside app\, outside the release manifest: npm's
+#     own integrity check is what protects it. -SkipOfflineCache: a quick local
+#     build only (the package then needs the registry on the server).
+if (-not $SkipOfflineCache) {
+    $ocDir = Join-Path $staging 'npm-cache'
+    $ocOut = & node (Join-Path $appRoot 'scripts\build-offline-cache.js') --root $appDest --out $ocDir
+    if ($LASTEXITCODE -ne 0) { throw "Refusing to package: the offline dependency cache is incomplete (scripts\build-offline-cache.js exit $LASTEXITCODE): $ocOut" }
+    $ocMB = [math]::Round(((Get-ChildItem -LiteralPath $ocDir -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB, 1)
+    Write-Host "  [OK] Offline npm cache: npm-cache\ ($ocMB MB) $ocOut" -ForegroundColor Gray
+} else {
+    Write-Host '  [note] -SkipOfflineCache: no npm-cache\ - the installer will need registry access. Do not ship this package.' -ForegroundColor Yellow
 }
 
 # 3b. DENYLIST GUARD - an optional, git-ignored installer\denylist.txt lists
