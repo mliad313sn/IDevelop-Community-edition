@@ -66,6 +66,12 @@
                               manifest does not list (customer folders excluded) to
                               %ProgramData%\IDevelop\app-backups\retired-<stamp>\.
                               Never deletes. Default: report them only.
+.PARAMETER SkipPreMigrationDump  Upgrade of an existing install: do NOT take the encrypted,
+                              verified database dump that otherwise precedes the
+                              migrations (%ProgramData%\IDevelop\backups\pre-upgrade-*).
+                              For a very large database that has its own verified
+                              backup only. Logged as a WARN. Default: the dump is taken,
+                              and a failed dump stops the run before any migration.
 .PARAMETER NoRollback         Disable the automatic restore-on-failure safety net. By
                               default, when patching / upgrading an EXISTING install,
                               the installer backs up the running version first and — if
@@ -188,7 +194,10 @@ param(
     # ENFORCE the release manifest: files in the install dir that the package does
     # not list are MOVED (never deleted) to app-backups\retired-<stamp>\.
     # Without it the unknown files are only reported.
-    [switch]$EnforceManifest
+    [switch]$EnforceManifest,
+    # Do NOT take the encrypted pre-migration database dump of an upgrade (a very
+    # large database with its own verified backup only). Logged as a WARN.
+    [switch]$SkipPreMigrationDump
 )
 
 $ErrorActionPreference = 'Stop'
@@ -557,6 +566,11 @@ function Get-HrisDropRoot([string]$InstallDir) {
 #   app-backups and restore-points (code backups, Manage restore points whose
 #     code Manage -Restore runs as administrator): restricted, and NOTHING for
 #     the service, for the same reason.
+#   maintenance\config.psd1 (the servicing copy of the configuration, which can
+#     hold the standard PostgreSQL and admin passwords): restricted, and NOTHING
+#     for the service. Only the FILE: the maintenance scripts beside it start
+#     unelevated and elevate themselves, so they must stay readable; each one
+#     reads config.psd1 only after it has elevated.
 #   HRIS_DROP_ROOT (when set in .env): ReadAndExecute, additive (a customer
 #     folder: never restricted by Setup). Local paths only: on a network share
 #     (\\server\share) the virtual account authenticates as the COMPUTER account
@@ -587,6 +601,7 @@ function Get-AppAclTargets([string]$DataRoot, [string]$InstallDir, [string]$Serv
         }
         $out += [pscustomobject]@{ Path = (Join-Path $InstallDir 'service\logs'); Kind = 'Dir'; Restrict = $true; Grant = $m; ProtectedFiles = $false; ProtectedFilter = '*' }
         $out += [pscustomobject]@{ Path = (Join-Path $InstallDir 'service'); Kind = 'Dir'; Restrict = $true; Grant = $rx; ProtectedFiles = $false; ProtectedFilter = '*' }
+        $out += [pscustomobject]@{ Path = (Join-Path $InstallDir 'maintenance\config.psd1'); Kind = 'File'; Restrict = $true; Grant = ''; ProtectedFiles = $false; ProtectedFilter = '*' }
         # The install root stays readable (Program Files rules): additive grant only.
         $out += [pscustomobject]@{ Path = $InstallDir; Kind = 'Dir'; Restrict = $false; Grant = $rx; ProtectedFiles = $false; ProtectedFilter = '*' }
     }
@@ -621,7 +636,8 @@ function Protect-AppDataAcls([string]$DataRoot, [string]$InstallDir) {
     }
     foreach ($tt in $targets) {
         $t = $tt.Path
-        $dg = if ($tt.Kind -ne 'Dir') { 'Modify' } elseif ($tt.Grant) { $tt.Grant } elseif ($script:ServiceAclSid) { 'None' } else { 'Modify' }
+        # A FILE: Read for the service when it has a grant (.env), none otherwise.
+        $dg = if ($tt.Kind -ne 'Dir') { if ($tt.Grant) { 'Modify' } else { 'None' } } elseif ($tt.Grant) { $tt.Grant } elseif ($script:ServiceAclSid) { 'None' } else { 'Modify' }
         $r = Protect-SensitivePath $t $dg
         if ($r -eq 'absent') { continue }
         if ($r -like 'FAILED*' -or $r -like 'PARTIAL*') { $bad++; Log "ACL hardening: $t -> $r" 'WARN' }
@@ -2899,14 +2915,40 @@ if (Test-Path $existingEnv) {
 # Back up the CURRENT app code before overlaying the new version so a patch /
 # upgrade can be rolled back. Excludes node_modules/logs/tmp/data (large or
 # re-creatable); the preserved .env IS included for a complete restore point.
+# uploads and backups are not code and an upgrade never touches them: copying
+# them on every run grew app-backups without limit, and a code rollback must
+# never put older evidence files back over newer ones.
 if ($priorInstallDir) {
     $bkVer = if ($script:OldVersion) { $script:OldVersion } else { 'prev' }
     $backupDir = Join-Path (Join-Path $LogDir 'app-backups') ("app-$bkVer-$stamp")
     New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-    $bxd = @('node_modules', 'logs', 'tmp', 'data', 'coverage', 'certs') | ForEach-Object { Join-Path $cfg.InstallDir $_ }
+    $bxd = @('node_modules', 'logs', 'tmp', 'data', 'coverage', 'certs', 'uploads', 'backups') | ForEach-Object { Join-Path $cfg.InstallDir $_ }
     robocopy $cfg.InstallDir $backupDir /E /XD $bxd /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { Log "Pre-upgrade backup hit a copy error (robocopy exit $LASTEXITCODE) - continuing." 'WARN' }
     else { Log "Previous app code backed up to: $backupDir" 'OK'; Log '  (rollback: stop the service, copy this folder back over the install dir, restart the service)'; $script:BackupDir = $backupDir }
+    # Keep the newest AppBackupKeep code copies (config.psd1, default 5; 0 = keep
+    # all). Only superseded app-<version>-<stamp> CODE copies are removed: never a
+    # retired-* folder (-EnforceManifest), never the copy just taken (the rollback
+    # source of this run), never a restore point or a database dump. Each removal
+    # is logged by name.
+    try {
+        $keepN = 5
+        if ($cfg.ContainsKey('AppBackupKeep')) { $keepN = [int]$cfg.AppBackupKeep }
+        if ($keepN -gt 0) {
+            $abRoot = Join-Path $LogDir 'app-backups'
+            $old = @(Get-ChildItem -LiteralPath $abRoot -Directory -Filter 'app-*' -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -ne $backupDir } | Sort-Object LastWriteTime -Descending | Select-Object -Skip ([Math]::Max(0, $keepN - 1)))
+            $prunedN = 0
+            foreach ($o in $old) {
+                try { Remove-Item -LiteralPath $o.FullName -Recurse -Force -ErrorAction Stop; $prunedN++; Log "  pruned superseded code copy: $($o.Name)" }
+                catch { Log "  could not prune $($o.Name): $($_.Exception.Message)" 'WARN' }
+            }
+            $script:AppBackupPruned = "kept newest $keepN, pruned $prunedN"
+            if ($prunedN -gt 0) { Log "Code backups: kept the newest $keepN app-* copies, pruned $prunedN older one(s)." 'OK' }
+        } else {
+            $script:AppBackupPruned = 'all kept (AppBackupKeep = 0)'
+        }
+    } catch { Log "Code-backup pruning skipped: $($_.Exception.Message)" 'WARN' }
 }
 
 # APP-ONLY PATCH (-Patch -SkipMigrations) PROMISES "no database change". The
@@ -3273,7 +3315,29 @@ if (($Repair -or $ForceDeps) -and (Test-Path $nmPath)) {
 $npmCommon = @('--omit=dev', '--no-audit', '--no-fund', '--loglevel=error', '--ignore-scripts')
 $hasLock = Test-Path (Join-Path $cfg.InstallDir 'package-lock.json')
 $npmArgs = if ($hasLock) { @('ci') + $npmCommon } else { @('install') + $npmCommon }
-$code = Invoke-Logged -File $npmCmd -Arguments $npmArgs -WorkDir $cfg.InstallDir -EnvVars $childEnv
+# OFFLINE FIRST. The package carries npm-cache\ (every production tarball of the
+# lockfile, stored under its sha512; Build-Package.ps1 step 3a). With it, a
+# server without registry access installs and upgrades, and the service is
+# down for less time. npm still checks each tarball against the lockfile. The
+# registry path below is only the fallback, and the summary says which ran.
+$code = 1
+$script:DepsSource = $null
+$offlineCache = Join-Path $ScriptRoot 'npm-cache'
+if ($hasLock -and (Test-Path -LiteralPath (Join-Path $offlineCache '_cacache'))) {
+    Log "Installing dependencies OFFLINE from the package cache ($offlineCache)..."
+    $code = Invoke-Logged -File $npmCmd -Arguments (@('ci', '--offline', '--cache', $offlineCache) + $npmCommon) -WorkDir $cfg.InstallDir -EnvVars $childEnv
+    if ($code -eq 0) { $script:DepsSource = 'offline (package npm-cache)' }
+    else {
+        Log "Offline npm ci failed (exit $code) - removing the partial node_modules and falling back to the registry..." 'WARN'
+        Remove-Item -Recurse -Force $nmPath -ErrorAction SilentlyContinue
+    }
+} else {
+    Log 'No npm-cache\ in this package - dependencies come from the npm registry.' 'WARN'
+}
+if ($code -ne 0) {
+    $code = Invoke-Logged -File $npmCmd -Arguments $npmArgs -WorkDir $cfg.InstallDir -EnvVars $childEnv
+    if ($code -eq 0) { $script:DepsSource = 'online (npm registry)' }
+}
 # `npm ci` is strict: it fails if node_modules/lockfile are out of sync (common
 # on a partially-installed repair). Fall back to `npm install`, which reconciles.
 if ($code -ne 0 -and $hasLock) {
@@ -3290,7 +3354,8 @@ if ($code -ne 0) {
     $code = Invoke-Logged -File $npmCmd -Arguments (@('install') + $npmCommon) -WorkDir $cfg.InstallDir -EnvVars $childEnv
 }
 if ($code -ne 0) { Fail "npm install failed (exit $code). See the captured output above in $LogFile (common causes: no registry access - point npm at an internal mirror or vendor node_modules; or a package-lock mismatch)." }
-Log 'Dependencies installed.' 'OK'
+if (-not $script:DepsSource) { $script:DepsSource = 'online (npm install fallback)' }
+Log "Dependencies installed ($($script:DepsSource))." 'OK'
 
 # Refresh the self-hosted browser assets (public\vendor\chart.umd.min.js) from the
 # freshly installed node_modules so the served file always matches package.json.
@@ -3373,6 +3438,40 @@ if ($SkipMigrations -and $Patch) {
         $pre = Invoke-Logged -File $npmCmd -Arguments @('run', '--silent', 'db:migrate:preflight') -WorkDir $cfg.InstallDir -EnvVars $childEnv
         if ($pre -eq 2) { Fail 'MIGRATE REFUSED: this database was produced by a NEWER version than this package (see the pre-flight list above). Use a package of that version or newer.' }
         if ($pre -ne 0) { Fail "MIGRATE pre-flight failed (exit $pre). See $LogFile." }
+    }
+    # PRE-MIGRATION DUMP (SA-57). On an EXISTING install, an encrypted and verified
+    # pg_dump is taken BEFORE a single migration statement runs
+    # (scripts\pre-upgrade-dump.js: the key and pipeline of the daily backup, then
+    # pg_restore --list on the decrypted stream; nothing clear on disk). It is the
+    # database half of the rollback (docs\ROLLBACK.md): once the new schema is in,
+    # the pre-flight refuses the older package, and the code copy alone cannot go
+    # back. A failed dump STOPS the run here - nothing has changed in the database
+    # yet. -SkipPreMigrationDump is the logged way past it. Never on -Reinstall
+    # (the database is recreated) and never on a fresh install.
+    $script:PreUpgradeDump = $null
+    if ($priorInstallDir -and -not $Reinstall) {
+        if ($SkipPreMigrationDump) {
+            Log 'Pre-migration database dump SKIPPED (-SkipPreMigrationDump): after these migrations the only way back is your own verified backup.' 'WARN'
+            $script:PreUpgradeDump = 'SKIPPED (-SkipPreMigrationDump)'
+        } elseif (-not (Test-Path -LiteralPath (Join-Path $cfg.InstallDir 'scripts\pre-upgrade-dump.js'))) {
+            Fail 'Pre-migration database dump: scripts\pre-upgrade-dump.js is missing from the install directory - NO migration was applied. Use the complete package produced by Build-Package.ps1, or pass -SkipPreMigrationDump if you hold your own verified backup.'
+        } else {
+            $dumpDir = Join-Path $LogDir 'backups'
+            New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+            Log "Taking the encrypted pre-migration database dump into $dumpDir ..." 'STEP'
+            $fromV = if ($script:OldVersion) { $script:OldVersion } else { 'prev' }
+            $toV = if ($script:NewVersion) { $script:NewVersion } else { 'new' }
+            $dumpEnv = $childEnv.Clone()
+            # The pg_dump beside the psql this run uses (same client major); the
+            # verification then picks the pg_restore next to it.
+            $pgDumpExe = if ($pgBin) { Join-Path $pgBin 'pg_dump.exe' } else { '' }
+            if ($pgDumpExe -and (Test-Path -LiteralPath $pgDumpExe)) { $dumpEnv['PG_DUMP_PATH'] = $pgDumpExe }
+            $dcode = Invoke-Logged -File $nodeExe -Arguments @('scripts\pre-upgrade-dump.js', '--from', $fromV, '--to', $toV, '--out-dir', $dumpDir) -WorkDir $cfg.InstallDir -EnvVars $dumpEnv
+            if ($dcode -ne 0) { Fail "Pre-migration database dump FAILED (exit $dcode) - NO migration was applied, the database is unchanged. Fix the cause shown above (backup key, pg_dump, disk space) and run Setup again, or pass -SkipPreMigrationDump if you hold your own verified backup." }
+            $script:PreUpgradeDump = Get-ChildItem -LiteralPath $dumpDir -File -Filter 'pre-upgrade-*.dump.enc' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+            Log "Pre-migration dump verified: $($script:PreUpgradeDump)" 'OK'
+            Log '  (rollback: docs\ROLLBACK.md in the package - restore this dump, then the code copy app-backups\app-<old>-<stamp>)'
+        }
     }
     Log 'Applying database migrations...'
     $code = Invoke-Logged -File $npmCmd -Arguments @('run', 'db:migrate:all') -WorkDir $cfg.InstallDir -EnvVars $childEnv
@@ -3621,6 +3720,18 @@ function Install-MaintenanceTools {
                      'Maintain-IDevelop.ps1', 'Installer-Gui.ps1')) {
         $src = Join-Path $ScriptRoot $f
         if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination $dest -Force }
+    }
+    # The servicing config.psd1 can hold StandardPgSuperPassword and
+    # StandardAdminPassword (Manage -SetPgPassword / -SetAdminPassword read them),
+    # and the install root is readable by every local user. Cut the FILE down to
+    # SYSTEM + Administrators at once, nothing for the service account (the same
+    # rule Protect-AppDataAcls re-applies on every run). The scripts stay
+    # readable: they start unelevated and read the config only once elevated.
+    $mcfg = Join-Path $dest 'config.psd1'
+    if (Test-Path -LiteralPath $mcfg) {
+        $r = Protect-SensitivePath $mcfg 'None'
+        if ($r -like 'FAILED*' -or $r -like 'PARTIAL*') { Log "ACL hardening: $mcfg -> $r - the servicing config stays readable by local users; restrict it by hand." 'WARN' }
+        else { Log "ACL hardening: $mcfg -> $r (SYSTEM + Administrators only)" }
     }
     return $dest
 }
@@ -3970,6 +4081,7 @@ finally {
             $sum += "Version       : $ovS -> $nvS"
         }
         if ($script:BackupDir) { $sum += "Code backup   : $($script:BackupDir)" }
+        if ($script:AppBackupPruned) { $sum += "Code backups  : $($script:AppBackupPruned)" }
         # Least-privilege / hardening / drift outcomes, one line each.
         if ($script:SvcPlan) {
             $svcTxt = "$($script:SvcAcct.Account) - $($script:SvcPlan.Reason)"
@@ -3981,6 +4093,8 @@ finally {
         if ($script:PgHardeningSummary) { $sum += "PG hardening  : $($script:PgHardeningSummary)" }
         if ($script:ManifestSummary) { $sum += "Manifest      : $($script:ManifestSummary)" }
         if ($script:BackupKeyResult) { $sum += "Backup key    : $($script:BackupKeyResult)" }
+        if ($script:PreUpgradeDump) { $sum += "DB dump (pre) : $($script:PreUpgradeDump)" }
+        if ($script:DepsSource) { $sum += "Dependencies  : $($script:DepsSource)" }
         if (-not $script:InstallSucceeded) {
             $sum += "Failed at     : Step $($script:CurrentStep)/$($script:TotalSteps) - $($script:CurrentName)"
         }

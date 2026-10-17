@@ -624,6 +624,7 @@ module.exports = {
     backupDir,
     diskSpace,
     restrictFileAcl,
+    findPgDump,
     verifyBackup,
     checkBackupKeys,
     copyOffHost,
