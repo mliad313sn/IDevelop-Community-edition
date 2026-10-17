@@ -72,11 +72,11 @@ app.locals.assetVersion = (() => {
             for (const name of names) {
                 try {
                     const full = path.join(root, name);
+                    // One read, no separate stat: a folder throws EISDIR and is skipped.
                     // eslint-disable-next-line security/detect-non-literal-fs-filename -- listed above
-                    if (!fs.statSync(full).isFile()) continue;
+                    const bytes = fs.readFileSync(full);
                     h.update(name);
-                    // eslint-disable-next-line security/detect-non-literal-fs-filename -- listed above
-                    h.update(fs.readFileSync(full));
+                    h.update(bytes);
                 } catch (_) {
                     /* unreadable file: skipped */
                 }
