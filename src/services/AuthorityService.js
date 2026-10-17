@@ -181,18 +181,31 @@ const AuthorityService = {
             employee.managerType === 'admin' &&
             Number(employee.managerId) === Number(user.id)
         );
-        // The governed sub-tree of the person acting (never themselves).
-        const inLine = Boolean(
-            isSupervisor ||
-            isDirectManager ||
-            (personId != null && !isSelf && (await EmployeeModel.governs(personId, eid)))
-        );
-        const isLineAbove = Boolean(inLine && !isSupervisor && !isDirectManager);
         const inClearance = isSuper
             ? true
             : isAdmin
               ? Boolean(await RBACService.canAccessEmployeeData(user, employee))
               : false;
+        // The governed sub-tree of the person acting (never themselves). Not
+        // looked up when it can change nothing — the services never asked for it
+        // then either: a SuperAdmin or a local admin in clearance outranks the
+        // line, the admin account named manager already holds the manager rung,
+        // and in strict mode a clearance already grants reading.
+        const settled = Boolean(
+            isSuper ||
+            (isLocalAdmin && inClearance) ||
+            isAdminManager ||
+            (inClearance && m !== 'extended')
+        );
+        const inLine = Boolean(
+            isSupervisor ||
+            isDirectManager ||
+            (!settled &&
+                personId != null &&
+                !isSelf &&
+                (await EmployeeModel.governs(personId, eid)))
+        );
+        const isLineAbove = Boolean(inLine && !isSupervisor && !isDirectManager);
 
         // The rungs held, in each mode. Strict: the direct line, a local admin
         // in clearance, a SuperAdmin. Extended adds the line above (manager).
