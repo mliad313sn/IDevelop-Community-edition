@@ -48,6 +48,7 @@
         <div class="action-center" id="actionCenter">
             <button type="button" class="ac-bell hdr-target" id="acBell" aria-expanded="false" aria-controls="acDropdown"
                 data-kiosk="<%= _hdrShared ? '1' : '0' %>"
+                data-mfa-hold="<%= (typeof mfaHold !== 'undefined' && mfaHold) ? '1' : '0' %>"
                 title="<%= __('chrome:hdr_bell_title') %>" aria-label="<%= __('chrome:hdr_bell_name') %>">
                 <i class="fas fa-bell" aria-hidden="true"></i>
                 <span class="ac-badge" id="acBadge" hidden aria-hidden="true">0</span>
@@ -295,6 +296,10 @@
     }).catch(function(){});
   }
   paint();
+  // A session HELD on MFA enrolment (res.locals.mfaHold, middleware/mfaEnforcement)
+  // is answered 403 by both APIs: the bell stays, nothing is fetched and nothing
+  // polls until the hold is lifted.
+  if (bell && bell.getAttribute && bell.getAttribute('data-mfa-hold') === '1') return;
   loadActions();
   loadNotifs(true);
   function visible(){ return !document.visibilityState || document.visibilityState === 'visible'; }

@@ -163,7 +163,21 @@ async function enforceMfaEnrollment(req, res, next) {
             p === '/favicon.ico'
         )
             return next();
-        if (ALLOW_PREFIXES.some((a) => p === a || p.startsWith(a))) return next();
+        if (ALLOW_PREFIXES.some((a) => p === a || p.startsWith(a))) {
+            // A page shown while the session is HELD on enrolment (setup,
+            // verify…) tells the layout, so the header bell does not poll
+            // /api/notifications and /api/my-actions, which the hold answers 403.
+            if (res && res.locals)
+                res.locals.mfaHold = Boolean(req.session && req.session.mfaHoldActive);
+            return next();
+        }
+        // A request the gate lets through is not held: the flag set by
+        // holdOnSetup is cleared on the first one.
+        const passOn = next;
+        next = (...args) => {
+            if (req.session && req.session.mfaHoldActive) delete req.session.mfaHoldActive;
+            return passOn(...args);
+        };
 
         // A MANAGER who signed in by password must hold MFA (a
         // manager session opened through SSO satisfies it with the IdP's MFA).
@@ -279,12 +293,18 @@ async function enforceMfaEnrollment(req, res, next) {
             (req.session && req.session.mfaEnrolRequired === true) ||
             (u && u.userType === 'admin') ||
             (u && u.userType === 'manager' && !(via && via.via === 'sso'));
-        if (governed) return res.redirect('/v2/uam/mfa/setup');
+        if (governed) {
+            if (req.session) req.session.mfaHoldActive = true;
+            return res.redirect('/v2/uam/mfa/setup');
+        }
         return next();
     }
 }
 
 function holdOnSetup(req, res, p) {
+    // The server's own record that this session is held, read by the
+    // allow-listed setup pages (res.locals.mfaHold → the header bell).
+    if (req.session) req.session.mfaHoldActive = true;
     if (p.startsWith('/api/')) {
         return res.status(403).json({
             error: 'Two-factor enrollment is required by policy. Set it up at /v2/uam/mfa/setup.',
