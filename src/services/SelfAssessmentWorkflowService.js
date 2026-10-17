@@ -1119,8 +1119,14 @@ class SelfAssessmentWorkflowService {
         user,
         recommendation = null,
         req = null,
-        supervisorLevel = null
+        supervisorLevel = null,
+        opts = {}
     ) {
+        // `opts.batch`: one skill of approveSelected(). Every check and every write
+        // below runs exactly as for a single approval; only the two per-person side
+        // effects (the employee's notification, the reviewer's "acted" mark) are
+        // left to the caller, which sends ONE of each after the round commits.
+        const inBatch = Boolean(opts && opts.batch);
         // `recommendation` accepts either the legacy plain string (bulk approve,
         // older callers) OR `{ recommendation, gapReason }` — gapReason being the
         // supervisor's SHORT REASON for overriding the employee's self-rating.
@@ -1250,6 +1256,7 @@ class SelfAssessmentWorkflowService {
             `approved (${auth.actorType})` +
                 (isOverride ? ` — override ${sa.selfRatedLevel}→${mgrLevel}: ${gapReason}` : '')
         );
+        if (inBatch) return this.getAssessment(selfAssessmentId);
         await this._notifyEmployee(sa, 'sa.approved', {
             recommendation: recommendation || null,
             gapReason: gapReason || null,
@@ -1510,6 +1517,211 @@ class SelfAssessmentWorkflowService {
                     : '')
         );
         return { employees: ids.length, approved, held, failed, skippedEmployees, perEmployee };
+    }
+
+    /**
+     * APPROVE THE SELECTED SKILLS OF ONE PERSON, IN ONE ACTION (4.0.0 port, wave 2).
+     *
+     *  - each item is approved AT THE LEVEL PROPOSED on its line: the self level,
+     *    or the reviewer's own (`supervisorLevel`), which, as for a single
+     *    approval, needs its written reason (`gapReason`);
+     *  - EVERY item goes through approve() itself — its authority, state, range,
+     *    reason and campaign checks, its writes and its per-skill audit row. There
+     *    is no second code path to drift;
+     *  - ALL OR NOTHING per person: one transaction; one refused item rolls the
+     *    whole round back and nothing is approved. Every item is still tried (each
+     *    in its own savepoint), so the reviewer gets every reason in one answer;
+     *  - more than one item never sweeps an `arbitration` row (a dispute is
+     *    decided on its own, as in bulkApproveForEmployee); one item alone is a
+     *    single approval and approve() decides it;
+     *  - after the commit: one summary audit row (SA_BULK_APPROVE), ONE
+     *    notification to the employee (sa.approved, payload `count`), one
+     *    "acted" mark for the reviewer.
+     *
+     * @param {number} employeeId the person whose skills are decided
+     * @param {Array<{id:number, supervisorLevel?:number|null, gapReason?:string|null}>} items
+     * @returns {Promise<{employeeId:number, count:number, approved:Array}>}
+     * @throws a 409 `BATCH_REFUSED` error carrying `refused: [{id, code, reason}]`
+     */
+    async approveSelected(employeeId, items, user, req = null) {
+        const MAX = SelfAssessmentWorkflowService.MAX_BATCH;
+        const bad = (msg, key, vars) => {
+            const e = say(new Error(msg), key, vars);
+            e.status = 400;
+            e.expose = true;
+            return e;
+        };
+        if (!Array.isArray(items) || !items.length)
+            throw bad('No skill selected.', 'talentx:sab_err_empty');
+        if (items.length > MAX)
+            throw bad(`Too many skills in one action (max ${MAX}).`, 'talentx:sab_err_too_many', {
+                max: MAX,
+            });
+        // One entry per id (the last one wins); a malformed id is a 400 before any query.
+        const byId = new Map();
+        for (const raw of items) {
+            const it = raw && typeof raw === 'object' ? raw : { id: raw };
+            const n = Number(it.id);
+            if (!Number.isInteger(n) || n <= 0)
+                throw bad('Invalid assessment id.', 'talentx:sab_err_bad_id');
+            const lvl =
+                it.supervisorLevel === undefined ||
+                it.supervisorLevel === null ||
+                it.supervisorLevel === ''
+                    ? null
+                    : it.supervisorLevel;
+            const why = it.gapReason != null ? String(it.gapReason).trim() : '';
+            byId.set(n, { id: n, supervisorLevel: lvl, gapReason: why || null });
+        }
+        const list = Array.from(byId.values());
+
+        // Fail fast on the PERSON (the same resolveAuthority every item meets again
+        // inside approve()): nobody approves their own skills, and someone with no
+        // right to act on this person gets a 403 before anything is read.
+        const auth = await this._auth(user, employeeId, { cycleId: 'any' });
+        if (auth.isSelf || auth.selfByIdentity)
+            throw say(
+                new Error('Not authorized: cannot review your own assessment'),
+                'assess:saw_err_review_own'
+            );
+        if (!auth.canSupervise && !auth.canManage)
+            throw say(
+                new Error('Not authorized: supervisor/manager/admin only'),
+                'assess:acr_err_not_authorized_reviewer'
+            );
+
+        const { sayError, isInternal, GENERIC_FR } = require('../utils/apiErrors');
+        const reasonOf = (e) => {
+            if (isInternal(e)) {
+                try {
+                    require('../middleware/logger').logger.error(
+                        `[approveSelected] ${String((e && e.message) || '').slice(0, 300)}`
+                    );
+                } catch (_) {
+                    /* logger optional */
+                }
+                return req && typeof req.t === 'function'
+                    ? req.t('talentx:sab_err_technical', { defaultValue: GENERIC_FR })
+                    : GENERIC_FR;
+            }
+            return sayError(req, e) || String((e && e.message) || '');
+        };
+        const codeOf = (e) => {
+            const k = (e && e.i18n && e.i18n.key) || '';
+            if (e && e.code === 'STALE_STATE') return 'stale';
+            if (k.includes('review_own')) return 'own';
+            if (k.includes('not_authorized') || k.includes('manager_only')) return 'forbidden';
+            if (k.includes('cannot_approve')) return 'state';
+            if (k.includes('reason_required')) return 'reason_required';
+            if (k.includes('rating_range')) return 'level';
+            if (k.includes('not_found')) return 'not_found';
+            if (e && e.gate) return 'campaign';
+            return isInternal(e) ? 'error' : 'refused';
+        };
+
+        const multi = list.length > 1;
+        const refused = [];
+        const approved = [];
+        let firstSa = null;
+        const ROLLBACK = new Error('__sa_batch_rollback__');
+        try {
+            // runTransaction BEGINs at top level; the inner savepoint keeps the round
+            // atomic even when the caller already holds a transaction (a nested
+            // runTransaction reuses the client without one).
+            await db.runTransaction(() =>
+                db.runInSavepoint(async () => {
+                    for (const it of list) {
+                        const sa = await this.getAssessment(it.id);
+                        if (!sa || Number(sa.employeeId) !== Number(employeeId)) {
+                            const e = say(
+                                new Error('This skill is not part of this person’s assessments.'),
+                                'talentx:sab_err_not_in_round'
+                            );
+                            refused.push({ id: it.id, code: 'not_in_round', reason: reasonOf(e) });
+                            continue;
+                        }
+                        if (multi && sa.workflowState === 'arbitration') {
+                            const e = say(
+                                new Error(
+                                    'A dispute is in progress: decide this skill on its own.'
+                                ),
+                                'talentx:sab_err_arbitration'
+                            );
+                            refused.push({
+                                id: it.id,
+                                code: 'arbitration_individual',
+                                reason: reasonOf(e),
+                            });
+                            continue;
+                        }
+                        try {
+                            const after = await db.runInSavepoint(() =>
+                                this.approve(
+                                    it.id,
+                                    user,
+                                    it.gapReason ? { gapReason: it.gapReason } : null,
+                                    req,
+                                    it.supervisorLevel,
+                                    { batch: true }
+                                )
+                            );
+                            if (!firstSa) firstSa = sa;
+                            const lvl =
+                                it.supervisorLevel != null
+                                    ? Number(it.supervisorLevel)
+                                    : sa.selfRatedLevel != null
+                                      ? Number(sa.selfRatedLevel)
+                                      : null;
+                            approved.push({
+                                id: it.id,
+                                skillId: sa.skillId != null ? Number(sa.skillId) : null,
+                                fromState: sa.workflowState,
+                                workflowState: after ? after.workflowState : 'approved',
+                                status: after ? after.status : 'approved',
+                                level: lvl,
+                            });
+                        } catch (e) {
+                            refused.push({ id: it.id, code: codeOf(e), reason: reasonOf(e) });
+                        }
+                    }
+                    if (refused.length) throw ROLLBACK;
+                    // The summary row commits WITH the round, or not at all.
+                    await this._audit(
+                        req,
+                        'SA_BULK_APPROVE',
+                        Number(employeeId),
+                        `approved ${approved.length} selected skill(s) in one action (${auth.actorType}): ` +
+                            approved.map((a) => `#${a.id}`).join(', '),
+                        'employee'
+                    );
+                })
+            );
+        } catch (e) {
+            if (e !== ROLLBACK) throw e;
+        }
+        if (refused.length) {
+            const err = say(
+                new Error(
+                    `Nothing was approved: ${refused.length} skill(s) could not be approved.`
+                ),
+                'talentx:sab_err_refused',
+                { n: refused.length }
+            );
+            err.code = 'BATCH_REFUSED';
+            err.status = 409;
+            err.refused = refused;
+            throw err;
+        }
+        // ONE notification for the round, after the commit (never for a round that
+        // was rolled back). Payload: whitelisted numbers only.
+        if (firstSa) {
+            await this._notifyEmployee(firstSa, 'sa.approved', {
+                skillId: approved.length === 1 ? approved[0].skillId : null,
+                count: approved.length,
+            });
+        }
+        await this._reviewerActed(user);
+        return { employeeId: Number(employeeId), count: approved.length, approved };
     }
 
     /** Supervisor or manager rejects (terminal). */
@@ -2157,6 +2369,9 @@ class SelfAssessmentWorkflowService {
         }
     }
 }
+
+/** Upper bound of one multi-skill approval (a role's requirement set is far below it). */
+SelfAssessmentWorkflowService.MAX_BATCH = 200;
 
 const _instance = new SelfAssessmentWorkflowService();
 // The approve-all filter rule, exposed for the tests and the team endpoint.

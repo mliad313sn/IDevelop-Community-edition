@@ -577,6 +577,18 @@ router.post(
     requireSessionCsrf,
     SelfAssessmentWorkflowController.bulkApprove
 );
+// Approve the SELECTED skills of one person in one action (one request, one
+// transaction, all or nothing). Authority is approve()'s, per skill, in the
+// service; the session's CSRF token is required on top of the origin guard;
+// more than one item is a bulk approval and asks what approve-all asks
+// (requireBulkApproveRight → requireLineOrPermission('approve_assessments')).
+router.post(
+    '/api/self-assessment/employee/:employeeId/approve-selected',
+    requireAuth,
+    requireSessionCsrf,
+    require('../middleware/requireBulkApproveRight'),
+    SelfAssessmentWorkflowController.approveSelected
+);
 // "Approve all agreed ratings for my team": same guard and the same JSON/CSRF
 // contract as the per-employee approve-all above; the service loops that very
 // method, agreed ratings only, re-authorising every employee and every row.

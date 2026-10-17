@@ -129,6 +129,9 @@ var saTh = { skill: __('talentx:skill'), req: __('talentx:rvx_required'), self: 
 <% } %>
 </div>
 
+<%# Announcements of a multi-skill approval (the toast has its own region). %>
+<div id="sa-live" class="sr-only" role="status" aria-live="polite"></div>
+
 <!-- Thread drawer -->
 <div id="sa-thread" class="card sa-panel" hidden>
   <h2 class="sa-thread-h"><%= __('talentx:sar_discussion') %> <button type="button" class="btn btn-sm btn-secondary" data-on-click="SA.closeThread" data-args='[]'><%= __('talentx:sar_close') %></button></h2>
@@ -199,6 +202,25 @@ var saTh = { skill: __('talentx:skill'), req: __('talentx:rvx_required'), self: 
 .sa-team-rule{font-size:.85rem;margin:var(--space-1) 0 0}
 .sa-team-card .btn{min-height:44px}
 .sa-cycle-chip{display:inline-block;padding:1px var(--space-2);border-radius:var(--radius-pill);font-size:.75rem;background:var(--bg-inset)}
+/* Multi-skill approval: a 44 px box per line, its reason written under it when
+   unavailable, the shared .bulk-bar under the card (style.css). */
+.sa-col-sel{width:56px;text-align:center}
+.sa-sel{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin:0;cursor:pointer}
+.sa-sel input{width:20px;height:20px;margin:0;cursor:pointer}
+.sa-sel input:disabled{cursor:not-allowed}
+.sa-sel-why{display:block;font-size:.75rem;color:var(--text-secondary);max-width:9rem;margin:0 auto}
+.sa-sel-why[hidden]{display:none}
+.sa-selall{display:inline-flex;align-items:center;gap:var(--space-2);min-height:44px;margin:0;font-weight:600;font-size:.85rem;cursor:pointer}
+.sa-selall input{width:20px;height:20px;margin:0}
+.sa-reason{display:flex;flex-direction:column;gap:var(--space-1);flex:1 1 220px}
+.sa-reason[hidden]{display:none}
+.sa-reason label{font-size:.85rem;font-weight:600;margin:0}
+.sa-reason .form-control{min-height:44px}
+.sa-row--refused>td{background:var(--red-dim)}
+.sa-row-err{display:block;margin-top:var(--space-1);color:var(--red-text);font-size:.85rem;font-weight:600}
+.sa-bulk{margin:var(--space-3) var(--space-4)}
+.sa-bulk-err{flex:1 1 100%;margin:0;color:var(--red-text);font-weight:600}
+.sa-bulk-err[hidden]{display:none}
 @media (max-width:767.98px){
   .sa-tabs{margin-left:0}
   .sa-emp-actions{margin-left:0;width:100%}
@@ -213,6 +235,7 @@ var saTh = { skill: __('talentx:skill'), req: __('talentx:rvx_required'), self: 
     que SAConsoleNet existe au premier appel. %>
 <script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
 <script src="/js/status-badge.js?v=<%= assetVersion %>"></script>
+<script src="/js/sa-review-bulk.js?v=<%= assetVersion %>"></script>
 <link rel="stylesheet" href="/css/sa-skill-help.css?v=<%= assetVersion %>">
 <script src="/js/sa-skill-help.js?v=<%= assetVersion %>"></script>
 <script nonce="<%= cspNonce %>">
@@ -321,6 +344,33 @@ const SA_T = {
   SL: <%- include('../../partials/json-script', { v: { draft: __('talentx:sar_st_draft'), submitted: __('talentx:sar_st_submitted'), under_review: __('talentx:sar_st_under_review'), changes_requested: __('talentx:sar_st_changes_requested'), reviewed: __('talentx:sar_st_reviewed'), arbitration: __('talentx:sar_st_arbitration'), approved: __('talentx:sar_st_approved'), rejected: __('talentx:sar_st_rejected') } }) %>,
   AUTH: <%- include('../../partials/json-script', { v: { employee: __('talentx:sar_author_employee'), manager: __('talentx:sar_author_manager'), supervisor: __('talentx:sar_author_supervisor'), admin: __('talentx:sar_author_admin') } }) %>,
   notConfirmed: <%- JSON.stringify(__('talentx:sar_not_confirmed')) %>,
+  // Multi-skill approval of one person (approve-selected).
+  B: <%- include('../../partials/json-script', { v: {
+    canBulk: typeof canBulk === 'undefined' ? false : !!canBulk,
+    colSel: __('talentx:sab_col_select'),
+    selectAll: __('talentx:sab_select_all'),
+    selectAllAria: __('talentx:sab_select_all_aria'),
+    selectRow: __('talentx:sab_select_row'),
+    selectedOne: __('talentx:sab_selected_one'),
+    selectedOther: __('talentx:sab_selected_other'),
+    approveOne: __('talentx:sab_approve_one'),
+    approveOther: __('talentx:sab_approve_other'),
+    clear: __('talentx:sab_clear'),
+    barLabel: __('talentx:sab_bar_label'),
+    confirmTitleOne: __('talentx:sab_confirm_title_one'),
+    confirmTitleOther: __('talentx:sab_confirm_title_other'),
+    confirmBodyOne: __('talentx:sab_confirm_body_one'),
+    confirmBodyOther: __('talentx:sab_confirm_body_other'),
+    doneOne: __('talentx:sab_done_one'),
+    doneOther: __('talentx:sab_done_other'),
+    refusedLive: __('talentx:sab_refused_live'),
+    whyArbitration: __('talentx:sab_why_arbitration'),
+    whyReason: __('talentx:sab_why_reason'),
+    reasonLabel: __('talentx:sab_reason_label'),
+    reasonPh: __('talentx:sab_reason_ph'),
+    reasonNeeded: __('talentx:sab_reason_needed'),
+    saving: __('talentx:sab_saving')
+  } }) %>,
   statsUnavailable: <%- JSON.stringify(__('talentx:sar_stats_unavailable')) %>,
   statsAllCycles: <%- JSON.stringify(__('talentx:sar_stats_all_cycles')) %>,
   nothingAwaitingCycle: <%- JSON.stringify(__('talentx:sar_nothing_awaiting_cycle')) %>,
@@ -381,12 +431,157 @@ const SA = {
     // The reviewer's OWN rating (0–4), pre-filled with the self-rating. On approve
     // this is what becomes the official skill level — no more silent rubber-stamp.
     const cur = (it.selfRatedLevel!=null ? String(it.selfRatedLevel) : '');
-    let opts = '';
+    // No self level: an empty first option, so the browser never silently
+    // proposes « 0 » as the level to approve.
+    let opts = cur === '' ? '<option value="" selected>—</option>' : '';
     for (let i=0;i<=4;i++){ opts += '<option value="'+i+'"'+(String(i)===cur?' selected':'')+'>'+i+'</option>'; }
     // data-self carries the employee's own rating so act can tell an OVERRIDE
     // from an agreement and demand a short reason for the former.
     // A VISIBLE label « Ma note » tied to the control (it was a 19 px bare select).
-    return '<span class="sa-rate"><label class="sa-rate-lbl" for="sa-rate-'+it.id+'">'+escapeHtml(SA_T.rateLbl)+'</label> <select id="sa-rate-'+it.id+'" class="form-control sa-rate-sel" data-self="'+escapeHtml(cur)+'" title="'+escapeHtml(SA_T.rateTitle)+'">'+opts+'</select></span>';
+    return '<span class="sa-rate"><label class="sa-rate-lbl" for="sa-rate-'+it.id+'">'+escapeHtml(SA_T.rateLbl)+'</label> <select id="sa-rate-'+it.id+'" class="form-control sa-rate-sel" data-sa-rate="'+Number(it.id)+'" data-self="'+escapeHtml(cur)+'" title="'+escapeHtml(SA_T.rateTitle)+'">'+opts+'</select></span>'+
+      // The reason for a changed rating can be written ON THE LINE, so a changed
+      // line may join a multi-skill approval once its reason is there.
+      '<span class="sa-reason" id="sa-reason-wrap-'+Number(it.id)+'" hidden><label for="sa-reason-'+Number(it.id)+'">'+escapeHtml(SA_T.B.reasonLabel)+'</label>'+
+      '<input type="text" id="sa-reason-'+Number(it.id)+'" class="form-control" data-sa-reason="'+Number(it.id)+'" maxlength="500" placeholder="'+escapeHtml(SA_T.B.reasonPh)+'"></span>';
+  },
+  // ---- multi-skill approval of one person (approve-selected) ---------------
+  items: {},
+  groups: {},
+  /** The line's current proposal, read from the page (level chosen, reason typed). */
+  lineOf(id){
+    const it = this.items[id] || {};
+    const sel = document.getElementById('sa-rate-'+Number(id));
+    const rs = document.getElementById('sa-reason-'+Number(id));
+    return { id: Number(id), state: it.workflowState, self: sel ? sel.getAttribute('data-self') : (it.selfRatedLevel==null?'':String(it.selfRatedLevel)), chosen: sel ? sel.value : '', reason: rs ? rs.value : '' };
+  },
+  /** The selection cell: a 44 px box, or the reason it is unavailable, written. */
+  selCell(it){
+    if (!SA_T.B.canBulk) return '';
+    const L = ' data-label="'+escapeHtml(SA_T.B.colSel)+'"';
+    const el = SABulkRules.eligibility({ state: it.workflowState, self: it.selfRatedLevel, chosen: it.selfRatedLevel, reason: '' });
+    if (!el.show) return '<td class="sa-col-sel"'+L+'></td>';
+    const why = el.why==='arbitration' ? SA_T.B.whyArbitration : (el.why==='reason' ? SA_T.B.whyReason : '');
+    const aria = SABulkRules.fill(SA_T.B.selectRow, { skill: it.skillName || ('#'+it.skillId) });
+    const id = Number(it.id);
+    return '<td class="sa-col-sel"'+L+'><label class="sa-sel"><input type="checkbox" class="sa-sel-cb" data-sa-sel="'+id+'" aria-label="'+escapeHtml(aria)+'" aria-describedby="sa-why-'+id+'"'+(el.selectable?'':' disabled')+'></label>'+
+      '<span class="sa-sel-why" id="sa-why-'+id+'"'+(why?'':' hidden')+'>'+escapeHtml(why)+'</span></td>';
+  },
+  cardEl(empId){ return document.querySelector('.sa-emp[data-emp="'+Number(empId)+'"]'); },
+  rowEl(id){ return document.querySelector('tr.sa-row[data-sa-id="'+Number(id)+'"]'); },
+  nameOf(empId){ const g = this.groups[empId]; return g ? ((g.firstName||'')+' '+(g.lastName||'')).trim() : ''; },
+  /** Re-evaluate one line's box after its rating or reason changed. */
+  refreshLine(id){
+    const line = this.lineOf(id);
+    const wrap = document.getElementById('sa-reason-wrap-'+Number(id));
+    if (wrap) wrap.hidden = !SABulkRules.isOverride(line.self, line.chosen);
+    const cb = document.querySelector('[data-sa-sel="'+Number(id)+'"]');
+    if (!cb) return;
+    const el = SABulkRules.eligibility(line);
+    cb.disabled = !el.selectable;
+    if (cb.disabled) cb.checked = false;
+    const why = document.getElementById('sa-why-'+Number(id));
+    if (why) { const w = el.why==='arbitration' ? SA_T.B.whyArbitration : (el.why==='reason' ? SA_T.B.whyReason : ''); why.textContent = w; why.hidden = !w; }
+    const card = cb.closest('.sa-emp'); if (card) this.paintBar(card.getAttribute('data-emp'));
+  },
+  selectedIds(empId){
+    const card = this.cardEl(empId); if (!card) return [];
+    return Array.prototype.map.call(card.querySelectorAll('.sa-sel-cb:checked:not(:disabled)'), function(cb){ return Number(cb.getAttribute('data-sa-sel')); });
+  },
+  /** The bar: hidden until one box is ticked; the count and « Approve N skills ». */
+  paintBar(empId){
+    const card = this.cardEl(empId); if (!card) return;
+    const bar = card.querySelector('.sa-bulk'); if (!bar) return;
+    const n = this.selectedIds(empId).length;
+    bar.hidden = n === 0;
+    const c = bar.querySelector('[data-sa-count]'); if (c) c.textContent = SABulkRules.plural(n, SA_T.B.selectedOne, SA_T.B.selectedOther);
+    const go = bar.querySelector('[data-sa-bulk]'); if (go && !go.hasAttribute('aria-busy')) go.textContent = SABulkRules.plural(n, SA_T.B.approveOne, SA_T.B.approveOther);
+    if (n === 0) { const er = bar.querySelector('.sa-bulk-err'); if (er) { er.hidden = true; er.textContent = ''; } }
+    const all = card.querySelector('[data-sa-all]');
+    if (all) {
+      const boxes = Array.prototype.filter.call(card.querySelectorAll('.sa-sel-cb'), function(b){ return !b.disabled; });
+      const on = boxes.filter(function(b){ return b.checked; }).length;
+      all.checked = boxes.length > 0 && on === boxes.length;
+      all.indeterminate = on > 0 && on < boxes.length;
+      all.disabled = boxes.length === 0;
+    }
+  },
+  /** « Select all » — the selectable lines of that person only. */
+  selectAll(empId, on){
+    const card = this.cardEl(empId); if (!card) return;
+    const det = document.getElementById('sa-detail-'+Number(empId));
+    if (on && det && !det.classList.contains('open')) this.toggle(empId);
+    card.querySelectorAll('.sa-sel-cb').forEach(function(cb){ if (!cb.disabled) cb.checked = !!on; });
+    this.paintBar(empId);
+  },
+  clearSel(empId){ const card = this.cardEl(empId); if (!card) return; card.querySelectorAll('.sa-sel-cb').forEach(function(cb){ cb.checked = false; }); this.paintBar(empId); },
+  announce(msg){ const el = document.getElementById('sa-live'); if (!el) return; el.textContent = ''; setTimeout(function(){ el.textContent = String(msg||''); }, 30); },
+  clearRefusals(card){
+    if (!card) return;
+    card.querySelectorAll('.sa-row--refused').forEach(function(tr){ tr.classList.remove('sa-row--refused'); });
+    card.querySelectorAll('.sa-row-err').forEach(function(e){ e.remove(); });
+    const er = card.querySelector('.sa-bulk-err'); if (er) { er.hidden = true; er.textContent = ''; }
+  },
+  /** A refused line says why, on the line (text only). */
+  markRefused(id, reason){
+    const tr = this.rowEl(id); if (!tr) return;
+    tr.classList.add('sa-row--refused');
+    const cell = tr.querySelector('td:not(.sa-col-sel)'); if (!cell) return;
+    const old = cell.querySelector('.sa-row-err'); if (old) old.remove();
+    const p = document.createElement('span'); p.className = 'sa-row-err'; p.id = 'sa-err-'+Number(id); p.textContent = String(reason||'');
+    cell.appendChild(p);
+  },
+  /** « Approve N skills »: one confirmation, one request, all or nothing. */
+  async approveSelected(empId){
+    const ids = this.selectedIds(empId);
+    if (!ids.length) return;
+    const self = this;
+    const card = this.cardEl(empId);
+    const n = ids.length, name = this.nameOf(empId);
+    const built = SABulkRules.itemsFor(ids.map(function(id){ return self.lineOf(id); }));
+    this.clearRefusals(card);
+    if (built.missingReason.length) {
+      built.missingReason.forEach(function(id){ self.markRefused(id, SA_T.B.reasonNeeded); });
+      const first = document.getElementById('sa-reason-'+built.missingReason[0]);
+      if (first) { const w = document.getElementById('sa-reason-wrap-'+built.missingReason[0]); if (w) w.hidden = false; first.focus(); }
+      window.toast(SA_T.B.reasonNeeded, 'error');
+      return;
+    }
+    const ok = await window.confirmDialog({
+      title: SABulkRules.plural(n, SA_T.B.confirmTitleOne, SA_T.B.confirmTitleOther),
+      body: SABulkRules.fill(SABulkRules.plural(n, SA_T.B.confirmBodyOne, SA_T.B.confirmBodyOther), { name: name }),
+      confirmLabel: SABulkRules.plural(n, SA_T.B.approveOne, SA_T.B.approveOther)
+    });
+    if (!ok) return;
+    const go = card && card.querySelector('[data-sa-bulk]');
+    if (go) { go.setAttribute('aria-busy', 'true'); go.disabled = true; go.textContent = SA_T.B.saving; }
+    let j;
+    try {
+      j = await SAConsoleNet.api('/api/self-assessment/employee/'+Number(empId)+'/approve-selected', 'POST', { items: built.items });
+    } catch (err) {
+      if (go) { go.removeAttribute('aria-busy'); go.disabled = false; }
+      this.paintBar(empId);
+      if (err && err.code === 'session') { window.toast(err.message, 'error'); SAConsoleNet.navigate('/login?expired=1'); return; }
+      // The selection is KEPT; every refused line says why, on the line.
+      const refused = (err && err.body && Array.isArray(err.body.refused)) ? err.body.refused : [];
+      refused.forEach(function(r){ self.markRefused(r.id, r.reason); });
+      const msg = (err && err.message) || SA_T.notConfirmed;
+      const er = card && card.querySelector('.sa-bulk-err');
+      if (er) { er.textContent = msg; er.hidden = false; }
+      window.toast(msg, 'error');
+      this.announce(refused.length ? SABulkRules.fill(SA_T.B.refusedLive, { n: refused.length }) : msg);
+      return;
+    }
+    const res = (j && j.result) || {};
+    if (!Array.isArray(res.approved) || !res.approved.length) {
+      if (go) { go.removeAttribute('aria-busy'); go.disabled = false; }
+      window.toast(SA_T.notConfirmed, 'error');
+      await this.load();
+      return;
+    }
+    const done = SABulkRules.fill(SABulkRules.plural(res.approved.length, SA_T.B.doneOne, SA_T.B.doneOther), { name: name });
+    window.toast(done, 'success');
+    this.announce(done);
+    await this.load();
   },
   // ---- decision context (per skill) -----------------------------------
   lvl(v){ return (v===null||v===undefined||v==='') ? null : Number(v); },
@@ -443,7 +638,8 @@ const SA = {
     const gap = (req!==null && self!==null) ? (req - self) : -999;
     const hasJust = !!((it.employeeNotes==null? '' : String(it.employeeNotes)).trim());
     const L = (s) => ' data-label="'+escapeHtml(s)+'"';
-    return '<tr class="sa-row" data-idx="'+idx+'" data-gap="'+gap+'" data-crit="'+(crit?1:0)+'" data-just="'+(hasJust?1:0)+'">'+
+    return '<tr class="sa-row" data-sa-id="'+Number(it.id)+'" data-idx="'+idx+'" data-gap="'+gap+'" data-crit="'+(crit?1:0)+'" data-just="'+(hasJust?1:0)+'">'+
+      this.selCell(it)+
       '<td'+L(SA_T.skill)+'>'+escapeHtml(it.skillName||('#'+it.skillId))+(crit?'<span class="sa-chip-crit" title="'+escapeHtml(SA_T.rvxCriticalTitle)+'">'+escapeHtml(SA_T.rvxCritical)+'</span>':'')+this.helpPanel(it)+'</td>'+
       '<td class="sa-num"'+L(SA_T.rvxRequired)+'>'+this.requiredCell(it)+'</td>'+
       '<td class="sa-num"'+L(SA_T.rvxSelf)+'>'+this.selfCell(it)+'</td>'+
@@ -501,7 +697,8 @@ const SA = {
         body.supervisorLevel = sel.value;
         const self0 = sel.getAttribute('data-self') || '';
         if (self0 !== '' && String(sel.value) !== String(self0)) {
-          const why = await ask(SA_T.rvxAskOverride.replace('{self}', self0).replace('{mine}', sel.value));
+          const typed = document.getElementById('sa-reason-'+Number(id));
+          const why = (typed && String(typed.value).trim()) ? typed.value : await ask(SA_T.rvxAskOverride.replace('{self}', self0).replace('{mine}', sel.value));
           if (why===null || !String(why).trim()) return;
           body.recommendation = { gapReason: String(why).trim() };
         }
@@ -648,11 +845,27 @@ const SA = {
     const counts = (e.cycles || []).map(c => this.cycleChip(c)).join(' ') + ' ' + Object.keys(e.counts).map(s=>this.badge(s, e.counts[s])).join(' ');
     const rows = e.items.map((it, i)=>this.row(it, i)).join('');
     const approveBtn = e.pending>0 ? '<button class="btn btn-success btn-sm" data-on-click="SA.approveAll" data-args="'+escapeHtml(JSON.stringify([e.employeeId, e.pending]))+'"><i class="fas fa-check-double" aria-hidden="true"></i> '+SA_T.approveAll+' ('+e.pending+')</button>' : saBadge('ok', SA_T.allDone);
-    return '<div class="sa-emp"><div class="sa-emp-head">'+
-      '<div><div class="sa-emp-name">'+escapeHtml(e.firstName+' '+e.lastName)+'</div><div class="sa-emp-sub">'+SA_T.skillsPending.replace('{total}', e.total).replace('{pending}', e.pending)+'</div></div>'+
+    const name = (e.firstName+' '+e.lastName).trim();
+    const empId = Number(e.employeeId);
+    // « Select all » and the bar « Approve N skills » (all or nothing, one
+    // notification) — offered only to whom the bulk guard lets through.
+    const selectable = e.items.filter(it => SABulkRules.eligibility({ state: it.workflowState, self: it.selfRatedLevel, chosen: it.selfRatedLevel }).selectable).length;
+    const selAll = (SA_T.B.canBulk && e.pending > 0 && selectable > 0)
+      ? '<label class="sa-selall"><input type="checkbox" data-sa-all="'+empId+'" aria-label="'+escapeHtml(SABulkRules.fill(SA_T.B.selectAllAria, { name: name, n: selectable }))+'"> <span>'+escapeHtml(SA_T.B.selectAll)+'</span></label>'
+      : '';
+    const bar = SA_T.B.canBulk
+      ? '<div class="bulk-bar sa-bulk" id="sa-bulk-'+empId+'" hidden role="region" aria-live="polite" tabindex="-1" aria-label="'+escapeHtml(SABulkRules.fill(SA_T.B.barLabel, { name: name }))+'">'+
+          '<span class="bulk-bar-count" data-sa-count></span>'+
+          '<p class="sa-bulk-err" hidden></p>'+
+          '<div class="bulk-bar-actions"><button type="button" class="btn btn-secondary" data-sa-clear="'+empId+'">'+escapeHtml(SA_T.B.clear)+'</button>'+
+          '<button type="button" class="btn btn-primary" data-sa-bulk="'+empId+'"></button></div></div>'
+      : '';
+    return '<div class="sa-emp" data-emp="'+empId+'"><div class="sa-emp-head">'+
+      '<div><div class="sa-emp-name">'+escapeHtml(name)+'</div><div class="sa-emp-sub">'+SA_T.skillsPending.replace('{total}', e.total).replace('{pending}', e.pending)+'</div></div>'+
       '<div class="sa-emp-counts">'+counts+'</div>'+
-      '<div class="sa-emp-actions"><button type="button" class="btn btn-sm btn-secondary" id="sa-toggle-'+e.employeeId+'" aria-expanded="false" aria-controls="sa-detail-'+e.employeeId+'" data-on-click="SA.toggle" data-args="'+escapeHtml(JSON.stringify([e.employeeId]))+'">'+SA_T.details+'</button>'+approveBtn+'</div></div>'+
+      '<div class="sa-emp-actions"><button type="button" class="btn btn-sm btn-secondary" id="sa-toggle-'+e.employeeId+'" aria-expanded="false" aria-controls="sa-detail-'+e.employeeId+'" data-on-click="SA.toggle" data-args="'+escapeHtml(JSON.stringify([e.employeeId]))+'">'+SA_T.details+'</button>'+selAll+approveBtn+'</div></div>'+
       '<div class="sa-detail" id="sa-detail-'+e.employeeId+'">'+(SA_GOALS.on ? '<div class="sa-goals" id="sa-goals-'+e.employeeId+'"></div>' : '')+'<div class="table-wrapper"><table class="table table-cards sa-queue-table"><thead><tr>'+
+        (SA_T.B.canBulk ? '<th scope="col" class="sa-col-sel"><span class="sr-only">'+escapeHtml(SA_T.B.colSel)+'</span></th>' : '')+
         '<th scope="col">'+SA_T.skill+'</th>'+
         '<th scope="col" class="sa-num">'+SA_T.rvxRequired+'</th>'+
         '<th scope="col" class="sa-num">'+SA_T.rvxSelf+'</th>'+
@@ -660,7 +873,7 @@ const SA = {
         '<th scope="col">'+SA_T.rvxJustification+'</th>'+
         '<th scope="col">'+SA_T.state+'</th>'+
         '<th scope="col" class="col-actions sa-col-actions">'+SA_T.actions+'</th>'+
-      '</tr></thead><tbody>'+rows+'</tbody></table></div></div></div>';
+      '</tr></thead><tbody>'+rows+'</tbody></table></div></div>'+bar+'</div>';
   },
   /** La file. Un refus s'écrit DANS la zone, avec de quoi réessayer.
    *  People with nothing left to decide fold under « Déjà traitées ». */
@@ -669,12 +882,16 @@ const SA = {
     if (res.error) { wrap.innerHTML = SAConsoleNet.failureCard(res.error, 'queue', 'load_failed'); return; }
     const q = res.value || {};
     const list = q.employees || [];
+    // The model the selection reads (state and self level of every line).
+    this.groups = {}; this.items = {};
+    list.forEach(e => { this.groups[e.employeeId] = e; (e.items || []).forEach(it => { this.items[it.id] = it; }); });
     if (!list.length) { wrap.innerHTML = this.emptyQueueCard(); }
     else {
       const pending = list.filter(e => Number(e.pending) > 0), done = list.filter(e => !(Number(e.pending) > 0));
       wrap.innerHTML = pending.map(e => this.empCard(e)).join('') +
         (done.length ? '<details class="sa-done"><summary class="btn btn-secondary btn-sm">'+escapeHtml(String(SA_T.doneSection).replace('{n}', done.length))+'</summary>'+done.map(e => this.empCard(e)).join('')+'</details>' : '');
       this.applySort();
+      Object.keys(this.groups).forEach(id => this.paintBar(id));
     }
   },
   /**
@@ -730,6 +947,24 @@ window.addEventListener('unhandledrejection', function(ev){
 (function(){
   const team = document.getElementById('sa-team-approve');
   if (team) team.addEventListener('click', function(){ SA.approveTeam().catch(function(){ /* already shown */ }); });
+  const people = document.getElementById('sa-people');
+  if (people) {
+    people.addEventListener('change', function(ev){
+      const t = ev.target; if (!t || !t.getAttribute) return;
+      if (t.hasAttribute('data-sa-all')) { SA.selectAll(t.getAttribute('data-sa-all'), t.checked); return; }
+      if (t.hasAttribute('data-sa-sel')) { const c = t.closest('.sa-emp'); if (c) SA.paintBar(c.getAttribute('data-emp')); return; }
+      if (t.hasAttribute('data-sa-rate')) SA.refreshLine(t.getAttribute('data-sa-rate'));
+    });
+    people.addEventListener('input', function(ev){
+      const t = ev.target; if (t && t.hasAttribute && t.hasAttribute('data-sa-reason')) SA.refreshLine(t.getAttribute('data-sa-reason'));
+    });
+    people.addEventListener('click', function(ev){
+      const go = ev.target.closest && ev.target.closest('[data-sa-bulk]');
+      if (go && !go.disabled) { SA.approveSelected(go.getAttribute('data-sa-bulk')).catch(function(){ /* already shown */ }); return; }
+      const cl = ev.target.closest && ev.target.closest('[data-sa-clear]');
+      if (cl) SA.clearSel(cl.getAttribute('data-sa-clear'));
+    });
+  }
   const sel = document.getElementById('sa-sort');
   if (sel) sel.addEventListener('change', function(){ SA.sortMode = sel.value; SA.applySort(); });
   const cyc = document.getElementById('sa-cycle');
