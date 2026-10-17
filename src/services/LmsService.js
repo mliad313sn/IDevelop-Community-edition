@@ -769,8 +769,10 @@ class LmsService {
                 'SELECT current_level FROM skill_assessments WHERE employee_id = ? AND skill_id = ?',
                 [c.employeeId, m.skillId]
             );
-            const from = cur ? Number(cur.currentLevel) : 0;
-            if (from >= target) continue;
+            // Never assessed = not measured, never level 0 (the evidence row a
+            // plan action keeps, and the audit line, say "not assessed").
+            const from = cur && cur.currentLevel != null ? Number(cur.currentLevel) : null;
+            if (from != null && from >= target) continue;
             out.push({ skillId: Number(m.skillId), skillName: m.skillName, from, to: target });
         }
         return out;

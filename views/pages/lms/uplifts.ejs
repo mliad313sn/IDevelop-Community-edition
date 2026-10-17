@@ -46,7 +46,7 @@ const uplDate = (d) => { if (!d) return '—'; try { return new Date(d).toLocale
               <% u.skills.forEach(function (s) { %>
                 <div>
                   <%= s.skillName %>
-                  <span class="text-muted"><%= s.from %> &rarr; <strong><%= s.to %></strong></span>
+                  <span class="text-muted"><%= s.from == null ? __('idp:not_assessed') : s.from %> &rarr; <strong><%= s.to %></strong></span>
                 </div>
               <% }); %>
             </td>
