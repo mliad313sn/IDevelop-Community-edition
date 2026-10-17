@@ -50,23 +50,36 @@ app.use(compression());
 
 // Cache-busting token for static assets: appended as ?v=<assetVersion> on every
 // local <link>/<script> in the views (see layouts/main.ejs). Derived from the app
-// version + a CONTENT hash of the main assets — stable across restarts AND across
-// load-balanced instances of the same deploy (so a CDN/browser cache is shared and
-// not invalidated by a restart), yet changes the moment an asset's content changes.
+// version + a CONTENT hash of every stylesheet and script under public/css and
+// public/js — stable across restarts AND across load-balanced instances of the
+// same deploy (so a CDN/browser cache is shared and not invalidated by a restart),
+// yet changes the moment any of them changes. It also names the service worker's
+// cache, and a ?v= asset is served as immutable in production, so every file
+// a ?v= address can point at must be in the hash.
 app.locals.assetVersion = (() => {
     try {
         const h = require('crypto').createHash('sha1').update(require('./package.json').version);
-        for (const f of [
-            'public/js/dashboard-tabs.js',
-            'public/css/dashboard.css',
-            'public/css/viz.css',
-            'public/css/style.css',
-            'public/js/help.js',
-        ]) {
+        for (const dir of ['public/css', 'public/js']) {
+            // The two fixed asset folders of this checkout, listed at boot (no request input).
+            const root = path.join(__dirname, dir);
+            let names = [];
             try {
-                h.update(fs.readFileSync(path.join(__dirname, f)));
+                // eslint-disable-next-line security/detect-non-literal-fs-filename -- fixed folder
+                names = fs.readdirSync(root, { recursive: true }).map(String).sort();
             } catch (_) {
-                /* file optional */
+                names = [];
+            }
+            for (const name of names) {
+                try {
+                    const full = path.join(root, name);
+                    // eslint-disable-next-line security/detect-non-literal-fs-filename -- listed above
+                    if (!fs.statSync(full).isFile()) continue;
+                    h.update(name);
+                    // eslint-disable-next-line security/detect-non-literal-fs-filename -- listed above
+                    h.update(fs.readFileSync(full));
+                } catch (_) {
+                    /* unreadable file: skipped */
+                }
             }
         }
         return h.digest('hex').slice(0, 10);
@@ -224,6 +237,45 @@ app.use(['/api/v1', '/scim/v2'], require('./src/middleware/jsonContentType').req
 // Static assets: in production cache for 7 days (cache-busted via ?v=assetVersion,
 // so a deploy serves fresh files immediately and within-session navigations skip
 // the per-asset revalidation round-trip). In dev, no cache so edits show live.
+// The installable-app manifests carry the organisation's branding (App
+// Settings → Branding: name, favicon); the static files are only the stock
+// default. Mounted before express.static so it wins; public data only. Each
+// address maps to one fixed file name (never a path built from the request).
+const MANIFEST_FILES = new Map([
+    ['/manifest.webmanifest', 'manifest.webmanifest'],
+    ['/manifest.fr.webmanifest', 'manifest.fr.webmanifest'],
+    ['/manifest.en.webmanifest', 'manifest.en.webmanifest'],
+]);
+app.get([...MANIFEST_FILES.keys()], async (req, res) => {
+    const file = MANIFEST_FILES.get(req.path);
+    let base = {};
+    try {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- one of three fixed names
+        base = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', file), 'utf8'));
+    } catch (_) {
+        /* the stock values below */
+    }
+    let b = null;
+    try {
+        b = await require('./src/utils/branding').getBranding();
+    } catch (_) {
+        b = null;
+    }
+    const branded = b && b.appName && b.appName !== PRODUCT.name ? String(b.appName) : null;
+    const name = branded || base.name || PRODUCT.fullName;
+    const shortName = branded || base.short_name || PRODUCT.name;
+    const icons = Array.isArray(base.icons) ? base.icons.slice() : [];
+    if (b && b.faviconUrl) icons.unshift({ src: b.faviconUrl, sizes: 'any', purpose: 'any' });
+    const out = Object.assign({}, base, {
+        id: '/',
+        name,
+        short_name: shortName.length > 12 ? shortName.slice(0, 12) : shortName,
+        icons,
+    });
+    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(JSON.stringify(out));
+});
 app.use(
     express.static(path.join(__dirname, 'public'), {
         maxAge: appConfig.env === 'production' ? '7d' : 0,
@@ -237,6 +289,17 @@ app.use(
             // freshness, so a 7d cache would pin clients to an old worker.
             if (/\.html$/i.test(filePath) || /[\\/]service-worker\.js$/.test(filePath)) {
                 res.setHeader('Cache-Control', 'no-cache');
+            } else if (
+                appConfig.env === 'production' &&
+                res.req &&
+                res.req.query &&
+                res.req.query.v === app.locals.assetVersion &&
+                /^\/(css|js)\//.test(res.req.path || '')
+            ) {
+                // A stylesheet or script at ?v=<assetVersion> never changes
+                // content (the hash covers every file of public/css and public/js;
+                // the next deploy changes the address), so it is immutable for a year.
+                res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
             }
         },
     })
