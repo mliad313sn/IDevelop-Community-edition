@@ -9,6 +9,9 @@
  *    uploads and backups;
  *  - an offline dependency cache in the package (scripts/build-offline-cache.js),
  *    tried before the npm registry;
+ *  - the servicing copy <InstallDir>\maintenance\config.psd1 closed to SYSTEM
+ *    and Administrators (it can hold the standard passwords);
+ *  - the rollback runbook (docs/ROLLBACK.md) and the VM rehearsal steps.
  *
  * Static contracts on the PowerShell source (it is not executed here) and the
  * pure helpers and fail-closed paths of the new scripts (pg_dump and pg_restore
@@ -491,5 +494,56 @@ describe('offline dependency cache', () => {
         // a failed offline attempt clears the partial tree before the registry run
         expect(step.slice(off, online)).toMatch(/Remove-Item -Recurse -Force \$nmPath/);
         expect(INST).toMatch(/"Dependencies {2}: \$\(\$script:DepsSource\)"/);
+    });
+});
+
+describe('the servicing config.psd1 is closed to SYSTEM and Administrators', () => {
+    const MNG = read('installer', 'Manage-IDevelop.ps1');
+    const fn = (src, name) => {
+        const start = src.indexOf(`\nfunction ${name}`);
+        return src.slice(start + 1, src.indexOf('\n}\n', start) + 2);
+    };
+
+    test('an ACL target in Install and Manage alike: restricted, no grant for the service', () => {
+        for (const src of [INST, MNG]) {
+            expect(fn(src, 'Get-AppAclTargets')).toMatch(
+                /Path = \(Join-Path \$InstallDir 'maintenance\\config\.psd1'\); Kind = 'File'; Restrict = \$true; Grant = ''/
+            );
+        }
+        // a FILE without a grant is hardened with 'None' (the service ACE removed),
+        // the .env (Grant Read) keeps its Read
+        expect(fn(INST, 'Protect-AppDataAcls')).toMatch(
+            /\$dg = if \(\$tt\.Kind -ne 'Dir'\) \{ if \(\$tt\.Grant\) \{ 'Modify' \} else \{ 'None' \} \}/
+        );
+        expect(fn(INST, 'Get-AppAclTargets')).toMatch(
+            /Join-Path \$InstallDir '\.env'\); Kind = 'File'; Restrict = \$true; Grant = \$\(if \(\$ServiceSid\) \{ 'Read' \} else \{ '' \}\)/
+        );
+        expect(fn(MNG, 'Protect-AppDataAcls')).toBe(fn(INST, 'Protect-AppDataAcls'));
+    });
+
+    test('restricted right after the copy, before Apps & features points at it', () => {
+        const tools = fn(INST, 'Install-MaintenanceTools');
+        const copy = tools.indexOf('Copy-Item -LiteralPath $src -Destination $dest -Force');
+        const acl = tools.indexOf("$r = Protect-SensitivePath $mcfg 'None'");
+        expect(copy).toBeGreaterThan(0);
+        expect(acl).toBeGreaterThan(copy);
+        expect(tools.slice(acl)).toMatch(/'WARN'/);
+    });
+
+    test('only the file: the self-elevating scripts read config.psd1 after elevation', () => {
+        for (const f of [
+            'Maintain-IDevelop.ps1',
+            'Uninstall-IDevelop.ps1',
+            'Manage-IDevelop.ps1',
+        ]) {
+            const t = read('installer', f);
+            const elevate = t.indexOf('-Verb RunAs');
+            const cfg = t.indexOf('Import-PowerShellDataFile');
+            expect({ f, elevateFirst: elevate > 0 && cfg > elevate }).toEqual({
+                f,
+                elevateFirst: true,
+            });
+        }
+        expect(fn(INST, 'Get-AppAclTargets')).not.toMatch(/Join-Path \$InstallDir 'maintenance'\)/);
     });
 });

@@ -566,6 +566,11 @@ function Get-HrisDropRoot([string]$InstallDir) {
 #   app-backups and restore-points (code backups, Manage restore points whose
 #     code Manage -Restore runs as administrator): restricted, and NOTHING for
 #     the service, for the same reason.
+#   maintenance\config.psd1 (the servicing copy of the configuration, which can
+#     hold the standard PostgreSQL and admin passwords): restricted, and NOTHING
+#     for the service. Only the FILE: the maintenance scripts beside it start
+#     unelevated and elevate themselves, so they must stay readable; each one
+#     reads config.psd1 only after it has elevated.
 #   HRIS_DROP_ROOT (when set in .env): ReadAndExecute, additive (a customer
 #     folder: never restricted by Setup). Local paths only: on a network share
 #     (\\server\share) the virtual account authenticates as the COMPUTER account
@@ -596,6 +601,7 @@ function Get-AppAclTargets([string]$DataRoot, [string]$InstallDir, [string]$Serv
         }
         $out += [pscustomobject]@{ Path = (Join-Path $InstallDir 'service\logs'); Kind = 'Dir'; Restrict = $true; Grant = $m; ProtectedFiles = $false; ProtectedFilter = '*' }
         $out += [pscustomobject]@{ Path = (Join-Path $InstallDir 'service'); Kind = 'Dir'; Restrict = $true; Grant = $rx; ProtectedFiles = $false; ProtectedFilter = '*' }
+        $out += [pscustomobject]@{ Path = (Join-Path $InstallDir 'maintenance\config.psd1'); Kind = 'File'; Restrict = $true; Grant = ''; ProtectedFiles = $false; ProtectedFilter = '*' }
         # The install root stays readable (Program Files rules): additive grant only.
         $out += [pscustomobject]@{ Path = $InstallDir; Kind = 'Dir'; Restrict = $false; Grant = $rx; ProtectedFiles = $false; ProtectedFilter = '*' }
     }
@@ -630,7 +636,8 @@ function Protect-AppDataAcls([string]$DataRoot, [string]$InstallDir) {
     }
     foreach ($tt in $targets) {
         $t = $tt.Path
-        $dg = if ($tt.Kind -ne 'Dir') { 'Modify' } elseif ($tt.Grant) { $tt.Grant } elseif ($script:ServiceAclSid) { 'None' } else { 'Modify' }
+        # A FILE: Read for the service when it has a grant (.env), none otherwise.
+        $dg = if ($tt.Kind -ne 'Dir') { if ($tt.Grant) { 'Modify' } else { 'None' } } elseif ($tt.Grant) { $tt.Grant } elseif ($script:ServiceAclSid) { 'None' } else { 'Modify' }
         $r = Protect-SensitivePath $t $dg
         if ($r -eq 'absent') { continue }
         if ($r -like 'FAILED*' -or $r -like 'PARTIAL*') { $bad++; Log "ACL hardening: $t -> $r" 'WARN' }
@@ -3713,6 +3720,18 @@ function Install-MaintenanceTools {
                      'Maintain-IDevelop.ps1', 'Installer-Gui.ps1')) {
         $src = Join-Path $ScriptRoot $f
         if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination $dest -Force }
+    }
+    # The servicing config.psd1 can hold StandardPgSuperPassword and
+    # StandardAdminPassword (Manage -SetPgPassword / -SetAdminPassword read them),
+    # and the install root is readable by every local user. Cut the FILE down to
+    # SYSTEM + Administrators at once, nothing for the service account (the same
+    # rule Protect-AppDataAcls re-applies on every run). The scripts stay
+    # readable: they start unelevated and read the config only once elevated.
+    $mcfg = Join-Path $dest 'config.psd1'
+    if (Test-Path -LiteralPath $mcfg) {
+        $r = Protect-SensitivePath $mcfg 'None'
+        if ($r -like 'FAILED*' -or $r -like 'PARTIAL*') { Log "ACL hardening: $mcfg -> $r - the servicing config stays readable by local users; restrict it by hand." 'WARN' }
+        else { Log "ACL hardening: $mcfg -> $r (SYSTEM + Administrators only)" }
     }
     return $dest
 }

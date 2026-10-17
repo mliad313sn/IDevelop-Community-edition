@@ -324,6 +324,12 @@ $o = [ordered]@{
         // Code backups: restricted, nothing for the service.
         for (const p of ['C:\\PD\\IDevelop\\app-backups', 'C:\\PD\\IDevelop\\restore-points'])
             expect(by[p]).toMatchObject({ Grant: '', Restrict: true });
+        // The servicing config (may hold the standard passwords): restricted, nothing for the service.
+        expect(by['C:\\PF\\IDevelop\\maintenance\\config.psd1']).toMatchObject({
+            Kind: 'File',
+            Grant: '',
+            Restrict: true,
+        });
         // HRIS drop folder (HRIS_DROP_ROOT): read-only, never restricted by Setup.
         expect(by['D:\\hris\\in']).toMatchObject({ Grant: 'ReadAndExecute', Restrict: false });
         expect(inst.virt.filter((t) => t.ProtectedFiles).map((t) => t.Path)).toEqual([
