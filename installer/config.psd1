@@ -200,4 +200,13 @@
 
     # ---- Feature flags written to .env ----
     V2Features = '1'
+
+    # ---- Code backups ----
+    # Each upgrade copies the previous application CODE to
+    # %ProgramData%\IDevelop\app-backups\app-<version>-<stamp> (the rollback
+    # source). Only the newest AppBackupKeep copies are kept (0 = keep all).
+    # uploads\ and backups\ are never copied (not code, and never restored over
+    # newer files). The database is protected separately by the encrypted
+    # pre-migration dump (%ProgramData%\IDevelop\backups\pre-upgrade-*).
+    AppBackupKeep = 5
 }

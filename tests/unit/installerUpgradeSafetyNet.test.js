@@ -5,6 +5,8 @@
  *  - an encrypted, verified database dump before an upgrade's migrations
  *    (scripts/pre-upgrade-dump.js); a failed dump stops the run before any
  *    migration, -SkipPreMigrationDump is the logged way past it;
+ *  - code copies under app-backups pruned to the newest AppBackupKeep, without
+ *    uploads and backups;
  *
  * Static contracts on the PowerShell source (it is not executed here) and the
  * pure helpers and fail-closed paths of the new scripts (pg_dump and pg_restore
@@ -271,5 +273,42 @@ describe('pre-migration dump: the installer', () => {
             INST.indexOf("Log 'Applying database migrations...'")
         );
         expect([...block].filter((c) => c.charCodeAt(0) > 127)).toEqual([]);
+    });
+});
+
+describe('code copies: pruned to AppBackupKeep, without uploads and backups', () => {
+    const block = INST.slice(
+        INST.indexOf('if ($priorInstallDir) {\n    $bkVer'),
+        INST.indexOf('# APP-ONLY PATCH (-Patch -SkipMigrations) PROMISES')
+    );
+
+    test('uploads and backups are not copied into a code copy', () => {
+        expect(block).toMatch(
+            /@\('node_modules', 'logs', 'tmp', 'data', 'coverage', 'certs', 'uploads', 'backups'\) \| ForEach-Object/
+        );
+    });
+
+    test('only superseded app-* copies go: never retired-*, never the copy just taken', () => {
+        expect(block).toMatch(/Get-ChildItem -LiteralPath \$abRoot -Directory -Filter 'app-\*'/);
+        expect(block).toMatch(/Where-Object \{ \$_\.FullName -ne \$backupDir \}/);
+        expect(block).toMatch(/Select-Object -Skip \(\[Math\]::Max\(0, \$keepN - 1\)\)/);
+        // the copy is taken before the pruning, and pruning never fails the run
+        expect(block.indexOf('robocopy $cfg.InstallDir $backupDir')).toBeLessThan(
+            block.indexOf('$keepN = 5')
+        );
+        expect(block).toMatch(/\} catch \{ Log "Code-backup pruning skipped: [^"]*" 'WARN' \}/);
+        // every removal is logged by name; 0 keeps them all
+        expect(block).toMatch(/Log " {2}pruned superseded code copy: \$\(\$o\.Name\)"/);
+        expect(block).toMatch(/if \(\$keepN -gt 0\) \{/);
+        expect(INST).toMatch(/"Code backups {2}: \$\(\$script:AppBackupPruned\)"/);
+    });
+
+    test('config.psd1 ships AppBackupKeep = 5', () => {
+        expect(read('installer', 'config.psd1')).toMatch(/^\s*AppBackupKeep = 5$/m);
+    });
+
+    test('the rollback still restores the copy just taken', () => {
+        expect(INST).toMatch(/robocopy \$script:BackupDir \$cfg\.InstallDir \/E /);
+        expect(block).toMatch(/\$script:BackupDir = \$backupDir/);
     });
 });

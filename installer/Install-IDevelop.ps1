@@ -2908,14 +2908,40 @@ if (Test-Path $existingEnv) {
 # Back up the CURRENT app code before overlaying the new version so a patch /
 # upgrade can be rolled back. Excludes node_modules/logs/tmp/data (large or
 # re-creatable); the preserved .env IS included for a complete restore point.
+# uploads and backups are not code and an upgrade never touches them: copying
+# them on every run grew app-backups without limit, and a code rollback must
+# never put older evidence files back over newer ones.
 if ($priorInstallDir) {
     $bkVer = if ($script:OldVersion) { $script:OldVersion } else { 'prev' }
     $backupDir = Join-Path (Join-Path $LogDir 'app-backups') ("app-$bkVer-$stamp")
     New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-    $bxd = @('node_modules', 'logs', 'tmp', 'data', 'coverage', 'certs') | ForEach-Object { Join-Path $cfg.InstallDir $_ }
+    $bxd = @('node_modules', 'logs', 'tmp', 'data', 'coverage', 'certs', 'uploads', 'backups') | ForEach-Object { Join-Path $cfg.InstallDir $_ }
     robocopy $cfg.InstallDir $backupDir /E /XD $bxd /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { Log "Pre-upgrade backup hit a copy error (robocopy exit $LASTEXITCODE) - continuing." 'WARN' }
     else { Log "Previous app code backed up to: $backupDir" 'OK'; Log '  (rollback: stop the service, copy this folder back over the install dir, restart the service)'; $script:BackupDir = $backupDir }
+    # Keep the newest AppBackupKeep code copies (config.psd1, default 5; 0 = keep
+    # all). Only superseded app-<version>-<stamp> CODE copies are removed: never a
+    # retired-* folder (-EnforceManifest), never the copy just taken (the rollback
+    # source of this run), never a restore point or a database dump. Each removal
+    # is logged by name.
+    try {
+        $keepN = 5
+        if ($cfg.ContainsKey('AppBackupKeep')) { $keepN = [int]$cfg.AppBackupKeep }
+        if ($keepN -gt 0) {
+            $abRoot = Join-Path $LogDir 'app-backups'
+            $old = @(Get-ChildItem -LiteralPath $abRoot -Directory -Filter 'app-*' -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -ne $backupDir } | Sort-Object LastWriteTime -Descending | Select-Object -Skip ([Math]::Max(0, $keepN - 1)))
+            $prunedN = 0
+            foreach ($o in $old) {
+                try { Remove-Item -LiteralPath $o.FullName -Recurse -Force -ErrorAction Stop; $prunedN++; Log "  pruned superseded code copy: $($o.Name)" }
+                catch { Log "  could not prune $($o.Name): $($_.Exception.Message)" 'WARN' }
+            }
+            $script:AppBackupPruned = "kept newest $keepN, pruned $prunedN"
+            if ($prunedN -gt 0) { Log "Code backups: kept the newest $keepN app-* copies, pruned $prunedN older one(s)." 'OK' }
+        } else {
+            $script:AppBackupPruned = 'all kept (AppBackupKeep = 0)'
+        }
+    } catch { Log "Code-backup pruning skipped: $($_.Exception.Message)" 'WARN' }
 }
 
 # APP-ONLY PATCH (-Patch -SkipMigrations) PROMISES "no database change". The
@@ -4013,6 +4039,7 @@ finally {
             $sum += "Version       : $ovS -> $nvS"
         }
         if ($script:BackupDir) { $sum += "Code backup   : $($script:BackupDir)" }
+        if ($script:AppBackupPruned) { $sum += "Code backups  : $($script:AppBackupPruned)" }
         # Least-privilege / hardening / drift outcomes, one line each.
         if ($script:SvcPlan) {
             $svcTxt = "$($script:SvcAcct.Account) - $($script:SvcPlan.Reason)"
