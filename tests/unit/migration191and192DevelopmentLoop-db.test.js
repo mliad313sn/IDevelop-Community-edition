@@ -72,13 +72,14 @@ describe('the migration files', () => {
 
     test('the person-bearing free text is in the erasure registry', () => {
         const { SUBJECT_DATA_REGISTRY: reg } = require('../../src/services/erasureRegistry');
-        const acts = reg.find((e) => e.table === 'idp_actions' && e.treatment === 'erase');
-        expect(acts.set).toMatchObject({ reported_note: 'null', validation_note: 'null' });
+        const DSR = require('../../src/services/DSRService');
+        const acts = reg.find((e) => e.table === 'idp_actions' && e.key === 'idpActionNotes');
+        expect(acts).toMatchObject({ treatment: 'redacted', export: 'idpActionNotes' });
         const dp = reg.find((e) => e.table === 'dev_proposals' && e.column === 'employee_id');
-        expect(dp).toMatchObject({
-            treatment: 'erase',
-            set: { proposal_text: 'marker', decision_reason: 'marker_if_set' },
-        });
+        expect(dp).toMatchObject({ treatment: 'redacted', key: 'devProposals' });
+        const red = Object.fromEntries(DSR.REDACTED_ON_ERASURE.map((c) => [c.key, c]));
+        expect(red.idpActionNotes.erased).toEqual(['reported_note', 'validation_note']);
+        expect(red.devProposals.erased).toEqual(['proposal_text', 'decision_reason']);
         const golive = require('../../scripts/reset-for-golive');
         expect(golive.WIPE.has('dev_proposals')).toBe(true);
     });

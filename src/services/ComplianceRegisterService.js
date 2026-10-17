@@ -67,6 +67,8 @@ const DATA_CATEGORIES = [
     { key: 'feedback360', group: 'development', audience: 'self_line_hr' },
     { key: 'idp', group: 'development', audience: 'self_line_hr' },
     { key: 'idpObjectives', group: 'development', audience: 'self_line_hr' },
+    { key: 'idpActionNotes', group: 'development', audience: 'self_line_hr' },
+    { key: 'devProposals', group: 'development', audience: 'self_line_hr' },
     { key: 'pips', group: 'development', audience: 'self_line_hr' },
     { key: 'surveyResponses', group: 'engagement', audience: 'hr_aggregate' },
     { key: 'recognitions', group: 'engagement', audience: 'self_line_hr' },

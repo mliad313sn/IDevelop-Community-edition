@@ -407,6 +407,22 @@ const REDACTED_ON_ERASURE = [
     // DECISIONS ON THE PERSON'S PROPOSED SKILL UPLIFTS (migration 180): the
     // reason a supervisor wrote is about the person, so it goes ('[erased]',
     // never NULL: a decline must keep a reason); who decided and when stay.
+    // THE DEVELOPMENT LOOP (migrations 191, 192): the person's own « done »
+    // note and the validator's note on their plan actions go (NULL); the
+    // dates and hours stay. Their proposals keep their state and dates; the
+    // sentence and the answer's reason go ('[erased]': the text is NOT NULL).
+    {
+        key: 'idpActionNotes',
+        table: 'idp_actions',
+        erased: ['reported_note', 'validation_note'],
+        kept: ['id', 'idp_id', 'reported_done_at', 'actual_hours'],
+    },
+    {
+        key: 'devProposals',
+        table: 'dev_proposals',
+        erased: ['proposal_text', 'decision_reason'],
+        kept: ['id', 'action_type', 'status', 'routed_to', 'created_at', 'decided_at'],
+    },
     {
         key: 'lmsUpliftDecisions',
         table: 'lms_completions',
@@ -1515,6 +1531,18 @@ class DSRService {
             await db.run(
                 `UPDATE planned_absences SET note = NULL,
                         deactivated_reason = CASE WHEN deactivated_reason IS NULL THEN NULL ELSE '[erased]' END
+                  WHERE employee_id = ?`,
+                [employeeId]
+            );
+            await db.run(
+                `UPDATE idp_actions SET reported_note = NULL, validation_note = NULL
+                  WHERE idp_id IN (SELECT id FROM idp_plans WHERE employee_id = ?)`,
+                [employeeId]
+            );
+            await db.run(
+                `UPDATE dev_proposals SET proposal_text = '[erased]',
+                        decision_reason = CASE WHEN decision_reason IS NULL THEN NULL ELSE '[erased]' END,
+                        updated_at = now()
                   WHERE employee_id = ?`,
                 [employeeId]
             );

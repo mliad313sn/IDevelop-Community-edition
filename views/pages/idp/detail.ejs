@@ -38,6 +38,7 @@
     const aInfo = (typeof actionInfo !== 'undefined' && actionInfo) ? actionInfo : {};
     const oProg = (typeof objectiveProgress !== 'undefined' && objectiveProgress) ? objectiveProgress : {};
     const isPerson = (typeof viewerIsPerson !== 'undefined') && Boolean(viewerIsPerson);
+    const cln = (typeof colon !== 'undefined') ? colon : ':';
     const objText = (o) => String(o.displayText != null ? o.displayText : (pick(o, 'smartText', 'smart_text') || ''));
 %>
 <link rel="stylesheet" href="/css/idp.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
@@ -46,7 +47,7 @@
     <div class="idp-print-actions"><button type="button" class="btn btn-secondary" data-print><i class="fas fa-print" aria-hidden="true"></i> <%= __('idp:print_plan') %></button></div>
     <p><strong><%= __('idp:status') %>:</strong> <%= statusLabel[plan.status] || plan.status %></p>
     <% if (closedAt) { %>
-        <p class="text-muted"><%= __('idp:closed_on') %> <%= fmtDay(closedAt) %><% if (closeReason) { %> — <%= __('idp:close_reason') %><%= colon %> <%= closeReason %><% } %></p>
+        <p class="text-muted"><%= __('idp:closed_on') %> <%= fmtDay(closedAt) %><% if (closeReason) { %> — <%= __('idp:close_reason') %><%= cln %> <%= closeReason %><% } %></p>
     <% } %>
 </div>
 
@@ -59,11 +60,11 @@
         <% objectives.forEach(function(o){ var oFull = objText(o); var oText = oFull.slice(0, 80); var op = oProg[Number(o.id)]; %>
             <li style="margin-bottom:.75rem">
                 <span class="badge <%= objBadge[o.state] || 'badge-secondary' %>"><%= objLabel[o.state] || o.state %></span>
-                <%= oFull %> — <%= __('idp:due_on') %><%= colon %> <%= fmtDay(pick(o, 'dueOn', 'due_on')) %>
+                <%= oFull %> — <%= __('idp:due_on') %><%= cln %> <%= fmtDay(pick(o, 'dueOn', 'due_on')) %>
                 <% if (op && op.skillId != null) { %>
                     <span class="idp-meta">
                         <% if (op.targetRoleName) { %><%- include('../../partials/status-badge', { tone: 'info', label: __('idp:target_role_tag', { role: op.targetRoleName }) }) %> <% } %>
-                        <%= __('idp:live_level') %><%= colon %> <%= op.current != null ? __('idp:level_n', { level: op.current }) : __('idp:not_assessed') %><% if (op.required != null) { %> / <%= __('idp:level_required_n', { level: op.required }) %><% } %>
+                        <%= __('idp:live_level') %><%= cln %> <%= op.current != null ? __('idp:level_n', { level: op.current }) : __('idp:not_assessed') %><% if (op.required != null) { %> / <%= __('idp:level_required_n', { level: op.required }) %><% } %>
                         <% if (op.met && (o.state === 'pending' || o.state === 'in_progress')) { %> <%- include('../../partials/status-badge', { tone: 'ok', label: __('idp:objective_met_hint') }) %><% } %>
                     </span>
                 <% } %>
@@ -126,7 +127,7 @@
         <tbody>
             <% actions.forEach(function(a){ var ai = aInfo[Number(a.id)] || {}; var waiting = Boolean(a.reportedDoneAt && a.status !== 'completed' && a.status !== 'cancelled'); %>
                 <tr id="action-<%= a.id %>">
-                    <td><%= a.title %><% if (a.description) { %><div class="text-muted idp-meta"><%= a.description %></div><% } %><% if (ai.skillName) { %><div class="idp-meta"><%= __('idp:action_skill') %><%= colon %> <%= ai.skillName %><% if (ai.required != null) { %> · <%= __('idp:level_required_n', { level: ai.required }) %><% } %></div><% } %></td>
+                    <td><%= a.title %><% if (a.description) { %><div class="text-muted idp-meta"><%= a.description %></div><% } %><% if (ai.skillName) { %><div class="idp-meta"><%= __('idp:action_skill') %><%= cln %> <%= ai.skillName %><% if (ai.required != null) { %> · <%= __('idp:level_required_n', { level: ai.required }) %><% } %></div><% } %></td>
                     <td><%= typeLabel(a.type) %></td>
                     <td><%- include('../../partials/status-badge', { state: waiting ? 'pending' : a.status, label: waiting ? __('idp:awaiting_validation') : (objLabel[a.status] || statusLabel[a.status] || a.status) }) %></td>
                     <td><%- include('../../partials/idp-action-controls', { action: a, info: ai, canAct: canAct, isSubject: isPerson, planStatus: plan.status, back: '', courses: (typeof courses !== 'undefined' ? courses : null) }) %></td>
@@ -242,8 +243,8 @@
         <% [['idp:print_sign_employee', name], ['idp:print_sign_manager', null]].forEach(function (r) { %>
         <div class="idp-print-sign-box">
             <p><strong><%= __(r[0]) %></strong><% if (r[1]) { %> — <%= r[1] %><% } %></p>
-            <p><%= __('idp:print_sign_date') %><%= colon %> ____ / ____ / ________</p>
-            <p><%= __('idp:print_sign_signature') %><%= colon %></p>
+            <p><%= __('idp:print_sign_date') %><%= cln %> ____ / ____ / ________</p>
+            <p><%= __('idp:print_sign_signature') %><%= cln %></p>
         </div>
         <% }) %>
     </div>

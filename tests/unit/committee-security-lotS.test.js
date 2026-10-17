@@ -537,7 +537,8 @@ describe('S10 — IDP self-comparisons are qualified on userType', () => {
         // Same reason as `list` above: prettier breaks the router call across
         // lines, so an exact-literal indexOf returns -1 and the slice is empty.
         const sign = src.slice(
-            at(/router\.post\(\s*'\/:id\/sign'/),
+            // digits only since 4.0.0 wave 4 ('/:id(\\d+)/sign')
+            at(/router\.post\(\s*'\/:id(?:\(\\\\d\+\))?\/sign'/),
             at(/router\.post\(\s*'\/actions\/:id\/close'/)
         );
         expect(sign).toMatch(

@@ -429,5 +429,7 @@
   "rule_reason_prompt": "Why is the rule “{name}” taken out of use? It is deactivated, not deleted: the rule and your reason are kept and audited.",
   "err_deactivate_reason_required": "A reason is required.",
   "rule_deactivated": "Coverage rule deactivated",
-  "cat_lmsUpliftDecisions": "Decisions on proposed skill uplifts"
+  "cat_lmsUpliftDecisions": "Decisions on proposed skill uplifts",
+  "cat_idpActionNotes": "Notes on development actions (reported done, validation)",
+  "cat_devProposals": "Development actions proposed to the manager"
 }

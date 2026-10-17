@@ -587,25 +587,22 @@ const SUBJECT_DATA_REGISTRY = [
         table: 'idp_actions',
         treatment: 'erase',
         scopeSql: 'idp_id IN (SELECT id FROM idp_plans WHERE employee_id = ?)',
-        // Migration 191: the person's own "done" note and the validator's note.
-        set: {
-            title: 'marker',
-            description: 'null',
-            completion_notes: 'null',
-            reported_note: 'null',
-            validation_note: 'null',
-        },
+        set: { title: 'marker', description: 'null', completion_notes: 'null' },
+        export: false,
+        exportWhy: 'restated by the development objectives',
+    },
+    // Migration 191: the person's own "done" note and the validator's note on
+    // the actions of their plans (DSRService.erase, REDACTED_ON_ERASURE).
+    {
+        scope: 'the person’s “done” notes and the validators’ notes on their plan actions (migration 191)',
+        table: 'idp_actions',
+        treatment: 'redacted',
+        key: 'idpActionNotes',
         export: 'idpActionNotes',
     },
     // Migration 192: the development actions the person proposed to their line.
     // Their own sentence and the decider's reason go; status and dates stay.
-    {
-        table: 'dev_proposals',
-        column: 'employee_id',
-        treatment: 'erase',
-        set: { proposal_text: 'marker', decision_reason: 'marker_if_set' },
-        export: 'devProposals',
-    },
+    red('dev_proposals', 'employee_id', 'devProposals'),
     {
         scope: 'evidence of the subject’s development actions',
         table: 'action_evidence',
