@@ -698,4 +698,35 @@ suite('the read side and the reminder of due actions', () => {
         expect(out.st.awaitingValidation).toBe(1);
         expect(out.due).toMatchObject({ count: 1, overdue: 1, dueOn: '2020-01-01' });
     });
+
+    test('the weekly reminder: one grouped idp.action_due per person and week, counts and a date only', async () => {
+        const out = await inRolledBackTx(db, async () => {
+            const w = await loopWorld();
+            const idpId = await activePlan(w);
+            await IDP().addAction({ idpId, user: w.LINE, title: 'Due one', dueOn: '2020-03-01' });
+            await IDP().addAction({ idpId, user: w.LINE, title: 'Due two', dueOn: '2020-03-02' });
+            // the reminder hour gate: due now
+            await db.run(
+                `INSERT INTO app_settings (setting_key, setting_value, setting_type)
+                 VALUES ('reminderHour', '0', 'number')
+                 ON CONFLICT (setting_key) DO UPDATE SET setting_value = '0'`
+            );
+            const R = require('../../src/jobs/reminders');
+            notified.length = 0;
+            await R.tick();
+            const first = notified.filter((n) => n.kind === 'idp.action_due' && n.userId === w.P);
+            notified.length = 0;
+            await R.tick();
+            const second = notified.filter((n) => n.kind === 'idp.action_due' && n.userId === w.P);
+            return { first, second };
+        });
+        expect(out.first).toHaveLength(1);
+        expect(out.first[0].payload).toEqual({
+            link: '/employee/my-development',
+            count: 2,
+            overdue: 2,
+            dueOn: '2020-03-01',
+        });
+        expect(out.second).toHaveLength(0);
+    });
 });
