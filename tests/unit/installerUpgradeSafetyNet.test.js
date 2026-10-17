@@ -580,6 +580,14 @@ describe('the rollback runbook and the VM rehearsal', () => {
         expect(README).toMatch(/\(\.\.\/docs\/ROLLBACK\.md\)/);
     });
 
+    test('the package carries the runbook and the backup guide the installer log names', () => {
+        expect(BUILD).toMatch(/foreach \(\$d in @\('ROLLBACK\.md', 'BACKUPS\.md'\)\) \{/);
+        expect(BUILD).toMatch(
+            /throw "Refusing to package: operator document docs\\\$d is missing\."/
+        );
+        expect(INST).toMatch(/\(rollback: docs\\ROLLBACK\.md in the package/);
+    });
+
     test('the Windows VM checklist has the four new rehearsal steps', () => {
         const list = README.slice(
             README.indexOf('### Release rehearsal on a Windows VM'),

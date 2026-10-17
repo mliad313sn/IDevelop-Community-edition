@@ -112,6 +112,16 @@ foreach ($f in $installerScripts) {
     $src = Join-Path $here $f
     if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $staging $f) -Force }
 }
+# The operator documents the installer points at (the rollback runbook and the
+# backup guide) -> <package>\docs\. The app payload leaves docs\ out, so without
+# this the log would name a page the server does not have. Missing = no build.
+$opDocs = Join-Path $staging 'docs'
+New-Item -ItemType Directory -Force -Path $opDocs | Out-Null
+foreach ($d in @('ROLLBACK.md', 'BACKUPS.md')) {
+    $src = Join-Path $appRoot "docs\$d"
+    if (-not (Test-Path -LiteralPath $src)) { throw "Refusing to package: operator document docs\$d is missing." }
+    Copy-Item -LiteralPath $src -Destination (Join-Path $opDocs $d) -Force
+}
 # A script the installer copies into <InstallDir>\maintenance but that never
 # reached the package would leave "Modify" in Apps & features pointing at a file
 # that does not exist. Fail the build instead of shipping that.

@@ -3470,7 +3470,7 @@ if ($SkipMigrations -and $Patch) {
             if ($dcode -ne 0) { Fail "Pre-migration database dump FAILED (exit $dcode) - NO migration was applied, the database is unchanged. Fix the cause shown above (backup key, pg_dump, disk space) and run Setup again, or pass -SkipPreMigrationDump if you hold your own verified backup." }
             $script:PreUpgradeDump = Get-ChildItem -LiteralPath $dumpDir -File -Filter 'pre-upgrade-*.dump.enc' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
             Log "Pre-migration dump verified: $($script:PreUpgradeDump)" 'OK'
-            Log '  (rollback: docs\ROLLBACK.md - restore this dump, then the code copy app-backups\app-<old>-<stamp>)'
+            Log '  (rollback: docs\ROLLBACK.md in the package - restore this dump, then the code copy app-backups\app-<old>-<stamp>)'
         }
     }
     Log 'Applying database migrations...'
