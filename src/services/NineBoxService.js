@@ -2100,6 +2100,11 @@ class NineBoxService {
 
         const cadence = await this._reassessMonths();
         const now = Date.now();
+        // « New in the role » (4.0.0 port, wave 5): a recorded role start date
+        // within newInRoleMonths — a fact next to the name, never a placement.
+        const newInRole = await require('../utils/newInRole')
+            .newInRoleIds(ids)
+            .catch(() => new Set());
         return employees.map((e) => {
             const p = byEmp[Number(e.id)] || null;
             if (p) p.boxLabel = this.computeBox(p.performance, p.potential).label; // consistent labels
@@ -2137,6 +2142,7 @@ class NineBoxService {
                 sinceAgo: approvedAt ? agoBucket(daysBetween(approvedAt, now)) : null,
                 dueForReassessment: due,
                 cadenceMonths: cadence,
+                newInRole: newInRole.has(Number(e.id)),
             };
         });
     }

@@ -54,9 +54,10 @@
       <select id="pip-emp" class="form-control">
         <option value=""><%= __('pip:select') %></option>
         <% (employees||[]).forEach(function(e){ %>
-          <option value="<%= e.id %>"><%= e.name %><%= e.number ? ' (' + e.number + ')' : '' %></option>
+          <option value="<%= e.id %>"<%= e.newInRole ? ' data-new-in-role="1"' : '' %>><%= e.name %><%= e.number ? ' (' + e.number + ')' : '' %><%= e.newInRole ? ' — ' + __('pip:new_in_role_tag') : '' %></option>
         <% }); %>
       </select>
+      <% if ((employees||[]).some(function (e) { return e.newInRole; })) { %><p class="help-text" id="pip-emp-nir"><%= __('pip:new_in_role_hint') %></p><% } %>
     </div>
     <div><label for="pip-start"><%= __('common:starts_on') %></label><br><input id="pip-start" type="date" class="form-control"></div>
     <div><label for="pip-end"><%= __('common:ends_on') %></label><br><input id="pip-end" type="date" class="form-control"></div>

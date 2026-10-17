@@ -46,10 +46,17 @@ router.get(
          WHERE 1=1 ${sc.clause} ORDER BY p.created_at DESC`,
             sc.params
         );
-        const employees = (await RBACService.getFilteredEmployees(req.user)).map((e) => ({
+        const scoped = await RBACService.getFilteredEmployees(req.user);
+        // « New in the role » (4.0.0 port, wave 5): said next to the name, so
+        // nobody opens a plan on someone who has just started without seeing it.
+        const nir = await require('../utils/newInRole')
+            .newInRoleIds(scoped.map((e) => e.id))
+            .catch(() => new Set());
+        const employees = scoped.map((e) => ({
             id: Number(e.id),
             name: `${e.firstName} ${e.lastName}`,
             number: e.employeeNumber || '',
+            newInRole: nir.has(Number(e.id)),
         }));
         // the tasks a low placement raised, waiting on THIS manager's decision.
         // Fail-soft — the console must still open if the queue query fails.

@@ -125,6 +125,9 @@ const NB_T = {
     months_other: <%- JSON.stringify(__('talentx:nb_ago_months_other')) %>
   },
   notAssessed: <%- JSON.stringify(__('talentx:nb_not_assessed')) %>,
+  // « new in the role » (utils/newInRole, setting newInRoleMonths)
+  newInRole: <%- JSON.stringify(__('talentx:nb_new_in_role')) %>,
+  newInRoleTitle: <%- JSON.stringify(__('talentx:nb_new_in_role_title')) %>,
   open: <%- JSON.stringify(__('talentx:open')) %>,
   reassess: <%- JSON.stringify(__('talentx:nb_reassess')) %>,
   assess: <%- JSON.stringify(__('talentx:nb_assess')) %>,
@@ -291,7 +294,7 @@ const NB = {
         ? '<button class="btn btn-sm btn-secondary"'+nbOn('click','NB.open',[p.id])+'>'+NB_T.open+'</button> <button class="btn btn-sm '+(e.dueForReassessment?'btn-primary':'btn-secondary')+'" data-emp="'+e.employeeId+'" data-name="'+nmAttr+'"'+nbOn('click','NB.assessBtn',['$el'])+'>'+NB_T.reassess+'</button>'
         : '<button class="btn btn-sm btn-primary" data-emp="'+e.employeeId+'" data-name="'+nmAttr+'"'+nbOn('click','NB.assessBtn',['$el'])+'>'+NB_T.assess+'</button>';
       return '<tr style="border-top:1px solid #f1f5f9">'+
-        '<td style="padding:.5rem .75rem"><strong>'+esc(e.firstName+' '+e.lastName)+'</strong><div style="color:#94a3b8;font-size:.78rem">'+esc(e.employeeNumber||'')+'</div></td>'+
+        '<td style="padding:.5rem .75rem"><strong>'+esc(e.firstName+' '+e.lastName)+'</strong>'+(e.newInRole?' <span class="nb-nir" title="'+esc(NB_T.newInRoleTitle)+'">'+esc(NB_T.newInRole)+'</span>':'')+'<div style="color:#94a3b8;font-size:.78rem">'+esc(e.employeeNumber||'')+'</div></td>'+
         '<td style="padding:.5rem">'+esc(e.roleName||'—')+'</td>'+
         '<td style="padding:.5rem;color:#64748b">'+esc((e.serviceName||'—')+' · '+(e.siteName||'—'))+'</td>'+
         '<td style="padding:.5rem">'+status+'</td>'+
@@ -718,6 +721,7 @@ NB.loadRoster();
    the shape of the border and the ◌ glyph carry it too. */
 .nb-badge{background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:999px;font-size:.78rem;border:1px solid #c7d2fe}
 .nb-badge-prov{background:#fff;color:#475569;border:1px dashed #94a3b8}
+.nb-nir{display:inline-block;margin-left:4px;font-size:.75rem;font-weight:600;color:var(--blue-text);background:var(--blue-dim);border:1px solid var(--blue-text);border-radius:999px;padding:0 7px;white-space:nowrap}
 .nb-prov{display:inline-block;margin-left:4px;font-size:.75rem;color:#64748b;border:1px dashed #cbd5e1;border-radius:999px;padding:1px 7px;white-space:nowrap}
 .nb-chip-prov{background:rgba(255,255,255,.70);border:1px dashed rgba(15,23,42,.45);font-style:italic}
 .nb-chip-pend{box-shadow:inset 0 0 0 1px rgba(15,23,42,.35)}

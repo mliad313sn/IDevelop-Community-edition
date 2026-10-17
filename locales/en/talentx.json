@@ -1326,5 +1326,7 @@
   "sar_filters_label": "Filters",
   "sar_thread_input_label": "Your comment",
   "cp_create_plan": "Create the development plan towards this role",
-  "cp_create_plan_hint": "The target role's unmet requirements become objectives of the person's plan, tagged with this role. An open plan is extended rather than replaced."
+  "cp_create_plan_hint": "The target role's unmet requirements become objectives of the person's plan, tagged with this role. An open plan is extended rather than replaced.",
+  "nb_new_in_role": "New in the role",
+  "nb_new_in_role_title": "Started in the role recently (recorded start date): read performance in the light of the time in the role."
 }
