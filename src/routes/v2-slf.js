@@ -17,6 +17,7 @@ const {
 const EvidenceService = require('../services/EvidenceService');
 const DisputeServiceV2 = require('../services/DisputeServiceV2');
 const RBACService = require('../services/RBACService');
+const AuthorityService = require('../services/AuthorityService');
 const db = require('../config/database');
 const ah = require('../utils/asyncHandler');
 const { containedUploadPath } = require('../utils/uploadTempPath');
@@ -30,7 +31,13 @@ const { containedUploadPath } = require('../utils/uploadTempPath');
 // assessment_disputes.employee_id: scoping on the dispute row let whoever
 // opened a dispute on somebody else's review route its resolution to THEIR OWN
 // manager, who then rewrote the victim's official skill level.
-async function guardDisputeScope(req, res) {
+//
+// Levels 0 and 1 (the `level` argument) also go through the authority ladder
+// (AuthorityService 'dispute.l0' / 'dispute.l1', same reach in both modes):
+// nobody decides a dispute about their own record, by either of their accounts
+// or through an unlinked admin account sharing their identity, and the rung the
+// decision used is noted for its audit line.
+async function guardDisputeScope(req, res, level = null) {
     const empId = await DisputeServiceV2.employeeFor(Number(req.params.id));
     if (empId === null) {
         res.status(404).json({
@@ -51,7 +58,63 @@ async function guardDisputeScope(req, res) {
         });
         return false;
     }
+    if (level) {
+        const rel = await AuthorityService.relation(req.user, empId);
+        if (!rel || rel.isSelf || rel.selfByIdentity) {
+            res.status(403).json({
+                ok: false,
+                code: 'DISPUTE_OWN_RECORD',
+                error: say(
+                    req,
+                    'talentx:dsp_err_own_record',
+                    'You cannot decide a dispute about your own assessment.'
+                ),
+            });
+            return false;
+        }
+        // In scope: the manager's governed sub-tree. The rung it stands for.
+        const as = rel.isDirectManager
+            ? 'manager'
+            : rel.isSupervisor
+              ? 'supervisor'
+              : rel.isLineAbove
+                ? 'manager'
+                : null;
+        AuthorityService.allows(rel, level === 'L0' ? 'dispute.l0' : 'dispute.l1', {
+            strict: true,
+            as,
+        });
+        req.disputeEmployeeId = empId;
+    }
     return true;
+}
+
+/**
+ * The L0 / L1 decisions on the journal, with the rung the decision used
+ * (` as=<rung>`, AuthorityService), and the direct manager told in the app
+ * when someone above them decided (LineNoticeService). Best-effort.
+ */
+async function ladderAudit(req, action, details) {
+    try {
+        const u = req.user || {};
+        const isAdmin = u.userType === 'admin';
+        await require('../services/LogService').log({
+            adminId: isAdmin ? u.id : null,
+            actorRef: u.id != null ? `${isAdmin ? 'admin' : 'employee'}:${Number(u.id)}` : null,
+            action,
+            entityType: 'assessment_dispute',
+            entityId: Number(req.params.id),
+            details: AuthorityService.withAs(details, req.user, req.disputeEmployeeId),
+        });
+    } catch (_) {
+        /* best-effort */
+    }
+    if (req.disputeEmployeeId != null)
+        await require('../services/LineNoticeService').actedAbove(
+            req.user,
+            req.disputeEmployeeId,
+            action === 'DISPUTE_L0_RESOLVED' ? 'dispute_l0' : 'dispute_l1'
+        );
 }
 
 /**
@@ -257,7 +320,7 @@ router.post(
     '/disputes/:id/resolve-l0',
     requireManager,
     ah(async (req, res) => {
-        if (!(await guardDisputeScope(req, res))) return;
+        if (!(await guardDisputeScope(req, res, 'L0'))) return;
         let r0;
         try {
             r0 = await DisputeServiceV2.resolveL0({
@@ -281,6 +344,7 @@ router.post(
                 ),
             });
         }
+        await ladderAudit(req, 'DISPUTE_L0_RESOLVED', 'L0 decision recorded');
         res.json({ ok: true });
     })
 );
@@ -289,7 +353,7 @@ router.post(
     '/disputes/:id/resolve-l1',
     requireManager,
     ah(async (req, res) => {
-        if (!(await guardDisputeScope(req, res))) return;
+        if (!(await guardDisputeScope(req, res, 'L1'))) return;
         let r1;
         try {
             r1 = await DisputeServiceV2.resolveL1({
@@ -313,6 +377,7 @@ router.post(
                 ),
             });
         }
+        await ladderAudit(req, 'DISPUTE_L1_RESOLVED', 'L1 decision recorded');
         res.json({ ok: true });
     })
 );

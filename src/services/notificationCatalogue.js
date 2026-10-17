@@ -142,6 +142,8 @@ const FAMILY_CATEGORY = {
     coverage: 'compliance',
     safety: 'compliance',
     ninebox: 'talent',
+    // The authority ladder (4.0.0 port): a decision taken above the direct line.
+    line: 'talent',
     succession: 'talent',
     continuity: 'talent',
     retention: 'talent',
@@ -273,6 +275,8 @@ const catalogue = {
             'oneonone.topic_added': 'A topic was added to your next one-to-one',
             'ninebox.submitted': 'A 9-box placement was submitted for review',
             'ninebox.approved': 'A 9-box placement was approved',
+            'ninebox.four_eyes_off': 'Four eyes on talent placements is off',
+            'line.acted_above': 'A decision about your team was taken above you',
             'dispute.opened': 'A rating dispute was opened',
             'dispute.escalated': 'A dispute was escalated',
             'dispute.resolved': 'A dispute was resolved',
@@ -650,6 +654,28 @@ const catalogue = {
                 title: {
                     fr: 'Un positionnement talent a été approuvé',
                     en: 'A talent placement was approved',
+                },
+            },
+            // 4.0.0 port (wave 2). Migration 190, on an UPGRADE only: every active
+            // SuperAdmin is told that four eyes on placements was left off.
+            'ninebox.four_eyes_off': {
+                icon: 'fa-user-shield',
+                link: '/app-settings',
+                forceLink: true,
+                title: {
+                    fr: 'Quatre yeux sur les positionnements talent : désactivé après la mise à jour',
+                    en: 'Four eyes on talent placements: off after the upgrade',
+                },
+            },
+            // The authority ladder: someone above the direct line (a manager
+            // higher up, a local administrator, a SuperAdmin) decided for a member
+            // of the recipient's team. To the DIRECT manager only, never the person.
+            'line.acted_above': {
+                icon: 'fa-sitemap',
+                link: '/notifications',
+                title: {
+                    fr: 'Une décision sur votre équipe a été prise au-dessus de vous',
+                    en: 'A decision about your team was taken above you',
                 },
             },
             'recognition.received': {
@@ -1378,6 +1404,9 @@ const catalogue = {
             'ninebox.disclosed': 'none',
             'ninebox.approved': 'none',
             'ninebox.submitted': 'none',
+            // 4.0.0 port (wave 2): in the app now, in the daily digest by e-mail.
+            'ninebox.four_eyes_off': 'digest',
+            'line.acted_above': 'digest',
             'retention.risk_high': 'none',
             // ops alerts: in-app now, in the daily digest e-mail when emailOnDigest.
             'ops.job_failed': 'digest',
@@ -1460,7 +1489,19 @@ const catalogue = {
                 p.siteName ? String(p.siteName).slice(0, 120) : null
             );
         };
+        const ACTED_ABOVE = {
+            ninebox_approved: { fr: 'Positionnement talent', en: 'Talent placement' },
+            pip_activated: { fr: "Plan d'amélioration", en: 'Improvement plan' },
+            dispute_l0: { fr: 'Contestation de note', en: 'Rating dispute' },
+            dispute_l1: { fr: 'Contestation de note', en: 'Rating dispute' },
+        };
+        const actedAbove = (p, lang) => {
+            const a = p && typeof p.action === 'string' ? p.action : '';
+            if (!Object.prototype.hasOwnProperty.call(ACTED_ABOVE, a)) return null;
+            return String(lang || 'fr').startsWith('en') ? ACTED_ABOVE[a].en : ACTED_ABOVE[a].fr;
+        };
         return {
+            'line.acted_above': actedAbove,
             'kpi.alert': kpiAlert,
             'safety.kpi_alert': kpiAlert,
             'kpi.recovered': kpiAlert,
@@ -1705,6 +1746,14 @@ const catalogue = {
             'talent.task.created': {
                 fr: "Une action de suivi vous a été assignée à la suite d'une revue talent. Ouvrez-la pour décider de la suite : rien n'est ouvert d'office.",
                 en: 'A follow-up task has been assigned to you after a talent review. Open it to decide what happens next: nothing is opened automatically.',
+            },
+            'ninebox.four_eyes_off': {
+                fr: "Depuis cette version, la personne qui rédige un positionnement talent peut être empêchée de l'approuver elle-même. Ce réglage est activé sur les nouvelles installations ; votre mise à jour l'a laissé désactivé pour ne bloquer aucune équipe. Activez « 9-box — quatre yeux » dans les paramètres de l'application quand vos équipes ont un second approbateur.",
+                en: 'From this version on, whoever drafts a talent placement can be kept from approving it themselves. The setting is on for new installs; your upgrade left it off so that no team is blocked. Switch on "9-box — four eyes" in the App Settings once your teams have a second approver.',
+            },
+            'line.acted_above': {
+                fr: "Quelqu'un au-dessus de vous dans la ligne hiérarchique, ou un administrateur, a pris une décision pour un membre de votre équipe. Ouvrez l'élément concerné pour la consulter.",
+                en: 'Someone above you in the reporting line, or an administrator, took a decision for a member of your team. Open the item to read it.',
             },
             // Counts only — never a box, a performance level or a potential level.
             'ninebox.reassess_due': {
@@ -2050,6 +2099,14 @@ const catalogue = {
             'ninebox.approved': {
                 fr: 'Une décision a été prise sur un positionnement talent',
                 en: 'A decision was made on a talent placement',
+            },
+            'ninebox.four_eyes_off': {
+                fr: 'Positionnements talent : un réglage de gouvernance à revoir',
+                en: 'Talent placements: a governance setting to review',
+            },
+            'line.acted_above': {
+                fr: 'Une décision concerne votre équipe',
+                en: 'A decision concerns your team',
             },
             'certification.revoked': {
                 fr: 'Du nouveau sur vos certifications',

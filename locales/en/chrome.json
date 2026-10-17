@@ -518,6 +518,7 @@
   "sess_device_on": "{{browser}} on {{os}}",
   "notif_family_dept_brief": "Department brief",
   "notif_family_ninebox": "9-Box placements",
+  "notif_family_line": "Decisions taken above you",
   "notif_family_continuity": "Continuity",
   "notif_family_succession": "Succession reviews",
   "notif_family_retention": "Retention risk",

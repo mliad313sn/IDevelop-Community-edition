@@ -37,7 +37,8 @@ class PipService {
      *     admin account named as manager (manager_type 'admin');
      *   - a SuperAdmin, or an administrator whose clearance covers the person.
      * Refused, fail closed: the supervisor (a PIP is the manager's decision),
-     * managers higher up the line (they read, they do not act), a read-only
+     * managers higher up the line (they read, they do not act — unless a
+     * SuperAdmin chose the extended authority ladder), a read-only
      * delegate, the person themselves from either of their accounts, and
      * anyone when the person cannot be found or a lookup fails.
      */
@@ -53,24 +54,33 @@ class PipService {
             const emp = await require('../models/EmployeeModel').findById(Number(employeeId));
             if (!emp) return no('not_found');
             const isAdmin = user.userType === 'admin';
-            if (isAdmin && RBACService.isSuperAdmin(user))
-                return { canAct: true, why: 'superadmin' };
+            const A = require('./AuthorityService');
+            // The rung each pre-ladder grant stands for, on the audit line.
+            const yes = (why, as) => {
+                A.noteAs(user, employeeId, as);
+                return { canAct: true, why };
+            };
+            if (isAdmin && RBACService.isSuperAdmin(user)) return yes('superadmin', 'superadmin');
             if (isAdmin && (await RBACService.canAccessEmployeeData(user, emp)))
-                return { canAct: true, why: 'clearance' };
+                return yes('clearance', 'localadmin');
             if (
                 isAdmin &&
                 emp.managerType === 'admin' &&
                 emp.managerId != null &&
                 Number(emp.managerId) === Number(user.id)
             )
-                return { canAct: true, why: 'manager' };
+                return yes('manager', 'manager');
             if (
                 personId != null &&
                 emp.managerType === 'employee' &&
                 emp.managerId != null &&
                 Number(emp.managerId) === Number(personId)
             )
-                return { canAct: true, why: 'manager' };
+                return yes('manager', 'manager');
+            // The authority ladder, extended mode only (AuthorityService): the
+            // line above acts as the manager. Strict mode adds nothing.
+            const wide = await A.widen(user, 'pip.act', emp);
+            if (wide.ok) return { canAct: true, why: 'ladder' };
             return no('not_direct_manager');
         } catch (_) {
             return no('error'); // fail closed
@@ -269,6 +279,8 @@ class PipService {
         // names its author in the journal (actor_ref), as close() and withdraw()
         // already do. It left no trace before.
         await PipService._journal(actor, req, 'PIP_ACTIVATED', pipId, 'activated by its manager');
+        // The direct manager learns when someone above them activated it.
+        await require('./LineNoticeService').actedAbove(actor, row.employeeId, 'pip_activated');
         // Awaited: un-awaited, this query overlapped the caller's next statement on
         // the same transaction client.
         await this._notifyEmployee(row.employeeId, 'pip.activated', {});
@@ -365,7 +377,8 @@ class PipService {
                     action,
                     entityType: 'pip',
                     entityId: Number(pipId),
-                    details,
+                    // The rung the act used (AuthorityService), when one was resolved.
+                    details: require('./AuthorityService').withAs(details, actor),
                     ipAddress: req ? req.ip : null,
                     userAgent: req && req.get ? req.get('user-agent') : null,
                 })

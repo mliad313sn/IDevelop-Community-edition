@@ -172,6 +172,10 @@ const CATALOG = {
     // Off = employees never see the 9-box, even a disclosed placement
     // (TalentConfidentialityService.nineBoxVisibleToEmployees). Default on.
     nineBoxVisibleToEmployees: { type: 'boolean' },
+    // 4.0.0 port (wave 2), governance-class (utils/securitySettings): who may
+    // act on a person's record (AuthorityService) and the 9-box four eyes.
+    'authority.ladder': { enum: ['strict', 'extended'] },
+    nineBoxFourEyes: { type: 'boolean' },
     // DEI ethnicity switch (migration 171): written only by the SuperAdmin DEI
     // panel with a typed legal sign-off (DEIService.setEthnicityEnabled).
     deiEthnicityEnabled: { readOnly: true },
@@ -553,6 +557,26 @@ class AppSettingsModel {
                 description:
                     'Show employees their own 9-box placement once it has been disclosed to them. Off: the 9-box is hidden from every employee page.',
                 category: 'readiness',
+            },
+            {
+                // Governance-class (SuperAdmin only, utils/securitySettings). Read
+                // by AuthorityService; anything but 'extended' reads as strict.
+                key: 'authority.ladder',
+                value: 'strict',
+                type: 'string',
+                description:
+                    "Who may act on a person's record. strict (default): the direct supervisor and manager, a local administrator in clearance (with the feature permission where one is required) and a SuperAdmin; the line above reads. extended: also the line above, and a local administrator in clearance without the feature permission.",
+                category: 'security',
+            },
+            {
+                // Governance-class (SuperAdmin only). Also seeded by migration 190:
+                // on for a new install, off on an upgrade (the SuperAdmins are told).
+                key: 'nineBoxFourEyes',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    'Four eyes on a 9-box placement: whoever drafted it cannot approve it. A SuperAdmin may approve their own draft with a written reason, kept in the audit log.',
+                category: 'security',
             },
             {
                 key: 'appName',

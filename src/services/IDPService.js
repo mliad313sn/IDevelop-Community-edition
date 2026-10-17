@@ -767,7 +767,9 @@ class IDPService {
      * person. NEVER the subject (by either of their accounts), never a
      * read-only delegate. routes/v2-idp.js canManageEmployee delegates here.
      *
-     * 3.23.18 — the rest of the reporting SUB-TREE READS, it does not act.
+     * 3.23.18 — the rest of the reporting SUB-TREE READS, it does not act
+     * (strict mode of the authority ladder, the default; the SuperAdmin setting
+     * authority.ladder = extended lets the line above act as the manager).
      * That is the rule self-assessment, 9-box and coaching already apply (an
      * indirect manager sees the review, the direct line decides it); the IDP
      * alone let any N+2 manager — or a linked admin account through its
@@ -808,6 +810,10 @@ class IDPService {
             // No sub-tree clause here, deliberately (see the doc comment): an
             // indirect manager reads the plan, they do not act on it.
         }
+        // The authority ladder, extended mode only (AuthorityService): the line
+        // above acts as the manager. Strict mode (the default) adds nothing.
+        const wide = await require('./AuthorityService').widen(user, 'idp.act', emp);
+        if (wide.ok) return { canAct: true, isSubject: false, as: wide.as };
         return { canAct: false, isSubject: false };
     }
 

@@ -18,6 +18,7 @@ const EmployeeModel = require('../models/EmployeeModel');
 const LogService = require('./LogService');
 const RBACService = require('./RBACService');
 const GovernanceService = require('./GovernanceService');
+const AuthorityService = require('./AuthorityService');
 const DevelopmentTriggerService = require('./DevelopmentTriggerService');
 const { agoBucket, daysBetween } = require('../utils/agoBucket');
 
@@ -757,59 +758,34 @@ class NineBoxService {
         if (!employee)
             throw say(new Error('Employee not found'), 'talentx:nb_err_employee_not_found');
 
-        const isAdmin = Boolean(user && user.userType === 'admin');
-        const isSuper = RBACService.isSuperAdmin(user);
-        const isLocalAdmin = RBACService.isLocalAdmin(user);
-        const isViewer = RBACService.isViewer(user);
-        // THE PERSON BEHIND THE ACCOUNT, and the manager_type DISCRIMINATOR — the
-        // same predicate as SelfAssessmentWorkflowService.resolveAuthority, which
-        // is the reference. Two defects lived here, in opposite directions:
+        // THE PERSON BEHIND THE ACCOUNT, and the manager_type DISCRIMINATOR, through
+        // the resolver every review service shares (AuthorityService.relation).
+        // Two defects lived here, in opposite directions:
         //   * `manager_id` is polymorphic (an EMPLOYEE or an ADMIN id) and the two
         //     id spaces overlap. Compared without `manager_type`, the employee
         //     whose id equals the ADMIN id named manager of this person was handed
-        //     isManager — canDraft AND canApprove over a stranger (measured:
-        //     employee 145 over 139 whose manager is admin 145).
+        //     isManager — canDraft AND canApprove over a stranger.
         //   * a manager signed in on their LINKED administration account
         //     (admins.linked_employee_id) compared the ADMIN id to the employee
         //     line and lost their whole team: the grid listed them (scopeFilter
         //     unions the line), the guard refused every one of them.
-        const personId = await GovernanceService.actingPersonId(user);
-        const isSelf = personId != null && personId === Number(employeeId);
-        const isSupervisor = Boolean(
-            personId != null &&
-            employee.supervisorId != null &&
-            personId === Number(employee.supervisorId)
-        );
-        const isManager = Boolean(
-            (personId != null &&
-                employee.managerId != null &&
-                employee.managerType === 'employee' &&
-                personId === Number(employee.managerId)) ||
-            (isAdmin &&
-                employee.managerId != null &&
-                employee.managerType === 'admin' &&
-                Number(user.id) === Number(employee.managerId))
-        );
+        const rel = await AuthorityService.relation(user, employee);
+        const isAdmin = rel.isAdmin;
+        const isSuper = rel.isSuper;
+        const isLocalAdmin = rel.isLocalAdmin;
+        const isViewer = rel.isViewer;
+        const isSelf = rel.isSelf;
+        const isSupervisor = rel.isSupervisor;
+        const isManager = Boolean(rel.isDirectManager || rel.isAdminManager);
 
         // CLEARANCE — admin scopes only. A bounded admin's right to ACT rests on
         // this and nothing else (the line grants reading, and the direct link).
-        const inClearance = isSuper
-            ? true
-            : isAdmin
-              ? await RBACService.canAccessEmployeeData(user, employee)
-              : false;
+        const inClearance = rel.inClearance;
         // READING scope — the UNION of the clearance and the reporting line.
-        // The SUB-TREE, not only the direct link. The roster and the grid have
-        // always listed the whole span (findGoverned), so an N+2 manager saw names
-        // and cells here and then got 403 on opening one: over-disclosure in the
-        // list and a dead end in the workflow, from the same screen. A manager's
-        // authority follows the hierarchy, which is the sub-tree.
-        const inScope = Boolean(
-            inClearance ||
-            isSupervisor ||
-            isManager ||
-            (personId != null && (await EmployeeModel.governs(personId, employeeId)))
-        );
+        // The SUB-TREE, not only the direct link: the roster and the grid list the
+        // whole span (findGoverned), so an N+2 manager saw names and cells and
+        // then got 403 on opening one.
+        const inScope = Boolean(inClearance || isSupervisor || isManager || rel.inLine);
 
         // A "self" is never in their own scope (they don't supervise themselves),
         // so confidential self-view is already excluded.
@@ -824,8 +800,19 @@ class NineBoxService {
             (isLocalAdmin &&
                 inClearance &&
                 RBACService.hasPermission(user, 'manage_talent_reviews'));
-        const canDraft = !isViewer && Boolean(adminMayDecide || isSupervisor || isManager);
-        const canApprove = !isViewer && Boolean(adminMayDecide || isManager);
+        // Nobody drafts or approves their own placement, by either of their
+        // accounts or through an unlinked admin account sharing their identity.
+        const ownRecord = Boolean(isSelf || rel.selfByIdentity);
+        const strictDraft =
+            !isViewer && !ownRecord && Boolean(adminMayDecide || isSupervisor || isManager);
+        const strictApprove = !isViewer && !ownRecord && Boolean(adminMayDecide || isManager);
+        // Strict (the default) is the rule above; the ladder (extended mode) adds
+        // the line above as the manager and a local admin in clearance without
+        // the slug.
+        const draft = AuthorityService.allows(rel, 'ninebox.draft', { strict: strictDraft });
+        const approve = AuthorityService.allows(rel, 'ninebox.approve', { strict: strictApprove });
+        const canDraft = draft.ok;
+        const canApprove = approve.ok;
 
         return {
             employee,
@@ -834,11 +821,14 @@ class NineBoxService {
             isLocalAdmin,
             isViewer,
             isSelf,
+            selfByIdentity: rel.selfByIdentity,
             isSupervisor,
-            isManager,
+            // the line above acting by the ladder labels its events as a manager
+            isManager: Boolean(isManager || (rel.isLineAbove && draft.by === 'ladder')),
             canDraft,
             canApprove,
             canView,
+            as: (canApprove ? approve.as : canDraft ? draft.as : null) || 'none',
         };
     }
 
@@ -902,7 +892,8 @@ class NineBoxService {
                     action,
                     entityType: 'nineBox',
                     entityId: id,
-                    details,
+                    // The rung the act used (AuthorityService), when one was resolved.
+                    details: AuthorityService.withAs(details, u),
                     ipAddress: req ? req.ip : null,
                     userAgent: req && req.get ? req.get('user-agent') : null,
                 })
@@ -1347,8 +1338,57 @@ class NineBoxService {
         });
     }
 
+    /**
+     * FOUR EYES on a placement (App Setting nineBoxFourEyes; on for a new
+     * install, off after an upgrade until a SuperAdmin switches it on): the
+     * person who DRAFTED the placement — its 'create' event, by either of their
+     * accounts or an unlinked admin account sharing their identity
+     * (personIdentity.isSamePerson) — does not approve it. A SuperAdmin may
+     * approve their own draft with a written reason (10 characters or more),
+     * journalled. Returns null when allowed, or the override reason to journal.
+     */
+    async _assertFourEyes(user, ev, overrideReason) {
+        let on = true;
+        try {
+            const v = await require('../models/AppSettingsModel').getValue('nineBoxFourEyes', true);
+            on = !(v === false || v === 'false' || v === 0 || v === '0');
+        } catch (_) {
+            on = true;
+        }
+        if (!on) return null;
+        const d = await db.get(
+            `SELECT actor_id, actor_type FROM nine_box_events
+              WHERE evaluation_id = ? AND action = 'create' ORDER BY id LIMIT 1`,
+            [ev.id]
+        );
+        let ref = null;
+        if (d && d.actorId != null)
+            ref = `${d.actorType === 'admin' ? 'admin' : 'employee'}:${Number(d.actorId)}`;
+        else if (ev.createdBy != null) ref = `employee:${Number(ev.createdBy)}`;
+        if (!ref) return null; // no recorded drafter (a row older than the journal)
+        const same = await require('../utils/personIdentity').isSamePerson(user, ref);
+        if (!same) return null;
+        const why = String(overrideReason == null ? '' : overrideReason).trim();
+        if (RBACService.isSuperAdmin(user) && why.length >= 10) return why.slice(0, 500);
+        const e = say(
+            new Error(
+                'Four eyes: whoever drafted this placement cannot approve it (a SuperAdmin may, with a written reason).'
+            ),
+            'talentx:nb_err_four_eyes'
+        );
+        e.status = 409;
+        e.expose = true;
+        e.code = 'NINEBOX_FOUR_EYES';
+        throw e;
+    }
+
     /** MANAGER ONLY (admin inherits) — approve/publish. */
-    async approve(user, id, req = null, { movementJustification = null } = {}) {
+    async approve(
+        user,
+        id,
+        req = null,
+        { movementJustification = null, fourEyesReason = null } = {}
+    ) {
         const ev = await db.get('SELECT * FROM nine_box_evaluations WHERE id = ?', [id]);
         if (!ev) throw say(new Error('Evaluation not found'), 'talentx:nb_err_not_found');
         const auth = await this.resolveAuthority(user, ev.employeeId);
@@ -1363,8 +1403,16 @@ class NineBoxService {
                 'talentx:nb_err_cannot_approve_from',
                 { statusRaw: ev.status }
             );
+        const fourEyesOverride = await this._assertFourEyes(user, ev, fourEyesReason);
         // Status change + audit event + auto-triggers commit atomically.
         return db.runTransaction(async () => {
+            if (fourEyesOverride)
+                await this._audit(
+                    req,
+                    'NINEBOX_FOUR_EYES_OVERRIDE',
+                    id,
+                    `SuperAdmin approved their own draft — reason: ${fourEyesOverride}`
+                );
             // MOVEMENT (migration 175). A placement approved straight from a
             // draft, or a proposal submitted before the rule existed, has no
             // snapshot yet: it is taken now. Otherwise the snapshot stands, and
@@ -1419,6 +1467,12 @@ class NineBoxService {
             );
             await this._event(id, ev.employeeId, user, auth, 'approve', ev.status, 'approved');
             await this._audit(req, 'NINEBOX_APPROVE', id, 'placement approved/published');
+            // The direct manager learns when someone above them approved (best-effort).
+            await require('./LineNoticeService').actedAbove(
+                user,
+                ev.employeeId,
+                'ninebox_approved'
+            );
             const approved = await db.get('SELECT * FROM nine_box_evaluations WHERE id = ?', [id]);
 
             // MIRROR THE APPROVED PLACEMENT INTO talent_placements.

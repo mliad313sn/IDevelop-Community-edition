@@ -31,6 +31,7 @@ const RBACService = require('./RBACService');
 // administration account. The queue (RBACService.scopeFilter) and the reviewable
 // set both go through it too, so the list and this guard cannot drift apart.
 const GovernanceService = require('./GovernanceService');
+const AuthorityService = require('./AuthorityService');
 
 const VALID_STATES = [
     'draft',
@@ -174,94 +175,40 @@ class SelfAssessmentWorkflowService {
         const employee = await EmployeeModel.findById(employeeId);
         if (!employee)
             throw say(new Error('Employee not found'), 'assess:saw_err_employee_not_found');
-        const isAdmin = Boolean(user && user.userType === 'admin');
-        const isSuper = RBACService.isSuperAdmin(user);
-        const isLocalAdmin = RBACService.isLocalAdmin(user);
-        const isViewer = RBACService.isViewer(user);
-        // THE PERSON, NOT THE ACCOUNT.
+        // THE PERSON, NOT THE ACCOUNT, and the facts of the relation, through the
+        // ONE resolver every review service shares (AuthorityService.relation).
         //
-        // `!isAdmin &&` used to prefix the two lines below, so the moment
-        // userType was 'admin' the reporting line was ERASED and only the
-        // clearance was left. A supervisor or manager who also holds an admin
-        // account — promote-to-admin, account linking, the SSO "explicit admin
-        // connect" path, or simply typing their admin login — therefore lost
-        // their WHOLE team on the review console: measured on a development
-        // database, the same human went from 15 reviewable people to 5, none of
-        // them theirs, with the page rendering 200 and saying nothing. And the
-        // login strategy tries the ADMIN table FIRST, so a person whose two
-        // accounts share a login lands there without having chosen anything.
+        // `!isAdmin &&` used to prefix the two line tests, so the moment userType
+        // was 'admin' the reporting line was ERASED and only the clearance was
+        // left: a supervisor or manager who also holds an admin account lost their
+        // WHOLE team on the review console (measured on a development database:
+        // 15 reviewable people became 5, none of them theirs). The person behind
+        // an account is `admins.linked_employee_id` (GovernanceService
+        // .actingPersonId, null for an account naming nobody or someone no longer
+        // active). Two authorities held by one human ADD UP; a clearance grants a
+        // perimeter, it never takes one away.
         //
-        // The database already knew: `admins.linked_employee_id` names the
-        // person, uniquely. GovernanceService.actingPersonId reads it — and
-        // returns null for an account that names nobody, or names someone no
-        // longer active. Two authorities held by one human ADD UP; a clearance
-        // grants a perimeter, it never takes one away.
-        const personId = await GovernanceService.actingPersonId(user);
-        const isSelf = personId != null && personId === Number(employeeId);
+        // `manager_type` is NOT optional: `manager_id` points at an EMPLOYEE or at
+        // an ADMIN and the two id spaces overlap; the admin account NAMED manager
+        // of a person (manager_type 'admin') holds the manager rung over them.
+        //
         // An administration account linked to NOBODY is still this person when it
-        // shares their identity (e-mail, SSO id): nobody reviews, approves or
-        // arbitrates their own record through an unlinked login. Kept apart from
-        // `isSelf`, which also GRANTS the subject's own rights (reading, asking
-        // for a change): this flag only ever refuses.
-        const selfByIdentity = Boolean(
-            !isSelf &&
-            isAdmin &&
-            personId == null &&
-            (await require('../utils/personIdentity').adminMatchesEmployee(user.id, employeeId))
-        );
-        const isSupervisor = Boolean(
-            personId != null &&
-            employee.supervisorId != null &&
-            personId === Number(employee.supervisorId)
-        );
-        // `manager_type` is NOT optional here. `manager_id` is polymorphic — it
-        // points at an EMPLOYEE or at an ADMIN — and the two id spaces overlap
-        // (employees 84..68963, admins 1..666). Without the discriminator, the
-        // ordinary employee whose id happens to equal the ADMIN id managing this
-        // person was handed isManager = true, i.e. canSupervise AND canManage
-        // over a stranger. `findGovernedIds` has always filtered it, so the LIST
-        // excluded that person correctly while this function let them act: the
-        // list and the authority disagreed, in the dangerous direction.
-        //
-        // The other half of the same discriminator: `manager_type = 'admin'`
-        // names an ADMIN ACCOUNT, and that designation drew no authority at all
-        // — the admin named manager of a person saw none of their assessments.
-        // Either the field means something or the form must not offer it.
-        const isManager = Boolean(
-            (personId != null &&
-                employee.managerId != null &&
-                employee.managerType === 'employee' &&
-                personId === Number(employee.managerId)) ||
-            (isAdmin &&
-                employee.managerId != null &&
-                employee.managerType === 'admin' &&
-                Number(user.id) === Number(employee.managerId))
-        );
-        // CLEARANCE — admin scopes, and nothing else. Kept apart from `inScope`
-        // on purpose: clearance is the ONLY thing a bounded admin's right to ACT
-        // rests on, and the house rule is that a bounded admin stays bounded on
-        // every path.
-        const inClearance = isSuper
-            ? true
-            : isAdmin
-              ? await RBACService.canAccessEmployeeData(user, employee)
-              : false;
-        // READING scope — the UNION of the clearance and the reporting line.
-        //
-        // The sub-tree, not the direct link. The review console lists everyone in
-        // the sub-tree (middleware/rbac.js → EmployeeModel.findGovernedIds, a
-        // transitive BFS), while this function recognised only the DIRECT
-        // supervisor/manager. An N+2 reviewer therefore saw their indirect
-        // reports in the queue and was refused 403 on every detail and every
-        // action — reported from production as "some supervisors and managers
-        // cannot see the detail of a review", and it explains the "some": a
-        // first-line supervisor never meets it.
-        //
-        // CoachingPlanService.resolveAuthority already carries this exact fix,
-        // with the same comment; the self-assessment workflow never received it.
-        // Following that precedent deliberately: the sub-tree grants READ
-        // (canView), never the right to ACT. Approving an indirect report stays
-        // with the direct supervisor/manager.
+        // shares their identity (e-mail, SSO id): `selfByIdentity`, which only
+        // ever refuses. Kept apart from `isSelf`, which also GRANTS the subject's
+        // own rights (reading, asking for a change).
+        const rel = await AuthorityService.relation(user, employee);
+        const isAdmin = rel.isAdmin;
+        const isSuper = rel.isSuper;
+        const isLocalAdmin = rel.isLocalAdmin;
+        const isViewer = rel.isViewer;
+        const personId = rel.personId;
+        const isSelf = rel.isSelf;
+        const selfByIdentity = rel.selfByIdentity;
+        const isSupervisor = rel.isSupervisor;
+        const isManager = Boolean(rel.isDirectManager || rel.isAdminManager);
+        // CLEARANCE — admin scopes, and nothing else: the only thing a bounded
+        // admin's right to ACT rests on.
+        const inClearance = rel.inClearance;
         // The reviewer explicitly named on the campaign console, for THIS cycle
         // only (see _assignedCycles). Never on oneself. Only looked up when it
         // would ADD a right to review — someone who already reviews this person
@@ -274,20 +221,19 @@ class SelfAssessmentWorkflowService {
                 ? []
                 : await this._assignedCycles(user, personId, employeeId, cycleId);
         const isAssignedReviewer = assignedCycleIds.length > 0;
+        // READING scope — the UNION of the clearance and the reporting line, the
+        // whole SUB-TREE (the console lists the sub-tree: EmployeeModel
+        // .findGovernedIds). An N+2 reviewer saw their indirect reports in the
+        // queue and was refused the detail; the sub-tree grants reading.
         const inScope = Boolean(
-            inClearance ||
-            isSupervisor ||
-            isManager ||
-            isAssignedReviewer ||
-            (personId != null && (await EmployeeModel.governs(personId, employeeId)))
+            inClearance || isSupervisor || isManager || isAssignedReviewer || rel.inLine
         );
-        // ACTING. A local admin acts inside their CLEARANCE (never on the line
-        // sub-tree, which only grants reading); a supervisor/manager acts on
-        // their DIRECT link. `!isViewer` keeps a read-only delegation read-only
-        // on every path, including one that carries a reporting line.
-        // An explicitly assigned campaign reviewer reviews like a supervisor
-        // (canSupervise), never like a manager: arbitration stays above them.
-        const canSupervise = Boolean(
+        // ACTING, strict (today's rule): a local admin acts inside their
+        // CLEARANCE, a supervisor/manager on their DIRECT link, an explicitly
+        // assigned campaign reviewer like a supervisor (never like a manager).
+        // `!isViewer` keeps a read-only delegation read-only on every path.
+        // The ladder (extended mode only) adds the line above, as the manager.
+        const strictSupervise = Boolean(
             !isViewer &&
             (isSuper ||
                 (isLocalAdmin && inClearance) ||
@@ -295,17 +241,26 @@ class SelfAssessmentWorkflowService {
                 isManager ||
                 isAssignedReviewer)
         );
-        const canManage = Boolean(
+        const strictManage = Boolean(
             !isViewer && (isSuper || (isLocalAdmin && inClearance) || isManager)
         );
+        const supervise = AuthorityService.allows(rel, 'sa.approve', {
+            strict: strictSupervise,
+            as: !alreadyReviews && isAssignedReviewer ? 'reviewer' : null,
+        });
+        const manage = AuthorityService.allows(rel, 'sa.validate', { strict: strictManage });
+        const canSupervise = supervise.ok;
+        const canManage = manage.ok;
         // Read access, deliberately wider than the right to act: the subject
         // themselves, or anyone whose scope covers this employee — which is
         // exactly the population the console already LISTS. A reviewer must
         // never be shown a line they are then refused the detail of.
         const canView = Boolean(isSelf || inScope);
+        // The line above acting by the ladder records as a manager.
+        const actsAsManager = Boolean(isManager || (rel.isLineAbove && manage.by === 'ladder'));
         const actorType = isAdmin
             ? 'admin'
-            : isManager
+            : actsAsManager
               ? 'manager'
               : isSupervisor || isAssignedReviewer
                 ? 'supervisor'
@@ -326,6 +281,7 @@ class SelfAssessmentWorkflowService {
             canManage,
             canView,
             actorType,
+            as: (canManage ? manage.as : canSupervise ? supervise.as : null) || 'none',
         };
     }
 
@@ -2177,7 +2133,7 @@ class SelfAssessmentWorkflowService {
      * entière de défaut : un audit délibérément avalé ne peut plus empoisonner la
      * transaction de son appelant.
      */
-    async _audit(req, action, entityId, details) {
+    async _audit(req, action, entityId, details, entityType = 'selfAssessment') {
         const u = req && req.user;
         try {
             await db.runInSavepoint(() =>
@@ -2188,9 +2144,10 @@ class SelfAssessmentWorkflowService {
                             ? `${u.userType === 'admin' ? 'admin' : 'employee'}:${u.id}`
                             : null,
                     action,
-                    entityType: 'selfAssessment',
+                    entityType,
                     entityId,
-                    details,
+                    // The rung the act used (AuthorityService), when one was resolved.
+                    details: AuthorityService.withAs(details, u),
                     ipAddress: req ? req.ip : null,
                     userAgent: req && req.get ? req.get('user-agent') : null,
                 })
