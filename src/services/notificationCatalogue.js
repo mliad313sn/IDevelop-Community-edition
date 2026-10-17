@@ -297,6 +297,9 @@ const catalogue = {
             'ninebox.four_eyes_off': 'Four eyes on talent placements is off',
             'line.acted_above': 'A decision about your team was taken above you',
             'dispute.opened': 'A rating dispute was opened',
+            // 4.0.0 port (wave 6): the first answer is a proposal the person answers.
+            'dispute.proposal': 'A proposal on your dispute waits for your answer',
+            'dispute.auto_finalize_off': 'Dispute auto-finalisation is now off',
             'dispute.escalated': 'A dispute was escalated',
             'dispute.resolved': 'A dispute was resolved',
             'lifecycle.joiner': 'Welcome — your account is ready',
@@ -688,6 +691,27 @@ const catalogue = {
                 icon: 'fa-scale-balanced',
                 link: '/dashboard',
                 title: { fr: 'Une contestation a été escaladée', en: 'A dispute was escalated' },
+            },
+            // 4.0.0 port (wave 6, migration 194): to the PERSON whose rating is
+            // contested — the level-0 answer is a proposal they accept or refuse.
+            'dispute.proposal': {
+                icon: 'fa-scale-balanced',
+                link: '/employee/supervisor-reviews',
+                title: {
+                    fr: 'Une proposition attend votre réponse sur votre contestation',
+                    en: 'A proposal on your dispute waits for your answer',
+                },
+            },
+            // Migration 194, on an UPGRADE where the untouched seed was switched
+            // off: every active SuperAdmin is told.
+            'dispute.auto_finalize_off': {
+                icon: 'fa-user-shield',
+                link: '/app-settings',
+                forceLink: true,
+                title: {
+                    fr: 'Contestations : la finalisation automatique est désactivée',
+                    en: 'Disputes: automatic finalisation is now off',
+                },
             },
             'dispute.resolved': {
                 icon: 'fa-scale-balanced',
@@ -1393,6 +1417,8 @@ const catalogue = {
             'mc.submitted': 'immediate',
             'mc.rejected': 'immediate',
             'dispute.opened': 'immediate',
+            'dispute.proposal': 'immediate',
+            'dispute.auto_finalize_off': 'digest',
             'dispute.escalated': 'immediate',
             'dispute.resolved': 'immediate',
             'pip.activated': 'immediate',
@@ -1785,6 +1811,14 @@ const catalogue = {
             'dispute.opened': {
                 fr: 'Une contestation a été ouverte sur une évaluation et attend votre traitement dans le délai prévu.',
                 en: 'A rating dispute has been opened and is waiting to be handled within the agreed time limit.',
+            },
+            'dispute.proposal': {
+                fr: "Une proposition de note a été faite sur votre contestation. Acceptez-la pour clore la contestation, ou refusez-la pour qu'elle passe à votre responsable. Sans réponse, elle lui passe à l'échéance du délai.",
+                en: 'A rating was proposed on your dispute. Accept it to close the dispute, or refuse it so that it goes to your manager. Without an answer, it goes to them when the delay runs out.',
+            },
+            'dispute.auto_finalize_off': {
+                fr: "Depuis cette version, une contestation de niveau 2 dont le délai expire n'est plus finalisée automatiquement avec la note du superviseur : la note reste provisoire jusqu'à la décision RH, et les arbitres RH sont relancés deux jours avant l'échéance. Votre installation n'avait jamais modifié ce réglage : il est passé à désactivé. Vous pouvez le réactiver dans les paramètres de l'application (« Contestations — finalisation automatique »).",
+                en: 'From this version on, a level-2 dispute whose delay runs out is no longer finalised automatically with the supervisor’s rating: the rating stays provisional until HR decides, and the HR arbiters are reminded two days before the deadline. Your install had never changed this setting, so it is now off. You can switch it back on in the App Settings ("Disputes — automatic finalisation").',
             },
             'dispute.escalated': {
                 fr: 'Une contestation a été escaladée au niveau supérieur : son délai de traitement court désormais pour vous.',
@@ -2268,6 +2302,10 @@ const catalogue = {
                 fr: 'Positionnements talent : un réglage de gouvernance à revoir',
                 en: 'Talent placements: a governance setting to review',
             },
+            'dispute.auto_finalize_off': {
+                fr: 'Contestations : un réglage à revoir',
+                en: 'Disputes: a setting to review',
+            },
             'line.acted_above': {
                 fr: 'Une décision concerne votre équipe',
                 en: 'A decision concerns your team',
@@ -2337,6 +2375,7 @@ const catalogue = {
                 'sa.change_request_raised',
                 'mc.submitted',
                 'dispute.opened',
+                'dispute.proposal',
                 'cycle.escalation',
                 'review.due',
                 'onboarding.submitted',

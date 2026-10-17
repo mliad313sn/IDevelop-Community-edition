@@ -619,5 +619,19 @@
   "sync_syncing_one": "Sending {{n}} answer…",
   "sync_syncing_other": "Sending {{n}} answers…",
   "sync_failed_one": "⚠ {{n}} answer NOT saved — it will be retried",
-  "sync_failed_other": "⚠ {{n}} answers NOT saved — they will be retried"
+  "sync_failed_other": "⚠ {{n}} answers NOT saved — they will be retried",
+  "sr_proposal_title": "Your reviewer proposes level {{n}}",
+  "sr_proposal_note": "Their reason:",
+  "sr_proposal_help": "Accept it to close the dispute with this level, or refuse it: the dispute then goes to your manager. Without an answer from you, it goes to them when the delay runs out.",
+  "sr_proposal_accept": "Accept level {{n}}",
+  "sr_proposal_refuse": "Refuse and go to my manager",
+  "sr_proposal_refused": "You refused the proposal (level {{n}}): the dispute went to the next level.",
+  "sr_proposal_acc_title": "Accept level {n}?",
+  "sr_proposal_acc_body": "The dispute is closed with this level, which becomes your validated level.",
+  "sr_proposal_acc_yes": "Accept level {n}",
+  "sr_proposal_acc_done": "Proposal accepted: the dispute is closed.",
+  "sr_proposal_ref_title": "Refuse the proposal?",
+  "sr_proposal_ref_body": "Your dispute goes to your manager, who decides with a written reason.",
+  "sr_proposal_ref_yes": "Refuse the proposal",
+  "sr_proposal_ref_done": "Proposal refused: your dispute went to your manager."
 }

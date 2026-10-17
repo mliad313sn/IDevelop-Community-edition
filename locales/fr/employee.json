@@ -619,5 +619,19 @@
   "sync_syncing_one": "Envoi de {{n}} réponse…",
   "sync_syncing_other": "Envoi de {{n}} réponses…",
   "sync_failed_one": "⚠ {{n}} réponse NON enregistrée — nouvel essai automatique",
-  "sync_failed_other": "⚠ {{n}} réponses NON enregistrées — nouvel essai automatique"
+  "sync_failed_other": "⚠ {{n}} réponses NON enregistrées — nouvel essai automatique",
+  "sr_proposal_title": "Votre évaluateur propose le niveau {{n}}",
+  "sr_proposal_note": "Son motif :",
+  "sr_proposal_help": "Acceptez-la pour clore la contestation à ce niveau, ou refusez-la : la contestation passe alors à votre responsable. Sans réponse de votre part, elle lui passe à l’échéance du délai.",
+  "sr_proposal_accept": "Accepter le niveau {{n}}",
+  "sr_proposal_refuse": "Refuser et passer à mon responsable",
+  "sr_proposal_refused": "Vous avez refusé la proposition (niveau {{n}}) : la contestation est passée au niveau suivant.",
+  "sr_proposal_acc_title": "Accepter le niveau {n} ?",
+  "sr_proposal_acc_body": "La contestation est close à ce niveau, qui devient votre niveau validé.",
+  "sr_proposal_acc_yes": "Accepter le niveau {n}",
+  "sr_proposal_acc_done": "Proposition acceptée : la contestation est close.",
+  "sr_proposal_ref_title": "Refuser la proposition ?",
+  "sr_proposal_ref_body": "Votre contestation passe à votre responsable, qui décide avec un motif écrit.",
+  "sr_proposal_ref_yes": "Refuser la proposition",
+  "sr_proposal_ref_done": "Proposition refusée : votre contestation est passée à votre responsable."
 }

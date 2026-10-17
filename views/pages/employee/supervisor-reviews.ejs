@@ -146,6 +146,21 @@
                     <% if (dispute.decidedRating !== null && dispute.decidedRating !== undefined) { %>
                         <div class="text-muted" style="font-size:.85em"><%= __('employee:sr_final_rating') %> <%= dispute.decidedRating %></div>
                     <% } %>
+                    <%# The first answer to a dispute is a PROPOSAL (migration 194): the
+                        person accepts it, or refuses it and it goes to their manager. %>
+                    <% if (dispute.state === 'open' && dispute.level === 'L0' && dispute.proposedAt) { %>
+                        <div class="sr-proposal" data-sr-proposal="<%= dispute.id %>">
+                            <div><strong><%= __('employee:sr_proposal_title', { n: dispute.proposedRating }) %></strong></div>
+                            <% if (dispute.proposalNote) { %><div class="text-muted" style="font-size:.85em"><strong><%= __('employee:sr_proposal_note') %></strong> <span style="white-space:pre-wrap"><%= dispute.proposalNote %></span></div><% } %>
+                            <div class="text-muted" style="font-size:.85em"><%= __('employee:sr_proposal_help') %></div>
+                            <div class="sr-proposal-actions">
+                                <button type="button" class="btn btn-sm btn-success" data-on-click="respondProposal" data-args="<%= JSON.stringify([dispute.id, 'accept', dispute.proposedRating]) %>"><%= __('employee:sr_proposal_accept', { n: dispute.proposedRating }) %></button>
+                                <button type="button" class="btn btn-sm btn-secondary" data-on-click="respondProposal" data-args="<%= JSON.stringify([dispute.id, 'refuse', dispute.proposedRating]) %>"><%= __('employee:sr_proposal_refuse') %></button>
+                            </div>
+                        </div>
+                    <% } else if (dispute.employeeResponse === 'refused') { %>
+                        <div class="text-muted" style="font-size:.85em"><%= __('employee:sr_proposal_refused', { n: dispute.proposedRating }) %></div>
+                    <% } %>
                     <%# Le texte porte ses propres retours à la ligne : pre-wrap est posé
                         sur le SEUL <span> du texte, jamais sur le bloc, sinon
                         l'indentation du gabarit serait rendue elle aussi. %>
@@ -191,8 +206,36 @@ const SR_I18N = {
     toastDisputed: <%- JSON.stringify(__('employee:sr_toast_disputed')) %>,
     errPrefix: <%- JSON.stringify(__('employee:err_prefix')) %>,
     errDispute: <%- JSON.stringify(__('employee:sr_err_dispute')) %>,
-    errGeneric: <%- JSON.stringify(__('employee:sr_err_generic')) %>
+    errGeneric: <%- JSON.stringify(__('employee:sr_err_generic')) %>,
+    accTitle: <%- JSON.stringify(__('employee:sr_proposal_acc_title')) %>,
+    accBody: <%- JSON.stringify(__('employee:sr_proposal_acc_body')) %>,
+    accYes: <%- JSON.stringify(__('employee:sr_proposal_acc_yes')) %>,
+    accDone: <%- JSON.stringify(__('employee:sr_proposal_acc_done')) %>,
+    refTitle: <%- JSON.stringify(__('employee:sr_proposal_ref_title')) %>,
+    refBody: <%- JSON.stringify(__('employee:sr_proposal_ref_body')) %>,
+    refYes: <%- JSON.stringify(__('employee:sr_proposal_ref_yes')) %>,
+    refDone: <%- JSON.stringify(__('employee:sr_proposal_ref_done')) %>
 };
+// Answer the level-0 proposal: accept (the dispute closes with that level) or
+// refuse (it goes to the manager at once).
+async function respondProposal(id, response, n) {
+    const accept = response === 'accept';
+    const level = String(Number(n));
+    const ok = await window.confirmDialog({
+        title: accept ? SR_I18N.accTitle.replace('{n}', level) : SR_I18N.refTitle,
+        body: accept ? SR_I18N.accBody : SR_I18N.refBody,
+        confirmLabel: accept ? SR_I18N.accYes.replace('{n}', level) : SR_I18N.refYes,
+    });
+    if (!ok) return;
+    try {
+        const r = await SAConsoleNet.api('/v2/slf/disputes/' + Number(id) + '/respond', 'POST', { response: accept ? 'accept' : 'refuse' });
+        if (r && r.ok) { (window.toast || window.alert)(accept ? SR_I18N.accDone : SR_I18N.refDone, 'success'); location.reload(); }
+        else (window.toast || window.alert)((r && r.error) || SR_I18N.errGeneric, 'error');
+    } catch (error) {
+        (window.toast || window.alert)(error.message || SR_I18N.errGeneric, 'error');
+        if (error.code === 'session') SAConsoleNet.navigate('/login?expired=1');
+    }
+}
 async function disputeReview(reviewId) {
     // styled modal dialogs only — ui-feedback.js is on every page.
     const reason = await window.promptDialog(SR_I18N.promptReason, '', { required: true, multiline: true });
@@ -308,4 +351,8 @@ async function disputeReview(reviewId) {
 })();
 </script>
 
-
+<style>
+  /* The level-0 proposal the person answers (migration 194). */
+  .sr-proposal{margin-top:var(--space-2,8px);padding:var(--space-2,8px) var(--space-3,12px);border:1px solid var(--border);border-radius:var(--radius-md,8px);background:var(--bg-subtle)}
+  .sr-proposal-actions{display:flex;flex-wrap:wrap;gap:var(--space-2,8px);margin-top:var(--space-2,8px)}
+</style>

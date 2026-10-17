@@ -21,6 +21,9 @@
  *       opts: { title, okText, cancelText, multiline, required, placeholder }
  *       `required` keeps OK disabled until something is typed — the "mandatory
  *       reason" every cancellation / exclusion must carry (product rule 3).
+ * - window.ratingDialog(opts)            Promise<{rating, reason}|null> — a rating
+ *       decision: five level buttons (0-4, outside [min, max] disabled), the
+ *       context recalled, a mandatory reason, a confirm naming the level.
  * - <form data-confirm="…">              declarative confirm before a POST (replaces the
  *       native onsubmit="return confirm(…)"): data-confirm-title, data-confirm-yes,
  *       data-confirm-no, data-confirm-danger, and data-confirm-reason="fieldName" to
@@ -92,6 +95,16 @@
         '.uif-modal textarea{min-height:84px;resize:vertical}' +
         '.uif-hint{display:block;margin:-12px 0 12px;font-size:13px;color:var(--text-secondary,#334155)}' +
         '.uif-actions{display:flex;justify-content:flex-end;gap:var(--space-3,12px);flex-wrap:wrap}' +
+        // ratingDialog: the context, the person's words, five level buttons.
+        '.uif-rd-ctx{list-style:none;margin:0 0 var(--space-3,12px);padding:0;display:flex;flex-wrap:wrap;gap:var(--space-2,8px) var(--space-4,16px);font-size:14px;color:var(--text-primary,#0f172a)}' +
+        '.uif-rd-k{color:var(--text-secondary,#334155)}' +
+        '.uif-rd-quote{margin:0 0 var(--space-3,12px);padding:var(--space-2,8px) var(--space-3,12px);border-left:3px solid var(--border,#cbd5e1);background:var(--bg-subtle,#e2e8f0);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}' +
+        '.uif-rd-levels{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--space-2,8px);margin:0 0 var(--space-4,16px)}' +
+        '.uif-rd-level{min-height:56px;border:1px solid var(--border,#cbd5e1);border-radius:var(--radius-md,8px);background:var(--bg-inset,#fff);color:var(--text-primary,#0f172a);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-family:inherit}' +
+        '.uif-rd-level[aria-pressed="true"]{background:var(--brand,#2563eb);color:var(--text-inverse,#fff);border-color:transparent}' +
+        '.uif-rd-level[disabled]{opacity:.45;cursor:not-allowed}' +
+        '.uif-rd-level:focus-visible{outline:2px solid var(--focus-ring,var(--brand,#2563eb));outline-offset:2px}' +
+        '.uif-rd-n{font-size:17px;font-weight:700}.uif-rd-mark{font-size:12px}' +
         '.uif-btn{min-height:40px;padding:var(--space-2,8px) var(--space-4,16px);border-radius:999px;border:1px solid transparent;font:600 14px/1 var(--font-body,system-ui,sans-serif);cursor:pointer}' +
         '.uif-btn[disabled]{opacity:.5;cursor:not-allowed}' +
         '.uif-btn:focus-visible{outline:2px solid var(--focus-ring,var(--brand,#2563eb));outline-offset:2px}' +
@@ -517,6 +530,141 @@
                     if (!yes.disabled) close(value());
                 }
             });
+        }, null);
+    };
+
+    /**
+     * ratingDialog(opts) — ONE dialog for every rating decision (a dispute at
+     * any level). Promise<{ rating, reason } | null>.
+     *   opts: { title, body, context: [{ label, value }], quote, quoteLabel,
+     *           levelsLabel, min, max, marks: { <level>: '<label>' },
+     *           reasonLabel, reasonHint, pickHint, confirmTpl ('… {n}'),
+     *           reason (text kept from a previous attempt), cancelText }
+     * Five level buttons 0-4; those outside [min, max] are disabled, so a
+     * level is chosen, never typed. The context (both ratings) and the
+     * person's own words are recalled above them. The reason is mandatory and
+     * checked inline; the confirm button names the chosen level. Built with
+     * createElement / textContent only: nothing the page passes is parsed as
+     * markup.
+     */
+    window.ratingDialog = function (opts) {
+        opts = opts || {};
+        var num = function (v, d) {
+            var n = Number(v);
+            return v !== null && v !== undefined && v !== '' && isFinite(n) ? n : d;
+        };
+        var min = Math.max(0, Math.min(4, num(opts.min, 0)));
+        var max = Math.max(min, Math.min(4, num(opts.max, 4)));
+        var marks = opts.marks && typeof opts.marks === 'object' ? opts.marks : {};
+        var el = function (tag, cls, text) {
+            var n = document.createElement(tag);
+            if (cls) n.className = cls;
+            if (text !== undefined && text !== null) n.textContent = String(text);
+            return n;
+        };
+        return modal(function (box, close) {
+            box.appendChild(el('h4', null, opts.title || ''));
+            box.appendChild(el('p', null, opts.body || ''));
+            var ctx = Array.isArray(opts.context) ? opts.context : [];
+            if (ctx.length) {
+                var ul = el('ul', 'uif-rd-ctx');
+                ctx.forEach(function (c) {
+                    var li = el('li');
+                    li.appendChild(el('span', 'uif-rd-k', c && c.label));
+                    li.appendChild(document.createTextNode(' '));
+                    li.appendChild(el('strong', null, c && c.value));
+                    ul.appendChild(li);
+                });
+                box.appendChild(ul);
+            }
+            if (opts.quote) {
+                var bq = el('blockquote', 'uif-rd-quote');
+                bq.appendChild(el('span', 'uif-rd-k', opts.quoteLabel || ''));
+                bq.appendChild(document.createTextNode(' ' + String(opts.quote)));
+                box.appendChild(bq);
+            }
+            var group = el('div', 'uif-rd-levels');
+            group.setAttribute('role', 'group');
+            group.setAttribute('aria-label', opts.levelsLabel || '');
+            var buttons = [];
+            for (var n = 0; n <= 4; n++) {
+                var b = el('button', 'uif-rd-level');
+                b.type = 'button';
+                b.setAttribute('data-level', String(n));
+                b.setAttribute('aria-pressed', 'false');
+                if (n < min || n > max) {
+                    b.disabled = true;
+                    b.setAttribute('aria-disabled', 'true');
+                }
+                b.appendChild(el('span', 'uif-rd-n', n));
+                if (Object.prototype.hasOwnProperty.call(marks, n) && marks[n])
+                    b.appendChild(el('span', 'uif-rd-mark', marks[n]));
+                group.appendChild(b);
+                buttons.push(b);
+            }
+            box.appendChild(group);
+            var fieldId = 'uif-rd-' + Math.random().toString(36).slice(2);
+            var lab = el(
+                'label',
+                null,
+                opts.reasonLabel || L().reasonLabel || (lang() === 'en' ? 'Reason' : 'Motif')
+            );
+            lab.setAttribute('for', fieldId);
+            box.appendChild(lab);
+            var ta = el('textarea');
+            ta.id = fieldId;
+            ta.rows = 3;
+            ta.setAttribute('aria-required', 'true');
+            ta.value = opts.reason ? String(opts.reason) : '';
+            box.appendChild(ta);
+            var hint = el('small', 'uif-hint');
+            hint.setAttribute('aria-live', 'polite');
+            box.appendChild(hint);
+            var actions = el('div', 'uif-actions');
+            var no = el('button', 'uif-btn uif-btn-secondary', opts.cancelText || defaultCancel());
+            no.type = 'button';
+            var yes = el('button', 'uif-btn uif-btn-primary');
+            yes.type = 'button';
+            actions.appendChild(no);
+            actions.appendChild(yes);
+            box.appendChild(actions);
+            var chosen = null;
+            var tpl =
+                opts.confirmTpl ||
+                (lang() === 'en' ? 'Confirm rating {n}' : 'Confirmer la note {n}');
+            function sync() {
+                yes.textContent = tpl.replace('{n}', chosen === null ? '…' : String(chosen));
+                var okReason = !!ta.value.trim();
+                hint.textContent =
+                    chosen === null
+                        ? opts.pickHint || ''
+                        : okReason
+                          ? ''
+                          : opts.reasonHint || L().reasonRequired || '';
+                yes.disabled = chosen === null || !okReason;
+            }
+            buttons.forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    if (btn.disabled) return;
+                    chosen = Number(btn.getAttribute('data-level'));
+                    buttons.forEach(function (o) {
+                        o.setAttribute('aria-pressed', o === btn ? 'true' : 'false');
+                    });
+                    sync();
+                });
+            });
+            ta.addEventListener('input', sync);
+            yes.addEventListener('click', function () {
+                if (!yes.disabled) close({ rating: chosen, reason: ta.value.trim() });
+            });
+            no.addEventListener('click', function () {
+                close(null);
+            });
+            sync();
+            var first = buttons.filter(function (x) {
+                return !x.disabled;
+            })[0];
+            if (first) first.focus();
         }, null);
     };
 

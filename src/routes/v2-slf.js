@@ -113,7 +113,7 @@ async function ladderAudit(req, action, details) {
         await require('../services/LineNoticeService').actedAbove(
             req.user,
             req.disputeEmployeeId,
-            action === 'DISPUTE_L0_RESOLVED' ? 'dispute_l0' : 'dispute_l1'
+            action === 'DISPUTE_L1_RESOLVED' ? 'dispute_l1' : 'dispute_l0'
         );
 }
 
@@ -155,6 +155,10 @@ const DISPUTE_ERROR_KEYS = {
     DISPUTE_NOT_OWNER: 'employee:sr_err_not_own_review',
     DISPUTE_NOT_DISPUTABLE: 'employee:sr_err_not_disputable',
     DISPUTE_ROUND_SUPERSEDED: 'employee:sr_err_round_superseded',
+    // The level-0 proposal (migration 194)
+    DISPUTE_L0_LOWER: 'talentx:dsp_err_l0_lower',
+    DISPUTE_L0_RANGE: 'talentx:dsp_err_l0_range',
+    DISPUTE_NOT_FOUND: 'talentx:dsp_err_not_found',
 };
 
 /**
@@ -225,10 +229,15 @@ router.get(
     requireManagerOrAdmin,
     ah(async (req, res) => {
         const disputes = await DisputeServiceV2.listForManager(req.user);
+        // Never offer a decision on one's own dispute: the route refuses it
+        // (DISPUTE_OWN_RECORD), so the row does not show the button either.
+        const isManager = req.user.userType === 'manager';
+        for (const d of disputes || [])
+            d.ownRecord = isManager && Number(d.employeeId) === Number(req.user.id);
         res.render('pages/slf/disputes', {
             title: req.t ? req.t('chrome:nav_disputes_title') : 'Assessment Disputes',
             disputes,
-            canResolve: req.user.userType === 'manager',
+            canResolve: isManager,
             canArbitrate: canArbitrate(req.user),
         });
     })
@@ -316,6 +325,49 @@ router.post(
     })
 );
 
+// The person answers the level-0 proposal on THEIR OWN dispute: accept
+// (resolved with the proposed rating) or refuse (escalated to the manager at
+// once). The service resolves the owner from the review, so an id that is not
+// theirs is refused. Global CSRF check, like every POST.
+router.post(
+    '/disputes/:id/respond',
+    requireEmployee,
+    ah(async (req, res) => {
+        const answer = String((req.body && req.body.response) || '');
+        if (answer !== 'accept' && answer !== 'refuse') {
+            return res.status(400).json({
+                ok: false,
+                code: 'DISPUTE_RESPONSE_INVALID',
+                error: say(req, 'talentx:dsp_err_response', 'Accept or refuse the proposal.'),
+            });
+        }
+        let r;
+        try {
+            r = await DisputeServiceV2.respondToProposal({
+                disputeId: Number(req.params.id),
+                employeeId: Number(req.user.id),
+                accept: answer === 'accept',
+            });
+        } catch (e) {
+            if (sendDisputeRefusal(req, res, e)) return;
+            throw e;
+        }
+        if (!r || (r.resolved !== true && r.escalated !== true)) {
+            return res.status(409).json({
+                ok: false,
+                code: 'DISPUTE_NO_PROPOSAL',
+                error: say(
+                    req,
+                    'talentx:dsp_err_no_proposal',
+                    'There is no proposal waiting for your answer on this dispute.'
+                ),
+            });
+        }
+        res.json({ ok: true, resolved: r.resolved === true, escalated: r.escalated === true });
+    })
+);
+
+// Level 0 PROPOSES (migration 194): the person then accepts or refuses.
 router.post(
     '/disputes/:id/resolve-l0',
     requireManager,
@@ -323,7 +375,7 @@ router.post(
         if (!(await guardDisputeScope(req, res, 'L0'))) return;
         let r0;
         try {
-            r0 = await DisputeServiceV2.resolveL0({
+            r0 = await DisputeServiceV2.proposeL0({
                 disputeId: Number(req.params.id),
                 decidedBy: req.user.id,
                 decidedRating: req.body.decidedRating,
@@ -333,19 +385,33 @@ router.post(
             if (sendDisputeRefusal(req, res, e)) return;
             throw e;
         }
-        if (r0 && r0.resolved === false) {
+        if (!r0 || r0.proposed !== true) {
             return res.status(409).json({
                 ok: false,
-                code: 'DISPUTE_ALREADY_DECIDED',
-                error: say(
-                    req,
-                    'talentx:dsp_err_already_decided_l0',
-                    'This dispute was already resolved or escalated.'
-                ),
+                code:
+                    r0 && r0.alreadyProposed
+                        ? 'DISPUTE_ALREADY_PROPOSED'
+                        : 'DISPUTE_ALREADY_DECIDED',
+                error:
+                    r0 && r0.alreadyProposed
+                        ? say(
+                              req,
+                              'talentx:dsp_err_already_proposed',
+                              'A proposal already waits for the employee’s answer.'
+                          )
+                        : say(
+                              req,
+                              'talentx:dsp_err_already_decided_l0',
+                              'This dispute was already resolved or escalated.'
+                          ),
             });
         }
-        await ladderAudit(req, 'DISPUTE_L0_RESOLVED', 'L0 decision recorded');
-        res.json({ ok: true });
+        await ladderAudit(
+            req,
+            'DISPUTE_L0_PROPOSED',
+            `L0 proposal recorded: rating ${Number(req.body.decidedRating)}`
+        );
+        res.json({ ok: true, proposed: true });
     })
 );
 

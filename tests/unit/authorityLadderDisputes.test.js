@@ -35,6 +35,8 @@ jest.mock('../../src/services/LineNoticeService', () => ({
 const mockDisputes = {
     employeeFor: jest.fn(async () => 500),
     resolveL0: jest.fn(async () => ({ resolved: true })),
+    // Level 0 proposes since migration 194 (the person then answers).
+    proposeL0: jest.fn(async () => ({ proposed: true })),
     resolveL1: jest.fn(async () => ({ resolved: true })),
     listForManager: jest.fn(async () => []),
 };
@@ -120,9 +122,9 @@ async function post(url, body) {
 }
 
 describe.each([
-    ['0', 'resolveL0'],
-    ['1', 'resolveL1'],
-])('level %s', (lvl, fn) => {
+    ['0', 'proposeL0', 'DISPUTE_L0_PROPOSED'],
+    ['1', 'resolveL1', 'DISPUTE_L1_RESOLVED'],
+])('level %s', (lvl, fn, action) => {
     test('one’s own record is refused, even inside the scope; nothing is decided', async () => {
         relationIs({ isSelf: true, inLine: false });
         const r = await post(`/v2/slf/disputes/7/resolve-l${lvl}`, {
@@ -143,7 +145,7 @@ describe.each([
         });
         expect(r.status).toBe(200);
         expect(mockDisputes[fn]).toHaveBeenCalledTimes(1);
-        const line = mockLogs.find((e) => e.action === `DISPUTE_L${lvl}_RESOLVED`);
+        const line = mockLogs.find((e) => e.action === action);
         expect(line).toBeDefined();
         expect(line.details).toMatch(/ as=manager$/);
         expect(line.actorRef).toBe('employee:40');
