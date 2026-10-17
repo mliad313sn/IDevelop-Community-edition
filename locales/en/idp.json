@@ -208,5 +208,6 @@
   "proposal_open_plan": "Open the plan",
   "proposals_heading": "Proposed by your team",
   "proposal_accept": "Accept into the plan",
-  "proposal_decline": "Decline"
+  "proposal_decline": "Decline",
+  "reported_by": "by {{name}}"
 }

@@ -297,3 +297,71 @@ describe('subjects: no person name, no figure, no status', () => {
                 ]);
     });
 });
+
+describe('the development loop kinds (4.0.0 port, wave 4)', () => {
+    const LOOP = [
+        'idp.action_due',
+        'idp.action_reported',
+        'idp.action_validated',
+        'idp.completed',
+        'idp.proposal_received',
+        'idp.proposal_decided',
+        'lms.uplift_accepted',
+        'lms.uplift_declined',
+    ];
+
+    test.each(LOOP.map((k) => [k]))(
+        '%s: development module, digest tier, leaves by webhook by default',
+        (kind) => {
+            const d = catalogue.describe(kind);
+            expect(d).toMatchObject({
+                category: 'development',
+                module: 'development',
+                tier: 'digest',
+                mandatory: false,
+                webhook: 'default',
+            });
+            for (const lang of ['fr', 'en']) {
+                expect(typeof catalogue.KIND_MESSAGES[kind][lang]).toBe('string');
+                expect(d.title[lang]).toBeTruthy();
+            }
+        }
+    );
+
+    test('a decision is told in the title, never in the subject', () => {
+        for (const kind of [
+            'idp.action_validated',
+            'idp.proposal_decided',
+            'lms.uplift_accepted',
+            'lms.uplift_declined',
+        ])
+            for (const lang of ['fr', 'en'])
+                expect(catalogue.subjectOf(kind, lang)).toBe(
+                    lang === 'fr'
+                        ? 'Du nouveau sur votre développement'
+                        : 'An update on your development'
+                );
+    });
+
+    test('counts only in the subtitle, never a name', () => {
+        expect(catalogue.subtitleOf('idp.action_due', { count: 3, overdue: 1 }, 'en')).toBe(
+            '3 actions, 1 overdue'
+        );
+        expect(catalogue.subtitleOf('idp.action_due', { count: 1 }, 'fr')).toBe(
+            '1 action à échéance'
+        );
+        expect(catalogue.subtitleOf('lms.uplift_accepted', { skills: 2 }, 'en')).toBe(
+            '2 skills at the validated level'
+        );
+        expect(catalogue.subtitleOf('idp.action_due', { name: 'Jo' }, 'en')).toBeNull();
+    });
+
+    test('the closing hooks are measured: reminder effectiveness counts them as acted', () => {
+        for (const k of ['idp.action_due', 'idp.action_reported', 'idp.proposal_received'])
+            expect(N.ACTED_KINDS).toContain(k);
+        expect(N._refOf('idp.proposal_received', { proposalId: 9 }, {})).toEqual({
+            refType: 'dev_proposal',
+            refId: '9',
+        });
+    });
+});

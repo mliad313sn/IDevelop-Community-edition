@@ -179,6 +179,12 @@ async function actionLoopInfo(plan, actions, canManagePlan) {
                     ae.rating_pre AS "ratingPre", ae.rating_post AS "ratingPost",
                     ae.evidence_source AS "evidenceSource", ae.official AS "official",
                     a.reported_by_type AS "reportedByType",
+                    CASE WHEN a.reported_by_type IN ('employee', 'manager')
+                         THEN (SELECT NULLIF(btrim(concat_ws(' ', re.first_name, re.last_name)), '')
+                                 FROM employees re WHERE re.id = a.reported_by_id)
+                         WHEN a.reported_by_type = 'admin'
+                         THEN (SELECT ra.username FROM admins ra WHERE ra.id = a.reported_by_id)
+                    END AS "reportedByName",
                     CASE a.validated_by_type
                          WHEN 'admin' THEN (SELECT va.username FROM admins va WHERE va.id = a.validated_by_id)
                          WHEN 'employee' THEN (SELECT NULLIF(btrim(concat_ws(' ', ve.first_name, ve.last_name)), '')
@@ -234,6 +240,7 @@ async function actionLoopInfo(plan, actions, canManagePlan) {
                 official: i.official === true,
                 validatedByName: i.validatedByName || null,
                 reportedBySystem: i.reportedByType === 'system',
+                reportedByName: i.reportedByName || null,
                 training: byAction.get(Number(i.id)) || null,
             };
         }

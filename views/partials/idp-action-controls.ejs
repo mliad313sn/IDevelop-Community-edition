@@ -55,7 +55,7 @@
   <% } else if (_ps === 'active') { %>
     <% if (_reported) { %>
       <p class="idp-meta"><%- include('status-badge', { tone: 'warn', label: __('idp:awaiting_validation') }) %>
-        <%= __('idp:reported_on', { date: _day(_reported) }) %><% if (_i.reportedBySystem) { %> (<%= __('idp:reported_by_training') %>)<% } %><% if (_a.reportedNote) { %> — « <%= _a.reportedNote %> »<% } %></p>
+        <%= __('idp:reported_on', { date: _day(_reported) }) %><% if (_i.reportedBySystem) { %> (<%= __('idp:reported_by_training') %>)<% } else if (_i.reportedByName) { %> <%= __('idp:reported_by', { name: _i.reportedByName }) %><% } %><% if (_a.reportedNote) { %> — « <%= _a.reportedNote %> »<% } %></p>
     <% } %>
     <% if (_sub && !_can) { %>
       <div class="idp-ctl-actions">

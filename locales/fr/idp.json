@@ -208,5 +208,6 @@
   "proposal_open_plan": "Ouvrir le plan",
   "proposals_heading": "Proposées par votre équipe",
   "proposal_accept": "Accepter dans le plan",
-  "proposal_decline": "Refuser"
+  "proposal_decline": "Refuser",
+  "reported_by": "par {{name}}"
 }

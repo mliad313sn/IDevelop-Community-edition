@@ -245,7 +245,26 @@ suite('erasure behaviour', () => {
                 [JSON.stringify([{ externalId: `${TOKEN}-ext`, name: 'x' }])]
             );
 
+            // The development loop (migrations 191, 192): the person's "done"
+            // note, the validator's note, their proposal and its answer.
+            const plan = await db.get(
+                "INSERT INTO idp_plans (employee_id, status) VALUES (?, 'archived') RETURNING id",
+                [s.id]
+            );
+            await db.run(
+                `INSERT INTO idp_actions (idp_id, type, title, status, reported_note, validation_note)
+                 VALUES (?, 'training', 'Loop action', 'completed', ?, ?)`,
+                [Number(plan.id), `${TOKEN} done note`, `${TOKEN} validator note`]
+            );
+            await db.run(
+                `INSERT INTO dev_proposals (employee_id, proposal_text, status, decision_reason)
+                 VALUES (?, ?, 'declined', ?)`,
+                [s.id, `${TOKEN} proposal`, `${TOKEN} reason`]
+            );
+
             const exp = await DSR().export(s.id);
+            expect(JSON.stringify(exp.idpActionNotes)).toContain(`${TOKEN} done note`);
+            expect(JSON.stringify(exp.devProposals)).toContain(`${TOKEN} proposal`);
             expect(JSON.stringify(exp.certifications)).toContain(TOKEN);
             expect(JSON.stringify(exp.aspirations)).toContain(TOKEN);
             expect(JSON.stringify(exp.plannedAbsences)).toContain(TOKEN);
@@ -264,6 +283,8 @@ suite('erasure behaviour', () => {
                 ['notifications', ['payload::text']],
                 ['hris_links', ['external_id']],
                 ['hris_sync_runs', ['records::text']],
+                ['idp_actions', ['reported_note', 'validation_note']],
+                ['dev_proposals', ['proposal_text', 'decision_reason']],
             ]) {
                 const r = await db.get(
                     `SELECT COUNT(*)::int AS n FROM ${table} WHERE ${cols

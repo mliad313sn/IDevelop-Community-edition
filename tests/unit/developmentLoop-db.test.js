@@ -676,6 +676,134 @@ suite('a plan is never signed empty; plans towards a target role; completion', (
     });
 });
 
+suite('a training completion is evidence, never an uplift by itself', () => {
+    async function courseFor(w, mapLevel) {
+        const c = await db.get(
+            `INSERT INTO lms_courses (provider, external_id, title) VALUES ('test', ?, 'Course')
+             RETURNING id`,
+            [`LOOP-${STAMP}-${Math.random().toString(36).slice(2, 8)}`]
+        );
+        if (mapLevel != null)
+            await db.run(
+                'INSERT INTO course_skill_map (course_id, skill_id, level_delta) VALUES (?, ?, ?)',
+                [Number(c.id), w.S2, mapLevel]
+            );
+        return Number(c.id);
+    }
+    async function actionWithCourse(w, courseId) {
+        const idpId = await activePlan(w);
+        const a = await IDP().addAction({
+            idpId,
+            user: w.LINE,
+            title: 'Take the course',
+            type: 'training',
+            skillId: w.S2,
+        });
+        await db.run(
+            `INSERT INTO lms_enrollments (employee_id, course_id, status, source_action_id, push_state)
+             VALUES (?, ?, 'assigned', ?, 'unsupported')`,
+            [w.P, courseId, a.actionId]
+        );
+        return a.actionId;
+    }
+    test('a course mapped to no skill reports the action done for the line; nothing official moves', async () => {
+        const out = await inRolledBackTx(db, async () => {
+            const w = await loopWorld();
+            const cid = await courseFor(w, null);
+            const aid = await actionWithCourse(w, cid);
+            await db.run('UPDATE lms_courses SET external_id = ? WHERE id = ?', [
+                `EXT-${cid}`,
+                cid,
+            ]);
+            const r = await require('../../src/services/LmsService').ingestCompletion('test', {
+                externalRef: `done-${cid}`,
+                employeeId: w.P,
+                externalCourseId: `EXT-${cid}`,
+                completedAt: new Date().toISOString(),
+                raw: {},
+            });
+            const act = await db.get(
+                'SELECT status::text AS status, reported_by_type, reported_done_at FROM idp_actions WHERE id = ?',
+                [aid]
+            );
+            const lvl = await db.get(
+                'SELECT current_level FROM skill_assessments WHERE employee_id = ? AND skill_id = ?',
+                [w.P, w.S2]
+            );
+            return { r, aid, act, lvl };
+        });
+        expect(out.r.reason).toBe('no_mapping');
+        expect(out.r.reportedActions).toEqual([out.aid]);
+        expect(out.act).toMatchObject({ status: 'in_progress', reportedByType: 'system' });
+        expect(out.lvl).toBeFalsy();
+    });
+
+    test('an accepted uplift closes the action with training evidence; a decline tells the learner, reason in-app', async () => {
+        const out = await inRolledBackTx(db, async () => {
+            const w = await loopWorld();
+            const L = require('../../src/services/LmsService');
+            const cid = await courseFor(w, 2);
+            await db.run('UPDATE lms_courses SET external_id = ? WHERE id = ?', [
+                `EXT-${cid}`,
+                cid,
+            ]);
+            const aid = await actionWithCourse(w, cid);
+            const r = await L.ingestCompletion('test', {
+                externalRef: `up-${cid}`,
+                employeeId: w.P,
+                externalCourseId: `EXT-${cid}`,
+                completedAt: new Date().toISOString(),
+                raw: {},
+            });
+            const before = await db.get('SELECT status::text AS s FROM idp_actions WHERE id = ?', [
+                aid,
+            ]);
+            const d = await L.decideUplift(w.LINE, r.completionId, 'accept');
+            const act = await db.get('SELECT status::text AS s FROM idp_actions WHERE id = ?', [
+                aid,
+            ]);
+            const ae = await db.get(
+                'SELECT rating_pre, rating_post, evidence_source, official FROM action_effectiveness WHERE action_id = ?',
+                [aid]
+            );
+            const lvl = await db.get(
+                'SELECT current_level FROM skill_assessments WHERE employee_id = ? AND skill_id = ?',
+                [w.P, w.S2]
+            );
+            // a second completion of another course, declined
+            const cid2 = await courseFor(w, 4);
+            await db.run('UPDATE lms_courses SET external_id = ? WHERE id = ?', [
+                `EXT-${cid2}`,
+                cid2,
+            ]);
+            const r2 = await L.ingestCompletion('test', {
+                externalRef: `down-${cid2}`,
+                employeeId: w.P,
+                externalCourseId: `EXT-${cid2}`,
+                completedAt: new Date().toISOString(),
+                raw: {},
+            });
+            await L.decideUplift(w.LINE, r2.completionId, 'decline', { reason: 'Practice first' });
+            return { r, before, d, act, ae, lvl };
+        });
+        expect(out.r.reason).toBe('awaiting_supervisor');
+        expect(out.before.s).toBe('pending');
+        expect(out.d.closedActions).toHaveLength(1);
+        expect(out.act.s).toBe('completed');
+        expect(out.ae).toMatchObject({
+            evidenceSource: 'training',
+            official: true,
+            ratingPre: null,
+        });
+        expect(Number(out.ae.ratingPost)).toBe(2);
+        expect(Number(out.lvl.currentLevel)).toBe(2);
+        const acc = notified.find((n) => n.kind === 'lms.uplift_accepted');
+        expect(acc && acc.payload).toMatchObject({ skills: 1 });
+        const dec = notified.find((n) => n.kind === 'lms.uplift_declined');
+        expect(dec && dec.payload).toMatchObject({ reason: 'Practice first' });
+    });
+});
+
 suite('the read side and the reminder of due actions', () => {
     test('actionStates and dueActions: only dated actions waiting on the person count', async () => {
         const out = await inRolledBackTx(db, async () => {
