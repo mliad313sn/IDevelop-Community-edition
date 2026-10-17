@@ -26,6 +26,17 @@ const ROOT = path.join(__dirname, '../..');
 
 /** Literals that look like kinds in emitter files but are NOT notification kinds. */
 const NOT_KINDS = new Map([
+    // The authority ladder's actions (AuthorityService.ACTIONS), named where a
+    // service asks the ladder: they are rights, never notification kinds.
+    ['coaching.act', 'authority ladder action'],
+    ['coaching.manage', 'authority ladder action'],
+    ['idp.act', 'authority ladder action'],
+    ['lms.uplift', 'authority ladder action'],
+    ['ninebox.approve', 'authority ladder action'],
+    ['ninebox.draft', 'authority ladder action'],
+    ['pip.act', 'authority ladder action'],
+    ['sa.approve', 'authority ladder action'],
+    ['sa.validate', 'authority ladder action'],
     ['cycle.autolock', 'reminder_log ledger key of a campaign transition'],
     ['cycle.closure_proposed', 'reminder_log ledger key of a campaign transition'],
     ['cycle.manual_nudge', 'nudge_log ledger key'],

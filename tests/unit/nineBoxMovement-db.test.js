@@ -138,6 +138,10 @@ const refusal = async (fn) => {
     }
 };
 
+// Four eyes (migration 190, on for a new install): the SuperAdmin of this
+// suite drafts AND approves, so every approval carries the override reason.
+const FOUR_EYES = 'Drafted and approved by the suite SuperAdmin.';
+
 suite('9-box movement: snapshot, direction and the written reason', () => {
     test('first placement ever: direction first, no reason needed', async () => {
         const out = await inRolledBackTx(async () => {
@@ -305,9 +309,14 @@ suite('9-box movement: snapshot, direction and the written reason', () => {
                 performance: 'low',
                 potential: 'medium',
             });
-            const refused = await refusal(() => NineBox.approve(USER, d.id));
+            const refused = await refusal(() =>
+                NineBox.approve(USER, d.id, null, { fourEyesReason: FOUR_EYES })
+            );
             const still = await row(old.id);
-            await NineBox.approve(USER, d.id, null, { movementJustification: WHY });
+            await NineBox.approve(USER, d.id, null, {
+                fourEyesReason: FOUR_EYES,
+                movementJustification: WHY,
+            });
             return { refused, still, r: await row(d.id), oldAfter: await row(old.id) };
         });
         expect(out.refused && out.refused.code).toBe('MOVEMENT_JUSTIFICATION_REQUIRED');
@@ -438,13 +447,13 @@ suite('9-box movement: the report', () => {
                 potential: 'high',
                 movementJustification: WHY,
             });
-            await NineBox.approve(USER, d.id);
+            await NineBox.approve(USER, d.id, null, { fourEyesReason: FOUR_EYES });
             const d2 = await NineBox.createDraft(USER, {
                 employeeId: emp2,
                 performance: 'medium',
                 potential: 'medium',
             });
-            await NineBox.approve(USER, d2.id);
+            await NineBox.approve(USER, d2.id, null, { fourEyesReason: FOUR_EYES });
             const all = await NineBox.movements(USER, {});
             const up = await NineBox.movements(USER, { direction: 'up' });
             return { all, up, ids: [Number(d.id), Number(d2.id)] };
@@ -493,7 +502,10 @@ suite('9-box movement: privacy', () => {
                 performance: 'high',
                 potential: 'medium',
             });
-            await NineBox.approve(USER, d.id, null, { movementJustification: SECRET });
+            await NineBox.approve(USER, d.id, null, {
+                fourEyesReason: FOUR_EYES,
+                movementJustification: SECRET,
+            });
             const full = await require('../../src/services/DSRService').export(emp);
             const mine = await require('../../src/services/PrivacyService').myDataExport({
                 id: emp,
@@ -520,7 +532,10 @@ suite('9-box movement: privacy', () => {
                 performance: 'high',
                 potential: 'medium',
             });
-            await NineBox.approve(USER, d.id, null, { movementJustification: SECRET });
+            await NineBox.approve(USER, d.id, null, {
+                fourEyesReason: FOUR_EYES,
+                movementJustification: SECRET,
+            });
             await require('../../src/services/DSRService').erase(emp, USER.id, {
                 reason: 'test erasure',
             });

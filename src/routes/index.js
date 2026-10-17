@@ -367,6 +367,8 @@ const { requireApiKey } = require('../middleware/apiAuth');
 // ASVS 3.7.1: recent sign-in or current password for sensitive actions.
 const { requireRecentAuth } = require('../middleware/recentAuth');
 const requireSessionCsrf = require('../middleware/requireSessionCsrf');
+// The route half of the authority ladder (services/AuthorityService).
+const { requireLineOrPermission } = require('../middleware/requireLineAuthority');
 router.get('/api/powerbi/employees', requireApiKey, ReportController.powerbIEmployees);
 router.get('/api/powerbi/assessments', requireApiKey, ReportController.powerbIAssessments);
 router.get('/api/powerbi/readiness', requireApiKey, ReportController.powerbIReadiness);
@@ -567,18 +569,32 @@ router.get(
 );
 router.post(
     '/api/self-assessment/employee/:employeeId/approve-all',
-    requireManagerOrAnyPermission('approve_assessments'),
+    // The authority ladder (AuthorityService): in strict mode, exactly the
+    // former requireManagerOrAnyPermission('approve_assessments').
+    requireLineOrPermission('approve_assessments'),
     // Many official levels in one request: the session's CSRF token is
     // required on top of the same-origin guard that covers /api/*.
     requireSessionCsrf,
     SelfAssessmentWorkflowController.bulkApprove
+);
+// Approve the SELECTED skills of one person in one action (one request, one
+// transaction, all or nothing). Authority is approve()'s, per skill, in the
+// service; the session's CSRF token is required on top of the origin guard;
+// more than one item is a bulk approval and asks what approve-all asks
+// (requireBulkApproveRight → requireLineOrPermission('approve_assessments')).
+router.post(
+    '/api/self-assessment/employee/:employeeId/approve-selected',
+    requireAuth,
+    requireSessionCsrf,
+    require('../middleware/requireBulkApproveRight'),
+    SelfAssessmentWorkflowController.approveSelected
 );
 // "Approve all agreed ratings for my team": same guard and the same JSON/CSRF
 // contract as the per-employee approve-all above; the service loops that very
 // method, agreed ratings only, re-authorising every employee and every row.
 router.post(
     '/api/self-assessment/team/approve-all',
-    requireManagerOrAnyPermission('approve_assessments'),
+    requireLineOrPermission('approve_assessments'),
     requireSessionCsrf,
     SelfAssessmentWorkflowController.teamApproveAgreed
 );
@@ -881,39 +897,43 @@ router.get(
 // reject/archive/disclose were role-shape gated, so a local admin DENIED the
 // slug archived and disclosed placements (NineBoxService asked only
 // isLocalAdmin && inScope).
+// The authority ladder (AuthorityService): in strict mode (the default) the
+// guard is exactly requireManagerOrAnyPermission('manage_talent_reviews'); in
+// extended mode any account that is not read-only reaches the service, which
+// decides on the person.
 router.post(
     '/api/ninebox',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.create
 );
 router.post(
     '/api/ninebox/:id/update',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.update
 );
 router.post(
     '/api/ninebox/:id/submit',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.submit
 );
 router.post(
     '/api/ninebox/:id/approve',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.approve
 );
 router.post(
     '/api/ninebox/:id/reject',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.reject
 );
 router.post(
     '/api/ninebox/:id/archive',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.archive
 );
 router.post(
     '/api/ninebox/:id/disclose',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.disclose
 );
 

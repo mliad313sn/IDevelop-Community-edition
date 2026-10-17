@@ -139,12 +139,18 @@ async function canManageEmployee(user, emp) {
         if (await RBACService.canAccessEmployeeData(user, emp)) return true;
         if (emp.managerType === 'admin' && Number(emp.managerId) === Number(user.id)) return true;
     }
-    if (personId == null) return false;
-    const pid = Number(personId);
-    return Boolean(
-        (emp.supervisorId != null && Number(emp.supervisorId) === pid) ||
-        (emp.managerType === 'employee' && emp.managerId != null && Number(emp.managerId) === pid)
+    const pid = personId == null ? null : Number(personId);
+    const direct = Boolean(
+        pid != null &&
+        ((emp.supervisorId != null && Number(emp.supervisorId) === pid) ||
+            (emp.managerType === 'employee' &&
+                emp.managerId != null &&
+                Number(emp.managerId) === pid))
     );
+    if (direct) return true;
+    // The authority ladder, extended mode only (AuthorityService): the line
+    // above acts as the manager. Strict mode (the default) adds nothing.
+    return (await require('../services/AuthorityService').widen(user, 'idp.act', emp)).ok;
 }
 
 // Manager-initiated IDP: pick an employee (or arrive pre-filled from a gap) and

@@ -145,6 +145,7 @@ const NB_T = {
   srcSystem: <%- JSON.stringify(__('talentx:nb_src_system')) %>,
   srcManager: <%- JSON.stringify(__('talentx:nb_src_manager')) %>,
   approveManager: <%- JSON.stringify(__('talentx:nb_approve_manager')) %>,
+  fourEyesReason: <%- JSON.stringify(__('talentx:nb_four_eyes_reason')) %>,
   <%# M-06 : ce que lit un superviseur là où le manager voit les commandes. %>
   managerDecides: <%- JSON.stringify(__('talentx:nb_manager_decides')) %>,
   reject: <%- JSON.stringify(__('talentx:reject')) %>,
@@ -535,14 +536,26 @@ const NB = {
     let res;
     try { res=await this.api('/api/ninebox/'+id+'/'+a,'POST',body); }
     catch(e){
+      // Four eyes: the drafter does not approve. A SuperAdmin may, with a
+      // written reason (10 characters or more), kept in the audit log.
+      const fourEyes=a==='approve' && e && e.body && e.body.code==='NINEBOX_FOUR_EYES';
+      if(fourEyes){
+        if(!e.body.canOverride) return;
+        const r=await window.promptDialog(NB_T.fourEyesReason,'');
+        if(r===null||String(r).trim().length<10) return;
+        body.fourEyesReason=String(r).trim();
+        res=await this.api('/api/ninebox/'+id+'/'+a,'POST',body);
+      }
       // A stored justification can still be refused (placeholder, copy of
       // the previous one). The refusal was just shown; offer to write a new one.
       const m=this.cur && this.cur.movement;
+      if(!fourEyes){
       if(!((a==='submit'||a==='approve') && m && m.requiresJustification && e && e.status===400)) throw e;
       const why=await this._askJustification(m);
       if(why===null) return;
       body.movementJustification=why;
       res=await this.api('/api/ninebox/'+id+'/'+a,'POST',body);
+      }
     }
     if(a==='approve'){const t=res&&res.evaluation&&res.evaluation.autoTrigger;
       // a low box no longer opens a plan. Say what actually happened — a task

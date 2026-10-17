@@ -8,6 +8,9 @@
  *      OrgChartController draws the same union.
  *  #2  IDP: the DIRECT line (supervisor / manager of either type) and in-scope
  *      admins ACT; the rest of the sub-tree only READS; subject and viewer never act.
+ *      That is STRICT mode of the authority ladder (the default). In EXTENDED
+ *      mode (4.0.0 port, a SuperAdmin choice) the line above acts too; a
+ *      stranger to the line, the subject and a viewer still never do.
  *  #3  reportingLineStats: cycle-safe, nobody dropped.
  */
 
@@ -31,6 +34,7 @@ jest.mock('../../src/models/EmployeeModel', () => mockEmployees);
 const mockRbac = {
     isSuperAdmin: (u) => Boolean(u && u.userType === 'admin' && u.role === 'superadmin'),
     isViewer: (u) => Boolean(u && u.userType === 'admin' && u.role === 'viewer'),
+    isLocalAdmin: (u) => Boolean(u && u.userType === 'admin' && u.role === 'localadmin'),
     canAccessEmployeeData: jest.fn(async () => false),
     getFilteredEmployees: jest.fn(async () => []),
 };
@@ -262,6 +266,75 @@ describe('#2 — IDP: the direct line acts, the sub-tree reads', () => {
             canAct: false,
             isSubject: true,
         });
+    });
+});
+
+describe('#2 — IDP, extended authority ladder: the line acts (direct AND above), strangers / subject / viewer never', () => {
+    const IDPService = require('../../src/services/IDPService');
+    const A = require('../../src/services/AuthorityService');
+    const plan = { id: 1, employeeId: 150 };
+    const EMP = { id: 150, supervisorId: 140, managerId: 141, managerType: 'employee' };
+    let spy;
+    beforeEach(() => {
+        spy = jest.spyOn(A, 'mode').mockResolvedValue('extended');
+    });
+    afterEach(() => spy.mockRestore());
+
+    test('an INDIRECT manager (N+2) acts — the manager rung', async () => {
+        mockEmployees.findById.mockResolvedValue(EMP);
+        mockEmployees.governs.mockResolvedValue(true);
+        const out = await IDPService.planAuthority({ id: 130, userType: 'manager' }, plan);
+        expect(out).toMatchObject({ canAct: true, isSubject: false, as: 'manager' });
+    });
+
+    test('a manager OUTSIDE the line (governs false, no clearance) is refused', async () => {
+        mockEmployees.findById.mockResolvedValue(EMP);
+        mockEmployees.governs.mockResolvedValue(false);
+        const out = await IDPService.planAuthority({ id: 131, userType: 'manager' }, plan);
+        expect(out).toEqual({ canAct: false, isSubject: false });
+    });
+
+    test('a linked admin acts through its person’s line; with no line and no clearance it is refused', async () => {
+        mockEmployees.findById.mockResolvedValue(EMP);
+        mockGov.actingPersonId.mockResolvedValue(130);
+        mockEmployees.governs.mockResolvedValue(true);
+        expect(
+            (
+                await IDPService.planAuthority(
+                    { id: 703, userType: 'admin', role: 'localadmin' },
+                    plan
+                )
+            ).canAct
+        ).toBe(true);
+        mockGov.actingPersonId.mockResolvedValue(131);
+        mockEmployees.governs.mockResolvedValue(false);
+        expect(
+            (
+                await IDPService.planAuthority(
+                    { id: 703, userType: 'admin', role: 'localadmin' },
+                    plan
+                )
+            ).canAct
+        ).toBe(false);
+    });
+
+    test('the subject and a viewer never act, whatever the line', async () => {
+        mockEmployees.findById.mockResolvedValue(EMP);
+        mockEmployees.governs.mockResolvedValue(true);
+        mockGov.actingPersonId.mockImplementation(async (u) =>
+            u && u.userType !== 'admin' ? Number(u.id) : 130
+        );
+        expect(
+            (await IDPService.planAuthority({ id: 801, userType: 'admin', role: 'viewer' }, plan))
+                .canAct
+        ).toBe(false);
+        expect(await IDPService.planAuthority({ id: 150, userType: 'manager' }, plan)).toEqual({
+            canAct: false,
+            isSubject: true,
+        });
+        mockGov.actingPersonId.mockImplementation(async (u) =>
+            u && u.userType !== 'admin' ? Number(u.id) : null
+        );
     });
 });
 

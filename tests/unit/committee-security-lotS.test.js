@@ -646,7 +646,10 @@ describe('S13 — 9-box writes need manage_talent_reviews', () => {
         ]) {
             const line = routeLine(src, r);
             expect(line).toBeDefined();
-            expect(line).toMatch(/requireManagerOrAnyPermission\('manage_talent_reviews'\)/);
+            // The authority ladder's route half: in strict mode (the default) it
+            // is exactly requireManagerOrAnyPermission('manage_talent_reviews')
+            // (authorityLadder-unit.test.js proves the equivalence).
+            expect(line).toMatch(/requireLineOrPermission\('manage_talent_reviews'\)/);
             expect(line).not.toMatch(/requireManagerOrAdmin\s*,/);
         }
     });

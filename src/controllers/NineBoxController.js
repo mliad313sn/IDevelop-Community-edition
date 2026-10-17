@@ -4,7 +4,7 @@ const svc = require('../services/NineBoxService');
 // runtime faults become one generic FR sentence + a request id and are logged.
 // See utils/apiErrors — the old inline wrapper returned err.message for EVERY
 // throw, so raw PostgreSQL text reached the browser.
-const { makeHandle, requireId, domainStatus } = require('../utils/apiErrors');
+const { makeHandle, requireId, domainStatus, sayError } = require('../utils/apiErrors');
 const { enumLabel } = require('../utils/enumLabels');
 
 const { csvResponse } = require('../utils/listTools');
@@ -82,11 +82,36 @@ class NineBoxController {
             movementJustification: req.body && req.body.movementJustification,
         }),
     }));
-    approve = handle(async (req) => ({
-        evaluation: await svc.approve(req.user, id(req), req, {
-            movementJustification: req.body && req.body.movementJustification,
-        }),
-    }));
+    /**
+     * Four eyes (NineBoxService._assertFourEyes): the refusal carries its code
+     * and whether this account may override it with a written reason, so the
+     * console can ask a SuperAdmin for that reason instead of a dead end.
+     */
+    approve = async (req, res) => {
+        try {
+            const evaluation = await svc.approve(req.user, id(req), req, {
+                movementJustification: req.body && req.body.movementJustification,
+                fourEyesReason: req.body && req.body.fourEyesReason,
+            });
+            return res.json({ success: true, evaluation });
+        } catch (e) {
+            if (res.headersSent) return undefined;
+            if (e && e.code === 'NINEBOX_FOUR_EYES') {
+                return res.status(409).json({
+                    success: false,
+                    code: 'NINEBOX_FOUR_EYES',
+                    error: sayError(req, e),
+                    canOverride: Boolean(
+                        req.user && req.user.userType === 'admin' && req.user.role === 'superadmin'
+                    ),
+                });
+            }
+            // Every other refusal: the shared JSON error discipline, unchanged.
+            return handle(async () => {
+                throw e;
+            })(req, res);
+        }
+    };
     previousPlacement = handle(async (req) => svc.previousPlacement(id(req), req.user));
     reject = handle(async (req) => ({
         evaluation: await svc.reject(req.user, id(req), req.body.reason, req),

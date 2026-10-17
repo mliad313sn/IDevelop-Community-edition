@@ -273,9 +273,17 @@ describe('R5 — guards and menu', () => {
         expect(body).not.toMatch(/req\.(params|query|body)/);
     });
     test('team approve-all carries the same guard as the per-employee one', () => {
-        expect(routes).toMatch(
-            /'\/api\/self-assessment\/team\/approve-all',\s*requireManagerOrAnyPermission\('approve_assessments'\),/
-        );
+        // The authority ladder's route half: in strict mode (the default) it is
+        // exactly requireManagerOrAnyPermission('approve_assessments').
+        const guard = /requireLineOrPermission\('approve_assessments'\),/;
+        for (const route of [
+            "'/api/self-assessment/team/approve-all',",
+            "'/api/self-assessment/employee/:employeeId/approve-all',",
+        ]) {
+            const at = routes.indexOf(route);
+            expect(at).toBeGreaterThan(0);
+            expect(routes.slice(at, at + 300)).toMatch(guard);
+        }
     });
     test('the employee account menu links the page', () => {
         const NAV = require('../../src/config/navigation');

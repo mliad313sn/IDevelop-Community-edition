@@ -765,6 +765,17 @@ class LmsService {
      * can judge the work, not for whoever happens to be privileged.
      */
     static async _mayDecide(user, employeeId) {
+        if (await LmsService._mayDecideStrict(user, employeeId)) return true;
+        // The authority ladder, extended mode only (AuthorityService): a local
+        // admin in clearance decides without approve_assessments. Strict mode
+        // (the default) adds nothing.
+        if (!user || !employeeId) return false;
+        return (await require('./AuthorityService').widen(user, 'lms.uplift', Number(employeeId)))
+            .ok;
+    }
+
+    /** The pre-ladder rule (strict mode): see _mayDecide's doc comment above. */
+    static async _mayDecideStrict(user, employeeId) {
         if (!user || !employeeId) return false;
         const RBACService = require('./RBACService');
         // NEVER one's own uplift — whichever account is used: an admin account

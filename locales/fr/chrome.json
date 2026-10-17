@@ -518,6 +518,7 @@
   "sess_device_on": "{{browser}} sur {{os}}",
   "notif_family_dept_brief": "Bilan de département",
   "notif_family_ninebox": "Positionnements (grille 9 cases)",
+  "notif_family_line": "Décisions prises au-dessus de vous",
   "notif_family_continuity": "Continuité",
   "notif_family_succession": "Revues de succession",
   "notif_family_retention": "Risque de départ",

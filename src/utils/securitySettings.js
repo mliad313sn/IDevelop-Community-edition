@@ -7,8 +7,9 @@
  * decides who gets in, how long a session lives, where data is sent or how long
  * it is kept is editable by a SuperAdmin only: authentication, session, MFA,
  * SSO, onboarding, data retention, AI / copilot, API, backup, the public base
- * URL (password-reset links are built from it) and the outgoing mail server
- * (every reset link travels through it).
+ * URL (password-reset links are built from it), the outgoing mail server
+ * (every reset link travels through it) and the governance settings that decide
+ * who may act on a person's record (the authority ladder, the 9-box four eyes).
  *
  * One list, read by AppSettingsController.update (server-side refusal) and by
  * the settings page (read-only badge instead of the edit button).
@@ -77,6 +78,10 @@ const SECURITY_KEY_PATTERNS = [
     // upload is refused.
     /^uploadAvScan$/,
     /^requireMalwareScan$/,
+    // Governance-class: who may act on a person's record (the authority ladder)
+    // and whether a 9-box drafter may approve their own placement.
+    /^authority\./,
+    /^nineBoxFourEyes$/,
 ];
 
 /** @returns {boolean} true when the setting is security-class. */
