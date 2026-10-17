@@ -491,6 +491,10 @@ router.get(
     requireEmployeeOrManager,
     EmployeePortalController.myDevelopment
 );
+// The end-of-campaign record (4.0.0 port, wave 5): the person's OWN records of
+// the locked / closed campaigns they had ratings in — read, acknowledge (a
+// reading, never an agreement), comment. Core: no module switch.
+router.use('/employee/review-record', require('./review-record'));
 // « Mes certifications » — where the cert-expiry ladder lands. The employee is
 // alerted four times (90/60/30 days, then expired) that a certificate is running
 // out, but the only certification surface, /compliance, is manager/

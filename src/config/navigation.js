@@ -83,6 +83,13 @@ const CATALOGUE = {
         href: '/employee/my-progress',
         icon: 'fa-arrow-trend-up',
     },
+    // The end-of-campaign record (4.0.0 port, wave 5): the person's own.
+    my_review_record: {
+        label: 'employee:rr_nav',
+        title: 'employee:rr_nav_title',
+        href: '/employee/review-record',
+        icon: 'fa-file-signature',
+    },
     my_development: {
         label: 'nav_my_plan',
         title: 'nav_my_development_title',
@@ -704,6 +711,7 @@ function gates(c) {
         my_manager_review: gMine,
         acr_mine: isEmp, // a manager decides it under « Évaluations »
         my_progress: gMine,
+        my_review_record: gMine,
         my_development: gMine,
         my_okr: gMine && mod('engagement'),
         one_on_one: gMine && mod('engagement'),
@@ -818,7 +826,10 @@ function gates(c) {
 // [id, [children…]] = an entry with a sub-list; a bare id = a plain entry.
 
 const MY_OWN = [
-    ['my_assessment', ['my_status', 'my_manager_review', 'acr_mine', 'my_progress']],
+    [
+        'my_assessment',
+        ['my_status', 'my_manager_review', 'acr_mine', 'my_progress', 'my_review_record'],
+    ],
     ['my_development', ['my_okr', 'one_on_one', 'feedback360', 'my_coaching', 'my_growth']],
     ['my_learning', ['my_certificates']],
     'safety_me',

@@ -134,6 +134,7 @@ const CORE_PREFIXES = Object.freeze([
     '/employee/self-assessment',
     '/employee/assessment-status',
     '/employee/my-development',
+    '/employee/review-record',
     '/employee/my-learning',
     '/supervisor/reviews',
     '/supervisor/self-assessment-reviews',
