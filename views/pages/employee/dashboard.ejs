@@ -139,7 +139,7 @@
   <div class="emp-stat">
     <div class="emp-n" style="color:#2563eb"><%= snapshot.readiness === null ? '—' : snapshot.readiness + '%' %></div>
     <div class="emp-l"><%= __('employee:stat_role_readiness') %></div>
-    <div class="emp-sub"><% if (snapshot.coverage && snapshot.coverage.expectedSkills > 0 && snapshot.coverage.assessedSkills === 0) { %><%= __('employee:stat_none_assessed') %><% } else { %><%= snapshot.met %>/<%= snapshot.total %> <%= __('employee:stat_skills_met') %><% } %><% if (snapshot.coverage && snapshot.coverage.expectedSkills > 0 && snapshot.coverage.assessedSkills < snapshot.coverage.expectedSkills) { %> · <span title="<%= __('employee:stat_coverage_title') %>"><%= snapshot.coverage.assessedSkills %>/<%= snapshot.coverage.expectedSkills %> <%= __('employee:stat_coverage_assessed') %></span><% } %></div>
+    <div class="emp-sub"><% const _noneAssessed = !!(snapshot.coverage && snapshot.coverage.expectedSkills > 0 && snapshot.coverage.assessedSkills === 0); %><% if (_noneAssessed) { %><%= __('employee:stat_none_assessed') %><% } else { %><%= snapshot.met %>/<%= snapshot.total %> <%= __('employee:stat_skills_met') %><% } %><% if (!_noneAssessed && snapshot.coverage && snapshot.coverage.expectedSkills > 0 && snapshot.coverage.assessedSkills < snapshot.coverage.expectedSkills) { %> · <span title="<%= __('employee:stat_coverage_title') %>"><%= snapshot.coverage.assessedSkills %>/<%= snapshot.coverage.expectedSkills %> <%= __('employee:stat_coverage_assessed') %></span><% } %></div>
   </div>
   <div class="emp-stat">
     <div class="emp-n" style="color:<%= snapshot.gaps ? '#b45309' : '#0f8a3c' %>"><%= snapshot.gaps %></div>
@@ -179,7 +179,7 @@
           <%# Only a MEASURED critical shortfall earns the red row. %>
           <tr<%= g.assessed && Number(g.gap) > 0 && g.isCritical ? ' style="background:rgba(200,80,75,.12)"' : '' %>>
             <td class="text-muted" style="font-size:.82rem"><%= g.domainName || '—' %></td>
-            <td><%= g.skillName %><%= g.isCritical ? ' <span class="emp-crit">' + __('employee:critical_badge') + '</span>' : '' %></td>
+            <td><%= g.skillName %><% if (g.isCritical) { %> <span class="emp-crit"><%= __('employee:critical_badge') %></span><% } %></td>
             <td><%= g.required %></td>
             <td>
               <%# Never print a 0 that was never observed: an unmeasured skill is
