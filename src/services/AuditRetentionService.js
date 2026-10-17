@@ -20,8 +20,9 @@
  *                          person under legal hold, only when the chain
  *                          verifies; an AUDIT_PURGE entry records what remains
  *                          (fn_system_logs_purge).
- *   verify()               the one verifier (fn_system_logs_verify), also
- *                          behind GET /v2/cap/audit/verify.
+ *   verify()               the one verifier (fn_system_logs_verify).
+ *   chainStatusOnce(req)   verify(), at most once per request (never across
+ *                          requests), behind GET /v2/cap/audit/verify.
  *
  * tick() is registered in src/jobs/index.js (hourly, self-gated to once a day
  * after AUDIT_RETENTION_HOUR, default 2): seal, then purge.
@@ -33,6 +34,8 @@ const DEFAULT_YEARS = 5;
 const _hour = Number(String(process.env.AUDIT_RETENTION_HOUR ?? '').trim() || NaN);
 const ENV_HOUR = Number.isInteger(_hour) && _hour >= 0 && _hour <= 23 ? _hour : 2;
 let _lastDay = null;
+// chainStatusOnce: one chain walk per request, released with the request.
+const _verifyByRequest = new WeakMap();
 
 const db = () => require('../config/database');
 
@@ -216,6 +219,30 @@ class AuditRetentionService {
             ),
         ].sort((a, b) => a - b);
         return { ...v, intact: v.intact === true, brokenAt };
+    }
+
+    /**
+     * verify(), at most once per REQUEST: two panels of one page (or one page
+     * and the JSON it embeds) share one database walk of the chain. Never
+     * cached across requests — every new request sees the chain as it is now,
+     * so a tampering is never hidden behind an old answer. A failure is not
+     * kept either: the next caller in the same request tries again.
+     * @param {object|null} req the request the answer belongs to (no request: no cache)
+     */
+    async chainStatusOnce(req, limit = 20) {
+        if (!req || typeof req !== 'object') return this.verify(limit);
+        const key = Number(limit) || 20;
+        let perReq = _verifyByRequest.get(req);
+        if (!perReq) {
+            perReq = new Map();
+            _verifyByRequest.set(req, perReq);
+        }
+        if (!perReq.has(key)) {
+            const pending = this.verify(key);
+            perReq.set(key, pending);
+            pending.catch(() => perReq.delete(key));
+        }
+        return perReq.get(key);
     }
 
     /**

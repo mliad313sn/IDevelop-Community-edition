@@ -1412,7 +1412,7 @@ router.get(
         // for its original hash and its current content, and a gap ONLY where
         // a chained AUDIT_PURGE entry recorded it. Anything else — an edited,
         // deleted or inserted row — is reported in brokenAt.
-        const v = await require('../services/AuditRetentionService').verify(10);
+        const v = await require('../services/AuditRetentionService').chainStatusOnce(req, 10);
         res.set('Cache-Control', 'no-store');
         res.json({ ok: true, ...v });
     })
