@@ -198,6 +198,17 @@ class SelfAssessmentWorkflowService {
         // grants a perimeter, it never takes one away.
         const personId = await GovernanceService.actingPersonId(user);
         const isSelf = personId != null && personId === Number(employeeId);
+        // An administration account linked to NOBODY is still this person when it
+        // shares their identity (e-mail, SSO id): nobody reviews, approves or
+        // arbitrates their own record through an unlinked login. Kept apart from
+        // `isSelf`, which also GRANTS the subject's own rights (reading, asking
+        // for a change): this flag only ever refuses.
+        const selfByIdentity = Boolean(
+            !isSelf &&
+            isAdmin &&
+            personId == null &&
+            (await require('../utils/personIdentity').adminMatchesEmployee(user.id, employeeId))
+        );
         const isSupervisor = Boolean(
             personId != null &&
             employee.supervisorId != null &&
@@ -306,6 +317,7 @@ class SelfAssessmentWorkflowService {
             isAdmin,
             isViewer,
             isSelf,
+            selfByIdentity,
             isSupervisor,
             isManager,
             isAssignedReviewer,
@@ -959,7 +971,7 @@ class SelfAssessmentWorkflowService {
                 new Error('Not authorized: supervisor/manager/admin only'),
                 'assess:acr_err_not_authorized_reviewer'
             );
-        if (auth.isSelf)
+        if (auth.isSelf || auth.selfByIdentity)
             throw say(
                 new Error('Not authorized: cannot cancel your own assessment'),
                 'assess:acr_err_cancel_own'
@@ -1173,7 +1185,7 @@ class SelfAssessmentWorkflowService {
                 new Error('Not authorized: supervisor/manager/admin only'),
                 'assess:acr_err_not_authorized_reviewer'
             );
-        if (auth.isSelf)
+        if (auth.isSelf || auth.selfByIdentity)
             throw say(
                 new Error('Not authorized: cannot review your own assessment'),
                 'assess:saw_err_review_own'
@@ -1405,6 +1417,13 @@ class SelfAssessmentWorkflowService {
                 new Error('Not authorized: supervisor/manager/admin only'),
                 'assess:acr_err_not_authorized_reviewer'
             );
+        // Nobody approves their own record in bulk either (approve() refuses each
+        // row too; this answers once, before anything is read).
+        if (auth.isSelf || auth.selfByIdentity)
+            throw say(
+                new Error('Not authorized: cannot review your own assessment'),
+                'assess:saw_err_review_own'
+            );
         // Authority that comes ONLY from a campaign assignment (resolveAuthority
         // looks one up only when nothing else grants review) covers only the
         // assigned cycles' rows.
@@ -1544,7 +1563,7 @@ class SelfAssessmentWorkflowService {
         const auth = await this._auth(user, sa.employeeId, { cycleId: sa.cycleId });
         if (!auth.canSupervise && !auth.canManage)
             throw say(new Error('Not authorized'), 'assess:acr_err_not_authorized_reviewer');
-        if (auth.isSelf)
+        if (auth.isSelf || auth.selfByIdentity)
             throw say(
                 new Error('Not authorized: cannot review your own assessment'),
                 'assess:saw_err_review_own'
@@ -1606,7 +1625,7 @@ class SelfAssessmentWorkflowService {
                 new Error('Not authorized: manager/admin only'),
                 'assess:saw_err_manager_only'
             );
-        if (auth.isSelf)
+        if (auth.isSelf || auth.selfByIdentity)
             throw say(
                 new Error('Not authorized: cannot review your own assessment'),
                 'assess:saw_err_review_own'
@@ -1671,7 +1690,7 @@ class SelfAssessmentWorkflowService {
                 new Error('Not authorized: manager/admin only'),
                 'assess:saw_err_manager_only'
             );
-        if (auth.isSelf)
+        if (auth.isSelf || auth.selfByIdentity)
             throw say(
                 new Error('Not authorized: cannot arbitrate your own assessment'),
                 'assess:saw_err_arbitrate_own'
