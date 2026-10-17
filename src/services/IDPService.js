@@ -1906,7 +1906,7 @@ class IDPService {
                     userType,
                     userId: Number(userId),
                     kind,
-                    category: 'development',
+                    category: 'talent',
                     payload,
                 })
                 .catch(() => {});

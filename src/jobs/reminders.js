@@ -317,7 +317,7 @@ async function tick() {
                 userType: 'employee',
                 userId: empId,
                 kind: IDP_DUE_KIND,
-                category: 'development',
+                category: 'talent',
                 payload: {
                     link: '/employee/my-development',
                     count: d.count,

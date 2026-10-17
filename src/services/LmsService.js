@@ -960,7 +960,7 @@ class LmsService {
                 userType: 'employee',
                 userId: Number(employeeId),
                 kind: accept ? 'lms.uplift_accepted' : 'lms.uplift_declined',
-                category: 'development',
+                category: 'talent',
                 payload: {
                     link: '/employee/my-learning',
                     completionId: Number(completionId),
