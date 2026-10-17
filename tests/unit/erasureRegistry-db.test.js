@@ -261,10 +261,24 @@ suite('erasure behaviour', () => {
                  VALUES (?, ?, 'declined', ?)`,
                 [s.id, `${TOKEN} proposal`, `${TOKEN} reason`]
             );
+            // The end-of-campaign record (migration 193): the person's comment
+            // goes; the record (ids, levels, dates — no free text) stays.
+            const rrCycle = await db.get(
+                `INSERT INTO assessment_cycles (code, label, opened_at, closes_at, status, created_by)
+                 SELECT ?, 'Erasure campaign', now() - interval '9 days', now() - interval '1 day', 'closed', id
+                   FROM admins ORDER BY id LIMIT 1 RETURNING id`,
+                [`RR-${TOKEN}`]
+            );
+            await db.run(
+                `INSERT INTO review_records (employee_id, cycle_id, snapshot, employee_comment, comment_at)
+                 VALUES (?, ?, '{"v":1,"skills":[]}'::jsonb, ?, now())`,
+                [s.id, Number(rrCycle.id), `${TOKEN} comment`]
+            );
 
             const exp = await DSR().export(s.id);
             expect(JSON.stringify(exp.idpActionNotes)).toContain(`${TOKEN} done note`);
             expect(JSON.stringify(exp.devProposals)).toContain(`${TOKEN} proposal`);
+            expect(JSON.stringify(exp.reviewRecords)).toContain(`${TOKEN} comment`);
             expect(JSON.stringify(exp.certifications)).toContain(TOKEN);
             expect(JSON.stringify(exp.aspirations)).toContain(TOKEN);
             expect(JSON.stringify(exp.plannedAbsences)).toContain(TOKEN);
@@ -285,6 +299,7 @@ suite('erasure behaviour', () => {
                 ['hris_sync_runs', ['records::text']],
                 ['idp_actions', ['reported_note', 'validation_note']],
                 ['dev_proposals', ['proposal_text', 'decision_reason']],
+                ['review_records', ['employee_comment', 'snapshot::text']],
             ]) {
                 const r = await db.get(
                     `SELECT COUNT(*)::int AS n FROM ${table} WHERE ${cols
