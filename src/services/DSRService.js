@@ -891,6 +891,26 @@ class DSRService {
               WHERE p.employee_id = ?`,
             [employeeId]
         );
+        // Migrations 191 and 192: the person's own "done" notes and the
+        // validators' notes on their plan actions, and the actions they
+        // proposed to their line (erased with them, so returned here).
+        await q(
+            'idpActionNotes',
+            `SELECT a.id, a.idp_id, a.reported_done_at, a.reported_note, a.validation_note,
+                    a.actual_hours
+               FROM idp_actions a
+               JOIN idp_plans p ON p.id = a.idp_id
+              WHERE p.employee_id = ?
+                AND (a.reported_note IS NOT NULL OR a.validation_note IS NOT NULL)`,
+            [employeeId]
+        );
+        await q(
+            'devProposals',
+            `SELECT id, action_type, proposal_text, status, routed_to, created_at, decided_at,
+                    decision_reason
+               FROM dev_proposals WHERE employee_id = ?`,
+            [employeeId]
+        );
         await q('pips', 'SELECT id, state, summary, outcome FROM pips WHERE employee_id = ?', [
             employeeId,
         ]);

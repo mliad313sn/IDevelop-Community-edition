@@ -210,6 +210,8 @@ const WIPE = new Set([
     // IDP lifecycle journal (migration 146): follows its plans.
     'idp_plan_events',
     'idp_signoffs',
+    // Development proposals (migration 192): follow the plans they fed.
+    'dev_proposals',
     'job_runs',
     'hris_links',
     'hris_sync_runs',

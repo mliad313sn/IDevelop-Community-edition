@@ -20,7 +20,8 @@ const CLEAN_ORDER = [
     'coaching_plan_actions',
     'coaching_sessions',
     'coaching_plans',
-    // IDP
+    // IDP (dev_proposals, migration 192, points at plans and actions: first)
+    'dev_proposals',
     'idp_signoffs',
     'action_effectiveness',
     'action_evidence',
