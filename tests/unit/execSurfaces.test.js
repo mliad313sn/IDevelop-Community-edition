@@ -1,6 +1,6 @@
 'use strict';
 /**
- * The three new executive pages: SiteExposureService arithmetic, the
+ * The three new executive pages: SiteExposureService (built on KpiService), the
  * continuity-grant gate on key-person data, and the view-level hygiene rules
  * this codebase has been bitten by before (a nonce-less inline script is
  * silently blocked by CSP; a missing locale key renders as a raw key).
@@ -26,45 +26,49 @@ const VIEWS = ['key-person.ejs', 'site-exposure.ejs', 'board-pack.ejs'];
 // ---------------------------------------------------------------------------
 describe('SiteExposureService', () => {
     const SiteExposureService = require('../../src/services/SiteExposureService');
+    const site = (id, k1, k2, extra = {}) => ({
+        siteId: id,
+        siteName: 'Site ' + id,
+        noSite: false,
+        smallN: false,
+        k1: { value: k1, numerator: 3, denominator: 6 },
+        k2: { value: k2 },
+        ...extra,
+    });
 
-    test('totals re-derive coverage from summed numerator/denominator', () => {
+    test('the footer IS the organisation KPI result, never a sum or a mean of site %', () => {
         // Averaging per-site percentages would give a different number from the
-        // dashboard's. Coverage must be assessed/expected over the whole set.
-        const t = SiteExposureService.totals([
-            { assessedRequirements: 100, expectedRequirements: 200, headcount: 10 },
-            { assessedRequirements: 90, expectedRequirements: 100, headcount: 5 },
-        ]);
-        expect(t.assessedRequirements).toBe(190);
-        expect(t.expectedRequirements).toBe(300);
-        expect(t.coverage).toBeCloseTo(63.3, 1); // NOT (50+90)/2 = 70
-        expect(t.headcount).toBe(15);
+        // dashboard's: the footer is handed the organisation's own result.
+        const org = { headcount: 15, k1: { value: 63.3 }, k3: { value: 50 } };
+        expect(
+            SiteExposureService.totals([{ k1: { value: 50 } }, { k1: { value: 90 } }], org)
+        ).toBe(org);
+        expect(SiteExposureService.totals([], null)).toBeNull();
     });
 
-    test('totals report null coverage when nothing is expected (no divide-by-zero 0%)', () => {
-        const t = SiteExposureService.totals([
-            { assessedRequirements: 0, expectedRequirements: 0 },
+    test('the two « weakest site » answers are named apart', () => {
+        const w = SiteExposureService.weakestSites([
+            site(1, 40, 85),
+            site(2, 70, 60),
+            site(3, 80, 90),
         ]);
-        expect(t.coverage).toBeNull();
+        expect(w.ready).toMatchObject({ siteId: 1, value: 40, numerator: 3, denominator: 6 });
+        expect(w.level).toMatchObject({ siteId: 2, value: 60 });
+        expect(w.same).toBe(false);
+        const one = SiteExposureService.weakestSites([site(1, 40, 55), site(2, 70, 60)]);
+        expect(one.same).toBe(true);
     });
 
-    test('totals of an empty set are zeros with null coverage, not NaN', () => {
-        const t = SiteExposureService.totals([]);
-        expect(t.headcount).toBe(0);
-        expect(t.soleHolder).toBe(0);
-        expect(t.coverage).toBeNull();
-        expect(Number.isNaN(t.headcount)).toBe(false);
-    });
-
-    test('never-measured is summed as its own column, separate from the risk bands', () => {
-        const t = SiteExposureService.totals([
-            { soleHolder: 2, noQualified: 3, neverMeasured: 100 },
-            { soleHolder: 1, noQualified: 1, neverMeasured: 60 },
+    test('small sites and « No site » never decide the readiness answer; under 2 sites: none', () => {
+        const w = SiteExposureService.weakestSites([
+            site(1, 10, 20, { smallN: true }),
+            { ...site(null, 5, 5), noSite: true },
+            site(2, 70, 60),
+            site(3, 80, 90),
         ]);
-        expect(t.soleHolder).toBe(3);
-        expect(t.noQualified).toBe(4);
-        expect(t.neverMeasured).toBe(160);
-        // The unknowns are never folded into the risk numbers.
-        expect(t.soleHolder + t.noQualified).toBe(7);
+        expect(w.ready.siteId).toBe(2);
+        expect(SiteExposureService.weakestSites([site(1, 40, 85)])).toBeNull();
+        expect(SiteExposureService.weakestSites([])).toBeNull();
     });
 });
 

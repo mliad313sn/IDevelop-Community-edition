@@ -80,13 +80,17 @@ const ExecDecisionController = {
 
     async siteExposurePage(req, res, next) {
         try {
-            const { rows, scope } = await SiteExposureService.bySite(req.user);
+            const showKeyPerson = canSeeKeyPerson(req.user);
+            const { rows, scope, org, weakest } = await SiteExposureService.bySite(req.user, {
+                keyPerson: showKeyPerson,
+            });
             res.render('pages/exec/site-exposure', {
                 title: req.t ? req.t('exec:se_title') : 'Exposure by site',
                 rows,
-                totals: SiteExposureService.totals(rows),
+                totals: SiteExposureService.totals(rows, org),
+                weakest,
                 scope,
-                showKeyPerson: canSeeKeyPerson(req.user),
+                showKeyPerson,
                 currentPath: '/exec/site-exposure',
             });
         } catch (err) {
@@ -96,8 +100,16 @@ const ExecDecisionController = {
 
     async siteExposureApi(req, res, next) {
         try {
-            const { rows, scope } = await SiteExposureService.bySite(req.user);
-            res.json({ ok: true, rows, totals: SiteExposureService.totals(rows), scope });
+            const { rows, scope, org, weakest } = await SiteExposureService.bySite(req.user, {
+                keyPerson: canSeeKeyPerson(req.user),
+            });
+            res.json({
+                ok: true,
+                rows,
+                totals: SiteExposureService.totals(rows, org),
+                weakest,
+                scope,
+            });
         } catch (err) {
             next(err);
         }
