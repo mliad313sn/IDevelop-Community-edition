@@ -822,6 +822,13 @@ router.get(
     requireAuth,
     asyncHandler(NotificationController.go.bind(NotificationController))
 );
+// Read / opened are stamped by the landing page's same-origin beacon
+// (public/js/notif-open.js, session CSRF), never by the GET above.
+router.post(
+    '/notifications/opened',
+    requireAuth,
+    asyncHandler(NotificationController.opened.bind(NotificationController))
+);
 router.post(
     '/notifications/read-all',
     requireAuth,

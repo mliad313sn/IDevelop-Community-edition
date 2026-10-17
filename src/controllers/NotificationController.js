@@ -226,6 +226,17 @@ function safeInternal(link) {
     return link;
 }
 
+/**
+ * `link` with the notification ids in its fragment: `/x` → `/x#nopen=1,2`,
+ * `/x#anchor` → `/x#anchor&nopen=1,2` (notif-open.js puts `#anchor` back).
+ */
+function withOpenFragment(link, ids) {
+    const list = (ids || []).filter((x) => Number.isInteger(x) && x > 0);
+    if (!list.length) return link;
+    const tag = `nopen=${list.join(',')}`;
+    return String(link).includes('#') ? `${link}&${tag}` : `${link}#${tag}`;
+}
+
 /** 'HH:MM' from a form value, or null (a real clock time only). */
 function hhmm(v) {
     const m = /^(\d{1,2}):(\d{2})$/.exec(String(v || '').slice(0, 5));
@@ -358,31 +369,57 @@ class NotificationController {
     }
 
     /**
-     * Mark one read AND opened (the measurement: the person followed the link),
-     * then redirect to its deep link. `?with=` carries the ids merged into it
-     * on the page or in the bell; only the person's own rows are touched.
+     * Redirect to the item's deep link. A GET changes nothing: mail-security
+     * scanners follow every link of a message, so stamping read / opened here
+     * would empty the bell and count the scanner as a reader. The ids travel
+     * in the URL fragment (`#nopen=…`), which a browser never sends to a
+     * server; the landing page's static script (public/js/notif-open.js)
+     * posts them to POST /notifications/opened with the CSRF header. `?with=`
+     * carries the ids merged into this item on the page or in the bell.
      */
     async go(req, res) {
         try {
             const id = identity(req.user);
             const n = await NotificationService.getOwned({ id: req.params.id, ...id });
             if (!n) return res.redirect('/notifications');
-            await NotificationService.markRead({ id: n.id, ...id }).catch(() => {});
-            await markOpened({ id: n.id, ...id });
             const others = String((req.query && req.query.with) || '')
                 .slice(0, 1000)
                 .split(',')
                 .map((x) => Number(x))
                 .filter((x) => Number.isInteger(x) && x > 0 && x !== Number(n.id))
                 .slice(0, 50);
-            for (const other of others) {
-                await NotificationService.markRead({ id: other, ...id }).catch(() => {});
-                await markOpened({ id: other, ...id });
-            }
             const link = safeInternal(NotificationService.present(n).link);
-            return res.redirect(link);
+            return res.redirect(withOpenFragment(link, [Number(n.id), ...others]));
         } catch (e) {
             return res.redirect('/notifications');
+        }
+    }
+
+    /**
+     * POST /notifications/opened { ids } — same origin, session CSRF. The
+     * landing page reports that the owner really arrived: read + opened_at,
+     * ownership-scoped (an id that is not the reader's changes nothing).
+     * "Mark all read" never sets opened_at.
+     */
+    async opened(req, res) {
+        try {
+            const id = identity(req.user);
+            const raw = (req.body && req.body.ids) || '';
+            const ids = (Array.isArray(raw) ? raw : String(raw).slice(0, 1000).split(','))
+                .slice(0, 51)
+                .map((x) => Number(x))
+                .filter((x) => Number.isInteger(x) && x > 0);
+            let done = 0;
+            for (const one of ids) {
+                const n = await NotificationService.getOwned({ id: one, ...id });
+                if (!n) continue;
+                await NotificationService.markRead({ id: n.id, ...id }).catch(() => {});
+                await markOpened({ id: n.id, ...id });
+                done++;
+            }
+            return res.json({ ok: true, marked: done });
+        } catch (e) {
+            return res.status(400).json({ ok: false });
         }
     }
 
@@ -638,4 +675,5 @@ module.exports._presentation = {
     groupItems,
     isShared,
     numbers,
+    withOpenFragment,
 };

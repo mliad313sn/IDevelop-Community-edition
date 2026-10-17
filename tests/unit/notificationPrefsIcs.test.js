@@ -8,7 +8,7 @@
  *   language per mail (the recipient's when it can be honoured), the category
  *   of a kind (mandatory rows), the summary cadence and step-down in
  *   personal-digest, the campaign reminder ladder (at most 4 per campaign),
- *   the controller (go → opened, mark-all never, grid parsing, « turn back
+ *   the controller (go changes nothing, the beacon → opened, mark-all never, grid parsing, « turn back
  *   on », catalogue preview, site quiet hours), the bell grouped by day, and
  *   the three views rendered in French and English.
  */
@@ -463,7 +463,7 @@ describe('NotificationController — opened, grid, preview, bell', () => {
     };
     const user = { id: 9, userType: 'employee' };
 
-    test('go: marks read AND opened for the owner, merged ids too, then redirects', async () => {
+    test('go: changes nothing, carries the owner ids (merged too) in the fragment', async () => {
         jest.spyOn(S, 'getOwned').mockResolvedValue({
             id: 5,
             kind: 'lms.due',
@@ -473,11 +473,23 @@ describe('NotificationController — opened, grid, preview, bell', () => {
         const opened = jest.spyOn(S, 'markOpened').mockResolvedValue(true);
         const r = res();
         await C.go({ user, params: { id: '5' }, query: { with: '6,abc,-1,5' } }, r);
-        expect(read).toHaveBeenCalledWith({ id: 5, userType: 'employee', userId: 9 });
+        expect(read).not.toHaveBeenCalled();
+        expect(opened).not.toHaveBeenCalled();
+        expect(r.redirect).toHaveBeenCalledWith('/employee/my-learning#nopen=5,6');
+    });
+
+    test('opened: the beacon marks read AND opened for the owner rows only', async () => {
+        jest.spyOn(S, 'getOwned').mockImplementation(async ({ id }) =>
+            Number(id) === 5 ? { id: 5, kind: 'lms.due', payload: {} } : null
+        );
+        const read = jest.spyOn(S, 'markRead').mockClear().mockResolvedValue(true);
+        const opened = jest.spyOn(S, 'markOpened').mockClear().mockResolvedValue(true);
+        const r = res();
+        await C.opened({ user, body: { ids: '5,8,abc' } }, r);
+        expect(read).toHaveBeenCalledTimes(1);
         expect(opened).toHaveBeenCalledWith({ id: 5, userType: 'employee', userId: 9 });
-        expect(opened).toHaveBeenCalledWith({ id: 6, userType: 'employee', userId: 9 });
-        expect(opened).toHaveBeenCalledTimes(2);
-        expect(r.redirect).toHaveBeenCalledWith('/employee/my-learning');
+        expect(opened).toHaveBeenCalledTimes(1);
+        expect(r.json).toHaveBeenCalledWith({ ok: true, marked: 1 });
     });
 
     test('go: an outside link is never followed', async () => {
@@ -488,7 +500,7 @@ describe('NotificationController — opened, grid, preview, bell', () => {
         });
         const r = res();
         await C.go({ user, params: { id: '5' }, query: {} }, r);
-        expect(r.redirect).toHaveBeenCalledWith('/dashboard');
+        expect(r.redirect).toHaveBeenCalledWith('/dashboard#nopen=5');
     });
 
     test('mark-all-read never sets opened_at', async () => {
