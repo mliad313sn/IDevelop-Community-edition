@@ -180,6 +180,37 @@ describe('a bounded admin stays bounded, on every path', () => {
         expect(auth.canManage).toBe(false);
     });
 
+    test('extended authority ladder: the same account acts through its person’s line, nowhere else', async () => {
+        // 4.0.0 port (wave 2): only when a SuperAdmin chose authority.ladder =
+        // extended does the PERSON behind the account, who governs 139 through an
+        // intermediate level, hold the manager rung over 139 and act.
+        const A = require('../../src/services/AuthorityService');
+        const spy = jest.spyOn(A, 'mode').mockResolvedValue('extended');
+        try {
+            linkAdminTo(500);
+            mockRbac.canAccessEmployeeData.mockResolvedValue(false);
+            mockEmp.governs.mockResolvedValue(true);
+            const auth = await WF.resolveAuthority(
+                { id: 900, userType: 'admin', role: 'localadmin' },
+                139
+            );
+            expect(auth.canView).toBe(true);
+            expect(auth.canSupervise).toBe(true);
+            expect(auth.canManage).toBe(true);
+            // …neither cleared nor in the line: bounded, reads nothing, acts on nothing
+            mockEmp.governs.mockResolvedValue(false);
+            const out = await WF.resolveAuthority(
+                { id: 900, userType: 'admin', role: 'localadmin' },
+                139
+            );
+            expect(out.canView).toBe(false);
+            expect(out.canSupervise).toBe(false);
+            expect(out.canManage).toBe(false);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
     test('a read-only delegation never acts, even carrying a reporting line', async () => {
         linkAdminTo(136); // a supervisor's viewer account
         mockRbac.canAccessEmployeeData.mockResolvedValue(true);

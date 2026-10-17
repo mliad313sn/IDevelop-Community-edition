@@ -242,14 +242,15 @@ const AuthorityService = {
     /**
      * The pre-ladder rule, for callers that do not hand their own: the direct
      * line, a local administrator in clearance (with the feature permission
-     * when the action names one), a SuperAdmin. Pure.
+     * when the action names one), a SuperAdmin. Pure. `sessionUser` defaults to
+     * the account the relation was resolved for.
      */
-    strictAllows(rel, action) {
+    strictAllows(rel, action, sessionUser = null) {
         const def = definition(action);
         if (!rel) return false;
         if (rel.isSelf || rel.selfByIdentity || rel.isViewer) return false;
         if (rel.isSuper) return true;
-        const user = REL_USER.get(rel);
+        const user = sessionUser || REL_USER.get(rel);
         if (rel.isLocalAdmin && rel.inClearance && hasGrant(user, def.slug)) return true;
         if (def.min === 'supervisor' && rel.isSupervisor) return true;
         return Boolean(rel.isDirectManager || rel.isAdminManager);

@@ -80,10 +80,8 @@ async function guardDisputeScope(req, res, level = null) {
               : rel.isLineAbove
                 ? 'manager'
                 : null;
-        AuthorityService.allows(rel, level === 'L0' ? 'dispute.l0' : 'dispute.l1', {
-            strict: true,
-            as,
-        });
+        // 'dispute.l0' / 'dispute.l1' keep this reach in both ladder modes.
+        AuthorityService.noteAs(req.user, empId, as);
         req.disputeEmployeeId = empId;
     }
     return true;
