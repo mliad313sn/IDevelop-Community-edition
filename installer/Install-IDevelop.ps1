@@ -66,6 +66,12 @@
                               manifest does not list (customer folders excluded) to
                               %ProgramData%\IDevelop\app-backups\retired-<stamp>\.
                               Never deletes. Default: report them only.
+.PARAMETER SkipPreMigrationDump  Upgrade of an existing install: do NOT take the encrypted,
+                              verified database dump that otherwise precedes the
+                              migrations (%ProgramData%\IDevelop\backups\pre-upgrade-*).
+                              For a very large database that has its own verified
+                              backup only. Logged as a WARN. Default: the dump is taken,
+                              and a failed dump stops the run before any migration.
 .PARAMETER NoRollback         Disable the automatic restore-on-failure safety net. By
                               default, when patching / upgrading an EXISTING install,
                               the installer backs up the running version first and — if
@@ -188,7 +194,10 @@ param(
     # ENFORCE the release manifest: files in the install dir that the package does
     # not list are MOVED (never deleted) to app-backups\retired-<stamp>\.
     # Without it the unknown files are only reported.
-    [switch]$EnforceManifest
+    [switch]$EnforceManifest,
+    # Do NOT take the encrypted pre-migration database dump of an upgrade (a very
+    # large database with its own verified backup only). Logged as a WARN.
+    [switch]$SkipPreMigrationDump
 )
 
 $ErrorActionPreference = 'Stop'
@@ -3374,6 +3383,40 @@ if ($SkipMigrations -and $Patch) {
         if ($pre -eq 2) { Fail 'MIGRATE REFUSED: this database was produced by a NEWER version than this package (see the pre-flight list above). Use a package of that version or newer.' }
         if ($pre -ne 0) { Fail "MIGRATE pre-flight failed (exit $pre). See $LogFile." }
     }
+    # PRE-MIGRATION DUMP (SA-57). On an EXISTING install, an encrypted and verified
+    # pg_dump is taken BEFORE a single migration statement runs
+    # (scripts\pre-upgrade-dump.js: the key and pipeline of the daily backup, then
+    # pg_restore --list on the decrypted stream; nothing clear on disk). It is the
+    # database half of the rollback (docs\ROLLBACK.md): once the new schema is in,
+    # the pre-flight refuses the older package, and the code copy alone cannot go
+    # back. A failed dump STOPS the run here - nothing has changed in the database
+    # yet. -SkipPreMigrationDump is the logged way past it. Never on -Reinstall
+    # (the database is recreated) and never on a fresh install.
+    $script:PreUpgradeDump = $null
+    if ($priorInstallDir -and -not $Reinstall) {
+        if ($SkipPreMigrationDump) {
+            Log 'Pre-migration database dump SKIPPED (-SkipPreMigrationDump): after these migrations the only way back is your own verified backup.' 'WARN'
+            $script:PreUpgradeDump = 'SKIPPED (-SkipPreMigrationDump)'
+        } elseif (-not (Test-Path -LiteralPath (Join-Path $cfg.InstallDir 'scripts\pre-upgrade-dump.js'))) {
+            Fail 'Pre-migration database dump: scripts\pre-upgrade-dump.js is missing from the install directory - NO migration was applied. Use the complete package produced by Build-Package.ps1, or pass -SkipPreMigrationDump if you hold your own verified backup.'
+        } else {
+            $dumpDir = Join-Path $LogDir 'backups'
+            New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+            Log "Taking the encrypted pre-migration database dump into $dumpDir ..." 'STEP'
+            $fromV = if ($script:OldVersion) { $script:OldVersion } else { 'prev' }
+            $toV = if ($script:NewVersion) { $script:NewVersion } else { 'new' }
+            $dumpEnv = $childEnv.Clone()
+            # The pg_dump beside the psql this run uses (same client major); the
+            # verification then picks the pg_restore next to it.
+            $pgDumpExe = if ($pgBin) { Join-Path $pgBin 'pg_dump.exe' } else { '' }
+            if ($pgDumpExe -and (Test-Path -LiteralPath $pgDumpExe)) { $dumpEnv['PG_DUMP_PATH'] = $pgDumpExe }
+            $dcode = Invoke-Logged -File $nodeExe -Arguments @('scripts\pre-upgrade-dump.js', '--from', $fromV, '--to', $toV, '--out-dir', $dumpDir) -WorkDir $cfg.InstallDir -EnvVars $dumpEnv
+            if ($dcode -ne 0) { Fail "Pre-migration database dump FAILED (exit $dcode) - NO migration was applied, the database is unchanged. Fix the cause shown above (backup key, pg_dump, disk space) and run Setup again, or pass -SkipPreMigrationDump if you hold your own verified backup." }
+            $script:PreUpgradeDump = Get-ChildItem -LiteralPath $dumpDir -File -Filter 'pre-upgrade-*.dump.enc' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+            Log "Pre-migration dump verified: $($script:PreUpgradeDump)" 'OK'
+            Log '  (rollback: docs\ROLLBACK.md - restore this dump, then the code copy app-backups\app-<old>-<stamp>)'
+        }
+    }
     Log 'Applying database migrations...'
     $code = Invoke-Logged -File $npmCmd -Arguments @('run', 'db:migrate:all') -WorkDir $cfg.InstallDir -EnvVars $childEnv
     if ($code -ne 0) { Fail "Migrations failed (exit $code). The full SQL error is captured above in $LogFile." }
@@ -3981,6 +4024,7 @@ finally {
         if ($script:PgHardeningSummary) { $sum += "PG hardening  : $($script:PgHardeningSummary)" }
         if ($script:ManifestSummary) { $sum += "Manifest      : $($script:ManifestSummary)" }
         if ($script:BackupKeyResult) { $sum += "Backup key    : $($script:BackupKeyResult)" }
+        if ($script:PreUpgradeDump) { $sum += "DB dump (pre) : $($script:PreUpgradeDump)" }
         if (-not $script:InstallSucceeded) {
             $sum += "Failed at     : Step $($script:CurrentStep)/$($script:TotalSteps) - $($script:CurrentName)"
         }
