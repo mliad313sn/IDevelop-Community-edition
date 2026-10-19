@@ -749,9 +749,16 @@ async function employeeDevelopment(req, res) {
            FROM idp_plans i WHERE i.employee_id = ? ORDER BY i.created_at DESC`,
         [id]
     );
+    // A proposed performance plan is not shown to its SUBJECT until it is
+    // activated (4.0.0 port, wave 6): the person reading their own record gets
+    // the plans that ran only (PipService.subjectVisibleSql).
+    const viewerIsSubject = req.user && req.user.userType !== 'admin' && Number(req.user.id) === id;
+    const pipVisible = viewerIsSubject
+        ? ` AND ${require('../services/PipService').subjectVisibleSql('pips')}`
+        : '';
     const pips = await db.all(
         `SELECT id, state, starts_on, ends_on, summary, outcome, created_at, updated_at
-           FROM pips WHERE employee_id = ? ORDER BY created_at DESC`,
+           FROM pips WHERE employee_id = ?${pipVisible} ORDER BY created_at DESC`,
         [id]
     );
     res.json({ coaching, idps, pips });
@@ -883,8 +890,13 @@ async function employeeTimeline(req, res) {
         })
     );
 
+    // The subject never learns of a plan that is still a proposal (4.0.0 port,
+    // wave 6).
+    const pipVisible = viewerIsSubject
+        ? ` AND ${require('../services/PipService').subjectVisibleSql('pips')}`
+        : '';
     const pip = await db.all(
-        `SELECT id, created_at, updated_at, state, outcome FROM pips WHERE employee_id = ?`,
+        `SELECT id, created_at, updated_at, state, outcome FROM pips WHERE employee_id = ?${pipVisible}`,
         [id]
     );
     pip.forEach((p) => {

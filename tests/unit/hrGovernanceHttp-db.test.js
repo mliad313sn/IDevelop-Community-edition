@@ -265,9 +265,21 @@ d('HR governance over real HTTP (invented people, rolled back)', () => {
         expect(dev.text).not.toContain(`${TOKEN} plan summary`);
         expect((await post('person', `/employee/pip/${id}/acknowledge`)).status).toBe(404);
         expect((await get('person', `/employee/pip/${id}/letter`)).status).toBe(404);
+        // nor through their own record's development and timeline feeds
+        const ownDev = await get('person', `/employees/${person}/development`);
+        expect(ownDev.status).toBe(200);
+        expect(ownDev.text).not.toContain(TOKEN);
+        const ownLine = await get('person', `/employees/${person}/timeline`);
+        expect(ownLine.status).toBe(200);
+        expect(ownLine.text).not.toContain(`PIP #${id}`);
+        // while their manager sees it
+        expect((await get('manager', `/employees/${person}/development`)).text).toContain(
+            `${TOKEN} plan summary`
+        );
         // the manager activates it
         const act = await post('manager', `/v2/pip/${id}/activate`);
         expect(act.status).toBe(200);
+        expect((await get('person', `/employees/${person}/timeline`)).text).toContain(`PIP #${id}`);
         const dev2 = await get('person', '/employee/my-development');
         expect(dev2.text).toContain(`${TOKEN} plan summary`);
         expect(dev2.text).toContain(`href="/employee/pip/${id}/letter"`);
