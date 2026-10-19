@@ -798,5 +798,7 @@
   "nav_kpi_targets_title": "The targets set per indicator and site, and their history",
   "nav_my_digests": "My summaries",
   "notif_family_kpi": "Indicator alerts",
-  "notif_family_digest": "« What changed » summaries"
+  "notif_family_digest": "« What changed » summaries",
+  "todo_verb_pip_hr_visa": "Give the visa",
+  "todo_verb_ninebox_disclose": "Share"
 }

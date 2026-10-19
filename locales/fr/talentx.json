@@ -1347,5 +1347,7 @@
   "dsp_err_l0_range": "Au niveau 0, la proposition se situe entre la note contestée et la note que la personne s’est donnée.",
   "dsp_err_response": "Acceptez ou refusez la proposition.",
   "dsp_err_no_proposal": "Aucune proposition n’attend votre réponse sur cette contestation.",
-  "dsp_err_already_proposed": "Une proposition attend déjà la réponse de la personne."
+  "dsp_err_already_proposed": "Une proposition attend déjà la réponse de la personne.",
+  "ac_pip_hr_visa": "Plans d'amélioration en attente du visa RH",
+  "ac_ninebox_disclose": "Positionnements 9-box récents à restituer à la personne"
 }

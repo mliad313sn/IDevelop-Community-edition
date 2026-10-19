@@ -349,3 +349,56 @@ describe('routeGuard.passesGuard fails closed', () => {
         expect(passesGuard(requirePermission('manage_onboarding'), P.superadmin)).toBe(true);
     });
 });
+
+describe('HR governance sources (4.0.0 port, wave 6)', () => {
+    const keys = (out) => out.items.map((i) => i.key);
+
+    test('a recent 9-box placement not yet shared is a task for whoever may disclose it', async () => {
+        const m = await collectTasks(P.manager, tr);
+        const item = m.items.find((i) => i.key === 'ninebox_disclose');
+        expect(item).toEqual(expect.objectContaining({ href: '/talent/nine-box', count: 4 }));
+        const sql = mockDb.get.mock.calls
+            .map(([q]) => String(q))
+            .find((q) => /disclosed_to_employee/.test(q));
+        expect(sql).toMatch(/approved_at > now\(\) - interval '30 days'/);
+        expect(sql).toMatch(/disclosed_to_employee IS NOT TRUE/);
+        // not for an admin without the 9-box slug, never for an employee
+        expect(keys(await collectTasks(P.hse, tr))).not.toContain('ninebox_disclose');
+        expect(keys(await collectTasks(P.employee, tr))).not.toContain('ninebox_disclose');
+    });
+
+    test('talent off, or the 9-box hidden from employees: no disclosure task', async () => {
+        mockModules = { ...ALL_ON, talent: false };
+        expect(keys(await collectTasks(P.manager, tr))).not.toContain('ninebox_disclose');
+        mockModules = { ...ALL_ON };
+        const conf = require('../../src/services/TalentConfidentialityService');
+        const spy = jest.spyOn(conf, 'nineBoxVisibleToEmployees').mockResolvedValue(false);
+        try {
+            expect(keys(await collectTasks(P.superadmin, tr))).not.toContain('ninebox_disclose');
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    test('the HR visa queue: only while the visa is required, never for a manager', async () => {
+        const PipService = require('../../src/services/PipService');
+        expect(keys(await collectTasks(P.superadmin, tr))).not.toContain('pip_hr_visa');
+        const spy = jest.spyOn(PipService, 'hrVisaRequired').mockResolvedValue(true);
+        try {
+            const out = await collectTasks(P.superadmin, tr);
+            expect(out.items.find((i) => i.key === 'pip_hr_visa')).toEqual(
+                expect.objectContaining({ href: '/v2/pip', count: 4 })
+            );
+            const call = mockDb.get.mock.calls.find(([q]) => /hr_visa_at IS NULL/.test(String(q)));
+            // the reader's own proposals are left out (a visa is a second pair of eyes)
+            expect(String(call[0])).toMatch(/COALESCE\(p\.proposed_by_ref, ''\) <> \?/);
+            expect(call[1][0]).toBe('admin:1');
+            expect(keys(await collectTasks(P.manager, tr))).not.toContain('pip_hr_visa');
+            expect(keys(await collectTasks(P.hr, tr))).not.toContain('pip_hr_visa');
+            mockModules = { ...ALL_ON, development: false };
+            expect(keys(await collectTasks(P.superadmin, tr))).not.toContain('pip_hr_visa');
+        } finally {
+            spy.mockRestore();
+        }
+    });
+});

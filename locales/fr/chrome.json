@@ -798,5 +798,7 @@
   "nav_kpi_targets_title": "Les cibles fixées par indicateur et par site, et leur historique",
   "nav_my_digests": "Mes récapitulatifs",
   "notif_family_kpi": "Alertes des indicateurs",
-  "notif_family_digest": "Récapitulatifs « Ce qui a changé »"
+  "notif_family_digest": "Récapitulatifs « Ce qui a changé »",
+  "todo_verb_pip_hr_visa": "Viser",
+  "todo_verb_ninebox_disclose": "Restituer"
 }

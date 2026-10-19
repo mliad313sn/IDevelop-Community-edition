@@ -1347,5 +1347,7 @@
   "dsp_err_l0_range": "At level 0 the proposal lies between the contested rating and the person’s own rating.",
   "dsp_err_response": "Accept or refuse the proposal.",
   "dsp_err_no_proposal": "There is no proposal waiting for your answer on this dispute.",
-  "dsp_err_already_proposed": "A proposal already waits for the person’s answer."
+  "dsp_err_already_proposed": "A proposal already waits for the person’s answer.",
+  "ac_pip_hr_visa": "Improvement plans waiting for the HR visa",
+  "ac_ninebox_disclose": "Recent 9-box placements to share with the person"
 }

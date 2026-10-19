@@ -268,6 +268,12 @@ function actionGuards() {
         onboarding: [a.requirePermission('manage_onboarding')],
         // routes/index.js: GET /admin/accounts → requirePermission('manage_invitations')
         accounts: [a.requirePermission('manage_invitations')],
+        // routes/index.js: POST /api/ninebox/:id/disclose → the 9-box write slug
+        // (strict ladder; the page itself is requireManagerOrAdmin)
+        talentReviews: [a.requireManagerOrAnyPermission('manage_talent_reviews')],
+        // routes/v2-pip.js: POST /:id/hr-visa → PipService.canGiveHrVisa
+        // (a SuperAdmin, or the dispute-arbitration slug in clearance)
+        hrVisa: [a.requirePermission('arbitrate_disputes')],
     };
 }
 
@@ -359,6 +365,59 @@ async function collectTasks(user, translate) {
                             num(pip.c),
                             '/v2/pip',
                             'fa-user-clock'
+                        );
+                });
+
+            // The optional HR visa (pip.hrVisaRequired, migration 195): the
+            // plans not yet activated that wait for it, for whoever may give it
+            // — never their own proposals (a visa is a second pair of eyes).
+            if (can(G.hrVisa, 'development') && user.userType === 'admin')
+                await safely(async () => {
+                    const PipService = require('../services/PipService');
+                    if (!(await PipService.hrVisaRequired())) return;
+                    const visa = await db.get(
+                        `SELECT COUNT(*) AS c FROM pips p JOIN employees e ON e.id = p.employee_id
+                          WHERE p.state IN ('proposed','approved') AND p.hr_visa_at IS NULL
+                            AND COALESCE(p.proposed_by_ref, '') <> ? ${sc.clause}`,
+                        [`admin:${Number(user.id)}`, ...sc.params]
+                    );
+                    if (num(visa && visa.c))
+                        push(
+                            'pip_hr_visa',
+                            'plans',
+                            t('ac_pip_hr_visa', 'Improvement plans waiting for the HR visa'),
+                            num(visa.c),
+                            '/v2/pip',
+                            'fa-stamp'
+                        );
+                });
+
+            // A placement approved in the last 30 days and not yet told to the
+            // person (4.0.0 port, wave 6): « say it to them » while it is
+            // recent. Only where employees may see the 9-box at all, and only
+            // for whoever may disclose it (the 9-box write slug).
+            if (can(G.talentReviews, 'talent'))
+                await safely(async () => {
+                    const conf = require('../services/TalentConfidentialityService');
+                    if (!(await conf.nineBoxVisibleToEmployees())) return;
+                    const nb = await db.get(
+                        `SELECT COUNT(*) AS c FROM nine_box_evaluations n JOIN employees e ON e.id = n.employee_id
+                          WHERE n.status = 'approved' AND n.disclosed_to_employee IS NOT TRUE
+                            AND n.approved_at > now() - interval '30 days'
+                            AND e.is_active = true ${sc.clause}`,
+                        sc.params
+                    );
+                    if (num(nb && nb.c))
+                        push(
+                            'ninebox_disclose',
+                            'plans',
+                            t(
+                                'ac_ninebox_disclose',
+                                'Recent 9-box placements to share with the person'
+                            ),
+                            num(nb.c),
+                            '/talent/nine-box',
+                            'fa-comments'
                         );
                 });
 
