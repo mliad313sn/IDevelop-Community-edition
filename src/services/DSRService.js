@@ -293,7 +293,23 @@ const REDACTED_ON_ERASURE = [
         erased: ['smart_text'],
         kept: ['id', 'idp_id'],
     },
-    { key: 'pips', table: 'pips', erased: ['summary', 'outcome'], kept: ['id', 'state'] },
+    // PERFORMANCE PLANS: the plan's text and the person's own observations
+    // (migration 195) go; the state and the evidence dates stay.
+    {
+        key: 'pips',
+        table: 'pips',
+        erased: ['summary', 'outcome', 'employee_comment'],
+        kept: ['id', 'state', 'activated_at', 'acknowledged_at', 'employee_comment_at'],
+    },
+    // THE CHECKPOINTS of those plans (migration 195): the manager's note and
+    // the person's answer go ('[erased]' for the note, NOT NULL; NULL for the
+    // answer); the date and the author stay.
+    {
+        key: 'pipReviews',
+        table: 'pip_reviews',
+        erased: ['manager_note', 'employee_response'],
+        kept: ['id', 'pip_id', 'held_on', 'author_ref', 'employee_response_at'],
+    },
     {
         key: 'goals',
         table: 'goals',
@@ -610,7 +626,8 @@ const REDACTED_ON_ERASURE = [
     {
         key: 'disputes',
         table: 'assessment_disputes',
-        erased: ['reason'],
+        // + the level-0 proposer's note (migration 194)
+        erased: ['reason', 'proposal_note'],
         kept: [
             'id',
             'supervisor_review_id',
@@ -618,6 +635,8 @@ const REDACTED_ON_ERASURE = [
             'state',
             'final_level',
             'decided_rating',
+            'proposed_rating',
+            'employee_response',
             'opened_at',
             'escalated_at',
             'resolved_at',
@@ -828,7 +847,8 @@ class DSRService {
         await q(
             'disputes',
             `SELECT id, supervisor_review_id, level, state, reason, final_level, decided_rating,
-                    opened_at, escalated_at, resolved_at
+                    opened_at, escalated_at, resolved_at,
+                    proposed_rating, proposed_at, proposal_note, employee_response, employee_response_at
                FROM assessment_disputes WHERE employee_id = ?`,
             [employeeId]
         );
@@ -942,9 +962,20 @@ class DSRService {
                FROM review_records WHERE employee_id = ?`,
             [employeeId]
         );
-        await q('pips', 'SELECT id, state, summary, outcome FROM pips WHERE employee_id = ?', [
-            employeeId,
-        ]);
+        await q(
+            'pips',
+            `SELECT id, state, summary, outcome, activated_at, acknowledged_at,
+                    employee_comment, employee_comment_at
+               FROM pips WHERE employee_id = ?`,
+            [employeeId]
+        );
+        await q(
+            'pipReviews',
+            `SELECT r.id, r.pip_id, r.held_on, r.manager_note, r.employee_response, r.employee_response_at
+               FROM pip_reviews r JOIN pips p ON p.id = r.pip_id
+              WHERE p.employee_id = ? ORDER BY r.held_on, r.id`,
+            [employeeId]
+        );
         await q(
             'surveyResponses',
             'SELECT id, text_answer, created_at FROM survey_responses WHERE employee_id = ?',
@@ -1396,7 +1427,12 @@ class DSRService {
                 [employeeId]
             );
             await db.run(
-                "UPDATE pips SET summary = '[erased]', outcome = NULL WHERE employee_id = ?",
+                "UPDATE pips SET summary = '[erased]', outcome = NULL, employee_comment = NULL WHERE employee_id = ?",
+                [employeeId]
+            );
+            await db.run(
+                `UPDATE pip_reviews SET manager_note = '[erased]', employee_response = NULL
+                  WHERE pip_id IN (SELECT id FROM pips WHERE employee_id = ?)`,
                 [employeeId]
             );
             // SA-38: the in-app copies of scheduled reports produced over a scope
@@ -1503,7 +1539,7 @@ class DSRService {
                 [employeeId]
             );
             await db.run(
-                "UPDATE assessment_disputes SET reason = '[erased]' WHERE employee_id = ?",
+                "UPDATE assessment_disputes SET reason = '[erased]', proposal_note = NULL WHERE employee_id = ?",
                 [employeeId]
             );
             await db.run(

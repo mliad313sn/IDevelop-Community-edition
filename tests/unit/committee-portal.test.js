@@ -95,7 +95,10 @@ jest.mock('../../src/middleware/auth', () => ({
 jest.mock('../../src/utils/asyncHandler', () => (fn) => fn);
 jest.mock('../../src/services/IDPService', () => ({ pendingProposalsFor: async () => [] }));
 jest.mock('../../src/services/ActionEffectivenessService', () => ({}));
-jest.mock('../../src/services/PipService', () => ({ register: jest.fn() }));
+jest.mock('../../src/services/PipService', () => ({
+    register: jest.fn(),
+    hrVisaRequired: jest.fn(async () => false),
+}));
 jest.mock('../../src/services/CoachingService', () => ({}));
 
 const t = (key, opts) =>

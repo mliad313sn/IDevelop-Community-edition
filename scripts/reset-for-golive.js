@@ -245,6 +245,8 @@ const WIPE = new Set([
     'perf_events',
     'pii_cleanup_jobs',
     'pip_milestones',
+    // The checkpoints of the plans (migration 195).
+    'pip_reviews',
     'pips',
     'planned_absences',
     'post_approval_reviews',

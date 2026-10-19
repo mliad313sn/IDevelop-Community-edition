@@ -129,7 +129,11 @@ describe('notifications no longer race on the transaction client (L2-5)', () => 
     test('their call sites await them too — otherwise the race just moves up a level', () => {
         const d = read('src/services/DisputeServiceV2.js');
         const w = read('src/services/SelfAssessmentWorkflowService.js');
-        expect((d.match(/await DisputeServiceV2\._notify\(/g) || []).length).toBe(7);
+        // Every call site of the dispute helper is awaited (the level-0
+        // proposal and the person's answer added two in the 4.0.0 port).
+        const dTotal = (d.match(/DisputeServiceV2\._notify\(/g) || []).length;
+        expect(dTotal).toBeGreaterThanOrEqual(9);
+        expect((d.match(/await DisputeServiceV2\._notify\(/g) || []).length).toBe(dTotal);
         // Intent: EVERY call site is awaited. A fixed count was a proxy for that
         // and broke the moment the service gained legitimate new notifications
         // (the change-request flow), which would have pushed someone to "fix"
@@ -147,9 +151,7 @@ describe('notifications no longer race on the transaction client (L2-5)', () => 
         expect(p).toMatch(/state IN \('proposed','approved'\) RETURNING id, employee_id/);
         expect(p).toMatch(/if \(!row\) return false;/);
         const route = read('src/routes/v2-pip.js');
-        expect(route).toMatch(
-            /const activated = await PipService\.activate\(Number\(req\.params\.id\)/
-        );
+        expect(route).toMatch(/activated = await PipService\.activate\(Number\(req\.params\.id\)/);
         expect(route).toMatch(/if \(!activated\) \{/);
     });
 

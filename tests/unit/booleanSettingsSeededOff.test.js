@@ -103,7 +103,10 @@ describe('migration 159 repairs untouched rows only', () => {
             .filter((k) => !['kioskModeEnabled'].includes(k))
             // Migration 187 (opt-in « What changed » summaries): added after 159,
             // seeded through the fixed setValue (asserted OFF above).
-            .filter((k) => !['personaDigestsEnabled'].includes(k));
+            .filter((k) => !['personaDigestsEnabled'].includes(k))
+            // Migration 195 (the optional HR visa before a PIP is activated):
+            // added after 159, seeded 'false' by its own migration.
+            .filter((k) => !['pip.hrVisaRequired'].includes(k));
         for (const k of off) expect([k, sql.includes(`'${k}'`)]).toEqual([k, true]);
         expect(sql).toMatch(/updated_by IS NULL/);
     });

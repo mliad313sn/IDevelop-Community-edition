@@ -353,7 +353,11 @@ class PipService {
         }
         const note = PipService.normaliseOutcome(why);
         const row = await db.get(
-            `UPDATE pips SET state='cancelled', outcome=? WHERE id=? AND state IN ('proposed','approved','active') RETURNING id, employee_id`,
+            `UPDATE pips SET state='cancelled', outcome=? WHERE id=? AND state IN ('proposed','approved','active')
+             RETURNING id, employee_id, activated_at,
+                       EXISTS (SELECT 1 FROM system_logs sl
+                                WHERE sl.action = 'PIP_ACTIVATED' AND sl.entity_type = 'pip'
+                                  AND sl.entity_id = pips.id) AS ran`,
             [note, pipId]
         );
         if (!row) return false;
@@ -366,7 +370,10 @@ class PipService {
         );
         // The person is told their plan has stopped, and why — a plan that
         // disappears from their page with no word is worse than one that runs.
-        await this._notifyEmployee(row.employeeId, 'pip.closed', { outcome: 'withdrawn' });
+        // A proposal withdrawn before it ran was never shown to them (4.0.0
+        // port, wave 6): they are told nothing about a plan they never saw.
+        if (row.activatedAt || row.ran === true)
+            await this._notifyEmployee(row.employeeId, 'pip.closed', { outcome: 'withdrawn' });
         return true;
     }
 
@@ -398,19 +405,30 @@ class PipService {
         const personId = await GovernanceService.actingPersonId(user).catch(() => null);
         if (personId != null && Number(personId) === Number(employeeId)) return false;
         if (RBAC.isSuperAdmin(user)) return true;
-        const grants = Array.isArray(user.permissions) ? user.permissions : [];
-        if (!grants.includes('arbitrate_disputes')) return false;
+        if (!RBAC.hasPermission(user, 'arbitrate_disputes')) return false;
         const emp = await require('../models/EmployeeModel').findById(Number(employeeId));
         return Boolean(emp && (await RBAC.canAccessEmployeeData(user, emp)));
     }
 
-    /** Records the visa once, on a plan not yet activated. False otherwise. */
+    /**
+     * Records the visa once, on a plan not yet activated. False otherwise.
+     * A visa is a second pair of eyes: whoever wrote the proposal cannot give
+     * it to their own plan (PIP_VISA_OWN_PROPOSAL, 403).
+     */
     static async giveHrVisa(pipId, actor, req = null) {
+        const ref = PipService.actorRefOf(actor);
+        const cur = await db.get('SELECT proposed_by_ref FROM pips WHERE id = ?', [Number(pipId)]);
+        if (cur && ref && cur.proposedByRef === ref)
+            throw PipService._refuse(
+                403,
+                'PIP_VISA_OWN_PROPOSAL',
+                'Whoever proposed this plan cannot give it the HR visa.'
+            );
         const row = await db.get(
             `UPDATE pips SET hr_visa_at = now(), hr_visa_by_ref = ?
               WHERE id = ? AND state IN ('proposed','approved') AND hr_visa_at IS NULL
               RETURNING id`,
-            [PipService.actorRefOf(actor), Number(pipId)]
+            [ref, Number(pipId)]
         );
         if (!row) return false;
         await PipService._journal(actor, req, 'PIP_HR_VISA', pipId, 'HR visa given');

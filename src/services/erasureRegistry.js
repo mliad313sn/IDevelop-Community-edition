@@ -280,6 +280,10 @@ const SUBJECT_DATA_REGISTRY = [
     keep('supervisor_reviews', 'reviewed_by', ACTOR),
     red('assessment_disputes', 'employee_id', 'disputes'),
     keep('assessment_disputes', 'decided_by', ACTOR),
+    // Migration 194: whoever made the level-0 proposal on the person's dispute.
+    // The proposer's note is about the person: it goes with the `disputes`
+    // category (DSRService.erase); the proposer's id stays.
+    keep('assessment_disputes', 'proposed_by', ACTOR),
     red('assessment_change_requests', 'employee_id', 'changeRequests'),
     keep('assessment_change_requests', 'decided_by_ref', ACTOR),
     keep('assessment_change_requests', 'requester_ref', ACTOR),
@@ -632,6 +636,22 @@ const SUBJECT_DATA_REGISTRY = [
     keep('idp_signoffs', 'user_id', 'signature of a plan (who and when, no text)'),
     red('pips', 'employee_id', 'pips'),
     keep('pips', 'closed_by_ref', ACTOR),
+    // Migration 195: who wrote, activated and gave the HR visa to the plan.
+    // The person's own observations go with the `pips` category.
+    keep('pips', 'proposed_by_ref', ACTOR),
+    keep('pips', 'activated_by_ref', ACTOR),
+    keep('pips', 'hr_visa_by_ref', ACTOR),
+    // Migration 195: the checkpoints of the person's plans — the manager's
+    // note and the person's answer are about the person: both go
+    // (DSRService.erase, `pipReviews`); the date and the author stay.
+    {
+        scope: 'checkpoints of the subject’s performance plans (migration 195)',
+        table: 'pip_reviews',
+        treatment: 'redacted',
+        key: 'pipReviews',
+        export: 'pipReviews',
+    },
+    keep('pip_reviews', 'author_ref', ACTOR),
     {
         scope: 'milestones of the subject’s performance plans',
         table: 'pip_milestones',
@@ -804,6 +824,7 @@ const TABLES_WITHOUT_SUBJECT_COLUMN = {
     password_history: ['admin', 'administrator password history'],
     perf_events: ['telemetry', 'performance telemetry, pruned on a schedule'],
     pip_milestones: ['via', 'milestones of the subject’s plans: registry scope entry'],
+    pip_reviews: ['via', 'checkpoints of the subject’s plans: redacted with pipReviews'],
     privacy_notice_versions: ['config', 'privacy notice texts'],
     proficiency_descriptors: ['config', 'skill level descriptors'],
     regions: ['config', 'org units'],

@@ -87,5 +87,6 @@
   "hr_visa_given": "Visa RH donné",
   "hr_visa_waiting": "Visa RH attendu",
   "ack_on": "Lu le {{date}}",
-  "ack_not_yet": "Pas encore lu"
+  "ack_not_yet": "Pas encore lu",
+  "err_visa_own_proposal": "Qui a proposé ce plan ne peut pas lui donner le visa RH."
 }

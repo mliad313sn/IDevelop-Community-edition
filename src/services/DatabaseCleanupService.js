@@ -29,7 +29,8 @@ const CLEAN_ORDER = [
     'idp_actions',
     'idp_objectives',
     'idp_plans',
-    // PIP
+    // PIP (pip_reviews, migration 195, points at the plans: first)
+    'pip_reviews',
     'pip_milestones',
     'pips',
     // 9-box / talent

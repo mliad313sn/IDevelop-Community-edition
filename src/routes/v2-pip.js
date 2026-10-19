@@ -383,6 +383,7 @@ const PIP_ERROR_KEYS = new Map([
     ['TEXT_TOO_LONG', 'pip:err_text_too_long'],
     ['INVALID_DATE', 'pip:err_checkpoint_date'],
     ['FORBIDDEN', 'common:err_not_authorized_employee'],
+    ['PIP_VISA_OWN_PROPOSAL', 'pip:err_visa_own_proposal'],
 ]);
 function sendPipRefusal(req, res, e) {
     if (!e || !Number.isInteger(e.status) || e.status < 400 || e.status > 499) return false;
@@ -419,13 +420,25 @@ router.post(
     '/:id/hr-visa',
     requireAuth,
     ah(async (req, res) => {
-        const pip = await db.get('SELECT employee_id FROM pips WHERE id = ?', [
-            Number(req.params.id),
-        ]);
-        if (!pip) return res.status(404).json({ ok: false, error: 'PIP not found' });
+        const id = Number(req.params.id);
+        const pip = Number.isInteger(id)
+            ? await db.get('SELECT employee_id FROM pips WHERE id = ?', [id])
+            : null;
+        if (!pip)
+            return res.status(404).json({
+                ok: false,
+                code: 'PIP_NOT_FOUND',
+                error: sayText(req, 'pip:err_not_found', 'Plan not found.'),
+            });
         if (!(await PipService.canGiveHrVisa(req.user, pip.employeeId)))
             return res.status(403).json({ ok: false, error: notAuthorizedForEmployee(req) });
-        const done = await PipService.giveHrVisa(Number(req.params.id), req.user, req);
+        let done;
+        try {
+            done = await PipService.giveHrVisa(id, req.user, req);
+        } catch (e) {
+            if (sendPipRefusal(req, res, e)) return;
+            throw e;
+        }
         if (!done)
             return res.status(409).json({
                 ok: false,
