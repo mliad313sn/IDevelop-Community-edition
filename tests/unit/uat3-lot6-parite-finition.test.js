@@ -77,6 +77,8 @@ jest.mock('../../src/middleware/auth', () => ({
 const mockDispute = {
     open: jest.fn(),
     resolveL0: jest.fn(),
+    // Level 0 proposes since migration 194 (/resolve-l0 → proposeL0).
+    proposeL0: jest.fn(),
     resolveL1: jest.fn(),
     resolveL2: jest.fn(),
     employeeFor: jest.fn(),
@@ -250,7 +252,7 @@ describe('P2-20 · « motif obligatoire » ne se dit pas comme « note de résol
     test.each(['fr', 'en'])(
         'la RÉSOLUTION garde, elle, la phrase de la note (%s)',
         async (lang) => {
-            mockDispute.resolveL0.mockRejectedValue(
+            mockDispute.proposeL0.mockRejectedValue(
                 refusal(400, 'DISPUTE_REASON_REQUIRED', 'A resolution note is required.')
             );
             const res = await runRoute(
@@ -334,7 +336,7 @@ describe('La file des contestations : chaque refus est une phrase de la session'
     // Les trois échelons disent des choses DIFFÉRENTES : « déjà résolue ou
     // escaladée », « … escaladée aux RH », « … finalisée automatiquement ».
     const LADDER = [
-        ['/disputes/:id/resolve-l0', 'resolveL0', 'dsp_err_already_decided_l0'],
+        ['/disputes/:id/resolve-l0', 'proposeL0', 'dsp_err_already_decided_l0'],
         ['/disputes/:id/resolve-l1', 'resolveL1', 'dsp_err_already_decided_l1'],
         ['/disputes/:id/resolve-l2', 'resolveL2', 'dsp_err_already_decided_l2'],
     ];
@@ -342,7 +344,9 @@ describe('La file des contestations : chaque refus est une phrase de la session'
         test.each(['fr', 'en'])(
             `${method} sur une décision déjà prise → 409 localisé (%s)`,
             async (lang) => {
-                mockDispute[method].mockResolvedValue({ resolved: false });
+                mockDispute[method].mockResolvedValue(
+                    method === 'proposeL0' ? { proposed: false } : { resolved: false }
+                );
                 const req = reqFor(lang, {
                     params: { id: '75' },
                     body: { decidedRating: 2, reason: 'x' },

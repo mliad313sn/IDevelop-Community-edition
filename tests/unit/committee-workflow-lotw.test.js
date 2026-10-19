@@ -330,6 +330,17 @@ describe('F10/F12 — a resolution carries an integer 0-4 rating, refused server
 
 describe('F6 — the L2 SLA cannot finalise an absence of measurement', () => {
     const MARK = '[hr_arbitration_required: no supervisor rating to finalise]';
+    // Automatic finalisation is OFF by default since migration 194: these
+    // cases are about what it does once an administrator switched it on.
+    const AppSettings = require('../../src/models/AppSettingsModel');
+    beforeEach(() => {
+        AppSettings.getValue.mockImplementation(async (key, def) =>
+            key === 'dispute.autoFinalizeOnExpiry' ? 'true' : def
+        );
+    });
+    afterEach(() => {
+        AppSettings.getValue.mockImplementation(async (key, def) => def);
+    });
 
     test('a NULL supervisor rating is NOT finalised: HR is raised once, marker recorded, 0 finalised', async () => {
         mockDb.all.mockResolvedValue([{ id: 5 }]);
@@ -877,7 +888,8 @@ describe('routes/v2-slf.js answers a service refusal as the 4xx it is', () => {
     const routes = read('src/routes/v2-slf.js');
 
     test('every dispute mutation catches the refusal', () => {
-        for (const p of ['resolveL0', 'resolveL1', 'resolveL2', 'open']) {
+        // Level 0 proposes since migration 194; the person answers it.
+        for (const p of ['proposeL0', 'respondToProposal', 'resolveL1', 'resolveL2', 'open']) {
             expect(routes).toMatch(
                 new RegExp(
                     `await DisputeServiceV2\\.${p}\\([\\s\\S]{0,300}?\\}\\);\\s*\\} catch \\(e\\) \\{\\s*if \\(sendDisputeRefusal\\(req, res, e\\)\\) return;\\s*throw e;`

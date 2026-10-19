@@ -333,6 +333,13 @@ router.post(
     '/disputes/:id/respond',
     requireEmployee,
     ah(async (req, res) => {
+        const disputeId = Number(req.params.id);
+        if (!Number.isInteger(disputeId) || disputeId <= 0)
+            return res.status(404).json({
+                ok: false,
+                code: 'DISPUTE_NOT_FOUND',
+                error: say(req, 'talentx:dsp_err_not_found', 'Dispute not found.'),
+            });
         const answer = String((req.body && req.body.response) || '');
         if (answer !== 'accept' && answer !== 'refuse') {
             return res.status(400).json({
@@ -344,7 +351,7 @@ router.post(
         let r;
         try {
             r = await DisputeServiceV2.respondToProposal({
-                disputeId: Number(req.params.id),
+                disputeId,
                 employeeId: Number(req.user.id),
                 accept: answer === 'accept',
             });
