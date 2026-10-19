@@ -164,10 +164,10 @@ describe('F4b proposeDirect(): a second open PIP is a 409, never a raw unique vi
         expect(mockNotify).not.toHaveBeenCalled();
     });
 
-    test('no open PIP: created and the employee notified, as before', async () => {
+    test('no open PIP: created; its subject is NOT told of a proposal (shown once activated)', async () => {
         mockDb.get.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 61 });
         await expect(PipService.proposeDirect(args)).resolves.toEqual({ id: 61 });
-        expect(mockNotify).toHaveBeenCalledWith(
+        expect(mockNotify).not.toHaveBeenCalledWith(
             expect.objectContaining({ kind: 'pip.created', userId: 88 })
         );
     });

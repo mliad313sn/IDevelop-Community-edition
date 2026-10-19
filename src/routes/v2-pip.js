@@ -61,10 +61,21 @@ router.get(
         // the tasks a low placement raised, waiting on THIS manager's decision.
         // Fail-soft — the console must still open if the queue query fails.
         const tasks = await TalentTaskService.listOpen(req.user).catch(() => []);
+        // The optional HR visa (migration 195): while it is on, each plan not
+        // yet activated says whether it has its visa, and the button shows only
+        // where THIS account may give it (never on its own plan).
+        const hrVisaRequired = await PipService.hrVisaRequired();
+        if (hrVisaRequired)
+            for (const p of list)
+                p.canHrVisa =
+                    ['proposed', 'approved'].includes(p.state) &&
+                    !p.hrVisaAt &&
+                    (await PipService.canGiveHrVisa(req.user, p.employeeId).catch(() => false));
         res.render('pages/pip/index', {
             list,
             employees,
             tasks,
+            hrVisaRequired,
             title: req.t ? req.t('pip:title') : 'Performance Improvement Plans',
         });
     })
@@ -247,7 +258,19 @@ router.post(
         // `activate` reports whether it actually changed anything. Answering ok:true
         // regardless meant a second click, or a PIP already active or closed, was
         // confirmed as a fresh activation.
-        const activated = await PipService.activate(Number(req.params.id), req.user, req);
+        let activated;
+        try {
+            activated = await PipService.activate(Number(req.params.id), req.user, req);
+        } catch (e) {
+            // The optional HR visa is missing (pip.hrVisaRequired).
+            if (e && e.code === 'PIP_HR_VISA_REQUIRED')
+                return res.status(409).json({
+                    ok: false,
+                    code: e.code,
+                    error: sayText(req, 'pip:err_hr_visa_required', e.message),
+                });
+            throw e;
+        }
         if (!activated) {
             return res
                 .status(409)
@@ -347,4 +370,111 @@ router.post(
 );
 // ---- withdraw ------------------------------------------------
 
+// ---- The plan's evidence (4.0.0 port, wave 6, migration 195) -------------
+// Checkpoints as held, the optional HR visa, and the printable letter. The
+// person's own side (acknowledge, observations, answers, their letter) lives
+// in routes/employee-pip.js.
+
+/** A refusal from PipService (`status` + `code`) as JSON in the reader's language. */
+const PIP_ERROR_KEYS = new Map([
+    ['PIP_NOT_FOUND', 'pip:err_not_found'],
+    ['PIP_NOT_ACTIVE', 'pip:err_not_active'],
+    ['TEXT_REQUIRED', 'pip:err_text_required'],
+    ['TEXT_TOO_LONG', 'pip:err_text_too_long'],
+    ['INVALID_DATE', 'pip:err_checkpoint_date'],
+    ['FORBIDDEN', 'common:err_not_authorized_employee'],
+]);
+function sendPipRefusal(req, res, e) {
+    if (!e || !Number.isInteger(e.status) || e.status < 400 || e.status > 499) return false;
+    const key = PIP_ERROR_KEYS.get(e.code);
+    res.status(e.status).json({
+        ok: false,
+        code: e.code,
+        error: key ? sayText(req, key, e.message) : e.message,
+    });
+    return true;
+}
+
+// The plan authority records a checkpoint as held (a note is required).
+router.post(
+    '/:id/checkpoint',
+    requireAuth,
+    ah(async (req, res) => {
+        try {
+            const id = await PipService.addReview(
+                Number(req.params.id),
+                req.user,
+                { note: req.body.note, heldOn: req.body.heldOn },
+                req
+            );
+            res.json({ ok: true, id });
+        } catch (e) {
+            if (!sendPipRefusal(req, res, e)) throw e;
+        }
+    })
+);
+
+// The HR visa before activation (meaningful while pip.hrVisaRequired is on).
+router.post(
+    '/:id/hr-visa',
+    requireAuth,
+    ah(async (req, res) => {
+        const pip = await db.get('SELECT employee_id FROM pips WHERE id = ?', [
+            Number(req.params.id),
+        ]);
+        if (!pip) return res.status(404).json({ ok: false, error: 'PIP not found' });
+        if (!(await PipService.canGiveHrVisa(req.user, pip.employeeId)))
+            return res.status(403).json({ ok: false, error: notAuthorizedForEmployee(req) });
+        const done = await PipService.giveHrVisa(Number(req.params.id), req.user, req);
+        if (!done)
+            return res.status(409).json({
+                ok: false,
+                error: sayText(req, 'pip:err_visa_state', 'No visa can be given in this state.'),
+            });
+        res.json({ ok: true });
+    })
+);
+
+// The printable letter of one plan, for the plan authority or the HR visa
+// holder. A refusal is a 404 / 403 PAGE, never a 500.
+router.get(
+    '/:id/letter',
+    requireAuth,
+    ah(async (req, res) => {
+        const id = Number(req.params.id);
+        const p = Number.isInteger(id)
+            ? await db.get(
+                  `SELECT p.*, e.first_name, e.last_name, e.employee_number
+                     FROM pips p JOIN employees e ON e.id = p.employee_id WHERE p.id = ?`,
+                  [id]
+              )
+            : null;
+        if (!p)
+            return res.status(404).render('pages/error', {
+                message: sayText(req, 'pip:err_not_found', 'Plan not found.'),
+                title: req.t
+                    ? req.t('chrome:pt_not_found', { defaultValue: 'Not found' })
+                    : 'Not found',
+            });
+        const may =
+            (await canManage(req.user, p.employeeId)) ||
+            (await PipService.canGiveHrVisa(req.user, p.employeeId).catch(() => false));
+        if (!may)
+            return res.status(403).render('pages/error', {
+                message: notAuthorizedForEmployee(req),
+                title: req.t
+                    ? req.t('chrome:pt_forbidden', { defaultValue: 'Forbidden' })
+                    : 'Forbidden',
+            });
+        res.set('Cache-Control', 'no-store');
+        res.render('pages/pip/letter', {
+            title: req.t ? req.t('pip:letter_title') : 'Improvement plan letter',
+            pip: p,
+            reviews: await PipService.listReviews(id),
+            own: false,
+        });
+    })
+);
+
 module.exports = router;
+module.exports.sendPipRefusal = sendPipRefusal;

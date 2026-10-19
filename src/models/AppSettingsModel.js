@@ -137,6 +137,8 @@ const CATALOG = {
     'dispute.l0SlaDays': { min: 0, max: 365, integer: true },
     'dispute.l1SlaDays': { min: 0, max: 365, integer: true },
     'dispute.l2SlaDays': { min: 0, max: 365, integer: true },
+    // Off by default since migration 194 (an untouched seed was switched off).
+    'dispute.autoFinalizeOnExpiry': { type: 'boolean' },
     backupHour: { kind: 'hour' },
     backupKeep: { min: 0, max: 3650, integer: true },
     digestDow: { kind: 'dow' },
@@ -179,6 +181,9 @@ const CATALOG = {
     // act on a person's record (AuthorityService) and the 9-box four eyes.
     'authority.ladder': { enum: ['strict', 'extended'] },
     nineBoxFourEyes: { type: 'boolean' },
+    // 4.0.0 port (wave 6), governance-class: the optional HR visa before a PIP
+    // is activated (migration 195).
+    'pip.hrVisaRequired': { type: 'boolean' },
     // DEI ethnicity switch (migration 171): written only by the SuperAdmin DEI
     // panel with a typed legal sign-off (DEIService.setEthnicityEnabled).
     deiEthnicityEnabled: { readOnly: true },
@@ -588,6 +593,15 @@ class AppSettingsModel {
                 type: 'boolean',
                 description:
                     'Four eyes on a 9-box placement: whoever drafted it cannot approve it. A SuperAdmin may approve their own draft with a written reason, kept in the audit log.',
+                category: 'security',
+            },
+            {
+                // Governance-class (SuperAdmin only). Also seeded by migration 195.
+                key: 'pip.hrVisaRequired',
+                value: 'false',
+                type: 'boolean',
+                description:
+                    'When on, a performance-improvement plan needs an HR visa (a SuperAdmin, or an administrator holding the dispute-arbitration permission for the person) before its manager can activate it. Off by default: the manager owns the plan.',
                 category: 'security',
             },
             {

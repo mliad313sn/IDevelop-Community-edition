@@ -84,6 +84,8 @@ const MODULE_PREFIXES = Object.freeze({
         '/coaching/plans',
         '/api/coaching',
         '/employee/my-coaching',
+        // The person's side of their own PIP (4.0.0 port, wave 6).
+        '/employee/pip',
         '/api/dashboard/v2/pip-overview',
         '/feedback-360',
     ],

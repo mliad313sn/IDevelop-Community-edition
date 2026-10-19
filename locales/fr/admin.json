@@ -2709,10 +2709,10 @@
   "set_desc_digestDow": "Jour de la semaine où le récapitulatif manager est envoyé (0 = dimanche … 6 = samedi ; par défaut 1 = lundi)",
   "set_desc_digestHour": "Heure de la journée (0-23, heure serveur) après laquelle le récapitulatif hebdomadaire manager est envoyé",
   "set_desc_digestLastSentOn": "Date du dernier envoi du récapitulatif manager",
-  "set_desc_dispute_autoFinalizeOnExpiry": "Lorsqu’un litige de niveau L2 dépasse son délai et qu’aucun arbitre RH n’a décidé, le finaliser automatiquement avec la note du superviseur pour que la campagne puisse se clôturer.",
+  "set_desc_dispute_autoFinalizeOnExpiry": "Lorsqu’une contestation de niveau 2 dépasse son délai sans décision RH, la finaliser automatiquement avec la note du superviseur. Désactivé par défaut : la note reste provisoire jusqu’à la décision RH, et les arbitres RH sont relancés deux jours avant l’échéance. Une installation qui n’avait jamais modifié ce réglage l’a vu passer à désactivé lors de la mise à jour.",
   "set_desc_dispute_l0SlaDays": "Nombre de jours pendant lesquels un litige L0 (collaborateur vers superviseur) attend avant d’être escaladé automatiquement au manager (L1).",
   "set_desc_dispute_l1SlaDays": "Nombre de jours pendant lesquels un litige L1 (manager) attend avant d’être escaladé automatiquement à l’arbitrage RH (L2).",
-  "set_desc_dispute_l2SlaDays": "Nombre de jours pendant lesquels un litige L2 (arbitrage RH) attend avant d’être finalisé automatiquement avec la note du superviseur (si l’option ci-dessous est active).",
+  "set_desc_dispute_l2SlaDays": "Nombre de jours pendant lesquels une contestation de niveau 2 (arbitrage RH) attend la décision RH. Les RH sont relancés deux jours avant la fin ; à la fin, la contestation n’est finalisée avec la note du superviseur que si la finalisation automatique est active.",
   "set_desc_edition": "Édition visuelle pour les graphiques et la marque : « enterprise » ou « community »",
   "set_desc_emailOnAccess": "E-mail lors des événements de gouvernance des accès (revue des accès à réaliser)",
   "set_desc_emailOnAuth": "E-mail lors des événements de compte et de sécurité (nouveau compte administrateur, changement de mot de passe)",
@@ -3811,5 +3811,7 @@
   "enum_admin_role_hr_bp": "Partenaire RH (réservé)",
   "cyc_status_cancelled": "Annulée",
   "set_name_newInRoleMonths": "Nouveau dans le poste — durée (mois)",
-  "set_desc_newInRoleMonths": "Pendant combien de mois après la date d’entrée dans le poste enregistrée une personne est signalée « nouvelle dans le poste » sur la 9-box et les plans d’amélioration (0 = jamais). Sans date d’entrée enregistrée, personne ne l’est."
+  "set_desc_newInRoleMonths": "Pendant combien de mois après la date d’entrée dans le poste enregistrée une personne est signalée « nouvelle dans le poste » sur la 9-box et les plans d’amélioration (0 = jamais). Sans date d’entrée enregistrée, personne ne l’est.",
+  "set_name_pip_hrVisaRequired": "Plans d’amélioration — visa RH avant activation",
+  "set_desc_pip_hrVisaRequired": "Activé, un plan d’amélioration de la performance doit recevoir un visa RH (un SuperAdmin, ou un administrateur détenant la permission d’arbitrage des contestations pour la personne) avant que son responsable puisse l’activer. Désactivé par défaut : le responsable porte le plan. Réservé au SuperAdmin."
 }

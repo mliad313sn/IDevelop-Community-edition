@@ -82,6 +82,8 @@ const SECURITY_KEY_PATTERNS = [
     // and whether a 9-box drafter may approve their own placement.
     /^authority\./,
     /^nineBoxFourEyes$/,
+    // Governance-class: the optional HR visa before a PIP is activated.
+    /^pip\.hrVisaRequired$/,
 ];
 
 /** @returns {boolean} true when the setting is security-class. */

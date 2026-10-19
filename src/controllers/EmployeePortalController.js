@@ -649,15 +649,31 @@ class EmployeePortalController {
 
             // --- Performance-improvement plans (structured fields, migration 66).
             // pip_state members: proposed|approved|active|closed_success|closed_failure|cancelled.
+            // A plan is shown to its subject only once it RAN (4.0.0 port, wave
+            // 6): a proposal, or an approved plan never activated, is a working
+            // document between the manager and HR (PipService.subjectVisibleSql).
+            const PipService = require('../services/PipService');
             const pipRows = await db.all(
-                `SELECT id, state, starts_on, ends_on, summary, objectives, success_criteria,
-                        review_checkpoints, support_offered, outcome, created_at
-                   FROM pips
-                  WHERE employee_id = ?
-                  ORDER BY (state IN ('proposed','approved','active')) DESC,
-                           COALESCE(starts_on, created_at::date) DESC, id DESC`,
+                `SELECT p.id, p.state, p.starts_on, p.ends_on, p.summary, p.objectives,
+                        p.success_criteria, p.review_checkpoints, p.support_offered, p.outcome,
+                        p.created_at, p.acknowledged_at, p.employee_comment, p.employee_comment_at
+                   FROM pips p
+                  WHERE p.employee_id = ? AND ${PipService.subjectVisibleSql('p')}
+                  ORDER BY (p.state IN ('proposed','approved','active')) DESC,
+                           COALESCE(p.starts_on, p.created_at::date) DESC, p.id DESC`,
                 [employeeId]
             );
+            const reviewsBy = new Map();
+            if (pipRows.length)
+                for (const r of await db.all(
+                    `SELECT id, pip_id, held_on, manager_note, employee_response, employee_response_at
+                       FROM pip_reviews WHERE pip_id = ANY(?) ORDER BY held_on, id`,
+                    [pipRows.map((p) => Number(p.id))]
+                )) {
+                    const k = Number(r.pipId);
+                    if (!reviewsBy.has(k)) reviewsBy.set(k, []);
+                    reviewsBy.get(k).push(r);
+                }
             pips = pipRows.map((p) => ({
                 id: Number(p.id),
                 state: p.state,
@@ -675,6 +691,17 @@ class EmployeePortalController {
                 reviewCheckpoints: safe(p.reviewCheckpoints || ''),
                 supportOffered: safe(p.supportOffered || ''),
                 outcome: safe(p.outcome || ''),
+                // The person's evidence (migration 195): their reading, their
+                // observations, the checkpoints and their answers.
+                acknowledgedOn: p.acknowledgedAt ? fmtDay(p.acknowledgedAt) : null,
+                employeeComment: p.employeeComment || null,
+                employeeCommentOn: p.employeeCommentAt ? fmtDay(p.employeeCommentAt) : null,
+                reviews: (reviewsBy.get(Number(p.id)) || []).map((r) => ({
+                    id: Number(r.id),
+                    heldOn: fmtDay(r.heldOn),
+                    note: safe(r.managerNote || ''),
+                    response: r.employeeResponse || null,
+                })),
             }));
 
             // --- Individual development plans + their objectives, actions, signatures.

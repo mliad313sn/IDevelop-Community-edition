@@ -495,6 +495,10 @@ router.get(
 // the locked / closed campaigns they had ratings in — read, acknowledge (a
 // reading, never an agreement), comment. Core: no module switch.
 router.use('/employee/review-record', require('./review-record'));
+// The person's side of their own PIP (4.0.0 port, wave 6): acknowledge,
+// observations, answers to checkpoints, the printable letter. Development
+// module: 404 while it is off, like /v2/pip.
+router.use('/employee/pip', _mod('development'), require('./employee-pip'));
 // « Mes certifications » — where the cert-expiry ladder lands. The employee is
 // alerted four times (90/60/30 days, then expired) that a certificate is running
 // out, but the only certification surface, /compliance, is manager/

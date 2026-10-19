@@ -2709,10 +2709,10 @@
   "set_desc_digestDow": "Day of week the manager digest is sent (0=Sunday … 6=Saturday; default 1=Monday)",
   "set_desc_digestHour": "Hour of day (0-23, server time) after which the weekly manager digest is sent",
   "set_desc_digestLastSentOn": "Last manager-digest send date",
-  "set_desc_dispute_autoFinalizeOnExpiry": "When an L2 dispute exceeds its SLA and no HR arbiter has decided, finalize it automatically with the supervisor rating so the assessment cycle can close.",
+  "set_desc_dispute_autoFinalizeOnExpiry": "When a level-2 dispute passes its deadline with no HR decision, finalise it automatically with the supervisor’s rating. Off by default: the rating stays provisional until HR decides, and the HR arbiters are reminded two days before the deadline. An install that had never changed this setting had it switched off by the upgrade.",
   "set_desc_dispute_l0SlaDays": "Days an L0 dispute (employee to supervisor) waits before auto-escalating to the manager (L1).",
   "set_desc_dispute_l1SlaDays": "Days an L1 dispute (manager) waits before auto-escalating to HR arbitration (L2).",
-  "set_desc_dispute_l2SlaDays": "Days an L2 dispute (HR arbitration) waits before auto-finalizing with the supervisor rating (if enabled below).",
+  "set_desc_dispute_l2SlaDays": "Days a level-2 dispute (HR arbitration) waits for HR. HR is reminded two days before the end; at the end the dispute is finalised with the supervisor’s rating only if automatic finalisation is on.",
   "set_desc_edition": "Visual edition for charts and branding: 'enterprise' or 'community'",
   "set_desc_emailOnAccess": "Email on access-governance events (access review to complete)",
   "set_desc_emailOnAuth": "Email on account/security events (new admin account, password changes)",
@@ -3811,5 +3811,7 @@
   "enum_admin_role_hr_bp": "HR business partner (reserved)",
   "cyc_status_cancelled": "Cancelled",
   "set_name_newInRoleMonths": "New in the role — duration (months)",
-  "set_desc_newInRoleMonths": "For how many months after the recorded start date in the role a person is shown as “new in the role” on the 9-box and the improvement plans (0 = never). Without a recorded start date, nobody is."
+  "set_desc_newInRoleMonths": "For how many months after the recorded start date in the role a person is shown as “new in the role” on the 9-box and the improvement plans (0 = never). Without a recorded start date, nobody is.",
+  "set_name_pip_hrVisaRequired": "Improvement plans — HR visa before activation",
+  "set_desc_pip_hrVisaRequired": "When on, a performance-improvement plan needs an HR visa (a SuperAdmin, or an administrator holding the dispute-arbitration permission for the person) before its manager can activate it. Off by default: the manager owns the plan. SuperAdmin only."
 }
