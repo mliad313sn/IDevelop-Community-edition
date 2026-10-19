@@ -4,19 +4,19 @@
  * the invented people of tests/helpers/dashWorld.js, every scenario inside a
  * transaction that is always rolled back.
  *
- *   HR-01  a dispute's level-0 answer is a PROPOSAL: never below the
- *          contested rating, never above the person's own; one per dispute;
- *          only the person answers it; accepting it decides (the review and
- *          the official level follow), refusing it escalates at once; the
- *          level-0 delay runs from the proposal;
- *   HR-02  level-2 auto-finalisation is OFF by default; HR is reminded once,
- *          two days before the level-2 deadline;
- *   HR-03  a proposed PIP is invisible to its subject until it is activated;
- *   HR-04  the PIP's evidence: real author, activation dated and attributed,
- *          the person's reading and observations, checkpoints held by the
- *          plan authority only, never dated in the future, the person's own
- *          answers; the HR visa when required, never by the proposer;
- *   HR-09  a development plan is never signed empty.
+ *   - a dispute's level-0 answer is a PROPOSAL: never below the
+ *     contested rating, never above the person's own; one per dispute;
+ *     only the person answers it; accepting it decides (the review and
+ *     the official level follow), refusing it escalates at once; the
+ *     level-0 delay runs from the proposal;
+ *   - level-2 auto-finalisation is OFF by default; HR is reminded once,
+ *     two days before the level-2 deadline;
+ *   - a proposed PIP is invisible to its subject until it is activated;
+ *   - the PIP's evidence: real author, activation dated and attributed,
+ *     the person's reading and observations, checkpoints held by the
+ *     plan authority only, never dated in the future, the person's own
+ *     answers; the HR visa when required, never by the proposer;
+ *   - a development plan is never signed empty.
  * Skipped unless DATABASE_URL names a *_test database.
  */
 require('dotenv').config();
@@ -80,7 +80,7 @@ async function disputeOf(w, person, skill, self, sup, extra = '') {
 }
 
 d('HR governance services on the real schema (invented people, rolled back)', () => {
-    test('HR-01: the level-0 answer is a proposal the person answers', async () => {
+    test('the level-0 answer is a proposal the person answers', async () => {
         const D = require('../../src/services/DisputeServiceV2');
         const out = await W.inRolledBackTx(db, async () => {
             const w = await W.world(db);
@@ -178,7 +178,7 @@ d('HR governance services on the real schema (invented people, rolled back)', ()
         expect(out.rowC).toEqual({ level: 'L0', state: 'open' });
     });
 
-    test('HR-02: auto-finalise is off by default; HR is reminded once, two days before', async () => {
+    test('auto-finalise is off by default; HR is reminded once, two days before', async () => {
         const D = require('../../src/services/DisputeServiceV2');
         const out = await W.inRolledBackTx(db, async () => {
             const w = await W.world(db);
@@ -229,7 +229,7 @@ d('HR governance services on the real schema (invented people, rolled back)', ()
         ]);
     });
 
-    test('HR-03 / HR-04: a proposal is hidden from its subject; the evidence of a plan', async () => {
+    test('a proposal is hidden from its subject; the evidence of a plan', async () => {
         const P = require('../../src/services/PipService');
         const out = await W.inRolledBackTx(db, async () => {
             const w = await W.world(db);
@@ -345,7 +345,7 @@ d('HR governance services on the real schema (invented people, rolled back)', ()
         });
     });
 
-    test('HR-04: the proposer cannot give the visa; a withdrawn proposal tells its subject nothing', async () => {
+    test('the proposer cannot give the visa; a withdrawn proposal tells its subject nothing', async () => {
         const P = require('../../src/services/PipService');
         const out = await W.inRolledBackTx(db, async () => {
             const w = await W.world(db);
@@ -370,7 +370,7 @@ d('HR governance services on the real schema (invented people, rolled back)', ()
         expect(out.toldOnRan).toEqual(['employee:pip.closed']);
     });
 
-    test('HR-09: a development plan with no action is never signed', async () => {
+    test('a development plan with no action is never signed', async () => {
         const I = require('../../src/services/IDPService');
         const out = await W.inRolledBackTx(db, async () => {
             const w = await W.world(db);

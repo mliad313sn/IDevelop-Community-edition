@@ -5,14 +5,14 @@
  * invented people of tests/helpers/dashWorld.js built inside ONE transaction
  * the server runs in and that is always rolled back.
  *
- *   HR-01  the supervisor's level-0 answer is a proposal: a rating below the
- *          contested one is refused; the person (and only the person)
- *          answers it with the CSRF token; their page offers the answer;
- *   HR-03  a proposed PIP is not on its subject's page and its routes answer
- *          « not found »; once activated: their page lists it, they
- *          acknowledge (a reading), write observations, answer a checkpoint
- *          and print THEIR letter — never another person's; the manager
- *          records the checkpoint and prints the letter.
+ *   - the supervisor's level-0 answer is a proposal: a rating below the
+ *     contested one is refused; the person (and only the person)
+ *     answers it with the CSRF token; their page offers the answer;
+ *   - a proposed PIP is not on its subject's page and its routes answer
+ *     « not found »; once activated: their page lists it, they
+ *     acknowledge (a reading), write observations, answer a checkpoint
+ *     and print THEIR letter — never another person's; the manager
+ *     records the checkpoint and prints the letter.
  * Skipped unless DATABASE_URL names a *_test database.
  */
 process.env.ACTIVITY_TRAIL = '0';
@@ -174,7 +174,7 @@ d('HR governance over real HTTP (invented people, rolled back)', () => {
         }
     });
 
-    test('HR-01: the level-0 answer is a proposal only the person answers', async () => {
+    test('the level-0 answer is a proposal only the person answers', async () => {
         const url = `/v2/slf/disputes/${disputeId}`;
         const lower = await post('manager', `${url}/resolve-l0`, {
             decidedRating: 0,
@@ -250,7 +250,7 @@ d('HR governance over real HTTP (invented people, rolled back)', () => {
         expect([twice.status, twice.body.code]).toEqual([409, 'DISPUTE_NO_PROPOSAL']);
     });
 
-    test('HR-03: a proposed PIP is hidden from its subject; once active, their own side works', async () => {
+    test('a proposed PIP is hidden from its subject; once active, their own side works', async () => {
         const person = world.people.N[5];
         const prop = await post('manager', '/v2/pip/propose', {
             employeeId: person,
