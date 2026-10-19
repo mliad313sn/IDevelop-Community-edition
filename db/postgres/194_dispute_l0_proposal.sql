@@ -15,6 +15,8 @@
 --   proposed_rating, proposed_at          the proposal and its date
 --   proposed_by                           the person who proposed (employees)
 --   proposed_by_admin_id                  the administration account, if any
+--                                         (SET NULL when that account goes, like
+--                                         decided_by_admin_id)
 --   proposal_note                         the proposer's written reason (free
 --                                         text about the person: erasure
 --                                         registry, export and redaction, in
@@ -61,7 +63,7 @@ BEGIN
                       AND conrelid = 'public.assessment_disputes'::regclass) THEN
         ALTER TABLE public.assessment_disputes
             ADD CONSTRAINT assessment_disputes_proposed_by_admin_id_fkey
-            FOREIGN KEY (proposed_by_admin_id) REFERENCES public.admins(id) ON DELETE RESTRICT;
+            FOREIGN KEY (proposed_by_admin_id) REFERENCES public.admins(id) ON DELETE SET NULL;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_dispute_proposed_rating') THEN
         ALTER TABLE public.assessment_disputes ADD CONSTRAINT chk_dispute_proposed_rating
