@@ -275,7 +275,44 @@ suite('erasure behaviour', () => {
                 [s.id, Number(rrCycle.id), `${TOKEN} comment`]
             );
 
+            // HR governance (migrations 194, 195): the level-0 proposer's note on
+            // the person's dispute, their observations on a plan, a checkpoint's
+            // note and their answer.
+            const admin = await db.get('SELECT id FROM admins ORDER BY id LIMIT 1');
+            const round = await db.get(
+                `INSERT INTO self_assessment_rounds (employee_id, skill_id, self_rated_level, status, workflow_state)
+                 VALUES (?, ?, 3, 'submitted', 'submitted') RETURNING id`,
+                [s.id, s.skillId]
+            );
+            const review = await db.get(
+                `INSERT INTO supervisor_reviews (self_assessment_id, employee_id, skill_id, supervisor_rated_level,
+                                                 gap, reviewed_by, status)
+                 VALUES (?, ?, ?, 1, -2, ?, 'disputed') RETURNING id`,
+                [Number(round.id), s.id, s.skillId, s.id]
+            );
+            await db.run(
+                `INSERT INTO assessment_disputes (supervisor_review_id, employee_id, reason, proposed_rating,
+                                                  proposed_at, proposal_note)
+                 VALUES (?, ?, ?, 2, now(), ?)`,
+                [Number(review.id), s.id, `${TOKEN} dispute reason`, `${TOKEN} proposer note`]
+            );
+            const pip = await db.get(
+                `INSERT INTO pips (employee_id, initiated_by, state, summary, employee_comment,
+                                   employee_comment_at, activated_at)
+                 VALUES (?, ?, 'active', ?, ?, now(), now()) RETURNING id`,
+                [s.id, Number(admin.id), `${TOKEN} plan`, `${TOKEN} observations`]
+            );
+            await db.run(
+                `INSERT INTO pip_reviews (pip_id, manager_note, author_ref, employee_response, employee_response_at)
+                 VALUES (?, ?, 'admin:1', ?, now())`,
+                [Number(pip.id), `${TOKEN} checkpoint`, `${TOKEN} answer`]
+            );
+
             const exp = await DSR().export(s.id);
+            expect(JSON.stringify(exp.disputes)).toContain(`${TOKEN} proposer note`);
+            expect(JSON.stringify(exp.pips)).toContain(`${TOKEN} observations`);
+            expect(JSON.stringify(exp.pipReviews)).toContain(`${TOKEN} checkpoint`);
+            expect(JSON.stringify(exp.pipReviews)).toContain(`${TOKEN} answer`);
             expect(JSON.stringify(exp.idpActionNotes)).toContain(`${TOKEN} done note`);
             expect(JSON.stringify(exp.devProposals)).toContain(`${TOKEN} proposal`);
             expect(JSON.stringify(exp.reviewRecords)).toContain(`${TOKEN} comment`);
@@ -300,6 +337,9 @@ suite('erasure behaviour', () => {
                 ['idp_actions', ['reported_note', 'validation_note']],
                 ['dev_proposals', ['proposal_text', 'decision_reason']],
                 ['review_records', ['employee_comment', 'snapshot::text']],
+                ['assessment_disputes', ['reason', 'proposal_note']],
+                ['pips', ['summary', 'employee_comment']],
+                ['pip_reviews', ['manager_note', 'employee_response']],
             ]) {
                 const r = await db.get(
                     `SELECT COUNT(*)::int AS n FROM ${table} WHERE ${cols
