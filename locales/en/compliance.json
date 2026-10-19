@@ -433,5 +433,6 @@
   "cat_idpActionNotes": "Notes on development actions (reported done, validation)",
   "cat_devProposals": "Development actions proposed to the manager",
   "cat_reviewRecords": "End-of-campaign records (reading acknowledged, comment)",
-  "cat_pipReviews": "Checkpoints of improvement plans (the manager’s note, the person’s answer)"
+  "cat_pipReviews": "Checkpoints of improvement plans (the manager’s note, the person’s answer)",
+  "no_domain": "No domain"
 }

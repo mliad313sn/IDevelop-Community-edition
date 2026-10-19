@@ -62,8 +62,16 @@ class ComplianceController {
                 CertificationService.listLapsed(ids, { limit: 50 }),
                 CoverageService.status(ids),
                 CertificationService.listPolicies(),
+                // The domain travels with the skill (4.0.0 port, wave 6): two
+                // skills may share a name in two domains, so the pickers group
+                // the options by domain (partials/skill-options-by-domain).
                 db
-                    .all('SELECT id, name FROM skills WHERE is_active IS NOT FALSE ORDER BY name')
+                    .all(
+                        `SELECT s.id, s.name, d.name AS domain_name
+                           FROM skills s LEFT JOIN domains d ON d.id = s.domain_id
+                          WHERE s.is_active IS NOT FALSE
+                          ORDER BY d.name NULLS LAST, s.name, s.id`
+                    )
                     .catch(() => db.all('SELECT id, name FROM skills ORDER BY name')),
                 CoverageService.listAbsences(ids, { limit: 100 }).catch(() => []),
                 CertificationService.listLapseImpact(ids, { limit: 100 }),

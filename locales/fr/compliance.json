@@ -433,5 +433,6 @@
   "cat_idpActionNotes": "Notes sur les actions de développement (signalement, validation)",
   "cat_devProposals": "Actions de développement proposées au responsable",
   "cat_reviewRecords": "Comptes rendus de fin de campagne (lecture attestée, commentaire)",
-  "cat_pipReviews": "Points d’étape des plans d’amélioration (note du responsable, réponse de la personne)"
+  "cat_pipReviews": "Points d’étape des plans d’amélioration (note du responsable, réponse de la personne)",
+  "no_domain": "Sans domaine"
 }
