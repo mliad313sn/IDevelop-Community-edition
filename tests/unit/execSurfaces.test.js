@@ -19,7 +19,7 @@ const fs = require('fs');
 const path = require('path');
 
 const VIEW_DIR = path.join(__dirname, '../../views/pages/exec');
-const VIEWS = ['key-person.ejs', 'site-exposure.ejs', 'board-pack.ejs'];
+const VIEWS = ['key-person.ejs', 'site-exposure.ejs', 'board-pack.ejs', 'decisions.ejs'];
 
 // ---------------------------------------------------------------------------
 // SiteExposureService
@@ -170,6 +170,8 @@ describe('exec views — CSP, i18n and branding hygiene', () => {
         const sources = [
             ...VIEWS.map((v) => path.join(VIEW_DIR, v)),
             path.join(__dirname, '../../src/controllers/ExecDecisionController.js'),
+            // the board decisions (migration 197)
+            path.join(__dirname, '../../src/controllers/BoardDecisionController.js'),
             path.join(__dirname, '../../views/partials/sidebar.ejs'),
             path.join(__dirname, '../../src/config/navigation.js'),
         ];

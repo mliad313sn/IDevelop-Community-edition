@@ -3,11 +3,16 @@
   The same figures as the dashboard, from the same service over the same
   scope (the scope bar's remembered choice for this page), so the pack can
   never be contradicted by the app it was printed from. COUNTS ONLY: no
-  person is named in the pack. « Not measured » is printed in words, never 0;
-  fewer than 5 people never get a percentage. The masthead reads the
-  white-label branding.
+  person is named in the pack; a decision names a ROLE. « Not measured » is
+  printed in words, never 0; fewer than 5 people never get a percentage nor
+  a figure that could point at someone. The masthead reads the white-label
+  branding. The pack opens on the capability index, its measurability and
+  « In brief »; then targets and gaps (with the change since the last
+  recorded pack), the previous decisions, the executive indicators, the
+  Development section, the trend and the sites.
   Locals: ctx, screen (firstScreen), overview (tabModel 'overview' | null),
-  scopeLabel, generatedAt.
+  board (BoardPackService.packModel | null), hidden (scope fields of a
+  form), scopeLabel, generatedAt.
 -%><%
   var _F = numFmt;
   var _num = function (v) { return v !== null && v !== undefined && v !== '' && isFinite(Number(v)); };
@@ -16,6 +21,7 @@
   var S = screen || { tiles: [], more: [], brief: [], setup: [] };
   var tiles = (S.tiles || []).concat(S.more || []);
   var _icon = { good: '✓', warn: '!', risk: '▲' };
+  var _chip = { compliant: 'good', watch: 'warn', at_risk: 'risk' };
   var _value = function (k) {
       if (k.emptyState) return k.emptyState.message;
       var den = _num(k.denominator) ? Number(k.denominator) : null;
@@ -28,9 +34,26 @@
       var d = Number(k.delta);
       return (d > 0 ? '+' : (d < 0 ? '−' : '')) + ((k.unit || 'pct') === 'pct' ? _F.num(Math.abs(d), 1) + ' ' + __('viz:tile.pts') : _F.num(Math.abs(d), 0));
   };
+  // a value of the board model in its unit: % (1 decimal), days (1 decimal), count
+  var _v = function (unit, v) { if (!_num(v)) return __('viz:unmeasured'); return unit === 'pct' ? _F.pct(v, 1) : _F.num(v, unit === 'days' ? 1 : 0); };
+  var _dv = function (unit, d) { if (!_num(d)) return '—'; d = Number(d); return (d > 0 ? '+' : (d < 0 ? '−' : '')) + (unit === 'pct' ? _F.num(Math.abs(d), 1) + ' ' + __('viz:tile.pts') : _F.num(Math.abs(d), unit === 'count' ? 0 : 1)); };
+  var _date = function (s) { return s ? fmtDate(s) : '—'; };
   var O = overview || null;
   var rec = (O && O.recorded) || [];
+  var B = (typeof board !== 'undefined' && board) ? board : null;
+  var HF = (typeof hidden !== 'undefined' && hidden) ? hidden : [];
   var _q = ctx.scopeQuery ? '?' + ctx.scopeQuery : '';
+  var _people = ctx.pop.ids.length;
+  var SL = B ? (B.since || {}) : {};
+  var PREV = SL.previous || null;
+  var THEN = {}; (SL.kpis || []).forEach(function (k) { THEN[k.kpi] = k; });
+  var DELTA = {}; ((B && B.siteDeltas) || []).forEach(function (r) { if (r.siteId !== null && r.siteId !== undefined) DELTA[String(r.siteId)] = r; });
+  var _stTone = { open: 'info', in_progress: 'info', done: 'ok', dropped: 'neutral' };
+  // full keys (the locale scan reads them); an unknown code falls back to the first
+  var _pick = function (map, k) { return Object.prototype.hasOwnProperty.call(map, k) ? map[k] : map[Object.keys(map)[0]]; };
+  var _reason = { no_history: 'exec:bp_trend_no_history', not_tracked: 'exec:bp_trend_not_tracked', unmeasured: 'exec:bp_trend_unmeasured', not_comparable: 'exec:bp_trend_not_comparable', no_snapshot: 'exec:bp_trend_no_snapshot', small_n: 'exec:bp_trend_small_n', too_recent: 'exec:bp_trend_too_recent' };
+  var _role = { exec_committee: 'exec:bd_role_exec_committee', hr_director: 'exec:bd_role_hr_director', hse: 'exec:bd_role_hse', site: 'exec:bd_role_site', training: 'exec:bd_role_training', hr_local: 'exec:bd_role_hr_local', managers: 'exec:bd_role_managers', finance: 'exec:bd_role_finance' };
+  var _state = { open: 'exec:bd_state_open', in_progress: 'exec:bd_state_in_progress', done: 'exec:bd_state_done', dropped: 'exec:bd_state_dropped' };
 -%>
 <link rel="stylesheet" href="/css/dashboard.css?v=<%= assetVersion %>">
 <article class="board-pack" id="board-pack">
@@ -41,7 +64,7 @@
     </div>
     <h1><%= __('exec:bp_title') %></h1>
     <p class="bp-sub"><%= __('exec:bp_subtitle') %></p>
-    <p class="bp-meta"><%= __('exec:bp_generated').replace('{d}', fmtDate(generatedAt)) %> · <%= __('dash:d3_bp_scope', { scope: scopeLabel, n: _F.num(ctx.pop.ids.length, 0) }) %></p>
+    <p class="bp-meta"><%= __('exec:bp_generated').replace('{d}', fmtDate(generatedAt)) %> · <%= __('dash:d3_bp_scope', { scope: scopeLabel, n: _F.num(_people, 0) }) %></p>
     <p class="bp-actions no-print">
       <button type="button" class="btn btn-primary" data-print><i class="fas fa-print" aria-hidden="true"></i> <%= __('dash:d3_bp_print') %></button>
       <a class="btn btn-secondary" href="/dashboard<%= _q %>"><%= __('exec:back_dashboard') %></a>
@@ -55,11 +78,22 @@
   <% if (!ctx.caps.pop) { %>
     <p class="ds-note"><strong><%= __('dash:d3_no_scope_title') %></strong> <%= __('dash:d3_no_scope_text') %></p>
   <% } else { %>
-  <section class="bp-section" id="bp-brief">
-    <h2><%= __('dash:d3_bp_section_brief') %></h2>
-    <ul class="bp-list">
-      <% (S.brief || []).forEach(function (l) { %><li><%= l.text %></li><% }); %>
-    </ul>
+  <section class="bp-section bp-index" id="bp-index">
+    <h2><%= __('exec:bp_h_index') %></h2>
+    <div class="bp-index-grid">
+      <% if (O && O.gauge) { %>
+      <div>
+        <%- include('../dashboard/_gauge', { G: O.gauge, threshold: O.threshold }) %>
+        <%- include('../dashboard/_measurability', { MZ: O.measurability || null }) %>
+      </div>
+      <% } %>
+      <div id="bp-brief">
+        <h3><%= __('dash:d3_bp_section_brief') %></h3>
+        <ul class="bp-list">
+          <% (S.brief || []).forEach(function (l) { %><li><%= l.text %></li><% }); %>
+        </ul>
+      </div>
+    </div>
   </section>
 
   <section class="bp-section" id="bp-kpis">
@@ -79,6 +113,131 @@
     </table></div>
   </section>
 
+  <% if (B) { var TR = (B.targets && B.targets.rows) || []; %>
+  <section class="bp-section" id="bp-targets">
+    <h2><%= __('exec:bp_h_targets') %></h2>
+    <p class="ds-note"><%= B.targets && B.targets.targetScope ? __('exec:bp_targets_note') : __('exec:bp_targets_no_scope') %></p>
+    <div id="bp-since">
+    <% if (SL.available === false) { %>
+      <p class="ds-note"><%= __('exec:bp_since_unavailable') %></p>
+    <% } else if (!PREV) { %>
+      <p class="ds-note" data-bp-since="first"><%= SL.recordedToday ? __('exec:bp_since_first_today') : __('exec:bp_since_first') %></p>
+    <% } else { %>
+      <p class="ds-note" data-bp-since="compared"><%= __('exec:bp_since_compared', { date: _date(PREV.on) }) %> <%= __('exec:bp_since_population', { then: _F.num(SL.population.then, 0), now: _F.num(SL.population.now, 0) }) %><% if (_num(SL.population.entered)) { %> <%= __('exec:bp_since_moves', { inn: _F.num(SL.population.entered, 0), out: _F.num(SL.population.exited, 0) }) %><% } %> <%= __('exec:bp_since_coverage', { then: _v('pct', SL.coverage.then), now: _v('pct', SL.coverage.now) }) %></p>
+      <% if (SL.definitionsChanged) { %><p class="ds-note" data-bp-contract><strong><%= __('exec:bp_since_definitions') %></strong></p><% } %>
+    <% } %>
+      <p class="ds-note"><%= B.shared ? __('exec:bp_since_shared') : __('exec:bp_since_own') %></p>
+    </div>
+    <% if (TR.length) { %>
+    <div class="ds-table-wrap"><table class="ds-table" id="bp-targets-table">
+      <thead><tr>
+        <th scope="col"><%= __('dash:d3_bp_indicator') %></th>
+        <th scope="col" class="num"><%= __('exec:bp_col_value') %></th>
+        <% if (PREV) { %><th scope="col" class="num"><%= __('exec:bp_col_then', { date: _date(PREV.on) }) %></th><th scope="col" class="num"><%= __('exec:bp_col_delta') %></th><% } %>
+        <th scope="col" class="num"><%= __('exec:bp_col_target') %></th>
+        <th scope="col" class="num"><%= __('exec:bp_col_gap') %></th>
+        <th scope="col"><%= __('exec:bp_col_set') %></th>
+        <th scope="col"><%= __('exec:bp_col_trend') %></th>
+      </tr></thead>
+      <tbody>
+      <% TR.forEach(function (r) { var _st = _chip[r.status]; var _t = THEN[r.kpi] || null; var tr = r.trend || {}; %>
+        <tr data-kpi="<%= r.kpi %>">
+          <th scope="row"><%= __('kpi:' + r.kpi.toLowerCase() + '_name') %></th>
+          <td class="num"><% if (r.notConfigured) { %><span class="ds-unmeasured"><%= __('kpi:status_not_configured') %></span><% } else if (r.smallN) { %><span class="ds-unmeasured"><%= __('viz:small_n') %></span><% } else { %><%= _v(r.unit, r.value) %><% if (_st && _num(r.value)) { %> <span class="viz-chip viz-chip--<%= _st %>"><span class="viz-chip-icon" aria-hidden="true"><%= _icon[_st] %></span><span><%= __('viz:status.' + _st) %></span></span><% } %><% } %></td>
+          <% if (PREV) { %><td class="num"><%= _t ? _v(r.unit, _t.then) : __('viz:unmeasured') %></td><td class="num"><%= _t ? _dv(r.unit, _t.delta) : '—' %></td><% } %>
+          <td class="num"><% if (r.target === null) { %><span class="ds-note" data-no-target><%= __('exec:bp_no_target') %></span><% } else { %><%= _v(r.unit, r.target) %><% if (r.inherited) { %> <span class="ds-note"><%= __('exec:bp_inherited') %></span><% } %><% } %></td>
+          <td class="num"><% if (r.gap === null) { %>—<% } else { %><%= _dv(r.unit, r.gap) %> <span class="ds-note"><%= r.reached ? __('exec:bp_reached') : __('exec:bp_not_reached') %></span><% } %></td>
+          <td><% if (r.target === null) { %>—<% } else { %><%= r.setOn ? __('exec:bp_set_on', { date: _date(r.setOn) }) : _date(r.effectiveFrom) %><% if (r.setByRoleKey) { %> · <%= __(r.setByRoleKey) %><% } %><% } %></td>
+          <td><% if (!_num(tr.delta)) { %><span class="ds-note"><%= __(_pick(_reason, tr.reason)) %></span><% } else { %><%= _dv(r.unit, tr.delta) %> <span class="ds-note"><%= __('exec:bp_trend_since', { date: _date(tr.since) }) %></span><% } %></td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table></div>
+    <% } %>
+    <% if (B.canWrite) { %>
+    <form method="POST" action="/exec/board-pack/record" class="bp-actions no-print" data-confirm="<%= __('exec:bp_record_confirm') %>" data-confirm-title="<%= __('exec:bp_record_confirm_title') %>" data-confirm-yes="<%= __('exec:bp_record') %>">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <% HF.forEach(function (f) { %><input type="hidden" name="<%= f.name %>" value="<%= f.value %>"><% }); %>
+      <button type="submit" class="btn btn-secondary"><i class="fas fa-bookmark" aria-hidden="true"></i> <%= __('exec:bp_record') %></button>
+      <span class="ds-note"><%= __('exec:bp_record_hint') %></span>
+    </form>
+    <% } %>
+  </section>
+
+  <section class="bp-section" id="bp-decisions">
+    <h2><%= __('exec:bp_h_decisions') %></h2>
+    <% var DL = B.decisions; %>
+    <% if (DL === null) { %>
+      <p class="ds-note"><%= __('exec:bd_unavailable') %></p>
+    <% } else if (!DL.length) { %>
+      <p class="ds-note" data-bp-decisions-empty><%= __('exec:bp_decisions_none') %></p>
+    <% } else { %>
+    <div class="ds-table-wrap"><table class="ds-table" id="bp-decisions-table">
+      <thead><tr>
+        <th scope="col"><%= __('exec:bd_col_decided') %></th>
+        <th scope="col"><%= __('exec:bd_col_text') %></th>
+        <th scope="col"><%= __('exec:bd_col_owner') %></th>
+        <th scope="col"><%= __('exec:bd_col_due') %></th>
+        <th scope="col"><%= __('exec:bd_col_state') %></th>
+        <th scope="col"><%= __('exec:bd_col_kpi_since') %></th>
+      </tr></thead>
+      <tbody>
+      <% DL.forEach(function (x) { var ks = x.kpiSince; var _u = ['K6', 'K7', 'K8', 'K16', 'K19', 'K20', 'K21'].indexOf(x.kpiId) >= 0 ? 'count' : 'pct'; %>
+        <tr data-decision="<%= x.id %>" data-state="<%= x.state %>">
+          <td><%= _date(x.decidedAt) %></td>
+          <td><%= x.text %></td>
+          <td><%= __(_pick(_role, x.ownerRole)) %></td>
+          <td><%= x.dueDate ? _date(x.dueDate) : __('exec:bd_no_due') %></td>
+          <td><%- include('../../partials/status-badge', { tone: x.late ? 'warn' : _stTone[x.state], label: x.late ? __('exec:bd_state_late') : __(_pick(_state, x.state)), text: true }) %></td>
+          <td><% if (!ks) { %>—<% } else if (!_num(ks.delta)) { %><span class="ds-note"><%= __('kpi:' + x.kpiId.toLowerCase() + '_name') %> · <%= __(_pick(_reason, ks.reason)) %></span><% } else { %><%= __('kpi:' + x.kpiId.toLowerCase() + '_name') %> <%= __('exec:bp_decision_since', { delta: _dv(_u, ks.delta), date: _date(ks.from) }) %><% } %></td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table></div>
+    <% } %>
+    <p class="bp-actions no-print"><a class="btn btn-secondary" href="/exec/decisions<%= _q %>"><i class="fas fa-gavel" aria-hidden="true"></i> <%= __('exec:bp_decisions_manage') %></a></p>
+  </section>
+
+  <% var K17 = B.k17, K20 = B.k20, K19 = B.k19; %>
+  <section class="bp-section" id="bp-exec">
+    <h2><%= __('exec:bp_h_exec') %></h2>
+    <ul class="bp-list">
+      <% if (K17 && !K17.emptyScope) { %>
+        <li data-kpi="K17"><strong><%= __('kpi:k17_name') %></strong> —
+          <% if (_num(K17.value)) { %><%= __('exec:bp_k17_line', { median: _F.num(K17.value, 1), n: _F.num(K17.n, 0) }) %>
+          <% } else if (_num(K17.medianBeyond)) { %><%= __('exec:bp_k17_beyond', { days: _F.num(K17.medianBeyond, 0) }) %>
+          <% } else if (K17.status === 'small_n') { %><%= __('exec:bp_k17_small', { n: _F.num(K17.n, 0) }) %>
+          <% } else { %><%= __('viz:unmeasured') %><% } %>
+          <% if (_people >= 5 && K17.backlog) { %><%= __('exec:bp_k17_backlog', { total: _F.num(K17.backlog.total, 0), late: _F.num(K17.late, 0) }) %><% } %>
+        </li>
+      <% } %>
+      <% if (K20 && !K20.emptyScope) { var _b20 = K20.breakdown || {}; %>
+        <li data-kpi="K20"><strong><%= __('kpi:k20_name') %></strong> —
+          <% if (K20.status === 'not_configured') { %><%= __('kpi:status_not_configured') %>
+          <% } else if ((_b20.covered || 0) < 5) { %><%= __('exec:bp_k20_small') %>
+          <% } else { %><%= __('exec:bp_k20_line', { exposed: _F.num(K20.value, 0), covered: _F.num(_b20.covered, 0), fail: _F.num(_b20.knownFail, 0), missing: _F.num(_b20.notShown, 0) }) %><% if (_chip[K20.status]) { %> <span class="viz-chip viz-chip--<%= _chip[K20.status] %>"><span class="viz-chip-icon" aria-hidden="true"><%= _icon[_chip[K20.status]] %></span><span><%= __('viz:status.' + _chip[K20.status]) %></span></span><% } %>
+            <% if (K20.waivers && K20.waivers.count) { %><%= __('exec:bp_k20_waivers', { count: _F.num(K20.waivers.count, 0) }) %><% } %><% } %>
+        </li>
+      <% } %>
+      <% if (K19) { %>
+        <li data-kpi="K19"><strong><%= __('kpi:k19_name') %></strong> —
+          <% if (K19.insufficientHistory) { %><%= __('exec:bp_k19_insufficient') %>
+          <% } else if ((K19.leavers || 0) < 5) { %><%= __('exec:bp_k19_small') %>
+          <% } else { %><%= __('exec:bp_k19_line', { leavers: _F.num(K19.leavers, 0), ready: _num(K19.readyAtDeparture) ? _F.num(K19.readyAtDeparture, 0) : __('viz:unmeasured'), sole: _num(K19.soleHolderAtDeparture) ? _F.num(K19.soleHolderAtDeparture, 0) : __('viz:unmeasured') }) %>
+            <% if (K19.unmeasured) { %><%= __('exec:bp_k19_unmeasured', { n: _F.num(K19.unmeasured, 0), date: _date(K19.captureSince) }) %><% } %><% } %>
+        </li>
+      <% } %>
+    </ul>
+  </section>
+
+  <% if (B.development) { %>
+  <section class="bp-section" id="bp-development">
+    <h2><%= __('exec:bp_h_development') %></h2>
+    <%- include('../dashboard/_dev-outcomes', { O: B.development.outcomes }) %>
+  </section>
+  <% } %>
+  <% } %>
+
   <% if (O) { %>
   <section class="bp-section" id="bp-trend">
     <h2><%= __('dash:d3_bp_section_trend') %></h2>
@@ -97,11 +256,11 @@
   <% if (O.sites && O.sites.length) { %>
   <section class="bp-section" id="bp-sites">
     <h2><%= __('dash:d3_bp_section_sites') %></h2>
+    <% var _h8 = O.sites.some(function (r) { return r.k8; }), _h9 = O.sites.some(function (r) { return r.k9; }), _hd = Object.keys(DELTA).length > 0; %>
     <div class="ds-table-wrap"><table class="ds-table">
-      <thead><tr><th scope="col"><%= __('dash:d3_col_site') %></th><th scope="col" class="num"><%= __('dash:d3_col_k1') %></th><% if (O.sites.some(function (r) { return r.k8; })) { %><th scope="col" class="num"><%= __('dash:d3_col_k8') %></th><% } %><% if (O.sites.some(function (r) { return r.k9; })) { %><th scope="col" class="num"><%= __('dash:d3_col_k9') %></th><% } %></tr></thead>
+      <thead><tr><th scope="col"><%= __('dash:d3_col_site') %></th><th scope="col" class="num"><%= __('dash:d3_col_k1') %></th><% if (_hd) { %><th scope="col" class="num"><%= __('exec:bp_col_site_delta') %></th><% } %><% if (_h8) { %><th scope="col" class="num"><%= __('dash:d3_col_k8') %></th><% } %><% if (_h9) { %><th scope="col" class="num"><%= __('dash:d3_col_k9') %></th><% } %></tr></thead>
       <tbody>
-      <% var _h8 = O.sites.some(function (r) { return r.k8; }), _h9 = O.sites.some(function (r) { return r.k9; }); %>
-      <% O.sites.forEach(function (r) { %><tr><th scope="row"><%= r.noSite ? __('viz:no_site') : r.siteName %></th><td class="num"><%- include('../dashboard/_kpi-cell', { r: r.k1, unit: 'pct' }) %></td><% if (_h8) { %><td class="num"><%- include('../dashboard/_kpi-cell', { r: r.k8, unit: 'count' }) %></td><% } %><% if (_h9) { %><td class="num"><%- include('../dashboard/_kpi-cell', { r: r.k9, unit: 'pct' }) %></td><% } %></tr><% }); %>
+      <% O.sites.forEach(function (r) { var _sd = (!r.noSite && r.siteId !== null && r.siteId !== undefined) ? DELTA[String(r.siteId)] : null; var _k1 = _sd && _sd.k1 ? _sd.k1 : { delta: null, reason: r.noSite ? 'no_snapshot' : 'small_n' }; %><tr><th scope="row"><%= r.noSite ? __('viz:no_site') : r.siteName %></th><td class="num"><%- include('../dashboard/_kpi-cell', { r: r.k1, unit: 'pct' }) %></td><% if (_hd) { %><td class="num"><% if (_num(_k1.delta)) { %><%= _dv('pct', _k1.delta) %><% } else { %><span class="ds-note"><%= __(_pick(_reason, _k1.reason)) %></span><% } %></td><% } %><% if (_h8) { %><td class="num"><%- include('../dashboard/_kpi-cell', { r: r.k8, unit: 'count' }) %></td><% } %><% if (_h9) { %><td class="num"><%- include('../dashboard/_kpi-cell', { r: r.k9, unit: 'pct' }) %></td><% } %></tr><% }); %>
       </tbody>
     </table></div>
   </section>

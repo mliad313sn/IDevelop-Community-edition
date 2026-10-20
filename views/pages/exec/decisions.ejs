@@ -13,9 +13,13 @@
   var DL = (typeof decisions !== 'undefined') ? decisions : null;
   var HF = hidden || [];
   var tone = { open: 'info', in_progress: 'info', done: 'ok', dropped: 'neutral' };
-  var roleOpts = [{ value: '', label: __('exec:bd_pick_role') }].concat((ownerRoles || []).map(function (r) { return { value: r, label: __('exec:bd_role_' + r) }; }));
+  // full keys (the locale scan reads them); an unknown code falls back to the first
+  var _pick = function (map, k) { return Object.prototype.hasOwnProperty.call(map, k) ? map[k] : map[Object.keys(map)[0]]; };
+  var _role = { exec_committee: 'exec:bd_role_exec_committee', hr_director: 'exec:bd_role_hr_director', hse: 'exec:bd_role_hse', site: 'exec:bd_role_site', training: 'exec:bd_role_training', hr_local: 'exec:bd_role_hr_local', managers: 'exec:bd_role_managers', finance: 'exec:bd_role_finance' };
+  var _state = { open: 'exec:bd_state_open', in_progress: 'exec:bd_state_in_progress', done: 'exec:bd_state_done', dropped: 'exec:bd_state_dropped' };
+  var roleOpts = [{ value: '', label: __('exec:bd_pick_role') }].concat((ownerRoles || []).map(function (r) { return { value: r, label: __(_pick(_role, r)) }; }));
   var kpiOpts = [{ value: '', label: __('exec:bd_no_kpi') }].concat((kpis || []).map(function (k) { return { value: k, label: __('kpi:' + k.toLowerCase() + '_name') }; }));
-  var stateOpts = (states || []).map(function (s) { return { value: s, label: __('exec:bd_state_' + s) }; });
+  var stateOpts = (states || []).map(function (s) { return { value: s, label: __(_pick(_state, s)) }; });
   var _q = ctx.scopeQuery ? '?' + ctx.scopeQuery : '';
   var _d = function (s) { return s ? fmtDate(s) : '—'; };
 -%>
@@ -77,10 +81,10 @@
             <tr data-decision="<%= x.id %>" data-state="<%= x.state %>">
                 <td><%= _d(x.decidedAt) %><br><span class="text-muted"><%= __('exec:bd_pack_of', { date: _d(x.packDate) }) %></span></td>
                 <td><%= x.text %></td>
-                <td><%= __('exec:bd_role_' + x.ownerRole) %></td>
+                <td><%= __(_pick(_role, x.ownerRole)) %></td>
                 <td><%= x.dueDate ? _d(x.dueDate) : __('exec:bd_no_due') %></td>
                 <td><%= x.kpiId ? __('kpi:' + x.kpiId.toLowerCase() + '_name') : '—' %></td>
-                <td><%- include('../../partials/status-badge', { tone: x.late ? 'warn' : tone[x.state], label: x.late ? __('exec:bd_state_late') : __('exec:bd_state_' + x.state), text: true }) %></td>
+                <td><%- include('../../partials/status-badge', { tone: x.late ? 'warn' : tone[x.state], label: x.late ? __('exec:bd_state_late') : __(_pick(_state, x.state)), text: true }) %></td>
             </tr>
             <tr class="bd-follow" data-follow="<%= x.id %>">
                 <td colspan="6">
@@ -88,7 +92,7 @@
                         <summary><%= __('exec:bd_history', { count: x.events.length, n: x.events.length }) %></summary>
                         <ol class="bd-events">
                         <% x.events.forEach(function (e) { %>
-                            <li><%= _d(e.on) %> — <%= e.kind === 'created' ? __('exec:bd_ev_created') : (e.kind === 'state' ? __('exec:bd_ev_state', { from: __('exec:bd_state_' + e.fromState), to: __('exec:bd_state_' + e.toState) }) : __('exec:bd_ev_note')) %><% if (e.mine) { %> <span class="text-muted">(<%= __('exec:bd_ev_mine') %>)</span><% } %><% if (e.note) { %> : « <%= e.note %> »<% } %></li>
+                            <li><%= _d(e.on) %> — <%= e.kind === 'created' ? __('exec:bd_ev_created') : (e.kind === 'state' ? __('exec:bd_ev_state', { from: __(_pick(_state, e.fromState)), to: __(_pick(_state, e.toState)) }) : __('exec:bd_ev_note')) %><% if (e.mine) { %> <span class="text-muted">(<%= __('exec:bd_ev_mine') %>)</span><% } %><% if (e.note) { %> : « <%= e.note %> »<% } %></li>
                         <% }); %>
                         </ol>
                         <% if (canWrite) { %>
