@@ -1725,6 +1725,8 @@ async function tabModel(ctx, tabId, { query = {}, t } = {}) {
         m.tiles = ['K9', 'K8', 'K4'];
         if (want('certCalendar')) m.calendar = await Kpi.computeBlock('certExpiryCalendar', s);
         if (want('coverageHeat')) m.coverage = await Kpi.computeBlock('criticalSkillCoverage', s);
+        // K40 to K44 on the same resolved population (counts only, never a name)
+        if (want('hseOps')) m.hseOps = await require('./HseOpsService').forDashboard(s);
     }
 
     if (tabId === 'talent' && want('nineBox')) {

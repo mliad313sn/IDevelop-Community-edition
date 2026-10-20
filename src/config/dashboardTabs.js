@@ -81,6 +81,9 @@ const BLOCKS = Object.freeze([
     { id: 'safetyTiles', tab: 'safety', module: null, permission: 'safety' },
     { id: 'certCalendar', tab: 'safety', module: null, permission: 'safety', kpi: 'K8' },
     { id: 'coverageHeat', tab: 'safety', module: null, permission: 'safety', kpi: 'K4' },
+    // health and safety operations: waivers, blocks, expiry pipeline, coverage
+    // rules, certificate record quality (K40 to K44, HseOpsService)
+    { id: 'hseOps', tab: 'safety', module: null, permission: 'safety', kpi: 'K40' },
     // talent
     { id: 'nineBox', tab: 'talent', module: null, permission: 'talent' },
     // succession (talent module)

@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * KpiService: the KPI module. ONE function per indicator (K1 to K16; there is
- * no K10). Reports, the report builder, the API, the Power BI feed and the
+ * KpiService: the KPI module. ONE function per indicator (K1 to K16, K28,
+ * K30, and K40 to K44 from HseOpsService; there is no K10). Reports, the report builder, the API, the Power BI feed and the
  * daily snapshots call these functions; nothing else computes an indicator.
  *
  * ---------------------------------------------------------------------------
@@ -209,6 +209,48 @@ const CONTRACTS = Object.freeze({
         freshness: 'live',
         unit: 'pct',
         list: 'dev_plans',
+    }),
+    // Health and safety operations (4.0.0 port, wave 8): born on kpi-2,
+    // computed by HseOpsService, core. Counts only; no person list.
+    K40: Object.freeze({
+        id: 'K40',
+        module: null,
+        owner: 'hse',
+        freshness: 'live',
+        unit: 'count',
+        list: 'safety_gate',
+    }),
+    K41: Object.freeze({
+        id: 'K41',
+        module: null,
+        owner: 'hse',
+        freshness: 'live',
+        unit: 'count',
+        list: 'safety_gate',
+    }),
+    K42: Object.freeze({
+        id: 'K42',
+        module: null,
+        owner: 'hse',
+        freshness: 'live',
+        unit: 'count',
+        list: 'compliance',
+    }),
+    K43: Object.freeze({
+        id: 'K43',
+        module: null,
+        owner: 'hse',
+        freshness: 'live',
+        unit: 'count',
+        list: 'compliance',
+    }),
+    K44: Object.freeze({
+        id: 'K44',
+        module: null,
+        owner: 'hse',
+        freshness: 'live',
+        unit: 'pct',
+        list: 'compliance',
     }),
 });
 
@@ -2896,6 +2938,12 @@ const KPI_FUNCTIONS = Object.freeze({
     K16: k16ActivePlans,
     K28: k28LmsEffect,
     K30: k30PlanOutcomes,
+    // health and safety operations (HseOpsService)
+    K40: (scope) => require('./HseOpsService').k40Waivers(scope),
+    K41: (scope) => require('./HseOpsService').k41Blocks(scope),
+    K42: (scope) => require('./HseOpsService').k42ExpiryPipeline(scope),
+    K43: (scope) => require('./HseOpsService').k43CoverageBreaches(scope),
+    K44: (scope) => require('./HseOpsService').k44CertificateQuality(scope),
 });
 
 function fnOf(kpiId) {
@@ -3067,6 +3115,8 @@ module.exports = {
     // shared building blocks
     pctResult,
     resolvePopulation,
+    dbToday,
+    requiredCertRows,
     classifyReadiness,
     readinessBundle,
     readinessThreshold,
