@@ -548,6 +548,7 @@ const CATEGORIES = [
                     'scripts/pre-upgrade-dump.js',
                     'docs/BACKUPS.md',
                     'docs/ROLLBACK.md',
+                    'docs/OPERATIONS.md',
                 ],
                 tests: [
                     'backupCrypto.test.js',
