@@ -79,16 +79,31 @@ const hrefsIn = (html) => [...html.matchAll(/href="([^"#][^"]*)"/g)].map((m) => 
 const kpisIn = (html) => [...html.matchAll(/data-kpi="(K\d+)"/g)].map((m) => m[1]);
 
 describe('the indicator contract carries its module', () => {
-    test('core: K1–K4, K8, K9, K16, K40–K44; campaigns: K11; talent: K5–K7; development: K12, K13, K15, K28, K30; mobility: K14; no K10', () => {
+    test('core: K1–K4, K8, K9, K16, K17, K20, K40–K44; campaigns: K11; talent: K5–K7, K19, K21; development: K12, K13, K15, K28, K30; mobility: K14; no K10', () => {
         const byModule = {};
         for (const [id, c] of Object.entries(K.CONTRACTS)) {
             const m = c.module === null ? 'core' : c.module;
             (byModule[m] = byModule[m] || []).push(id);
         }
         expect(byModule).toEqual({
-            core: ['K1', 'K2', 'K3', 'K4', 'K8', 'K9', 'K16', 'K40', 'K41', 'K42', 'K43', 'K44'],
+            core: [
+                'K1',
+                'K2',
+                'K3',
+                'K4',
+                'K8',
+                'K9',
+                'K16',
+                'K17',
+                'K20',
+                'K40',
+                'K41',
+                'K42',
+                'K43',
+                'K44',
+            ],
             campaigns: ['K11'],
-            talent: ['K5', 'K6', 'K7'],
+            talent: ['K5', 'K6', 'K7', 'K19', 'K21'],
             development: ['K12', 'K13', 'K15', 'K28', 'K30'],
             mobility: ['K14'],
         });

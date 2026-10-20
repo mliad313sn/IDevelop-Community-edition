@@ -3,7 +3,7 @@
 /**
  * KpiGlossaryController — « How is it calculated? » (/kpi/glossary): one page
  * holding the definition of every indicator of the KPI module
- * (src/services/KpiService.js CONTRACTS), each with an anchor (#K1 … #K16) so a
+ * (src/services/KpiService.js CONTRACTS), each with an anchor (#K1, #K17…) so a
  * report footer can link to it.
  *
  * The page holds definitions only, never a figure. It is module-aware: an

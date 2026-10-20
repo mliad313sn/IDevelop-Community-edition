@@ -664,6 +664,21 @@ class LifecycleService {
              WHERE e.id = ?`,
             [employeeId]
         );
+        // K19 (capability lost to departures): what the leaver takes away, read
+        // AT THE EVENT and before the switch-off below
+        // (ExecutiveKpiService.captureLeaverCapability), then written into the
+        // event's payload. A real departure only. In a savepoint, so a failed
+        // read never aborts the departure: the event then stays « not measured ».
+        let capability = null;
+        if (isDeparture) {
+            try {
+                capability = await db.runInSavepoint(() =>
+                    require('./ExecutiveKpiService').captureLeaverCapability(employeeId)
+                );
+            } catch (_) {
+                capability = null;
+            }
+        }
         await db.run(
             `UPDATE employees SET is_active = false, is_account_active = false WHERE id = ?`,
             [employeeId]
@@ -841,7 +856,7 @@ class LifecycleService {
                     payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object(
                         'revokedAdminIds', ?::jsonb, 'revokedApiKeyIds', ?::jsonb,
                         'leaverClosed', ?::jsonb, 'reportsToReassign', ?::jsonb,
-                        'leftovers', ?::jsonb)
+                        'leftovers', ?::jsonb, 'capability', ?::jsonb)
              WHERE employee_id = ? AND kind = 'leaver' AND processed_at IS NULL AND ${ACTIONABLE}`,
             [
                 JSON.stringify(revokedAdminIds),
@@ -849,6 +864,7 @@ class LifecycleService {
                 JSON.stringify(leaverClosed),
                 JSON.stringify(orphanedReports.map((r) => r.id)),
                 JSON.stringify(leftovers),
+                JSON.stringify(capability),
                 employeeId,
             ]
         );

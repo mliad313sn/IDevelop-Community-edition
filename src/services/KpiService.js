@@ -2,7 +2,8 @@
 
 /**
  * KpiService: the KPI module. ONE function per indicator (K1 to K16, K28,
- * K30, and K40 to K44 from HseOpsService; there is no K10). Reports, the report builder, the API, the Power BI feed and the
+ * K30, K17 / K19 / K20 / K21 from ExecutiveKpiService, and K40 to K44 from
+ * HseOpsService; there is no K10). Reports, the report builder, the API, the Power BI feed and the
  * daily snapshots call these functions; nothing else computes an indicator.
  *
  * ---------------------------------------------------------------------------
@@ -192,6 +193,41 @@ const CONTRACTS = Object.freeze({
         freshness: 'live',
         unit: 'count',
         list: null,
+    }),
+    // Executive indicators of the board pack (4.0.0 port, wave 9): born on
+    // kpi-2, computed by ExecutiveKpiService. K19 is read from what was
+    // CAPTURED at each leaver event, never reconstructed.
+    K17: Object.freeze({
+        id: 'K17',
+        module: null,
+        owner: 'hr_local',
+        freshness: 'live',
+        unit: 'days',
+        list: null,
+    }),
+    K19: Object.freeze({
+        id: 'K19',
+        module: 'talent',
+        owner: 'hr_director',
+        freshness: 'captured',
+        unit: 'count',
+        list: null,
+    }),
+    K20: Object.freeze({
+        id: 'K20',
+        module: null,
+        owner: 'hse',
+        freshness: 'live',
+        unit: 'count',
+        list: 'safety_gate',
+    }),
+    K21: Object.freeze({
+        id: 'K21',
+        module: 'talent',
+        owner: 'hr_director',
+        freshness: 'live',
+        unit: 'count',
+        list: 'continuity',
     }),
     // The development loop (4.0.0 port, wave 4): born on kpi-2.
     K28: Object.freeze({
@@ -2936,6 +2972,11 @@ const KPI_FUNCTIONS = Object.freeze({
     K14: k14TimeToCompetence,
     K15: k15LevelUps,
     K16: k16ActivePlans,
+    // executive indicators of the board pack (ExecutiveKpiService)
+    K17: (scope) => require('./ExecutiveKpiService').k17ValidationLeadTime(scope),
+    K19: (scope) => require('./ExecutiveKpiService').k19CapabilityLost(scope),
+    K20: (scope) => require('./ExecutiveKpiService').k20LegalSafetyExposure(scope),
+    K21: (scope) => require('./ExecutiveKpiService').k21KeyRolesExposed(scope),
     K28: k28LmsEffect,
     K30: k30PlanOutcomes,
     // health and safety operations (HseOpsService)
@@ -3115,6 +3156,8 @@ module.exports = {
     // shared building blocks
     pctResult,
     resolvePopulation,
+    readinessFacts,
+    benchFacts,
     dbToday,
     requiredCertRows,
     classifyReadiness,

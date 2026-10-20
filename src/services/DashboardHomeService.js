@@ -34,6 +34,7 @@ const P = require('../utils/kpiPredicates');
 const Scope = require('./DashboardScopeService');
 
 const K = () => require('./KpiService');
+const Exec = () => require('./ExecutiveKpiService');
 const SMALL_N = P.SMALL_N;
 const isNum = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
 const round1 = (v) => Math.round(v * 10) / 10;
@@ -601,6 +602,60 @@ function tileOf(ctx, kpi, ind, mv, t, { keepEmpty = false } = {}) {
             severity: has(SEVERITY, c.status) ? SEVERITY[c.status] : 3,
             sub: tr('dash:d3_k11_sub', { invited: b.invited || 0, validated: b.validated || 0 }),
             ...link('not_validated', (b.invited || 0) - (b.validated || 0)),
+        };
+    }
+    if (kpi === 'K17') {
+        const b = r.backlog || {};
+        return {
+            ...base,
+            value: r.value,
+            unit: 'num',
+            decimals: 1,
+            polarity: 'lower_better',
+            status: chipOf(r.status),
+            severity: sev,
+            sub: isNum(r.p90)
+                ? tr('dash:d3_k17_sub_p90', { n: r.n || 0, p90: r.p90 })
+                : tr('dash:d3_k17_sub', { n: r.n || 0, count: r.n || 0 }),
+            extra: [
+                { key: 'waiting', label: tr('dash:d3_k17_waiting'), value: b.total || 0 },
+                { key: 'late', label: tr('dash:d3_k17_late'), value: r.late || 0 },
+            ],
+        };
+    }
+    if (kpi === 'K20') {
+        const b = r.breakdown || {};
+        return {
+            ...base,
+            value: r.value,
+            unit: 'count',
+            polarity: 'lower_better',
+            status: chipOf(r.status),
+            severity: sev,
+            sub: tr('dash:d3_k20_sub', { n: b.covered || 0, count: b.covered || 0 }),
+            extra: [
+                { key: 'known_fail', label: tr('dash:d3_k20_known_fail'), value: b.knownFail },
+                { key: 'not_shown', label: tr('dash:d3_k20_not_shown'), value: b.notShown },
+            ],
+        };
+    }
+    if (kpi === 'K21') {
+        const b = r.breakdown || {};
+        return {
+            ...base,
+            value: r.value,
+            unit: 'count',
+            polarity: 'lower_better',
+            status: chipOf(r.status),
+            severity: sev,
+            sub: tr('dash:d3_k21_sub', { n: b.uncovered || 0, count: b.uncovered || 0 }),
+            extra: [
+                {
+                    key: 'not_assessed',
+                    label: tr('dash:d3_k21_not_assessed'),
+                    value: b.notAssessed,
+                },
+            ],
         };
     }
     if (kpi === 'K16') {
@@ -1723,6 +1778,10 @@ async function tabModel(ctx, tabId, { query = {}, t } = {}) {
             K9: await Kpi.compute('K9', s),
         };
         m.tiles = ['K9', 'K8', 'K4'];
+        if (want('legalExposure')) {
+            m.k.K20 = await Kpi.compute('K20', s);
+            m.tiles.push('K20');
+        }
         if (want('certCalendar')) m.calendar = await Kpi.computeBlock('certExpiryCalendar', s);
         if (want('coverageHeat')) m.coverage = await Kpi.computeBlock('criticalSkillCoverage', s);
         // K40 to K44 on the same resolved population (counts only, never a name)
@@ -1740,6 +1799,10 @@ async function tabModel(ctx, tabId, { query = {}, t } = {}) {
             K7: await Kpi.compute('K7', s),
         };
         m.tiles = ['K5', 'K6', 'K7'];
+        if (want('keyRolesExposed') && Exec().canSeeFlightRisk(ctx.user)) {
+            m.k.K21 = await Kpi.compute('K21', s);
+            m.tiles.push('K21');
+        }
     }
 
     if (tabId === 'development') {
@@ -1771,6 +1834,10 @@ async function tabModel(ctx, tabId, { query = {}, t } = {}) {
             m.campaign = currentCampaign(m.k.K11);
         }
         if (want('validations')) m.validations = await pendingValidations(ctx.pop.ids);
+        if (want('leadTime')) {
+            m.k.K17 = await Kpi.compute('K17', s);
+            m.tiles.push('K17');
+        }
     }
     if (m.tiles && m.k)
         m.tileModels = m.tiles

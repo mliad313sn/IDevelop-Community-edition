@@ -55,6 +55,8 @@ const TARGETABLE = Object.freeze({
     K9: Object.freeze({ polarity: 'higher', unit: 'pct' }),
     K11: Object.freeze({ polarity: 'higher', unit: 'pct' }),
     K16: Object.freeze({ polarity: 'lower', unit: 'count' }),
+    // the median validation lead time, in days with one decimal: lower is better
+    K17: Object.freeze({ polarity: 'lower', unit: 'days' }),
 });
 
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -244,6 +246,11 @@ function parseValue(kpiId, raw) {
     if (!Number.isFinite(n) || n < 0) throw new TargetError('invalid_value');
     if (TARGETABLE[kpiId].unit === 'pct') {
         if (n > 100) throw new TargetError('invalid_value');
+        return Math.round(n * 10) / 10;
+    }
+    // days (K17): one decimal, as the median is printed; at most ten years
+    if (TARGETABLE[kpiId].unit === 'days') {
+        if (n > 3650) throw new TargetError('invalid_value');
         return Math.round(n * 10) / 10;
     }
     if (!Number.isInteger(n)) throw new TargetError('invalid_value');

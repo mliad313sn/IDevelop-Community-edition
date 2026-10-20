@@ -37,6 +37,7 @@ function wantsJson(req) {
 /** A target value in the reader's language; null when there is none. */
 function fmtValue(value, unit, lang) {
     if (value === null || value === undefined) return null;
+    if (unit === 'days') return fmtNum(value, 1, lang);
     return unit === 'count' ? fmtNum(value, 0, lang) : fmtPct(value, 1, lang);
 }
 

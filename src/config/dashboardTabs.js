@@ -84,10 +84,21 @@ const BLOCKS = Object.freeze([
     // health and safety operations: waivers, blocks, expiry pipeline, coverage
     // rules, certificate record quality (K40 to K44, HseOpsService)
     { id: 'hseOps', tab: 'safety', module: null, permission: 'safety', kpi: 'K40' },
+    // people exposed on a legally mandatory safety requirement (K20)
+    { id: 'legalExposure', tab: 'safety', module: null, permission: 'safety', kpi: 'K20' },
     // talent
     { id: 'nineBox', tab: 'talent', module: null, permission: 'talent' },
     // succession (talent module)
     { id: 'successionTiles', tab: 'succession', module: 'talent', permission: 'continuity' },
+    // key roles without a ready successor whose holder may leave (K21); also
+    // needs the retention-risk clearance (ExecutiveKpiService.canSeeFlightRisk)
+    {
+        id: 'keyRolesExposed',
+        tab: 'succession',
+        module: 'talent',
+        permission: 'continuity',
+        kpi: 'K21',
+    },
     // development
     { id: 'plans', tab: 'development', module: null, permission: 'plans', kpi: 'K16' },
     { id: 'devTiles', tab: 'development', module: 'development', permission: 'assess' },
@@ -103,6 +114,8 @@ const BLOCKS = Object.freeze([
     // assessments
     { id: 'campaign', tab: 'assessments', module: 'campaigns', permission: 'campaign', kpi: 'K11' },
     { id: 'validations', tab: 'assessments', module: null, permission: 'validate' },
+    // how long a submitted self-assessment waits for its decision (K17)
+    { id: 'leadTime', tab: 'assessments', module: null, permission: null, kpi: 'K17' },
     { id: 'freshness', tab: 'assessments', module: null, permission: null, kpi: 'K3' },
 ]);
 
