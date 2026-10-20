@@ -48,8 +48,8 @@ function licenceTexts(dir) {
         .sort()
         .map((n) => {
             try {
+                // One read, no stat first: a directory throws and is skipped.
                 const full = path.join(dir, n);
-                if (!fs.statSync(full).isFile()) return null;
                 return {
                     file: n,
                     text: fs.readFileSync(full, 'utf8').replace(/\r\n/g, '\n').trim(),

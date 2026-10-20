@@ -190,6 +190,7 @@ describe('navigation feedback while the next page renders', () => {
             const attrs = { href, ...(extra.attrs || {}) };
             return {
                 target: extra.target || '',
+                protocol: u.protocol,
                 origin: u.origin,
                 pathname: u.pathname,
                 search: u.search,
@@ -232,6 +233,7 @@ describe('navigation feedback while the next page renders', () => {
         ['a new tab', (w) => w.click(w.link('/team', { target: '_blank' }))],
         ['a download', (w) => w.click(w.link('/export.csv', { attrs: { download: '' } }))],
         ['a mail link', (w) => w.click(w.link('mailto:someone@example.org'))],
+        ['a data: link', (w) => w.click(w.link('data:text/html,hello'))],
         ['a modified click', (w) => w.click(w.link('/team'), { ctrlKey: true })],
         ['a middle click', (w) => w.click(w.link('/team'), { button: 1 })],
         [

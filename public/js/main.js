@@ -914,14 +914,11 @@ document.addEventListener('click', function (e) {
         var main = document.getElementById('main-content');
         if (main) main.removeAttribute('aria-busy');
     }
-    function quiet(href) {
+    // Only same-origin web pages get the bar: an allow-list of schemes, so
+    // mailto:, tel:, javascript:, data: and the rest never start it.
+    function quiet(a, href) {
         if (!href || href.charAt(0) === '#') return true;
-        var scheme = href.slice(0, 11).toLowerCase();
-        return (
-            scheme.indexOf('mailto:') === 0 ||
-            scheme.indexOf('tel:') === 0 ||
-            scheme.indexOf('javascript:') === 0
-        );
+        return a.protocol !== 'http:' && a.protocol !== 'https:';
     }
     document.addEventListener('click', function (ev) {
         if (ev.defaultPrevented || ev.button !== 0) return;
@@ -929,7 +926,7 @@ document.addEventListener('click', function (e) {
         var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
         if (!a || a.target || a.hasAttribute('download') || a.hasAttribute('data-no-progress'))
             return;
-        if (quiet(a.getAttribute('href') || '')) return;
+        if (quiet(a, a.getAttribute('href') || '')) return;
         if (a.origin && a.origin !== window.location.origin) return;
         var here = window.location;
         if (a.pathname === here.pathname && a.search === here.search && a.hash) return;
