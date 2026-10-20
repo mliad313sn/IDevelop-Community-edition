@@ -234,6 +234,10 @@ app.use(express.urlencoded({ extended: true, limit: process.env.FORM_BODY_LIMIT 
 // JSON-only APIs answer 415 to a body that is not JSON (ASVS 13.1.5), before
 // any session, CSRF or route logic runs on an empty req.body.
 app.use(['/api/v1', '/scim/v2'], require('./src/middleware/jsonContentType').requireJsonBody);
+// Any successful write request drops the per-reader model cache of the
+// dashboard and the board pack (src/utils/readerCache.js). Mounted before every
+// router, so no write path can be missed.
+app.use(require('./src/utils/readerCache').bustOnWrite);
 // Static assets: in production cache for 7 days (cache-busted via ?v=assetVersion,
 // so a deploy serves fresh files immediately and within-session navigations skip
 // the per-asset revalidation round-trip). In dev, no cache so edits show live.

@@ -22,6 +22,31 @@
 const D = require('../services/DashboardHomeService');
 const T = require('../config/dashboardTabs');
 const NAV = require('../config/navigation');
+const RC = require('../utils/readerCache');
+
+/**
+ * The heavy models go through the per-reader cache (src/utils/readerCache.js):
+ * the entry belongs to this reader, this clearance, this scope, this language
+ * and these parameters, and any successful write drops it.
+ */
+function cached(name, ctx, res, extra, compute) {
+    const parts = {
+        ...RC.contextParts(ctx),
+        lang: (res && res.locals && res.locals.lang) || '',
+        ...(extra || {}),
+    };
+    return RC.memo(name, parts, compute);
+}
+
+/** The query of a request as plain strings (what a tab model may read). */
+function queryParts(q) {
+    const out = {};
+    for (const [k, v] of Object.entries(q || {})) {
+        if (typeof v === 'string') out[k] = v.slice(0, 200);
+        else if (Array.isArray(v)) out[k] = v.map((x) => String(x).slice(0, 200)).slice(0, 50);
+    }
+    return out;
+}
 
 /** Tabs whose inline content draws a canvas (Chart.js is loaded only for them). */
 const CHART_TABS = Object.freeze(['overview', 'readiness']);
@@ -67,12 +92,19 @@ const DashboardHomeController = {
             const t = tr(req);
             const fmt = res.locals.numFmt;
             const printAll = q.print === 'all';
-            const screen = await D.firstScreen(ctx, { t, fmt, dateFmt: res.locals.fmtDate });
+            const screen = await cached('firstScreen', ctx, res, null, () =>
+                D.firstScreen(ctx, { t, fmt, dateFmt: res.locals.fmtDate })
+            );
             const active = D.resolveTab(q.tab, ctx.tabs);
             const panels = [];
             if (active) {
                 const ids = printAll ? ctx.tabs.map((x) => x.id) : [active];
-                for (const id of ids) panels.push(await D.tabModel(ctx, id, { query: q, t }));
+                for (const id of ids)
+                    panels.push(
+                        await cached('tab', ctx, res, { tab: id, query: queryParts(q) }, () =>
+                            D.tabModel(ctx, id, { query: q, t })
+                        )
+                    );
             }
             let smtpRelay = null;
             if (req.user && req.user.userType === 'admin') {
@@ -94,7 +126,7 @@ const DashboardHomeController = {
                 needsChart: needsChart(active, printAll),
                 keep: tabQuery(q),
                 smtpRelay,
-                asOf: new Date(),
+                asOf: RC.computedAt(screen) || new Date(),
                 navLinks: {
                     boardPack: D.navHref(ctx, 'board_pack'),
                     glossary: D.navHref(ctx, 'kpi_glossary'),
@@ -125,7 +157,9 @@ const DashboardHomeController = {
                 (active !== want && !Object.prototype.hasOwnProperty.call(T.LEGACY_TABS, want))
             )
                 return res.status(404).type('text/plain').send('');
-            const model = await D.tabModel(ctx, active, { query: q, t: tr(req) });
+            const model = await cached('tab', ctx, res, { tab: active, query: queryParts(q) }, () =>
+                D.tabModel(ctx, active, { query: q, t: tr(req) })
+            );
             res.set('Cache-Control', 'no-store');
             res.render('pages/dashboard/_panel', {
                 layout: false,
@@ -194,13 +228,15 @@ const DashboardHomeController = {
                 navVisible: navVisible(res),
             });
             const t = tr(req);
-            const home = await D.teamHome(ctx, { t, fmt: res.locals.numFmt });
+            const home = await cached('teamHome', ctx, res, null, () =>
+                D.teamHome(ctx, { t, fmt: res.locals.numFmt })
+            );
             res.render('pages/dashboard/team', {
                 title: t('dash:d3_title'),
                 ctx,
                 home,
                 scopeLabel: D.scopeLabel(ctx, t),
-                asOf: new Date(),
+                asOf: RC.computedAt(home) || new Date(),
             });
         } catch (err) {
             next(err);
@@ -232,19 +268,27 @@ const DashboardHomeController = {
                 navVisible: navVisible(res),
             });
             const t = tr(req);
-            const screen = await D.firstScreen(ctx, {
-                t,
-                fmt: res.locals.numFmt,
-                dateFmt: res.locals.fmtDate,
-            });
+            const screen = await cached('firstScreen', ctx, res, null, () =>
+                D.firstScreen(ctx, {
+                    t,
+                    fmt: res.locals.numFmt,
+                    dateFmt: res.locals.fmtDate,
+                })
+            );
             const overview = ctx.tabs.some((x) => x.id === 'overview')
-                ? await D.tabModel(ctx, 'overview', { query: {}, t })
+                ? await cached('tab', ctx, res, { tab: 'overview', query: {} }, () =>
+                      D.tabModel(ctx, 'overview', { query: {}, t })
+                  )
                 : null;
             // targets and gaps, since the last pack, decisions, K17 / K19 /
             // K20, site deltas, the Development section (BoardPackService)
             const B = require('../services/BoardPackService');
             const board =
-                ctx.caps.pop && !ctx.scopeRefused ? await B.packModel(ctx, screen, { t }) : null;
+                ctx.caps.pop && !ctx.scopeRefused
+                    ? await cached('boardPack', ctx, res, null, () =>
+                          B.packModel(ctx, screen, { t })
+                      )
+                    : null;
             res.status(ctx.scopeRefused ? 400 : 200).render('pages/exec/board-pack', {
                 title: t('exec:bp_title'),
                 ctx,
@@ -253,7 +297,8 @@ const DashboardHomeController = {
                 board,
                 hidden: require('./BoardDecisionController').hiddenFields(ctx.scope),
                 scopeLabel: D.scopeLabel(ctx, t),
-                generatedAt: new Date(),
+                // the time the figures were computed (a cached pack says so)
+                generatedAt: RC.computedAt(screen) || new Date(),
                 currentPath: '/exec/board-pack',
             });
         } catch (err) {
