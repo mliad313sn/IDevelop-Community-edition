@@ -14,7 +14,7 @@
   var _tone = { compliant: 'ok', watch: 'warn', at_risk: 'risk', not_measured: 'unmeasured', not_configured: 'neutral', small_n: 'unmeasured' };
   var _day = function (d) { return typeof fmtPeriodBound === 'function' ? fmtPeriodBound(d) : fmtDate(d); };
   var _month = function (m) { return typeof monthLabel === 'function' ? monthLabel(m) : m; };
-  var _badge = function (s) { return s ? include('../../partials/status-badge', { tone: _tone[s] || 'neutral', label: _st(s), text: true }) : ''; };
+  var _badge = function (s) { return { tone: _tone[s] || 'neutral', label: _st(s) || '', text: true }; };
   var K40 = O.K40 || {}, K41 = O.K41 || {}, K42 = O.K42 || {}, K43 = O.K43 || {}, K44 = O.K44 || {};
   var B40 = K40.breakdown || {}, B41 = K41.breakdown || {}, B42 = K42.breakdown || {}, B43 = K43.breakdown || {}, B44 = K44.breakdown || {};
   var rc = O.recompute || null;
@@ -28,7 +28,7 @@
     <% } else if (K40.status === 'not_configured') { %>
         <p class="ds-note"><%= __('safety:ops_k40_nc') %></p>
     <% } else { %>
-        <p class="ds-note" data-k40-running="<%= K40.value %>"><%= K40.value ? __('safety:ops_k40_running', { n: _n(K40.value) }) : __('safety:ops_k40_none') %> <%- _badge(K40.status) %></p>
+        <p class="ds-note" data-k40-running="<%= K40.value %>"><%= K40.value ? __('safety:ops_k40_running', { n: _n(K40.value) }) : __('safety:ops_k40_none') %> <% if (K40.status) { %><%- include('../../partials/status-badge', _badge(K40.status)) %><% } %></p>
         <dl class="ds-kv">
             <% if (K40.value) { %>
             <dt><%= __('safety:ops_k40_renewed') %></dt><dd><%= _n(B40.renewed) %></dd>
@@ -50,7 +50,7 @@
     <% } else if (K43.status === 'not_configured') { %>
         <p class="ds-note"><%= __('safety:ops_k43_nc') %></p>
     <% } else { %>
-        <p class="ds-note" data-k43-breached="<%= B43.breached %>"><%= __('safety:ops_k43_now', { n: _n(B43.breached), m: _n(B43.active) }) %> <%- _badge(K43.status) %></p>
+        <p class="ds-note" data-k43-breached="<%= B43.breached %>"><%= __('safety:ops_k43_now', { n: _n(B43.breached), m: _n(B43.active) }) %> <% if (K43.status) { %><%- include('../../partials/status-badge', _badge(K43.status)) %><% } %></p>
         <% if (B43.breached) { %><p class="ds-sub"><%= __('safety:ops_k43_split', { critical: _n(B43.breachedCritical), warning: _n(B43.breachedWarning) }) %></p><% } %>
         <p class="ds-sub"><%= __('safety:ops_k43_projection') %></p>
         <dl class="ds-kv" data-k43-projected>
@@ -155,7 +155,7 @@
     <% } else if (!B44.recorded) { %>
         <p class="ds-note"><%= __('safety:ops_k44_none_recorded') %></p>
     <% } else { %>
-        <p class="ds-note" data-k44-complete="<%= B44.complete %>"><strong><%= __('safety:ops_k44_head', { req: _n(B44.recorded + B44.missing), rec: _n(B44.recorded), comp: _n(B44.complete) }) %></strong> <%- _badge(K44.status) %></p>
+        <p class="ds-note" data-k44-complete="<%= B44.complete %>"><strong><%= __('safety:ops_k44_head', { req: _n(B44.recorded + B44.missing), rec: _n(B44.recorded), comp: _n(B44.complete) }) %></strong> <% if (K44.status) { %><%- include('../../partials/status-badge', _badge(K44.status)) %><% } %></p>
         <p class="ds-note"><%= K44.value == null ? __('safety:ops_k44_counts', { n: _n(B44.complete), m: _n(B44.recorded) }) : __('safety:ops_k44_pct', { pct: _F.pct(K44.value, 1) }) %></p>
         <div class="ds-table-wrap"><table class="ds-table" data-k44-rates>
             <caption class="sr-only-ds"><%= __('safety:ops_k44_title') %></caption>
