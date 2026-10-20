@@ -308,7 +308,7 @@ const REDACTED_ON_ERASURE = [
         key: 'pipReviews',
         table: 'pip_reviews',
         erased: ['manager_note', 'employee_response'],
-        kept: ['id', 'pip_id', 'held_on', 'author_ref', 'employee_response_at'],
+        kept: ['id', 'pip_id', 'held_on', 'employee_response_at'],
     },
     {
         key: 'goals',

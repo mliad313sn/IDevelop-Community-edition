@@ -122,7 +122,8 @@ describe('A-04 — l’asymétrie INVERSE, tranchée : le texte libre écrit sur
             /UPDATE supervisor_reviews SET supervisor_notes = NULL, gap_reason = NULL WHERE employee_id = \?/
         );
         expect(e).toMatch(
-            /UPDATE assessment_disputes SET reason = '\[erased\]' WHERE employee_id = \?/
+            // + the level-0 proposer's note (migration 194)
+            /UPDATE assessment_disputes SET reason = '\[erased\]', proposal_note = NULL WHERE employee_id = \?/
         );
         expect(flat(e)).toMatch(/UPDATE assessment_change_requests SET reason = '\[erased\]'/);
     });
