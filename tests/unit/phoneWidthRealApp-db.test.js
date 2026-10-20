@@ -69,6 +69,9 @@ const ADMIN_PAGES = [
     '/admin/access-review',
     '/admin/license',
     '/setup',
+    // 4.0.0 port (wave 10)
+    '/admin/data-quality',
+    '/admin/usage',
     '/guide',
     '/about',
 ];
