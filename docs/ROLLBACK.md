@@ -131,6 +131,43 @@ not apply. Then either fix the cause and run the **new** package again (its
 pre-flight shows what is still pending), or go back fully with the steps above:
 the pre-migration dump is from before the first file of the run.
 
+## Migrations 190 to 198 (the 4.0.0 port)
+
+The release that carries the 4.0.0 port adds nine migrations. All of them are
+additive: they create tables, add nullable columns, CHECK constraints and
+indexes, and add settings with `ON CONFLICT DO NOTHING`. None drops or rewrites
+a column, and each ends with the SQL console reader sync. Going back from this
+release is therefore the procedure above, unchanged: restore the pre-migration
+dump and remove the files listed here in step 6.
+
+| File                               | What it adds                                                                                                                                                                                                                  | Append-only                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `190_nine_box_four_eyes.sql`       | settings `nineBoxFourEyes` (on for a new install, **off on an upgrade**, with an in-app notice to every active SuperAdmin) and `authority.ladder` (`strict`)                                                                  | —                                                            |
+| `191_idp_action_progress.sql`      | on `idp_actions`: who reported an action done and who validated it, their notes, actual hours, due date and place; on `action_effectiveness`: the evidence source and `official`; a target role on plans and objectives       | —                                                            |
+| `192_dev_proposals.sql`            | table `dev_proposals` (an action the person proposes and the line decides)                                                                                                                                                    | —                                                            |
+| `193_review_records.sql`           | table `review_records` (the end-of-campaign record, ids, levels and dates only, plus the person's comment) and setting `newInRoleMonths` (6)                                                                                  | **yes**: no DELETE; only the comment and its date may change |
+| `194_dispute_l0_proposal.sql`      | on `assessment_disputes`: the level-0 proposal, the person's answer and the HR reminder date. **It changes one value**: `dispute.autoFinalizeOnExpiry` goes to off where nobody had set it (with a notice to the SuperAdmins) | —                                                            |
+| `195_pip_evidence_checkpoints.sql` | on `pips`: the real author, activation, acknowledgement, the person's comment and the HR visa; table `pip_reviews` (checkpoints); setting `pip.hrVisaRequired` (off)                                                          | —                                                            |
+| `196_certificate_issuer.sql`       | `employee_certifications.issuer` (nullable, never back-filled)                                                                                                                                                                | —                                                            |
+| `197_board_decisions.sql`          | tables `board_decisions` (the decision text never changes, only its follow-up state) and `board_decision_events` (its history)                                                                                                | **yes, both**: no DELETE on either; no UPDATE on the events  |
+| `198_board_pack_runs.sql`          | table `board_pack_runs` (a board pack recorded as presented)                                                                                                                                                                  | **yes**: no UPDATE, no DELETE                                |
+
+What a rollback past these migrations means for the users:
+
+- everything written in the new tables and columns since the upgrade is gone:
+  board decisions and recorded packs, proposals, checkpoints, end-of-campaign
+  acknowledgements and comments, reported and validated plan actions. Export
+  what must survive (the board decisions page prints) before step 1;
+- the two settings changed on upgrade come back to their earlier values with
+  the dump, and the notices disappear with it;
+- the append-only tables are restored like any other: their triggers refuse
+  row changes, not a restore into an empty database. Never try to remove their
+  rows by hand instead of restoring: the triggers refuse it, and the SQL
+  console and the database cleanup treat them as append-only on purpose.
+
+If you only need to undo one setting (for example four eyes on the 9-box, or
+auto-finalisation), change it in App Settings instead of rolling back.
+
 ## Recovering on a new server
 
 | What                        | Where it lives                                                             | How to get it back                                                                                                                                                                                                                         |
