@@ -38,14 +38,18 @@ function cached(name, ctx, res, extra, compute) {
     return RC.memo(name, parts, compute);
 }
 
-/** The query of a request as plain strings (what a tab model may read). */
+/**
+ * The query of a request as sorted [name, value] pairs of plain strings (what a
+ * tab model may read). An array, never an object keyed by request data.
+ */
 function queryParts(q) {
-    const out = {};
-    for (const [k, v] of Object.entries(q || {})) {
-        if (typeof v === 'string') out[k] = v.slice(0, 200);
-        else if (Array.isArray(v)) out[k] = v.map((x) => String(x).slice(0, 200)).slice(0, 50);
-    }
-    return out;
+    return Object.entries(q || {})
+        .filter(([, v]) => typeof v === 'string' || Array.isArray(v))
+        .map(([k, v]) => [
+            String(k).slice(0, 50),
+            Array.isArray(v) ? v.slice(0, 50).map((x) => String(x).slice(0, 200)) : v.slice(0, 200),
+        ])
+        .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 }
 
 /** Tabs whose inline content draws a canvas (Chart.js is loaded only for them). */
@@ -276,7 +280,7 @@ const DashboardHomeController = {
                 })
             );
             const overview = ctx.tabs.some((x) => x.id === 'overview')
-                ? await cached('tab', ctx, res, { tab: 'overview', query: {} }, () =>
+                ? await cached('tab', ctx, res, { tab: 'overview', query: [] }, () =>
                       D.tabModel(ctx, 'overview', { query: {}, t })
                   )
                 : null;
