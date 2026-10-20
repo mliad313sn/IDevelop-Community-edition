@@ -76,6 +76,9 @@ const WEBHOOK_DEFAULT = [
     'idp.proposal_decided',
     'lms.uplift_accepted',
     'lms.uplift_declined',
+    // The D-7 line message of a campaign (4.0.0 port, wave 7): a campaign id
+    // and a count, never a person.
+    'cycle.team_reminder',
     'cert.expiry',
     'certification.revoked',
     'coverage.breach',
@@ -301,6 +304,11 @@ const catalogue = {
             'dispute.proposal': 'A proposal on your dispute waits for your answer',
             'dispute.auto_finalize_off': 'Dispute auto-finalisation is now off',
             'dispute.escalated': 'A dispute was escalated',
+            // 4.0.0 port (wave 7): HR is reminded two days before a level-2
+            // deadline. Wave 6 sent it as dispute.escalated with `reminder: true`;
+            // those rows stay readable (KIND_SUBTITLE of dispute.escalated).
+            'dispute.hr_reminder': 'A dispute deadline is two days away',
+            'cycle.team_reminder': 'Some of your team have not started their self-assessment',
             'dispute.resolved': 'A dispute was resolved',
             'lifecycle.joiner': 'Welcome — your account is ready',
             'lifecycle.mover': 'Your role assignment has changed',
@@ -463,6 +471,16 @@ const catalogue = {
                 title: {
                     fr: 'Une action de suivi vous est assignée',
                     en: 'A follow-up task is assigned to you',
+                },
+            },
+            // 4.0.0 port (wave 7): seven days before the close, the line learns
+            // HOW MANY of its people have not started — a count, never a name.
+            'cycle.team_reminder': {
+                icon: 'fa-users',
+                link: '/dashboard',
+                title: {
+                    fr: 'Des membres de votre équipe n’ont pas commencé leur auto-évaluation',
+                    en: 'Some of your team have not started their self-assessment',
                 },
             },
             'cycle.reminder': {
@@ -691,6 +709,16 @@ const catalogue = {
                 icon: 'fa-scale-balanced',
                 link: '/dashboard',
                 title: { fr: 'Une contestation a été escaladée', en: 'A dispute was escalated' },
+            },
+            // 4.0.0 port (wave 7): to every HR arbiter, once per dispute, two
+            // days before a level-2 deadline (hr_reminded_at, migration 194).
+            'dispute.hr_reminder': {
+                icon: 'fa-scale-balanced',
+                link: '/v2/slf/disputes',
+                title: {
+                    fr: 'Contestations : une échéance de décision approche',
+                    en: 'Disputes: a decision deadline is near',
+                },
             },
             // 4.0.0 port (wave 6, migration 194): to the PERSON whose rating is
             // contested — the level-0 answer is a proposal they accept or refuse.
@@ -1420,6 +1448,7 @@ const catalogue = {
             'dispute.proposal': 'immediate',
             'dispute.auto_finalize_off': 'digest',
             'dispute.escalated': 'immediate',
+            'dispute.hr_reminder': 'immediate',
             'dispute.resolved': 'immediate',
             'pip.activated': 'immediate',
             'coverage.breach': 'immediate',
@@ -1429,6 +1458,8 @@ const catalogue = {
             'cert.expiry': 'immediate',
             'cycle.reminder': 'immediate',
             'cycle.escalation': 'immediate',
+            // The D-7 line message: in the app now, in the daily digest by e-mail.
+            'cycle.team_reminder': 'digest',
             // Informational / engagement → daily digest only (no standalone email)
             'sa.submitted': 'digest',
             'sa.review_reset': 'digest',
@@ -1625,7 +1656,47 @@ const catalogue = {
         };
         const inEn = (lang) => String(lang || 'fr').startsWith('en');
         const plural = (k, one, many) => (k > 1 ? many : one);
+        // A calendar day 'YYYY-MM-DD' printed JJ/MM/AAAA (the app's date format
+        // in both languages), or null; never a time, never a Date's own text.
+        const dayOf = (v) => {
+            const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ''));
+            return m ? `${m[3]}/${m[2]}/${m[1]}` : null;
+        };
+        const codeOf = (v) => {
+            const c = String(v || '').trim();
+            return c ? c.slice(0, 60) : null;
+        };
         return {
+            // 4.0.0 port (wave 7): the person's answer is due by a date — the day
+            // the proposal goes up to the line without an answer.
+            'dispute.proposal': (p, lang) => {
+                const d = dayOf(p && p.respondBy);
+                if (!d) return null;
+                return inEn(lang) ? `Answer by ${d}` : `Répondez avant le ${d}`;
+            },
+            'dispute.hr_reminder': (p, lang) => {
+                const k = n(p && p.count);
+                if (!k) return null;
+                return inEn(lang)
+                    ? `${k} ${plural(k, 'dispute', 'disputes')} due in two days`
+                    : `${k} ${plural(k, 'contestation', 'contestations')} à échéance dans deux jours`;
+            },
+            // Wave 6 sent the HR reminder as dispute.escalated with a flag: those
+            // rows still read as what they were.
+            'dispute.escalated': (p, lang) => {
+                if (!p || p.reminder !== true) return null;
+                return inEn(lang)
+                    ? 'Reminder: a level-2 deadline is two days away'
+                    : 'Rappel : une échéance de niveau 2 dans deux jours';
+            },
+            'cycle.team_reminder': (p, lang) => {
+                const k = n(p && p.count);
+                const code = codeOf(p && p.cycle);
+                if (!k || !code) return null;
+                return inEn(lang)
+                    ? `${k} not started — campaign ${code}`
+                    : `${k} ${plural(k, 'personne n’a', 'personnes n’ont')} pas commencé — campagne ${code}`;
+            },
             // The development loop (4.0.0 port): counts only, never a skill or a name.
             'idp.action_due': (p, lang) => {
                 const k = n(p && p.count);
@@ -1820,6 +1891,10 @@ const catalogue = {
                 fr: "Depuis cette version, une contestation de niveau 2 dont le délai expire n'est plus finalisée automatiquement avec la note du superviseur : la note reste provisoire jusqu'à la décision RH, et les arbitres RH sont relancés deux jours avant l'échéance. Votre installation n'avait jamais modifié ce réglage : il est passé à désactivé. Vous pouvez le réactiver dans les paramètres de l'application (« Contestation — finalisation automatique à l'échéance »).",
                 en: 'From this version on, a level-2 dispute whose delay runs out is no longer finalised automatically with the supervisor’s rating: the rating stays provisional until HR decides, and the HR arbiters are reminded two days before the deadline. Your install had never changed this setting, so it is now off. You can switch it back on in the App Settings ("Dispute — auto-finalise at the deadline").',
             },
+            'dispute.hr_reminder': {
+                fr: 'Des contestations de niveau 2 arrivent à échéance dans deux jours. Sans décision RH, la note contestée reste provisoire : ouvrez la liste des contestations pour les arbitrer.',
+                en: 'Some level-2 disputes reach their deadline in two days. Without an HR decision, the contested rating stays provisional: open the dispute list to decide them.',
+            },
             'dispute.escalated': {
                 fr: 'Une contestation a été escaladée au niveau supérieur : son délai de traitement court désormais pour vous.',
                 en: 'A rating dispute has been escalated to the next level — its response deadline now runs for you.',
@@ -1948,6 +2023,10 @@ const catalogue = {
             'cycle.reminder': {
                 fr: "Une campagne d'évaluation est en cours et attend votre contribution.",
                 en: 'An assessment cycle is under way and is waiting for your contribution.',
+            },
+            'cycle.team_reminder': {
+                fr: "Des personnes de votre équipe n'ont pas encore commencé leur auto-évaluation, à une semaine de la clôture. Elle sert de base à leur plan de développement : un mot de votre part aide souvent.",
+                en: 'Some people in your team have not started their self-assessment yet, one week before the close. It is the basis of their development plan: a word from you often helps.',
             },
             'cycle.escalation': {
                 fr: 'Des revues de votre périmètre restent à finaliser avant la clôture de la campagne.',
@@ -2306,6 +2385,14 @@ const catalogue = {
                 fr: 'Contestations : un réglage à revoir',
                 en: 'Disputes: a setting to review',
             },
+            'cycle.team_reminder': {
+                fr: 'Campagne d’évaluation : un point sur votre équipe',
+                en: 'Assessment campaign: a note on your team',
+            },
+            'dispute.hr_reminder': {
+                fr: 'Contestations : une échéance approche',
+                en: 'Disputes: a deadline is near',
+            },
             'line.acted_above': {
                 fr: 'Une décision concerne votre équipe',
                 en: 'A decision concerns your team',
@@ -2363,6 +2450,8 @@ const catalogue = {
                 'succession.review_due',
                 'ninebox.reassess_due',
                 'dispute.escalated',
+                'dispute.hr_reminder',
+                'cycle.team_reminder',
                 'idp.action_due',
                 'feedback360.reminder',
                 'survey.respond',

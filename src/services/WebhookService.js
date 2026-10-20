@@ -142,6 +142,9 @@ const EMITTABLE_EVENTS = new Set([
     'idp.proposal_decided',
     'lms.uplift_accepted',
     'lms.uplift_declined',
+    // The D-7 line message of a campaign (4.0.0 port, wave 7): the campaign
+    // id, its close date and a link (minimised below); the count stays inside.
+    'cycle.team_reminder',
     'cert.expiry',
     'certification.revoked',
     'coverage.breach',

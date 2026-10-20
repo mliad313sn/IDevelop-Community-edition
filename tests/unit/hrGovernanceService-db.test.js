@@ -95,6 +95,7 @@ d('HR governance services on the real schema (invented people, rolled back)', ()
             r.first = await D.proposeL0({ ...base, decidedRating: 2 });
             r.second = await D.proposeL0({ ...base, decidedRating: 3 });
             r.toldPerson = kinds();
+            r.proposalPayload = mockNotify.mock.calls.map(([x]) => x.payload)[0] || null;
             r.stranger = await codeOf(
                 D.respondToProposal({ disputeId: a.id, employeeId: other, accept: true })
             );
@@ -153,6 +154,10 @@ d('HR governance services on the real schema (invented people, rolled back)', ()
         expect(out.first).toEqual({ proposed: true });
         expect(out.second).toEqual({ proposed: false, alreadyProposed: true });
         expect(out.toldPerson).toEqual(['employee:dispute.proposal']);
+        // wave 7: the notice says by when to answer — a calendar day, nothing else
+        expect(Object.keys(out.proposalPayload).sort()).toEqual(['link', 'respondBy']);
+        expect(out.proposalPayload.respondBy).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(new Date(out.proposalPayload.respondBy).getTime()).toBeGreaterThan(Date.now());
         expect(out.stranger).toBe('DISPUTE_NOT_OWNER');
         expect(out.missing).toBe('DISPUTE_NOT_FOUND');
         expect(out.accept).toEqual({ resolved: true });
@@ -220,7 +225,8 @@ d('HR governance services on the real schema (invented people, rolled back)', ()
         expect(out.setting).toBe('false');
         expect(out.reminded).toBe(1);
         expect(out.told.length).toBeGreaterThan(0);
-        expect(out.told.every((k) => k === 'admin:dispute.escalated')).toBe(true);
+        // its own kind since wave 7 (wave 6 used dispute.escalated + a flag)
+        expect(out.told.every((k) => k === 'admin:dispute.hr_reminder')).toBe(true);
         expect(out.again).toBe(0);
         expect(out.finalised).toBe(0);
         expect(out.rows.map((r) => [r.level, r.state, r.reminded])).toEqual([

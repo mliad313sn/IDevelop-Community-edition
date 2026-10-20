@@ -365,3 +365,70 @@ describe('the development loop kinds (4.0.0 port, wave 4)', () => {
         });
     });
 });
+
+describe('the communications kinds (4.0.0 port, wave 7)', () => {
+    test('cycle.team_reminder: a count to the line, digest tier, leaves by webhook by default', () => {
+        expect(catalogue.describe('cycle.team_reminder')).toMatchObject({
+            category: 'evaluations',
+            module: null,
+            severity: 'echeance',
+            tier: 'digest',
+            mandatory: false,
+            webhook: 'default',
+        });
+        expect(catalogue.subtitleOf('cycle.team_reminder', { count: 3, cycle: 'C-7' }, 'en')).toBe(
+            '3 not started — campaign C-7'
+        );
+        expect(catalogue.subtitleOf('cycle.team_reminder', { count: 1, cycle: 'C-7' }, 'fr')).toBe(
+            '1 personne n’a pas commencé — campagne C-7'
+        );
+        // no count or no campaign: no complement, never « 0 »
+        expect(catalogue.subtitleOf('cycle.team_reminder', { cycle: 'C-7' }, 'fr')).toBeNull();
+        expect(
+            catalogue.subtitleOf('cycle.team_reminder', { count: 2, name: 'Jo' }, 'en')
+        ).toBeNull();
+    });
+
+    test('dispute.hr_reminder: its own kind, immediate, never by webhook', () => {
+        expect(catalogue.describe('dispute.hr_reminder')).toMatchObject({
+            category: 'evaluations',
+            severity: 'echeance',
+            tier: 'immediate',
+            webhook: 'never',
+        });
+        expect(catalogue.subtitleOf('dispute.hr_reminder', { count: 2 }, 'en')).toBe(
+            '2 disputes due in two days'
+        );
+        for (const lang of ['fr', 'en'])
+            expect(typeof catalogue.KIND_MESSAGES['dispute.hr_reminder'][lang]).toBe('string');
+    });
+
+    test('a wave-6 reminder row (dispute.escalated + reminder) still reads as a reminder', () => {
+        expect(catalogue.subtitleOf('dispute.escalated', { count: 1, reminder: true }, 'en')).toBe(
+            'Reminder: a level-2 deadline is two days away'
+        );
+        expect(catalogue.subtitleOf('dispute.escalated', { count: 1 }, 'en')).toBeNull();
+        // a reminder flag that is not exactly true changes nothing
+        expect(catalogue.subtitleOf('dispute.escalated', { reminder: 'yes' }, 'fr')).toBeNull();
+    });
+
+    test('dispute.proposal carries its answer date in the body, never in the subject', () => {
+        expect(catalogue.subtitleOf('dispute.proposal', { respondBy: '2026-11-04' }, 'fr')).toBe(
+            'Répondez avant le 04/11/2026'
+        );
+        expect(catalogue.subtitleOf('dispute.proposal', { respondBy: '2026-11-04' }, 'en')).toBe(
+            'Answer by 04/11/2026'
+        );
+        expect(catalogue.subtitleOf('dispute.proposal', { respondBy: 'soon' }, 'en')).toBeNull();
+        expect(catalogue.subtitleOf('dispute.proposal', {}, 'en')).toBeNull();
+        for (const lang of ['fr', 'en'])
+            expect(catalogue.subjectOf('dispute.proposal', lang)).not.toMatch(/\d/);
+        // disputes never leave by webhook (wave 7 decision: a contest is HR data)
+        expect(catalogue.webhookOf('dispute.proposal')).toBe('never');
+    });
+
+    test('pip.created is no longer sent but stays declared for the rows already stored', () => {
+        expect(catalogue.isDeclared('pip.created')).toBe(true);
+        expect(catalogue.webhookOf('pip.created')).toBe('never');
+    });
+});
