@@ -935,6 +935,7 @@ class NotificationService {
             'cycle.opened': { type: 'cycle', key: 'cycleId' },
             'cycle.reminder': { type: 'cycle', key: 'cycleId' },
             'cycle.escalation': { type: 'cycle', key: 'cycleId' },
+            'cycle.team_reminder': { type: 'cycle', key: 'cycleId' },
             'cycle.closed': { type: 'cycle', key: 'cycleId' },
             'cert.expiry': { type: 'skill', key: 'skillId' },
             'cert.expiry.team': { type: 'skill', key: 'skillId' },
@@ -1519,7 +1520,7 @@ class NotificationService {
                 sql: `WITH r AS (
                         SELECT rl.target_id AS emp, rl.ref_id AS cyc, rl.sent_at AS at
                           FROM reminder_log rl
-                         WHERE rl.kind = 'cycle.not_started' AND rl.target_type = 'employee'
+                         WHERE rl.kind = ? AND rl.target_type = 'employee'
                            AND rl.sent_at >= now() - (? || ' days')::interval
                         UNION ALL
                         SELECT nl.target_id, nl.cycle_id, nl.sent_at
@@ -1538,7 +1539,8 @@ class NotificationService {
                                     AND sa.self_rated_level IS NOT NULL
                                     AND sa.created_at > r.at AND sa.created_at <= r.at + interval '7 days'))::int AS acted
                         FROM r ${live('r.emp')}`,
-                params: [String(d), String(d)],
+                // the D+3 ledger key of cycle-nudge (bound: the enum guard reads literals)
+                params: ['cycle.not_started', String(d), String(d)],
             },
             {
                 key: 'learning',
