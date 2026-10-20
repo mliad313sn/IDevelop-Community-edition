@@ -2,8 +2,10 @@
   The manager's « Dashboard » (/supervisor/dashboard): their team in counts —
   the scope bar « My team », « In brief », the tiles (role readiness,
   self-assessments to validate, certificates, plans), the people per
-  readiness state and per next step, the most frequent gaps. No name: the
-  named roster is « My team » (/supervisor/team).
+  readiness state and per next step, the most frequent gaps; then what waits
+  on the manager, what expires in the team and who is ready to move on
+  (_manager-watch, ManagerHomeService). No name: the named roster is « My
+  team » (/supervisor/team). On a phone « Waiting on me » comes first.
   Locals: ctx, home (DashboardHomeService.teamHome), scopeLabel, asOf.
 -%><%
   var _F = numFmt;
@@ -52,6 +54,8 @@
                 <% (H.tiles || []).forEach(function (k) { %><%- include('../../partials/kpi-tile', { vizKpi: k }) %><% }); %>
             </div>
         </section>
+
+        <% if (H.watch && !H.watch.empty) { %><%- include('_manager-watch', { W: H.watch, _F: _F }) %><% } %>
 
         <div class="ds-pair">
             <section class="ds-card" id="ds-team" aria-labelledby="ds-team-h">

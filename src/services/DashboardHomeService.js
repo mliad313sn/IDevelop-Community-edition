@@ -2068,8 +2068,9 @@ async function drillList(ctx, kpi, part) {
  * The manager's home (/supervisor/dashboard): the people the manager governs
  * (RBACService.scopeFilter, the same population as everywhere), as counts:
  * tiles (K1, validations, K8, K16), people per readiness state and per next
- * step, the most frequent gaps. No name: the named roster is « My team »
- * (/supervisor/team).
+ * step, the most frequent gaps, and — for a manager — what waits on them,
+ * what expires in the team and who is ready to move on (ManagerHomeService).
+ * No name: the named roster is « My team » (/supervisor/team).
  */
 async function teamHome(ctx, { t, fmt } = {}) {
     const Kpi = K();
@@ -2085,14 +2086,22 @@ async function teamHome(ctx, { t, fmt } = {}) {
         .filter((k) => has(ind, k))
         .map((k) => tileOf(ctx, k, ind, mv, t))
         .filter(Boolean);
-    const { people } = await Kpi.readinessBundle(s);
+    const bundle = await Kpi.readinessBundle(s);
+    // The manager's own page adds « Waiting on me », « Expiring in my team »
+    // and « Ready to move on » (ManagerHomeService: counts and ages only).
+    const watch = ctx.caps.manager
+        ? await require('./ManagerHomeService')
+              .forManager(ctx, { k8: ind.K8, bundle })
+              .catch(() => null)
+        : null;
     return {
         empty: false,
         tiles,
         brief: briefLines(ind, mv, fmt, t),
-        summary: teamSummary(people, ind.VAL.waiting),
+        summary: teamSummary(bundle.people, ind.VAL.waiting),
         gaps: await frequentGaps(ctx.pop.ids, 5),
         coverage: (await Kpi.compute('K3', s)).value,
+        watch,
     };
 }
 
