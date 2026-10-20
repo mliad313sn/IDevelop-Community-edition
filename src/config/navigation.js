@@ -30,8 +30,27 @@ const workspaceComponents = require('./workspaceComponents');
 const STORAGE_KEY = 'sidebarNav.v3';
 /** Older keys, wiped on first run and on sign-out (shared computers). */
 const LEGACY_STORAGE_KEYS = ['sidebarNav.v2', 'sidebarNav'];
-/** Sections folded unless they hold the current page or the person opened them. */
-const CLOSED_BY_DEFAULT = ['section_my_space', 'section_reference', 'section_system'];
+/**
+ * Every group of the rail opens folded: the group holding the current page is
+ * always open (sidebar.ejs), and a group the person opened or closed keeps that
+ * choice. A long rail of open groups put dozens of links and Tab stops before
+ * the page itself.
+ */
+const CLOSED_BY_DEFAULT = [
+    'section_my_team',
+    'section_people',
+    'section_assessments',
+    'section_campaigns_assessments',
+    'section_talent',
+    'section_safety',
+    'section_reports',
+    'section_my_space',
+    'section_reference',
+    'section_system',
+    'section_help',
+];
+/** A read-only account reads; its framework and reports open unfolded. */
+const OPEN_FOR_READ_ONLY = ['section_reference', 'section_reports'];
 
 /**
  * Destinations. `match`: path prefixes that make this entry the current one (the
@@ -427,7 +446,8 @@ const CATALOGUE = {
         label: 'nav_kpi_targets',
         title: 'nav_kpi_targets_title',
         href: '/kpi/targets',
-        icon: 'fa-bullseye',
+        // fa-bullseye is the person's own objectives (my_okr)
+        icon: 'fa-crosshairs',
     },
     site_exposure: {
         label: 'exec:se_title',
@@ -440,6 +460,14 @@ const CATALOGUE = {
         title: 'exec:bp_subtitle',
         href: '/exec/board-pack',
         icon: 'fa-briefcase',
+    },
+    // The decisions taken on a pack and their follow-up (BoardDecisionController):
+    // reachable before only from a link inside the pack.
+    board_decisions: {
+        label: 'exec:bd_title',
+        title: 'exec:bd_nav_title',
+        href: '/exec/decisions',
+        icon: 'fa-stamp',
     },
     local_content: { label: 'nav_local_content', href: '/reports/local-content', icon: 'fa-flag' },
 
@@ -805,6 +833,8 @@ function gates(c) {
         benchmark: gMainDash,
         site_exposure: gMainDash,
         board_pack: gMainDash,
+        // The same mount as the pack (routes/exec.js); writing is the service's check.
+        board_decisions: gMainDash,
         // Nationality by unit: SuperAdmin or view_local_content only (the
         // controller refuses everyone else), and only with the module on.
         local_content: gTools && lc && isAdm && can('view_local_content'),
@@ -897,7 +927,7 @@ const TALENT_ADM = [
     ['talent_suite', ['lms_hub']],
 ];
 const REPORTS = [
-    ['indicators', ['site_exposure', 'board_pack']],
+    ['indicators', ['site_exposure', 'board_pack', 'board_decisions']],
     ['reports', ['report_schedules']],
     'dept_analytics',
     'dept_brief',
@@ -960,7 +990,7 @@ const SECTIONS = {
             'kpi_targets',
             'benchmark',
             'site_exposure',
-            'board_pack',
+            ['board_pack', ['board_decisions']],
             'local_content',
         ],
         section_reference: [
@@ -1164,9 +1194,11 @@ function buildNav(locals) {
                 type: 'section',
                 key,
                 labelKey: i18nKey(key),
-                // An auditor's « Référentiel & paramètres » opens by default.
+                // Folded unless it holds the current page (sidebar.ejs); a
+                // read-only account's framework and reports open by default.
                 closedByDefault:
-                    CLOSED_BY_DEFAULT.includes(key) && !(c.viewer && key === 'section_reference'),
+                    CLOSED_BY_DEFAULT.includes(key) &&
+                    !(c.viewer && OPEN_FOR_READ_ONLY.includes(key)),
                 items,
             });
         }
@@ -1278,6 +1310,7 @@ module.exports = {
     STORAGE_KEY,
     LEGACY_STORAGE_KEYS,
     CLOSED_BY_DEFAULT,
+    OPEN_FOR_READ_ONLY,
     CATALOGUE,
     ACCOUNT_MENU,
     SECTIONS,

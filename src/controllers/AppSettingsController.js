@@ -874,16 +874,30 @@ class AppSettingsController {
                     hex,
                     'Brand accent color (hex) replacing the default gold across the UI'
                 );
-                const ratio = branding.contrastRatio(hex, '#0F1222'); // main dark surface
-                // Low contrast is a WARNING, not an error — the change applied. Fold it
-                // into the success message so the admin doesn't see a red "error" next
-                // to a green "success" for the same save.
-                if (ratio < 3) {
-                    warnings.push(
-                        req.t
-                            ? req.t('flash:brand_low_contrast', { ratio: ratio.toFixed(1) })
-                            : `low contrast on the dark theme (${ratio.toFixed(1)}:1 — aim for 3:1+); consider a lighter shade`
-                    );
+                // The colours actually rendered are computed per mode for WCAG AA
+                // (branding.accentTokens): the save says which ratios hold and
+                // whether the colour had to move to reach them. Never an error:
+                // the change applied, so it is folded into the success message.
+                const rep = branding.accentReport(hex);
+                const fx = (n) => n.toFixed(1);
+                warnings.push(
+                    req.t
+                        ? req.t('flash:brand_contrast_report', {
+                              inkLight: fx(rep.light.ink),
+                              inkDark: fx(rep.dark.ink),
+                              textLight: fx(rep.light.text),
+                              textDark: fx(rep.dark.text),
+                          })
+                        : 'contrast computed for both modes'
+                );
+                if (rep.adjusted.length) {
+                    const key =
+                        rep.adjusted.length === 2
+                            ? 'flash:brand_adjusted_both'
+                            : rep.adjusted[0] === 'dark'
+                              ? 'flash:brand_adjusted_dark'
+                              : 'flash:brand_adjusted_light';
+                    warnings.push(req.t ? req.t(key) : 'the colour was adjusted to stay readable');
                 }
             }
 

@@ -231,9 +231,10 @@
                                 <label for="brandAccentColor"><%= __('admin:brand_accent') %></label>
                                 <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
                                     <input type="color" id="brandAccentPick" aria-label="<%= __('admin:brand_accent') %>" value="<%= _b.accentColor || '#7C6CFF' %>" style="width:44px;height:38px;padding:2px;border:1px solid var(--border-light);border-radius:8px;background:transparent;">
-                                    <input type="text" id="brandAccentColor" name="brandAccentColor" value="<%= _b.accentColor || '' %>" placeholder="#7C6CFF" pattern="#?[0-9a-fA-F]{6}" class="form-control" style="max-width:120px;">
+                                    <input type="text" id="brandAccentColor" name="brandAccentColor" value="<%= _b.accentColor || '' %>" placeholder="#7C6CFF" pattern="#?[0-9a-fA-F]{6}" maxlength="7" aria-describedby="brandAccentHint" class="form-control" style="max-width:120px;">
                                     <label style="font-size:.8rem;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" name="clearAccent" value="1"> <%= __('admin:brand_clear') %></label>
                                 </div>
+                                <small id="brandAccentHint" style="color:var(--text-secondary);"><%= __('admin:brand_accent_hint') %></small>
                             </div>
                             <div class="form-group" style="margin:0;">
                                 <label for="logoFile"><%= __('admin:brand_logo') %></label>

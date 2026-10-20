@@ -887,3 +887,54 @@ document.addEventListener('click', function (e) {
         }).observe(document.documentElement, { childList: true, subtree: true });
     }
 })();
+
+/* Navigation feedback. A page that takes a second or more to render (the board
+   pack, a cold dashboard) left the previous page still and silent, so people
+   clicked again. A same-origin link click now shows a thin progress bar at the
+   top (horizon.css .nav-pending, after a short delay, so fast pages never
+   flash) and marks the main region busy. Forms keep their own loading overlay.
+   Never for a new tab, a download, an in-page anchor or a modified click; the
+   bar is cleared when the page comes back from the back/forward cache. */
+(function navigationFeedback() {
+    'use strict';
+    var bar = null;
+    function start() {
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'nav-pending';
+            bar.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(bar);
+        }
+        document.documentElement.classList.add('is-navigating');
+        var main = document.getElementById('main-content');
+        if (main) main.setAttribute('aria-busy', 'true');
+    }
+    function stop() {
+        document.documentElement.classList.remove('is-navigating');
+        var main = document.getElementById('main-content');
+        if (main) main.removeAttribute('aria-busy');
+    }
+    function quiet(href) {
+        if (!href || href.charAt(0) === '#') return true;
+        var scheme = href.slice(0, 11).toLowerCase();
+        return (
+            scheme.indexOf('mailto:') === 0 ||
+            scheme.indexOf('tel:') === 0 ||
+            scheme.indexOf('javascript:') === 0
+        );
+    }
+    document.addEventListener('click', function (ev) {
+        if (ev.defaultPrevented || ev.button !== 0) return;
+        if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+        var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+        if (!a || a.target || a.hasAttribute('download') || a.hasAttribute('data-no-progress'))
+            return;
+        if (quiet(a.getAttribute('href') || '')) return;
+        if (a.origin && a.origin !== window.location.origin) return;
+        var here = window.location;
+        if (a.pathname === here.pathname && a.search === here.search && a.hash) return;
+        start();
+    });
+    window.addEventListener('pageshow', stop);
+    window.__navFeedback = { start: start, stop: stop, quiet: quiet };
+})();

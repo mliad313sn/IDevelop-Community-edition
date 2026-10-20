@@ -4591,3 +4591,9 @@ label.required::after {
         white-space: normal;
     }
 }
+
+/* The printed header of the layout (views/layouts/main.ejs) is for paper
+   only: public/css/print.css shows it. */
+.print-header {
+    display: none;
+}

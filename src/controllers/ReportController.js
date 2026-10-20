@@ -49,6 +49,8 @@ function labeler(req) {
 
 /** The Power BI readiness feed versions (decision: versioned, old shape kept one release). */
 const READINESS_FEED_V2 = '/api/powerbi/v2/readiness';
+/** The Power BI assessments feed, version 2 (the KPI levels); version 1 kept one release. */
+const ASSESSMENTS_FEED_V2 = '/api/powerbi/v2/assessments';
 
 // Make a CSV open correctly in French Excel: prepend a UTF-8 BOM (accented
 // names render, no mojibake) and a `sep=,` hint line (Excel then parses the
@@ -1127,7 +1129,16 @@ class ReportController {
         }
     }
 
+    /**
+     * Power BI assessments feed, VERSION 1 (deprecated, kept for one release):
+     * the raw assessment rows, unchanged. It answers with `Deprecation: true`
+     * and a `Link` to its successor (ASSESSMENTS_FEED_V2), whose levels are
+     * the ones the indicators count.
+     */
     async powerbIAssessments(req, res) {
+        res.setHeader('X-IDevelop-Feed-Version', '1');
+        res.setHeader('Deprecation', 'true');
+        res.setHeader('Link', `<${ASSESSMENTS_FEED_V2}>; rel="successor-version"`);
         try {
             const employees = await RBACService.getFilteredEmployees(req.user);
             const employeeIds = employees.map((e) => e.id);
@@ -1185,6 +1196,115 @@ class ReportController {
             });
         } catch (error) {
             console.error('Power BI assessments API error:', error);
+            res.status(500).json({ error: 'Error retrieving assessment data' });
+        }
+    }
+
+    /**
+     * Power BI assessments feed, VERSION 2 — the levels the indicators count.
+     *
+     * Population: the key owner's K1 population (active, not erased, inside
+     * clearance), the same as /api/powerbi/v2/readiness. One row per person
+     * and skill that is either REQUIRED by the person's role or assessed:
+     *   - a requirement row reads v_employee_skill_gaps, the source of K1 to K4:
+     *     LevelUsed is the level the indicators use (the latest official or
+     *     approved level, 0 when a required certificate has lapsed), IsAssessed
+     *     and CertLapsed say why; MeetsRequirement and Gap are NULL while the
+     *     skill is not assessed (never a 0 that reads as a failure), and Gap
+     *     never credits a level above the requirement (contract kpi-2);
+     *   - an assessed skill the role does not require has IsRequired = 0 and
+     *     NULL RequiredLevel / MeetsRequirement / Gap: it is neither met nor
+     *     missed.
+     * CurrentLevel keeps the raw recorded level. Free-text notes are not in
+     * this version. The person ids are bound as one array parameter; no value
+     * of the request reaches the SQL text.
+     */
+    async powerbIAssessmentsV2(req, res) {
+        res.setHeader('X-IDevelop-Feed-Version', '2');
+        try {
+            const KpiService = require('../services/KpiService');
+            const pop = await KpiService.resolvePopulation({ viewer: req.user });
+            const ids = (pop.ids || []).map(Number).filter(Number.isInteger);
+            const rows = !ids.length
+                ? []
+                : await db.all(
+                      `WITH req AS (
+                            SELECT g.employee_id, g.skill_id, g.required_level, g.actual_level,
+                                   g.is_assessed, g.is_met, g.is_critical, g.cert_lapsed
+                              FROM v_employee_skill_gaps g
+                             WHERE g.employee_id = ANY(?)
+                        ), raw AS (
+                            SELECT sa.id, sa.employee_id, sa.skill_id, sa.current_level,
+                                   sa.assessed_by, sa.assessed_at
+                              FROM skill_assessments sa
+                             WHERE sa.employee_id = ANY(?)
+                        ), keys AS (
+                            SELECT employee_id, skill_id FROM req
+                            UNION
+                            SELECT employee_id, skill_id FROM raw
+                        )
+                        SELECT raw.id AS "AssessmentID",
+                               e.id AS "EmployeeID",
+                               e.employee_number AS "EmployeeNumber",
+                               e.first_name || ' ' || e.last_name AS "EmployeeName",
+                               sk.id AS "SkillID",
+                               sk.name AS "SkillName",
+                               d.id AS "DomainID",
+                               d.name AS "DomainName",
+                               raw.current_level AS "CurrentLevel",
+                               CASE WHEN req.is_assessed = 1 THEN req.actual_level END AS "LevelUsed",
+                               CASE WHEN req.employee_id IS NOT NULL THEN 1 ELSE 0 END AS "IsRequired",
+                               req.required_level AS "RequiredLevel",
+                               COALESCE(req.is_critical, false) AS "IsCritical",
+                               req.is_assessed AS "IsAssessed",
+                               req.cert_lapsed AS "CertLapsed",
+                               CASE WHEN req.is_assessed = 1 THEN req.is_met END AS "MeetsRequirement",
+                               CASE WHEN req.is_assessed = 1
+                                    THEN GREATEST(req.required_level - LEAST(req.actual_level, req.required_level), 0)
+                               END AS "Gap",
+                               a.username AS "AssessedBy",
+                               raw.assessed_at AS "AssessedDate"
+                          FROM keys k
+                          JOIN employees e ON e.id = k.employee_id
+                          JOIN skills sk ON sk.id = k.skill_id
+                          LEFT JOIN domains d ON d.id = sk.domain_id
+                          LEFT JOIN req ON req.employee_id = k.employee_id AND req.skill_id = k.skill_id
+                          LEFT JOIN raw ON raw.employee_id = k.employee_id AND raw.skill_id = k.skill_id
+                          LEFT JOIN admins a ON a.id = raw.assessed_by
+                         ORDER BY e.employee_number, d.name, sk.name, sk.id`,
+                      [ids, ids]
+                  );
+            const num = (v) => (v == null ? null : Number(v));
+            const value = (rows || []).map((r) => ({
+                AssessmentID: num(r.AssessmentID),
+                EmployeeID: num(r.EmployeeID),
+                EmployeeNumber: r.EmployeeNumber,
+                EmployeeName: r.EmployeeName,
+                SkillID: num(r.SkillID),
+                SkillName: r.SkillName,
+                DomainID: num(r.DomainID),
+                DomainName: r.DomainName,
+                CurrentLevel: num(r.CurrentLevel),
+                LevelUsed: num(r.LevelUsed),
+                IsRequired: Number(r.IsRequired) === 1,
+                RequiredLevel: num(r.RequiredLevel),
+                IsCritical: !!r.IsCritical,
+                IsAssessed: r.IsAssessed == null ? null : Number(r.IsAssessed) === 1,
+                CertLapsed: r.CertLapsed == null ? null : !!r.CertLapsed,
+                MeetsRequirement:
+                    r.MeetsRequirement == null ? null : Number(r.MeetsRequirement) === 1,
+                Gap: num(r.Gap),
+                AssessedBy: r.AssessedBy || null,
+                AssessedDate: r.AssessedDate || null,
+            }));
+            res.json({
+                '@odata.context': `${req.protocol}://${req.get('host')}${ASSESSMENTS_FEED_V2}`,
+                feedVersion: 2,
+                kpiContract: KpiService.CONTRACT_VERSION,
+                value,
+            });
+        } catch (error) {
+            console.error('Power BI assessments (v2) API error:', error && error.message);
             res.status(500).json({ error: 'Error retrieving assessment data' });
         }
     }

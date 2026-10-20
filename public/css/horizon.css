@@ -1960,3 +1960,39 @@ html {
         grid-template-columns: 1fr;
     }
 }
+
+/* ── Navigation feedback (public/js/main.js) ──────────────────────────
+   A thin bar at the very top while the next page renders; it grows only
+   after 300 ms, so a fast page never shows it. */
+.nav-pending {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    width: 0;
+    background: var(--brand);
+    z-index: var(--z-toast);
+    pointer-events: none;
+}
+.is-navigating .nav-pending {
+    animation: hz-nav-pending 8s cubic-bezier(0.1, 0.7, 0.2, 1) 300ms forwards;
+}
+@keyframes hz-nav-pending {
+    from {
+        width: 0;
+    }
+    to {
+        width: 90%;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .nav-pending {
+        width: 100%;
+        opacity: 0;
+    }
+    .is-navigating .nav-pending {
+        animation: none;
+        opacity: 0.6;
+        transition: opacity 0s linear 300ms;
+    }
+}

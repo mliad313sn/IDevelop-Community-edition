@@ -33,6 +33,17 @@ td.skill-cell { position: relative; }
     </div>
 
     <div class="matrix-filters">
+        <%# One domain of skill columns at a time (src/utils/matrixDomains.js);
+            « All domains » stays one choice away. %>
+        <% if (typeof domainOptions !== 'undefined' && domainOptions.length) { %>
+        <div class="filter-group">
+            <label for="filterDomain"><%= __('dash:sm_domain_colon') %></label>
+            <select id="filterDomain" data-on-change="smServerFilter" data-args='[]'>
+                <% domainOptions.forEach(function (d) { %><option value="<%= d.id %>" <%= String(activeDomain) === d.id ? 'selected' : '' %>><%= d.name %> (<%= __('dash:sm_domain_count', { count: d.skills, required: d.required }) %>)</option><% }); %>
+                <option value="all" <%= activeDomain === 'all' ? 'selected' : '' %>><%= __('dash:sm_domain_all') %></option>
+            </select>
+        </div>
+        <% } %>
         <div class="filter-group">
             <label><%= __('dash:site_colon') %></label>
             <select id="filterSite" data-on-change="smServerFilter" data-args='[]'>
@@ -291,6 +302,7 @@ td.skill-cell { position: relative; }
         if (v('filterDepartment')) p.set('department', v('filterDepartment'));
         if (v('filterService')) p.set('service', v('filterService'));
         if (v('filterRole')) p.set('role', v('filterRole'));
+        if (v('filterDomain')) p.set('domain', v('filterDomain'));
         const ps = smCurrentParams().get('pageSize'); if (ps) p.set('pageSize', ps);
         p.set('page', '1');
         location.search = p.toString();

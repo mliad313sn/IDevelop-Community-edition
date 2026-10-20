@@ -76,7 +76,8 @@ function rawOutputs() {
 
 /**
  * Reviewed raw outputs per view. Source of each, in short:
- *  layouts/main, auth/login|sso-choose-account|sso-enrol-code: branding.accentCss
+ *  layouts/main, auth/login|sso-choose-account|sso-enrol-code, partials/brand-accent:
+ *    branding.accentCss
  *    (a CSS block built from a hex-validated colour, utils/branding);
  *  about, admin/api-keys, admin/sso-migration, admins/create, app-settings/sso,
  *    data-management/sql-console, idp/new, lms, reports/schedules:7: static
@@ -125,6 +126,8 @@ const REVIEWED = {
     'views/pages/system-logs/index.ejs': 2,
     'views/pages/talent/nine-box-movements.ejs': 3,
     'views/partials/json-script.ejs': 1,
+    // branding.accentCss, the same block as the layout (4.0.0 port, wave 11)
+    'views/partials/brand-accent.ejs': 1,
 };
 
 /** JSON.stringify of non-literal arguments, reviewed: never stored or typed text. */

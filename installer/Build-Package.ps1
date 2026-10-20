@@ -344,7 +344,9 @@ $devOnlyScripts = @(
     '_emoji-inventory.js', '_emoji-to-icons.js', '_scan-emoji.js', 'build-user-guide.js',
     'check-icons.js', 'export-contracts.js', 'export-security-measures.js', 'export-skills-framework.js', 'export-v3-matrix.js', 'loadtest-readiness.js', 'render-notification-samples.js', 'security-check.js',
     # release tooling: builds <package>\npm-cache from the lockfile (run by this script)
-    'build-offline-cache.js'
+    'build-offline-cache.js',
+    # release tooling: writes app\THIRD-PARTY-NOTICES.txt (run by this script)
+    'build-third-party-notices.js'
 )
 $devOnlyDirs = @('_lib')
 $stagedScripts = Get-ChildItem -LiteralPath (Join-Path $appDest 'scripts') -File -ErrorAction SilentlyContinue
@@ -509,6 +511,15 @@ if (-not $SkipOfflineCache) {
 } else {
     Write-Host '  [note] -SkipOfflineCache: no npm-cache\ - the installer will need registry access. Do not ship this package.' -ForegroundColor Yellow
 }
+
+# 3a-bis. THIRD-PARTY NOTICES - app\THIRD-PARTY-NOTICES.txt carries the licence
+#     of every production dependency of the shipped lockfile, read from this
+#     machine's node_modules, and of the vendored browser assets. The app serves
+#     it at /about/third-party-notices. Written before the release manifest, so
+#     the manifest covers it.
+$tpnOut = & node (Join-Path $appRoot 'scripts\build-third-party-notices.js') --root $appRoot --out (Join-Path $appDest 'THIRD-PARTY-NOTICES.txt')
+if ($LASTEXITCODE -ne 0) { throw "Refusing to package: the third-party notices could not be written (exit $LASTEXITCODE): $tpnOut" }
+Write-Host "  [OK] $tpnOut" -ForegroundColor Gray
 
 # 3b. DENYLIST GUARD - an optional, git-ignored installer\denylist.txt lists
 #     tokens (one .NET regex per line, '#' comments) that must never appear in a
