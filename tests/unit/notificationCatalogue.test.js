@@ -432,4 +432,18 @@ describe('the communications kinds (4.0.0 port, wave 7)', () => {
         expect(catalogue.isDeclared('pip.created')).toBe(true);
         expect(catalogue.webhookOf('pip.created')).toBe('never');
     });
+
+    test('a summary is never a line of the daily digest', () => {
+        for (const k of [
+            'digest.persona.employee',
+            'digest.persona.executive',
+            'dept_brief',
+            'dept_digest',
+            'manager_digest',
+            'planning.digest',
+        ])
+            expect([k, N._digestible(k)]).toEqual([k, false]);
+        for (const k of ['sa.submitted', 'cycle.team_reminder', 'idp.action_due'])
+            expect([k, N._digestible(k)]).toEqual([k, true]);
+    });
 });

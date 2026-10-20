@@ -185,11 +185,30 @@ suite('« What changed » digests (rolled back)', () => {
             expect(mine.payload.locale).toBe('en');
             expect(mine.payload.changes.map((c) => c.kpi)).toContain('K1');
             expect(mine.payload.changes[0].text).toMatch(/^Role-ready rate: 63% \(\+4 pts\)/);
-            // employees: in the app only (enqueue), never notify / e-mail
+            // employees (wave 7): a point with a step to take or a positive change
+            // goes through notify (the person's switches apply); the others stay
+            // in the app (enqueue). Their first point says the comparison comes next.
             const emp = rows.filter((r) => r.t === 'employee' && ids.includes(Number(r.u)));
             expect(emp.length).toBe(ids.length);
             for (const e of emp) expect(e.persona).toBe('employee');
-            for (const c of N.notify.mock.calls) expect(c[0].userType).toBe('admin');
+            for (const e of emp)
+                if (e.state === 'sent')
+                    expect(e.payload.progress).toMatchObject({ state: 'first', positive: 0 });
+            const withStep = new Set(
+                rows
+                    .filter((e) => e.t === 'employee' && e.payload.actions.length)
+                    .map((e) => Number(e.u))
+            );
+            for (const c of N.notify.mock.calls) {
+                if (c[0].userType === 'admin') continue;
+                expect(c[0]).toMatchObject({
+                    userType: 'employee',
+                    kind: 'digest.persona.employee',
+                    category: 'digest',
+                });
+                expect(withStep.has(Number(c[0].userId))).toBe(true);
+                expect(c[0].ctaUrl).toMatch(/^\/digests\/\d+$/);
+            }
             for (const c of N.enqueue.mock.calls)
                 if (c[0].kind === 'digest.persona.employee') expect(c[0].channel).toBe('inapp');
             // NO NAME in any payload or any message argument

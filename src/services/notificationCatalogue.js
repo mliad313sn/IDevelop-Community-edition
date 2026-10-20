@@ -323,7 +323,7 @@ const catalogue = {
             'digest.persona.executive': 'What changed: your summary',
             'digest.persona.hr': 'What changed: your summary',
             'digest.persona.manager': 'What changed in your team',
-            'digest.persona.employee': 'Your next step',
+            'digest.persona.employee': 'Your summary: progress and next step',
             'digest.persona.paused': 'Your « What changed » summary was slowed down',
         };
     },
@@ -937,10 +937,15 @@ const catalogue = {
                 link: '/digests',
                 title: { fr: 'Ce qui a changé dans votre équipe', en: 'What changed in your team' },
             },
+            // The employee's weekly point (4.0.0 port, wave 7): what moved since
+            // the last one, and the next step.
             'digest.persona.employee': {
                 icon: 'fa-shoe-prints',
                 link: '/digests',
-                title: { fr: 'Votre prochaine étape', en: 'Your next step' },
+                title: {
+                    fr: 'Votre point : progrès et prochaine étape',
+                    en: 'Your summary: progress and next step',
+                },
             },
             'digest.persona.paused': {
                 icon: 'fa-pause',
@@ -1532,7 +1537,11 @@ const catalogue = {
             'kpi.alert': 'digest',
             'kpi.recovered': 'digest',
             'safety.kpi_alert': 'immediate',
-            'digest.persona.employee': 'none',
+            // The employee's weekly point (4.0.0 port, wave 7): e-mailed by
+            // PersonaDigestService only when it carries a positive change or a
+            // step to take (notify); otherwise written in the app only
+            // (enqueue). Never a line of the daily digest (a summary kind).
+            'digest.persona.employee': 'immediate',
             'digest.persona.paused': 'none',
             'safety.blocked': 'immediate',
             'safety.expiring': 'immediate',
@@ -2229,8 +2238,8 @@ const catalogue = {
                 en: 'What changed in your team and what is left to do, in figures.',
             },
             'digest.persona.employee': {
-                fr: 'Votre prochaine étape vous attend.',
-                en: 'Your next step is waiting for you.',
+                fr: 'Ce qui a progressé depuis votre dernier point, et votre prochaine étape.',
+                en: 'What moved forward since your last summary, and your next step.',
             },
             'digest.persona.paused': {
                 fr: 'Plusieurs récapitulatifs de suite n’ont pas été ouverts : leur fréquence a été réduite. Vous pouvez la rétablir.',

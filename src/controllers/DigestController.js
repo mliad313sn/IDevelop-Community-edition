@@ -142,6 +142,18 @@ const DigestController = {
                         date: dayLabel(row.periodKey, lang),
                     }),
                     line: p.line || null,
+                    // « Since your last summary » (4.0.0 port, wave 7): the
+                    // stored lines, printed as they were sent.
+                    progress:
+                        p.progress && Array.isArray(p.progress.lines) && p.progress.lines.length
+                            ? {
+                                  title: p.progress.title ? String(p.progress.title) : null,
+                                  lines: p.progress.lines.map((x) => ({
+                                      text: String((x && x.text) || ''),
+                                      polarity: x && x.polarity === 'better' ? 'better' : 'neutral',
+                                  })),
+                              }
+                            : null,
                     changes: clean(p.changes),
                     actions: clean(p.actions),
                     history: (Array.isArray(p.history) ? p.history : [])

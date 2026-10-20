@@ -2371,7 +2371,25 @@ class NotificationService {
 
     /** May this kind appear in the daily digest? Never a tier-'none' kind. */
     static _digestible(kind) {
-        return catalogue.isDigestible(kind);
+        return catalogue.isDigestible(kind) && !NotificationService._isSummaryKind(kind);
+    }
+
+    /**
+     * A summary is never a line of another summary (4.0.0 port, wave 7): the
+     * « What changed » points, the department brief and digests and the manager
+     * and planning digests compose their own message, and one written in the
+     * app only (a weekly brief, an employee's quiet point) must not come back
+     * by e-mail inside the daily digest.
+     */
+    static _isSummaryKind(kind) {
+        const k = String(kind || '');
+        return (
+            k.startsWith('digest.') ||
+            k === 'dept_brief' ||
+            k === 'dept_digest' ||
+            k === 'manager_digest' ||
+            k === 'planning.digest'
+        );
     }
 
     /** Deliver one email row that was held back by quiet hours (boolean, kept for callers). */

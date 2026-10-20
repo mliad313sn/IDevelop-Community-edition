@@ -18,7 +18,13 @@
  *                            « To do » counts read live; what each line is
  *                            about follows the account's dashboard capabilities
  *                            and the organisation's modules;
- *   employees (not managers) ONE next step (EmployeeHomeService), IN-APP ONLY.
+ *   employees (not managers) the weekly point (4.0.0 port, wave 7): « Since
+ *                            your last summary of DD/MM » (DigestProgress, the
+ *                            employee home's own definitions) and ONE next step
+ *                            (EmployeeHomeService). E-mailed only when it
+ *                            carries a positive change or a step to take, and
+ *                            never to an address shared by several accounts;
+ *                            otherwise in the app only.
  *
  * RULES
  *   - Fixed templates (locales/{fr,en}/dash.json `nar_*`), figures formatted
@@ -36,6 +42,7 @@
 
 const db = require('../config/database');
 const Narrative = require('./NarrativeService');
+const Progress = require('./DigestProgress');
 const { fmtNum } = require('../utils/kpiFormat');
 
 const { phrase } = Narrative;
@@ -59,10 +66,18 @@ const pad = (n) => String(n).padStart(2, '0');
 /** LOCAL calendar day: the same clock as the hour / day-of-week gate. */
 const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-/** The digest window: daily 1 day; weekly 7 days, 30 for the executive label. */
-function windowDays(persona, cadence) {
+/**
+ * The digest window: daily 1 day; weekly 7 days. The executive's weekly window
+ * is « since the previous summary » (1 to 30 days): a weekly send of a 30-day
+ * window used to repeat the same change four times. 30 days for the very first.
+ */
+function windowDays(persona, cadence, prev, now = new Date()) {
     if (cadence === 'daily') return 1;
-    return persona === 'executive' ? 30 : 7;
+    if (persona !== 'executive') return 7;
+    const at = prev && prev.at ? new Date(prev.at).getTime() : NaN;
+    if (!Number.isFinite(at)) return 30;
+    const d = Math.round((now.getTime() - at) / 86400000);
+    return Math.max(1, Math.min(30, d));
 }
 
 function titleKey(persona, days) {
@@ -217,9 +232,17 @@ function unitText(lang, unit, text, prefix) {
 async function build(r, { cadence = DEFAULT_CADENCE, now = new Date(), locale = 'fr' } = {}) {
     const lang = locale === 'en' ? 'en' : 'fr';
     const persona = r.persona;
-    const days = windowDays(persona, cadence);
+    let prev = null;
+    if (persona === 'executive' && r.userType && Number(r.id) > 0) {
+        try {
+            prev = await Progress.previous(r.userType, r.id, now);
+        } catch (_) {
+            prev = null;
+        }
+    }
+    const days = windowDays(persona, cadence, prev, now);
     const payload = {
-        v: 1,
+        v: 2,
         persona,
         cadence,
         windowDays: days,
@@ -232,9 +255,11 @@ async function build(r, { cadence = DEFAULT_CADENCE, now = new Date(), locale = 
         actions: [],
         units: [],
     };
-    if (persona === 'employee') await buildEmployee(r, payload, lang);
+    if (persona === 'employee') await buildEmployee(r, payload, lang, now);
     else await buildScoped(r.viewer || (await viewerOf(r)), payload, days, lang);
-    const state = payload.changes.length || payload.actions.length ? 'sent' : 'silent';
+    const positive = (payload.progress && payload.progress.positive) || 0;
+    const state =
+        payload.changes.length || payload.actions.length || positive > 0 ? 'sent' : 'silent';
     return { persona, cadence, windowDays: days, state, payload };
 }
 
@@ -344,7 +369,14 @@ async function buildScoped(viewer, payload, days, lang) {
     }
 }
 
-async function buildEmployee(r, payload, lang) {
+async function buildEmployee(r, payload, lang, now = new Date()) {
+    // « Since your last summary »: the home's own definitions, counts only.
+    try {
+        const progress = await Progress.forEmployee(r.id, { now, lang });
+        if (progress) payload.progress = progress;
+    } catch (_) {
+        /* no block rather than a wrong one */
+    }
     const next = await require('./EmployeeHomeService').nextStep(r.id);
     // « results » is the fallback (« nothing waits for you »): nothing to act on.
     if (!next || next.key === 'results') return;
@@ -478,7 +510,8 @@ async function archive(r, built, key) {
 
 /** The mail blocks of a digest (plain text, formatted figures). */
 function blocksOf(payload, lang) {
-    const blocks = [];
+    // The weekly point opens with « Since your last summary of DD/MM ».
+    const blocks = [...Progress.blocks(payload.progress)];
     if (payload.changes.length) {
         blocks.push({ type: 'p', text: phrase(lang, 'nar_dg_changes') });
         blocks.push({
@@ -504,8 +537,35 @@ async function deliver(r, built, id, lang) {
     const link = `/digests/${id}`;
     const p = built.payload;
     const inapp = { link, digestId: id, persona: built.persona };
+    const positive = (p.progress && p.progress.positive) || 0;
+    if (
+        built.persona === 'employee' &&
+        (positive > 0 || p.actions.length) &&
+        !(await sharedAddress(r.id))
+    ) {
+        // A positive change or a step to take: the point goes by e-mail too,
+        // through notify (the person's own switches and categories apply).
+        return NotificationService.notify({
+            userType: r.userType,
+            userId: r.id,
+            kind: kindOf('employee'),
+            category: 'digest',
+            locale: lang,
+            payload: inapp,
+            refType: 'persona_digest',
+            refId: id,
+            title: p.title,
+            blocks: blocksOf(p, lang),
+            preheader:
+                (p.progress && p.progress.lines && p.progress.lines[0]
+                    ? p.progress.lines[0].text
+                    : null) || p.title,
+            ctaLabel: phrase(lang, 'nar_dg_cta_employee'),
+            ctaUrl: link,
+        });
+    }
     if (built.persona === 'employee') {
-        // In the app only, whatever the catalogue says.
+        // Nothing new and nothing to do, or a shared address: in the app only.
         return NotificationService.enqueue({
             userType: r.userType,
             userId: r.id,
@@ -533,6 +593,22 @@ async function deliver(r, built, id, lang) {
         ctaLabel: phrase(lang, 'nar_dg_cta'),
         ctaUrl: link,
     });
+}
+
+/**
+ * Is the employee's address shared by several active accounts (a team
+ * mailbox)? A person's own point never goes there. Unreadable ⇒ shared (in
+ * the app only).
+ */
+async function sharedAddress(employeeId) {
+    try {
+        const row = await db.get('SELECT email FROM employees WHERE id = ?', [Number(employeeId)]);
+        if (!row || !row.email) return false;
+        const accounts = await require('./EmailAccountsService').accountsWithEmail(row.email);
+        return (accounts || []).filter((a) => a && a.isActive).length > 1;
+    } catch (_) {
+        return true;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -670,5 +746,5 @@ module.exports = {
     ownerType,
     markOpened,
     listOwned,
-    _test: { dayKey },
+    _test: { dayKey, sharedAddress },
 };
