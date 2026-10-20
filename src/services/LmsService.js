@@ -336,7 +336,7 @@ class LmsService {
     static async assignCourse(
         employeeId,
         courseId,
-        { assignedBy = null, sourceActionId = null, dueAt = null } = {}
+        { assignedBy = null, sourceActionId = null, dueAt = null, notifyLearner = true } = {}
     ) {
         const course = await db.get('SELECT * FROM lms_courses WHERE id = ?', [courseId]);
         if (!course) throw new Error('Course not found');
@@ -416,17 +416,20 @@ class LmsService {
         // — pg warns "client.query when the client is already executing a query"
         // and the enclosing transaction can end up aborted. The try/catch keeps the
         // original promise: a notification failure never blocks the assignment.
-        try {
-            await require('./NotificationService').notify({
-                userType: 'employee',
-                userId: Number(employeeId),
-                kind: 'lms.assigned',
-                category: 'talent',
-                payload: { link: '/employee/my-learning', courseTitle: course.title },
-            });
-        } catch (_) {
-            /* never block assignment */
-        }
+        // `notifyLearner: false` is for a caller whose own message already says
+        // a course was assigned (the certificate-expiry mail): one mail, not two.
+        if (notifyLearner !== false)
+            try {
+                await require('./NotificationService').notify({
+                    userType: 'employee',
+                    userId: Number(employeeId),
+                    kind: 'lms.assigned',
+                    category: 'talent',
+                    payload: { link: '/employee/my-learning', courseTitle: course.title },
+                });
+            } catch (_) {
+                /* never block assignment */
+            }
         return { ...enrollment, pushState, pushError };
     }
 
