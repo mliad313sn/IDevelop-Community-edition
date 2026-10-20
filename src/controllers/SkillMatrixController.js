@@ -7,6 +7,7 @@ const RoleModel = require('../models/RoleModel');
 const RBACService = require('../services/RBACService');
 const ReadinessService = require('../services/ReadinessService');
 const { bc } = require('../utils/breadcrumbLabel');
+const { chooseDomainColumns } = require('../utils/matrixDomains');
 
 class SkillMatrixController {
     async index(req, res) {
@@ -107,6 +108,10 @@ class SkillMatrixController {
                 });
             }
 
+            // One domain of columns at a time (src/utils/matrixDomains.js): by
+            // default the domain most required by the roles on this page.
+            const cols = chooseDomainColumns(skillsByDomain, roleRequirementsMap, req.query.domain);
+
             // Get readiness for this page's employees (bulk)
             const readinessMap = await ReadinessService.calculateReadinessMap(employees);
 
@@ -139,7 +144,9 @@ class SkillMatrixController {
             res.render('pages/skill-matrix/index', {
                 title: req.t ? req.t('chrome:pt_skill_matrix') : 'Skill Matrix',
                 employees,
-                skillsByDomain,
+                skillsByDomain: cols.shown,
+                domainOptions: cols.domainOptions,
+                activeDomain: cols.activeDomain,
                 assessmentMap,
                 roleRequirementsMap,
                 readinessMap,
