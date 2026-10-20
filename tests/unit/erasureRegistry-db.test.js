@@ -308,7 +308,38 @@ suite('erasure behaviour', () => {
                 [Number(pip.id), `${TOKEN} checkpoint`, `${TOKEN} answer`]
             );
 
+            // The board (migrations 197, 198): a decision and a note typed
+            // before the name guard, naming the person, and a recorded pack
+            // that counted them. Immutable: returned by the export, kept by the
+            // erasure, which reports them.
+            const who = await db.get('SELECT first_name, last_name FROM employees WHERE id = ?', [
+                s.id,
+            ]);
+            const fullName = `${who.firstName} ${who.lastName}`;
+            const bd = await db.get(
+                `INSERT INTO board_decisions (scope_key, pack_date, decided_at, decision_text, owner_role,
+                                              created_by_ref)
+                 VALUES ('org', CURRENT_DATE, CURRENT_DATE, ?, 'hr_director', 'admin:1') RETURNING id`,
+                [`Ask ${fullName} to lead the ${TOKEN} review`]
+            );
+            await db.run(
+                `INSERT INTO board_decision_events (decision_id, kind, note, actor_ref)
+                 VALUES (?, 'note', ?, 'admin:1')`,
+                [Number(bd.id), `${fullName} agreed`]
+            );
+            await db.run(
+                `INSERT INTO board_pack_runs (scope_key, pack_date, kpi_contract, population,
+                                              population_ids, generated_by_ref)
+                 VALUES ('org', CURRENT_DATE, 'kpi-2', 1, ARRAY[?]::bigint[], 'admin:1')`,
+                [s.id]
+            );
+
             const exp = await DSR().export(s.id);
+            const bt = exp.boardTextsNamingSubject;
+            expect(Array.isArray(bt)).toBe(true);
+            const mine = bt.find((x) => x.decisionId === Number(bd.id));
+            expect(mine.decisionText).toContain(TOKEN);
+            expect(mine.notes.map((n) => n.note)).toEqual([`${fullName} agreed`]);
             expect(JSON.stringify(exp.disputes)).toContain(`${TOKEN} proposer note`);
             expect(JSON.stringify(exp.pips)).toContain(`${TOKEN} observations`);
             expect(JSON.stringify(exp.pipReviews)).toContain(`${TOKEN} checkpoint`);
@@ -325,6 +356,17 @@ suite('erasure behaviour', () => {
             const out = await DSR().erase(s.id, null, { reason: 'registry test' });
             expect(out.erased).toBe(true);
             expect(out.filesDeleted).toBe(1);
+            // the board texts that name the person are counted, and kept as written
+            expect(out.boardTextsNamingSubject).toBeGreaterThanOrEqual(1);
+            const kept = await db.get('SELECT decision_text FROM board_decisions WHERE id = ?', [
+                Number(bd.id),
+            ]);
+            expect(kept.decisionText).toContain(TOKEN);
+            const counted = await db.get(
+                'SELECT COUNT(*)::int AS n FROM board_pack_runs WHERE ? = ANY(population_ids)',
+                [s.id]
+            );
+            expect(counted.n).toBe(1);
 
             const leftovers = [];
             for (const [table, cols] of [
