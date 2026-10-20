@@ -4,9 +4,10 @@ This page is for whoever runs an IDevelop server on Windows. It says how to go
 back to the previous version after an upgrade that came up healthy but must be
 undone, and how to rebuild the service on a new server. Security record: SA-57
 in [SECURITY-AUDIT.md](SECURITY-AUDIT.md). Backups, keys and restores in
-general: [BACKUPS.md](BACKUPS.md). The installation package carries both pages
-in its `docs\` folder. Print this page and attach it to the change record of
-every upgrade.
+general: [BACKUPS.md](BACKUPS.md); the upgrade routine:
+[OPERATIONS.md](OPERATIONS.md). The installation package carries these pages
+and the other operator documents in its `docs\` folder. Print this page and
+attach it to the change record of every upgrade.
 
 ## Which situation you are in
 

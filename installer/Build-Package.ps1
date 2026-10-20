@@ -112,12 +112,14 @@ foreach ($f in $installerScripts) {
     $src = Join-Path $here $f
     if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $staging $f) -Force }
 }
-# The operator documents the installer points at (the rollback runbook and the
-# backup guide) -> <package>\docs\. The app payload leaves docs\ out, so without
-# this the log would name a page the server does not have. Missing = no build.
+# The operator documents -> <package>\docs\: the rollback runbook and the
+# backup guide the installer log points at, the IT operations guide, the
+# go-live checklist and the incident procedure (EN and FR), sizing and the
+# Power BI feeds. The app payload leaves docs\ out, so without this the log
+# would name a page the server does not have. Missing = no build.
 $opDocs = Join-Path $staging 'docs'
 New-Item -ItemType Directory -Force -Path $opDocs | Out-Null
-foreach ($d in @('ROLLBACK.md', 'BACKUPS.md')) {
+foreach ($d in @('ROLLBACK.md', 'BACKUPS.md', 'OPERATIONS.md', 'GO-LIVE.md', 'GO-LIVE.fr.md', 'INCIDENT-RESPONSE.md', 'INCIDENT-RESPONSE.fr.md', 'SIZING.md', 'POWERBI.md', 'POWERBI.fr.md')) {
     $src = Join-Path $appRoot "docs\$d"
     if (-not (Test-Path -LiteralPath $src)) { throw "Refusing to package: operator document docs\$d is missing." }
     Copy-Item -LiteralPath $src -Destination (Join-Path $opDocs $d) -Force

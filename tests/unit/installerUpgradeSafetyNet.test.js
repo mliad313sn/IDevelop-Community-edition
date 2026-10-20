@@ -581,7 +581,22 @@ describe('the rollback runbook and the VM rehearsal', () => {
     });
 
     test('the package carries the runbook and the backup guide the installer log names', () => {
-        expect(BUILD).toMatch(/foreach \(\$d in @\('ROLLBACK\.md', 'BACKUPS\.md'\)\) \{/);
+        const list = BUILD.match(/foreach \(\$d in @\(('[^)]*')\)\) \{/);
+        expect(list).not.toBeNull();
+        const docs = list[1].split(',').map((s) => s.trim().replace(/'/g, ''));
+        for (const d of [
+            'ROLLBACK.md',
+            'BACKUPS.md',
+            'OPERATIONS.md',
+            'GO-LIVE.md',
+            'GO-LIVE.fr.md',
+            'INCIDENT-RESPONSE.md',
+            'INCIDENT-RESPONSE.fr.md',
+        ])
+            expect([d, docs.includes(d)]).toEqual([d, true]);
+        // every packaged operator document exists, so the build cannot refuse
+        for (const d of docs)
+            expect([d, fs.existsSync(path.join(ROOT, 'docs', d))]).toEqual([d, true]);
         expect(BUILD).toMatch(
             /throw "Refusing to package: operator document docs\\\$d is missing\."/
         );
