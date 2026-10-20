@@ -6,6 +6,35 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### 4.0.0 port — summary
+
+The 4.0.0 port arrived in twelve waves; each has its own entry below.
+
+- **Wave 0, security and privacy fixes:** a notification link changes nothing when fetched, approve-all needs the session token, an unlinked admin account is still its owner, the local content report needs `view_local_content`, the offline shell follows the deploy.
+- **Wave 1, upgrade safety net:** an encrypted, verified database dump before every upgrade's migrations, pruned code copies, offline dependencies, a closed servicing folder, the rollback runbook.
+- **Wave 2, the authority ladder:** one rule for who may act on a person's record (`strict` by default), the rung on the audit line, four eyes on 9-box placements, approval of selected skills.
+- **Wave 3, capability rule and KPI definitions:** no credit above the requirement, indicator contract `kpi-2`, measurability under the health score, exposure by site on the dashboard's figures.
+- **Wave 4, the development loop:** plan actions are started, reported and validated by the line, proposals from the person, target role to plan, K13/K28/K30.
+- **Wave 5, employee experience:** the end-of-campaign record, what changed and the next step, rating on a phone, « new in the role ».
+- **Wave 6, HR governance:** a dispute's first answer is a proposal, level-2 auto-finalisation off by default, PIP evidence and checkpoints, an optional HR visa, placements to disclose.
+- **Wave 7, communications:** the employee's weekly point (opt-in), the D-7 line message, critical expired certificates, a short department brief mail, Outlook and dark-mode layouts, reminder effectiveness.
+- **Wave 8, HSE operations:** K40 to K44 on the Safety tab and the certificate issuer.
+- **Wave 9, board pack and executive KPIs:** board decisions with a name guard, the pack compared with the last one presented, targets and gaps, K17/K19/K20/K21.
+- **Wave 10, manager home and administration pages:** « Waiting on me », « Data quality », « Usage by site », « Ready for go-live » on `/setup`, typed reset words.
+- **Wave 11, interface and scale:** a folded menu, an AA-computed accent, one print sheet, interaction details, third-party notices, Power BI assessments version 2, a per-reader model cache.
+- **Wave 12, documents:** an IT operations guide (`docs/OPERATIONS.md`), a go-live checklist (`docs/GO-LIVE.md`) and an incident and personal-data breach procedure (`docs/INCIDENT-RESPONSE.md`), both also in French; migrations 190 to 198 in `docs/ROLLBACK.md`; the compliance mapping, the ASVS rows and the audit updated; the Windows package carries every operator document in its `docs` folder.
+
+**Upgrade checklist** (the details are in each wave's « Upgrade » line and in `docs/OPERATIONS.md`):
+
+1. **Before:** free space on the backup volume for the pre-upgrade dump (the database's table data plus 256 MB; the Windows installer stops without it), and copy aside any code copy older than the five newest under `app-backups` that you still need. Back up `uploads` with your own file backup: code copies no longer hold it.
+2. **Migrations 190 to 198**, all additive, nothing rewritten or deleted: 190 four eyes and the authority mode, 191 and 192 the development loop and proposals, 193 `review_records`, 194 the dispute proposal, 195 PIP evidence and `pip_reviews`, 196 the certificate issuer, 197 board decisions and their history, 198 recorded board packs. `review_records`, `board_decisions`, `board_decision_events` and `board_pack_runs` are append-only. If `SELECT count(*) FROM idp_actions WHERE estimated_hours < 0` is not 0, validate the hours constraint after fixing those rows.
+3. **Settings changed on upgrade:** `nineBoxFourEyes` is left **off** (on for a new install) and `dispute.autoFinalizeOnExpiry` goes **off** where nobody had chosen it; every active SuperAdmin finds a notice for each. New settings: `authority.ladder` = `strict`, `newInRoleMonths` = 6, `pip.hrVisaRequired` = off. Decide them with the go-live checklist (`docs/GO-LIVE.md`).
+4. **Permissions and scripts:** grant `view_local_content` to those who read nationality figures; scripts calling approve-all send the session's `x-csrf-token`; anything that runs `node scripts/reset-for-golive.js --confirm` adds `--confirm-word=PRODUCTION`.
+5. **Figures:** indicator contract `kpi-2`; role, unit and heatmap figures go down where people exceed requirements, and movements, « What changed » and the digests restart from the first `kpi-2` snapshot. These are definition changes, not progress or decline.
+6. **Power BI:** move reports from `/api/powerbi/assessments` and `/api/powerbi/readiness` to their `/api/powerbi/v2/…` successors before the next release, which removes version 1 (`docs/POWERBI.md`).
+7. **Notices and cache:** a copy installed from source runs `npm run notices:build` once and restarts; `DASHBOARD_MODEL_CACHE`, `DASHBOARD_MODEL_CACHE_TTL_MS` and `DASHBOARD_MODEL_CACHE_MAX_ENTRIES` are optional (with several instances, lower the TTL or turn the cache off).
+8. **After:** Instance health shows no pending migration and no failed job; keep the pre-upgrade dump named in the summary, and `docs/ROLLBACK.md` at hand, until the new version is accepted.
+
 ### 4.0.0 port — wave 11 (interface and scale)
 
 - **The menu opens folded** (SA-67). Every group of the rail opens folded, except the one holding the current page; a group the person opens or closes keeps that choice, and a read-only account still finds its framework and reports unfolded. « Decisions » (`/exec/decisions`) has its own entry under « Board pack », with the pack's gate, and its help. The indicator targets have their own icon.
