@@ -195,7 +195,10 @@ $excludeFiles = @('.editorconfig', '.git', '.gitleaks.toml', '.dockerignore', '.
     # CI and container build configuration: the secret-scan rules (they list
     # what the scanner ignores) and the Docker build-context filter have no
     # consumer on an installed server.
-    '.gitleaks.toml', '.dockerignore')
+    '.gitleaks.toml', '.dockerignore',
+    # A copy left by `npm run notices:build`: the package writes its own fresh
+    # app\THIRD-PARTY-NOTICES.txt (step 3a-bis), so a stale local one never ships.
+    'THIRD-PARTY-NOTICES.txt')
 
 # GUARD - stray root-level scripts must never ship.
 # The exclude list above covers DIRECTORIES only, so any loose .js dropped in the
