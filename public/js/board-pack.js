@@ -7,7 +7,8 @@
     'use strict';
     document.addEventListener('click', function (e) {
         var btn = e.target && e.target.closest ? e.target.closest('[data-print]') : null;
-        if (!btn) return;
+        // csp-actions.js prints [data-print] too: whichever runs first prints once.
+        if (!btn || e.defaultPrevented) return;
         e.preventDefault();
         window.print();
     });

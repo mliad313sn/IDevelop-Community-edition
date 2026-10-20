@@ -20,6 +20,7 @@
  * Common idioms, no page script needed:
  *   data-submit-on-change            → submits the element's form on change
  *   data-remove-parent               → removes the parent element on click
+ *   data-print                       → prints the page (public/css/print.css)
  *   <link data-async-css media=print> → switched to media="all" once loaded
  */
 (function () {
@@ -113,6 +114,13 @@
     document.addEventListener('click', function (ev) {
         var el = ev.target && ev.target.closest && ev.target.closest('[data-remove-parent]');
         if (el && el.parentElement) el.parentElement.remove();
+        // window.print is not an own property of window, so data-on-click cannot
+        // reach it. A page script that already printed marks the event handled.
+        var pr = ev.target && ev.target.closest && ev.target.closest('[data-print]');
+        if (pr && !ev.defaultPrevented && typeof window.print === 'function') {
+            ev.preventDefault();
+            window.print();
+        }
     });
 
     function asyncCss() {
