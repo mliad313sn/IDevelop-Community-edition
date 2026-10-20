@@ -1210,8 +1210,14 @@ describe('the e-mail body', () => {
         }
     });
 
-    test('the series-start footnote is published', () => {
-        expect(render().html).toContain('La série de vos bilans mensuels a commencé le 01/07/2026');
+    test('the series-start footnote is published while there is no comparison yet', () => {
+        const p = payload();
+        p.deltas = { ...p.deltas, basis: 'first_measure' };
+        expect(render(p).html).toContain(
+            'La série de vos bilans mensuels a commencé le 01/07/2026'
+        );
+        // a computed comparison says so (wave 7), never « from the second brief »
+        expect(render().html).toContain('Évolutions comparées à votre bilan mensuel précédent.');
     });
 
     test('the frozen-figures line and the fixed disclaimer are always present', () => {
@@ -1423,5 +1429,96 @@ describe('the settings catalogue', () => {
         const r = await job.tick();
         expect(r.errors).toBe(0);
         expect(r.sent).toBe(1); // fell back to the defaults and carried on
+    });
+});
+
+// ===========================================================================
+describe('the short mail (4.0.0 port, wave 7)', () => {
+    const mailOf = (p = payload(), lang = 'fr') =>
+        renderBlocks(p, { lang, maxLines: 7 }).mailBlocks;
+
+    test('headline figures with their Δ, three priorities as links, ONE button, no table', () => {
+        const p = payload();
+        p.briefId = 77;
+        p.footer.totals.coverage = {
+            value: 62,
+            text: { fr: '62 %', en: '62%' },
+            state: 'measured',
+            color: null,
+        };
+        p.deltas = {
+            basis: 'comparable',
+            seriesStart: new Date(Date.UTC(2026, 6, 1)),
+            d1: { state: 'value', value: 3, pct: 5 },
+            d5: { state: 'stable', value: 0, pct: null },
+        };
+        // five action lines: three are shown, the rest are counted
+        p.blocks.A[0].lines = Array.from({ length: 5 }, (_, i) => ({
+            unitId: 11,
+            label: { fr: `Unit ${i} — 5 personnes`, en: `Unit ${i} — 5 people` },
+            count: {
+                value: i + 1,
+                text: { fr: String(i + 1), en: String(i + 1) },
+                state: 'measured',
+            },
+            oldestAge: { value: 10 - i, text: { fr: 'x', en: 'x' }, state: 'measured' },
+            overdue: true,
+        }));
+        for (const lang of ['fr', 'en']) {
+            const b = mailOf(p, lang);
+            expect(b.some((x) => x.type === 'table')).toBe(false);
+            expect(b.filter((x) => x.type === 'button')).toHaveLength(1);
+            expect(b.find((x) => x.type === 'button').url).toBe('/reports/dept-brief/77');
+            const links = b.find((x) => x.type === 'links');
+            expect(links.items).toHaveLength(3);
+            for (const i of links.items) {
+                expect(i.href).toBe('/reports/dept-brief/77');
+                // the unit's name only: its population sentence stays on the page
+                expect(i.text).not.toMatch(/personnes|people/);
+            }
+            const kv = b.find((x) => x.type === 'kv');
+            expect(kv.rows[0][1]).toBe(
+                lang === 'en'
+                    ? '62% (+3 pts since the previous brief)'
+                    : '62 % (+3 pts depuis le bilan précédent)'
+            );
+            expect(kv.rows[1][1]).toMatch(/stable/);
+            const all = JSON.stringify(b);
+            expect(all).toMatch(
+                lang === 'en' ? /\+2 more in the full brief/ : /\+2 autres dans le bilan complet/
+            );
+            expect(all).toMatch(
+                lang === 'en'
+                    ? /compared with your previous monthly brief/
+                    : /comparées à votre bilan mensuel précédent/
+            );
+            // never « available from the second brief » next to a computed comparison
+            expect(all).not.toMatch(/second brief|deuxième bilan/);
+        }
+    });
+
+    test('the delivered e-mail is the short one; the page keeps the full brief', async () => {
+        const T = jest.requireActual('../../src/utils/emailTemplate');
+        const p = payload();
+        p.briefId = 5;
+        const r = renderBlocks(p, { lang: 'fr' });
+        expect(r.blocks.some((x) => x.type === 'table')).toBe(true);
+        expect(r.mailBlocks.some((x) => x.type === 'table')).toBe(false);
+        const out = T.compose(
+            { kind: 'dept_brief', title: r.title, blocks: r.mailBlocks, locale: 'fr' },
+            { brand: { appName: 'ACME' } }
+        );
+        expect(out.subject).toBe('ACME — Bilan de votre département');
+        expect(out.text).toMatch(/À faire en priorité/);
+    });
+
+    test('nothing waiting says so; no comparison says so in words', () => {
+        const p = payload({ isEmpty: true });
+        p.deltas = { basis: 'first_measure', seriesStart: null, d1: null, d5: null };
+        const b = mailOf(p, 'en');
+        expect(b.find((x) => x.type === 'links')).toBeUndefined();
+        const all = JSON.stringify(b);
+        expect(all).toMatch(/No action waiting in this scope/);
+        expect(all).toMatch(/First measured period/);
     });
 });
