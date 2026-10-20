@@ -403,6 +403,10 @@ router.get('/api/powerbi/readiness', requireApiKey, ReportController.powerbIRead
 // for a person without a verdict). Version 1 above keeps its shape for one
 // release and answers with Deprecation / Link successor headers.
 router.get('/api/powerbi/v2/readiness', requireApiKey, ReportController.powerbIReadinessV2);
+// Version 2 of the assessments feed: the levels the indicators count (NULL while
+// a required skill is not assessed; a skill the role does not require is never
+// "met" or "not met"). Version 1 keeps its shape for one release, deprecated.
+router.get('/api/powerbi/v2/assessments', requireApiKey, ReportController.powerbIAssessmentsV2);
 router.get('/api/powerbi/organization', requireApiKey, ReportController.powerbIOrganization);
 router.get('/api/powerbi/ninebox', requireApiKey, ReportController.powerbINineBox);
 router.get('/api/powerbi/pips', requireApiKey, ReportController.powerbIPips);
