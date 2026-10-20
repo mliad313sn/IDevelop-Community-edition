@@ -229,7 +229,8 @@ class ComplianceController {
 
     async recordCertification(req, res) {
         try {
-            const { employeeId, skillId, certNumber, issuedOn, expiresOn, notes } = req.body;
+            const { employeeId, skillId, certNumber, issuedOn, expiresOn, notes, issuer } =
+                req.body;
             // Scope check: the target employee must be visible to the actor.
             const ids = await scopedEmployeeIds(req.user);
             if (ids !== null && !ids.includes(Number(employeeId))) {
@@ -244,6 +245,8 @@ class ComplianceController {
                     issuedOn,
                     expiresOn: expiresOn || null,
                     notes,
+                    // the issuing body (migration 196): a plain string or nothing
+                    issuer: typeof issuer === 'string' ? issuer : null,
                     file: req.file || null,
                 },
                 req.user

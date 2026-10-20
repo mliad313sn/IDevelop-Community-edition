@@ -86,7 +86,9 @@ async function refresherFor(c, stage) {
 /**
  * The person's own mail for a stage, for any language (B = emailTemplate
  * blocks in the recipient's language). The certification and its date are in
- * the body only; the subject is the catalogue's.
+ * the body only; the subject is the catalogue's. The issuing body (migration
+ * 196), when recorded, is said in this mail only: it is the person's own
+ * record. The line's mail and every subject leave it out.
  */
 function employeeMail(c, stage, label, due, { refresher = false } = {}) {
     const expired = stage === 4;
@@ -96,6 +98,9 @@ function employeeMail(c, stage, label, due, { refresher = false } = {}) {
                 `La certification ${c.skillName} ${label.fr} (échéance ${due}).`,
                 `The ${c.skillName} certification ${label.en} (due ${due}).`
             ),
+            ...(c.issuer
+                ? [B.para(`Organisme émetteur : ${c.issuer}.`, `Issued by: ${c.issuer}.`)]
+                : []),
             expired
                 ? B.notice(
                       'Ne réalisez pas les tâches qui exigent cette certification avant son renouvellement. Parlez-en à votre responsable.',
@@ -149,8 +154,10 @@ async function tick() {
     const due = await db.all(
         `SELECT cc.certification_id AS "certId", cc.employee_id AS "employeeId", cc.full_name AS "fullName",
                 cc.skill_id AS "skillId", cc.skill_name AS "skillName",
-                cc.expires_on AS "expiresOn", cc.days_to_expiry AS "daysToExpiry", cc.alert_stage AS "alertStage"
+                cc.expires_on AS "expiresOn", cc.days_to_expiry AS "daysToExpiry", cc.alert_stage AS "alertStage",
+                ec.issuer AS "issuer"
            FROM v_certification_current cc
+           LEFT JOIN public.employee_certifications ec ON ec.id = cc.certification_id
           WHERE cc.expires_on IS NOT NULL
             AND cc.days_to_expiry <= 90`
     );

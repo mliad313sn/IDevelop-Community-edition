@@ -434,5 +434,8 @@
   "cat_devProposals": "Development actions proposed to the manager",
   "cat_reviewRecords": "End-of-campaign records (reading acknowledged, comment)",
   "cat_pipReviews": "Checkpoints of improvement plans (the manager’s note, the person’s answer)",
-  "no_domain": "No domain"
+  "no_domain": "No domain",
+  "issuer": "Issuing body",
+  "issuer_ph": "Optional, e.g. a training centre or a certifying body",
+  "issued_by": "Issued by {{issuer}}"
 }

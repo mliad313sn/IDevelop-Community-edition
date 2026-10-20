@@ -258,7 +258,7 @@
                     <td><a href="/employees/<%= c.employeeId %>"><%= c.fullName %></a>
                         <div style="font-size:.78rem;color:var(--text-muted);"><%= c.departmentName %></div></td>
                     <td><%= c.skillName %></td>
-                    <td><%= c.certNumber || '-' %></td>
+                    <td><%= c.certNumber || '-' %><% if (c.issuer) { %><div style="font-size:.78rem;color:var(--text-muted);"><%= __('compliance:issued_by', { issuer: c.issuer }) %></div><% } %></td>
                     <td><%= c.issuedOn ? fmtPeriodBound(c.issuedOn) : '-' %></td>
                     <td><%= c.expiresOn ? fmtPeriodBound(c.expiresOn) : __('compliance:never') %></td>
                     <td>
@@ -344,6 +344,10 @@
             <div class="form-group" style="margin:0;">
                 <label for="cert-number"><%= __('compliance:th_cert_no') %></label>
                 <input type="text" id="cert-number" name="certNumber" class="form-control" placeholder="<%= __('compliance:optional') %>">
+            </div>
+            <div class="form-group" style="margin:0;min-width:220px;">
+                <label for="cert-issuer"><%= __('compliance:issuer') %></label>
+                <input type="text" id="cert-issuer" name="issuer" maxlength="200" autocomplete="off" class="form-control" placeholder="<%= __('compliance:issuer_ph') %>">
             </div>
             <div class="form-group" style="margin:0;">
                 <label for="cert-issued-on"><%= __('compliance:issued_on') %></label>

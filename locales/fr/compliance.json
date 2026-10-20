@@ -434,5 +434,8 @@
   "cat_devProposals": "Actions de développement proposées au responsable",
   "cat_reviewRecords": "Comptes rendus de fin de campagne (lecture attestée, commentaire)",
   "cat_pipReviews": "Points d’étape des plans d’amélioration (note du responsable, réponse de la personne)",
-  "no_domain": "Sans domaine"
+  "no_domain": "Sans domaine",
+  "issuer": "Organisme émetteur",
+  "issuer_ph": "Facultatif, par exemple un centre de formation ou un organisme certificateur",
+  "issued_by": "Délivré par {{issuer}}"
 }

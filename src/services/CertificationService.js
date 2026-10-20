@@ -54,6 +54,23 @@ function addMonthsClamped(iso, months) {
     return target.toISOString().slice(0, 10);
 }
 
+/** Longest issuer kept (migration 196 CHECK). */
+const ISSUER_MAX = 200;
+
+/**
+ * The issuing body as stored (migration 196): control characters and runs of
+ * white space become one space, the ends are trimmed, at most ISSUER_MAX
+ * characters are kept. Blank or not a string gives null (« not recorded »),
+ * never an empty string.
+ */
+function normaliseIssuer(value) {
+    if (typeof value !== 'string') return null;
+    // eslint-disable-next-line no-control-regex
+    const flat = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ');
+    const out = flat.trim().slice(0, ISSUER_MAX).trim();
+    return out ? out : null;
+}
+
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.resolve('uploads');
 
 function ensureDir(p) {
@@ -124,6 +141,7 @@ class CertificationService {
             expiresOn = null,
             notes = null,
             file = null,
+            issuer = null,
         },
         actor
     ) {
@@ -155,8 +173,8 @@ class CertificationService {
         const row = await db.get(
             `INSERT INTO employee_certifications
                 (employee_id, skill_id, cert_number, issued_on, expires_on, notes,
-                 verified_by_type, verified_by, verified_at, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, now(), ?)
+                 verified_by_type, verified_by, verified_at, created_by, issuer)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, now(), ?, ?)
              RETURNING *`,
             [
                 employeeId,
@@ -168,6 +186,8 @@ class CertificationService {
                 verifiedByType,
                 actor ? actor.id : null,
                 actor && actor.userType === 'admin' ? actor.id : null,
+                // the issuing body (migration 196); blank = not recorded
+                normaliseIssuer(issuer),
             ]
         );
 
@@ -318,8 +338,11 @@ class CertificationService {
         }
         const scope = scopeClause(ids, params, 'cc.employee_id');
         params.push(Math.min(Math.max(parseInt(limit, 10) || 200, 1), 1000));
+        // the issuer (migration 196) is read from the record itself
         return db.all(
-            `SELECT cc.* FROM v_certification_current cc
+            `SELECT cc.*, ec.issuer AS "issuer"
+               FROM v_certification_current cc
+               LEFT JOIN public.employee_certifications ec ON ec.id = cc.certification_id
               WHERE 1 = 1${statusSql}${scope}
               ORDER BY cc.expires_on ASC NULLS LAST
               LIMIT ?`,
@@ -589,5 +612,8 @@ class CertificationService {
 // tested directly rather than inferred from a database round-trip.
 CertificationService.addMonthsClamped = addMonthsClamped;
 CertificationService.isNotFuture = isNotFuture;
+
+CertificationService.normaliseIssuer = normaliseIssuer;
+CertificationService.ISSUER_MAX = ISSUER_MAX;
 
 module.exports = CertificationService;

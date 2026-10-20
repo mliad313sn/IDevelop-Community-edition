@@ -381,7 +381,8 @@ const REDACTED_ON_ERASURE = [
     },
     // CERTIFICATIONS: the certificate number, the free text and the evidence
     // file name go (the file itself is deleted after the erasure commits); the
-    // fact of the certification (skill, dates, state) stays as a safety record.
+    // fact of the certification (skill, dates, state, and the body that issued
+    // it, migration 196) stays as a safety record.
     {
         key: 'certifications',
         table: 'employee_certifications',
@@ -394,6 +395,7 @@ const REDACTED_ON_ERASURE = [
             'is_revoked',
             'av_status',
             'created_at',
+            'issuer',
         ],
     },
     // CAREER ASPIRATIONS: what the person said they want. Deleted.
@@ -1022,7 +1024,7 @@ class DSRService {
         await q(
             'certifications',
             `SELECT id, skill_id, cert_number, issued_on, expires_on, is_revoked, revoked_reason, notes,
-                    original_name, av_status, created_at
+                    original_name, av_status, created_at, issuer
                FROM employee_certifications WHERE employee_id = ? ORDER BY id`,
             [employeeId]
         );
