@@ -50,3 +50,13 @@ condition = "AND"
 paths = ['''^locales/[a-z-]+/[a-z0-9_-]+\.json$''']
 regexTarget = "secret"
 regexes = ['''^[a-z][a-z0-9_]*$''']
+
+# generic-api-key false positive: an app-settings key name in an SQL string
+# (setting_key = 'dispute.l2SlaDays') in tests/unit/hrGovernanceService-db.test.js
+# (commit ad48d69). It names a setting, not a secret; the commit stays in history.
+[[allowlists]]
+description = "app-settings key name in hrGovernanceService-db.test.js"
+condition = "AND"
+paths = ['''^tests/unit/hrGovernanceService-db\.test\.js$''']
+regexTarget = "secret"
+regexes = ['''^dispute\.l2SlaDays$''']
