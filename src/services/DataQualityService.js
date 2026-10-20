@@ -670,4 +670,6 @@ module.exports = {
     finishRow,
     sealDueMonth,
     anchorAlert,
+    // the section readers, exported for the database tests
+    _sections: { peopleSection, frameworkSection, developmentSection, certificatesSection },
 };
