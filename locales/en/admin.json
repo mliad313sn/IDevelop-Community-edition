@@ -536,6 +536,7 @@
   "brand_name": "Company / product name",
   "brand_tagline": "Login tagline",
   "brand_accent": "Accent colour",
+  "brand_accent_hint": "Buttons, links and highlights derive from it. In each mode its contrast is checked (WCAG AA) and, where needed, the colour is shown a little darker or lighter.",
   "brand_logo": "Logo",
   "brand_favicon": "Browser-tab icon (favicon)",
   "brand_clear": "clear",

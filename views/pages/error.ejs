@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>
-        <%= typeof title !=='undefined' ? title : __('chrome:error_title') %> - IDevelop
+        <%= typeof title !=='undefined' ? title : __('chrome:error_title') %> - <%= (typeof brandName !== 'undefined' && brandName) ? brandName : 'IDevelop' %>
     </title>
     <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css?v=6.4.0">
     <% if (typeof externalFonts !== 'undefined' && externalFonts === true) { %>
@@ -16,6 +16,7 @@
     <% } %>
     <link rel="stylesheet" href="/css/style.css?v=<%= assetVersion %>">
     <link rel="stylesheet" href="/css/horizon.css?v=<%= assetVersion %>">
+    <%- include('../partials/brand-accent') %>
     <!-- Prevent theme flash -->
     <script nonce="<%= cspNonce %>">
         (function(){var d=document.documentElement,t=null,p=null;try{t=localStorage.getItem('theme');p=localStorage.getItem('palette');}catch(e){}var dk=t==='dark'||(t!=='light'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);if(!dk)d.setAttribute('data-theme','light');if(p&&p!=='iris')d.setAttribute('data-palette',p);})();

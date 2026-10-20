@@ -536,6 +536,7 @@
   "brand_name": "Nom de l'entreprise / du produit",
   "brand_tagline": "Slogan de connexion",
   "brand_accent": "Couleur d'accent",
+  "brand_accent_hint": "Les boutons, liens et mises en évidence en découlent. Dans chaque mode, son contraste est vérifié (WCAG AA) et, au besoin, la couleur est affichée un peu plus foncée ou plus claire.",
   "brand_logo": "Logo",
   "brand_favicon": "Icône d'onglet (favicon)",
   "brand_clear": "effacer",
