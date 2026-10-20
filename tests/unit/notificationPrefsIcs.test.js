@@ -801,6 +801,58 @@ describe('views rendered in French and English', () => {
     });
 
     test.each(['fr', 'en'])(
+        'reminder effectiveness (%s): a rate with its counts, a small group or an unreadable ledger in words',
+        (lang) => {
+            const C = require('../../src/controllers/NotificationController');
+            const effectiveness = {
+                days: 90,
+                minN: 5,
+                rows: [
+                    { key: 'campaign', reminded: 8, acted: 2, rate: 25, reason: null },
+                    { key: 'learning', reminded: 3, acted: null, rate: null, reason: 'small' },
+                    {
+                        key: 'development',
+                        reminded: null,
+                        acted: null,
+                        rate: null,
+                        reason: 'unavailable',
+                    },
+                ],
+            };
+            const html = render(
+                'views/pages/admin/notification-metrics.ejs',
+                { metrics, effectiveness, fmt: C._presentation.numbers(lang) },
+                lang
+            );
+            expect(html).not.toContain('[chrome:');
+            expect(html).toContain('id="nmetEff"');
+            expect(html).toContain(lang === 'en' ? '25.0%' : '25,0 %');
+            expect(html).toMatch(/\(2 \/ 8\)/);
+            expect(html).toContain(
+                lang === 'en'
+                    ? 'Group too small (fewer than 5)'
+                    : 'Effectif trop faible (moins de 5)'
+            );
+            expect(html).toContain(
+                lang === 'en'
+                    ? 'Not measured (ledger unreadable)'
+                    : 'Non mesuré (registre illisible)'
+            );
+            expect(html).not.toMatch(/>\s*0[\s\u202f]?%/);
+        }
+    );
+
+    test('no effectiveness block when it could not be built', () => {
+        const C = require('../../src/controllers/NotificationController');
+        const html = render('views/pages/admin/notification-metrics.ejs', {
+            metrics,
+            effectiveness: null,
+            fmt: C._presentation.numbers('fr'),
+        });
+        expect(html).not.toContain('id="nmetEff"');
+    });
+
+    test.each(['fr', 'en'])(
         'catalogue (%s): one row per declared kind, recipients, preview links',
         async (lang) => {
             const C = require('../../src/controllers/NotificationController');

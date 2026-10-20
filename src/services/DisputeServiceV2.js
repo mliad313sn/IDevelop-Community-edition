@@ -623,10 +623,11 @@ class DisputeServiceV2 {
               RETURNING id`,
             [days]
         );
+        // Its own kind since wave 7 (dispute.hr_reminder): wave 6 sent it as
+        // dispute.escalated with `reminder: true`, rows that still read right.
         if (rows.length) {
-            await DisputeServiceV2._notifyHr('dispute.escalated', {
+            await DisputeServiceV2._notifyHr('dispute.hr_reminder', {
                 count: rows.length,
-                reminder: true,
                 link: '/v2/slf/disputes',
             });
         }
@@ -991,12 +992,31 @@ class DisputeServiceV2 {
         );
         if (!changes) return { proposed: false };
         // The person is told a proposal waits for their answer — no rating, no
-        // name and no text in the message (the catalogue rule).
+        // name and no text in the message (the catalogue rule). The date they
+        // have to answer by is the day the dispute goes up to the line without
+        // an answer (escalateOverdueL0: proposed_at + the level-0 delay).
         const eid = await DisputeServiceV2.employeeFor(id).catch(() => null);
         await DisputeServiceV2._notify('employee', eid, 'dispute.proposal', {
             link: '/employee/supervisor-reviews',
+            respondBy: await DisputeServiceV2.respondByDay(new Date()),
         });
         return { proposed: true };
+    }
+
+    /**
+     * The calendar day ('YYYY-MM-DD', the app's zone) by which the person
+     * answers a proposal made at `from`: from + the level-0 delay. Null when
+     * it cannot be computed (the notice then carries no date, never a wrong one).
+     */
+    static async respondByDay(from = new Date()) {
+        try {
+            const days = await slaDays('dispute.l0SlaDays', 'DISPUTE_L0_SLA_DAYS', 5);
+            const t = from instanceof Date ? from.getTime() : NaN;
+            if (!Number.isFinite(t) || !Number.isFinite(days) || days < 0) return null;
+            return require('../utils/dateFormat').appDayIso(new Date(t + days * 86400000));
+        } catch (_) {
+            return null;
+        }
     }
 
     /**

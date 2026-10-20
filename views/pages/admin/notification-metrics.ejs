@@ -72,6 +72,32 @@
 </table>
 </div>
 <% } %>
+<%# Do the reminders work (4.0.0 port, wave 7)? Ledgers × what people then did; under minN no rate. %>
+<% var _e = (typeof effectiveness !== 'undefined' && effectiveness && effectiveness.rows) ? effectiveness : null; %>
+<% if (_e && _e.rows.length) { %>
+<section class="card nmet-wrap nmet-eff" aria-labelledby="nmetEff">
+    <h2 id="nmetEff" class="nmet-eff-h"><%= __('chrome:nmet_eff_title', { days: F.num(_e.days) }) %></h2>
+    <table class="table nmet-table">
+        <thead>
+            <tr>
+                <th scope="col"><%= __('chrome:nmet_eff_col_family') %></th>
+                <th scope="col" class="num"><%= __('chrome:nmet_eff_col_reminded') %></th>
+                <th scope="col" class="num"><%= __('chrome:nmet_eff_col_rate') %></th>
+            </tr>
+        </thead>
+        <tbody>
+        <% _e.rows.forEach(function (r) { %>
+            <tr>
+                <th scope="row"><%= __('chrome:nmet_eff_family_' + r.key) %></th>
+                <td class="num"><%= r.reminded == null ? __('chrome:nmet_eff_unavailable') : F.num(r.reminded) %></td>
+                <td class="num"><% if (r.rate == null) { %><span class="nmet-nm"><%= r.reason === 'small' ? __('chrome:nmet_small', { n: F.num(_e.minN) }) : __('chrome:nmet_eff_unavailable') %></span><% } else { %><%= F.pct(r.rate) %> <span class="nmet-n">(<%= F.num(r.acted) %> / <%= F.num(r.reminded) %>)</span><% } %></td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table>
+    <p class="text-muted nmet-eff-note"><%= __('chrome:nmet_eff_note') %></p>
+</section>
+<% } %>
 <ul class="text-muted nmet-notes">
     <li><%= __('chrome:nmet_note_opened') %></li>
     <li><%= __('chrome:nmet_note_acted') %></li>
@@ -94,4 +120,7 @@
 .nmet-nm{color:var(--text-muted,#64748b);font-size:.85rem}
 .nmet-n{color:var(--text-muted,#64748b);font-size:.8rem}
 .nmet-notes{font-size:.85rem;margin-top:.75rem}
+.nmet-eff{margin-top:1rem}
+.nmet-eff-h{font-size:1.05rem;margin:0;padding:12px 16px 4px}
+.nmet-eff-note{font-size:.85rem;margin:0;padding:8px 16px 12px}
 </style>

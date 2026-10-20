@@ -93,6 +93,37 @@ describe('one summary', () => {
         expect(h).toMatch(/2 people have a required certificate expired\./);
         expect(h).not.toMatch(/\son[a-z]+="/i);
     });
+    test('a weekly point opens with « Since your last summary », as stored (wave 7)', () => {
+        const h = render('show.ejs', {
+            mode: 'one',
+            digest: {
+                ...D,
+                persona: 'employee',
+                changes: [],
+                progress: {
+                    title: 'Since your last summary of 12/10',
+                    lines: [{ text: '1 level validated by your manager', polarity: 'better' }],
+                },
+            },
+        });
+        expect(h).toMatch(/id="dg-progress"/);
+        expect(h).toMatch(/Since your last summary of 12\/10/);
+        expect(h).toMatch(/1 level validated by your manager/);
+        const first = render('show.ejs', {
+            mode: 'one',
+            digest: {
+                ...D,
+                changes: [],
+                actions: [],
+                progress: {
+                    title: null,
+                    lines: [{ text: 'First summary: x', polarity: 'neutral' }],
+                },
+            },
+        });
+        expect(first).toMatch(/Your first summary/);
+        expect(first).not.toMatch(/No summary|nothing/i);
+    });
     test.each([
         ['forbidden', /written for someone else/],
         ['notfound', /does not exist/],
@@ -129,7 +160,12 @@ describe('routes and catalogue', () => {
         const cat = require('../../src/services/notificationCatalogue');
         for (const p of ['executive', 'hr', 'manager', 'employee', 'paused'])
             expect(cat.isDeclared('digest.persona.' + p)).toBe(true);
-        expect(cat.tierOf('digest.persona.employee')).toBe('none');
+        // wave 7: e-mailed only with a positive change or a step (PersonaDigestService)
+        expect(cat.tierOf('digest.persona.employee')).toBe('immediate');
+        // ...and never a line of the daily digest
+        expect(
+            require('../../src/services/NotificationService')._digestible('digest.persona.employee')
+        ).toBe(false);
         expect(cat.webhookOf('digest.persona.executive')).toBe('never');
     });
 });

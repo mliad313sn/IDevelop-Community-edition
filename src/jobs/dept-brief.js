@@ -716,6 +716,9 @@ function renderBlocks(payload, opts = {}) {
 
     const blocks = [];
     const title = T.pick(titleFr, titleEn);
+    // The notes that say WHICH figures these are (absorbed windows, a partial
+    // period, a recomputation): in the full brief and in the short mail alike.
+    const notes = [];
 
     // §4.7 — the absorbed windows are named in the header, never silently merged.
     if (Array.isArray(payload.absorbed) && payload.absorbed.length) {
@@ -725,10 +728,10 @@ function renderBlocks(payload, opts = {}) {
         const listEn = payload.absorbed
             .map((a) => `${(CADENCE_LABEL[a.cadence] || cad).unit.en} ${a.period}`)
             .join(', ');
-        blocks.push(T.para(`Inclut ${list}.`, `Includes ${listEn}.`));
+        notes.push(T.para(`Inclut ${list}.`, `Includes ${listEn}.`));
     }
     if (payload.partialPeriod) {
-        blocks.push(
+        notes.push(
             T.para(
                 `Période partielle — données disponibles depuis le ${fmtPeriodBound(payload.partialPeriod.since)} : aucune évolution n’est publiée pour cette période.`,
                 `Partial period — data available since ${fmtPeriodBound(payload.partialPeriod.since)}: no change figures are published for this period.`
@@ -736,13 +739,14 @@ function renderBlocks(payload, opts = {}) {
         );
     }
     if (opts.recomputedAt) {
-        blocks.push(
+        notes.push(
             T.para(
                 `Recalculé le ${fmtPeriodBound(opts.recomputedAt)} — peut différer de l’envoi initial.`,
                 `Recomputed on ${fmtPeriodBound(opts.recomputedAt)} — may differ from the original send.`
             )
         );
     }
+    blocks.push(...notes);
 
     // The units, each carrying its own population.
     for (const u of payload.units || []) blocks.push(T.para(u.label));
@@ -900,7 +904,111 @@ function renderBlocks(payload, opts = {}) {
         [{ type: 'h', text: title }, ...blocks],
         { lang, accent }
     );
-    return { lang, title, blocks, html, text };
+    const mailBlocks = shortMailBlocks(T, payload, { notes, unitById, cad });
+    return { lang, title, blocks, html, text, mailBlocks };
+}
+
+/**
+ * The SHORT mail of a brief (4.0.0 port, wave 7), read on a phone in a few
+ * seconds: the notes that qualify the figures, the two headline figures with
+ * their change since the previous brief (the Δ the payload already holds, in
+ * words when there is no comparison), « To do first » — the three
+ * highest-ranked action lines as links to the brief, with their count —, how
+ * many more there are, ONE button and the frozen date. The tables, the flow,
+ * the measured state and the method stay on the brief's page. Two columns at
+ * most, no table. PURE (same payload, same blocks).
+ */
+function shortMailBlocks(T, payload, { notes = [], unitById = {}, cad } = {}) {
+    const out = [...notes];
+    const href = payload.briefId ? `/reports/dept-brief/${payload.briefId}` : null;
+    const totals = payload.footer && payload.footer.totals;
+    const deltas = payload.deltas || {};
+    const since = T.pick('depuis le bilan précédent', 'since the previous brief');
+    const withDelta = (shown, d, unit) => {
+        if (!d) return shown;
+        if (d.state === 'value' && d.value !== null && d.value !== undefined) {
+            const n = Number(d.value);
+            const v = `${n > 0 ? '+' : ''}${n}${unit === 'pts' ? ' pts' : ''}`;
+            return `${shown} (${v} ${since})`;
+        }
+        if (d.state === 'stable') return `${shown} (${T.pick('stable', 'stable')} ${since})`;
+        return shown;
+    };
+    if (totals) {
+        out.push({
+            type: 'kv',
+            rows: [
+                [
+                    T.pick('Couverture d’évaluation', 'Assessment coverage'),
+                    withDelta(T.pick(totals.coverage.text), deltas.d1, 'pts'),
+                ],
+                [
+                    T.pick('Personnes mesurées', 'People measured'),
+                    withDelta(T.pick(totals.measuredPeople.text), deltas.d5, null),
+                ],
+            ],
+        });
+    }
+    out.push(
+        T.para(
+            _deltaBasisText(deltas, 'fr', cad || CADENCE_LABEL.monthly),
+            _deltaBasisText(deltas, 'en', cad || CADENCE_LABEL.monthly)
+        )
+    );
+
+    // « To do first »: the R8 order of the full brief, three lines.
+    const pb = payload.blocks || {};
+    const sections = [...(pb.A || []), ...(pb.B || []), ...(pb.C || [])];
+    const ranked = [];
+    for (const sec of sections)
+        for (const l of sec.lines || []) ranked.push({ s: sec, l, r: _rank(l, unitById) });
+    ranked.sort((a, b) => _cmp(a.r, b.r));
+    const top = ranked.slice(0, 3).map(({ s: sec, l }) => {
+        const head = sec.title ? T.pick(sec.title) : '';
+        // the unit's name only: its population sentence stays on the page
+        const unit = l.label ? String(T.pick(l.label)).split(' — ')[0] : '';
+        const cellOf = Object.values(l).find(
+            (v) => _isCell(v) && v.state === 'measured' && Number(v.value) > 0
+        );
+        const count = cellOf ? T.pick(cellOf.text) : null;
+        const text = [head, unit].filter(Boolean).join(' — ') + (count ? ` (${count})` : '');
+        return { text, href };
+    });
+    out.push(T.section('À faire en priorité', 'To do first'));
+    if (top.length) out.push({ type: 'links', items: top });
+    else
+        out.push(
+            T.para('Aucune action en attente sur ce périmètre.', 'No action waiting in this scope.')
+        );
+    if (ranked.length > top.length) {
+        const more = ranked.length - top.length;
+        out.push(
+            T.para(
+                `+${more} autre${more > 1 ? 's' : ''} dans le bilan complet.`,
+                `+${more} more in the full brief.`
+            )
+        );
+    }
+    if (href) out.push(T.button('Ouvrir le bilan complet', 'Open the full brief', href));
+    out.push(
+        T.para(
+            'Le bilan complet (tableaux, flux de la période, état mesuré et méthode) est dans l’application.',
+            'The full brief (tables, the period’s flow, the measured state and the method) is in the app.'
+        )
+    );
+    out.push(
+        T.para(
+            'Gérer la fréquence de ce bilan : Mon compte → Notifications.',
+            'Manage the frequency of this brief: My account → Notifications.'
+        )
+    );
+    out.push(
+        T.para(
+            `Chiffres figés au ${fmtPeriodBound(payload.computedAt)}.`,
+            `Figures frozen on ${fmtPeriodBound(payload.computedAt)}.`
+        )
+    );
+    return out;
 }
 
 /** An arrow only when the comparison is real; a WORD whenever it is not. */
@@ -927,18 +1035,26 @@ function _deltaText(d, T) {
     }
 }
 
+/**
+ * The sentence follows the REAL basis of the Δ (4.0.0 port, wave 7): it used
+ * to say « the comparison is available from the second brief » on a brief
+ * whose comparison had been computed.
+ */
 function _deltaBasisText(deltas, lang, cad) {
-    const start = deltas && deltas.seriesStart ? fmtPeriodBound(deltas.seriesStart) : null;
+    const d = deltas || {};
+    const start = d.seriesStart ? fmtPeriodBound(d.seriesStart) : null;
     if (lang === 'en') {
-        if (deltas.basis === 'scope_changed')
+        if (d.basis === 'scope_changed')
             return 'Change not comparable — your scope changed between the two briefs.';
+        if (d.basis === 'comparable') return `Changes compared with your previous ${cad.en} brief.`;
         if (!start) return 'First measured period — there is no comparison yet.';
-        return `Your ${cad.en} brief series started on ${start}. Comparison is available from the second brief onwards.`;
+        return `Your ${cad.en} brief series started on ${start}. The comparison comes with the next comparable brief.`;
     }
-    if (deltas.basis === 'scope_changed')
+    if (d.basis === 'scope_changed')
         return 'Évolution non comparable — le périmètre a changé entre les deux bilans.';
+    if (d.basis === 'comparable') return `Évolutions comparées à votre bilan ${cad.fr} précédent.`;
     if (!start) return 'Première période mesurée — pas de comparaison.';
-    return `La série de vos bilans ${cad.fr}s a commencé le ${start}. La comparaison est disponible à partir du deuxième bilan.`;
+    return `La série de vos bilans ${cad.fr}s a commencé le ${start}. La comparaison viendra avec le prochain bilan comparable.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -999,7 +1115,8 @@ async function deliver(recipient, cadence, payload, rendered, { inAppOnly }) {
         payload: notifPayload,
         locale: rendered.lang,
         title: rendered.title,
-        blocks: rendered.blocks,
+        // The SHORT mail (wave 7); the full brief stays on its page.
+        blocks: rendered.mailBlocks || rendered.blocks,
         ctaUrl: notifPayload.link,
     });
 }
@@ -1607,5 +1724,5 @@ async function _branding() {
 // dept-digest.__test and planning-digest.__test.
 module.exports = {
     tick,
-    __test: { renderBlocks, gateFor, recipients, landed, defaultEnabled, dueAt },
+    __test: { renderBlocks, shortMailBlocks, gateFor, recipients, landed, defaultEnabled, dueAt },
 };

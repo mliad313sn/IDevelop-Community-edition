@@ -16,10 +16,15 @@
  * On each new stage:
  *   - notify the employee (in-app always; email rides on the master switch,
  *     category 'compliance') and their manager/supervisor,
- *   - from stage 2 (≤60 days), try a refresher auto-assignment through the
- *     existing LMS mapping engine: first course mapped to the skill
+ *   - from stage 2 (≤60 days), FIRST try a refresher auto-assignment through
+ *     the existing LMS mapping engine: first course mapped to the skill
  *     (course_skill_map) that the employee isn't already actively enrolled in.
  *     Best-effort — no LMS configured means no assignment, never an error.
+ *     The assignment is silent (no separate lms.assigned notice): the expiry
+ *     mail itself says a refresher is waiting and its button opens it, so the
+ *     person reads one mail, not two unrelated ones (4.0.0 port, wave 7).
+ *   - an EXPIRED certification (stage 4) is « critique »: the person must not
+ *     do the work that requires it until it is renewed.
  */
 
 const db = require('../config/database');
@@ -31,6 +36,93 @@ function stageFor(daysToExpiry) {
     if (daysToExpiry <= 60) return 2;
     if (daysToExpiry <= 90) return 1;
     return 0;
+}
+
+const EMPLOYEE_LINK = '/employee/my-certifications';
+const LEARNING_LINK = '/employee/my-learning';
+
+/**
+ * The refresher of a certification, assigned FIRST (stage ≥ 2) and silently.
+ * True when the person now has an active enrolment in a course mapped to the
+ * skill (just assigned or already there). Best-effort: no LMS means false.
+ */
+async function refresherFor(c, stage) {
+    if (stage < 2) return { assigned: false, active: false };
+    let assigned = false;
+    try {
+        const course = await db.get(
+            `SELECT m.course_id AS "courseId"
+               FROM course_skill_map m
+               JOIN lms_courses c2 ON c2.id = m.course_id
+              WHERE m.skill_id = ?
+                AND NOT EXISTS (
+                    SELECT 1 FROM lms_enrollments e
+                     WHERE e.employee_id = ? AND e.course_id = m.course_id
+                       AND e.status IN ('assigned', 'in_progress'))
+              ORDER BY m.course_id LIMIT 1`,
+            [c.skillId, c.employeeId]
+        );
+        if (course) {
+            await require('../services/LmsService').assignCourse(c.employeeId, course.courseId, {
+                assignedBy: null,
+                notifyLearner: false,
+            });
+            assigned = true;
+        }
+        const active = await db.get(
+            `SELECT 1 AS x FROM lms_enrollments e
+               JOIN course_skill_map m ON m.course_id = e.course_id AND m.skill_id = ?
+              WHERE e.employee_id = ? AND e.status IN ('assigned', 'in_progress')
+              LIMIT 1`,
+            [c.skillId, c.employeeId]
+        );
+        return { assigned, active: !!active };
+    } catch (_) {
+        /* LMS optional — never fail the sweep */
+        return { assigned, active: false };
+    }
+}
+
+/**
+ * The person's own mail for a stage, for any language (B = emailTemplate
+ * blocks in the recipient's language). The certification and its date are in
+ * the body only; the subject is the catalogue's.
+ */
+function employeeMail(c, stage, label, due, { refresher = false } = {}) {
+    const expired = stage === 4;
+    return (B) => {
+        const blocks = [
+            B.para(
+                `La certification ${c.skillName} ${label.fr} (échéance ${due}).`,
+                `The ${c.skillName} certification ${label.en} (due ${due}).`
+            ),
+            expired
+                ? B.notice(
+                      'Ne réalisez pas les tâches qui exigent cette certification avant son renouvellement. Parlez-en à votre responsable.',
+                      'Do not carry out the tasks that require this certification until it is renewed. Talk to your manager.',
+                      'critical'
+                  )
+                : B.para(
+                      'Planifiez la revalidation avant l’échéance.',
+                      'Schedule the revalidation before the due date.'
+                  ),
+        ];
+        if (refresher)
+            blocks.push(
+                B.notice(
+                    'Un module de recyclage vous attend dans votre espace formation : le suivre prépare le renouvellement.',
+                    'A refresher course is waiting for you in your learning page: taking it prepares the renewal.',
+                    'info'
+                )
+            );
+        return {
+            blocks,
+            ctaLabel: refresher
+                ? B.pick('Ouvrir mon recyclage', 'Open my refresher course')
+                : B.pick('Voir mes certifications', 'See my certifications'),
+            ctaUrl: refresher ? LEARNING_LINK : EMPLOYEE_LINK,
+        };
+    };
 }
 
 const STAGE_LABEL = {
@@ -110,6 +202,11 @@ async function tick() {
             // body only — the subject is the catalogue's (no name, no date).
             const due = fmtDate(c.expiresOn);
 
+            // The refresher is assigned FIRST (stage ≥ 2), silently, so the
+            // expiry mail can say so and open it — one mail instead of two.
+            const ref = await refresherFor(c, stage);
+            if (ref.assigned) lmsAssigned++;
+
             // Employee notification. The EMPLOYEE's alert is what the stage claims;
             // if it fails, hand the stage back so the next tick tries again.
             const empResult = await NotificationService.notify({
@@ -122,19 +219,12 @@ async function tick() {
                     skillName: c.skillName,
                     expiresOn: c.expiresOn,
                     stage,
+                    link: ref.active ? LEARNING_LINK : EMPLOYEE_LINK,
+                    ...(ref.active ? { refresher: true } : {}),
                 },
-                content: (B) => ({
-                    blocks: [
-                        B.para(
-                            `La certification ${c.skillName} ${label.fr} (échéance ${due}).`,
-                            `The ${c.skillName} certification ${label.en} (due ${due}).`
-                        ),
-                        B.para(
-                            'Planifiez la revalidation avant l’échéance.',
-                            'Schedule the revalidation before the due date.'
-                        ),
-                    ],
-                }),
+                // An expired certification is critical, not a deadline.
+                ...(stage === 4 ? { severity: 'critique' } : {}),
+                content: employeeMail(c, stage, label, due, { refresher: ref.active }),
             });
             if (!empResult || empResult.inapp === 'error') {
                 await releaseStage();
@@ -163,6 +253,7 @@ async function tick() {
                         expiresOn: c.expiresOn,
                         stage,
                     },
+                    ...(stage === 4 ? { severity: 'critique' } : {}),
                     content: (B) => ({
                         blocks: [
                             B.para(
@@ -174,42 +265,10 @@ async function tick() {
                 });
             }
             alerts++;
-
-            // LMS refresher auto-assignment from stage 2 (≤60 days). Best-effort.
-            //
-            // The upper bound used to be `stage <= 3`, which excluded stage 4 —
-            // the ALREADY-EXPIRED certificates. The people most in breach, the
-            // ones who may not legally perform the task today and whose lapsed
-            // ticket degrades their readiness to 0 (v_certification_lapsed,
-            // migration 78), were the only ones getting no refresher at all.
-            // Stage is a monotonic watermark, so this still assigns at most once
-            // per stage per certification record.
-            if (stage >= 2) {
-                try {
-                    const course = await db.get(
-                        `SELECT m.course_id AS "courseId"
-                           FROM course_skill_map m
-                           JOIN lms_courses c2 ON c2.id = m.course_id
-                          WHERE m.skill_id = ?
-                            AND NOT EXISTS (
-                                SELECT 1 FROM lms_enrollments e
-                                 WHERE e.employee_id = ? AND e.course_id = m.course_id
-                                   AND e.status IN ('assigned', 'in_progress'))
-                          ORDER BY m.course_id LIMIT 1`,
-                        [c.skillId, c.employeeId]
-                    );
-                    if (course) {
-                        await require('../services/LmsService').assignCourse(
-                            c.employeeId,
-                            course.courseId,
-                            { assignedBy: null }
-                        );
-                        lmsAssigned++;
-                    }
-                } catch (_) {
-                    /* LMS optional — never fail the sweep */
-                }
-            }
+            // (The refresher used to be assigned HERE, after the mail, with its
+            // own lms.assigned notice. Stage 4 — the already-expired certificates —
+            // is included: the people most in breach need it most. Stage is a
+            // monotonic watermark, so it still assigns at most once per stage.)
         } catch (e) {
             console.error(`[cert-expiry] cert ${c.certId} failed:`, e.message);
         }
@@ -217,4 +276,4 @@ async function tick() {
     return { checked: due.length, alerts, lmsAssigned };
 }
 
-module.exports = { tick, stageFor };
+module.exports = { tick, stageFor, __test: { employeeMail, refresherFor } };

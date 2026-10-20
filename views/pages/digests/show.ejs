@@ -22,6 +22,16 @@
 <div class="card dg-card" id="dg-out"><p role="alert"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('dash:dg_out_of_scope') %></p></div>
 <% } else { %>
 <p class="text-muted" id="dg-period"><%= D.period %></p>
+<% if (D.progress && D.progress.lines.length) { %>
+<section class="card dg-card" id="dg-progress" aria-labelledby="dg-progress-h">
+    <h2 id="dg-progress-h" class="h3"><%= D.progress.title || __('dash:dg_progress_first') %></h2>
+    <ul class="dg-list">
+        <% D.progress.lines.forEach(function (l) { %>
+        <li class="dg-item"><span class="dg-mark dg-mark--<%= l.polarity === 'better' ? 'better' : 'neutral' %>" aria-hidden="true"><%= l.polarity === 'better' ? '▲' : '•' %></span><span><%= l.text %></span></li>
+        <% }); %>
+    </ul>
+</section>
+<% } %>
 <% if (D.changes.length) { %>
 <section class="card dg-card" id="dg-changes" aria-labelledby="dg-changes-h">
     <h2 id="dg-changes-h" class="h3"><%= __('dash:nar_dg_changes') %></h2>
@@ -47,7 +57,7 @@
     </ul>
 </section>
 <% } %>
-<% if (!D.changes.length && !D.actions.length && !D.history.length) { %>
+<% if (!D.changes.length && !D.actions.length && !D.history.length && !(D.progress && D.progress.lines.length)) { %>
 <p class="text-muted"><%= __('dash:dg_nothing') %></p>
 <% } %>
 <% } %>

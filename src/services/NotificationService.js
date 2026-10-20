@@ -935,6 +935,7 @@ class NotificationService {
             'cycle.opened': { type: 'cycle', key: 'cycleId' },
             'cycle.reminder': { type: 'cycle', key: 'cycleId' },
             'cycle.escalation': { type: 'cycle', key: 'cycleId' },
+            'cycle.team_reminder': { type: 'cycle', key: 'cycleId' },
             'cycle.closed': { type: 'cycle', key: 'cycleId' },
             'cert.expiry': { type: 'skill', key: 'skillId' },
             'cert.expiry.team': { type: 'skill', key: 'skillId' },
@@ -1491,6 +1492,112 @@ class NotificationService {
             };
         });
         return { days: d, kinds, globalOptOut, stepDowns, minN: MIN };
+    }
+
+    /**
+     * Do the reminders WORK? (4.0.0 port, wave 7.) Read from the exactly-once
+     * ledgers (reminder_log, nudge_log) and from what the person then DID, not
+     * from notifications.acted_at, over `days` (default 90), per family:
+     *   campaign     the person's ladder (D+3, D-7, D-2) → the self-assessment
+     *                of that campaign started or submitted within 7 days;
+     *   learning     a course assigned and not started → that enrolment
+     *                started within 14 days;
+     *   development  the owner's own due actions → one of their plan actions
+     *                reported done or completed within 14 days.
+     * People who left, were voided or erased are out. Fewer than METRICS_MIN_N
+     * reminded: no rate (`reason: 'small'`), never 0 %. A ledger that cannot be
+     * read: `reason: 'unavailable'`, counts null. Aggregates only, no name.
+     * @returns {Promise<{days:number, minN:number, rows:Array<{key, reminded, acted, rate, reason}>}>}
+     */
+    static async reminderEffectiveness({ days = 90 } = {}) {
+        const d = Math.min(Math.max(Math.floor(Number(days) || 90), 7), 365);
+        const MIN = NotificationService.METRICS_MIN_N;
+        const live = (col) =>
+            `JOIN employees e ON e.id = ${col} AND e.is_active AND e.cancelled_at IS NULL AND e.erased_at IS NULL`;
+        const families = [
+            {
+                key: 'campaign',
+                sql: `WITH r AS (
+                        SELECT rl.target_id AS emp, rl.ref_id AS cyc, rl.sent_at AS at
+                          FROM reminder_log rl
+                         WHERE rl.kind = ? AND rl.target_type = 'employee'
+                           AND rl.sent_at >= now() - (? || ' days')::interval
+                        UNION ALL
+                        SELECT nl.target_id, nl.cycle_id, nl.sent_at
+                          FROM nudge_log nl
+                         WHERE nl.target_type = 'employee' AND nl.kind IN ('reminder_7', 'reminder_2')
+                           AND nl.sent_at >= now() - (? || ' days')::interval)
+                      SELECT COUNT(*)::int AS reminded,
+                             COUNT(*) FILTER (WHERE EXISTS (
+                                 SELECT 1 FROM cycle_participants p
+                                  WHERE p.cycle_id = r.cyc AND p.employee_id = r.emp
+                                    AND ((p.started_at > r.at AND p.started_at <= r.at + interval '7 days')
+                                      OR (p.submitted_at > r.at AND p.submitted_at <= r.at + interval '7 days')))
+                               OR EXISTS (
+                                 SELECT 1 FROM self_assessments sa
+                                  WHERE sa.cycle_id = r.cyc AND sa.employee_id = r.emp
+                                    AND sa.self_rated_level IS NOT NULL
+                                    AND sa.created_at > r.at AND sa.created_at <= r.at + interval '7 days'))::int AS acted
+                        FROM r ${live('r.emp')}`,
+                // the D+3 ledger key of cycle-nudge (bound: the enum guard reads literals)
+                params: ['cycle.not_started', String(d), String(d)],
+            },
+            {
+                key: 'learning',
+                sql: `SELECT COUNT(*)::int AS reminded,
+                             COUNT(*) FILTER (WHERE EXISTS (
+                                 SELECT 1 FROM lms_enrollments le
+                                  WHERE le.id = rl.ref_id AND le.employee_id = rl.target_id
+                                    AND le.started_at > rl.sent_at
+                                    AND le.started_at <= rl.sent_at + interval '14 days'))::int AS acted
+                        FROM reminder_log rl ${live('rl.target_id')}
+                       WHERE rl.kind = 'lms.due' AND rl.target_type = 'employee'
+                         AND rl.sent_at >= now() - (? || ' days')::interval`,
+                params: [String(d)],
+            },
+            {
+                key: 'development',
+                sql: `SELECT COUNT(*)::int AS reminded,
+                             COUNT(*) FILTER (WHERE EXISTS (
+                                 SELECT 1 FROM idp_actions a JOIN idp_plans p ON p.id = a.idp_id
+                                  WHERE p.employee_id = rl.target_id
+                                    AND ((a.reported_done_at > rl.sent_at
+                                          AND a.reported_done_at <= rl.sent_at + interval '14 days')
+                                      OR (a.completed_at > rl.sent_at
+                                          AND a.completed_at <= rl.sent_at + interval '14 days'))))::int AS acted
+                        FROM reminder_log rl ${live('rl.target_id')}
+                       WHERE rl.kind = 'idp.action_due' AND rl.target_type = 'employee'
+                         AND rl.sent_at >= now() - (? || ' days')::interval`,
+                params: [String(d)],
+            },
+        ];
+        const rows = [];
+        for (const f of families) {
+            let r = null;
+            try {
+                r = await db.get(f.sql, f.params);
+            } catch (_) {
+                rows.push({
+                    key: f.key,
+                    reminded: null,
+                    acted: null,
+                    rate: null,
+                    reason: 'unavailable',
+                });
+                continue;
+            }
+            const reminded = Number(r && r.reminded) || 0;
+            const acted = Number(r && r.acted) || 0;
+            const enough = reminded >= MIN;
+            rows.push({
+                key: f.key,
+                reminded,
+                acted: enough ? acted : null,
+                rate: enough ? (100 * acted) / reminded : null,
+                reason: enough ? null : 'small',
+            });
+        }
+        return { days: d, minN: MIN, rows };
     }
 
     /**
@@ -2266,7 +2373,25 @@ class NotificationService {
 
     /** May this kind appear in the daily digest? Never a tier-'none' kind. */
     static _digestible(kind) {
-        return catalogue.isDigestible(kind);
+        return catalogue.isDigestible(kind) && !NotificationService._isSummaryKind(kind);
+    }
+
+    /**
+     * A summary is never a line of another summary (4.0.0 port, wave 7): the
+     * « What changed » points, the department brief and digests and the manager
+     * and planning digests compose their own message, and one written in the
+     * app only (a weekly brief, an employee's quiet point) must not come back
+     * by e-mail inside the daily digest.
+     */
+    static _isSummaryKind(kind) {
+        const k = String(kind || '');
+        return (
+            k.startsWith('digest.') ||
+            k === 'dept_brief' ||
+            k === 'dept_digest' ||
+            k === 'manager_digest' ||
+            k === 'planning.digest'
+        );
     }
 
     /** Deliver one email row that was held back by quiet hours (boolean, kept for callers). */

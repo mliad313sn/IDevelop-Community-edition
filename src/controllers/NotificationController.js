@@ -646,9 +646,27 @@ class NotificationController {
         try {
             const lang = langOf(locale(req));
             const metrics = await NotificationService.metrics({ days: 30 });
+            // Do the reminders work (4.0.0 port, wave 7)? The learning and
+            // development families belong to the development module: with it
+            // off they are not shown, never shown as « not measured ».
+            let effectiveness = null;
+            try {
+                effectiveness = await NotificationService.reminderEffectiveness({ days: 90 });
+                let devOn = true;
+                try {
+                    devOn = await require('../services/ModuleService').isOn('development');
+                } catch (_) {
+                    devOn = true;
+                }
+                if (!devOn)
+                    effectiveness.rows = effectiveness.rows.filter((r) => r.key === 'campaign');
+            } catch (_) {
+                effectiveness = null;
+            }
             res.render('pages/admin/notification-metrics', {
                 title: req.t ? req.t('chrome:nmet_title') : 'Efficacité des notifications',
                 metrics,
+                effectiveness,
                 fmt: numbers(lang),
             });
         } catch (e) {

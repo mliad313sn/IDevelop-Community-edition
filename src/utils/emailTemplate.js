@@ -417,12 +417,12 @@ function footer({ appName, lang, mandatory, prefsUrl }) {
         text.push(F.mandatory);
     } else if (prefsUrl) {
         lines.push(
-            `<a href="${esc(prefsUrl)}" style="color:${MUTED};text-decoration:underline">${esc(F.prefs)}</a> (${esc(F.prefsWhere)})`
+            `<a href="${esc(prefsUrl)}" class="em-muted" style="color:${MUTED};text-decoration:underline">${esc(F.prefs)}</a> (${esc(F.prefsWhere)})`
         );
         text.push(`${F.prefs} (${F.prefsWhere})${colon(lang)} ${prefsUrl}`);
     }
     return {
-        html: `<p style="margin:0;font-family:${FONT};font-size:13px;line-height:20px;color:${MUTED}">${lines.join('<br>')}</p>`,
+        html: `<p class="em-muted" style="margin:0;font-family:${FONT};font-size:13px;line-height:20px;color:${MUTED}">${lines.join('<br>')}</p>`,
         text: text.join('\n'),
     };
 }
@@ -430,7 +430,11 @@ function footer({ appName, lang, mandatory, prefsUrl }) {
 /**
  * Call-to-action button, at least 48 px high, full width on a phone (max
  * 320 px elsewhere), its text colour computed against the accent, followed by
- * the link in clear so it can be copied.
+ * the link in clear so it can be copied. Outlook on Windows (the Word engine,
+ * which ignores padding and border-radius on links) gets a VML rounded
+ * rectangle of the same size and colours inside an `[if mso]` comment; every
+ * other client gets the table button. The accent and its computed text colour
+ * stay the same in dark mode (the contrast was computed for them).
  */
 function button({ label, url, accent, lang }) {
     if (!url) return '';
@@ -440,17 +444,61 @@ function button({ label, url, accent, lang }) {
         lang2(lang) === 'en'
             ? 'If the button does not work, copy this link:'
             : 'Si le bouton ne fonctionne pas, copiez ce lien :';
-    return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="width:100%;max-width:320px;margin:24px 0 8px"><tr><td height="48" align="center" style="height:48px;border-radius:8px;background:${bg}">
+    const vml = `<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${esc(url)}" style="height:48px;v-text-anchor:middle;width:320px" arcsize="17%" stroke="f" fillcolor="${bg}"><center style="color:${fg};font-family:'Segoe UI',Arial,sans-serif;font-size:16px;font-weight:bold">${esc(label)}</center></v:roundrect><![endif]-->`;
+    return `${vml}<!--[if !mso]><!--><table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="width:100%;max-width:320px;margin:24px 0 8px"><tr><td height="48" align="center" style="height:48px;border-radius:8px;background:${bg}">
   <a href="${esc(url)}" style="display:block;padding:14px 24px;line-height:20px;font-family:${FONT};font-size:16px;font-weight:700;color:${fg};text-decoration:none;text-align:center;border-radius:8px">${esc(label)}</a>
-</td></tr></table>
-<p style="margin:0 0 8px;font-family:${FONT};font-size:13px;line-height:20px;color:${MUTED}">${esc(copy)}<br><a href="${esc(url)}" style="color:${BODY};word-break:break-all">${esc(url)}</a></p>`;
+</td></tr></table><!--<![endif]-->
+<p class="em-muted" style="margin:0 0 8px;font-family:${FONT};font-size:13px;line-height:20px;color:${MUTED}">${esc(copy)}<br><a href="${esc(url)}" class="em-link" style="color:${BODY};word-break:break-all">${esc(url)}</a></p>`;
 }
 
 /**
+ * Dark mode of the mail clients that offer one. Every inline style stays the
+ * light look, which is what a client without dark mode shows. Clients that
+ * honour `prefers-color-scheme` (Apple Mail, Outlook for Mac and iOS, several
+ * Android clients) and Outlook.com (`[data-ogsc]`) repaint the card through the
+ * `em-*` mirror classes, on IDevelop's Dusk tokens. The ink header band, the
+ * accent bar and the button keep their colours.
+ */
+const DARK = {
+    bg: '#18172c', // Dusk --bg-base
+    card: '#23213f', // Dusk --bg-card
+    box: '#2c2a4d', // Dusk --bg-elevated
+    foot: '#1d1c35', // Dusk --bg-panel
+    ink: '#f2f1fa', // Dusk --text-primary (14.6:1 on the card)
+    body: '#c4c2da', // Dusk --text-secondary (9.2:1 on the card)
+    muted: '#a9a7c4', // Dusk --text-muted (6.8:1 on the card)
+    line: '#3a3860',
+};
+function darkCss() {
+    const rules = (pre) =>
+        [
+            `${pre}.em-bg{background:${DARK.bg} !important}`,
+            `${pre}.em-card{background:${DARK.card} !important;border-color:${DARK.line} !important}`,
+            `${pre}.em-body,${pre}.em-body p,${pre}.em-body li{color:${DARK.body} !important}`,
+            `${pre}.em-ink{color:${DARK.ink} !important}`,
+            `${pre}.em-muted{color:${DARK.muted} !important}`,
+            `${pre}.em-link{color:${DARK.ink} !important}`,
+            `${pre}.em-line{border-color:${DARK.line} !important}`,
+            `${pre}.em-box{background:${DARK.box} !important;color:${DARK.ink} !important}`,
+            `${pre}.em-foot{background:${DARK.foot} !important;border-color:${DARK.line} !important}`,
+        ].join('\n');
+    return [
+        ':root{color-scheme:light dark;supported-color-schemes:light dark}',
+        `@media (prefers-color-scheme: dark){\n${rules('')}\n}`,
+        rules('[data-ogsc] '),
+    ].join('\n');
+}
+
+/** Characters that pad a preheader, so no client pulls the body text after it. */
+const PREHEADER_PAD = '&#847;&zwnj;&nbsp;'.repeat(60);
+
+/**
  * THE document (one look for every mail): <html lang>, charset, viewport,
- * color-scheme (light only), <title>, hidden preheader (at most 90
- * characters), fluid card (width:100%; max-width:600px), ink header with the
- * logo as a CID image or the app name, 4 px brand bar, 24/16 padding, footer.
+ * color-scheme (light, with a dark rendering where the client offers one:
+ * darkCss), <title>, hidden preheader (at most 90 characters, padded), fluid
+ * card (width:100%; max-width:600px, and a 600 px ghost table for Outlook on
+ * Windows, which ignores max-width), ink header with the logo as a CID image
+ * or the app name, 4 px brand bar, 24/16 padding, footer.
  * `bodyHtml` / `footerHtml` are trusted HTML built by the escaping helpers.
  */
 function layout({ lang, title, preheader, appName, accent, logoCid, bodyHtml, footerHtml }) {
@@ -461,29 +509,35 @@ function layout({ lang, title, preheader, appName, accent, logoCid, bodyHtml, fo
         ? `<img src="cid:${esc(logoCid)}" alt="${esc(app)}" height="32" style="height:32px;width:auto;max-width:190px;display:block;border:0">`
         : `<span style="font-family:${FONT};font-size:19px;line-height:24px;font-weight:800;color:#ffffff">${esc(app)}</span>`;
     const pre = preheader
-        ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all">${esc(String(preheader).replace(/\s+/g, ' ').trim().slice(0, 90))}</div>`
+        ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all">${esc(String(preheader).replace(/\s+/g, ' ').trim().slice(0, 90))}${PREHEADER_PAD}</div>`
         : '';
     return `<!doctype html>
-<html lang="${l}" xmlns="http://www.w3.org/1999/xhtml">
+<html lang="${l}" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
-<meta name="supported-color-schemes" content="light">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
 <title>${esc(title || app)}</title>
+<!--[if mso]><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+<style>
+${darkCss()}
+</style>
 </head>
-<body style="margin:0;padding:0;background:#f4f5f7;color:${BODY}">
+<body class="em-bg" style="margin:0;padding:0;background:#f4f5f7;color:${BODY}">
 ${pre}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background:#f4f5f7;margin:0;padding:24px 0">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="em-bg" style="width:100%;background:#f4f5f7;margin:0;padding:24px 0">
   <tr><td align="center" style="padding:0 8px">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid ${BORDER}">
+    <!--[if mso]><table role="presentation" width="600" align="center" cellpadding="0" cellspacing="0"><tr><td><![endif]-->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="em-card" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid ${BORDER}">
       <tr><td style="background:${INK};padding:16px 24px" align="left">${head}</td></tr>
       <tr><td style="height:4px;background:${bar};font-size:0;line-height:0">&nbsp;</td></tr>
-      <tr><td style="padding:24px 16px;font-family:${FONT};font-size:16px;line-height:24px;color:${BODY}">
+      <tr><td class="em-body" style="padding:24px 16px;font-family:${FONT};font-size:16px;line-height:24px;color:${BODY};overflow-wrap:anywhere">
 ${bodyHtml || ''}
       </td></tr>
-      <tr><td style="padding:16px;background:#f4f5f7;border-top:1px solid ${BORDER}">${footerHtml || ''}</td></tr>
+      <tr><td class="em-foot" style="padding:16px;background:#f4f5f7;border-top:1px solid ${BORDER}">${footerHtml || ''}</td></tr>
     </table>
+    <!--[if mso]></td></tr></table><![endif]-->
   </td></tr>
 </table>
 </body>
@@ -792,12 +846,12 @@ function renderBlocks(list, { lang, accent } = {}) {
         if (!b || typeof b !== 'object') continue;
         if (b.type === 'h') {
             html.push(
-                `<h2 style="margin:20px 0 8px;font-family:${F};color:${INK};font-size:17px;line-height:24px;font-weight:700">${esc(cell(b.text))}</h2>`
+                `<h2 class="em-ink" style="margin:20px 0 8px;font-family:${F};color:${INK};font-size:17px;line-height:24px;font-weight:700">${esc(cell(b.text))}</h2>`
             );
             text.push(cell(b.text));
         } else if (b.type === 'p') {
             html.push(
-                `<p style="margin:0 0 16px;font-family:${F};color:${BODY};font-size:16px;line-height:24px">${esc(cell(b.text))}</p>`
+                `<p class="em-body" style="margin:0 0 16px;font-family:${F};color:${BODY};font-size:16px;line-height:24px">${esc(cell(b.text))}</p>`
             );
             text.push(cell(b.text));
         } else if (b.type === 'kv') {
@@ -806,7 +860,7 @@ function renderBlocks(list, { lang, accent } = {}) {
                 `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px">${rows
                     .map(
                         (r) =>
-                            `<tr><td style="padding:6px 12px 6px 0;font-family:${F};color:${MUTED};font-size:14px;vertical-align:top">${esc(cell(r && r[0]))}</td><td style="padding:6px 0;font-family:${F};color:${INK};font-size:14px;font-weight:600;vertical-align:top">${esc(cell(r && r[1]))}</td></tr>`
+                            `<tr><td class="em-muted" style="padding:6px 12px 6px 0;font-family:${F};color:${MUTED};font-size:14px;vertical-align:top">${esc(cell(r && r[0]))}</td><td class="em-ink" style="padding:6px 0;font-family:${F};color:${INK};font-size:14px;font-weight:600;vertical-align:top">${esc(cell(r && r[1]))}</td></tr>`
                     )
                     .join('')}</table>`
             );
@@ -889,7 +943,7 @@ function renderBlocks(list, { lang, accent } = {}) {
         } else if (b.type === 'notice') {
             const colour = NOTICE.get(b.severity) || acc;
             html.push(
-                `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr><td style="border-left:4px solid ${colour};background:#f9fafb;padding:12px 16px;font-family:${F};color:${INK};font-size:15px;line-height:22px">${esc(cell(b.text))}</td></tr></table>`
+                `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr><td class="em-box" style="border-left:4px solid ${colour};background:#f9fafb;padding:12px 16px;font-family:${F};color:${INK};font-size:15px;line-height:22px">${esc(cell(b.text))}</td></tr></table>`
             );
             text.push(cell(b.text));
         }
@@ -968,7 +1022,7 @@ function compose(spec = {}, ctx = {}) {
     const bodyHtml = [
         pBody(greeting),
         chipHtml,
-        `<h1 style="margin:0 0 12px;font-family:${FONT};font-size:21px;line-height:28px;font-weight:700;color:${INK}">${esc(head)}</h1>`,
+        `<h1 class="em-ink" style="margin:0 0 12px;font-family:${FONT};font-size:21px;line-height:28px;font-weight:700;color:${INK}">${esc(head)}</h1>`,
         intro != null ? pBody(intro) : '',
         blocksHtml,
         button({ label, url: linkAbs, accent, lang }),

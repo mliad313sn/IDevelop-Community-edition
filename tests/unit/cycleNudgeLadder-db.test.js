@@ -265,3 +265,72 @@ suite('the person’s ladder on a 42-day campaign', () => {
         });
     }, 60000);
 });
+
+suite('the D-7 line message (4.0.0 port, wave 7)', () => {
+    test('the reviewer gets ONE count of the people who have not started, never a name', async () => {
+        await inRollback(async () => {
+            const stamp = Date.now();
+            const T0 = new Date(Date.now() - 3600000);
+            const closes = new Date(T0.getTime() + 42 * DAY);
+            const C = await mkCycle(`LADDER-TEAM-${stamp}`, T0, closes);
+            const lead = await mkEmployee('LEAD', stamp);
+            const quiet1 = await mkEmployee('QUIETONE', stamp);
+            const quiet2 = await mkEmployee('QUIETTWO', stamp);
+            const busy = await mkEmployee('BUSY', stamp);
+            await db.run('UPDATE employees SET supervisor_id = ? WHERE id IN (?, ?, ?)', [
+                lead,
+                quiet1,
+                quiet2,
+                busy,
+            ]);
+            await db.run(
+                `INSERT INTO cycle_participants (cycle_id, employee_id, expected_skills)
+                 VALUES (?, ?, 6), (?, ?, 6), (?, ?, 6)`,
+                [C, quiet1, C, quiet2, C, busy]
+            );
+            const skills = await db.all('SELECT id FROM skills ORDER BY id LIMIT 2');
+            // `busy` has rated two of six skills: started, not submitted
+            for (const sk of skills)
+                await db.run(
+                    `INSERT INTO self_assessments (employee_id, skill_id, self_rated_level, status, workflow_state, cycle_id)
+                     VALUES (?, ?, 2, 'draft', 'draft', ?)`,
+                    [busy, Number(sk.id), C]
+                );
+            const { sent, restore } = harness();
+            try {
+                const tick = require('../../src/jobs/cycle-nudge').tick;
+                // D-7, then again an hour later and the next day: still ONE line message
+                for (const h of [0, 1, 24])
+                    await tick({ now: new Date(closes.getTime() - 6.5 * DAY + h * 3600000) });
+            } finally {
+                restore();
+            }
+            const mine = sent.filter((s) => s.payload && Number(s.payload.cycleId) === C);
+            const team = mine.filter((s) => s.kind === 'cycle.team_reminder');
+            expect(team).toHaveLength(1);
+            expect(team[0]).toMatchObject({ userType: 'employee', userId: lead });
+            expect(team[0].payload).toMatchObject({ count: 2, link: '/dashboard' });
+            for (const lang of ['fr', 'en']) {
+                const texts = textsOf(built(team[0], lang)).join(' ');
+                expect(texts).not.toMatch(/QUIET|BUSY|Ladder/);
+                expect(texts).toMatch(CAL_DAY);
+            }
+            expect(built(team[0], 'en').intro).toMatch(/^2 people in your team/);
+            // the people's own ladder is untouched, and `busy` reads where they stand
+            const own = mine.filter((s) => s.kind === 'cycle.reminder');
+            expect(own.map((s) => Number(s.userId)).sort()).toEqual([quiet1, quiet2, busy].sort());
+            const busyMail = built(
+                own.find((s) => Number(s.userId) === busy),
+                'en'
+            );
+            expect(textsOf(busyMail).join(' ')).toMatch(/already rated 2 of 6 skills/);
+            expect(busyMail.ctaLabel).toBe('Open my self-assessment');
+            const quietMail = built(
+                own.find((s) => Number(s.userId) === quiet1),
+                'fr'
+            );
+            expect(quietMail.ctaLabel).toBe('Commencer mon auto-évaluation');
+            expect(textsOf(quietMail).join(' ')).toMatch(/plan de développement/);
+        });
+    }, 60000);
+});

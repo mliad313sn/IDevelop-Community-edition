@@ -22,6 +22,12 @@
  *     escalation_3      : reviews pending ≤3 days before close (nudge_log)
  *     escalation_overdue: reviews pending past close (nudge_log)
  *
+ *     D-7 (line)        : the effective reviewer of the people who have NOT
+ *                         STARTED learns how many they are (cycle.team_reminder,
+ *                         once per reviewer and campaign, reminder_log): one
+ *                         count, never a name. It goes to the line, so it counts
+ *                         against nobody's four-mail ceiling.
+ *
  *   LOCKED cycles — the review phase, which used to be totally silent
  *     cycle.review_pending : weekly reminder to every reviewer still holding
  *                            submissions (reminder_log, per week)
@@ -114,6 +120,9 @@ const MAX_PER_PERSON = 4;
 /** reminder_log kind and period of the D+3 « not started » mail. */
 const LADDER_KIND = 'cycle.not_started';
 const D3_PERIOD = 'd+3';
+/** reminder_log kind and period of the D-7 line message (one per reviewer and campaign). */
+const TEAM_KIND = 'cycle.team_d7';
+const TEAM_PERIOD = 'd-7';
 
 /**
  * Which step of the person's ladder is due now, or null:
@@ -135,13 +144,18 @@ function ladderStage({ sinceOpenDays, daysLeft, durationDays }) {
  * The person's own mail for a ladder step, written for any language (B =
  * emailTemplate.blocks(lang) in the recipient's language). The campaign, its
  * date and the count are in the body; the subject is the catalogue's.
+ * `done` (the skills the person already rated) says where they stand on D-7
+ * and D-2; every step says why the assessment matters.
  */
-function ladderMail(cycle, stage, closesOn, expected) {
+function ladderMail(cycle, stage, closesOn, expected, done) {
     const { fmtDate } = require('../utils/dateFormat');
     const date = closesOn ? fmtDate(closesOn) : null;
     const name = cycle.label || cycle.code;
     const n = Number(expected);
+    const d = Number(done);
+    const started = Number.isFinite(d) && d > 0;
     return (B) => {
+        const fmt = (v) => require('../utils/emailTemplate').fmtNum(v, 0, B.lang);
         const rows = [[B.pick('Campagne', 'Campaign'), name]];
         if (date) rows.push([B.pick('À faire avant le', 'To do by'), date]);
         if (Number.isFinite(n) && n > 0)
@@ -165,10 +179,26 @@ function ladderMail(cycle, stage, closesOn, expected) {
                 `Dernier rappel : votre auto-évaluation de la campagne ${name} n’est pas encore soumise.`,
                 `Last reminder: your self-assessment for the ${name} campaign has not been submitted yet.`
             );
+        const blocks = [{ type: 'kv', rows }];
+        if (stage !== 'd+3' && started && Number.isFinite(n) && n > 0) {
+            const k = Math.min(d, n);
+            blocks.push(
+                B.para(
+                    `Vous avez déjà évalué ${fmt(k)} ${k > 1 ? 'compétences' : 'compétence'} sur ${fmt(n)}.`,
+                    `You have already rated ${fmt(k)} of ${fmt(n)} ${n > 1 ? 'skills' : 'skill'}.`
+                )
+            );
+        }
+        blocks.push(
+            B.para(
+                'Votre auto-évaluation sert de base à l’échange avec votre responsable et à votre plan de développement.',
+                'Your self-assessment is the starting point of the conversation with your manager and of your development plan.'
+            )
+        );
         return {
             intro,
             blocks: [
-                { type: 'kv', rows },
+                ...blocks,
                 B.notice(
                     stage === 'd+3'
                         ? 'Vous pouvez la faire en plusieurs fois. Dès qu’elle est commencée, ce rappel s’arrête.'
@@ -180,7 +210,7 @@ function ladderMail(cycle, stage, closesOn, expected) {
                 ),
             ],
             ctaLabel:
-                stage === 'd+3'
+                stage === 'd+3' || !started
                     ? B.pick('Commencer mon auto-évaluation', 'Start my self-assessment')
                     : B.pick('Ouvrir mon auto-évaluation', 'Open my self-assessment'),
             ctaUrl: '/employee/self-assessment',
@@ -240,6 +270,109 @@ function reviewerMail(cycle, { stage, pending, closesOn }) {
     };
 }
 
+/**
+ * The D-7 line message: ONE count of the people of the reviewer's line who
+ * have not started, never a name; for any language.
+ */
+function teamMail(cycle, count, closesOn) {
+    const { fmtDate } = require('../utils/dateFormat');
+    const date = closesOn ? fmtDate(closesOn) : null;
+    const name = cycle.label || cycle.code;
+    const k = Number(count) || 0;
+    return (B) => {
+        const N = require('../utils/emailTemplate').fmtNum(k, 0, B.lang);
+        const rows = [
+            [B.pick('Campagne', 'Campaign'), name],
+            [B.pick('Pas encore commencé', 'Not started yet'), N],
+        ];
+        if (date) rows.push([B.pick('Clôture le', 'Closes on'), date]);
+        return {
+            intro: B.pick(
+                `${N} ${k > 1 ? 'personnes de votre équipe n’ont' : 'personne de votre équipe n’a'} pas encore commencé ${k > 1 ? 'leur' : 'son'} auto-évaluation de la campagne ${name}.`,
+                `${N} ${k > 1 ? 'people in your team have' : 'person in your team has'} not started the self-assessment of the ${name} campaign yet.`
+            ),
+            blocks: [
+                { type: 'kv', rows },
+                B.notice(
+                    'L’auto-évaluation sert de base à leur plan de développement : un mot de votre part aide souvent. Ce message ne nomme personne ; la liste est dans l’application.',
+                    'The self-assessment is the basis of their development plan: a word from you often helps. This message names nobody; the list is in the app.',
+                    'info'
+                ),
+            ],
+            ctaLabel: B.pick('Ouvrir le tableau de bord', 'Open the dashboard'),
+        };
+    };
+}
+
+/**
+ * D-7: count the participants of an OPEN campaign who have not started (the
+ * D+3 predicate: no started_at, no rated row, not submitted, not excluded,
+ * active) and tell each of their effective reviewers ONE count. Claimed once
+ * per (reviewer, campaign) in reminder_log; a claim that did not land is
+ * handed back.
+ */
+async function remindLines(cycle, closesOn, NotificationService, { claimPeriod, releasePeriod }) {
+    const rows = await db.all(
+        `SELECT p.employee_id AS "employeeId"
+           FROM cycle_participants p
+           JOIN employees e ON e.id = p.employee_id AND e.is_active AND e.erased_at IS NULL
+          WHERE p.cycle_id = ? AND p.excluded_at IS NULL AND p.submitted_at IS NULL
+            AND p.started_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM self_assessments sa
+                             WHERE sa.cycle_id = p.cycle_id AND sa.employee_id = p.employee_id
+                               AND (sa.self_rated_level IS NOT NULL
+                                    OR sa.workflow_state NOT IN ('draft', 'changes_requested')))`,
+        [cycle.id]
+    );
+    const ids = (rows || []).map((r) => Number(r.employeeId)).filter((x) => x > 0);
+    if (!ids.length) return 0;
+    const lines = await require('../services/ReportingLineService').lineRecipientsMany(ids, {
+        includeManager: false,
+    });
+    const per = new Map();
+    for (const id of ids) {
+        for (const r of lines.get(id) || []) {
+            if (r.userType !== 'employee' && r.userType !== 'admin') continue;
+            const key = `${r.userType}:${Number(r.id)}`;
+            const cur = per.get(key) || { userType: r.userType, id: Number(r.id), n: 0 };
+            cur.n++;
+            per.set(key, cur);
+        }
+    }
+    let sent = 0;
+    for (const r of per.values()) {
+        try {
+            if (!(await claimPeriod(TEAM_KIND, r.userType, r.id, cycle.id, TEAM_PERIOD))) continue;
+            const res = await NotificationService.notify({
+                userType: r.userType,
+                userId: r.id,
+                kind: 'cycle.team_reminder',
+                category: 'workflow',
+                payload: {
+                    cycleId: cycle.id,
+                    cycle: cycle.code,
+                    closesOn,
+                    count: r.n,
+                    link: '/dashboard',
+                },
+                content: teamMail(cycle, r.n, closesOn),
+                ctaUrl: '/dashboard',
+            });
+            if (!res || res.inapp === 'error') {
+                await releasePeriod(TEAM_KIND, r.userType, r.id, cycle.id, TEAM_PERIOD);
+                continue;
+            }
+            sent++;
+        } catch (e) {
+            console.error(
+                `[cycle-nudge] team reminder to ${r.userType} ${Number(r.id)} failed:`,
+                e && e.message
+            );
+        }
+    }
+    return sent;
+}
+
 async function tick({ now: nowArg } = {}) {
     const NotificationService = require('../services/NotificationService');
     const { sqlDateIso, appDayIso } = require('../utils/dateFormat');
@@ -260,8 +393,10 @@ async function tick({ now: nowArg } = {}) {
             notStarted: 0,
             reviewPending: 0,
             reincluded: 0,
+            teamReminders: 0,
         };
 
+    let teamReminders = 0;
     let reminders = 0,
         escalations = 0,
         notStarted = 0,
@@ -401,6 +536,9 @@ async function tick({ now: nowArg } = {}) {
             try {
                 const candidates = await db.all(
                     `SELECT p.employee_id AS "employeeId", p.expected_skills AS "expected",
+                            (SELECT COUNT(DISTINCT sa.skill_id) FROM self_assessments sa
+                              WHERE sa.cycle_id = p.cycle_id AND sa.employee_id = p.employee_id
+                                AND sa.self_rated_level IS NOT NULL)::int AS "done",
                             ((SELECT COUNT(*) FROM reminder_log rl
                                WHERE rl.kind = ? AND rl.target_type = 'employee'
                                  AND rl.target_id = p.employee_id AND rl.ref_id = p.cycle_id)
@@ -451,7 +589,7 @@ async function tick({ now: nowArg } = {}) {
                                 stage: stage === 'd+3' ? 'not_started' : stage,
                                 link: '/employee/self-assessment',
                             },
-                            content: ladderMail(cycle, stage, closesOn, emp.expected),
+                            content: ladderMail(cycle, stage, closesOn, emp.expected, emp.done),
                             // D-7 and D-2 carry the deadline .ics, with the uid of the
                             // launch summary's: a calendar updates ONE event.
                             calendar:
@@ -488,6 +626,20 @@ async function tick({ now: nowArg } = {}) {
                 }
             } catch (e) {
                 console.error('[cycle-nudge] ladder pass failed:', e.message);
+            }
+        }
+
+        // ---- D-7: the LINE learns how many of its people have not started (a
+        // count, never a name), once per reviewer and campaign. It counts against
+        // nobody's ceiling: the person's own ladder is untouched.
+        if (stage === 'reminder_7') {
+            try {
+                teamReminders += await remindLines(cycle, closesOn, NotificationService, {
+                    claimPeriod,
+                    releasePeriod,
+                });
+            } catch (e) {
+                console.error('[cycle-nudge] team reminder pass failed:', e && e.message);
             }
         }
 
@@ -551,11 +703,28 @@ async function tick({ now: nowArg } = {}) {
             }
         }
     }
-    return { cycles: cycles.length, reminders, escalations, notStarted, reviewPending, reincluded };
+    return {
+        cycles: cycles.length,
+        reminders,
+        escalations,
+        notStarted,
+        reviewPending,
+        reincluded,
+        teamReminders,
+    };
 }
 
 module.exports = {
     tick,
     pendingReviewers,
-    __test: { ladderStage, ladderMail, reviewerMail, SHORT_CAMPAIGN_DAYS, MAX_PER_PERSON },
+    __test: {
+        ladderStage,
+        ladderMail,
+        reviewerMail,
+        teamMail,
+        remindLines,
+        SHORT_CAMPAIGN_DAYS,
+        MAX_PER_PERSON,
+        TEAM_KIND,
+    },
 };

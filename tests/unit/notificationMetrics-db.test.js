@@ -607,3 +607,102 @@ suite('migration 183 + measurement / preferences (rolled back)', () => {
         expect(out.left).toBe(0);
     });
 });
+
+suite('reminder effectiveness from the ledgers (4.0.0 port, wave 7, rolled back)', () => {
+    /** Invented people on a template row's site, department and role. */
+    async function people(tag, n) {
+        const tpl = await db.get(
+            `SELECT site_id, department_id, service_id, role_id FROM employees
+              WHERE is_active AND role_id IS NOT NULL ORDER BY id LIMIT 1`
+        );
+        const ids = [];
+        for (let i = 0; i < n; i++) {
+            const r = await db.get(
+                `INSERT INTO employees (employee_number, first_name, last_name, site_id, department_id, service_id, role_id, is_active)
+                 VALUES (?, ?, 'Reminded', ?, ?, ?, ?, true) RETURNING id`,
+                [
+                    `EFF-${tag}-${i}-${Date.now()}`,
+                    `${tag}${i}`,
+                    tpl.siteId,
+                    tpl.departmentId,
+                    tpl.serviceId,
+                    tpl.roleId,
+                ]
+            );
+            ids.push(Number(r.id));
+        }
+        return ids;
+    }
+
+    async function campaign(code) {
+        const admin = await db.get(
+            "SELECT id FROM admins WHERE role::text = 'superadmin' ORDER BY id LIMIT 1"
+        );
+        const r = await db.get(
+            `INSERT INTO assessment_cycles (code, label, status, opened_at, closes_at, created_by)
+             VALUES (?, ?, 'open', now() - interval '20 days', now() + interval '20 days', ?) RETURNING id`,
+            [code, code, Number(admin.id)]
+        );
+        return Number(r.id);
+    }
+
+    test('acted within 7 days counts; a leaver is out; under 5 no rate', async () => {
+        const out = await inRolledBackTx(async () => {
+            const C = await campaign(`EFF-${Date.now()}`);
+            const ids = await people('EFF', 7);
+            for (const id of ids) {
+                await db.run(
+                    'INSERT INTO cycle_participants (cycle_id, employee_id, expected_skills) VALUES (?, ?, 4)',
+                    [C, id]
+                );
+                await db.run(
+                    `INSERT INTO reminder_log (kind, target_type, target_id, ref_id, period, sent_at)
+                     VALUES ('cycle.not_started', 'employee', ?, ?, 'd+3', now() - interval '10 days')`,
+                    [id, C]
+                );
+            }
+            // two start within 7 days of the reminder, one only after 9 days
+            await db.run(
+                `UPDATE cycle_participants SET started_at = now() - interval '8 days'
+                  WHERE cycle_id = ? AND employee_id IN (?, ?)`,
+                [C, ids[0], ids[1]]
+            );
+            await db.run(
+                `UPDATE cycle_participants SET started_at = now() - interval '1 day'
+                  WHERE cycle_id = ? AND employee_id = ?`,
+                [C, ids[2]]
+            );
+            // a leaver is out of every figure
+            await db.run('UPDATE employees SET is_active = false WHERE id = ?', [ids[6]]);
+            const before = await N.reminderEffectiveness({ days: 90 });
+            // with only four people left reminded, there is no rate
+            await db.run('UPDATE employees SET is_active = false WHERE id IN (?, ?)', [
+                ids[4],
+                ids[5],
+            ]);
+            const small = await N.reminderEffectiveness({ days: 90 });
+            return { before, small };
+        });
+        const camp = (r) => r.rows.find((x) => x.key === 'campaign');
+        expect(out.before.rows.map((r) => r.key)).toEqual(['campaign', 'learning', 'development']);
+        const c = camp(out.before);
+        expect(c.reminded).toBeGreaterThanOrEqual(6);
+        expect(c.acted).toBeGreaterThanOrEqual(2);
+        expect(c.rate).toBeCloseTo((100 * c.acted) / c.reminded, 5);
+        // the base data may hold other reminders: only check ours did not make it 0 %
+        expect(c.rate).toBeGreaterThan(0);
+        const s = camp(out.small);
+        expect(s.reminded).toBe(c.reminded - 2);
+        if (s.reminded < 5) expect(s).toMatchObject({ rate: null, acted: null, reason: 'small' });
+    });
+
+    test('the window is bounded and a reason is always given for a missing rate', async () => {
+        const r = await N.reminderEffectiveness({ days: 1 });
+        expect(r.days).toBe(7);
+        for (const row of r.rows) {
+            if (row.rate == null) expect(['small', 'unavailable']).toContain(row.reason);
+            else expect(row.reason).toBeNull();
+        }
+        expect((await N.reminderEffectiveness({ days: 9999 })).days).toBe(365);
+    });
+});
