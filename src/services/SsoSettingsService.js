@@ -700,6 +700,8 @@ module.exports = {
     readSecret,
     validateMfaAcrValues,
     isUndecryptable,
+    // The stored master switch (the go-live checklist reports it, /setup).
+    isSwitchOn,
     PROVIDERS,
     ENABLED,
     CATEGORY,

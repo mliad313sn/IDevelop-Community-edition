@@ -813,5 +813,6 @@
   "nav_data_quality": "Qualité des données",
   "nav_data_quality_title": "Les enregistrements qui empêchent de mesurer les indicateurs, par domaine",
   "nav_usage": "Usage par site",
-  "nav_usage_title": "Comptes activés, auto-évaluations et validations, par site (des comptes seulement)"
+  "nav_usage_title": "Comptes activés, auto-évaluations et validations, par site (des comptes seulement)",
+  "nav_setup_readonly_title": "Premiers pas et la liste de mise en service, en lecture seule, sur votre périmètre"
 }

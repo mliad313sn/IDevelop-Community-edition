@@ -2527,13 +2527,15 @@ router.get('/reports/templates', requireManagerOrAdmin, ReportController.listTem
 router.post('/reports/templates', requireManagerOrAdmin, ReportController.saveTemplate);
 router.get('/reports/templates/:id', requireManagerOrAdmin, ReportController.loadTemplate);
 router.delete('/reports/templates/:id', requireManagerOrAdmin, ReportController.deleteTemplate);
-// First-run setup checklist. SuperAdmin-only. The wizard reports
-// GLOBAL counts (all sites, all departments, the whole headcount) and its steps
-// link to /organization, /domains-skills, /roles and /app-settings — pages a
-// site-scoped admin is refused on. Shown to a local admin it leaked out-of-scope
-// headcount and nagged with a dead-end wizard it could not dismiss.
+// First-run setup checklist and « Ready for go-live ». A SuperAdmin reads the
+// organisation's counts and may dismiss the banner. Since the 4.0.0 port (wave
+// 10) every other administrator may READ it: their people counts are limited
+// to their clearance (never the organisation's headcount), a step links only to
+// a page their permissions open (never a SuperAdmin page), the administrator-
+// account lines show a state without a count, and dismiss stays SuperAdmin-only
+// (route below). Nothing on the page writes.
 const SetupController = require('../controllers/SetupController');
-router.get('/setup', requireSuperAdminPage, SetupController.index.bind(SetupController));
+router.get('/setup', requireAdmin, SetupController.index.bind(SetupController));
 router.post('/setup/dismiss', requireSuperAdmin, SetupController.dismiss.bind(SetupController));
 
 // Local Content / Nationalization — OPTIONAL module (settings-gated in the controller)

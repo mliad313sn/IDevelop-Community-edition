@@ -557,6 +557,15 @@ const CATALOGUE = {
     },
     license: { label: 'nav_license', href: '/admin/license', icon: 'fa-certificate' },
     setup: { label: 'nav_setup', title: 'nav_setup_title', href: '/setup', icon: 'fa-rocket' },
+    // The same checklist, read-only, for an administrator who is not a
+    // SuperAdmin (4.0.0 port, wave 10): one href, so the quick search and the
+    // breadcrumbs list it once; only one of the two is ever visible.
+    setup_readonly: {
+        label: 'nav_setup',
+        title: 'nav_setup_readonly_title',
+        href: '/setup',
+        icon: 'fa-rocket',
+    },
 
     // ── help ───────────────────────────────────────────────────────────────
     guide: { label: 'nav_help', title: 'nav_guide', href: '/guide', icon: 'fa-circle-question' },
@@ -844,6 +853,9 @@ function gates(c) {
         sql_console: wsAdm && sa && c.sqlConsole,
         license: wsCfg && sa,
         setup: wsCfg && sa,
+        // Route: requireAdmin; the page is read-only for them (scoped counts,
+        // no SuperAdmin link, no dismiss).
+        setup_readonly: wsCfg && !sa,
 
         guide: true,
         about: true,
@@ -961,6 +973,7 @@ const SECTIONS = {
             'system_logs',
             ['data_quality', ['usage']],
             'settings',
+            'setup_readonly',
         ],
         section_system: [
             [

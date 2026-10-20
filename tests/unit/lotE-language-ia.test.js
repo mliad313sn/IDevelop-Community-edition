@@ -9,7 +9,8 @@
  *   - every native confirm()/prompt() is gone from views/** (L6-19);
  *   - /admins/:id* only matches a numeric id (L6-24);
  *   - /account/my-access and /action-center redirect (L5C-07; the latter to /tasks);
- *   - /setup is SuperAdmin-only (L5C-08) and its banner follows it;
+ *   - /setup is read-only for the other administrators (4.0.0 decision 13);
+ *     its dismiss and its dashboard banner stay SuperAdmin-only (L5C-08);
  *   - the 403 page names contactable SuperAdmins by DISPLAY NAME, never a demo
  *     login and never an e-mail (L5C-12);
  *   - every sidebar href has a help entry (L6-21);
@@ -259,8 +260,12 @@ describe('L6-24 / L5C-07 / L5C-08 — routes', () => {
         expect(tasks).toMatch(/res\.redirect\(301, '\/tasks'\)/);
     });
 
-    test('/setup is SuperAdmin-only and answers with the explanatory 403', () => {
-        expect(routes).toMatch(/router\.get\(\s*'\/setup',\s*requireSuperAdminPage/);
+    test('/setup: read-only for the other administrators, dismiss SuperAdmin-only (owner decision 13 of 4.0.0)', () => {
+        // the checklist is open to every administrator (scoped counts, no
+        // SuperAdmin link, no dismiss: SetupController); dismissing the banner
+        // stays SuperAdmin-only
+        expect(routes).toMatch(/router\.get\(\s*'\/setup',\s*requireAdmin,/);
+        expect(routes).toMatch(/router\.post\(\s*'\/setup\/dismiss',\s*requireSuperAdmin,/);
         const auth = read('src/middleware/auth.js');
         expect(auth).toMatch(/const requireSuperAdminPage = async \(req, res, next\)/);
         expect(auth).toMatch(/superAdminOnly: true/);

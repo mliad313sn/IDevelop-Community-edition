@@ -337,17 +337,19 @@ const ADDED = {
         '/employee/review-record',
     ],
     // 4.0.0 port (wave 10): « Data quality » (any permission one of its
-    // sections reads) and « Usage by site » (view_employees).
+    // sections reads), « Usage by site » (view_employees) and the go-live
+    // checklist, read-only for every administrator (owner decision 13).
     localadmin_ops: [
         '/tasks',
         ...ORPHANS,
         '/kpi/targets',
         '/safety-gate',
         ...WAVE10_PEOPLE,
+        '/setup',
     ],
-    localadmin_people: ['/tasks', ...ORPHANS, '/kpi/targets', ...WAVE10_PEOPLE],
-    localadmin_none: ['/tasks', ...ORPHANS, '/kpi/targets'],
-    viewer: [...ORPHANS, '/kpi/targets'],
+    localadmin_people: ['/tasks', ...ORPHANS, '/kpi/targets', ...WAVE10_PEOPLE, '/setup'],
+    localadmin_none: ['/tasks', ...ORPHANS, '/kpi/targets', '/setup'],
+    viewer: [...ORPHANS, '/kpi/targets', '/setup'],
     superadmin: [
         '/tasks',
         ...ORPHANS,
