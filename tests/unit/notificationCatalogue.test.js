@@ -43,6 +43,7 @@ const NOT_KINDS = new Map([
     ['cycle.not_started', 'nudge_log ledger key'],
     ['cycle.overdue', 'reminder_log ledger key of a campaign transition'],
     ['cycle.review_pending', 'reminder_log ledger key (weekly reviewer reminder)'],
+    ['cycle.team_d7', 'reminder_log ledger key (the D-7 line message)'],
     ['dept_brief.noscope', 'job result reason'],
     ['digest.any', 'reminder_log ledger key of the department brief'],
     ['dispute.reason', 'locale key'],

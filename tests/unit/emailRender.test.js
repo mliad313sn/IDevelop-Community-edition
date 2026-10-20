@@ -81,10 +81,54 @@ describe('one document, one look', () => {
         expect(m.html).toMatch(/^<!doctype html>/);
         expect(m.html).toMatch(/<html lang="fr"/);
         expect(m.html).toContain('<meta charset="utf-8">');
-        expect(m.html).toContain('<meta name="color-scheme" content="light">');
+        // light first, with a dark rendering where the client offers one (wave 7)
+        expect(m.html).toContain('<meta name="color-scheme" content="light dark">');
         expect(m.html).toContain(`<title>${T.esc(m.subject)}</title>`);
-        expect(m.html).toMatch(/display:none;max-height:0[^>]*>[^<]{1,90}<\/div>/);
+        // at most 90 visible characters, then the padding
+        expect(m.html).toMatch(
+            /display:none;max-height:0[^>]*>[^<&]{1,90}(&#847;&zwnj;&nbsp;)+<\/div>/
+        );
         expect(m.html).toContain('max-width:600px');
+    });
+
+    test('Outlook on Windows: a 600 px ghost table and a VML button of the same colours', async () => {
+        const m = await T.renderEmail({ kind: 'sa.submitted', locale: 'en' });
+        expect(m.html).toContain(
+            '<!--[if mso]><table role="presentation" width="600" align="center"'
+        );
+        expect(m.html).toMatch(/<!--\[if mso\]><v:roundrect [^>]*href="https?:\/\/[^"]+"/);
+        expect(m.html).toContain('<!--[if !mso]><!--><table role="presentation"');
+        const fill = /fillcolor="(#[0-9a-fA-F]{6})"/.exec(m.html);
+        expect(fill).not.toBeNull();
+        expect(m.html.toLowerCase()).toContain(`background:${fill[1].toLowerCase()}`);
+        // the plain text never carries the VML twin of the button
+        expect(m.text).not.toMatch(/roundrect|\[if mso/);
+    });
+
+    test('dark mode repaints the card through mirror classes; inline styles stay light', async () => {
+        const m = await T.renderEmail({
+            kind: 'sa.submitted',
+            locale: 'fr',
+            blocks: [
+                { type: 'kv', rows: [['Campagne', 'C-1']] },
+                { type: 'notice', severity: 'info', text: 'Note' },
+            ],
+        });
+        expect(m.html).toMatch(/@media \(prefers-color-scheme: dark\)\{/);
+        expect(m.html).toContain('[data-ogsc] .em-card');
+        for (const cls of [
+            'em-bg',
+            'em-card',
+            'em-body',
+            'em-ink',
+            'em-muted',
+            'em-box',
+            'em-foot',
+        ])
+            expect(m.html).toContain(`class="${cls}"`);
+        expect(m.html).toContain('background:#ffffff');
+        // the <style> block never leaks into the plain text
+        expect(m.text).not.toMatch(/prefers-color-scheme|em-card/);
     });
 
     test('no accent configured ⇒ the stock accent, with a computed text colour', async () => {
