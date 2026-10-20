@@ -8,9 +8,12 @@
         <% } %>
         <% if (typeof can !== 'function' || can('manage_app_settings')) { %>
         <%# the shared confirmation dialog, not the browser's native confirm. %>
+        <%# The typed word is checked by the server too (AppSettingsController.reset). %>
         <form action="/app-settings/reset" method="POST" style="display: inline;"
-            data-confirm="<%= __('admin:reset_settings_confirm') %>" data-confirm-danger>
+            data-confirm="<%= __('admin:reset_settings_confirm') %>" data-confirm-danger data-settings-reset>
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label for="settings-reset-word"><%= __('admin:reset_settings_word_label') %></label>
+            <input type="text" id="settings-reset-word" name="confirm" required autocomplete="off" spellcheck="false" maxlength="32" placeholder="<%= __('admin:reset_settings_word') %>">
             <button type="submit" class="btn btn-secondary"><i class="fas fa-arrows-rotate" aria-hidden="true"></i> <%= __('admin:reset_to_defaults') %></button>
         </form>
         <% } %>

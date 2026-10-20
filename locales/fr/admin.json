@@ -3957,5 +3957,7 @@
   "setup_gl_kiosk": "Mode poste partagé",
   "setup_gl_kiosk_sub": "Une décision pour les sites où plusieurs personnes partagent un ordinateur. Rapportée, jamais notée.",
   "setup_gl_local_content": "Contenu local (chiffres de nationalité)",
-  "setup_gl_local_content_sub": "Une décision : désactivé par défaut, activé dans Modules. Rapportée, jamais notée."
+  "setup_gl_local_content_sub": "Une décision : désactivé par défaut, activé dans Modules. Rapportée, jamais notée.",
+  "reset_settings_word_label": "Tapez RÉINITIALISER pour confirmer",
+  "reset_settings_word": "RÉINITIALISER"
 }

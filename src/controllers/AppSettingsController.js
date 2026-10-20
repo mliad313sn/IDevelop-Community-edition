@@ -1046,6 +1046,19 @@ class AppSettingsController {
                 );
                 return res.redirect('/app-settings');
             }
+            // The typed word, checked here too (4.0.0 port, wave 10): the form
+            // asks for it, but a POST without it — or with another word —
+            // changes nothing.
+            const { typedWordMatches } = require('../utils/typedConfirmation');
+            if (!typedWordMatches('settingsReset', req.body && req.body.confirm)) {
+                req.flash(
+                    'error',
+                    req.t
+                        ? req.t('flash:settings_reset_word_mismatch')
+                        : 'Reset cancelled: the confirmation word does not match. Nothing was changed.'
+                );
+                return res.redirect('/app-settings');
+            }
 
             await AppSettingsModel.initializeDefaults();
 

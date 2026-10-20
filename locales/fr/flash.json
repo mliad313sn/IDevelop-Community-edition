@@ -406,5 +406,6 @@
   "emp_place_inconsistent": "L’affectation ne tient pas : le département doit appartenir au site choisi et le service au département choisi.",
   "idp_activated": "Plan de développement activé : les deux signatures sont enregistrées.",
   "idp_signed_waiting": "Signature enregistrée. Le plan attend la signature de l’autre partie.",
-  "account_reauth_rate_limited": "Trop de tentatives refusées. Réessayez dans {{minutes}} minutes."
+  "account_reauth_rate_limited": "Trop de tentatives refusées. Réessayez dans {{minutes}} minutes.",
+  "settings_reset_word_mismatch": "Réinitialisation annulée : le mot de confirmation ne correspond pas. Rien n’a été modifié."
 }

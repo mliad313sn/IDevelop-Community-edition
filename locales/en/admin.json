@@ -3957,5 +3957,7 @@
   "setup_gl_kiosk": "Shared-computer mode",
   "setup_gl_kiosk_sub": "A decision for sites where several people share one computer. Reported, never scored.",
   "setup_gl_local_content": "Local content (nationality figures)",
-  "setup_gl_local_content_sub": "A decision: off by default, switched on in Modules. Reported, never scored."
+  "setup_gl_local_content_sub": "A decision: off by default, switched on in Modules. Reported, never scored.",
+  "reset_settings_word_label": "Type RESET to confirm",
+  "reset_settings_word": "RESET"
 }

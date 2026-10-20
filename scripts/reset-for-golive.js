@@ -44,8 +44,12 @@
  *
  * Usage:
  *   node scripts/reset-for-golive.js                 # dry-run: print the plan only
- *   node scripts/reset-for-golive.js --confirm       # execute (pg_dump backup first)
- *   node scripts/reset-for-golive.js --confirm --skip-backup   # execute without backup (NOT advised)
+ *   node scripts/reset-for-golive.js --confirm --confirm-word=PRODUCTION
+ *                                                    # execute (pg_dump backup first)
+ *   node scripts/reset-for-golive.js --confirm --confirm-word=PRODUCTION --skip-backup
+ *                                                    # execute without backup (NOT advised)
+ * The typed word is checked by the script itself: --confirm without it (or
+ * with another word) aborts before anything is read or wiped.
  */
 
 const { execFileSync } = require('child_process');
@@ -360,7 +364,19 @@ function triggerPlan(triggers) {
     return { disable, refused };
 }
 
-module.exports = { KEEP, WIPE, APPEND_ONLY_WIPE, CRITICAL, classify, triggerPlan };
+/**
+ * The typed word given with --confirm (`--confirm-word=PRODUCTION`, any case,
+ * with or without accents). Without it --confirm wipes nothing.
+ * @param {string[]} args the command-line arguments
+ */
+function confirmWordOk(args) {
+    const prefix = '--confirm-word=';
+    const arg = (args || []).find((a) => typeof a === 'string' && a.startsWith(prefix));
+    const { typedWordMatches } = require('../src/utils/typedConfirmation');
+    return typedWordMatches('goLive', arg ? arg.slice(prefix.length) : '');
+}
+
+module.exports = { KEEP, WIPE, APPEND_ONLY_WIPE, CRITICAL, classify, triggerPlan, confirmWordOk };
 
 function mask(url) {
     return String(url || '').replace(/:[^:@/]+@/, ':****@');
@@ -408,6 +424,13 @@ async function main() {
     const args = process.argv.slice(2);
     const CONFIRM = args.includes('--confirm');
     const SKIP_BACKUP = args.includes('--skip-backup');
+    // The typed word is checked by the script itself, not only by the menu
+    // that runs it: `--confirm` alone wipes nothing.
+    if (CONFIRM && !confirmWordOk(args)) {
+        throw new Error(
+            'ABORT: --confirm needs the typed word too (--confirm-word=PRODUCTION). Nothing was changed.'
+        );
+    }
 
     await db.connect();
     const client = db._client();
@@ -504,7 +527,7 @@ async function main() {
 
     if (!CONFIRM) {
         console.log(
-            '\nDRY RUN — nothing was changed. Re-run with --confirm to execute' +
+            '\nDRY RUN — nothing was changed. Re-run with --confirm --confirm-word=PRODUCTION to execute' +
                 (SKIP_BACKUP ? '' : ' (a pg_dump backup is taken first)') +
                 '.'
         );
