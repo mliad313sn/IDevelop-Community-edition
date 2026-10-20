@@ -2944,6 +2944,8 @@
   "about_mod_api": "API REST versionnée (<code>/api/v1</code>)",
   "about_link_guide": "Guide de l’utilisateur",
   "about_link_health": "État de santé",
+  "about_link_notices": "Mentions des composants tiers",
+  "about_notices_missing": "Les mentions des composants tiers sont écrites à la création du paquet (image Docker ou paquet Windows). Cette copie n’a pas été empaquetée : lancez « node scripts/build-third-party-notices.js » puis redémarrez.",
   "about_confidential": "CONFIDENTIEL — usage interne",
   "a11y_par_filter_state": "Filtrer par état",
   "a11y_scope_type": "Type de périmètre",

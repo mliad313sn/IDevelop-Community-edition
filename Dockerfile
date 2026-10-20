@@ -53,6 +53,8 @@ RUN apk add --no-cache tini \
 # Code and dependencies stay root-owned: the runtime user can read, not modify.
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# The licences of every shipped dependency, served at /about/third-party-notices.
+RUN node scripts/build-third-party-notices.js
 # Writable state. multer stages uploads in /app/tmp and then rename()s them into
 # UPLOADS_DIR; a rename cannot cross mount points (EXDEV), so tmp is a symlink
 # into the same /app/data volume. logs/ is written by winston at /app/logs;

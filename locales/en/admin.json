@@ -2944,6 +2944,8 @@
   "about_mod_api": "Versioned REST API (<code>/api/v1</code>)",
   "about_link_guide": "User guide",
   "about_link_health": "Health status",
+  "about_link_notices": "Third-party notices",
+  "about_notices_missing": "The third-party notices are written when the application is packaged (Docker image or Windows package). This copy was not packaged: run « node scripts/build-third-party-notices.js » and restart.",
   "about_confidential": "CONFIDENTIAL — Internal Use",
   "a11y_par_filter_state": "Filter by state",
   "a11y_scope_type": "Scope type",

@@ -128,6 +128,33 @@ router.get(Object.keys(GUIDE_FILES), requireAuth, (req, res) => {
         }
     );
 });
+// The third-party notices the package build writes at the app root
+// (scripts/build-third-party-notices.js), linked from /about. Read ONCE when the
+// routes load, never per request. A tree that was not packaged (development)
+// has no file: the page then says where the notices come from.
+const THIRD_PARTY_NOTICES = (() => {
+    try {
+        return require('fs').readFileSync(
+            require('path').join(__dirname, '..', '..', 'THIRD-PARTY-NOTICES.txt'),
+            'utf8'
+        );
+    } catch (_) {
+        return null;
+    }
+})();
+router.get('/about/third-party-notices', requireAuth, (req, res) => {
+    if (THIRD_PARTY_NOTICES === null) {
+        return res.status(404).render('pages/error', {
+            message: req.t
+                ? req.t('admin:about_notices_missing')
+                : 'The third-party notices are written when the application is packaged.',
+            title: req.t ? req.t('chrome:pt_not_found') : 'Not found',
+        });
+    }
+    res.set('Content-Type', 'text/plain; charset=utf-8');
+    res.set('Cache-Control', 'private, max-age=3600');
+    return res.send(THIRD_PARTY_NOTICES);
+});
 // About / version info — full live detail of the running version.
 router.get('/about', requireAuth, async (req, res) => {
     let pkg = {};

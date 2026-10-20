@@ -39,7 +39,8 @@
     "security:check": "node scripts/security-check.js",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "security:sbom": "cyclonedx-npm --omit dev --spec-version 1.6 --output-format JSON --output-reproducible --mc-type application --output-file sbom.cdx.json",
-    "security:secrets": "node scripts/security-check.js --secrets"
+    "security:secrets": "node scripts/security-check.js --secrets",
+    "notices:build": "node scripts/build-third-party-notices.js"
   },
   "keywords": [
     "skills-matrix",
