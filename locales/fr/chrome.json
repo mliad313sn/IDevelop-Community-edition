@@ -809,5 +809,9 @@
   "notif_family_kpi": "Alertes des indicateurs",
   "notif_family_digest": "Récapitulatifs « Ce qui a changé »",
   "todo_verb_pip_hr_visa": "Viser",
-  "todo_verb_ninebox_disclose": "Restituer"
+  "todo_verb_ninebox_disclose": "Restituer",
+  "nav_data_quality": "Qualité des données",
+  "nav_data_quality_title": "Les enregistrements qui empêchent de mesurer les indicateurs, par domaine",
+  "nav_usage": "Usage par site",
+  "nav_usage_title": "Comptes activés, auto-évaluations et validations, par site (des comptes seulement)"
 }

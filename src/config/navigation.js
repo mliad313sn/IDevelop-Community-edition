@@ -465,6 +465,20 @@ const CATALOGUE = {
         icon: 'fa-share-nodes',
     },
     system_logs: { label: 'nav_system_logs', href: '/system-logs', icon: 'fa-scroll' },
+    // 4.0.0 port (wave 10): the counts that keep the indicators from being
+    // measured, and the use of the product per site (not the module stages).
+    data_quality: {
+        label: 'nav_data_quality',
+        title: 'nav_data_quality_title',
+        href: '/admin/data-quality',
+        icon: 'fa-stethoscope',
+    },
+    usage: {
+        label: 'nav_usage',
+        title: 'nav_usage_title',
+        href: '/admin/usage',
+        icon: 'fa-users-line',
+    },
     settings: {
         label: 'nav_settings',
         title: 'nav_settings_title',
@@ -794,6 +808,20 @@ function gates(c) {
         admins: wsAdm && can('manage_admins'),
         delegation: wsAdm && can('manage_admins'),
         system_logs: wsAdm && can('view_system_logs'),
+        // Route: requireAnyPermission(DataQualityService.PANEL_SLUGS); SuperAdmin passes.
+        data_quality:
+            wsAdm &&
+            (sa ||
+                [
+                    'view_employees',
+                    'view_domains_skills',
+                    'view_roles',
+                    'view_compliance',
+                    'manage_compliance',
+                    'view_system_logs',
+                ].some((s) => can(s))),
+        // Route: requireAdmin + requirePermission('view_employees').
+        usage: wsAdm && can('view_employees'),
         settings: wsCfg && can('view_app_settings'),
 
         hub_access: true,
@@ -931,6 +959,7 @@ const SECTIONS = {
             'admins',
             'delegation',
             'system_logs',
+            ['data_quality', ['usage']],
             'settings',
         ],
         section_system: [

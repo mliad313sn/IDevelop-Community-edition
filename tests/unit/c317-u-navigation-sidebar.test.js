@@ -323,6 +323,7 @@ const ORPHANS = [
     '/reports/readiness',
     '/kpi/glossary',
 ];
+const WAVE10_PEOPLE = ['/admin/data-quality', '/admin/usage'];
 const ADDED = {
     // 4.0.0 port (wave 5): the person's own end-of-campaign records
     employee: ['/safety-gate/me', '/employee/review-record'],
@@ -335,13 +336,22 @@ const ADDED = {
         '/supervisor/team',
         '/employee/review-record',
     ],
-    localadmin_ops: ['/tasks', ...ORPHANS, '/kpi/targets', '/safety-gate'],
-    localadmin_people: ['/tasks', ...ORPHANS, '/kpi/targets'],
+    // 4.0.0 port (wave 10): « Data quality » (any permission one of its
+    // sections reads) and « Usage by site » (view_employees).
+    localadmin_ops: [
+        '/tasks',
+        ...ORPHANS,
+        '/kpi/targets',
+        '/safety-gate',
+        ...WAVE10_PEOPLE,
+    ],
+    localadmin_people: ['/tasks', ...ORPHANS, '/kpi/targets', ...WAVE10_PEOPLE],
     localadmin_none: ['/tasks', ...ORPHANS, '/kpi/targets'],
     viewer: [...ORPHANS, '/kpi/targets'],
     superadmin: [
         '/tasks',
         ...ORPHANS,
+        ...WAVE10_PEOPLE,
         '/kpi/targets',
         '/safety-gate',
         '/safety-gate/config',

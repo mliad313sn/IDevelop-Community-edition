@@ -809,5 +809,9 @@
   "notif_family_kpi": "Indicator alerts",
   "notif_family_digest": "« What changed » summaries",
   "todo_verb_pip_hr_visa": "Give the visa",
-  "todo_verb_ninebox_disclose": "Share"
+  "todo_verb_ninebox_disclose": "Share",
+  "nav_data_quality": "Data quality",
+  "nav_data_quality_title": "The records that keep the indicators from being measured, by area",
+  "nav_usage": "Usage by site",
+  "nav_usage_title": "Accounts activated, self-assessments and validations, per site (counts only)"
 }

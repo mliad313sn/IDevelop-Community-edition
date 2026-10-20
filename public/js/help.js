@@ -3492,6 +3492,64 @@ document.addEventListener('DOMContentLoaded', () => {
             ),
         },
 
+        '/admin/data-quality': {
+            title: L('Data quality', 'Qualité des données'),
+            why: L(
+                '<strong>Process:</strong> The records that keep an indicator from being measured, by area: people without a reviewer or a role, skills without a description, certificates without an expiry date, missing nightly snapshots, the audit trail. Each area shows only if your permissions open its pages; the people figures cover your clearance.',
+                '<strong>Processus :</strong> les enregistrements qui empêchent de mesurer un indicateur, par domaine : personnes sans évaluateur ou sans poste, compétences sans description, certificats sans date d’expiration, instantanés de nuit manquants, piste d’audit. Chaque domaine n’apparaît que si vos droits ouvrent ses pages ; les chiffres des personnes portent sur votre périmètre.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        'Start with the lines « To deal with », then « To complete »; « Open » leads to the page where the records are fixed.',
+                        'Commencez par les lignes « À traiter », puis « À compléter » ; « Ouvrir » mène à la page où l’on corrige les enregistrements.'
+                    ),
+                },
+                {
+                    text: L(
+                        '« Not configured » and « Not measured » are not zeros: the feature is not set up, or its source could not be read.',
+                        '« Non configuré » et « Non mesuré » ne sont pas des zéros : la fonction n’est pas paramétrée, ou sa source n’a pas pu être lue.'
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'Under 5 records a line shows the count without a percentage; « No anomaly » appears only when something was there to check.',
+                    'Sous 5 enregistrements une ligne montre le compte sans pourcentage ; « Aucune anomalie » n’apparaît que s’il y avait quelque chose à vérifier.'
+                ),
+            ],
+            value: L(
+                'The figures of the dashboard and the board pack become measurable, one fix at a time.',
+                'Les chiffres du tableau de bord et du dossier de séance deviennent mesurables, une correction après l’autre.'
+            ),
+        },
+
+        '/admin/usage': {
+            title: L('Usage by site', 'Usage par site'),
+            why: L(
+                '<strong>Process:</strong> Per site of your clearance: how many accounts were activated, how many people assessed themselves in the last 90 days, and the share of their lines validated within 14 days. It measures use; the module stages are on Administration › Modules.',
+                '<strong>Processus :</strong> par site de votre périmètre : combien de comptes ont été activés, combien de personnes se sont auto-évaluées dans les 90 derniers jours, et la part de leurs lignes validées sous 14 jours. La page mesure l’usage ; les étapes des modules sont dans Administration › Modules.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        'Compare the sites: a low activation calls for invitations, a low validation share for a word to the managers.',
+                        'Comparez les sites : une activation faible appelle des invitations, une part de validation faible un mot aux responsables.'
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'A site of fewer than 5 people shows no figure, and a share with nothing to measure reads « not measured yet », never 0 %.',
+                    'Un site de moins de 5 personnes n’affiche aucun chiffre, et une part sans rien à mesurer se lit « pas encore mesuré », jamais 0 %.'
+                ),
+            ],
+            value: L(
+                'The sponsor sees where the product is used, without a single name.',
+                'Le sponsor voit où le produit est utilisé, sans un seul nom.'
+            ),
+        },
+
         '/employee/opportunities': {
             title: L('My Growth', 'Mon évolution'),
             why: L(

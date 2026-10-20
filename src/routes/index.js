@@ -1549,6 +1549,27 @@ router.post(
     _ahAR(ModulesController.save.bind(ModulesController))
 );
 
+// « Data quality » and « Usage by site » (4.0.0 port, wave 10): read-only,
+// counts only. Data quality: SuperAdmin or ANY permission whose module one of
+// its sections reads (each section is then computed only for its own
+// permission). Usage by site: an administrator holding view_employees; the
+// figures cover the reader's cleared population only.
+{
+    const AdminInsightController = require('../controllers/AdminInsightController');
+    const DQ = require('../services/DataQualityService');
+    router.get(
+        '/admin/data-quality',
+        requireAnyPermission(...DQ.PANEL_SLUGS),
+        _ahAR(AdminInsightController.dataQuality)
+    );
+    router.get(
+        '/admin/usage',
+        requireAdmin,
+        requirePermission('view_employees'),
+        _ahAR(AdminInsightController.usage)
+    );
+}
+
 // Appliance license & entitlement (superadmin)
 const LicenseController = require('../controllers/LicenseController');
 router.get(
