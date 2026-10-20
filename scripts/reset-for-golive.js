@@ -215,6 +215,11 @@ const WIPE = new Set([
     // End-of-campaign records (migration 193): follow the campaigns they
     // describe. Row triggers only (no TRUNCATE guard), so the wipe needs none lifted.
     'review_records',
+    // Board decisions, their history and the recorded packs (migrations 197,
+    // 198): what was decided on the trial figures. Row triggers only.
+    'board_decisions',
+    'board_decision_events',
+    'board_pack_runs',
     'job_runs',
     'hris_links',
     'hris_sync_runs',

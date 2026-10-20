@@ -762,6 +762,31 @@ const SUBJECT_DATA_REGISTRY = [
     // Migration 186: who decided a KPI target ('admin:<id>'). An administrator
     // account, append-only by trigger; never an employee's own data.
     keep('kpi_targets', 'set_by_ref', IMMUTABLE + '; the ref names an administrator account'),
+    // Migrations 197 and 198: the board decisions, their history and the
+    // recorded packs. Who recorded them is an account ref; the owner of a
+    // decision is a role, never a person. The free text (decision, notes) can
+    // never be rewritten: the name guard refuses a person's name before it is
+    // written (src/utils/boardNameGuard.js), the person's access export lists
+    // any board text that names them, and the erasure reports how many there
+    // are (DSRService.erase, boardTextsNamingSubject).
+    keep(
+        'board_decisions',
+        'created_by_ref',
+        'account ref of who recorded a board decision; the decision itself is immutable and names a role, never a person (names refused in the text)'
+    ),
+    keep(
+        'board_decision_events',
+        'actor_ref',
+        'account ref on a board decision history: ' + IMMUTABLE
+    ),
+    keep('board_pack_runs', 'generated_by_ref', 'account ref of who recorded a pack: ' + IMMUTABLE),
+    keep(
+        'board_pack_runs',
+        'population_ids',
+        'the internal ids of the people a recorded pack counted, never a name: ' +
+            IMMUTABLE +
+            '; the person’s presence in a count is not content about them'
+    ),
 ];
 
 /**

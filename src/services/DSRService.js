@@ -84,6 +84,42 @@ function inSavepoint(fn) {
 }
 
 /**
+ * The board texts (migrations 197, 198) that name a person: a decision whose
+ * text, or a follow-up note, holds two adjacent words of the person's names
+ * (src/utils/boardNameGuard.js, the matching of the write-side guard, so a
+ * text typed before the guard existed is found too). `rows` are decisions
+ * joined to their notes. Returns one entry per decision, with only the
+ * texts that name the person. Pure.
+ */
+function boardTextsNaming(rows, firstName, lastName) {
+    const fn = String(firstName || '').trim();
+    const ln = String(lastName || '').trim();
+    if (!fn || !ln || !Array.isArray(rows)) return [];
+    const { textNamesPerson } = require('../utils/boardNameGuard');
+    const byId = new Map();
+    for (const r of rows) {
+        const id = Number(r.id);
+        if (!byId.has(id)) {
+            byId.set(id, {
+                decisionId: id,
+                decidedAt: r.decidedAt || null,
+                decisionText: textNamesPerson(r.decisionText, fn, ln) ? r.decisionText : null,
+                notes: [],
+            });
+        }
+        if (r.note && textNamesPerson(r.note, fn, ln))
+            byId.get(id).notes.push({ on: r.createdAt || null, note: r.note });
+    }
+    return [...byId.values()].filter((d) => d.decisionText !== null || d.notes.length);
+}
+
+/** The decisions and their follow-up notes, for boardTextsNaming. */
+const BOARD_TEXTS_SQL = `SELECT d.id, d.decided_at, d.decision_text, ev.created_at, ev.note
+       FROM board_decisions d
+       LEFT JOIN board_decision_events ev ON ev.decision_id = d.id AND ev.note IS NOT NULL
+      ORDER BY d.id, ev.id`;
+
+/**
  * CE QUE L'EFFACEMENT TRAITE COMME DONNÉE PERSONNELLE, L'EXPORT DOIT LE RESTITUER.
  * Les deux listes sont LA MÊME LISTE.
  *
@@ -735,6 +771,16 @@ const DISCLOSED_ABOUT_SUBJECT = [
         table: 'lms_completions',
         kept: ['id', 'provider', 'course_id', 'completed_at', 'score'],
     },
+    // BOARD TEXTS THAT NAME THE PERSON (migrations 197, 198): a decision or a
+    // follow-up note holding the person's name. Immutable by design (the
+    // record of what a committee decided); the name guard refuses a name
+    // before it is written, so these are texts typed before it or a name it
+    // missed. Returned, never rewritten; the erasure counts them.
+    {
+        key: 'boardTextsNamingSubject',
+        table: 'board_decisions',
+        kept: ['id', 'decided_at', 'decision_text', 'created_at', 'note'],
+    },
 ];
 
 class DSRService {
@@ -1152,6 +1198,20 @@ class DSRService {
               WHERE subject_type = 'employee' AND subject_id = ? ORDER BY version`,
             [employeeId]
         );
+        // BOARD TEXTS THAT NAME THE PERSON (migrations 197, 198). A board
+        // decision and its notes can never be rewritten, and the name guard
+        // only refuses a name from the day it existed: whatever names the
+        // person is returned to them here (art. 15).
+        try {
+            const p = out.profile || {};
+            out.boardTextsNamingSubject = boardTextsNaming(
+                await db.all(BOARD_TEXTS_SQL),
+                p.firstName,
+                p.lastName
+            );
+        } catch (e) {
+            out.boardTextsNamingSubject = { error: e.message };
+        }
         return out;
     }
 
@@ -1268,6 +1328,23 @@ class DSRService {
         const origUsername = String(emp.username || '')
             .trim()
             .toLowerCase();
+        // The board texts that name the person (migrations 197, 198) cannot be
+        // rewritten: the erasure counts them, with the names as they are now,
+        // so the administrator can see what stays (ids only in the result).
+        let boardTexts = null;
+        try {
+            const who = await inSavepoint(() =>
+                db.get('SELECT first_name, last_name FROM employees WHERE id = ?', [employeeId])
+            );
+            const hits = boardTextsNaming(
+                await inSavepoint(() => db.all(BOARD_TEXTS_SQL)),
+                who && who.firstName,
+                who && who.lastName
+            );
+            boardTexts = hits.length;
+        } catch (_) {
+            boardTexts = null; // not readable: « not measured », never 0
+        }
         // Paths of the person's uploaded files, deleted once the erasure commits.
         const filesToDelete = [];
         const out = await db.runTransaction(async () => {
@@ -1761,6 +1838,9 @@ class DSRService {
                         (legalHoldOverride != null && !reapply
                             ? `; legal hold overridden by two-person request #${Number(legalHoldOverride)}`
                             : '') +
+                        (boardTexts
+                            ? `; ${Number(boardTexts)} board decision(s) name the subject and cannot be rewritten`
+                            : '') +
                         (reason ? ` — reason: ${reason}` : ''),
                     severity: 'warning',
                     category: 'maintenance',
@@ -1786,6 +1866,7 @@ class DSRService {
                 employeeId: Number(employeeId),
                 auditRowsRedacted: auditRedaction.rows,
                 linkedAdminsErased: linked.length,
+                boardTextsNamingSubject: boardTexts,
             };
         });
         // Mirror outside the database, once the transaction has committed.

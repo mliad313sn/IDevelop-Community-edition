@@ -433,6 +433,7 @@
   "cat_idpActionNotes": "Notes on development actions (reported done, validation)",
   "cat_devProposals": "Development actions proposed to the manager",
   "cat_reviewRecords": "End-of-campaign records (reading acknowledged, comment)",
+  "cat_boardTextsNamingSubject": "Board decisions and notes that name the person (kept, never rewritten)",
   "cat_pipReviews": "Checkpoints of improvement plans (the manager’s note, the person’s answer)",
   "no_domain": "No domain",
   "issuer": "Issuing body",

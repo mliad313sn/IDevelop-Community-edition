@@ -95,6 +95,7 @@ const DATA_CATEGORIES = [
     { key: 'profilingObjections', group: 'privacy', audience: 'self_admins' },
     { key: 'privacyNoticeAcks', group: 'privacy', audience: 'self_admins' },
     { key: 'deiConsents', group: 'privacy', audience: 'self_admins' },
+    { key: 'boardTextsNamingSubject', group: 'employment', audience: 'self_line_hr' },
 ];
 
 /** Export keys that are envelope, not data about the person. */

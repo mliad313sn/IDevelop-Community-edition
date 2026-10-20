@@ -111,6 +111,15 @@ const IMMUTABLE_TABLES = new Set([
     // is never deleted (only the person's comment changes, its own guard).
     'review_records',
     'reviewRecords',
+    // Migrations 197 and 198 — a board decision is never deleted (only its
+    // follow-up state changes, its own guard); its history and the recorded
+    // packs are append-only (block_mutation).
+    'board_decisions',
+    'boardDecisions',
+    'board_decision_events',
+    'boardDecisionEvents',
+    'board_pack_runs',
+    'boardPackRuns',
 ]);
 
 const BACKUP_DIR = path.resolve(__dirname, '../../data/backups');
