@@ -103,6 +103,7 @@
   "bp_footnote": "Chiffres calculés sur le périmètre indiqué. Les valeurs « non mesuré » sont laissées vides et ne sont jamais assimilées à zéro.",
   "bp_open": "Ouvrir le dossier de séance",
   "bd_title": "Décisions",
+  "bd_nav_title": "Les décisions prises sur un dossier de séance, qui porte chacune et où en est leur suivi.",
   "bd_subtitle": "Ce que le comité a décidé sur ce dossier, qui la porte (un rôle, jamais une personne) et où elle en est. Une décision n’est jamais modifiée ni supprimée : seul son suivi évolue.",
   "bd_scope": "Dossier : {{scope}}",
   "bd_scope_note": "les décisions de ce périmètre seulement.",

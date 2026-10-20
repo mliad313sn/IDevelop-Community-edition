@@ -324,6 +324,9 @@ const ORPHANS = [
     '/kpi/glossary',
 ];
 const WAVE10_PEOPLE = ['/admin/data-quality', '/admin/usage'];
+// 4.0.0 port (wave 11): the board decisions, under the board pack, with the
+// pack's own gate (the /exec mount) — reachable before only from the pack.
+const DECISIONS = '/exec/decisions';
 const ADDED = {
     // 4.0.0 port (wave 5): the person's own end-of-campaign records
     employee: ['/safety-gate/me', '/employee/review-record'],
@@ -335,6 +338,7 @@ const ADDED = {
         '/safety-gate/me',
         '/supervisor/team',
         '/employee/review-record',
+        DECISIONS,
     ],
     // 4.0.0 port (wave 10): « Data quality » (any permission one of its
     // sections reads), « Usage by site » (view_employees) and the go-live
@@ -346,10 +350,18 @@ const ADDED = {
         '/safety-gate',
         ...WAVE10_PEOPLE,
         '/setup',
+        DECISIONS,
     ],
-    localadmin_people: ['/tasks', ...ORPHANS, '/kpi/targets', ...WAVE10_PEOPLE, '/setup'],
-    localadmin_none: ['/tasks', ...ORPHANS, '/kpi/targets', '/setup'],
-    viewer: [...ORPHANS, '/kpi/targets', '/setup'],
+    localadmin_people: [
+        '/tasks',
+        ...ORPHANS,
+        '/kpi/targets',
+        ...WAVE10_PEOPLE,
+        '/setup',
+        DECISIONS,
+    ],
+    localadmin_none: ['/tasks', ...ORPHANS, '/kpi/targets', '/setup', DECISIONS],
+    viewer: [...ORPHANS, '/kpi/targets', '/setup', DECISIONS],
     superadmin: [
         '/tasks',
         ...ORPHANS,
@@ -361,6 +373,7 @@ const ADDED = {
         '/admin/integrations/hris',
         '/admin/notifications/catalogue',
         '/admin/notifications/metrics',
+        DECISIONS,
     ],
 };
 // Added while their module is on (the `v2=true` configs).
@@ -769,10 +782,10 @@ describe('the fold state is keyed on data-section-key, not on the translated lab
         const storage = {};
         const fr = build('fr');
         runScript(fr, storage);
-        expect(sec(fr, 'section_reference').btn.getAttribute('aria-expanded')).toBe('false'); // closed by default
-        expect(sec(fr, 'section_reports').btn.getAttribute('aria-expanded')).toBe('true');
-        sec(fr, 'section_reference').btn.click();
-        sec(fr, 'section_reports').btn.click(); // close Rapports
+        // every group is folded by default (4.0.0 port, wave 11)
+        expect(sec(fr, 'section_reference').btn.getAttribute('aria-expanded')).toBe('false');
+        expect(sec(fr, 'section_reports').btn.getAttribute('aria-expanded')).toBe('false');
+        sec(fr, 'section_reference').btn.click(); // open Référentiel
         fr.toggle.click(); // unfold the 9-box entry
 
         const en = build('en');
@@ -788,10 +801,11 @@ describe('the fold state is keyed on data-section-key, not on the translated lab
         const a = build('fr', 'personA');
         runScript(a, storage);
         expect(storage['sidebarNav.v2']).toBeUndefined();
-        sec(a, 'section_reports').btn.click(); // A closes Rapports
+        sec(a, 'section_reports').btn.click(); // A opens Rapports
+        expect(sec(a, 'section_reports').btn.getAttribute('aria-expanded')).toBe('true');
         const b = build('fr', 'personB');
         runScript(b, storage);
-        expect(sec(b, 'section_reports').btn.getAttribute('aria-expanded')).toBe('true');
+        expect(sec(b, 'section_reports').btn.getAttribute('aria-expanded')).toBe('false');
     });
 });
 

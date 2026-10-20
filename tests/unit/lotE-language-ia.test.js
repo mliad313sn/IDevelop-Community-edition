@@ -356,12 +356,11 @@ describe('L6-31 — the rail is cut by task and gated on real capabilities', () 
         }
         expect(keys.has('section_administration')).toBe(false);
         expect(keys.has('section_configuration')).toBe(false);
-        // the person's own space, the framework and the instance open folded
-        expect(NAV.CLOSED_BY_DEFAULT).toEqual([
-            'section_my_space',
-            'section_reference',
-            'section_system',
-        ]);
+        // every group opens folded (4.0.0 port, wave 11): the current page's
+        // group opens in the browser, a read-only account's framework and
+        // reports are unfolded
+        expect([...keys].filter((k) => !NAV.CLOSED_BY_DEFAULT.includes(k))).toEqual([]);
+        expect(NAV.OPEN_FOR_READ_ONLY).toEqual(['section_reference', 'section_reports']);
     });
 
     test('entries are gated through can(), never a hand-written role list', () => {

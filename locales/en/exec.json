@@ -103,6 +103,7 @@
   "bp_footnote": "Figures computed over the stated scope. \"Not measured\" values are left blank and are never treated as zero.",
   "bp_open": "Open the board pack",
   "bd_title": "Decisions",
+  "bd_nav_title": "The decisions taken on a board pack, who owns each one and where its follow-up stands.",
   "bd_subtitle": "What the committee decided on this pack, who owns it (a role, never a person) and where it stands. A decision is never changed or deleted: only its follow-up moves.",
   "bd_scope": "Pack: {{scope}}",
   "bd_scope_note": "the decisions of this scope only.",

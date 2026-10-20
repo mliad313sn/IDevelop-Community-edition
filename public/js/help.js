@@ -4158,6 +4158,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 'La situation des effectifs présentée depuis le système de référence, pas une diapositive refaite à la main.'
             ),
         },
+        '/exec/decisions': {
+            title: L('Decisions', 'Décisions'),
+            why: L(
+                '<strong>Process:</strong> What the committee decided on a board pack: the decision in one sentence, the role that owns it, an optional indicator and due date, then its follow-up. A decision is never edited or deleted; only its state and notes move.',
+                '<strong>Processus :</strong> ce que le comité a décidé sur un dossier de séance : la décision en une phrase, le rôle qui la porte, un indicateur et une échéance facultatifs, puis son suivi. Une décision n’est jamais modifiée ni supprimée ; seuls son état et ses notes évoluent.'
+            ),
+            steps: [
+                {
+                    text: L(
+                        '<strong>Record</strong> each decision right after the meeting, against the pack it was taken on.',
+                        '<strong>Enregistrez</strong> chaque décision juste après la séance, sur le dossier où elle a été prise.'
+                    ),
+                },
+                {
+                    text: L(
+                        '<strong>Move its state</strong> as the follow-up progresses; the next pack shows where each one stands.',
+                        '<strong>Faites avancer son état</strong> au fil du suivi ; le dossier suivant montre où en est chacune.'
+                    ),
+                },
+            ],
+            practices: [
+                L(
+                    'Name a role, never a person: a text that names someone is refused, because a decision cannot be rewritten.',
+                    'Nommez un rôle, jamais une personne : un texte qui nomme quelqu’un est refusé, car une décision ne peut pas être réécrite.'
+                ),
+            ],
+            value: L(
+                'The committee sees what it decided and what came of it, pack after pack.',
+                'Le comité voit ce qu’il a décidé et ce qu’il en est advenu, dossier après dossier.'
+            ),
+        },
         '/reports/dept-analytics': {
             title: L('Department Analytics', 'Analytique par département'),
             why: L(
