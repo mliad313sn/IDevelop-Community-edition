@@ -1890,6 +1890,8 @@
   "cyc_err_exclusion_until_invalid": "Invalid end date for the exclusion.",
   "cyc_err_exclusion_until_past": "The exclusion end date must be today or later.",
   "cyc_err_exclusion_selection_empty": "Nobody to excuse.",
+  "cyc_err_exclusion_filter_empty": "Choose a filter first: excusing everyone in the campaign at once is not possible.",
+  "cyc_ms_count": "{{n}} selected",
   "cyc_err_nudge_selection_empty": "Nobody to chase.",
   "cyc_err_cycle_code_required": "The campaign code is required.",
   "cyc_err_cycle_code_invalid": "Invalid code: letters, digits, dot, dash and underscore, 40 characters max.",

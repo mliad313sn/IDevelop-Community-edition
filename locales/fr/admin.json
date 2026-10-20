@@ -1890,6 +1890,8 @@
   "cyc_err_exclusion_until_invalid": "Date de fin d’exclusion invalide.",
   "cyc_err_exclusion_until_past": "La date de fin d’exclusion doit être aujourd’hui ou plus tard.",
   "cyc_err_exclusion_selection_empty": "Aucune personne à excuser.",
+  "cyc_err_exclusion_filter_empty": "Choisissez d’abord un filtre : excuser d’un coup toute la campagne n’est pas possible.",
+  "cyc_ms_count": "{{n}} sélectionné(s)",
   "cyc_err_nudge_selection_empty": "Aucune personne à relancer.",
   "cyc_err_cycle_code_required": "Le code de la campagne est obligatoire.",
   "cyc_err_cycle_code_invalid": "Code invalide : lettres, chiffres, point, tiret et souligné, 40 caractères max.",

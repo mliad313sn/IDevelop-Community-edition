@@ -1464,6 +1464,22 @@ class CycleService {
         };
     }
 
+    /** Whether a parsed filter narrows the roster at all (the console and the bulk exclusion). */
+    static isFiltered(f) {
+        const x = f || {};
+        const any = (v) => Array.isArray(v) && v.length > 0;
+        return !!(
+            x.state ||
+            x.q ||
+            any(x.siteId) ||
+            any(x.departmentId) ||
+            any(x.serviceId) ||
+            any(x.roleId) ||
+            any(x.supervisorId) ||
+            x.noSupervisor
+        );
+    }
+
     /** WHERE fragments + params for the roster filters (shared by list, count, export, bulk-by-filter). */
     static _rosterWhere(f, params) {
         const where = [];
@@ -1789,6 +1805,9 @@ class CycleService {
         { scope: pre } = {}
     ) {
         const x = CycleService._normaliseExclusion(reasonOrOpts);
+        // Excusing « the whole filter » with no filter would excuse the entire
+        // campaign at once: refused here, whatever the page offered.
+        if (filter && !CycleService.isFiltered(filter)) throw err('exclusion_filter_empty');
         const cycle = await CycleService._assertRunning(cycleId);
         const scope = await CycleService._scope(actor, pre);
         const wanted = filter
