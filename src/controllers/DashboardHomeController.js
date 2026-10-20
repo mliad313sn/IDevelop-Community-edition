@@ -240,11 +240,18 @@ const DashboardHomeController = {
             const overview = ctx.tabs.some((x) => x.id === 'overview')
                 ? await D.tabModel(ctx, 'overview', { query: {}, t })
                 : null;
+            // targets and gaps, since the last pack, decisions, K17 / K19 /
+            // K20, site deltas, the Development section (BoardPackService)
+            const B = require('../services/BoardPackService');
+            const board =
+                ctx.caps.pop && !ctx.scopeRefused ? await B.packModel(ctx, screen, { t }) : null;
             res.status(ctx.scopeRefused ? 400 : 200).render('pages/exec/board-pack', {
                 title: t('exec:bp_title'),
                 ctx,
                 screen,
                 overview,
+                board,
+                hidden: require('./BoardDecisionController').hiddenFields(ctx.scope),
                 scopeLabel: D.scopeLabel(ctx, t),
                 generatedAt: new Date(),
                 currentPath: '/exec/board-pack',
