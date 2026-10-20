@@ -371,8 +371,8 @@ class SetupController {
         });
 
         // 10-12. Decisions: reported, never scored, never changed from here.
-        const ssoOn = await one(async () =>
-            !!(await require('../services/SsoSettingsService').isSwitchOn())
+        const ssoOn = await one(
+            async () => !!(await require('../services/SsoSettingsService').isSwitchOn())
         );
         push('gl_sso', ssoOn === null ? null : {}, {
             info: true,
