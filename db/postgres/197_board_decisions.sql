@@ -180,12 +180,16 @@ BEGIN
             CHECK (kind IN ('created', 'state', 'note'));
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint
-                    WHERE conname = 'chk_board_decision_events_states'
+                    WHERE conname = 'chk_board_decision_events_from_state'
                       AND conrelid = 'public.board_decision_events'::regclass) THEN
-        ALTER TABLE public.board_decision_events ADD CONSTRAINT chk_board_decision_events_states CHECK (
-            (from_state IS NULL OR from_state IN ('open', 'in_progress', 'done', 'dropped'))
-            AND (to_state IS NULL OR to_state IN ('open', 'in_progress', 'done', 'dropped'))
-        );
+        ALTER TABLE public.board_decision_events ADD CONSTRAINT chk_board_decision_events_from_state
+            CHECK (from_state IS NULL OR from_state IN ('open', 'in_progress', 'done', 'dropped'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                    WHERE conname = 'chk_board_decision_events_to_state'
+                      AND conrelid = 'public.board_decision_events'::regclass) THEN
+        ALTER TABLE public.board_decision_events ADD CONSTRAINT chk_board_decision_events_to_state
+            CHECK (to_state IS NULL OR to_state IN ('open', 'in_progress', 'done', 'dropped'));
     END IF;
     -- created: a first state; state: a real move, and dropping says why;
     -- note: some text.

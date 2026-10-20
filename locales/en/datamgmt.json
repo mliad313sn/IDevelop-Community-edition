@@ -316,7 +316,7 @@
   "sqlc_th_actions": "Actions",
   "sqlc_revert": "Revert",
   "sqlc_revert_title": "Revert the database",
-  "sqlc_revert_warning": "Revert the database to restore point “%s”?\n\nWILL be undone: every operational table — employees, roles, skills, assessments, plans, settings. Anything created or changed since that point is LOST and cannot be recovered.\n\nWill NOT be undone: the append-only audit trail (system_logs, assessment_history, review_signatures, self_assessment_events) the indicator target decisions (kpi_targets) and the end-of-campaign records (review_records). It is preserved across the restore and re-attached afterwards, so the record of the change — and of this revert — survives.",
+  "sqlc_revert_warning": "Revert the database to restore point “%s”?\n\nWILL be undone: every operational table — employees, roles, skills, assessments, plans, settings. Anything created or changed since that point is LOST and cannot be recovered.\n\nWill NOT be undone: the append-only audit trail (system_logs, assessment_history, review_signatures, self_assessment_events) the indicator target decisions (kpi_targets), the end-of-campaign records (review_records) and the board decisions, their history and the recorded packs (board_decisions, board_decision_events, board_pack_runs). It is preserved across the restore and re-attached afterwards, so the record of the change — and of this revert — survives.",
   "sqlc_reverting": "Reverting… (this can take a minute)",
   "sqlc_reverted_to": "Database reverted to “{{name}}”.",
   "sqlc_revert_failed": "Revert failed.",

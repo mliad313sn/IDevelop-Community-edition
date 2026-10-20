@@ -614,7 +614,7 @@
 /* the pack opens on the capability index, its measurability and « In brief » */
 .bp-index-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
     gap: 1rem;
     align-items: start;
 }
@@ -633,7 +633,7 @@
 }
 .bd-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
     gap: 0.75rem 1rem;
     margin-top: 0.75rem;
 }

@@ -92,7 +92,7 @@
                         <summary><%= __('exec:bd_history', { count: x.events.length, n: x.events.length }) %></summary>
                         <ol class="bd-events">
                         <% x.events.forEach(function (e) { %>
-                            <li><%= _d(e.on) %> — <%= e.kind === 'created' ? __('exec:bd_ev_created') : (e.kind === 'state' ? __('exec:bd_ev_state', { from: __(_pick(_state, e.fromState)), to: __(_pick(_state, e.toState)) }) : __('exec:bd_ev_note')) %><% if (e.mine) { %> <span class="text-muted">(<%= __('exec:bd_ev_mine') %>)</span><% } %><% if (e.note) { %> : « <%= e.note %> »<% } %></li>
+                            <li><%= _d(e.on) %> — <%= e.kind === 'created' ? __('exec:bd_ev_created') : (e.kind === 'state' ? __('exec:bd_ev_state', { from: __(_pick(_state, e.fromState)), to: __(_pick(_state, e.toState)) }) : __('exec:bd_ev_note')) %><% if (e.mine) { %> <span class="text-muted">(<%= __('exec:bd_ev_mine') %>)</span><% } %><% if (e.note) { %><%= colon %> « <%= e.note %> »<% } %></li>
                         <% }); %>
                         </ol>
                         <% if (canWrite) { %>
