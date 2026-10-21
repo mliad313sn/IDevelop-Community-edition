@@ -1,0 +1,75 @@
+<%# The printable letter of ONE performance-improvement plan (4.0.0 port,
+    wave 6): its period and content, the dated activation, the person's
+    reading (a date, never an agreement) and observations, and every checkpoint
+    with the manager's note and the person's answer. Authors are named by ROLE
+    only: no other person's name is printed. Opened by the plan authority
+    (/v2/pip/:id/letter) or by the person for their own plan
+    (/employee/pip/:id/letter). %>
+<%
+  var D = function (v) { return v ? fmtDate(v) : '—'; };
+  var roleOf = function (ref) {
+    var r = String(ref || '');
+    if (r.indexOf('admin:') === 0) return __('pip:letter_by_admin');
+    if (r.indexOf('employee:') === 0) return __('pip:letter_by_manager');
+    return null;
+  };
+  var stateKey = ['proposed', 'approved', 'active', 'closed_success', 'closed_failure', 'cancelled'].indexOf(pip.state) > -1 ? pip.state : null;
+%>
+<div class="page-header pipl-noprint">
+  <h1><i class="fas fa-file-lines" aria-hidden="true"></i> <%= __('pip:letter_title') %></h1>
+  <p class="text-muted"><%= __('pip:letter_intro') %></p>
+  <p>
+    <a class="btn btn-secondary" href="<%= own ? '/employee/my-development' : '/v2/pip' %>"><%= __('pip:letter_back') %></a>
+    <button type="button" class="btn btn-primary" data-on-click="pipLetterPrint" data-args="[]"><i class="fas fa-print" aria-hidden="true"></i> <%= __('pip:letter_print') %></button>
+  </p>
+</div>
+<article class="card pipl" data-pip-letter="<%= pip.id %>">
+  <h2><%= __('pip:letter_heading') %></h2>
+  <p><strong><%= (pip.firstName || '') + ' ' + (pip.lastName || '') %></strong><% if (pip.employeeNumber) { %> · <%= pip.employeeNumber %><% } %></p>
+  <dl>
+    <dt><%= __('pip:state') %></dt><dd><%= stateKey ? __('pip:st_' + stateKey) : '—' %></dd>
+    <dt><%= __('pip:letter_period') %></dt><dd><%= D(pip.startsOn) %> → <%= D(pip.endsOn) %></dd>
+    <dt><%= __('pip:letter_author') %></dt><dd><%= roleOf(pip.proposedByRef) || __('pip:letter_not_recorded') %></dd>
+    <dt><%= __('pip:letter_activated') %></dt><dd><%= pip.activatedAt ? D(pip.activatedAt) + ' · ' + (roleOf(pip.activatedByRef) || __('pip:letter_not_recorded')) : __('pip:letter_not_recorded') %></dd>
+    <% if (pip.hrVisaAt) { %><dt><%= __('pip:letter_hr_visa') %></dt><dd><%= D(pip.hrVisaAt) %></dd><% } %>
+    <dt><%= __('pip:summary') %></dt><dd class="pipl-text"><%= pip.summary || '—' %></dd>
+    <dt><%= __('pip:objectives') %></dt><dd class="pipl-text"><%= pip.objectives || '—' %></dd>
+    <dt><%= __('pip:success_criteria') %></dt><dd class="pipl-text"><%= pip.successCriteria || '—' %></dd>
+    <dt><%= __('pip:checkpoints') %></dt><dd class="pipl-text"><%= pip.reviewCheckpoints || '—' %></dd>
+    <dt><%= __('pip:support') %></dt><dd class="pipl-text"><%= pip.supportOffered || '—' %></dd>
+    <% if (pip.outcome) { %><dt><%= __('pip:letter_outcome') %></dt><dd class="pipl-text"><%= pip.outcome %></dd><% } %>
+    <dt><%= __('pip:letter_ack') %></dt><dd><%= pip.acknowledgedAt ? D(pip.acknowledgedAt) : __('pip:letter_not_yet') %></dd>
+    <dt><%= __('pip:letter_observations') %></dt><dd class="pipl-text"><%= pip.employeeComment ? pip.employeeComment + ' (' + D(pip.employeeCommentAt) + ')' : __('pip:letter_none') %></dd>
+  </dl>
+  <h3><%= __('pip:letter_reviews') %></h3>
+  <% if (!reviews || !reviews.length) { %>
+    <p class="text-muted"><%= __('pip:letter_no_reviews') %></p>
+  <% } else { %>
+    <div class="table-wrapper">
+    <table class="table">
+      <thead><tr><th scope="col"><%= __('pip:letter_held_on') %></th><th scope="col"><%= __('pip:letter_manager_note') %></th><th scope="col"><%= __('pip:letter_employee_answer') %></th></tr></thead>
+      <tbody>
+      <% reviews.forEach(function (r) { %>
+        <tr><td><%= D(r.heldOn) %></td><td class="pipl-text"><%= r.managerNote %></td><td class="pipl-text"><%= r.employeeResponse || __('pip:letter_none') %></td></tr>
+      <% }); %>
+      </tbody>
+    </table>
+    </div>
+  <% } %>
+  <p class="text-muted pipl-foot"><%= __('pip:letter_foot') %></p>
+</article>
+<style>
+  .pipl{padding:var(--space-5,20px)}
+  .pipl dl{display:grid;grid-template-columns:minmax(140px,220px) 1fr;gap:var(--space-2,8px) var(--space-4,16px)}
+  .pipl dt{font-weight:600}
+  .pipl dd{margin:0}
+  .pipl-text{white-space:pre-wrap;overflow-wrap:anywhere}
+  .pipl-foot{margin-top:var(--space-4,16px);font-size:.85rem}
+  @media (max-width:600px){.pipl dl{grid-template-columns:1fr}}
+  @media print{.pipl-noprint,.sidebar,.top-bar,header,nav{display:none !important}.pipl{box-shadow:none;border:0}}
+</style>
+<script nonce="<%= cspNonce %>">
+// CSP: wired by csp-actions.js (data-on-click), never an inline handler.
+function pipLetterPrint(){ window.print(); }
+window.pipLetterPrint = pipLetterPrint;
+</script>

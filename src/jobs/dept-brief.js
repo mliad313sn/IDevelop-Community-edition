@@ -581,7 +581,7 @@ function _cmp(a, b) {
     return a[0] - b[0] || a[1] - b[1];
 }
 
-/** One section rendered as a bilingual table: the unit, then its figures. */
+/** One section rendered as a table in the mail's language: the unit, then its figures. */
 function _sectionBlocks(T, section, lines) {
     const keys = [];
     for (const l of lines) {
@@ -589,16 +589,16 @@ function _sectionBlocks(T, section, lines) {
             if (_isCell(v) && !keys.includes(k)) keys.push(k);
         }
     }
-    const blocks = [T.section(section.title.fr, section.title.en, _sectionColor(section, lines))];
+    const blocks = [T.section(section.title, null, _sectionColor(section, lines))];
     const headers = [{ fr: 'Unité', en: 'Unit' }, ...keys.map((k) => _fieldLabel(k, section))];
     const rows = lines.map((l) => {
-        const label = l.label ? l.label.fr : l.skillName || '—';
+        const label = l.label ? T.pick(l.label) : l.skillName || '—';
         const first = { text: label, bold: true };
         const cells = keys.map((k) => {
             const c = l[k];
             if (!_isCell(c)) return '—';
             return {
-                text: c.text.fr,
+                text: T.pick(c.text),
                 color: c.color || undefined,
                 bold: c.state === 'measured' && Number(c.value) > 0,
             };
@@ -627,7 +627,7 @@ function _sectionBlocks(T, section, lines) {
  * ordered by R8. A section left with no line is OMITTED, never rendered as "0";
  * what was dropped is COUNTED and stated, never silently lost.
  */
-function _actionBlocks(T, p, { maxLines, unitById, base, accent }) {
+function _actionBlocks(T, p, { maxLines, unitById }) {
     const pb = p.blocks || {};
     const sections = [...(pb.A || []), ...(pb.B || []), ...(pb.C || [])];
     const ranked = [];
@@ -641,7 +641,7 @@ function _actionBlocks(T, p, { maxLines, unitById, base, accent }) {
         const lines = s.lines.filter((l) => kept.has(l));
         if (!lines.length) continue;
         out.push(..._sectionBlocks(T, s, lines));
-        if (s.cta && base) out.push(T.cta('Ouvrir', 'Open', base + s.cta, accent));
+        if (s.cta) out.push(T.button('Ouvrir', 'Open', s.cta));
     }
     if (omitted > 0) {
         out.push(
@@ -663,8 +663,8 @@ function _footerBlocks(T, p) {
         T.table(
             [{ fr: 'Unité', en: 'Unit' }, ...keys.map(_fieldLabel)],
             p.footer.units.map((u) => [
-                { text: u.label.fr, bold: true },
-                ...keys.map((k) => ({ text: u[k].text.fr, color: u[k].color || undefined })),
+                { text: T.pick(u.label), bold: true },
+                ...keys.map((k) => ({ text: T.pick(u[k].text), color: u[k].color || undefined })),
             ])
         )
     );
@@ -691,20 +691,19 @@ function _footerBlocks(T, p) {
  * byte-identical to the original send, and what makes the whole rendering
  * testable with no database and no scheduler (the dept-digest.__test contract).
  *
- * BARE BLOCKS. The three existing digests hand NotificationService a COMPLETE
- * `<!doctype html>` document produced by emailTemplate.wrap, and _render
- * re-wraps it in _shell — so those emails ship a full HTML document nested
- * inside a table cell, with two brand headers and two footers. This one returns
- * the concatenated blocks and lets _shell dress them exactly once (AC-23).
+ * BLOCKS, in ONE language (`opts.lang`, default French): the renderEmail
+ * blocks of the mail ({ title, blocks }), plus their bare HTML and plain-text
+ * rendering ({ html, text }) for previews and tests. NotificationService
+ * composes the document exactly once (one header, one footer). The subject is
+ * the catalogue's: it carries no period and no figure.
  */
 function renderBlocks(payload, opts = {}) {
-    const T = require('../utils/emailTemplate');
+    const lang = opts.lang === 'en' ? 'en' : 'fr';
+    const T = require('../utils/emailTemplate').blocks(lang);
     // A-07 — required here (not at module scope) for the same reason as `T`:
     // this file is loaded by the scheduler before the service graph is warm.
     const { resolveFlowTitle } = require('../services/DeptBriefService');
-    const appName = opts.appName || PRODUCT.name;
-    const accent = opts.accent || '#2563eb';
-    const base = opts.baseUrl || '';
+    const accent = opts.accent || null;
     const maxLines = Math.max(3, Math.min(12, Number(opts.maxLines) || 7));
     const cad = CADENCE_LABEL[payload.cadence] || CADENCE_LABEL.monthly;
     const unitById = {};
@@ -716,7 +715,10 @@ function renderBlocks(payload, opts = {}) {
     const titleEn = `${cad.en.charAt(0).toUpperCase()}${cad.en.slice(1)} brief — ${cad.unit.en} ${payload.period} (${startTxt} → ${endTxt} inclusive)`;
 
     const blocks = [];
-    blocks.push(T.section(titleFr, titleEn, accent));
+    const title = T.pick(titleFr, titleEn);
+    // The notes that say WHICH figures these are (absorbed windows, a partial
+    // period, a recomputation): in the full brief and in the short mail alike.
+    const notes = [];
 
     // §4.7 — the absorbed windows are named in the header, never silently merged.
     if (Array.isArray(payload.absorbed) && payload.absorbed.length) {
@@ -726,10 +728,10 @@ function renderBlocks(payload, opts = {}) {
         const listEn = payload.absorbed
             .map((a) => `${(CADENCE_LABEL[a.cadence] || cad).unit.en} ${a.period}`)
             .join(', ');
-        blocks.push(T.para(`Inclut ${list}.`, `Includes ${listEn}.`));
+        notes.push(T.para(`Inclut ${list}.`, `Includes ${listEn}.`));
     }
     if (payload.partialPeriod) {
-        blocks.push(
+        notes.push(
             T.para(
                 `Période partielle — données disponibles depuis le ${fmtPeriodBound(payload.partialPeriod.since)} : aucune évolution n’est publiée pour cette période.`,
                 `Partial period — data available since ${fmtPeriodBound(payload.partialPeriod.since)}: no change figures are published for this period.`
@@ -737,17 +739,18 @@ function renderBlocks(payload, opts = {}) {
         );
     }
     if (opts.recomputedAt) {
-        blocks.push(
+        notes.push(
             T.para(
                 `Recalculé le ${fmtPeriodBound(opts.recomputedAt)} — peut différer de l’envoi initial.`,
                 `Recomputed on ${fmtPeriodBound(opts.recomputedAt)} — may differ from the original send.`
             )
         );
     }
+    blocks.push(...notes);
 
     // The units, each carrying its own population.
-    for (const u of payload.units || []) blocks.push(T.para(u.label.fr, u.label.en));
-    blocks.push(T.para(payload.natureOfFigures.fr, payload.natureOfFigures.en));
+    for (const u of payload.units || []) blocks.push(T.para(u.label));
+    blocks.push(T.para(payload.natureOfFigures));
 
     // KPI chips — the five-second read, taken from the FOOTER totals.
     const totals = payload.footer && payload.footer.totals;
@@ -755,19 +758,22 @@ function renderBlocks(payload, opts = {}) {
         blocks.push(
             T.kpis([
                 {
-                    label: 'Couverture d’évaluation / Assessment coverage',
-                    value: totals.coverage.text.fr,
+                    label: T.pick('Couverture d’évaluation', 'Assessment coverage'),
+                    value: T.pick(totals.coverage.text),
                     color: totals.coverage.color || undefined,
                 },
                 {
-                    label: 'Personnes mesurées / People measured',
-                    value: totals.measuredPeople.text.fr,
+                    label: T.pick('Personnes mesurées', 'People measured'),
+                    value: T.pick(totals.measuredPeople.text),
                     color: totals.measuredPeople.color || undefined,
                 },
                 {
-                    label: 'Départements / Departments',
+                    label: T.pick('Départements', 'Departments'),
                     value: String(totals.departments),
-                    sub: `${totals.contributingDepartments} avec exigences`,
+                    sub: T.pick(
+                        `${totals.contributingDepartments} avec exigences`,
+                        `${totals.contributingDepartments} with requirements`
+                    ),
                 },
             ])
         );
@@ -783,7 +789,7 @@ function renderBlocks(payload, opts = {}) {
         );
 
     // ---- A / B / C, capped at deptBriefMaxLines ACTION lines ----------
-    blocks.push(..._actionBlocks(T, payload, { maxLines, unitById, base, accent }));
+    blocks.push(..._actionBlocks(T, payload, { maxLines, unitById }));
 
     // ---- FLOW (§2.6) — the only real window block --------------------------
     const flow = payload.flow;
@@ -816,10 +822,10 @@ function renderBlocks(payload, opts = {}) {
                         // page, recomputed from the line's metric. Twelve archived
                         // briefs froze « self_assessment ouverts »; a resend (or a
                         // catch-up run) would have posted the database token again.
-                        { text: resolveFlowTitle(l).fr, bold: true },
+                        { text: T.pick(resolveFlowTitle(l)), bold: true },
                         String(l.now),
                         String(l.before),
-                        _deltaText(l.delta),
+                        _deltaText(l.delta, T),
                     ])
                 )
             );
@@ -855,12 +861,10 @@ function renderBlocks(payload, opts = {}) {
     // ---- The SECOND labelled section (§3.4), with its own units and figures.
     if (payload.team) {
         blocks.push(T.section('Votre équipe', 'Your team', accent));
-        for (const u of payload.team.units || []) blocks.push(T.para(u.label.fr, u.label.en));
+        for (const u of payload.team.units || []) blocks.push(T.para(u.label));
         const teamUnits = {};
         for (const u of payload.team.units || []) teamUnits[u.unitId] = u;
-        blocks.push(
-            ..._actionBlocks(T, payload.team, { maxLines, unitById: teamUnits, base, accent })
-        );
+        blocks.push(..._actionBlocks(T, payload.team, { maxLines, unitById: teamUnits }));
         blocks.push(..._footerBlocks(T, payload.team));
     }
 
@@ -872,13 +876,12 @@ function renderBlocks(payload, opts = {}) {
         )
     );
 
-    if (base && payload.briefId) {
+    if (payload.briefId) {
         blocks.push(
-            T.cta(
+            T.button(
                 'Ouvrir le bilan complet',
                 'Open the full brief',
-                `${base}/reports/dept-brief/${payload.briefId}`,
-                accent
+                `/reports/dept-brief/${payload.briefId}`
             )
         );
     }
@@ -888,7 +891,7 @@ function renderBlocks(payload, opts = {}) {
             'Manage the frequency of this brief: My account → Notifications.'
         )
     );
-    blocks.push(T.para(payload.disclaimer.fr, payload.disclaimer.en));
+    blocks.push(T.para(payload.disclaimer));
     blocks.push(
         T.para(
             `Chiffres figés au ${fmtPeriodBound(payload.computedAt)} — un recalcul ultérieur peut différer, les données de référence évoluent.`,
@@ -896,13 +899,120 @@ function renderBlocks(payload, opts = {}) {
         )
     );
 
-    const subject = `${appName} — Bilan ${cad.fr} — ${payload.period}`;
-    const text = _textOf(payload, cad, maxLines, unitById);
-    return { subject, html: blocks.join(''), text };
+    // The preview (html / text) puts the title first, as the mail's headline does.
+    const { html, text } = require('../utils/emailTemplate').renderBlocks(
+        [{ type: 'h', text: title }, ...blocks],
+        { lang, accent }
+    );
+    const mailBlocks = shortMailBlocks(T, payload, { notes, unitById, cad });
+    return { lang, title, blocks, html, text, mailBlocks };
+}
+
+/**
+ * The SHORT mail of a brief (4.0.0 port, wave 7), read on a phone in a few
+ * seconds: the notes that qualify the figures, the two headline figures with
+ * their change since the previous brief (the Δ the payload already holds, in
+ * words when there is no comparison), « To do first » — the three
+ * highest-ranked action lines as links to the brief, with their count —, how
+ * many more there are, ONE button and the frozen date. The tables, the flow,
+ * the measured state and the method stay on the brief's page. Two columns at
+ * most, no table. PURE (same payload, same blocks).
+ */
+function shortMailBlocks(T, payload, { notes = [], unitById = {}, cad } = {}) {
+    const out = [...notes];
+    const href = payload.briefId ? `/reports/dept-brief/${payload.briefId}` : null;
+    const totals = payload.footer && payload.footer.totals;
+    const deltas = payload.deltas || {};
+    const since = T.pick('depuis le bilan précédent', 'since the previous brief');
+    const withDelta = (shown, d, unit) => {
+        if (!d) return shown;
+        if (d.state === 'value' && d.value !== null && d.value !== undefined) {
+            const n = Number(d.value);
+            const v = `${n > 0 ? '+' : ''}${n}${unit === 'pts' ? ' pts' : ''}`;
+            return `${shown} (${v} ${since})`;
+        }
+        if (d.state === 'stable') return `${shown} (${T.pick('stable', 'stable')} ${since})`;
+        return shown;
+    };
+    if (totals) {
+        out.push({
+            type: 'kv',
+            rows: [
+                [
+                    T.pick('Couverture d’évaluation', 'Assessment coverage'),
+                    withDelta(T.pick(totals.coverage.text), deltas.d1, 'pts'),
+                ],
+                [
+                    T.pick('Personnes mesurées', 'People measured'),
+                    withDelta(T.pick(totals.measuredPeople.text), deltas.d5, null),
+                ],
+            ],
+        });
+    }
+    out.push(
+        T.para(
+            _deltaBasisText(deltas, 'fr', cad || CADENCE_LABEL.monthly),
+            _deltaBasisText(deltas, 'en', cad || CADENCE_LABEL.monthly)
+        )
+    );
+
+    // « To do first »: the R8 order of the full brief, three lines.
+    const pb = payload.blocks || {};
+    const sections = [...(pb.A || []), ...(pb.B || []), ...(pb.C || [])];
+    const ranked = [];
+    for (const sec of sections)
+        for (const l of sec.lines || []) ranked.push({ s: sec, l, r: _rank(l, unitById) });
+    ranked.sort((a, b) => _cmp(a.r, b.r));
+    const top = ranked.slice(0, 3).map(({ s: sec, l }) => {
+        const head = sec.title ? T.pick(sec.title) : '';
+        // the unit's name only: its population sentence stays on the page
+        const unit = l.label ? String(T.pick(l.label)).split(' — ')[0] : '';
+        const cellOf = Object.values(l).find(
+            (v) => _isCell(v) && v.state === 'measured' && Number(v.value) > 0
+        );
+        const count = cellOf ? T.pick(cellOf.text) : null;
+        const text = [head, unit].filter(Boolean).join(' — ') + (count ? ` (${count})` : '');
+        return { text, href };
+    });
+    out.push(T.section('À faire en priorité', 'To do first'));
+    if (top.length) out.push({ type: 'links', items: top });
+    else
+        out.push(
+            T.para('Aucune action en attente sur ce périmètre.', 'No action waiting in this scope.')
+        );
+    if (ranked.length > top.length) {
+        const more = ranked.length - top.length;
+        out.push(
+            T.para(
+                `+${more} autre${more > 1 ? 's' : ''} dans le bilan complet.`,
+                `+${more} more in the full brief.`
+            )
+        );
+    }
+    if (href) out.push(T.button('Ouvrir le bilan complet', 'Open the full brief', href));
+    out.push(
+        T.para(
+            'Le bilan complet (tableaux, flux de la période, état mesuré et méthode) est dans l’application.',
+            'The full brief (tables, the period’s flow, the measured state and the method) is in the app.'
+        )
+    );
+    out.push(
+        T.para(
+            'Gérer la fréquence de ce bilan : Mon compte → Notifications.',
+            'Manage the frequency of this brief: My account → Notifications.'
+        )
+    );
+    out.push(
+        T.para(
+            `Chiffres figés au ${fmtPeriodBound(payload.computedAt)}.`,
+            `Figures frozen on ${fmtPeriodBound(payload.computedAt)}.`
+        )
+    );
+    return out;
 }
 
 /** An arrow only when the comparison is real; a WORD whenever it is not. */
-function _deltaText(d) {
+function _deltaText(d, T) {
     if (!d) return '—';
     switch (d.state) {
         case 'value':
@@ -913,63 +1023,38 @@ function _deltaText(d) {
         case 'stable':
             return 'stable';
         case 'first_measure':
-            return 'première mesure';
+            return T.pick('première mesure', 'first measurement');
         case 'measure_lost':
-            return 'mesure perdue';
+            return T.pick('mesure perdue', 'measurement lost');
         case 'scope_changed':
-            return 'périmètre modifié';
+            return T.pick('périmètre modifié', 'scope changed');
         case 'suppressed':
-            return 'évolution supprimée';
+            return T.pick('évolution supprimée', 'change suppressed');
         default:
-            return 'évolution indisponible';
+            return T.pick('évolution indisponible', 'change unavailable');
     }
 }
 
+/**
+ * The sentence follows the REAL basis of the Δ (4.0.0 port, wave 7): it used
+ * to say « the comparison is available from the second brief » on a brief
+ * whose comparison had been computed.
+ */
 function _deltaBasisText(deltas, lang, cad) {
-    const start = deltas && deltas.seriesStart ? fmtPeriodBound(deltas.seriesStart) : null;
+    const d = deltas || {};
+    const start = d.seriesStart ? fmtPeriodBound(d.seriesStart) : null;
     if (lang === 'en') {
-        if (deltas.basis === 'scope_changed')
+        if (d.basis === 'scope_changed')
             return 'Change not comparable — your scope changed between the two briefs.';
+        if (d.basis === 'comparable') return `Changes compared with your previous ${cad.en} brief.`;
         if (!start) return 'First measured period — there is no comparison yet.';
-        return `Your ${cad.en} brief series started on ${start}. Comparison is available from the second brief onwards.`;
+        return `Your ${cad.en} brief series started on ${start}. The comparison comes with the next comparable brief.`;
     }
-    if (deltas.basis === 'scope_changed')
+    if (d.basis === 'scope_changed')
         return 'Évolution non comparable — le périmètre a changé entre les deux bilans.';
+    if (d.basis === 'comparable') return `Évolutions comparées à votre bilan ${cad.fr} précédent.`;
     if (!start) return 'Première période mesurée — pas de comparaison.';
-    return `La série de vos bilans ${cad.fr}s a commencé le ${start}. La comparaison est disponible à partir du deuxième bilan.`;
-}
-
-/** The plain-text twin. Same content, same cap, no markup. */
-function _textOf(payload, cad, maxLines, unitById) {
-    const out = [
-        `Bilan ${cad.fr} — ${payload.period} (${fmtPeriodBound(payload.periodStart)} → ${fmtPeriodBound(payload.displayEnd)} inclus)`,
-    ];
-    for (const u of payload.units || []) out.push(u.label.fr);
-    // « twin » means twin: the HTML part publishes the §2.1 sentence
-    // right after the unit labels (:638) and the text part published NOTHING,
-    // so a reader on a text-only client never learned what A, B and C mean nor
-    // which day B was observed on. Same position, same sentence, same source.
-    if (payload.natureOfFigures && payload.natureOfFigures.fr) out.push(payload.natureOfFigures.fr);
-    const pb = payload.blocks || {};
-    const sections = [...(pb.A || []), ...(pb.B || []), ...(pb.C || [])];
-    const ranked = [];
-    for (const s of sections) for (const l of s.lines) ranked.push({ s, l, r: _rank(l, unitById) });
-    ranked.sort((a, b) => _cmp(a.r, b.r));
-    for (const { s, l } of ranked.slice(0, maxLines)) {
-        const figures = Object.entries(l)
-            .filter(([, v]) => _isCell(v))
-            .map(([k, v]) => `${_fieldLabel(k, s).fr} ${v.text.fr}`)
-            .join(', ');
-        out.push(`- [${s.id}] ${l.label ? l.label.fr : l.skillName || ''} : ${figures || '—'}`);
-    }
-    if (ranked.length > maxLines) out.push(`+${ranked.length - maxLines} autres actions.`);
-    const t = payload.footer && payload.footer.totals;
-    if (t)
-        out.push(
-            `État mesuré — couverture ${t.coverage.text.fr}, personnes mesurées ${t.measuredPeople.text.fr}.`
-        );
-    out.push(payload.disclaimer.fr);
-    return out.join('\n');
+    return `La série de vos bilans ${cad.fr}s a commencé le ${start}. La comparaison viendra avec le prochain bilan comparable.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -997,7 +1082,7 @@ function landed(r) {
  * else: NotificationService._notify fans every event out to
  * WebhookService.emit BEFORE the in-app write, before the tier, before the
  * opt-out and before the category — with no scope and no clearance check. Every
- * figure lives in subject/html/text, which the webhook never sees.
+ * figure lives in the mail blocks, which the webhook never sees.
  */
 async function deliver(recipient, cadence, payload, rendered, { inAppOnly }) {
     const NotificationService = require('../services/NotificationService');
@@ -1028,9 +1113,11 @@ async function deliver(recipient, cadence, payload, rendered, { inAppOnly }) {
         kind: 'dept_brief',
         category: 'digest',
         payload: notifPayload,
-        subject: rendered.subject,
-        html: rendered.html,
-        text: rendered.text,
+        locale: rendered.lang,
+        title: rendered.title,
+        // The SHORT mail (wave 7); the full brief stays on its page.
+        blocks: rendered.mailBlocks || rendered.blocks,
+        ctaUrl: notifPayload.link,
     });
 }
 
@@ -1422,11 +1509,9 @@ async function _oneRecipient(recipient, due, emitted, { settings, force, result,
         result.superseded += await supersede(recipient);
 
         const branding = await _branding();
-        const T = require('../utils/emailTemplate');
         const rendered = renderBlocks(emittedRow.payload, {
-            appName: branding.appName,
+            lang: await require('../utils/emailTemplate').mailLang(),
             accent: branding.accent,
-            baseUrl: T.baseUrl(),
             maxLines: settings.maxLines,
             recomputedAt: emittedRow.recomputed ? new Date() : null,
         });
@@ -1596,12 +1681,10 @@ async function _resendOne({ cadence, period, only }, result) {
     );
     payload.briefId = Number(row.id);
     const branding = await _branding();
-    const T = require('../utils/emailTemplate');
     const settings = await _settings();
     const rendered = renderBlocks(payload, {
-        appName: branding.appName,
+        lang: await require('../utils/emailTemplate').mailLang(),
         accent: branding.accent,
-        baseUrl: T.baseUrl(),
         maxLines: settings.maxLines,
     });
     const recipient = { type: only.userType, id: Number(only.userId) };
@@ -1641,5 +1724,5 @@ async function _branding() {
 // dept-digest.__test and planning-digest.__test.
 module.exports = {
     tick,
-    __test: { renderBlocks, gateFor, recipients, landed, defaultEnabled, dueAt },
+    __test: { renderBlocks, shortMailBlocks, gateFor, recipients, landed, defaultEnabled, dueAt },
 };

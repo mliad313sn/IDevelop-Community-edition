@@ -1,0 +1,8 @@
+<%# The organisation's accent (App Settings › Branding) for a page that does not
+    use the main layout: the sign-in steps and the error page. branding.accentCss
+    is built server-side from a validated hex (src/utils/branding.js), its colours
+    computed per mode for WCAG AA. %>
+<% const _acc = (typeof branding !== 'undefined' && branding && branding.accentCss) ? branding.accentCss : ''; %>
+<% if (_acc) { %>
+<style nonce="<%= cspNonce %>"><%- _acc %></style>
+<% } %>

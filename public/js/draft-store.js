@@ -32,14 +32,24 @@
         return openNamed(DB_NAME, createStore);
     }
 
+    // The REAL campaign id, or null for a rating filed outside any campaign —
+    // never the empty string the page used to send.
+    function normCycle(cycleId) {
+        return cycleId == null || cycleId === '' ? null : String(cycleId);
+    }
+    function keyOf(userId, cycleId, skillId) {
+        return `${userId}:${normCycle(cycleId) == null ? '' : normCycle(cycleId)}:${skillId}`;
+    }
+
     async function put({ userId, cycleId, skillId, level, justification }) {
         const db = await openDb();
+        const cycle = normCycle(cycleId);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(STORE, 'readwrite');
             tx.objectStore(STORE).put({
-                key: `${userId}:${cycleId}:${skillId}`,
+                key: keyOf(userId, cycle, skillId),
                 userId,
-                cycleId,
+                cycleId: cycle,
                 skillId,
                 level,
                 justification,
@@ -100,5 +110,62 @@
         });
     }
 
-    global.AppDraftStore = { put, listPending, markSynced };
+    /**
+     * A rating that the server ACCEPTED while online leaves no copy on the
+     * device — the page calls this after each successful save.
+     */
+    async function markSyncedFor({ userId, cycleId, skillId }) {
+        return markSynced(keyOf(userId, cycleId, skillId));
+    }
+
+    /**
+     * At sign-out, every draft of THAT person is removed from the device (shared
+     * computer or not). Other people's rows are untouched.
+     */
+    async function wipeOwner(ownerId) {
+        const owner = ownerId == null ? '' : String(ownerId);
+        if (!owner) return 0;
+        const db = await openDb();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE, 'readwrite');
+            const os = tx.objectStore(STORE);
+            let n = 0;
+            const req = os.getAll();
+            req.onsuccess = () => {
+                (req.result || []).forEach((r) => {
+                    if (r && String(r.userId) === owner) {
+                        os.delete(r.key);
+                        n++;
+                    }
+                });
+            };
+            tx.oncomplete = () => resolve(n);
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    // The sign-out response names whose drafts to remove (cookie app_drafts_wipe,
+    // a numeric id, 10 minutes). Whatever page loads this file next — the login
+    // page right after the redirect — honours it once and clears the cookie.
+    const WIPE_COOKIE = 'app_drafts_wipe';
+    function pendingWipe() {
+        const m = /(?:^|;\s*)app_drafts_wipe=(\d{1,12})(?:;|$)/.exec(document.cookie || '');
+        return m ? m[1] : null;
+    }
+    function clearWipeCookie() {
+        const secure = location.protocol === 'https:' ? '; secure' : '';
+        document.cookie = WIPE_COOKIE + '=; path=/; max-age=0; samesite=lax' + secure;
+    }
+    const wipeDone = (function () {
+        const owner = pendingWipe();
+        if (!owner || typeof indexedDB === 'undefined') return Promise.resolve(0);
+        return wipeOwner(owner)
+            .catch(() => 0)
+            .then((n) => {
+                clearWipeCookie();
+                return n;
+            });
+    })();
+
+    global.AppDraftStore = { put, listPending, markSynced, markSyncedFor, wipeOwner, wipeDone };
 })(window);

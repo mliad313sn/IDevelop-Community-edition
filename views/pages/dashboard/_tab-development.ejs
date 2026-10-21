@@ -1,0 +1,40 @@
+<%#
+  « Development »: the plan tiles (from _panel), plans in progress by type —
+  a type whose module is off is not listed, improvement plans only for a
+  reader cleared to see them —, the sub-domains furthest below the
+  requirement by unit (heatmap, aggregates only).
+  Locals: P (tabModel 'development'), units.
+-%><%
+  var _F = numFmt;
+  var K16 = (P.k && P.k.K16) || null;
+  var _types = K16 && K16.byType ? Object.keys(K16.byType).filter(function (t) { return K16.byType[t] && !K16.byType[t].hidden; }) : [];
+  var _unitName = units[P.groupUnit] || units.department;
+-%>
+<% if (_types.length) { %>
+<section class="ds-card" id="ds-plans" aria-labelledby="ds-plans-h">
+    <h3 id="ds-plans-h"><%= __('dash:d3_dv_plans_title') %></h3>
+    <div class="ds-table-wrap"><table class="ds-table">
+        <thead><tr><th scope="col"></th><th scope="col" class="num"><%= __('dash:d3_dv_active') %></th><th scope="col" class="num"><%= __('dash:d3_dv_overdue') %></th></tr></thead>
+        <tbody>
+        <% _types.forEach(function (t) { var e = K16.byType[t]; %>
+            <tr data-plan-type="<%= t %>"><th scope="row"><%= __('dash:d3_dv_type_' + t) %></th><td class="num"><%= _F.num(e.value, 0) %></td><td class="num"><%= _F.num(e.overdue, 0) %></td></tr>
+        <% }); %>
+        </tbody>
+    </table></div>
+</section>
+<% } %>
+
+<% if (P.devOutcomes) { %>
+<%- include('_dev-outcomes', { O: P.devOutcomes }) %>
+<% } %>
+
+<% if (P.blocks.indexOf('deficitHeat') >= 0) { %>
+<section class="ds-card" id="ds-deficit" aria-labelledby="ds-deficit-h">
+    <h3 id="ds-deficit-h"><%= __('dash:d3_dv_heat_title', { unit: _unitName }) %></h3>
+    <% if (!P.deficitHeat || P.deficitHeat.empty || !(P.deficitHeat.rows || []).some(function (r) { return (r.cells || []).some(function (c) { return c.state === 'ok'; }); })) { %>
+        <p class="ds-note"><%= __('dash:d3_dv_heat_none') %></p>
+    <% } else { %>
+        <%- include('../../partials/viz/heat', { H: P.deficitHeat, heatId: 'ds-heat-deficit', topRows: 10 }) %>
+    <% } %>
+</section>
+<% } %>

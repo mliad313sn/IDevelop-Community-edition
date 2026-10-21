@@ -175,6 +175,13 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
               <%= __('admin:maint_withdraw_review') %>
             </button>
             <% } %>
+            <%# Reset for redo: the employee and the reviewer both do it again. %>
+            <% if (['submitted','under_review','reviewed','approved','rejected','changes_requested','arbitration'].indexOf(a.state) !== -1) { %>
+            <button type="button" class="btn btn-sm"
+                    data-mnt-action="reset" data-mnt-id="<%= a.id %>" data-mnt-what="<%= (a.skillName || ('#' + a.skillId)) + ' — ' + who(a) %>">
+              <%= __('admin:maint_reset') %>
+            </button>
+            <% } %>
             <button type="button" class="btn btn-sm btn-danger"
                     data-mnt-action="assessment" data-mnt-id="<%= a.id %>" data-mnt-what="<%= (a.skillName || ('#' + a.skillId)) + ' — ' + who(a) %>">
               <%= __('admin:maint_cancel') %>
@@ -187,6 +194,29 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
   </div>
   <% pager(assessmentsPager, 'pAssess'); %>
   <% } %>
+</section>
+
+<!-- ── Reset a whole assessment (employee × campaign) ───────────────────── -->
+<section class="card mnt-card" id="mntReset">
+  <h2 class="mnt-h2"><%= __('admin:maint_reset_title') %></h2>
+  <p class="text-muted mnt-hint"><%= __('admin:maint_reset_hint') %></p>
+  <div class="mnt-row">
+    <label for="mntResetEmp" class="mnt-label"><%= __('admin:maint_employee_pick') %></label>
+    <input id="mntResetEmp" list="mntEmpList" class="form-control mnt-input" placeholder="<%= __('admin:maint_employee_ph') %>" autocomplete="off">
+    <label for="mntResetCycle" class="mnt-label"><%= __('admin:maint_reset_campaign') %></label>
+    <select id="mntResetCycle" class="form-control mnt-input" disabled>
+      <option value=""><%= __('admin:maint_reset_campaign_first') %></option>
+    </select>
+  </div>
+  <label for="mntResetReason" class="mnt-label" style="display:block;margin-top:.7rem"><%= __('admin:maint_reason_label') %></label>
+  <textarea id="mntResetReason" rows="2" class="form-control" style="width:100%" placeholder="<%= __('admin:maint_reason_ph') %>"></textarea>
+  <label for="mntResetConfirm" class="mnt-label" style="display:block;margin-top:.7rem"><%= __('admin:maint_reset_confirm_label') %></label>
+  <input id="mntResetConfirm" type="text" class="form-control" style="width:100%;max-width:24rem" autocomplete="off" placeholder="<%= __('admin:maint_dsr_confirm_ph') %>">
+  <p id="mntResetErr" class="mnt-err" role="alert" hidden></p>
+  <p id="mntResetOk" class="mnt-hint" role="status" hidden></p>
+  <div class="mnt-row" style="margin-top:.7rem">
+    <button type="button" class="btn btn-danger" id="mntResetGo"><%= __('admin:maint_reset_whole') %></button>
+  </div>
 </section>
 
 <!-- ── 9-box ─────────────────────────────────────────────────────────────── -->
@@ -279,7 +309,7 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
         <option value="<%= e.id %>"><%= who(e) %><%= e.employeeNumber ? ' · ' + e.employeeNumber : '' %><%= e.isActive ? '' : ' · ' + __('admin:maint_inactive') %></option>
       <% }); %>
     </datalist>
-    <button type="button" class="btn btn-danger" onclick="mntVoidEmployee()"><%= __('admin:maint_void') %></button>
+    <button type="button" class="btn btn-danger" data-on-click="mntVoidEmployee" data-args="[]"><%= __('admin:maint_void') %></button>
   </div>
   <% if (candidatesTruncated) { %>
     <p class="text-muted mnt-hint"><%= __('admin:maint_employee_truncated') %></p>
@@ -387,7 +417,7 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
               placeholder="<%= __('admin:maint_reason_ph') %>"></textarea>
     <p id="mntDlgErr" class="mnt-err" hidden></p>
     <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.9rem">
-      <button type="button" class="btn" onclick="document.getElementById('mntDlg').close()"><%= __('admin:maint_dlg_cancel') %></button>
+      <button type="button" class="btn" data-on-click="mntCloseDlg" data-args="[]"><%= __('admin:maint_dlg_cancel') %></button>
       <button type="button" id="mntDlgOk" class="btn btn-danger"><%= __('admin:maint_dlg_confirm') %></button>
     </div>
   </form>
@@ -421,6 +451,7 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
     plan:      <%- JSON.stringify(__('admin:maint_dlg_plan')) %>,
     assessment:<%- JSON.stringify(__('admin:maint_dlg_assessment')) %>,
     reopen:    <%- JSON.stringify(__('admin:maint_dlg_reopen')) %>,
+    reset:     <%- JSON.stringify(__('admin:maint_dlg_reset')) %>,
     review:    <%- JSON.stringify(__('admin:maint_dlg_review')) %>,
     placement: <%- JSON.stringify(__('admin:maint_dlg_placement')) %>,
     employee:  <%- JSON.stringify(__('admin:maint_dlg_employee')) %>,
@@ -433,6 +464,9 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
   };
   var dlg = document.getElementById('mntDlg');
   var pending = null;
+  // CSP: the buttons call these through data-on-click (public/js/csp-actions.js),
+  // which resolves window functions — no inline on*= handler left on this page.
+  window.mntCloseDlg = function(){ dlg.close(); };
 
   // One dialog for every action: kind decides the endpoint and the payload.
   window.mntAsk = function(kind, id, entityType, what){
@@ -479,6 +513,7 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
     plan:      '/admin/maintenance/cancel-plan',
     assessment:'/admin/maintenance/cancel-assessment',
     reopen:    '/admin/maintenance/reopen-assessment',
+    reset:     '/admin/maintenance/reset-assessment',
     review:    '/admin/maintenance/withdraw-review',
     placement: '/admin/maintenance/cancel-placement',
     employee:  '/admin/maintenance/void-employee',
@@ -495,7 +530,7 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
 
     var body = { reason: reason };
     if (pending.kind === 'plan' || pending.kind === 'restorePlan') { body.entityType = pending.entityType; body.entityId = pending.id; }
-    else if (pending.kind === 'assessment' || pending.kind === 'reopen' || pending.kind === 'review') { body.assessmentId = pending.id; }
+    else if (pending.kind === 'assessment' || pending.kind === 'reopen' || pending.kind === 'review' || pending.kind === 'reset') { body.assessmentId = pending.id; }
     else if (pending.kind === 'placement' || pending.kind === 'restorePlacement') { body.evaluationId = pending.id; }
     else { body.employeeId = pending.id; }
 
@@ -511,6 +546,77 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
         else { errEl.textContent = (j && j.error) || T.err; errEl.hidden = false; }
       })
       .catch(function(){ btn.disabled = false; errEl.textContent = T.err; errEl.hidden = false; });
+  });
+})();
+</script>
+
+<script nonce="<%= cspNonce %>">
+// Reset a whole assessment for redo (employee × campaign).
+(function(){
+  var CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+  var RT = {
+    pickEmp:   <%- JSON.stringify(__('admin:maint_err_pick_employee')) %>,
+    pickCycle: <%- JSON.stringify(__('admin:maint_err_maintenance_reset_pick_cycle')) %>,
+    needReason:<%- JSON.stringify(__('admin:maint_err_maintenance_reason_required')) %>,
+    needNumber:<%- JSON.stringify(__('admin:maint_reset_confirm_needed')) %>,
+    first:     <%- JSON.stringify(__('admin:maint_reset_campaign_first')) %>,
+    pick:      <%- JSON.stringify(__('admin:maint_reset_campaign_pick')) %>,
+    none:      <%- JSON.stringify(__('admin:maint_reset_campaign_none')) %>,
+    rowsFmt:   <%- JSON.stringify(__('admin:maint_reset_campaign_rows')) %>,
+    done:      <%- JSON.stringify(__('admin:maint_reset_done')) %>,
+    err:       <%- JSON.stringify(__('admin:maint_generic_err')) %>
+  };
+  var emp = document.getElementById('mntResetEmp');
+  var sel = document.getElementById('mntResetCycle');
+  var errEl = document.getElementById('mntResetErr');
+  var okEl = document.getElementById('mntResetOk');
+  function say(el, txt){ el.textContent = txt; el.hidden = !txt; }
+  function opt(v, t){ var o = document.createElement('option'); o.value = v; o.textContent = t; return o; }
+  function clearSel(label){ while (sel.firstChild) sel.removeChild(sel.firstChild); sel.appendChild(opt('', label)); }
+  function load(){
+    say(errEl, ''); say(okEl, '');
+    var id = parseInt((emp.value || '').trim(), 10);
+    clearSel(RT.first); sel.disabled = true;
+    if (!id) return;
+    fetch('/admin/maintenance/reset-assessment/campaigns?employeeId=' + encodeURIComponent(id), { headers: { accept: 'application/json' } })
+      .then(function(r){ return r.json().catch(function(){ return {}; }); })
+      .then(function(j){
+        var list = (j && j.campaigns) || [];
+        if (!list.length) { clearSel(j && j.ok === false && j.error ? j.error : RT.none); return; }
+        clearSel(RT.pick);
+        list.forEach(function(c){
+          var label = (c.label || c.code || ('#' + c.id)) + ' — ' +
+            RT.rowsFmt.replace('{{n}}', c.resettable).replace('{{total}}', c.rows);
+          sel.appendChild(opt(String(c.id), label));
+        });
+        sel.disabled = false;
+      })
+      .catch(function(){ say(errEl, RT.err); });
+  }
+  emp.addEventListener('change', load);
+  document.getElementById('mntResetGo').addEventListener('click', function(){
+    say(errEl, ''); say(okEl, '');
+    var id = parseInt((emp.value || '').trim(), 10);
+    if (!id) return say(errEl, RT.pickEmp);
+    if (!sel.value) return say(errEl, RT.pickCycle);
+    var reason = (document.getElementById('mntResetReason').value || '').trim();
+    if (!reason) return say(errEl, RT.needReason);
+    var num = (document.getElementById('mntResetConfirm').value || '').trim();
+    if (!num) return say(errEl, RT.needNumber);
+    var btn = this; btn.disabled = true;
+    fetch('/admin/maintenance/reset-assessment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': CSRF, accept: 'application/json' },
+      body: JSON.stringify({ employeeId: id, cycleId: Number(sel.value), reason: reason, confirmNumber: num })
+    }).then(function(r){ return r.json().catch(function(){ return {}; }); })
+      .then(function(j){
+        btn.disabled = false;
+        if (j && j.ok) {
+          say(okEl, RT.done.replace('{{n}}', (j.reset || []).length).replace('{{skipped}}', (j.skipped || []).length));
+          setTimeout(function(){ window.location.reload(); }, 1500);
+        } else say(errEl, (j && j.error) || RT.err);
+      })
+      .catch(function(){ btn.disabled = false; say(errEl, RT.err); });
   });
 })();
 </script>
@@ -602,6 +708,7 @@ const saSt = (v) => (v ? (typeof enumLabel === 'function' ? enumLabel('sa_state'
   });
 })();
 </script>
+<%- include('../../partials/erase-override') %>
 <!-- ══ end SECTION accounts ══ -->
 
 <!-- ══ 3.23.18 (S-07) — Retention: periods, what is due, last run, tombstones.

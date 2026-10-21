@@ -594,6 +594,52 @@ describe('the measured footer never turns an absence into a score', () => {
         expect(u.d3Met.text.fr).toBe('746/972 (76,7 %)');
     });
 
+    test('average readiness is coloured by the K2 bands of the KPI module, not a private 80 / 60 pair', async () => {
+        const unit = {
+            departmentId: 11,
+            unitName: 'Riverside / IT',
+            headcount: 36,
+            totalHeadcount: 36,
+            wholeDepartment: true,
+            withoutRequirements: 0,
+        };
+        const covAt = (avgReadiness) => [
+            {
+                departmentId: 11,
+                expected: 100,
+                assessed: 100,
+                avgReadiness,
+                measuredPeople: 36,
+                scopedPeople: 36,
+                criticalExpected: 0,
+                criticalAssessed: 0,
+            },
+        ];
+        const gaps = [{ departmentId: 11, requiredCells: 100, assessedCells: 100, metCells: 80 }];
+        const colourAt = async (threshold, avg) => {
+            mockDb.get.mockImplementation(async (sql) =>
+                /app_readiness_threshold/.test(sql) ? { t: threshold } : undefined
+            );
+            const f = await footerFor([unit], covAt(avg), gaps);
+            return f.units[0].d2Readiness.color;
+        };
+        const { GREEN, AMBER, RED } = S.COLORS;
+        try {
+            // threshold 90 (settings): 81,9 % is « watch », where 80 / 60 said green
+            expect(await colourAt(90, 81.9)).toBe(AMBER);
+            expect(await colourAt(90, 90)).toBe(GREEN);
+            // the K2 watch floor is 50, not 60
+            expect(await colourAt(80, 55)).toBe(AMBER);
+            expect(await colourAt(80, 49.9)).toBe(RED);
+            // an unreadable setting falls back to the KPI default (80)
+            mockDb.get.mockRejectedValue(new Error('down'));
+            const f = await footerFor([unit], covAt(79.9), gaps);
+            expect(f.units[0].d2Readiness.color).toBe(AMBER);
+        } finally {
+            mockDb.get.mockReset();
+        }
+    });
+
     test('the overall chip is the AGGREGATE ratio, not a mean of department percentages', async () => {
         const f = await footerFor(
             [
@@ -840,5 +886,27 @@ describe('migration 118', () => {
         expect(SQL).toMatch(
             /ON CONFLICT \(key\) DO UPDATE SET value = EXCLUDED\.value, applied_at = now\(\);/
         );
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Data rules: the brief counts what the CHECKs allow and what was recorded
+// ---------------------------------------------------------------------------
+
+describe('data rules of the brief', () => {
+    test('A4 counts 9-box placements under review (the CHECK value), never the non-existent « submitted »', () => {
+        expect(CODE).toMatch(
+            /FROM nine_box_evaluations nb[\s\S]{0,200}nb\.status = 'under_review'/
+        );
+        expect(CODE).not.toMatch(/nb\.status = 'submitted'/);
+    });
+
+    test('B2 « stalled » needs a RECORDED progress at 0 (COACHING_PROGRESS), never the column default', () => {
+        const i = CODE.indexOf('FROM coaching_plans c JOIN employees e');
+        expect(i).toBeGreaterThan(0);
+        const q = CODE.slice(i, i + 600);
+        expect(q).toMatch(/l\.action = 'COACHING_PROGRESS'/);
+        expect(q).toMatch(/l\.entity_type = ANY\(\?\)/);
+        expect(CODE).toMatch(/entityTypeVariants\('coaching_plan'\)/);
     });
 });

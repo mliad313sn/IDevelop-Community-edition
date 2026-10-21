@@ -1,0 +1,40 @@
+<%#
+  The « Whole framework » row of the capability map, alone (Overview tab).
+  Model: src/utils/heatModel.capabilityMapStrip. One cell per unit (worst
+  first, « Others » last) and the overall figure; the same colours, « < 5 »,
+  hatched « Not measured » and printed values as the full map; a link to the
+  full map. Locals: S (strip), stripId, href, noneLabel?, plus `__`, `numFmt`.
+-%><%
+  var _S = (typeof S !== 'undefined' && S) ? S : null;
+  var _id = (typeof stripId !== 'undefined' && stripId) ? String(stripId) : 'cms';
+  var _F = (typeof numFmt !== 'undefined' && numFmt) ? numFmt : { num: function (v) { return v === null || v === undefined ? null : String(v); }, pct: function (v) { return v === null || v === undefined ? null : String(v) + ' %'; } };
+  var _none = (typeof noneLabel !== 'undefined' && noneLabel) ? noneLabel : __('viz:no_site');
+  var _P0 = function (v) { return _F.pct(v * 100, 0); };
+  var colLabel = function (c) { return c.pooled ? __('viz:heat.pooled') : (c.none ? _none : (c.label || '—')); };
+  var valueText = function (c) {
+      if (!c || c.state === 'na') return '·';
+      if (c.state === 'masked') return __('viz:heat.masked');
+      if (c.state === 'unmeasured') return __('viz:unmeasured');
+      return _P0(c.value);
+  };
+  var cls = function (c, extra) {
+      var k = 'vh-strip-c' + (extra ? ' ' + extra : '');
+      if (!c || c.state === 'na') return k + ' vh-strip-c--na';
+      if (c.state === 'masked') return k + ' vh-strip-c--masked';
+      if (c.state === 'unmeasured') return k + ' vh-strip-c--unmeasured viz-hatch';
+      return k;
+  };
+-%>
+<% if (_S) { %>
+<section class="vh-strip" id="<%= _id %>" aria-labelledby="<%= _id %>-h">
+    <h3 id="<%= _id %>-h"><%= __('viz:heat.map_strip_title') %></h3>
+    <p class="viz-subtitle"><%= __('viz:heat.map_strip_sub') %></p>
+    <ul class="vh-strip-row">
+        <% _S.cols.forEach(function (c) { var m = c.marg || {}; %>
+        <li class="<%= cls(m) %>"<% if (m.state === 'ok') { %> data-bin="<%= m.bin %>"<% } %>><span class="vh-strip-l"><%= colLabel(c) %></span><span class="vh-strip-v"><%= valueText(m) %><% if (m.below) { %> <span class="vh-mk" aria-hidden="true">▼</span><span class="viz-live"><%= __('viz:heat.legend_below') %></span><% } %></span></li>
+        <% }); %>
+        <li class="<%= cls(_S.total, 'vh-strip-c--total') %>"<% if (_S.total && _S.total.state === 'ok') { %> data-bin="<%= _S.total.bin %>"<% } %>><span class="vh-strip-l"><%= __('viz:heat.marg_col') %></span><span class="vh-strip-v"><%= valueText(_S.total) %></span></li>
+    </ul>
+    <% if (typeof href !== 'undefined' && href) { %><p class="vh-strip-more"><a href="<%= href %>"><%= __('viz:heat.map_strip_link') %></a></p><% } %>
+</section>
+<% } %>

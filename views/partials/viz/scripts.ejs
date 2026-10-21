@@ -1,0 +1,20 @@
+<%#
+  The scripts of the data-visualisation layer, in their load order. A page
+  includes this once, after its content:
+    include('../partials/viz/scripts', { viz: { chart: true, heat: true, radar: true, dumbbell: true, axisFit: true } })
+  `chart` (and `radar`) load Chart.js; `axisFit` loads the progression-axis rule
+  (public/js/chart-axis-fit.js) for line charts with `fitAxis`. Every script is
+  same-origin (CSP 'self').
+-%><%
+  var _v = (typeof viz !== 'undefined' && viz) ? viz : {};
+  var _ver = (typeof assetVersion !== 'undefined') ? assetVersion : '';
+  var _canvas = !!(_v.chart || _v.radar);
+-%>
+<% if (_canvas) { %><script src="/vendor/chart.umd.min.js?v=<%= _ver %>"></script><% } %>
+<script src="/js/fmt.js?v=<%= _ver %>"></script>
+<script src="/js/chart-theme.js?v=<%= _ver %>"></script>
+<% if (_v.axisFit) { %><script src="/js/chart-axis-fit.js?v=<%= _ver %>"></script><% } %>
+<% if (_canvas) { %><script src="/js/viz.js?v=<%= _ver %>"></script><% } %>
+<% if (_v.radar) { %><script src="/js/profile-radar.js?v=<%= _ver %>"></script><% } %>
+<% if (_v.dumbbell) { %><script src="/js/dumbbell.js?v=<%= _ver %>"></script><% } %>
+<% if (_v.heat) { %><script src="/js/viz-heat.js?v=<%= _ver %>"></script><% } %>

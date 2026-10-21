@@ -20,14 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const read = (p) => fs.readFileSync(path.join(__dirname, '../..', p), 'utf8');
 
-describe('A8 — the roles-at-risk card and the trend share one definition', () => {
-    const flat = read('public/js/dashboard.js').replace(/\s+/g, ' ');
-    test('the card prefers the KPI-query rolesAtRisk, falling back to staffing', () => {
-        expect(flat).toMatch(
-            /const riskCount = kpis\.rolesAtRisk != null \? num\(kpis\.rolesAtRisk, 0\) : staffing\.filter\(\(r\) => r\.isRisk && !r\.isUnmeasured\)\.length/
-        );
-    });
-});
+// the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)
 
 describe('A9 — readiness-by-group projects no arbitrary representative id', () => {
     const model = read('src/models/DashboardModel.js');

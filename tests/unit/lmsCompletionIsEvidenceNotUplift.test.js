@@ -169,14 +169,24 @@ describe('the decision is the only door to the official level', () => {
     });
 
     test('declining writes no level and says why', async () => {
-        const out = await LmsService.decideUplift(superadmin, COMPLETION, 'decline');
+        // A decline carries its reason (required, SA-43).
+        const out = await LmsService.decideUplift(superadmin, COMPLETION, 'decline', {
+            reason: 'Course outside the role',
+        });
         expect(wrote(/INSERT INTO skill_assessments/)).toHaveLength(0);
         expect(out.decision).toBe('decline');
         expect(
             wrote(
-                /UPDATE lms_completions SET applied = false, review_reason = 'declined_by_supervisor'/
+                /UPDATE lms_completions\s+SET applied = false, review_reason = 'declined_by_supervisor'/
             )
         ).toHaveLength(1);
+    });
+
+    test('declining without a reason is refused and writes nothing', async () => {
+        await expect(
+            LmsService.decideUplift(superadmin, COMPLETION, 'decline', { reason: '  ' })
+        ).rejects.toMatchObject({ status: 400, code: 'upl_err_reason_required' });
+        expect(wrote(/UPDATE lms_completions/)).toHaveLength(0);
     });
 
     test('someone with no authority over the employee is refused', async () => {
@@ -230,7 +240,7 @@ describe('the surfaces exist and say what the rule is', () => {
     });
 
     test('the notification deep-links to a PAGE, not to raw JSON', () => {
-        const svc = read('src/services/NotificationService.js');
+        const svc = read('src/services/notificationCatalogue.js');
         expect(svc).toMatch(
             /'lms\.uplift_proposed':\s*\{[\s\S]{0,200}?link:\s*'\/v2\/lms\/uplifts'/
         );

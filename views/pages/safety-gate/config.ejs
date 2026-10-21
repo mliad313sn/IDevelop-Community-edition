@@ -16,6 +16,7 @@
         <% if (draft.certRequired) { %> · <%= __('safety:f_cert_required') %><% } %>
         <% if (draft.requireValidated) { %> · <%= __('safety:f_require_validated') %><% } %>
         <% if (draft.maxAgeMonths) { %> · <%= __('safety:max_age_value', { months: draft.maxAgeMonths }) %><% } %>
+        <% if (draft.legallyMandatory) { %> · <%= __('safety:legal_badge') %><% } %>
         · <%= __('safety:mode_' + draft.mode) %></p>
     <p class="sg-preview-count"><%= __('safety:preview_newly_blocked', { count: preview.newlyBlocked, total: preview.evaluated }) %></p>
     <% if (preview.alreadyBlocked) { %><p class="help-text"><%= __('safety:preview_already_blocked', { count: preview.alreadyBlocked }) %></p><% } %>
@@ -35,6 +36,7 @@
         <input type="hidden" name="requireValidated" value="<%= draft.requireValidated ? '1' : '' %>">
         <input type="hidden" name="maxAgeMonths" value="<%= draft.maxAgeMonths == null ? '' : draft.maxAgeMonths %>">
         <input type="hidden" name="mode" value="<%= draft.mode %>">
+        <input type="hidden" name="legallyMandatory" value="<%= draft.legallyMandatory ? '1' : '' %>">
         <button type="submit" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i> <%= __('safety:btn_confirm_add') %></button>
         <a class="btn btn-secondary" href="/safety-gate/config"><%= __('safety:btn_cancel') %></a>
     </form>
@@ -90,6 +92,8 @@
     </div>
     <label class="sg-check"><input type="checkbox" name="certRequired" value="1"> <%= __('safety:f_cert_required') %></label>
     <label class="sg-check"><input type="checkbox" name="requireValidated" value="1"> <%= __('safety:f_require_validated') %></label>
+    <label class="sg-check"><input type="checkbox" name="legallyMandatory" value="1" aria-describedby="sg-rule-legal-help"> <%= __('safety:f_legally_mandatory') %></label>
+    <span id="sg-rule-legal-help" class="sg-sub sg-wide"><%= __('safety:f_legally_mandatory_help') %></span>
     <button type="submit" class="btn btn-primary"><i class="fas fa-magnifying-glass-chart" aria-hidden="true"></i> <%= __('safety:btn_preview') %></button>
 </form>
 <% } %>
@@ -122,7 +126,8 @@
                     <td><strong><%= r.minLevel %></strong></td>
                     <td><%= r.certRequired ? __('safety:yes') : __('safety:no') %></td>
                     <td class="sg-small">
-                        <% if (!r.requireValidated && !r.maxAgeMonths) { %>—<% } %>
+                        <% if (!r.requireValidated && !r.maxAgeMonths && !r.legallyMandatory) { %>—<% } %>
+                        <% if (r.legallyMandatory) { %><div><strong><%= __('safety:legal_badge') %></strong></div><% } %>
                         <% if (r.requireValidated) { %><div><%= __('safety:opt_validated') %></div><% } %>
                         <% if (r.maxAgeMonths) { %><div><%= __('safety:max_age_value', { months: r.maxAgeMonths }) %></div><% } %>
                     </td>
@@ -134,11 +139,39 @@
                         <form method="POST" action="/safety-gate/config/rules/<%= r.id %>/mode" class="sg-inline" style="margin-bottom:6px;">
                             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                             <input type="hidden" name="mode" value="<%= mode === 'observe' ? 'enforce' : 'observe' %>">
+                            <% if (mode !== 'observe' && !r.legallyMandatory) { %>
+                            <label class="sr-only" for="sg-mode-reason-<%= r.id %>"><%= __('safety:mode_observe_reason') %></label>
+                            <input type="text" id="sg-mode-reason-<%= r.id %>" name="reason" class="form-control" required maxlength="500"
+                                   placeholder="<%= __('safety:mode_observe_reason') %>">
+                            <% } %>
+                            <% if (mode !== 'observe' && r.legallyMandatory) { %>
+                            <span class="sg-sub"><%= __('safety:mode_locked_legal') %></span>
+                            <% } else { %>
                             <button type="submit" class="btn btn-sm btn-secondary"
                                     aria-label="<%= (mode === 'observe' ? __('safety:btn_to_enforce') : __('safety:btn_to_observe')) + ' — ' + r.roleName + ' — ' + r.skillName %>"
                                     <% if (mode === 'observe') { %>data-confirm="<%= __('safety:confirm_to_enforce') %>"<% } %>>
                                 <%= mode === 'observe' ? __('safety:btn_to_enforce') : __('safety:btn_to_observe') %></button>
+                            <% } %>
                         </form>
+                        <% if (!r.legallyMandatory) { %>
+                        <form method="POST" action="/safety-gate/config/rules/<%= r.id %>/legal" class="sg-inline" style="margin-bottom:6px;">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <input type="hidden" name="legallyMandatory" value="1">
+                            <button type="submit" class="btn btn-sm btn-secondary"
+                                    aria-label="<%= __('safety:btn_mark_legal') + ' — ' + r.roleName + ' — ' + r.skillName %>"
+                                    data-confirm="<%= __('safety:confirm_mark_legal') %>"><%= __('safety:btn_mark_legal') %></button>
+                        </form>
+                        <% } else if (isSuper) { %>
+                        <form method="POST" action="/safety-gate/config/rules/<%= r.id %>/legal" class="sg-inline" style="margin-bottom:6px;">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <input type="hidden" name="legallyMandatory" value="">
+                            <label class="sr-only" for="sg-legal-reason-<%= r.id %>"><%= __('safety:unmark_legal_reason') %></label>
+                            <input type="text" id="sg-legal-reason-<%= r.id %>" name="reason" class="form-control" required maxlength="500"
+                                   placeholder="<%= __('safety:unmark_legal_reason') %>">
+                            <button type="submit" class="btn btn-sm btn-secondary"
+                                    aria-label="<%= __('safety:btn_unmark_legal') + ' — ' + r.roleName + ' — ' + r.skillName %>"><%= __('safety:btn_unmark_legal') %></button>
+                        </form>
+                        <% } %>
                         <form method="POST" action="/safety-gate/config/rules/<%= r.id %>/deactivate" class="sg-inline">
                             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                             <label class="sr-only" for="sg-reason-<%= r.id %>"><%= __('safety:deactivate_reason') %></label>
@@ -233,7 +266,7 @@
 .sg-check{display:inline-flex;align-items:center;gap:5px;font-size:.85rem}
 .sg-inline{display:flex;gap:6px;align-items:center}
 .sg-inline .form-control{min-width:160px}
-.sg-sub{font-size:.74rem;color:var(--text-muted)}
+.sg-sub{font-size:.75rem;color:var(--text-muted)}
 .sg-small{font-size:.83rem}
 .sg-preview{padding:.9rem 1.1rem;margin-bottom:1.2rem;border-left:4px solid var(--warning,#b45309)}
 .sg-preview-count{font-size:1.05rem;font-weight:600}

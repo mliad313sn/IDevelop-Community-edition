@@ -1,0 +1,173 @@
+<%#
+  « Health and safety operations » on the Safety tab (4.0.0 port, wave 8):
+  K40 waivers and contests, K41 blocks per week, K42 the 12-month expiry
+  pipeline, K43 coverage rules in breach, K44 certificate record quality.
+  Built only from HseOpsService.forDashboard: counts and the labels of sites,
+  months and reason codes, never a person. Nothing measured is said in words
+  (« Not measured yet », « To be set up »), never printed as 0; a week without
+  a nightly recompute is a gap in the chart, never a 0.
+  Locals: O (the tab model's hseOps).
+-%><%
+  var _F = numFmt;
+  var _n = function (v) { return v == null ? '—' : _F.num(v, 0); };
+  var _st = function (s) { return s ? __('kpi:status_' + s) : null; };
+  var _tone = { compliant: 'ok', watch: 'warn', at_risk: 'risk', not_measured: 'unmeasured', not_configured: 'neutral', small_n: 'unmeasured' };
+  var _day = function (d) { return typeof fmtPeriodBound === 'function' ? fmtPeriodBound(d) : fmtDate(d); };
+  var _month = function (m) { return typeof monthLabel === 'function' ? monthLabel(m) : m; };
+  var _badge = function (s) { return { tone: _tone[s] || 'neutral', label: _st(s) || '', text: true }; };
+  var K40 = O.K40 || {}, K41 = O.K41 || {}, K42 = O.K42 || {}, K43 = O.K43 || {}, K44 = O.K44 || {};
+  var B40 = K40.breakdown || {}, B41 = K41.breakdown || {}, B42 = K42.breakdown || {}, B43 = K43.breakdown || {}, B44 = K44.breakdown || {};
+  var rc = O.recompute || null;
+  var _empty = function (K) { return K.emptyScope ? __('kpi:status_not_measured') : null; };
+-%>
+<section class="ds-card" id="ds-k40" aria-labelledby="ds-k40-h" data-kpi="K40" data-status="<%= K40.status || '' %>">
+    <h3 id="ds-k40-h"><%= __('safety:ops_k40_title') %></h3>
+    <p class="ds-sub"><%= __('safety:ops_k40_sub') %></p>
+    <% if (K40.emptyScope) { %>
+        <p class="ds-note"><%= _empty(K40) %></p>
+    <% } else if (K40.status === 'not_configured') { %>
+        <p class="ds-note"><%= __('safety:ops_k40_nc') %></p>
+    <% } else { %>
+        <p class="ds-note" data-k40-running="<%= K40.value %>"><%= K40.value ? __('safety:ops_k40_running', { n: _n(K40.value) }) : __('safety:ops_k40_none') %> <% if (K40.status) { %><%- include('../../partials/status-badge', _badge(K40.status)) %><% } %></p>
+        <dl class="ds-kv">
+            <% if (K40.value) { %>
+            <dt><%= __('safety:ops_k40_renewed') %></dt><dd><%= _n(B40.renewed) %></dd>
+            <dt><%= __('safety:ops_k40_oldest') %></dt><dd><%= B40.oldestHours == null ? '—' : __('safety:ops_hours', { n: _n(B40.oldestHours) }) %></dd>
+            <% } %>
+            <dt><%= __('safety:ops_k40_granted30') %></dt><dd><%= _n(B40.granted30) %><% if (B40.granted30) { %> · <%= __('safety:ops_k40_via', { line: _n(B40.granted30Line), hse: _n(B40.granted30Hse), contest: _n(B40.granted30Contest) }) %><% } %></dd>
+            <dt><%= __('safety:ops_k40_contests_open') %></dt><dd><%= _n(B40.contestsOpen) %><% if (B40.contestOldestDays != null) { %> · <%= __('safety:ops_k40_contest_oldest', { n: _n(B40.contestOldestDays) }) %><% } %></dd>
+            <dt><%= __('safety:ops_k40_outcomes') %></dt><dd><%= __('safety:ops_k40_outcomes_v', { upheld: _n(B40.upheld90), overturned: _n(B40.overturned90) }) %></dd>
+        </dl>
+    <% } %>
+    <p class="ds-note"><a href="/kpi/glossary#K40"><%= __('safety:ops_how') %></a></p>
+</section>
+
+<section class="ds-card" id="ds-k43" aria-labelledby="ds-k43-h" data-kpi="K43" data-status="<%= K43.status || '' %>">
+    <h3 id="ds-k43-h"><%= __('safety:ops_k43_title') %></h3>
+    <p class="ds-sub"><%= __('safety:ops_k43_sub') %></p>
+    <% if (K43.emptyScope) { %>
+        <p class="ds-note"><%= _empty(K43) %></p>
+    <% } else if (K43.status === 'not_configured') { %>
+        <p class="ds-note"><%= __('safety:ops_k43_nc') %></p>
+    <% } else { %>
+        <p class="ds-note" data-k43-breached="<%= B43.breached %>"><%= __('safety:ops_k43_now', { n: _n(B43.breached), m: _n(B43.active) }) %> <% if (K43.status) { %><%- include('../../partials/status-badge', _badge(K43.status)) %><% } %></p>
+        <% if (B43.breached) { %><p class="ds-sub"><%= __('safety:ops_k43_split', { critical: _n(B43.breachedCritical), warning: _n(B43.breachedWarning) }) %></p><% } %>
+        <p class="ds-sub"><%= __('safety:ops_k43_projection') %></p>
+        <dl class="ds-kv" data-k43-projected>
+            <% [30, 60, 90].forEach(function (h) { %>
+            <dt><%= __('safety:ops_k43_within', { days: h }) %></dt><dd data-h="<%= h %>"><%= _n(B43['projected' + h]) %></dd>
+            <% }); %>
+        </dl>
+        <% if ((K43.sites || []).length > 1) { %>
+        <div class="ds-table-wrap"><table class="ds-table">
+            <caption class="sr-only-ds"><%= __('safety:ops_k43_title') %></caption>
+            <thead><tr><th scope="col"><%= __('safety:ops_col_site') %></th><th scope="col" class="num"><%= __('safety:ops_k43_col_active') %></th><th scope="col" class="num"><%= __('safety:ops_k43_col_breached') %></th><th scope="col" class="num"><%= __('safety:ops_k43_col_proj90') %></th></tr></thead>
+            <tbody>
+            <% K43.sites.forEach(function (r) { %>
+                <tr><th scope="row"><%= r.allSites ? __('safety:ops_k43_all_sites') : (r.siteName || '—') %></th><td class="num"><%= _n(r.active) %></td><td class="num"><%= _n(r.breached) %></td><td class="num"><%= _n(r.projected90) %></td></tr>
+            <% }); %>
+            </tbody>
+        </table></div>
+        <% } %>
+    <% } %>
+    <p class="ds-note"><a href="/kpi/glossary#K43"><%= __('safety:ops_how') %></a></p>
+</section>
+
+<section class="ds-card" id="ds-k41" aria-labelledby="ds-k41-h" data-kpi="K41">
+    <% var _weeks = K41.weeks || null; %>
+    <h3 <% if (_weeks) { %>class="sr-only-ds" <% } %>id="ds-k41-h"><%= __('safety:ops_k41_title') %></h3>
+    <p class="ds-sub" data-recompute><%= rc ? __('safety:ops_recompute_at', { when: _day(rc.day) }) : __('safety:ops_recompute_never') %></p>
+    <% if (K41.emptyScope) { %>
+        <p class="ds-note"><%= _empty(K41) %></p>
+    <% } else if (K41.status === 'not_configured') { %>
+        <p class="ds-note"><%= __('safety:ops_k41_nc') %></p>
+    <% } else if (!_weeks) { %>
+        <p class="ds-note"><%= __('safety:ops_k41_unmeasured') %></p>
+    <% } else { %>
+        <%- include('../../partials/viz/chart', { vizChart: {
+            id: 'ds-k41-chart',
+            title: __('safety:ops_k41_title'),
+            subtitle: K41.value == null ? __('safety:ops_k41_sub') : __('safety:ops_k41_total', { n: _n(K41.value) }),
+            config: {
+                kind: 'bar', unit: 'count', decimals: 0,
+                labels: _weeks.map(function (w) { return __('safety:ops_week', { date: _day(w.start) }); }),
+                series: [{ key: 'blocks', label: __('safety:ops_k41_series'), data: _weeks.map(function (w) { return w.count; }) }]
+            },
+            height: 220
+        } }) %>
+        <% if (B41.unrecomputedWeeks) { %><p class="ds-note" data-k41-gaps="<%= B41.unrecomputedWeeks %>"><%= __('safety:ops_k41_gaps', { n: _n(B41.unrecomputedWeeks) }) %></p><% } %>
+        <% if ((K41.reasons || []).length) { %>
+        <h4><%= __('safety:ops_k41_reasons') %></h4>
+        <dl class="ds-kv">
+            <% K41.reasons.forEach(function (r) { %><dt data-reason="<%= r.code %>"><%= __('safety:reason_' + r.code) %></dt><dd><%= _n(r.n) %></dd><% }); %>
+        </dl>
+        <% } %>
+    <% } %>
+    <p class="ds-note"><a href="/kpi/glossary#K41"><%= __('safety:ops_how') %></a></p>
+</section>
+
+<section class="ds-card" id="ds-k42" aria-labelledby="ds-k42-h" data-kpi="K42">
+    <% var _pipe = K42.months && K42.value ? K42 : null; %>
+    <h3 <% if (_pipe) { %>class="sr-only-ds" <% } %>id="ds-k42-h"><%= __('safety:ops_k42_title') %></h3>
+    <% if (K42.emptyScope) { %>
+        <p class="ds-note"><%= _empty(K42) %></p>
+    <% } else if (K42.status === 'not_configured') { %>
+        <p class="ds-note"><%= __('safety:ops_certs_nc') %></p>
+    <% } else if (!_pipe) { %>
+        <p class="ds-note"><%= __('safety:ops_k42_none') %></p>
+    <% } else {
+         var _siteLabel = function (s) { return s.smallSites ? __('safety:ops_k42_small_sites') : (s.noSite ? __('kpi:no_site') : (s.siteName || '—')); };
+    %>
+        <%- include('../../partials/viz/chart', { vizChart: {
+            id: 'ds-k42-chart',
+            title: __('safety:ops_k42_title'),
+            subtitle: __('safety:ops_k42_total', { n: _n(K42.value) }),
+            config: {
+                kind: 'bar', unit: 'count', decimals: 0,
+                labels: K42.months.map(function (m) { return _month(m.month); }),
+                series: [{ key: 'expiring', label: __('safety:ops_k42_series'), data: K42.totals }]
+            },
+            height: 220
+        } }) %>
+        <% if (K42.sites.length > 1) { %>
+        <div class="ds-table-wrap"><table class="ds-table" data-k42-sites>
+            <caption class="sr-only-ds"><%= __('safety:ops_k42_by_site') %></caption>
+            <thead><tr><th scope="col"><%= __('safety:ops_col_site') %></th><% K42.months.forEach(function (m) { %><th scope="col" class="num"><%= _month(m.month) %></th><% }); %><th scope="col" class="num"><%= __('safety:ops_col_total') %></th></tr></thead>
+            <tbody>
+            <% K42.sites.forEach(function (s) { %>
+                <tr><th scope="row"><%= _siteLabel(s) %></th><% s.counts.forEach(function (c) { %><td class="num"><%= _n(c) %></td><% }); %><td class="num"><%= _n(s.total) %></td></tr>
+            <% }); %>
+            </tbody>
+        </table></div>
+        <% } %>
+    <% } %>
+    <% if (!K42.emptyScope && B42.noDate) { %><p class="ds-note" data-k42-nodate="<%= B42.noDate %>"><%= __('safety:ops_k42_nodate', { n: _n(B42.noDate) }) %></p><% } %>
+    <p class="ds-note"><a href="/kpi/glossary#K42"><%= __('safety:ops_how') %></a></p>
+</section>
+
+<section class="ds-card" id="ds-k44" aria-labelledby="ds-k44-h" data-kpi="K44" data-status="<%= K44.status || '' %>">
+    <h3 id="ds-k44-h"><%= __('safety:ops_k44_title') %></h3>
+    <p class="ds-sub"><%= __('safety:ops_k44_sub') %></p>
+    <% if (K44.emptyScope) { %>
+        <p class="ds-note"><%= _empty(K44) %></p>
+    <% } else if (K44.status === 'not_configured') { %>
+        <p class="ds-note"><%= __('safety:ops_certs_nc') %></p>
+    <% } else if (!B44.recorded) { %>
+        <p class="ds-note"><%= __('safety:ops_k44_none_recorded') %></p>
+    <% } else { %>
+        <p class="ds-note" data-k44-complete="<%= B44.complete %>"><strong><%= __('safety:ops_k44_head', { req: _n(B44.recorded + B44.missing), rec: _n(B44.recorded), comp: _n(B44.complete) }) %></strong> <% if (K44.status) { %><%- include('../../partials/status-badge', _badge(K44.status)) %><% } %></p>
+        <p class="ds-note"><%= K44.value == null ? __('safety:ops_k44_counts', { n: _n(B44.complete), m: _n(B44.recorded) }) : __('safety:ops_k44_pct', { pct: _F.pct(K44.value, 1) }) %></p>
+        <div class="ds-table-wrap"><table class="ds-table" data-k44-rates>
+            <caption class="sr-only-ds"><%= __('safety:ops_k44_title') %></caption>
+            <thead><tr><th scope="col"><%= __('safety:ops_k44_col_element') %></th><th scope="col" class="num"><%= __('safety:ops_k44_col_filled') %></th><th scope="col" class="num"><%= __('safety:ops_k44_col_share') %></th></tr></thead>
+            <tbody>
+            <% ['dated', 'evidence', 'voc', 'numbered', 'issuer'].forEach(function (k) { var r = (K44.rates || {})[k] || {}; %>
+                <tr data-rate="<%= k %>"><th scope="row"><%= __('safety:ops_k44_rate_' + k) %></th><td class="num"><%= __('safety:ops_of', { n: _n(r.filled), m: _n(r.recorded) }) %></td><td class="num"><%= r.pct == null ? __('kpi:status_small_n') : _F.pct(r.pct, 1) %></td></tr>
+            <% }); %>
+            </tbody>
+        </table></div>
+        <p class="ds-sub"><%= __('safety:ops_k44_issuer_note') %></p>
+        <% if (B44.missing) { %><p class="ds-note" data-k44-missing="<%= B44.missing %>"><%= __('safety:ops_k44_missing', { n: _n(B44.missing) }) %></p><% } %>
+    <% } %>
+    <p class="ds-note"><a href="/kpi/glossary#K44"><%= __('safety:ops_how') %></a></p>
+</section>

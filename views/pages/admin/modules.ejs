@@ -41,7 +41,7 @@
   const _selected = _st.stored || _st.legacy ? _st.stage : '1';
 %>
 <style>
-  .mod-stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+  .mod-stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 1rem; margin-bottom: 1rem; }
   .mod-card { position: relative; display: block; cursor: pointer; padding: 1.1rem 1.2rem; border: 2px solid var(--border, #2a3148); border-radius: 12px; background: var(--bg-card, transparent); }
   .mod-card:hover { border-color: var(--primary, #7C6CFF); }
   .mod-card input[type="radio"] { position: absolute; top: 1rem; right: 1rem; width: 1.1rem; height: 1.1rem; }
@@ -50,7 +50,7 @@
   .mod-card h3 { font-size: .8rem; font-weight: 700; color: var(--text-secondary); margin: .7rem 0 .2rem; }
   .mod-card p { margin: 0; font-size: .9rem; color: var(--text-secondary); }
   .mod-card ul { margin: .5rem 0 0; padding-left: 1.1rem; font-size: .85rem; }
-  .mod-switches { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: .5rem 1.2rem; margin-top: .8rem; }
+  .mod-switches { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: .5rem 1.2rem; margin-top: .8rem; }
   .mod-switch { display: flex; gap: .55rem; align-items: center; font-weight: 600; }
   .mod-switch input { width: 1.05rem; height: 1.05rem; }
   .mod-impact ul { margin: .3rem 0 .6rem; padding-left: 1.1rem; }
@@ -174,7 +174,17 @@
     if (!html) html = '<p class="text-muted" style="margin:0;">' + esc(T.none) + '</p>';
     if (LEGACY) html += '<p class="text-muted" style="margin:.4rem 0 0;font-size:.85rem;">' + esc(T.legacy) + '</p>';
     box.innerHTML = html;
+    // The localContent module is the ONE nationality switch (sensitive data):
+    // changing it asks for confirmation, with its consequence.
+    ['data-confirm', 'data-confirm-title', 'data-confirm-yes', 'data-confirm-danger'].forEach(function (x) { form.removeAttribute(x); });
+    if (after.localContent !== !!CURRENT.localContent) {
+      form.setAttribute('data-confirm', after.localContent ? LC.onBody : LC.offBody);
+      form.setAttribute('data-confirm-title', after.localContent ? LC.onTitle : LC.name);
+      form.setAttribute('data-confirm-yes', after.localContent ? LC.on : LC.off);
+      if (!after.localContent) form.setAttribute('data-confirm-danger', '');
+    }
   }
+  var LC = <%- include('../../partials/json-script', { v: { onBody: __('admin:set_lc_toggle_confirm'), onTitle: __('admin:set_lc_toggle_confirm_title'), offBody: __('admin:set_sensitive_consequence_featureLocalContent'), name: __('admin:set_name_featureLocalContent'), on: __('admin:set_sensitive_on_featureLocalContent'), off: __('admin:set_sensitive_off_featureLocalContent') } }) %>;
   form.addEventListener('change', render);
   render();
 })();

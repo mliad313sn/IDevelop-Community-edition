@@ -334,6 +334,30 @@ const PERMISSIONS = [
         description:
             'Post internal opportunities, decide applications (accept/decline) and decide cancellation requests — within the assigned scope.',
     },
+    // Migration 186: the targets of the indicators (KpiTargetService). A site
+    // inside the assigned scope; the whole organisation only with an
+    // unrestricted scope. Read access to the targets page needs no slug.
+    {
+        slug: 'manage_kpi_targets',
+        label: 'Manage indicator targets',
+        group: 'governance',
+        write: true,
+        description:
+            'Set, change or withdraw the target of an indicator for a site of the assigned scope (the whole organisation needs an unrestricted scope). Every decision is dated, has a reason and is kept.',
+    },
+    // Nationality is sensitive personal data: the local content report
+    // (nationals / expatriates by country, department and site, the
+    // expatriate-held positions) is no longer open to every manager. In no
+    // access profile — granted one by one; meaningful only while the
+    // localContent module is on (it stays the single switch).
+    {
+        slug: 'view_local_content',
+        label: 'View the local content (nationalisation) report',
+        group: 'governance',
+        write: false,
+        description:
+            'Open the local content report of the assigned scope: nationals and expatriates by country, department and site (groups of fewer than 5 people are masked), and the expatriate-held positions. Only while the local content module is on.',
+    },
     {
         slug: 'manage_surveys',
         label: 'Manage engagement surveys',

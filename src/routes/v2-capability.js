@@ -27,7 +27,7 @@ const RBACService = require('../services/RBACService');
  * directement. Le catalogue est partagé (`common:err_not_authorized_employee`)
  * et la phrase anglaise reste la référence par défaut.
  */
-const { sayText } = require('../utils/apiErrors');
+const { sayText, sayError } = require('../utils/apiErrors');
 const notAuthorizedForEmployee = (req) =>
     sayText(req, 'common:err_not_authorized_employee', 'Not authorized for this employee');
 
@@ -161,6 +161,9 @@ router.get(
             o.canClose = isSuper || isPosterOf(req.user, o);
         });
         const recognitions = await Rec.feed({ limit: 12, viewer: await feedViewer(req.user) });
+        // The DEI panel is the SuperAdmin's; ethnicity is offered only while
+        // switched on; HR admins get the link to the legacy-values review.
+        const deiEthnicity = isSuper ? await DEI.ethnicityStatus().catch(() => null) : null;
         // the page had a bare "IDevelop" <title>.
         res.render('pages/capability/index', {
             calibrations,
@@ -169,6 +172,10 @@ router.get(
             surveys,
             surveyTemplates: Sv.templates(req.language),
             deiRep,
+            isSuper,
+            deiEthnicity,
+            deiCanReview: DEI.canReadSensitive(req.user),
+            deiAckPhrases: DEI.ETHNICITY_ACK_PHRASES,
             recognitions,
             title: req.t ? req.t('chrome:pt_talent_suite') : 'Talent suite',
         });
@@ -176,6 +183,13 @@ router.get(
 );
 
 // ===================== Calibration ==========================================
+// There is no calibration PAGE: the sessions live on the hub (/v2/cap, the
+// calibration card). A GET on the bare resource path answered 404; it now sends
+// the reader to that card, permanently. The router is mounted behind
+// ModuleService.capGuard(), so the talent module still gates it (404 when off).
+router.get('/calibration', requireManagerOrAdmin, (req, res) =>
+    res.redirect(301, '/v2/cap#calibration')
+);
 router.post(
     '/calibration',
     requireManagerOrAnyPermission('manage_talent_reviews'),
@@ -287,7 +301,22 @@ router.post(
         // Pass the caller: the write-back, its 9-box events and the PIP/IDP
         // triggers are then attributed to the person who clicked Finalize, not to
         // the session's facilitator by default (and the audit row gets ip/request).
-        const r = await Calib.finalizeCalibration(sid, { user: req.user, req });
+        let r;
+        try {
+            r = await Calib.finalizeCalibration(sid, { user: req.user, req });
+        } catch (e) {
+            // A refused calibration rationale (too short, a placeholder, a copy
+            // of the previous reason: migration 175) is a domain refusal raised
+            // with its catalogue key. The generic error handler would answer
+            // err.message, in English whatever the page; translate it like the
+            // other 9-box refusals. Anything else keeps the generic path.
+            if (e && e.i18n && e.i18n.key && Number(e.status) >= 400 && Number(e.status) < 500) {
+                return res
+                    .status(Number(e.status))
+                    .json({ ok: false, error: sayError(req, e), code: e.code || null });
+            }
+            throw e;
+        }
         if (!r || r.ok === false) {
             return res.status(409).json({
                 ok: false,
@@ -682,7 +711,8 @@ router.get(
     guarded(async (req, res) => {
         const s = await ownedSurvey(req, res);
         if (!s) return;
-        res.json({ ok: true, results: await Sv.results(s.id) });
+        // Results only once the survey is closed (frozen); while open, a band only.
+        res.json({ ok: true, ...(await Sv.publishedResults(s.id)) });
     })
 );
 /**
@@ -823,16 +853,193 @@ router.post(
     })
 );
 
-// ===================== DEI analytics (admins) ===============================
+// ===================== DEI (self-declared, with consent) =====================
+// Demographics are SELF-DECLARED with explicit consent (« My diversity data »,
+// below). A manager or an admin can no longer write them for someone: refused
+// server-side, ethnicity and disability with their own message.
 router.post(
     '/dei/:employeeId',
     requireManagerOrAdmin,
+    guarded(async (req) => {
+        throw DEI.refuseOnBehalf(req.body || {});
+    })
+);
+
+/** A 4xx refusal answered in the page's language (talentx:err_<code>). */
+const deiRefusal = (code, status) => Object.assign(new Error(code), { code, status, expose: true });
+/** Flash a service refusal in the page's language (form flows). */
+function deiFlashRefusal(req, err) {
+    if (!(err && err.expose && err.code)) throw err;
+    if (typeof req.flash === 'function')
+        req.flash('error', sayText(req, `talentx:err_${err.code}`, String(err.code)));
+}
+function deiFlash(req, key, fallback) {
+    if (typeof req.flash === 'function') req.flash('success', sayText(req, key, fallback));
+}
+
+// ---- The person's own page ---------------------------------------------------
+// CORE (config/modules.js): it is outside every CAP_PATHS prefix, so the
+// person can read, change and WITHDRAW their consent whatever the talent
+// module says.
+router.get(
+    '/my-diversity',
+    requireAuth,
+    ah(async (req, res) => {
+        const me = empId(req.user);
+        let mine = null;
+        let unavailable = false;
+        if (me) {
+            try {
+                mine = await DEI.mine(me);
+            } catch (e) {
+                // Shown as "not available", never as "nothing declared".
+                unavailable = true;
+                console.error('[dei] my-diversity read failed:', e && e.message);
+            }
+        }
+        res.set('Cache-Control', 'no-store');
+        res.render('pages/employee/diversity', {
+            title: req.t ? req.t('talentx:dei_my_title') : 'My diversity data',
+            isEmployee: !!me,
+            mine,
+            unavailable,
+            consentVersion: DEI.CONSENT_TEXT_VERSION,
+        });
+    })
+);
+router.post(
+    '/my-diversity',
+    requireAuth,
+    writeActionLimiter,
+    ah(async (req, res) => {
+        const me = empId(req.user);
+        if (!me) return res.redirect('/v2/cap/my-diversity');
+        const b = req.body || {};
+        try {
+            await DEI.declare(
+                me,
+                {
+                    gender: b.gender,
+                    ageBand: b.ageBand,
+                    nationality: b.nationality,
+                    ethnicity: b.ethnicity,
+                    disability: b.disability,
+                },
+                {
+                    consent: b.consent,
+                    consentDisability: b.consentDisability,
+                    locale: req.language || null,
+                }
+            );
+            deiFlash(req, 'talentx:dei_saved', 'Your declaration has been recorded.');
+        } catch (e) {
+            deiFlashRefusal(req, e);
+        }
+        res.redirect('/v2/cap/my-diversity');
+    })
+);
+router.post(
+    '/my-diversity/withdraw',
+    requireAuth,
+    writeActionLimiter,
+    ah(async (req, res) => {
+        const me = empId(req.user);
+        if (!me) return res.redirect('/v2/cap/my-diversity');
+        try {
+            await DEI.withdraw(me);
+            deiFlash(
+                req,
+                'talentx:dei_withdrawn',
+                'Consent withdrawn: your declared data has been deleted.'
+            );
+        } catch (e) {
+            deiFlashRefusal(req, e);
+        }
+        res.redirect('/v2/cap/my-diversity');
+    })
+);
+
+// ---- HR: one person's declaration, and the legacy-values review --------------
+// Admins holding DEI.HR_SENSITIVE_PERMISSION (or the SuperAdmin), in scope.
+// Never a manager (canReadSensitive is false for any non-admin).
+router.get(
+    '/dei/employee/:employeeId',
+    requireManagerOrAdmin,
     guarded(async (req, res) => {
-        // Sensitive demographic data — only for employees the actor governs.
-        if (!(await inScope(req.user, Number(req.params.employeeId))))
-            return res.status(403).json({ ok: false, error: 'out of scope' });
-        await DEI.setDemographics(Number(req.params.employeeId), req.body || {});
-        res.json({ ok: true });
+        if (!DEI.canReadSensitive(req.user)) throw deiRefusal('dei_hr_only', 403);
+        const id = Number(req.params.employeeId);
+        if (!(await inScope(req.user, id)))
+            return res.status(403).json({ ok: false, error: notAuthorizedForEmployee(req) });
+        res.set('Cache-Control', 'no-store');
+        res.json({ ok: true, data: await DEI.hrView(req.user, id) });
+    })
+);
+router.get(
+    '/dei/review',
+    requireManagerOrAdmin,
+    ah(async (req, res) => {
+        if (!DEI.canReadSensitive(req.user)) {
+            if (typeof req.flash === 'function')
+                req.flash('error', sayText(req, 'talentx:err_dei_hr_only', 'HR only.'));
+            return res.redirect('/v2/cap');
+        }
+        const scope = RBACService.isSuperAdmin(req.user) ? null : await scopeIds(req.user);
+        const [rows, ethnicityOn] = await Promise.all([
+            DEI.reviewQueue(scope),
+            DEI.ethnicityEnabled(),
+        ]);
+        res.set('Cache-Control', 'no-store');
+        res.render('pages/capability/dei-review', {
+            title: req.t ? req.t('talentx:dei_review_title') : 'Diversity data to review',
+            rows,
+            ethnicityOn,
+        });
+    })
+);
+router.post(
+    '/dei/review/:employeeId/clear',
+    requireManagerOrAdmin,
+    writeActionLimiter,
+    ah(async (req, res) => {
+        const id = Number(req.params.employeeId);
+        try {
+            if (!DEI.canReadSensitive(req.user)) throw deiRefusal('dei_hr_only', 403);
+            if (!(await inScope(req.user, id))) {
+                if (typeof req.flash === 'function')
+                    req.flash('error', notAuthorizedForEmployee(req));
+                return res.redirect('/v2/cap/dei/review');
+            }
+            await DEI.hrClear(req.user, id, req.body && req.body.reason);
+            deiFlash(req, 'talentx:dei_review_cleared', 'Values cleared.');
+        } catch (e) {
+            deiFlashRefusal(req, e);
+        }
+        res.redirect('/v2/cap/dei/review');
+    })
+);
+
+// ---- SuperAdmin: the ethnicity switch (typed legal sign-off, audited) --------
+router.post(
+    '/dei/settings/ethnicity',
+    requireSuperAdmin,
+    writeActionLimiter,
+    ah(async (req, res) => {
+        const b = req.body || {};
+        try {
+            const r = await DEI.setEthnicityEnabled(req.user, {
+                enabled: b.enabled,
+                acknowledgement: b.acknowledgement,
+                reference: b.reference,
+            });
+            deiFlash(
+                req,
+                r.enabled ? 'talentx:dei_eth_enabled_ok' : 'talentx:dei_eth_disabled_ok',
+                r.enabled ? 'Ethnicity enabled.' : 'Ethnicity disabled.'
+            );
+        } catch (e) {
+            deiFlashRefusal(req, e);
+        }
+        res.redirect('/v2/cap#dei');
     })
 );
 // These aggregate across the WHOLE org (no scope param), so a scoped local
@@ -846,7 +1053,7 @@ router.get(
     '/dei/representation',
     requireManagerOrAdmin,
     superOnly,
-    ah(async (req, res) => {
+    guarded(async (req, res) => {
         res.json({ ok: true, data: await DEI.representation(req.query.dim || 'gender') });
     })
 );
@@ -854,7 +1061,7 @@ router.get(
     '/dei/ninebox',
     requireManagerOrAdmin,
     superOnly,
-    ah(async (req, res) => {
+    guarded(async (req, res) => {
         res.json({ ok: true, data: await DEI.nineBoxByGroup(req.query.dim || 'gender') });
     })
 );
@@ -862,7 +1069,7 @@ router.get(
     '/dei/piprate',
     requireManagerOrAdmin,
     superOnly,
-    ah(async (req, res) => {
+    guarded(async (req, res) => {
         res.json({ ok: true, data: await DEI.pipRateByGroup(req.query.dim || 'gender') });
     })
 );
@@ -1198,33 +1405,16 @@ router.get(
     '/audit/verify',
     requireSuperAdmin,
     ah(async (req, res) => {
-        // Recompute each hashed row from the prior row's hash + payload; any mismatch
-        // = the append-only audit log was tampered with (even via direct DB access).
-        const bad = await db.all(
-            `WITH chk AS (
-           SELECT id,
-             row_hash, prev_hash,
-             LAG(row_hash) OVER (ORDER BY id) AS expected_prev,
-             encode(digest(
-               coalesce(LAG(row_hash) OVER (ORDER BY id), '') || '|' ||
-               coalesce(admin_id::text, '') || '|' || coalesce(action, '') || '|' ||
-               coalesce(entity_type, '') || '|' || coalesce(entity_id::text, '') || '|' ||
-               coalesce(details::text, '') || '|' || coalesce(created_at::text, ''), 'sha256'), 'hex') AS recomputed
-           FROM system_logs WHERE row_hash IS NOT NULL
-         )
-         SELECT id FROM chk
-         WHERE row_hash <> recomputed OR (prev_hash IS DISTINCT FROM expected_prev AND id <> (SELECT MIN(id) FROM system_logs WHERE row_hash IS NOT NULL))
-         ORDER BY id LIMIT 10`
-        );
-        const total = await db.get(
-            'SELECT COUNT(*) AS n FROM system_logs WHERE row_hash IS NOT NULL'
-        );
-        res.json({
-            ok: true,
-            hashedRows: Number(total.n),
-            intact: bad.length === 0,
-            brokenAt: bad.map((r) => Number(r.id)),
-        });
+        // ONE verifier, in the database (fn_system_logs_verify, migration 170).
+        // It follows hash LINKS, not id order (an id-order check flags the
+        // historic concurrent-insert race as tampering), accepts a row changed
+        // by an erasure ONLY when a later chained AUDIT_REDACTION entry vouches
+        // for its original hash and its current content, and a gap ONLY where
+        // a chained AUDIT_PURGE entry recorded it. Anything else — an edited,
+        // deleted or inserted row — is reported in brokenAt.
+        const v = await require('../services/AuditRetentionService').chainStatusOnce(req, 10);
+        res.set('Cache-Control', 'no-store');
+        res.json({ ok: true, ...v });
     })
 );
 

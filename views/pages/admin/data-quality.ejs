@@ -1,0 +1,85 @@
+<%#
+  « Data quality » (/admin/data-quality, DataQualityService.panel): the counts
+  that keep the indicators from being measured, one section per module the
+  reader may open. Each row: what is missing, how many out of how many, the
+  share from 5 records up, a status in an icon and a word, and a link to the
+  page where it is fixed. « Not configured » and « not measured » are states,
+  never 0; an empty population is « nothing concerned », never 0 % or « done ».
+  No name, no person id. Server-rendered, no script.
+  Locals: dq (the panel model).
+-%><%
+  var DQ = dq || { sections: [] };
+  var _F = numFmt;
+  var _pick = function (map, k) { return Object.prototype.hasOwnProperty.call(map, k) ? map[k] : null; };
+  var SEC = { people: 'admin:dq_sec_people', framework: 'admin:dq_sec_framework', development: 'admin:dq_sec_development', certificates: 'admin:dq_sec_certificates', snapshots: 'admin:dq_sec_snapshots', audit: 'admin:dq_sec_audit', privacy: 'admin:dq_sec_privacy' };
+  var SEC_SUB = { people: 'admin:dq_sec_people_sub', framework: 'admin:dq_sec_framework_sub', development: 'admin:dq_sec_development_sub', certificates: 'admin:dq_sec_certificates_sub', snapshots: 'admin:dq_sec_snapshots_sub', audit: 'admin:dq_sec_audit_sub', privacy: 'admin:dq_sec_privacy_sub' };
+  var ROW = {
+      no_line: 'admin:dq_row_no_line', no_site: 'admin:dq_row_no_site', no_role: 'admin:dq_row_no_role',
+      no_requirement: 'admin:dq_row_no_requirement', not_assessed: 'admin:dq_row_not_assessed',
+      no_role_start: 'admin:dq_row_no_role_start', no_nationality: 'admin:dq_row_no_nationality',
+      skill_no_description: 'admin:dq_row_skill_no_description', skill_few_anchors: 'admin:dq_row_skill_few_anchors',
+      skill_no_role: 'admin:dq_row_skill_no_role', role_no_requirement: 'admin:dq_row_role_no_requirement',
+      role_no_criticality: 'admin:dq_row_role_no_criticality',
+      action_no_due: 'admin:dq_row_action_no_due', plan_no_action: 'admin:dq_row_plan_no_action',
+      cert_missing: 'admin:dq_row_cert_missing', cert_not_dated: 'admin:dq_row_cert_not_dated',
+      cert_no_evidence: 'admin:dq_row_cert_no_evidence', cert_no_signoff: 'admin:dq_row_cert_no_signoff',
+      cert_no_number: 'admin:dq_row_cert_no_number', cert_no_issuer: 'admin:dq_row_cert_no_issuer',
+      snap_missing_days: 'admin:dq_row_snap_missing_days', snap_never_filled: 'admin:dq_row_snap_never_filled',
+      audit_chain: 'admin:dq_row_audit_chain', audit_seal: 'admin:dq_row_audit_seal', audit_anchor: 'admin:dq_row_audit_anchor',
+      admin_unlinked_match: 'admin:dq_row_admin_unlinked_match', erasure_no_tombstone: 'admin:dq_row_erasure_no_tombstone',
+      retention_due_report: 'admin:dq_row_retention_due_report', retention_due_apply: 'admin:dq_row_retention_due_apply'
+  };
+  var OF = { people: 'admin:dq_of_people', framework: 'admin:dq_of_records', development: 'admin:dq_of_records', certificates: 'admin:dq_of_certificates', snapshots: 'admin:dq_of_records', audit: 'admin:dq_of_entries', privacy: 'admin:dq_of_records' };
+  var ST = { not_configured: 'admin:dq_st_not_configured', unavailable: 'admin:dq_st_unavailable', empty: 'admin:dq_st_empty', clean: 'admin:dq_st_clean', complete: 'admin:dq_st_complete', todo: 'admin:dq_st_todo', info: 'admin:dq_st_info' };
+  var ICON = { good: '✓', warn: '!', risk: '▲', neutral: '·', unmeasured: '—' };
+  var COL = { avg_readiness: 'admin:dq_col_avg_readiness', assessment_coverage: 'admin:dq_col_assessment_coverage', critical_compliance: 'admin:dq_col_critical_compliance', certs_expiring_90d: 'admin:dq_col_certs_expiring_90d', certs_expired: 'admin:dq_col_certs_expired', safety_fit_pct: 'admin:dq_col_safety_fit_pct', bench_strength_pct: 'admin:dq_col_bench_strength_pct', bench_critical_roles: 'admin:dq_col_bench_critical_roles', critical_roles_without_ready: 'admin:dq_col_critical_roles_without_ready' };
+  var _isN = function (v) { return v !== null && v !== undefined && v !== '' && isFinite(Number(v)); };
+  var _d = function (v) { return v ? fmtDate(v) : ''; };
+  var factOf = function (r) {
+      var f = r.facts || {};
+      if (r.key === 'audit_seal') return f.last ? __('admin:dq_fact_seal_last', { month: f.last }) : __('admin:dq_fact_seal_none');
+      if (r.key === 'audit_anchor') {
+          var s = f.lastOk ? __('admin:dq_fact_anchor_last', { date: _d(f.lastOk) }) : __('admin:dq_fact_anchor_never');
+          if (_isN(f.failsSince) && Number(f.failsSince) > 0) s += ' · ' + __('admin:dq_fact_anchor_fails', { count: Number(f.failsSince), n: _F.num(f.failsSince, 0) });
+          return s;
+      }
+      if (r.key === 'audit_chain' && _isN(f.unhashed) && Number(f.unhashed) > 0) return __('admin:dq_fact_chain_unhashed', { count: Number(f.unhashed), n: _F.num(f.unhashed, 0) });
+      if ((r.key === 'retention_due_report' || r.key === 'retention_due_apply') && f.oldest) return __('admin:dq_fact_retention_oldest', { date: _d(f.oldest) });
+      if (r.key === 'snap_never_filled' && r.columns && r.columns.length) return r.columns.map(function (c) { return _pick(COL, c) ? __(_pick(COL, c)) : c; }).join(', ');
+      return '';
+  };
+-%>
+<link rel="stylesheet" href="/css/admin-insight.css?v=<%= assetVersion %>">
+<div class="page-header">
+    <h1><i class="fas fa-stethoscope" aria-hidden="true"></i> <%= __('admin:dq_title') %></h1>
+</div>
+<p class="ai-lede"><%= __('admin:dq_subtitle') %></p>
+<% if (DQ.scoped && DQ.population !== null) { %>
+<p class="ai-note"><i class="fas fa-user-lock" aria-hidden="true"></i> <%= __('admin:dq_scoped', { count: DQ.population, n: _F.num(DQ.population, 0) }) %></p>
+<% } %>
+<% if (!DQ.sections.length) { %>
+<p class="ai-note"><%= __('admin:dq_nothing_visible') %></p>
+<% } else if (DQ.todo > 0) { %>
+<p class="ai-summary" data-dq-todo="<%= DQ.todo %>"><span class="viz-chip viz-chip--risk"><span class="viz-chip-icon" aria-hidden="true">▲</span><span><%= __('admin:dq_todo_summary', { count: DQ.todo, n: _F.num(DQ.todo, 0) }) %></span></span></p>
+<% } %>
+
+<% DQ.sections.forEach(function (sec) { %>
+<section class="card ai-card" id="dq-<%= sec.key %>" aria-labelledby="dq-<%= sec.key %>-h" data-dq-section="<%= sec.key %>">
+    <h2 id="dq-<%= sec.key %>-h" class="h3"><%= __(_pick(SEC, sec.key)) %></h2>
+    <p class="ai-note"><%= __(_pick(SEC_SUB, sec.key)) %><% if (sec.scoped) { %> <%= __('admin:dq_scope_note') %><% } %></p>
+    <% if (sec.failed) { %>
+    <p class="ai-note" data-dq-failed><span class="viz-chip viz-chip--unmeasured"><span class="viz-chip-icon" aria-hidden="true">—</span><span><%= __('admin:dq_st_unavailable') %></span></span> <%= __('admin:dq_section_failed') %></p>
+    <% } else { %>
+    <ul class="ai-rows">
+        <% sec.rows.forEach(function (r) { var fact = factOf(r); var isCount = r.state !== 'info' && r.status !== 'not_configured' && r.status !== 'unavailable'; %>
+        <li class="ai-row" data-dq-row="<%= r.key %>" data-dq-status="<%= r.status %>">
+            <span class="ai-label"><%= __(_pick(ROW, r.key)) %><% if (fact) { %><span class="ai-fact"><%= fact %></span><% } %></span>
+            <span class="ai-figure"><% if (isCount && r.status !== 'empty') { %><strong><%= _F.num(r.count, 0) %></strong> <span class="ai-of"><%= __(_pick(OF, sec.key), { count: Number(r.population), n: _F.num(r.population, 0) }) %></span><% if (r.tiny) { %> <span class="ai-pct"><%= __('admin:dq_pct_tiny') %></span><% } else if (_isN(r.pct)) { %> <span class="ai-pct"><%= _F.pct(r.pct, 1) %></span><% } %><% } %></span>
+            <span class="ai-status"><span class="viz-chip viz-chip--<%= r.tone %>"><span class="viz-chip-icon" aria-hidden="true"><%= _pick(ICON, r.tone) || '·' %></span><span><%= __(_pick(ST, r.status)) %></span></span></span>
+            <span class="ai-open"><% if (r.href) { %><a class="btn btn-sm btn-secondary" href="<%= r.href %>"><%= __('admin:dq_open') %><span class="sr-only"> — <%= __(_pick(ROW, r.key)) %></span></a><% } %></span>
+        </li>
+        <% }); %>
+    </ul>
+    <% } %>
+</section>
+<% }); %>

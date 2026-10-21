@@ -10,8 +10,11 @@
 
 const mockDb = { get: jest.fn(), all: jest.fn(), run: jest.fn() };
 jest.mock('../../src/config/database', () => mockDb);
+// The nationality axis follows the ONE nationality switch (the localContent
+// module, utils/featureFlags): mockLc flips it per test.
+let mockLc = false;
 jest.mock('../../src/models/AppSettingsModel', () => ({
-    getValue: jest.fn(async (_k, fb) => fb),
+    getValue: jest.fn(async (k, fb) => (k === 'featureLocalContent' ? mockLc : fb)),
 }));
 
 const Bias = require('../../src/services/BiasDetectionService');
@@ -50,6 +53,7 @@ function inserted() {
 
 beforeEach(() => {
     nextId = 0;
+    mockLc = false;
     mockDb.all.mockReset();
     mockDb.get.mockReset();
     mockDb.run.mockReset();
@@ -112,6 +116,7 @@ describe('BiasDetectionService.runForCycle', () => {
     });
 
     test('nationality axis: expatriates placed lower are flagged; unspecified is not a group', async () => {
+        mockLc = true;
         const rows = [
             ...Array.from({ length: 8 }, () => placement(3)),
             ...Array.from({ length: 24 }, () => placement(5)),
@@ -144,6 +149,7 @@ describe('BiasDetectionService.runForCycle', () => {
     });
 
     test('nationality unavailable (older schema) is reported, the scan still runs', async () => {
+        mockLc = true;
         const rows = [
             ...Array.from({ length: 10 }, () => placement(3, { siteId: 2 })),
             ...Array.from({ length: 30 }, () => placement(5)),
@@ -157,5 +163,21 @@ describe('BiasDetectionService.runForCycle', () => {
         const out = await Bias.runForCycle(7);
         expect(out.dimensions.nationality.unavailable).toBe(true);
         expect(inserted().some((a) => a.dim === 'site' && a.value === '2')).toBe(true);
+    });
+
+    test('nationality switch OFF: no nationality query, no dimension, no alert', async () => {
+        const rows = [
+            ...Array.from({ length: 8 }, () => placement(3)),
+            ...Array.from({ length: 24 }, () => placement(5)),
+        ];
+        const nationality = rows.map((r, i) => ({
+            employeeId: r.employeeId,
+            isNational: i < 8 ? 0 : 1,
+        }));
+        wire(rows, { nationality });
+        const out = await Bias.runForCycle(7);
+        expect(mockDb.all.mock.calls.some(([sql]) => /is_national/.test(String(sql)))).toBe(false);
+        expect(Object.keys(out.dimensions)).not.toContain('nationality');
+        expect(inserted().some((a) => a.dim === 'nationality')).toBe(false);
     });
 });

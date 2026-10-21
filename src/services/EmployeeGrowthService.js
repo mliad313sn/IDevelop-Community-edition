@@ -18,9 +18,13 @@
  * the measured requirements only, and the coverage travels with it.
  */
 const db = require('../config/database');
+const CAP = require('../utils/capability');
 
 /**
- * Pure. Summarise one person's rows against one role.
+ * Pure. Summarise one person's rows against one role. Every skill is
+ * re-evaluated against THAT role's required level (src/utils/capability.js):
+ * reaching it is « met », a level above it is credited at the requirement and
+ * never makes up for a gap on another skill.
  *
  * @param {Array<{skillName:string, domainName?:string, required:number,
  *                current:(number|null), isAssessed:(number|boolean),
@@ -37,7 +41,7 @@ function summariseRoleGap(rawRows) {
             const required = Number(r.required) || 0;
             const assessed = r.isAssessed === true || Number(r.isAssessed) === 1;
             const current = assessed ? Number(r.current) || 0 : null;
-            const gap = assessed ? Math.max(0, required - current) : null;
+            const gap = assessed ? CAP.gapOf(current, required) : null;
             return {
                 skillName: r.skillName,
                 domainName: r.domainName || null,

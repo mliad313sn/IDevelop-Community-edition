@@ -362,7 +362,7 @@ describe('the security trail of a failed sign-in', () => {
         // and wraps its arguments one per line. The rule pinned here is that the
         // unattributed row is written ONLY under this guard — not the layout.
         expect(auth).toMatch(
-            /if \(!info \|\| !info\.message\)\s*authAudit\(\s*req,\s*'LOGIN_FAILED'/
+            /if \(!info \|\| !info\.message\)\s*recordAccountEvent\(\s*req,\s*'LOGIN_FAILED'/
         );
     });
 });

@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * (27) The board pack listed 25 sole-holder skills of 181 and then told the
+ * (27) [Superseded by SA-52: the pack is now counts only.] The board pack listed 25 sole-holder skills of 181 and then told the
  *      board to "Open a succession plan for the sole-holder skills listed
  *      above". A board acting on that addressed 14 % of the exposure believing
  *      it had covered all of it. The true total was already in the payload
@@ -27,46 +27,36 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const { csvCell } = require('../../src/utils/csvSafe');
 
 describe('27 — the board pack says what it is showing', () => {
+    // Since the one-dashboard rework (SA-52) the pack carries COUNTS ONLY: the
+    // capped sole-holder table that once had to declare its truncation is gone,
+    // and the single-holder exposure is the K-tile count with its real total.
     const view = read('views/pages/exec/board-pack.ejs');
 
-    test('the sole-holder table declares the truncation with the real total', () => {
-        expect(view).toMatch(/KP\.length < KPS\.soleHolder/);
-        expect(view).toMatch(/exec:kp_truncated/);
-        expect(view).toMatch(/replace\('\{shown\}', KP\.length\)/);
-        expect(view).toMatch(/replace\('\{total\}', KPS\.soleHolder\)/);
+    test('no person-level table: no name, no capped list to truncate', () => {
+        expect(view).not.toMatch(/KP\.length/);
+        expect(view).not.toMatch(/exec:kp_truncated/);
+        expect(view).not.toMatch(/\b(first_name|last_name|full_name|employee_name)\b/);
     });
 
-    test('the action names the total, not "the skills listed above"', () => {
-        expect(view).toMatch(/bp_action_bench'\)\.replace\('\{n\}'/);
-        for (const lang of ['fr', 'en']) {
-            const d = JSON.parse(read(`locales/${lang}/exec.json`));
-            expect(d.bp_action_bench).toMatch(/\{n\}/);
-            expect(d.kp_truncated).toMatch(/\{shown\}/);
-            expect(d.kp_truncated).toMatch(/\{total\}/);
-        }
-        // the old wording promised completeness — it must be gone
+    test('every indicator prints its own value, status and movement from the shared first screen', () => {
+        expect(view).toMatch(/S\.tiles \|\| \[\]\)\.concat\(S\.more/);
+        expect(view).toMatch(/_value\(k\)/);
+        expect(view).toMatch(/_delta\(k\)/);
+        // « Not measured » in words, never 0
+        expect(view).toMatch(/viz:unmeasured/);
+    });
+
+    test('the bench wording never promised completeness', () => {
         expect(JSON.parse(read('locales/en/exec.json')).bp_action_bench).not.toMatch(
             /listed above/i
         );
     });
 
-    test('the cap itself is unchanged — this is a print document, not a data feed', () => {
-        const ctrl = read('src/controllers/ExecDecisionController.js').replace(/\s+/g, ' ');
-        expect(ctrl).toMatch(/band: 'sole_holder', limit: 25/);
-    });
-
-    test('F2 — every trend date is locale-formatted through d(), never raw ISO', () => {
-        // The trend caption, the from/to line and the recorded-history table all
-        // print the snapshot date; each must go through the same d() helper the
-        // "generated on" line uses, not the bare ISO string.
-        expect(view).toMatch(/replace\('\{a\}', d\(SERIES\[0\]\.date\)\)/);
-        expect(view).toMatch(
-            /replace\('\{a\}', d\(a\.date\)\)[\s\S]*replace\('\{b\}', d\(b\.date\)\)/
-        );
-        expect(view).toMatch(/<td><%= d\(p\.date\) %><\/td>/);
-        // no raw .date interpolation survives in the trend block
-        expect(view).not.toMatch(/replace\('\{a\}', SERIES\[0\]\.date\)/);
-        expect(view).not.toMatch(/<td><%= p\.date %><\/td>/);
+    test('F2 — every date is locale-formatted, never raw ISO', () => {
+        expect(view).toMatch(/fmtDate\(generatedAt\)/);
+        expect(view).toMatch(/monthLabel\(p\.month\)/);
+        expect(view).not.toMatch(/<%= p\.date %>/);
+        expect(view).not.toMatch(/toISOString/);
     });
 });
 

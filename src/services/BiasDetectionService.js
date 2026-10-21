@@ -176,13 +176,19 @@ class BiasDetectionService {
         const variance = rows.reduce((s, r) => s + (r.score - mean) ** 2, 0) / total;
         const std = Math.sqrt(variance);
 
-        // Nationality axis — optional (country_aliases / unaccent may be absent on
-        // an older schema): unavailable is reported, never guessed.
+        // Nationality axis — only while the one nationality switch (the
+        // localContent module, utils/featureFlags) is on: off, the dimension is
+        // not computed, not reported and raises no alert. Optional when on
+        // (country_aliases / unaccent may be absent on an older schema):
+        // unavailable is reported, never guessed.
+        const natOn = await require('../utils/featureFlags').isNationalisationEnabled();
         let natMap = null;
-        try {
-            natMap = await nationalityByEmployee(cycleId);
-        } catch {
-            natMap = null;
+        if (natOn) {
+            try {
+                natMap = await nationalityByEmployee(cycleId);
+            } catch {
+                natMap = null;
+            }
         }
 
         // NB: the DB driver camelCases result-row keys, so read siteId/departmentId
@@ -190,12 +196,18 @@ class BiasDetectionService {
         const groupings = [
             { dim: 'site', value: (r) => blankToNull(r.siteId) },
             { dim: 'department', value: (r) => blankToNull(r.departmentId) },
-            {
-                dim: 'nationality',
-                value: (r) =>
-                    natMap ? natMap.get(String(r.employeeId ?? r.employee_id)) || null : null,
-                unavailable: !natMap,
-            },
+            ...(natOn
+                ? [
+                      {
+                          dim: 'nationality',
+                          value: (r) =>
+                              natMap
+                                  ? natMap.get(String(r.employeeId ?? r.employee_id)) || null
+                                  : null,
+                          unavailable: !natMap,
+                      },
+                  ]
+                : []),
             { dim: 'gender', value: (r) => blankToNull(r.gender) },
         ];
 

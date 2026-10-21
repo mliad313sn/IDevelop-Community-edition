@@ -24,6 +24,15 @@ jest.mock('../../src/config/database', () => ({
 }));
 jest.mock('../../src/models/EmployeeModel', () => ({ findGovernedIds: jest.fn() }));
 jest.mock('../../src/services/RBACService', () => ({ getFilteredEmployees: jest.fn() }));
+// The builder KPI strip reads the KPI module (its own suites prove the figures).
+const mockKpi = {
+    resolvePopulation: jest.fn(),
+    k1RoleReady: jest.fn(),
+    k2AvgReadiness: jest.fn(),
+    k3Coverage: jest.fn(),
+    k4CriticalCompliance: jest.fn(),
+};
+jest.mock('../../src/services/KpiService', () => mockKpi);
 
 const db = require('../../src/config/database');
 const EmployeeModel = require('../../src/models/EmployeeModel');
@@ -251,26 +260,34 @@ describe('2. never-assessed is not an earned zero', () => {
         expect(String(out.rows[1][covCol])).toMatch(/never|assess/i);
     });
 
-    test('the KPI strip publishes the coverage denominator', async () => {
-        EmployeeModel.findGovernedIds.mockResolvedValue([11]);
-        db.all.mockResolvedValue([
-            {
-                avgReadiness: null,
-                totalEmployees: 16,
-                expectedSkills: 195,
-                assessedSkills: 0,
-                neverAssessedEmployees: 16,
-                critical: 0,
-                skillsMetPct: null,
-                avgGap: null,
-            },
-        ]);
+    test('the KPI strip reads the KPI module and publishes the coverage denominator', async () => {
+        const ids = Array.from({ length: 16 }, (_, i) => i + 1);
+        mockKpi.resolvePopulation.mockResolvedValue({ ids, rows: [], system: false });
+        const unmeasured = { value: null, rawValue: null, status: 'not_measured' };
+        mockKpi.k1RoleReady.mockResolvedValue({
+            ...unmeasured,
+            numerator: 0,
+            denominator: 0,
+            coverage: 0,
+            breakdown: { ready: 0, notReady: 0, partial: 0, notAssessed: 16 },
+        });
+        mockKpi.k2AvgReadiness.mockResolvedValue({ ...unmeasured, denominator: 0 });
+        mockKpi.k3Coverage.mockResolvedValue({
+            value: 0,
+            rawValue: 0,
+            status: 'watch',
+            numerator: 0,
+            denominator: 195,
+            breakdown: { assessedRequirements: 0, expectedRequirements: 195 },
+        });
+        mockKpi.k4CriticalCompliance.mockResolvedValue({ ...unmeasured, status: 'not_configured' });
         const out = await ReportDataService.getSectionData(
             {
                 source: 'v_employee_readiness',
                 dimension: 'site',
                 metric: 'readinessPct',
                 chartType: 'kpi',
+                _lang: 'en',
             },
             MANAGER
         );
@@ -281,9 +298,20 @@ describe('2. never-assessed is not an earned zero', () => {
             neverAssessedEmployees: 16,
             employees: 16,
         });
-        // Nothing measured → an em dash, never "0 %".
-        expect(out.items[0].display).toBe('—');
-        expect(out.items.some((i) => /0 \/ 195/.test(i.display))).toBe(true);
+        // Nothing measured → "Not measured", never "0 %".
+        expect(out.items.map((i) => i.key)).toEqual([
+            'K1',
+            'K2',
+            'K3',
+            'K4',
+            'population',
+            'partial',
+            'notAssessed',
+        ]);
+        expect(out.items[0].display).toBe('Not measured');
+        expect(out.items[3].display).toBe('Not configured');
+        expect(out.items[2].display).toBe('0.0%'); // a measured 0 stays a 0
+        expect(out.items.find((i) => i.key === 'notAssessed').display).toBe('16');
     });
 });
 
@@ -479,22 +507,21 @@ describe('6. a partial assessment cannot fabricate a deficit (migration 79)', ()
         expect(query).toMatch(/v\.total_required AS totalRequired/);
     });
 
-    test('avg-gap divides the measured numerator by the measured denominator', async () => {
-        EmployeeModel.findGovernedIds.mockResolvedValue([11]);
-        db.all.mockResolvedValue([{}]);
-        await ReportDataService.getSectionData(
-            {
-                source: 'v_employee_readiness',
-                dimension: 'site',
-                metric: 'readinessPct',
-                chartType: 'kpi',
-            },
+    test('a strip filter narrows by name through parameters; a domain filter never trims the requirement set', async () => {
+        db.all.mockResolvedValue([{ id: 4 }, { id: 5 }]);
+        const scoped = await ReportDataService._kpiScope(
+            { sites: ["North'; DROP TABLE x; --"], domains: ['Safety'] },
             MANAGER
         );
-        const sql = String(db.all.mock.calls[db.all.mock.calls.length - 1][0]);
-        expect(sql).toMatch(/total_gap_points::numeric \/ NULLIF\(assessed_skills, 0\)/);
-        // The expected/required count is still published, just not as this denominator.
-        expect(sql).toMatch(/SUM\(expected_skills\)::int AS expected_skills/);
+        expect(scoped).toEqual({ viewer: MANAGER, employeeIds: [4, 5] });
+        const [sql, params] = db.all.mock.calls[db.all.mock.calls.length - 1];
+        expect(sql).toMatch(/st\.name = ANY\(\?\)/);
+        expect(sql).not.toMatch(/North|DROP|domain/i);
+        expect(params).toEqual([["North'; DROP TABLE x; --"]]);
+        // a domain filter alone leaves the population whole (no requirement trimmed)
+        expect(await ReportDataService._kpiScope({ domains: ['Safety'] }, MANAGER)).toEqual({
+            viewer: MANAGER,
+        });
     });
 });
 
@@ -507,15 +534,20 @@ describe('7. a scheduled CSV opens in French Excel like the downloaded one', () 
         expect(ReportBuilderService.excelCsv(null).slice(1)).toBe('sep=,\r\n');
     });
 
-    test('the scheduler attaches the wrapped body, not the raw CSV', () => {
+    test('the scheduler stores the wrapped body as the in-app copy, never an attachment', () => {
         const src = fs.readFileSync(
             path.join(__dirname, '..', '..', 'src', 'jobs', 'report-scheduler.js'),
             'utf8'
         );
         expect(src).toMatch(/ReportBuilderService\.excelCsv\(/);
-        expect(src).toMatch(/contentType: 'text\/csv; charset=utf-8'/);
-        // The old raw attachment is gone.
-        expect(src).not.toMatch(/content: csv \|\| 'no data'/);
+        // SA-38: the copy is kept in the app and served with the same charset.
+        expect(src).toMatch(/INSERT INTO report_schedule_runs/);
+        expect(src).not.toMatch(/attachments:/);
+        const ctl = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'src', 'controllers', 'ReportController.js'),
+            'utf8'
+        );
+        expect(ctl).toMatch(/'Content-Type', 'text\/csv; charset=utf-8'/);
     });
 
     test('the interactive download goes through the SAME helper', () => {

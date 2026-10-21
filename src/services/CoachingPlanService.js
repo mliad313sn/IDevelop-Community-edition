@@ -11,60 +11,47 @@ const db = require('../config/database');
 const EmployeeModel = require('../models/EmployeeModel');
 const LogService = require('./LogService');
 const RBACService = require('./RBACService');
-const GovernanceService = require('./GovernanceService');
+const AuthorityService = require('./AuthorityService');
 
 class CoachingPlanService {
     async resolveAuthority(user, employeeId) {
         const employee = await EmployeeModel.findById(employeeId);
         if (!employee) throw new Error('Employee not found');
-        const isAdmin = Boolean(user && user.userType === 'admin');
-        const isSuper = RBACService.isSuperAdmin(user);
-        const isLocalAdmin = RBACService.isLocalAdmin(user);
-        const isViewer = RBACService.isViewer(user);
-        // THE PERSON BEHIND THE ACCOUNT + the manager_type discriminator — the
-        // predicate of SelfAssessmentWorkflowService.resolveAuthority (the
-        // reference). `manager_id` is polymorphic and the employee/admin id spaces
-        // overlap: compared without `manager_type`, employee 145 was canManage
-        // over 139 whose manager is ADMIN 145. And a manager on their LINKED admin
-        // account compared the admin id to the line and lost their team.
-        const personId = await GovernanceService.actingPersonId(user);
-        const isSelf = personId != null && personId === Number(employeeId);
-        const isSupervisor = Boolean(
-            personId != null &&
-            employee.supervisorId != null &&
-            personId === Number(employee.supervisorId)
-        );
-        const isManager = Boolean(
-            (personId != null &&
-                employee.managerId != null &&
-                employee.managerType === 'employee' &&
-                personId === Number(employee.managerId)) ||
-            (isAdmin &&
-                employee.managerId != null &&
-                employee.managerType === 'admin' &&
-                Number(user.id) === Number(employee.managerId))
-        );
+        // THE PERSON BEHIND THE ACCOUNT + the manager_type discriminator, through
+        // the resolver every review service shares (AuthorityService.relation).
+        // `manager_id` is polymorphic and the employee/admin id spaces overlap:
+        // compared without `manager_type`, an employee whose id equals the ADMIN
+        // id named manager was handed canManage over a stranger. And a manager on
+        // their LINKED admin account compared the admin id to the line and lost
+        // their team.
+        const rel = await AuthorityService.relation(user, employee);
+        const isAdmin = rel.isAdmin;
+        const isSuper = rel.isSuper;
+        const isLocalAdmin = rel.isLocalAdmin;
+        const isViewer = rel.isViewer;
+        const personId = rel.personId;
+        const isSelf = rel.isSelf;
+        const isSupervisor = rel.isSupervisor;
+        const isManager = Boolean(rel.isDirectManager || rel.isAdminManager);
         // Clearance: admin scopes only (super admin → all).
-        const inClearance = isSuper
-            ? true
-            : isAdmin
-              ? await RBACService.canAccessEmployeeData(user, employee)
-              : false;
+        const inClearance = rel.inClearance;
         // Reading scope: clearance UNION the reporting line — the sub-tree,
         // matching the coaching LIST beside it (which uses scopeFilter).
-        const inScope = Boolean(
-            inClearance ||
-            isSupervisor ||
-            isManager ||
-            (personId != null && (await EmployeeModel.governs(personId, employeeId)))
-        );
-        // Acting: a local admin inside their CLEARANCE, a supervisor/manager on
-        // their direct link. `!isViewer` keeps a read-only delegation read-only.
-        const canSupervise =
+        const inScope = Boolean(inClearance || isSupervisor || isManager || rel.inLine);
+        // Acting, strict (today's rule): a local admin inside their CLEARANCE, a
+        // supervisor/manager on their direct link. `!isViewer` keeps a read-only
+        // delegation read-only. The ladder (extended mode) adds the line above.
+        const strictSupervise =
             !isViewer &&
             Boolean(isSuper || (isLocalAdmin && inClearance) || isSupervisor || isManager);
-        const canManage =
+        const strictManage =
             !isViewer && Boolean(isSuper || (isLocalAdmin && inClearance) || isManager);
+        const canSupervise = AuthorityService.allows(rel, 'coaching.act', {
+            strict: strictSupervise,
+        }).ok;
+        const canManage = AuthorityService.allows(rel, 'coaching.manage', {
+            strict: strictManage,
+        }).ok;
         // canView = read access: self, or anyone (incl. viewers) whose scope covers this
         // employee. Never the raw `isAdmin` flag — that would let an out-of-scope admin
         // read confidential plans across the whole org (IDOR).
@@ -101,7 +88,8 @@ class CoachingPlanService {
                     action,
                     entityType: 'coachingPlan',
                     entityId: id,
-                    details,
+                    // The rung the act used (AuthorityService), when one was resolved.
+                    details: AuthorityService.withAs(details, u),
                     ipAddress: req ? req.ip : null,
                     userAgent: req && req.get ? req.get('user-agent') : null,
                 })
@@ -420,11 +408,57 @@ class CoachingPlanService {
         // progress 100 by one click, with the cancellation trail still saying it
         // was cancelled. Positive check: anything but 'active' is refused.
         if (plan.state !== 'active') throw new Error(`Cannot validate from '${plan.state}'`);
+        // A coaching on a SKILL re-measures it (4.0.0 port, wave 4): the
+        // validator may give the level they OBSERVED (0-4). It becomes the
+        // official level through the same path as a plan action (history
+        // trigger, real actor) when it is higher or the skill was never
+        // assessed; left empty ("cannot judge yet"), nothing official moves.
+        // Never the person themself, by either of their accounts.
+        const body = (req && req.body) || {};
+        let observed = null;
+        if (
+            plan.skillId != null &&
+            body.observedLevel !== undefined &&
+            body.observedLevel !== null &&
+            String(body.observedLevel).trim() !== ''
+        ) {
+            observed = Number(body.observedLevel);
+            if (!Number.isInteger(observed) || observed < 0 || observed > 4) {
+                const e = new Error('The observed level must be an integer between 0 and 4.');
+                e.status = 400;
+                e.expose = true;
+                throw e;
+            }
+            const { personIdOf } = require('../utils/personIdentity');
+            if ((await personIdOf(user)) === Number(plan.employeeId)) {
+                throw new Error('Not authorized: one never rates oneself');
+            }
+        }
+        let levelResult = null;
+        if (observed != null) {
+            levelResult = await require('./ActionEffectivenessService').recordObservedLevel({
+                employeeId: Number(plan.employeeId),
+                skillId: Number(plan.skillId),
+                level: observed,
+                actor: user,
+                source: 'coaching',
+            });
+        }
         await db.run(
             'UPDATE coaching_plans SET state = ?, progress = 100, validated_by = ?, validated_at = now(), updated_at = now() WHERE id = ?',
             ['completed', auth.isAdmin ? null : user.id, planId]
         );
-        await this._audit(req, 'COACHING_PLAN_VALIDATED', planId, 'completion validated');
+        await this._audit(
+            req,
+            'COACHING_PLAN_VALIDATED',
+            planId,
+            'completion validated' +
+                (levelResult
+                    ? `; skill #${Number(plan.skillId)} observed ${observed} (before: ${
+                          levelResult.ratingPre == null ? 'not assessed' : levelResult.ratingPre
+                      }${levelResult.officialUpdated ? ', official' : ''})`
+                    : '')
+        );
         // Tell the employee their coaching plan was completed/validated.
         try {
             await require('./NotificationService')

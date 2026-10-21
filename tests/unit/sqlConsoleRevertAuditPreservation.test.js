@@ -90,8 +90,16 @@ describe('SQL console — append-only tables survive a restore-point revert', ()
         // had put the same two append-only triggers on it and the list stayed at three,
         // so the console let DELETE — and DROP TABLE — through on a journal the database
         // itself calls immutable, and the revert's quarantine never copied it.
+        // kpi_targets (migration 186) carries the block_mutation trigger too,
+        // and so does review_records on DELETE (migration 193), and the board
+        // tables (migrations 197, 198).
         expect(svc.PROTECTED_TABLES.slice().sort()).toEqual([
             'assessment_history',
+            'board_decision_events',
+            'board_decisions',
+            'board_pack_runs',
+            'kpi_targets',
+            'review_records',
             'review_signatures',
             'self_assessment_events',
             'system_logs',

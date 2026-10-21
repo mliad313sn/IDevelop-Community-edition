@@ -1,5 +1,5 @@
 <%
-    const statusLabel = { draft: __('idp:st_draft'), active: __('idp:st_active'), completed: __('idp:st_completed'), archived: __('idp:st_archived') };
+    const statusLabel = { draft: __('idp:st_draft'), active: __('idp:st_active'), completed: __('idp:st_completed'), archived: __('idp:st_archived'), cancelled: __('idp:st_cancelled') };
     const priorityLabel = { low: __('idp:pr_low'), medium: __('idp:pr_medium'), high: __('idp:pr_high') };
 %>
 <div class="page-header">
@@ -21,7 +21,7 @@
                 <% plans.forEach(function(p){ %>
                     <tr>
                         <td><a href="/v2/idp/<%= p.id %>"><%= p.id %></a></td>
-                        <td><%= statusLabel[p.status] || p.status %></td>
+                        <td><%- include('../../partials/status-badge', { state: p.status, label: statusLabel[p.status] || p.status }) %></td>
                         <td><%= (p.cycleId != null ? p.cycleId : p.cycle_id) || '-' %></td>
                         <td><%= priorityLabel[p.priority] || p.priority %></td>
                     </tr>

@@ -1,0 +1,130 @@
+/* The employee's side of the development loop (4.0.0 port, wave 5):
+   « What changed since… » on the home and the progress page, the status
+   sentence, and the end-of-campaign record. Design tokens only; no text
+   under 12 px. */
+
+/* --- « What changed since… » --- */
+.emp-changes {
+    padding: 0;
+    margin-bottom: var(--space-4);
+}
+.emp-changes-body {
+    padding: var(--space-2) var(--space-4) var(--space-3);
+}
+.emp-changes-since {
+    margin: 0 0 var(--space-2);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+.emp-changes-counts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-5);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+.emp-changes-counts strong {
+    color: var(--text-primary);
+    font-size: 1.05rem;
+}
+.emp-changes-ups {
+    list-style: none;
+    margin: var(--space-3) 0 0;
+    padding: 0;
+    font-size: 0.88rem;
+}
+.emp-changes-ups li {
+    padding: var(--space-1) 0;
+    border-top: 1px solid var(--border-subtle);
+}
+.emp-changes-src {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+/* --- the status sentence on the home --- */
+.emp-status-line {
+    margin: 0 0 var(--space-3);
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    max-width: 75ch;
+}
+.emp-status-line strong {
+    color: var(--text-primary);
+}
+
+/* --- « My development »: the history folds after the active plans --- */
+.dev-history {
+    padding: var(--space-3) var(--space-4);
+    margin-top: var(--space-4);
+}
+.dev-history > summary {
+    cursor: pointer;
+    font-weight: 600;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+}
+
+/* --- the end-of-campaign record --- */
+.rr-card {
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+.rr-meta {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 400;
+}
+.rr-list,
+.rr-plans,
+.rr-counts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.rr-list > li,
+.rr-plans > li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.rr-list > li:last-child,
+.rr-plans > li:last-child {
+    border-bottom: 0;
+}
+.rr-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-5);
+    margin: var(--space-3) 0;
+    color: var(--text-secondary);
+}
+.rr-counts strong {
+    color: var(--text-primary);
+}
+.rr-tablewrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.rr-adjusted {
+    color: var(--amber-text);
+    font-weight: 600;
+}
+.rr-h3 {
+    font-size: 1rem;
+    margin: var(--space-4) 0 var(--space-2);
+}
+.rr-comment {
+    margin: 0 0 var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    border-left: 3px solid var(--border);
+    background: var(--bg-subtle);
+    white-space: pre-wrap;
+}

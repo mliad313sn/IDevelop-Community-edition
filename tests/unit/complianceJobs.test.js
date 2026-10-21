@@ -124,22 +124,77 @@ describe('cert-expiry stage ladder', () => {
         expect(r.skipped).toBe('already_today');
         expect(mockDb.all).not.toHaveBeenCalled();
     });
+
+    test('expired: critical, the refresher is assigned FIRST and silently, the mail opens it', async () => {
+        const Lms = require('../../src/services/LmsService');
+        Lms.assignCourse.mockReset().mockImplementation(async () => {
+            mockCalls.push('assign');
+            return {};
+        });
+        mockSettings.getValue.mockResolvedValue(null);
+        mockDb.all.mockImplementation(async (sql) => {
+            if (/LEFT JOIN employees sup/.test(sql)) return [];
+            return [{ ...dueCert(3), daysToExpiry: -2 }];
+        });
+        mockDb.get.mockImplementation(async (sql) => {
+            if (/SELECT m\.course_id/.test(sql)) return { courseId: 41 };
+            if (/FROM lms_enrollments e/.test(sql)) return { x: 1 };
+            return null;
+        });
+        const r = await certTick();
+        expect(r.lmsAssigned).toBe(1);
+        expect(Lms.assignCourse).toHaveBeenCalledWith(1, 41, {
+            assignedBy: null,
+            notifyLearner: false,
+        });
+        // assigned before the person is told, so the one mail can say so
+        expect(mockCalls.indexOf('assign')).toBeLessThan(mockCalls.indexOf('mockNotify'));
+        const own = mockNotify.mock.calls.map(([a]) => a).find((a) => a.kind === 'cert.expiry');
+        expect(own.severity).toBe('critique');
+        expect(own.payload).toMatchObject({ refresher: true, link: '/employee/my-learning' });
+        const { blocks } = require('../../src/utils/emailTemplate');
+        for (const lang of ['fr', 'en']) {
+            const m = own.content(blocks(lang));
+            expect(m.ctaUrl).toBe('/employee/my-learning');
+            expect(m.blocks.some((b) => b.type === 'notice' && b.severity === 'critical')).toBe(
+                true
+            );
+        }
+        expect(JSON.stringify(own.content(blocks('en')).blocks)).toMatch(/refresher course/);
+    });
+
+    test('no mapped course: no refresher line, the button opens the certifications', async () => {
+        const { __test } = require('../../src/jobs/cert-expiry');
+        const { blocks } = require('../../src/utils/emailTemplate');
+        const m = __test.employeeMail(
+            { skillName: 'First Aid' },
+            2,
+            { fr: 'expire dans 60 jours', en: 'expires within 60 days' },
+            '01/09/2026',
+            { refresher: false }
+        )(blocks('en'));
+        expect(m.ctaUrl).toBe('/employee/my-certifications');
+        expect(JSON.stringify(m.blocks)).not.toMatch(/refresher/);
+    });
 });
 
 describe('cycle-nudge exactly-once ledger', () => {
+    // The job computes the ladder step from the campaign's dates (injectable
+    // clock): D-2 goes to everyone not yet submitted (migration 183 wave).
     const openCycle = {
         id: 3,
         code: 'C1',
         label: 'Cycle 1',
-        closesAt: '2026-08-02',
-        daysLeft: 1.4,
+        status: 'open',
+        closesAt: new Date(Date.now() + 1.4 * 86400000),
+        openedAt: new Date(Date.now() - 30 * 86400000),
     };
 
     function wireDb({ claimInserts }) {
         mockDb.all.mockImplementation(async (sql) => {
             if (/FROM assessment_cycles/.test(sql)) return [openCycle];
-            if (/workflow_state IN \('draft', 'changes_requested'\)/.test(sql)) {
-                return [{ employeeId: 7, firstName: 'Awa', n: 2 }];
+            if (/FROM cycle_participants p/.test(sql)) {
+                return [{ employeeId: 7, expected: 12, sent: 0 }];
             }
             return []; // no pending manager reviews
         });

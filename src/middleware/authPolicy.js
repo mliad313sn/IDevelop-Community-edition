@@ -13,8 +13,8 @@
  *                    login in AuthService / EmployeeAuthService.
  *   'local_only'   — SSO callback refused; enforced in SsoController.
  *
- * Same failure posture as mfaEnforcement: fail OPEN on any error so a policy
- * hiccup can never lock the whole instance out.
+ * Fails CLOSED for an 'mfa_required' account (an unreadable MFA state holds it
+ * on the setup page, as mfaEnforcement does); everyone else is untouched.
  */
 
 const MfaService = require('../services/MfaService');
@@ -53,25 +53,35 @@ async function enforceUserAuthPolicy(req, res, next) {
                 userId: u.id,
             });
         } catch (_) {
-            return next(); // MFA tables absent / DB hiccup → never lock the user out
+            // FAIL CLOSED: this account's policy says MFA is mandatory; an
+            // unreadable MFA state must not open the app without it.
+            return hold(req, res, p);
         }
         if (active) return next();
+        return hold(req, res, p);
+    } catch (_) {
+        // Fail closed for an account under 'mfa_required'; anyone else passes.
+        const u = req.user;
+        if (u && String(u.authPolicy || 'any') === 'mfa_required')
+            return hold(req, res, req.path || '');
+        return next();
+    }
+}
 
-        if (p.startsWith('/api/')) {
-            return res.status(403).json({
-                error: 'Two-factor enrollment is required for your account. Set it up at /v2/uam/mfa/setup.',
-            });
-        }
+function hold(req, res, p) {
+    if (String(p).startsWith('/api/')) {
+        return res.status(403).json({
+            error: 'Two-factor enrollment is required for your account. Set it up at /v2/uam/mfa/setup.',
+        });
+    }
+    if (typeof req.flash === 'function')
         req.flash(
             'error',
             req.t
                 ? req.t('flash:mfa_enrollment_required')
                 : 'Your account requires two-factor authentication. Please set it up to continue.'
         );
-        return res.redirect('/v2/uam/mfa/setup');
-    } catch (_) {
-        return next();
-    }
+    return res.redirect('/v2/uam/mfa/setup');
 }
 
 module.exports = { enforceUserAuthPolicy };

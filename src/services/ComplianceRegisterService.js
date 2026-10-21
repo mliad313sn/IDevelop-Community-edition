@@ -67,11 +67,35 @@ const DATA_CATEGORIES = [
     { key: 'feedback360', group: 'development', audience: 'self_line_hr' },
     { key: 'idp', group: 'development', audience: 'self_line_hr' },
     { key: 'idpObjectives', group: 'development', audience: 'self_line_hr' },
+    { key: 'idpActionNotes', group: 'development', audience: 'self_line_hr' },
+    { key: 'devProposals', group: 'development', audience: 'self_line_hr' },
+    { key: 'reviewRecords', group: 'skills', audience: 'self_admins' },
     { key: 'pips', group: 'development', audience: 'self_line_hr' },
+    { key: 'pipReviews', group: 'development', audience: 'self_line_hr' },
     { key: 'surveyResponses', group: 'engagement', audience: 'hr_aggregate' },
     { key: 'recognitions', group: 'engagement', audience: 'self_line_hr' },
     { key: 'demographics', group: 'engagement', audience: 'hr_aggregate' },
     { key: 'lifecycleEvents', group: 'employment', audience: 'self_line_hr' },
+    { key: 'certifications', group: 'skills', audience: 'self_line_hr' },
+    { key: 'safetyWaivers', group: 'skills', audience: 'self_line_hr' },
+    { key: 'safetyContests', group: 'skills', audience: 'self_line_hr' },
+    { key: 'aspirations', group: 'development', audience: 'self_line_hr' },
+    { key: 'opportunityApplications', group: 'development', audience: 'self_line_hr' },
+    { key: 'lmsEnrollments', group: 'development', audience: 'self_line_hr' },
+    { key: 'lmsCompletions', group: 'development', audience: 'self_line_hr' },
+    { key: 'lmsUpliftDecisions', group: 'development', audience: 'self_line_hr' },
+    { key: 'plannedAbsences', group: 'employment', audience: 'self_line_hr' },
+    { key: 'notifications', group: 'identity', audience: 'self_admins' },
+    { key: 'notificationSettings', group: 'identity', audience: 'self_admins' },
+    { key: 'notificationCategoryPrefs', group: 'identity', audience: 'self_admins' },
+    { key: 'dashboardScope', group: 'identity', audience: 'self_admins' },
+    { key: 'personaDigests', group: 'identity', audience: 'self_admins' },
+    { key: 'personaDigestPrefs', group: 'identity', audience: 'self_admins' },
+    { key: 'hrisLinks', group: 'identity', audience: 'self_admins' },
+    { key: 'profilingObjections', group: 'privacy', audience: 'self_admins' },
+    { key: 'privacyNoticeAcks', group: 'privacy', audience: 'self_admins' },
+    { key: 'deiConsents', group: 'privacy', audience: 'self_admins' },
+    { key: 'boardTextsNamingSubject', group: 'employment', audience: 'self_line_hr' },
 ];
 
 /** Export keys that are envelope, not data about the person. */
@@ -160,6 +184,8 @@ class ComplianceRegisterService {
                 'REMINDER_LOG_RETENTION_DAYS',
                 180
             ),
+            // SA-38: in-app copies of scheduled reports (1-365, default 90).
+            reportRunDays: await num('reportRunRetentionDays', null, 90),
         };
     }
 

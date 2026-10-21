@@ -54,7 +54,7 @@
 
     <div class="form-group">
         <label for="siteId"><%= __('admin:site') %></label>
-        <select id="siteId" name="siteId" required onchange="loadDepartments(this.value)">
+        <select id="siteId" name="siteId" required data-on-change="loadDepartments" data-args='["$value"]'>
             <option value=""><%= __('admin:select_site') %></option>
             <% sites.forEach(function(site) { %>
             <option value="<%= site.id %>" <%= dv('siteId') === String(site.id) ? 'selected' : '' %>><%= site.name %></option>
@@ -64,7 +64,7 @@
 
     <div class="form-group">
         <label for="departmentId"><%= __('admin:department') %></label>
-        <select id="departmentId" name="departmentId" required onchange="loadServices(this.value)">
+        <select id="departmentId" name="departmentId" required data-on-change="loadServices" data-args='["$value"]'>
             <option value=""><%= __('admin:select_department') %></option>
         </select>
     </div>
@@ -132,8 +132,8 @@
                 <label for="password"><%= __('admin:password') %></label>
                 <div style="display:flex;gap:6px">
                     <input type="password" id="password" name="password" required minlength="12" autocomplete="new-password" style="flex:1">
-                    <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('password', this)" aria-pressed="false" title="<%= __('admin:toggle_visibility') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
-                    <button type="button" class="btn btn-secondary" onclick="genPwd()"><%= __('admin:generate') %></button>
+                    <button type="button" class="btn btn-secondary" data-on-click="togglePasswordVisibility" data-args='["password","$el"]' aria-pressed="false" title="<%= __('admin:toggle_visibility') %>"><i class="fas fa-eye" aria-hidden="true"></i></button>
+                    <button type="button" class="btn btn-secondary" data-on-click="genPwd" data-args='[]'><%= __('admin:generate') %></button>
                 </div>
             </div>
         </div>

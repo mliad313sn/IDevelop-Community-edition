@@ -387,31 +387,39 @@ describe('planning-digest — useful, or silent', () => {
         expect(data.newlyHigh).toBe(3);
     });
 
-    test('every rendered section is bilingual FR + EN', () => {
-        const html = pd().__test.renderHtml(
-            'Amina',
-            {
-                certs: [
-                    {
-                        fullName: 'Kofi N.',
-                        skillName: 'Travail en hauteur',
-                        expiresOn: '2026-09-15',
-                        days: 24,
-                    },
-                ],
-                noBench: [{ roleName: 'Chef de quart', criticalityScore: 5, occupantCount: 3 }],
-                newlyHigh: 2,
-            },
-            { branding: { appName: 'IDevelop', accentColor: '#5140D9' }, monthLabel: '2026-08' }
-        );
-        expect(html).toMatch(/Certifications à renouveler/);
-        expect(html).toMatch(/Certifications to renew/);
-        expect(html).toMatch(/Postes critiques sans successeur/);
-        expect(html).toMatch(/Critical positions with no successor/);
-        expect(html).toMatch(/Risque de départ passé en élevé/);
-        expect(html).toMatch(/Retention risk that turned high/);
-        expect(html).toMatch(/Chef de quart/); // roles ARE named
-        expect(html).toMatch(/Kofi N\./); // cert holders ARE named
+    test('every rendered section is in ONE language, French or English', () => {
+        const data = {
+            certs: [
+                {
+                    fullName: 'Kofi N.',
+                    skillName: 'Travail en hauteur',
+                    expiresOn: '2026-09-15',
+                    days: 24,
+                },
+            ],
+            noBench: [{ roleName: 'Chef de quart', criticalityScore: 5, occupantCount: 3 }],
+            newlyHigh: 2,
+        };
+        const opts = {
+            branding: { appName: 'IDevelop', accent: '#5140D9' },
+            monthLabel: '2026-08',
+        };
+        const fr = pd().__test.renderHtml('Amina', data, opts);
+        expect(fr).toMatch(/Certifications à renouveler/);
+        expect(fr).toMatch(/Postes critiques sans successeur/);
+        expect(fr).toMatch(/Risque de départ passé en élevé/);
+        expect(fr).not.toMatch(/Certifications to renew|Critical positions with no successor/);
+        expect(fr).toMatch(/<html lang="fr"/);
+        const en = pd().__test.renderHtml('Amina', data, { ...opts, lang: 'en' });
+        expect(en).toMatch(/Certifications to renew/);
+        expect(en).toMatch(/Critical positions with no successor/);
+        expect(en).toMatch(/Retention risk that turned high/);
+        expect(en).not.toMatch(/Certifications à renouveler|Postes critiques/);
+        expect(en).toMatch(/<html lang="en"/);
+        expect(fr).toMatch(/Chef de quart/); // roles ARE named
+        // wave 12 D3: no person is named in a digest — counts and a list link
+        expect(fr).not.toMatch(/Kofi N\./);
+        expect(fr).toMatch(/1 certification\(s\) de 1 personne\(s\)/);
     });
 
     test('the retention section carries a COUNT and never a name', () => {
@@ -430,21 +438,19 @@ describe('planning-digest — useful, or silent', () => {
         expect(html).not.toMatch(/Risque de départ passé en élevé/);
     });
 
-    test('a long cert list is capped in the body but the total is still stated', () => {
+    test('a long cert list is counted, never listed by name (wave 12 D3)', () => {
         const certs = Array.from({ length: 20 }, (_, i) => ({
-            fullName: `P${i}`,
-            skillName: 'S',
-            expiresOn: '2026-09-01',
-            days: i,
+            employeeId: 100 + (i % 10),
+            days: i - 2,
         }));
         const html = pd().__test.renderHtml('Amina', { certs, noBench: [], newlyHigh: 0 }, {});
-        expect(html).toMatch(/8 autre\(s\)/);
-        expect(html).toMatch(/P0/);
-        expect(html).not.toMatch(/>P19</);
+        expect(html).toMatch(/20 certification\(s\) de 10 personne\(s\) : 2 expirée\(s\)/);
+        expect(html).toMatch(/\/compliance/);
+        expect(html).not.toMatch(/<td[^>]*>\s*P\d+/);
     });
 
     test('the plain-text part mirrors the HTML sections', () => {
-        const text = pd().__test.renderText({
+        const { blocks } = pd().__test.renderBlocks({
             certs: [
                 {
                     fullName: 'Kofi N.',
@@ -456,9 +462,14 @@ describe('planning-digest — useful, or silent', () => {
             noBench: [{ roleName: 'Chef de quart' }],
             newlyHigh: 2,
         });
-        expect(text).toMatch(/Kofi N\./);
+        const { text } = require('../../src/utils/emailTemplate').renderBlocks(blocks, {
+            lang: 'fr',
+        });
+        expect(text).not.toMatch(/Kofi N\./);
+        expect(text).toMatch(/1 certification\(s\) de 1 personne\(s\)/);
         expect(text).toMatch(/Chef de quart/);
-        expect(text).toMatch(/Risque de départ passé en élevé ce mois-ci : 2/);
+        expect(text).toMatch(/Risque de départ passé en élevé ce mois-ci/);
+        expect(text).toMatch(/2 personne\(s\) de votre périmètre/);
     });
 });
 

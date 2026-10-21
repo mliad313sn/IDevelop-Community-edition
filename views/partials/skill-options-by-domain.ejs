@@ -1,0 +1,14 @@
+<%# Skill <option>s grouped by DOMAIN, one <optgroup> each (4.0.0 port, wave 6):
+    two skills may carry the same name in two domains, and a flat list could
+    not tell them apart. The rows arrive ordered by domain, then name; a skill
+    without a domain goes under « no domain ». Pair it with data-searchable on
+    the <select> (public/js/table-search.js), which matches the domain too. -%>
+<%
+  var _groups = new Map();
+  (skills || []).forEach(function (s) {
+    var g = s && s.domainName ? String(s.domainName) : '';
+    if (!_groups.has(g)) _groups.set(g, []);
+    _groups.get(g).push(s);
+  });
+-%>
+<% _groups.forEach(function (list, g) { %><optgroup label="<%= g || __('compliance:no_domain') %>"><% list.forEach(function (s) { %><option value="<%= s.id %>"><%= s.name %></option><% }); %></optgroup><% }); %>

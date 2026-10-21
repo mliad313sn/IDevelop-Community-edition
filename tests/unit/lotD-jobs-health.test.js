@@ -204,7 +204,12 @@ describe('L4-02 — the backup card tells the truth', () => {
 
     test('a 0-byte dump is a FAILURE and the file is removed', () => {
         expect(src).toMatch(/if \(!size\) status = 'failed: empty dump file'/);
-        expect(src).toMatch(/fs\.unlinkSync\(file\)/);
+        // SA-39: the file goes with its manifest and any partial (behaviour in
+        // backupJobRestore.test.js).
+        expect(src).toMatch(/removeBackup\(file\)/);
+        expect(src).toMatch(
+            /for \(const p of \[file, file \+ '\.partial', Crypto\.manifestPath\(file\)\]\)/
+        );
     });
 
     test('the path and the size are recorded next to the status', () => {

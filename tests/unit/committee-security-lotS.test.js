@@ -537,7 +537,8 @@ describe('S10 — IDP self-comparisons are qualified on userType', () => {
         // Same reason as `list` above: prettier breaks the router call across
         // lines, so an exact-literal indexOf returns -1 and the slice is empty.
         const sign = src.slice(
-            at(/router\.post\(\s*'\/:id\/sign'/),
+            // digits only since 4.0.0 wave 4 ('/:id(\\d+)/sign')
+            at(/router\.post\(\s*'\/:id(?:\(\\\\d\+\))?\/sign'/),
             at(/router\.post\(\s*'\/actions\/:id\/close'/)
         );
         expect(sign).toMatch(
@@ -646,7 +647,10 @@ describe('S13 — 9-box writes need manage_talent_reviews', () => {
         ]) {
             const line = routeLine(src, r);
             expect(line).toBeDefined();
-            expect(line).toMatch(/requireManagerOrAnyPermission\('manage_talent_reviews'\)/);
+            // The authority ladder's route half: in strict mode (the default) it
+            // is exactly requireManagerOrAnyPermission('manage_talent_reviews')
+            // (authorityLadder-unit.test.js proves the equivalence).
+            expect(line).toMatch(/requireLineOrPermission\('manage_talent_reviews'\)/);
             expect(line).not.toMatch(/requireManagerOrAdmin\s*,/);
         }
     });
@@ -779,12 +783,19 @@ describe('S16 — apiRequireWrite rejects a read-only viewer', () => {
 });
 
 describe('S17 — the origin guard only honours a credential that validates', () => {
+    // The guard and the credential check moved to src/middleware/httpHardening.js;
+    // server.js wires one into the other.
     const src = read('server.js');
+    const hh = read('src/middleware/httpHardening.js');
     test('hasApiKey comes from _validatedApiCredential (ApiKeyService.validate / legacy key), never from the raw header', () => {
-        expect(src).toMatch(/async function _validatedApiCredential\(req\)/);
-        expect(src).toMatch(/require\('\.\/src\/services\/ApiKeyService'\)\.validate\(key\)/);
-        expect(src).toMatch(/hasApiKey = await _validatedApiCredential\(req\)/);
-        expect(src).not.toMatch(/const hasApiKey = !!\(req\.headers\['x-api-key'\]/);
+        expect(src).toMatch(
+            /const _validatedApiCredential = httpHardening\.makeValidatedApiCredential\(\)/
+        );
+        expect(src).toMatch(/validatedCredential: _validatedApiCredential/);
+        expect(hh).toMatch(/require\('\.\.\/services\/ApiKeyService'\)/);
+        expect(hh).toMatch(/await getApiKeys\(\)\.validate\(key\)/);
+        expect(hh).toMatch(/hasCredential = await validatedCredential\(req\)/);
+        expect(src + hh).not.toMatch(/const hasApiKey = !!\(req\.headers\['x-api-key'\]/);
     });
 });
 

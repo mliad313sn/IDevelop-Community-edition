@@ -316,12 +316,15 @@
   "sqlc_th_actions": "Actions",
   "sqlc_revert": "Rétablir",
   "sqlc_revert_title": "Rétablir la base de données",
-  "sqlc_revert_warning": "Rétablir la base de données au point de restauration « %s » ?\n\nSERA annulé : toutes les tables opérationnelles — collaborateurs, postes, compétences, évaluations, plans, paramètres. Tout ce qui a été créé ou modifié depuis ce point est PERDU et ne peut pas être récupéré.\n\nNE SERA PAS annulé : la piste d’audit en écriture seule (system_logs, assessment_history, review_signatures, self_assessment_events). Elle est préservée pendant la restauration et rattachée ensuite : la trace du changement — et celle de ce retour arrière — survivent.",
+  "sqlc_revert_warning": "Rétablir la base de données au point de restauration « %s » ?\n\nSERA annulé : toutes les tables opérationnelles — collaborateurs, postes, compétences, évaluations, plans, paramètres. Tout ce qui a été créé ou modifié depuis ce point est PERDU et ne peut pas être récupéré.\n\nNE SERA PAS annulé : la piste d’audit en écriture seule (system_logs, assessment_history, review_signatures, self_assessment_events) les décisions de cibles des indicateurs (kpi_targets), les comptes rendus de fin de campagne (review_records) et les décisions de comité, leur historique et les dossiers enregistrés (board_decisions, board_decision_events, board_pack_runs). Elle est préservée pendant la restauration et rattachée ensuite : la trace du changement — et celle de ce retour arrière — survivent.",
   "sqlc_reverting": "Rétablissement… (cela peut prendre une minute)",
   "sqlc_reverted_to": "Base de données rétablie au point « {{name}} ».",
   "sqlc_revert_failed": "Échec du rétablissement.",
   "sqlc_revert_failed_detail": "Échec du rétablissement :",
   "sqlc_unknown_error": "erreur inconnue",
   "sqlc_preserve_partial": "ligne(s) d’audit rattachée(s), mais {{n}} n’ont PAS pu l’être ({{detail}}) — les collaborateurs, compétences ou revues qu’elles décrivent n’existent plus après le retour arrière. Elles n’ont <strong>pas été supprimées</strong> : elles sont conservées dans le schéma <code>{{schema}}</code>, et cela est consigné dans le journal d’audit. Le prochain retour arrière est bloqué tant que ce schéma n’est pas réconcilié.",
-  "sqlc_preserve_ok": "Piste d’audit en écriture seule préservée : {{n}} ligne(s) rattachée(s) après la restauration, aucune perdue."
+  "sqlc_preserve_ok": "Piste d’audit en écriture seule préservée : {{n}} ligne(s) rattachée(s) après la restauration, aucune perdue.",
+  "sqlc_column_privilege": "Refusé : cette table contient des colonnes secrètes (empreintes de mot de passe, jetons…). Remplacez « * » par la liste des colonnes dont vous avez besoin.",
+  "sqlc_secret_refused": "Refusé : cette requête lit ou modifie des données secrètes (sessions, seconds facteurs, jetons, empreintes de mot de passe, clés d’API, secrets SSO, identifiants SIRH ou réglages secrets). La console SQL n’y donne jamais accès ; ces éléments se gèrent depuis leurs propres pages. Le refus est consigné dans le journal d’audit.",
+  "export_only_notice": "Votre compte peut exporter les données, pas les importer : seuls les exports sont affichés ici."
 }

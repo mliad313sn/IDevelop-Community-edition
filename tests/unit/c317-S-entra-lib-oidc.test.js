@@ -9,17 +9,12 @@
  *   - bearer JWT accepted / refused (audience, issuer, tenant, expiry, key, alg).
  *
  * openid-client and jose are ES modules. Jest's CommonJS loader cannot evaluate
- * them, so both are handed to the module under test from Node's own loader
- * (require(esm), Node >= 20.19) — the same code path production uses.
+ * them on Node < 24.9, so both are handed to the module under test from Node's
+ * own loader (require(esm), Node >= 20.19) — the same code path production uses —
+ * through __nativeRequire (tests/helpers/nativeEsmEnvironment.js).
  */
-jest.mock('openid-client', () =>
-    process.getBuiltinModule('module').createRequire(process.cwd() + '/package.json')(
-        'openid-client'
-    )
-);
-jest.mock('jose', () =>
-    process.getBuiltinModule('module').createRequire(process.cwd() + '/package.json')('jose')
-);
+jest.mock('openid-client', () => globalThis.__nativeRequire('openid-client'));
+jest.mock('jose', () => globalThis.__nativeRequire('jose'));
 jest.mock('../../src/config/database', () => ({ get: jest.fn(), run: jest.fn(), all: jest.fn() }));
 jest.mock('../../src/models/AdminModel', () => ({ findWithScopes: jest.fn() }));
 jest.mock('../../src/models/EmployeeModel', () => ({

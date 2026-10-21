@@ -4,12 +4,13 @@
  * NotificationAdminService — the operator's view over every notification the
  * platform has produced, IN-APP and EMAIL alike. They share one table
  * (`notifications`, discriminated by `channel` = inapp | email; `state` =
- * queued | sent | failed | snoozed), so one query monitors both.
+ * queued | sent | failed | snoozed), so one query monitors both. An e-mail
+ * row also carries its delivery state (`email_status`, migration 182).
  *
  * This is a monitoring + light management surface: an admin can see who was
- * notified of what, on which channel, and whether it went out — and re-queue a
- * FAILED delivery so the sender attempts it again. It never fabricates a "sent":
- * retry moves failed → queued and lets the real sender do the work.
+ * notified of what, on which channel, and whether it went out — and give a
+ * FAILED e-mail one more attempt. It never fabricates a "sent": retry puts the
+ * row back in the outbox and lets the real sender do the work.
  */
 const db = require('../config/database');
 
@@ -91,6 +92,7 @@ class NotificationAdminService {
         return db.all(
             `SELECT n.id, n.user_type, n.user_id, n.channel, n.kind, n.state, n.locale,
                     n.created_at, n.sent_at, n.read_at, n.release_at, n.payload,
+                    n.email_status, n.email_attempts, n.next_attempt_at, n.last_error,
                     COALESCE(
                         NULLIF(TRIM(COALESCE(e.first_name, '') || ' ' || COALESCE(e.last_name, '')), ''),
                         a.username, a.email
@@ -148,18 +150,25 @@ class NotificationAdminService {
     }
 
     /**
-     * Re-queue a FAILED notification so the sender attempts delivery again. Only
-     * a failed row is eligible — never a queued/sent/snoozed one — so this can
+     * Give a FAILED e-mail ONE more delivery attempt: the row goes back to the
+     * outbox (email_status 'retry', due now) and the release tick sends it
+     * through the real sender, which re-checks the recipient (a person who has
+     * left is suppressed, never mailed) and records the outcome; a new failure
+     * ends it as 'abandoned'. Only an e-mail row that failed is eligible — never
+     * an in-app row, a sent or queued one, or a suppressed one — so this can
      * never manufacture a duplicate send or a fake "sent". Returns the row, or
      * null when nothing was eligible.
      */
     async retry(id) {
+        const max = require('./NotificationService').EMAIL_MAX_ATTEMPTS;
         const row = await db.get(
             `UPDATE notifications
-                SET state = 'queued', release_at = now(), sent_at = NULL
-              WHERE id = ? AND state = 'failed'
-              RETURNING id, state`,
-            [Number(id) || 0]
+                SET email_status = 'retry', next_attempt_at = now(),
+                    email_attempts = ?, sent_at = NULL
+              WHERE id = ? AND channel = 'email' AND state = 'failed'
+                AND (email_status IS NULL OR email_status IN ('abandoned', 'retry', 'skipped'))
+              RETURNING id, state, email_status`,
+            [Math.max(Number(max) - 1, 0), Number(id) || 0]
         );
         return row || null;
     }

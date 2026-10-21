@@ -422,6 +422,14 @@ describe('Ztalent-4 — PIP close / withdraw / task decisions name their author'
     test('route POST /v2/pip/:id/close passes the actor and answers 400 without a note on a not-met verdict', async () => {
         const pip = require('../../src/routes/v2-pip');
         mockRbac.getFilteredEmployees.mockResolvedValue([{ id: 152 }]);
+        // Acting on a PIP needs the plan authority (SA-42): 137 is the direct
+        // manager of 152; being in the governed list is no longer enough.
+        mockEmployees.findById.mockResolvedValue({
+            id: 152,
+            supervisorId: 136,
+            managerId: 137,
+            managerType: 'employee',
+        });
         mockDb.get.mockImplementation(async (sql) =>
             /SELECT employee_id FROM pips/.test(norm(sql))
                 ? { employeeId: 152 }
@@ -709,6 +717,12 @@ describe('Ztalent-8 — coaching_sessions.coach_id holds the person behind the a
         const src = read('src/routes/v2-talent.js');
         expect(src).not.toMatch(/reviewerId:\s*req\.user\.id/);
         expect(src).not.toMatch(/placedBy:\s*req\.user\.id/);
-        expect(src).toMatch(/placedBy:\s*placedByFor\(req\.user\)/);
+        // The former rating and placement writes are retired (410, pointing to
+        // /talent/nine-box): no write to talent_ratings or talent_placements
+        // remains in this router (SA-42).
+        expect(src).not.toMatch(/TalentService\.(recordRating|override|computePlacement)/);
+        expect(src).toMatch(
+            /router\.post\('\/placements\/:employeeId\/override', requireAuth, retiredWrite\)/
+        );
     });
 });

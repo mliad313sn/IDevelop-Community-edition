@@ -99,7 +99,7 @@ const enabledProvider = providers.find(function (p) { return connectors[p].enabl
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <input type="hidden" name="provider" value="<%= provider %>">
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem 1rem;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px, 100%), 1fr));gap:.75rem 1rem;">
       <label style="display:flex;gap:.5rem;align-items:center"><input type="checkbox" name="enabled" value="true" <%= connector.enabled ? 'checked' : '' %>> <%= __('admin:hris_enabled') %></label>
       <label style="display:flex;gap:.5rem;align-items:center"><input type="checkbox" name="autoApply" value="true" <%= connector.autoApply ? 'checked' : '' %>> <%= __('admin:hris_auto_apply') %></label>
       <div>
@@ -128,7 +128,7 @@ const enabledProvider = providers.find(function (p) { return connectors[p].enabl
     <small class="text-muted" style="display:block;margin:.4rem 0 1rem"><%= __('admin:hris_guard_hint') %></small>
 
     <% if (provider === 'csv') { %>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem 1rem;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px, 100%), 1fr));gap:.75rem 1rem;">
         <div style="grid-column:1/-1">
           <label for="hris-folder"><%= __('admin:hris_folder') %></label>
           <input id="hris-folder" class="form-control" name="config[folder_path]" value="<%= cfg.folder_path || '' %>" placeholder="C:\ProgramData\IDevelop\hris-drop" maxlength="1000">
@@ -146,7 +146,7 @@ const enabledProvider = providers.find(function (p) { return connectors[p].enabl
       <details style="margin-top:1rem">
         <summary><%= __('admin:hris_columns_h') %></summary>
         <p class="text-muted"><%= __('admin:hris_columns_hint') %></p>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.5rem 1rem;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px, 100%), 1fr));gap:.5rem 1rem;">
           <% Object.keys(csvColumns).forEach(function (f) { %>
             <div>
               <label for="hris-col-<%= f %>"><%= FIELD[f] %></label>
@@ -156,7 +156,7 @@ const enabledProvider = providers.find(function (p) { return connectors[p].enabl
         </div>
       </details>
     <% } else { %>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem 1rem;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px, 100%), 1fr));gap:.75rem 1rem;">
         <div style="grid-column:1/-1">
           <label for="hris-base"><%= __('admin:hris_base_url') %></label>
           <input id="hris-base" class="form-control" type="url" name="config[base_url]" value="<%= cfg.base_url || '' %>" placeholder="<%= provider === 'personio' ? 'https://api.personio.de' : 'https://acme.ilucca.net' %>" maxlength="300">
@@ -176,7 +176,7 @@ const enabledProvider = providers.find(function (p) { return connectors[p].enabl
       <details style="margin-top:1rem">
         <summary><%= __('admin:hris_attributes_h') %></summary>
         <p class="text-muted"><%= __('admin:hris_attributes_hint') %></p>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.5rem 1rem;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px, 100%), 1fr));gap:.5rem 1rem;">
           <% Object.keys(personioAttributes).forEach(function (f) { %>
             <div>
               <label for="hris-attr-<%= f %>"><%= FIELD[f] %></label>
@@ -190,7 +190,7 @@ const enabledProvider = providers.find(function (p) { return connectors[p].enabl
       <fieldset style="border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-top:1rem">
         <legend style="padding:0 .3rem;font-weight:600"><%= __('admin:hris_credentials_h') %></legend>
         <p class="text-muted" style="margin-top:0"><%= __('admin:hris_credentials_hint') %></p>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem 1rem;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px, 100%), 1fr));gap:.75rem 1rem;">
           <% credentialKeys.forEach(function (k) { %>
             <div>
               <label for="hris-cred-<%= k %>"><%= CRED[k] %>
@@ -267,7 +267,7 @@ const enabledProvider = providers.find(function (p) { return connectors[p].enabl
           <%= reasonOf(g.reason) %> — <%= __('admin:hris_guard_numbers', { leavers: g.leavers, population: g.population, pct: g.pct, limit: g.limitPct }) %>
         </div>
       <% } %>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.5rem;margin-bottom:1rem;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(130px, 100%), 1fr));gap:.5rem;margin-bottom:1rem;">
         <% [['joiners', __('admin:hris_c_joiners')], ['movers', __('admin:hris_c_movers')], ['updates', __('admin:hris_c_updates')], ['leavers', __('admin:hris_c_leavers')], ['links', __('admin:hris_c_links')], ['blocked', __('admin:hris_c_blocked')], ['unmapped', __('admin:hris_c_unmapped')], ['errors', __('admin:hris_c_errors')], ['unchanged', __('admin:hris_c_unchanged')]].forEach(function (k) { %>
           <div class="card" style="padding:.6rem .8rem"><div style="font-size:1.3rem;font-weight:700;font-family:var(--font-data)"><%= c[k[0]] || 0 %></div><div class="text-muted" style="font-size:.82rem"><%= k[1] %></div></div>
         <% }); %>

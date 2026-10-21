@@ -286,11 +286,66 @@ class SurveyService {
             }
             where = ors.length ? `WHERE (${ors.join(' OR ')})` : 'WHERE false';
         }
-        return db.all(
+        const rows = await db.all(
             `SELECT s.*, (SELECT COUNT(DISTINCT respondent_key) FROM survey_responses r WHERE r.survey_id = s.id) AS respondents
              FROM surveys s ${where} ORDER BY s.created_at DESC`,
             params
         );
+        // An exact count while a survey is open lets its owner difference the
+        // answers (watch 4 become 5, and know who just answered). While open,
+        // and whenever under the floor, the list carries only a band (SA-43).
+        return (rows || []).map((s) => this.withRespondentBand(s));
+    }
+
+    /**
+     * Replace the exact respondent count by a band unless the survey is closed
+     * and at or over its floor. `respondentsBand`: 'under' | 'at_least' (null
+     * for a draft); `respondentsFloor`: the survey's floor.
+     */
+    withRespondentBand(s) {
+        const min = floorOf(s.minResponses ?? s.min_responses);
+        const n = Number(s.respondents);
+        const known = s.respondents != null && Number.isFinite(n);
+        const state = String(s.state || '');
+        const out = { ...s, respondentsFloor: min };
+        out.respondentsBand = state === 'draft' || !known ? null : n >= min ? 'at_least' : 'under';
+        if (!(state === 'closed' && known && n >= min)) out.respondents = null;
+        return out;
+    }
+
+    /**
+     * What the owner may read: results only once the survey is closed (closed
+     * means frozen: respond() refuses anything but an open survey). While it
+     * is open, or a draft, there is no per-question data and no count, only
+     * whether the floor has been reached.
+     */
+    async publishedResults(surveyId) {
+        const s = await db.get('SELECT id, state, min_responses FROM surveys WHERE id = ?', [
+            Number(surveyId),
+        ]);
+        if (!s) throw refuse(404, 'survey_not_found');
+        const threshold = floorOf(s.minResponses ?? s.min_responses);
+        const state = String(s.state || '');
+        if (state !== 'closed') {
+            const c = await db.get(
+                'SELECT COUNT(DISTINCT respondent_key) AS n FROM survey_responses WHERE survey_id = ?',
+                [Number(surveyId)]
+            );
+            const n = c ? Number(c.n) : NaN;
+            return {
+                state,
+                closed: false,
+                threshold,
+                band:
+                    state === 'draft' || !Number.isFinite(n)
+                        ? null
+                        : n >= threshold
+                          ? 'at_least'
+                          : 'under',
+                results: [],
+            };
+        }
+        return { state, closed: true, threshold, results: await this.results(Number(surveyId)) };
     }
 
     /**

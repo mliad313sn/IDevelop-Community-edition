@@ -272,7 +272,7 @@ describe('review queue and the manager landing page (L2-17, L5A-02/03, L5C-17)',
         expect(ta).toMatch(/CycleService[\s\S]{0,200}findCurrent\(\)/);
         expect(ta).toMatch(/states\.not_started\.count/);
         expect(ta).toMatch(/camp_ac_not_started_overdue/);
-        expect(ta).toMatch(/href: `\/cycles\/\$\{cycle\.id\}\?state=not_started`/);
+        expect(ta).toMatch(/`\/cycles\/\$\{cycle\.id\}\?state=not_started`/);
     });
 });
 

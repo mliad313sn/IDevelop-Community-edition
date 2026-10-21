@@ -93,9 +93,11 @@ describe('the dispute path addresses the round the review judged', () => {
         }
     });
 
-    test('the five locked_state writes target the rounds table', () => {
+    test('the six locked_state writes target the rounds table', () => {
+        // + the person's acceptance of a level-0 proposal (respondToProposal,
+        // migration 194).
         const writes = SQL.match(/UPDATE self_assessment_rounds sa/g) || [];
-        expect(writes.length).toBe(5);
+        expect(writes.length).toBe(6);
     });
 });
 

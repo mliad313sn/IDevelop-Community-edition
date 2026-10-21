@@ -16,43 +16,40 @@
 
 // key -> { key, group, label(i18n slug), permAny[] }. permAny empty = always default-on.
 const COMPONENTS = [
-    // Dashboard tabs
-    { key: 'tab:executive', group: 'tab', label: 'ws_tab_executive', permAny: [] },
+    // Dashboard context tabs (config/dashboardTabs.js ids). The permission-aware
+    // default mirrors the tab's own capability; the module gate is applied by
+    // the dashboard itself (a tab whose module is off is never shown).
+    { key: 'tab:overview', group: 'tab', label: 'ws_tab_overview', permAny: [] },
+    { key: 'tab:readiness', group: 'tab', label: 'ws_tab_readiness', permAny: [] },
     {
-        key: 'tab:training',
+        key: 'tab:safety',
         group: 'tab',
-        label: 'ws_tab_training',
-        permAny: ['manage_assessments', 'configure_lms', 'view_domains_skills'],
+        label: 'ws_tab_safety',
+        permAny: ['view_compliance', 'manage_compliance'],
     },
     {
-        key: 'tab:talentdev',
+        key: 'tab:talent',
         group: 'tab',
-        label: 'ws_tab_talentdev',
-        permAny: [
-            'view_continuity',
-            'manage_succession',
-            'view_retention_risk',
-            'manage_handover',
-            'manage_assessments',
-        ],
+        label: 'ws_tab_talent',
+        permAny: ['manage_talent_reviews'],
     },
     {
-        key: 'tab:team',
+        key: 'tab:succession',
         group: 'tab',
-        label: 'ws_tab_team',
-        permAny: ['manage_employees', 'edit_employees', 'view_domains_skills'],
+        label: 'ws_tab_succession',
+        permAny: ['view_continuity', 'manage_succession'],
     },
     {
-        key: 'tab:capability',
+        key: 'tab:development',
         group: 'tab',
-        label: 'ws_tab_capability',
-        permAny: ['view_domains_skills', 'manage_domains_skills', 'view_roles'],
+        label: 'ws_tab_development',
+        permAny: ['manage_assessments', 'approve_assessments', 'configure_lms'],
     },
     {
-        key: 'tab:comparator',
+        key: 'tab:assessments',
         group: 'tab',
-        label: 'ws_tab_comparator',
-        permAny: ['view_roles', 'manage_roles'],
+        label: 'ws_tab_assessments',
+        permAny: ['manage_assessments', 'approve_assessments', 'configure_lms', 'manage_cycles'],
     },
     // Sidebar sections (match the existing per-section capability gating in sidebar.ejs)
     { key: 'nav:main', group: 'nav', label: 'ws_nav_main', permAny: [] },
@@ -82,6 +79,32 @@ const COMPONENTS = [
 ];
 
 const BY_KEY = new Map(COMPONENTS.map((c) => [c.key, c]));
+
+/**
+ * Dashboard tab keys stored before the context tabs (admins.workspace_prefs)
+ * → the tabs that replace them. An explicit choice made on a former tab still
+ * applies to its successors until a SuperAdmin saves the new keys.
+ */
+const LEGACY_TAB_KEYS = new Map([
+    ['tab:overview', ['tab:executive']],
+    ['tab:readiness', ['tab:capability', 'tab:comparator']],
+    ['tab:development', ['tab:training', 'tab:team']],
+    ['tab:assessments', ['tab:training']],
+    ['tab:talent', ['tab:talentdev']],
+    ['tab:succession', ['tab:talentdev']],
+]);
+
+/** The explicit choice for `key`, else the one stored on its former key(s), else undefined. */
+function explicitChoice(prefs, key) {
+    const o = Object.prototype.hasOwnProperty.call(prefs, key) ? prefs[key] : undefined;
+    if (o === true || o === false) return o;
+    const legacy = LEGACY_TAB_KEYS.get(key) || [];
+    const set = legacy
+        .map((k) => (Object.prototype.hasOwnProperty.call(prefs, k) ? prefs[k] : undefined))
+        .filter((v) => v === true || v === false);
+    if (!set.length) return undefined;
+    return set.includes(true);
+}
 const VALID_KEYS = new Set(COMPONENTS.map((c) => c.key));
 
 function _prefs(user) {
@@ -106,7 +129,7 @@ function isVisible(key, user) {
     if (!user || user.userType !== 'admin') return true;
     const comp = BY_KEY.get(key);
     if (!comp) return true;
-    const o = _prefs(user)[key];
+    const o = explicitChoice(_prefs(user), key);
     if (o === true || o === false) return o;
     return defaultVisible(comp, user);
 }
@@ -119,7 +142,7 @@ function isVisible(key, user) {
 function describeFor(targetAdmin) {
     const prefs = _prefs(targetAdmin);
     return COMPONENTS.map((c) => {
-        const o = prefs[c.key];
+        const o = explicitChoice(prefs, c.key);
         const state = o === true ? 'show' : o === false ? 'hide' : 'default';
         return {
             key: c.key,
@@ -155,4 +178,5 @@ module.exports = {
     describeFor,
     buildPrefsFromForm,
     VALID_KEYS,
+    LEGACY_TAB_KEYS,
 };

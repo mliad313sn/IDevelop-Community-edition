@@ -28,9 +28,10 @@ const fs = require('fs');
 const ROOT = path.join(__dirname, '../..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 // Needs a POPULATED database (several sites, assessed people, reviews): runs
 // only against an opt-in fixture database — see CONTRIBUTING.md.
-const HAS_DB = /idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''));
+const HAS_DB = isFixturesDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 const db = HAS_DB ? require('../../src/config/database') : null;
 const DashboardModel = HAS_DB ? require('../../src/models/DashboardModel') : null;
@@ -123,12 +124,5 @@ describe('both ends of the fix are in place', () => {
         expect(m).toMatch(/END\)::int as qualifiedCount/);
     });
 
-    test('the renderer coerces before comparing', () => {
-        const js = read('public/js/dashboard.js').replace(/\s+/g, ' ');
-        expect(js).toMatch(/const headcount = Number\(r\.headcount\)/);
-        expect(js).toMatch(/const qualifiedCount = Number\(r\.qualifiedCount\)/);
-        // and no branch still reads the raw field
-        expect(js).not.toMatch(/if \(r\.headcount === 0\)/);
-        expect(js).not.toMatch(/r\.qualifiedCount === 0/);
-    });
+    // the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)
 });

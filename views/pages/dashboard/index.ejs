@@ -1,0 +1,150 @@
+<%#
+  The dashboard (/dashboard). ONE page adapted to the reader's clearance:
+  scope bar → « In brief » → the first row of tiles → « What is left to set
+  up » → the context tabs (the active one inline; the others are fetched on
+  demand from /dashboard/panel, or rendered inline with ?print=all).
+  Counts only: no person is named here; every count links to its list.
+  Locals: ctx, screen, scopeLabel, tabs, active, panels, printAll, needsChart,
+  keep, smtpRelay, asOf, navLinks (DashboardHomeController.page).
+-%><%
+  var _q = ctx.scopeQuery ? ctx.scopeQuery : '';
+  var _url = function (extra) { var p = []; if (_q) p.push(_q); if (extra) p.push(extra); return '/dashboard' + (p.length ? '?' + p.join('&') : ''); };
+  var _toneMark = { risk: '▲', warn: '!', good: '✓' };
+  var _panelOf = {};
+  (panels || []).forEach(function (p) { _panelOf[p.id] = p; });
+-%>
+<link rel="stylesheet" href="/css/dashboard.css?v=<%= assetVersion %>">
+<div class="ds-page" id="ds-page">
+    <% if (smtpRelay && smtpRelay.active) { %>
+    <%- include('../../partials/smtp-plaintext-relay', { smtpRelay: smtpRelay, showForm: false, isSuperAdmin: false }) %>
+    <% } %>
+
+    <div class="ds-header page-header">
+        <div>
+            <h1><%= __('dash:d3_title') %></h1>
+            <p><%= __('dash:d3_subtitle') %></p>
+        </div>
+        <% if (ctx.caps.pop) { %>
+        <div class="ds-actions">
+            <a class="btn btn-secondary btn-sm" href="<%= _url('print=all') %>" data-print-all><i class="fas fa-print" aria-hidden="true"></i> <%= __('dash:d3_print_all') %></a>
+            <% if (navLinks.boardPack) { %><a class="btn btn-secondary btn-sm" href="<%= navLinks.boardPack %><%= _q ? '?' + _q : '' %>"><i class="fas fa-briefcase" aria-hidden="true"></i> <%= __('dash:d3_board_pack') %></a><% } %>
+            <% if (navLinks.glossary) { %><a class="btn btn-secondary btn-sm" href="<%= navLinks.glossary %>"><i class="fas fa-circle-question" aria-hidden="true"></i> <%= __('dash:d3_glossary') %></a><% } %>
+        </div>
+        <% } %>
+    </div>
+
+    <% if (!ctx.caps.pop) { %>
+        <section class="ds-card" id="ds-no-scope">
+            <%- include('../../partials/empty-state', { icon: 'fa-user-lock', title: __('dash:d3_no_scope_title'), text: __('dash:d3_no_scope_text') }) %>
+        </section>
+    <% } else { %>
+        <% if (ctx.scopeRefused) { %>
+        <div class="card hz-callout" role="alert" id="ds-scope-refused">
+            <p><strong><%= __('dash:d3_scope_refused_title') %></strong> <%= __('dash:d3_scope_refused_text') %></p>
+        </div>
+        <% } %>
+
+        <%- include('../../partials/scope-bar', { vizScope: {
+            id: 'ds-scope',
+            scopeLabel: scopeLabel,
+            people: ctx.pop.ids.length,
+            coverage: screen.coverage,
+            asOf: asOf,
+            form: {
+                action: '/dashboard',
+                sites: ctx.opts.sites,
+                noSite: ctx.opts.noSite > 0,
+                departments: ctx.opts.departments,
+                site: ctx.scope.site,
+                department: ctx.scope.department,
+                keep: keep,
+                open: ctx.scopeRefused
+            }
+        } }) %>
+
+        <% if (screen.hidden && screen.hidden.length) { %>
+        <p class="ds-clearance" id="ds-clearance"><i class="fas fa-lock" aria-hidden="true"></i><%= __('dash:d3_clearance', { areas: screen.hidden.map(function (a) { return __('dash:d3_area_' + a); }).join(', ') }) %></p>
+        <% } %>
+
+        <% if (screen.brief && screen.brief.length) { %>
+        <section class="ds-brief" id="ds-brief" aria-labelledby="ds-brief-h">
+            <h2 id="ds-brief-h"><%= __('dash:d3_h_brief') %></h2>
+            <ul>
+                <% screen.brief.forEach(function (l) { %>
+                <li><span class="ds-brief-mark<%= l.tone ? ' ds-brief-mark--' + l.tone : '' %>" aria-hidden="true"><%= l.tone ? _toneMark[l.tone] : '·' %></span><span><%= l.text %></span></li>
+                <% }); %>
+            </ul>
+            <% var _ch = screen.changed; if (_ch && _ch.line) { %>
+            <div class="ds-changed" id="ds-changed" data-state="<%= _ch.state %>">
+                <h3 class="ds-changed-h"><%= __('dash:nar_title') %></h3>
+                <p class="ds-changed-line"><%= _ch.line %></p>
+                <% if (_ch.sentences && _ch.sentences.length) { %>
+                <ul>
+                    <% _ch.sentences.forEach(function (x) { %>
+                    <li><span class="ds-brief-mark ds-brief-mark--<%= x.polarity === 'better' ? 'good' : 'risk' %>" aria-hidden="true"><%= x.polarity === 'better' ? '▲' : '▼' %></span><span class="sr-only-ds"><%= __('dash:nar_' + x.polarity) %>: </span><span><%= x.text %><% if (x.href) { %> <a href="<%= x.href %>"><%= __('dash:nar_see_list') %></a><% } %></span></li>
+                    <% }); %>
+                </ul>
+                <% } %>
+            </div>
+            <% } %>
+        </section>
+        <% } %>
+
+        <section aria-labelledby="ds-tiles-h" id="ds-key">
+            <h2 class="sr-only-ds" id="ds-tiles-h"><%= __('dash:d3_h_tiles') %></h2>
+            <div class="viz-kpi-row" id="ds-tiles">
+                <% screen.tiles.forEach(function (k) { %><%- include('../../partials/kpi-tile', { vizKpi: Object.assign({}, k, { since: screen.since }) }) %><% }); %>
+            </div>
+        </section>
+
+        <% if (screen.more && screen.more.length) { %>
+        <details class="ds-card" id="ds-more">
+            <summary><%= __('dash:d3_more_tiles') %> (<%= screen.more.length %>)</summary>
+            <div class="viz-kpi-row ds-more-row">
+                <% screen.more.forEach(function (k) { %><%- include('../../partials/kpi-tile', { vizKpi: Object.assign({}, k, { since: screen.since }) }) %><% }); %>
+            </div>
+        </details>
+        <% } %>
+
+        <% if (screen.setup && screen.setup.length) { %>
+        <section class="ds-card ds-setup" id="ds-setup" aria-labelledby="ds-setup-h">
+            <h2 id="ds-setup-h"><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('dash:d3_setup_title') %></h2>
+            <ul>
+                <% screen.setup.forEach(function (it) { %>
+                <li data-setup="<%= it.key %>">
+                    <span><%= it.key === 'setup' ? __('dash:d3_setup_setup', { done: it.done, total: it.total }) : __('dash:d3_setup_' + it.key) %></span>
+                    <% if (it.href) { %><a class="btn btn-sm btn-secondary" href="<%= it.href %>"><%= __('dash:d3_setup_open') %></a><% } %>
+                </li>
+                <% }); %>
+            </ul>
+        </section>
+        <% } %>
+
+        <% if (tabs.length) { %>
+        <section class="ds-tabs-wrap" id="ds-explore" aria-labelledby="ds-explore-h" data-panel-src="/dashboard/panel<%= _q ? '?' + _q : '' %>">
+            <h2 class="sr-only-ds" id="ds-explore-h"><%= __('dash:d3_h_tabs') %></h2>
+            <div class="ds-tabs" role="tablist" aria-labelledby="ds-explore-h">
+                <% tabs.forEach(function (tb) { var sel = tb.id === active; %>
+                <a class="ds-tab" role="tab" id="ds-tab-<%= tb.id %>" href="<%= _url('tab=' + tb.id) %>" data-tab="<%= tb.id %>" aria-selected="<%= sel ? 'true' : 'false' %>" aria-controls="ds-panel-<%= tb.id %>" tabindex="<%= sel ? '0' : '-1' %>"><i class="fas <%= tb.icon %>" aria-hidden="true"></i><span><%= __('dash:d3_tab_' + tb.id) %></span></a>
+                <% }); %>
+            </div>
+            <label class="ds-tab-pick"><span><%= __('dash:d3_tab_pick') %></span>
+                <select id="ds-tab-select">
+                    <% tabs.forEach(function (tb) { %><option value="<%= tb.id %>"<%= tb.id === active ? ' selected' : '' %>><%= __('dash:d3_tab_' + tb.id) %></option><% }); %>
+                </select>
+            </label>
+            <% tabs.forEach(function (tb) { var p = _panelOf[tb.id]; %>
+            <section class="ds-panel" role="tabpanel" id="ds-panel-<%= tb.id %>" aria-labelledby="ds-tab-<%= tb.id %>" data-tab="<%= tb.id %>" data-loaded="<%= p ? '1' : '0' %>"<%= (tb.id === active || printAll) ? '' : ' hidden' %>>
+                <h2 tabindex="-1"><%= __('dash:d3_tab_' + tb.id) %></h2>
+                <% if (p) { %><%- include('_panel', { panel: p }) %><% } %>
+            </section>
+            <% }); %>
+            <p class="ds-note" id="ds-panel-error" hidden><%= __('dash:d3_tab_failed') %></p>
+            <p class="viz-live" id="ds-panel-live" aria-live="polite"></p>
+            <script type="application/json" id="ds-i18n"><%- include('../../partials/json-script', { v: { loading: __('dash:d3_tab_loading'), failed: __('dash:d3_tab_failed') } }) %></script>
+        </section>
+        <% } %>
+    <% } %>
+</div>
+<%- include('../../partials/viz/scripts', { viz: { chart: needsChart, heat: true, radar: needsChart, axisFit: needsChart } }) %>
+<script src="/js/dashboard-tabs.js?v=<%= assetVersion %>"></script>

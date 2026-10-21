@@ -165,14 +165,38 @@ router.post(
         // trust a body-supplied role (a party could otherwise sign as the other side).
         // Typed on the PERSON: an admin whose id equals the employee's is never the
         // employee party (id spaces overlap).
-        const role =
-            req.user.userType !== 'admin' && Number(req.user.id) === Number(acc.session.employeeId)
-                ? 'employee'
-                : 'coach';
+        //
+        // ONLY THE TWO PARTIES SIGN. Being allowed to READ a session (an admin
+        // whose scope covers the employee) is not being its coach: every other
+        // caller used to sign as 'coach', so an administrator could put the
+        // coach's signature on a session they never held. The coach slot is now
+        // signed only by the person in `coach_id` (an admin account through the
+        // person it is linked to); anyone else is refused and nothing is written.
+        // The row stores that PERSON's id, plus the account actually used in
+        // `actor_ref` (migration 177), because `user_id` alone does not say which
+        // id space it belongs to.
+        const isEmployeeParty =
+            req.user.userType !== 'admin' && Number(req.user.id) === Number(acc.session.employeeId);
+        const isCoachParty =
+            acc.personId != null &&
+            acc.session.coachId != null &&
+            Number(acc.personId) === Number(acc.session.coachId);
+        if (!isEmployeeParty && !isCoachParty) {
+            return res.status(403).json({
+                ok: false,
+                error: sayText(
+                    req,
+                    'coaching:err_sign_parties_only',
+                    'Only the coach of this session or the person being coached can sign it.'
+                ),
+            });
+        }
+        const role = isEmployeeParty ? 'employee' : 'coach';
         await CoachingService.signOff({
             sessionId: Number(req.params.id),
             role,
-            userId: req.user.id,
+            userId: isEmployeeParty ? Number(acc.session.employeeId) : Number(acc.personId),
+            actorRef: `${req.user.userType === 'admin' ? 'admin' : 'employee'}:${Number(req.user.id)}`,
             ip: req.ip,
             ua: req.get('user-agent'),
         });

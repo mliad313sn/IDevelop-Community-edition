@@ -1,0 +1,38 @@
+<%#
+  The readiness distribution with its reference curve (server SVG). Below 20
+  measured people no curve is drawn: the counts by band are given instead.
+  The table always holds the counts. Never a name.
+  Locals: B (DashboardHomeService.bellCurve), D (KpiService readinessDistribution).
+-%><%
+  var _F = numFmt;
+  var _bins = (B && !B.hidden) ? B.bins : ((D && D.bins) || []);
+  var _max = Math.max.apply(null, [1].concat(_bins.map(function (b) { return b.count; })).concat(((B && B.curve) || []).map(function (c) { return c.y; })));
+  var _W = 320, _H = 160, _pad = 22, _bw = (_W - 2 * _pad) / Math.max(1, _bins.length);
+  var _y = function (v) { return (_H - _pad - (v / _max) * (_H - 2 * _pad)).toFixed(1); };
+  var _x = function (v) { return (_pad + (v / 100) * (_W - 2 * _pad)).toFixed(1); };
+-%>
+<section class="ds-card" id="ds-bell" aria-labelledby="ds-bell-h">
+    <h3 id="ds-bell-h"><%= __('dash:d3_rd_bell_title') %></h3>
+    <% if (B && !B.hidden) { %>
+        <p class="ds-sub"><%= __('dash:d3_rd_bell_sub', { n: _F.num(B.n, 0), mean: _F.pct(B.mean, 1) }) %></p>
+        <svg class="ds-svg-chart" viewBox="0 0 <%= _W %> <%= _H %>" role="img" aria-label="<%= __('dash:d3_rd_bell_title') %>" focusable="false">
+            <% _bins.forEach(function (b, i) { %><rect class="ds-bar" x="<%= (_pad + i * _bw + 2).toFixed(1) %>" y="<%= _y(b.count) %>" width="<%= Math.max(1, _bw - 4).toFixed(1) %>" height="<%= (_H - _pad - _y(b.count)).toFixed(1) %>"></rect><% }); %>
+            <% if (B.curve && B.curve.length) { %><polyline class="ds-curve" points="<%= B.curve.map(function (c) { return _x(c.x) + ',' + _y(c.y); }).join(' ') %>"></polyline><% } %>
+            <text class="ds-axis-label" x="<%= _pad %>" y="<%= _H - 4 %>">0</text>
+            <text class="ds-axis-label" x="<%= _W - _pad %>" y="<%= _H - 4 %>" text-anchor="end">100</text>
+        </svg>
+        <ul class="ds-legend"><li><span class="ds-swatch ds-swatch--others" aria-hidden="true"></span><%= __('dash:d3_rd_bell_ref') %></li></ul>
+    <% } else { %>
+        <p class="ds-sub"><%= __('dash:d3_rd_bell_small', { n: _F.num(B ? B.n : 0, 0) }) %></p>
+    <% } %>
+    <details class="viz-data"<%= (B && !B.hidden) ? '' : ' open' %>>
+        <summary class="viz-data-toggle"><%= __('viz:chart.toggle_show') %></summary>
+        <div class="ds-table-wrap"><table class="ds-table">
+            <thead><tr><th scope="col"><%= __('dash:d3_rd_h_distribution') %></th><th scope="col" class="num"><%= __('dash:d3_col_people') %></th></tr></thead>
+            <tbody>
+            <% _bins.forEach(function (b) { %><tr><th scope="row"><%= __('dash:d3_rd_band', { from: _F.pct(b.from, 0), to: _F.pct(b.to, 0) }) %></th><td class="num"><%= _F.num(b.count, 0) %></td></tr><% }); %>
+            </tbody>
+        </table></div>
+    </details>
+    <% if (D) { %><p class="ds-note"><%= __('dash:d3_rd_bell_unmeasured', { n: _F.num(D.unmeasured, 0), m: _F.num(D.noRequirement, 0) }) %></p><% } %>
+</section>

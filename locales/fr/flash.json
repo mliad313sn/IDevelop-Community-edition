@@ -279,7 +279,10 @@
   "brand_reset": "Marque rétablie à l'identité par défaut.",
   "brand_update_error": "Erreur lors de la mise à jour de la marque",
   "brand_bad_color": "La couleur d'accent doit être un hexadécimal à 6 chiffres, ex. #1E90FF.",
-  "brand_low_contrast": "Attention : cet accent a un faible contraste sur le thème sombre ({{ratio}}:1 — visez 3:1+). Il a été appliqué, mais envisagez une nuance plus claire de la couleur de marque.",
+  "brand_contrast_report": "contraste calculé pour chaque mode : texte des boutons {{inkLight}}:1 en mode clair et {{inkDark}}:1 en mode sombre, texte d’accent au moins {{textLight}}:1 et {{textDark}}:1",
+  "brand_adjusted_light": "en mode clair la couleur est affichée un peu plus foncée, pour que les boutons et les liens restent lisibles",
+  "brand_adjusted_dark": "en mode sombre la couleur est affichée un peu plus claire, pour que les boutons et les liens restent lisibles",
+  "brand_adjusted_both": "la couleur est affichée un peu plus foncée en mode clair et un peu plus claire en mode sombre, pour que les boutons et les liens restent lisibles",
   "copilot_egress_warning": "Remarque : {{host}} est un service externe. Les questions du copilote lui enverront des données employés (noms, risque de départ, statut PIP) selon vos droits — chaque transfert est enregistré dans le journal d'audit. Utilisez un modèle local (Ollama/LAN) pour garder les données sur site.",
   "mfa_enrollment_required": "Votre administrateur exige l'authentification à deux facteurs. Veuillez la configurer pour continuer.",
   "cx_admin_only": "Seul un administrateur peut décider de cette demande.",
@@ -357,6 +360,7 @@
   "adm_account_locked_until": "Compte temporairement verrouillé après trop de tentatives échouées. Réessayez après {{time}}.",
   "adm_account_locked": "Compte temporairement verrouillé après trop de tentatives échouées. Réessayez dans {{minutes}} minutes.",
   "adm_ip_blocked": "Trop de tentatives échouées depuis votre réseau. Réessayez plus tard.",
+  "too_many_requests": "Trop de requêtes. Ralentissez et réessayez dans un instant.",
   "admin_target_out_of_scope": "Cet administrateur a autorité sur des personnes hors de votre périmètre : vous ne pouvez pas agir sur son compte.",
   "adm_revoke_revoked": "Accès administrateur retiré à {{username}} : {{perms}} capacité(s) et {{scopes}} périmètre(s) conservés et marqués révoqués, restaurables à la réactivation.",
   "adm_revoke_reason_required": "Un motif écrit est obligatoire pour retirer un accès administrateur.",
@@ -400,5 +404,11 @@
   "reauth_required": "Pour cette action sensible, confirmez votre mot de passe actuel (dernière connexion il y a plus de {{minutes}} minutes).",
   "reauth_bad_password": "Mot de passe actuel incorrect : l’action n’a pas été effectuée.",
   "reauth_sign_in_again": "Pour cette action sensible, déconnectez-vous puis reconnectez-vous, et recommencez dans les {{minutes}} minutes.",
-  "reauth_locked": "Trop de mots de passe incorrects. Réessayez dans {{minutes}} minutes."
+  "reauth_locked": "Trop de mots de passe incorrects. Réessayez dans {{minutes}} minutes.",
+  "emp_place_incomplete": "Le site, le département et le service sont tous obligatoires.",
+  "emp_place_inconsistent": "L’affectation ne tient pas : le département doit appartenir au site choisi et le service au département choisi.",
+  "idp_activated": "Plan de développement activé : les deux signatures sont enregistrées.",
+  "idp_signed_waiting": "Signature enregistrée. Le plan attend la signature de l’autre partie.",
+  "account_reauth_rate_limited": "Trop de tentatives refusées. Réessayez dans {{minutes}} minutes.",
+  "settings_reset_word_mismatch": "Réinitialisation annulée : le mot de confirmation ne correspond pas. Rien n’a été modifié."
 }

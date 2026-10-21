@@ -249,7 +249,8 @@ describe('M-15 — the same motif on the neighbouring pages', () => {
     });
 
     test('each of them renders through the product ONE date helper', () => {
-        expect(code(view('pip/index.ejs')).match(/fmtDate\(/g)).toHaveLength(3);
+        // + the person's reading date of an active plan (4.0.0 port, wave 6)
+        expect(code(view('pip/index.ejs')).match(/fmtDate\(/g)).toHaveLength(4);
         expect(code(view('capability/index.ejs'))).toMatch(/fmtDate\(c\.createdAt\)/);
         expect(code(view('slf/disputes.ejs'))).toMatch(/fmtDate\(d\.openedAt\)/);
         // The continuity handover row is built by the page's own JS, so it gets

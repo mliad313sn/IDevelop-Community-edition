@@ -279,7 +279,8 @@ describe('B-9 — the LMS webhook secret is encrypted at rest, legacy clear stil
         const params = mockDb.run.mock.calls[0][1];
         const stored = params[4];
         expect(stored).not.toBe('s3cr3t-value');
-        expect(String(stored)).toMatch(/^enc:v1:/);
+        // secretBox v2, purpose-bound (v1 is read-only since SA-18 was closed).
+        expect(String(stored)).toMatch(/^enc:v2:lms:/);
         expect(JSON.stringify(mockDb.run.mock.calls)).not.toContain('s3cr3t-value');
     });
 
