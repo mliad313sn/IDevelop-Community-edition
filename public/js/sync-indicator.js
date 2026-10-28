@@ -3,6 +3,14 @@
  *   sync-indicator.js — listens for browser online/offline events, shows
  *   a status pill, and replays pending drafts via exponential backoff:
  *   1s → 2 → 4 → 8 → 16 → 30 (cap).  Companion to draft-store.js.
+ *
+ *   The labels come from the page (JSON block #syncI18n, employee locale), never
+ *   hard-coded English; the tones are CSS classes on the design tokens
+ *   (self-assessment.css), never hex; the pill docks in the page's action bar
+ *   (#saSyncSlot) instead of floating over the content. It is QUIET by default:
+ *   shown while offline, while sending, when something is NOT saved, or for 3 s
+ *   after a send went through — and silent on a read-only page (a locked
+ *   campaign), where nothing can be saved.
  */
 
 (function () {
@@ -22,31 +30,63 @@
      */
     const ownerId = () => (window.APP_DRAFT_OWNER == null ? '' : String(window.APP_DRAFT_OWNER));
     const MAX_BACKOFF_MS = 30_000;
+    const OK_LINGER_MS = 3000;
 
-    const GREEN = '#1b7e3a';
-    const BLUE = '#1b56b8';
-    const RED = '#c62828';
-    const AMBER = '#b45309';
+    // French first when a page does not provide its labels.
+    const FALLBACK = {
+        locked: false,
+        synced: '✓ Enregistré',
+        online: 'En ligne',
+        offline: 'Hors ligne — vos réponses restent sur cet appareil',
+        offlineOne: 'Hors ligne — %n% réponse conservée sur cet appareil',
+        offlineOther: 'Hors ligne — %n% réponses conservées sur cet appareil',
+        syncingOne: 'Envoi de %n% réponse…',
+        syncingOther: 'Envoi de %n% réponses…',
+        failedOne: '⚠ %n% réponse NON enregistrée — nouvel essai automatique',
+        failedOther: '⚠ %n% réponses NON enregistrées — nouvel essai automatique',
+    };
+    function labels() {
+        let L = {};
+        try {
+            const el = document.getElementById('syncI18n');
+            if (el) L = JSON.parse(el.textContent || '{}') || {};
+        } catch (_) {
+            L = {};
+        }
+        return Object.assign({}, FALLBACK, L);
+    }
+    const T = labels();
+    const plural = (n, one, other) => String(n === 1 ? T[one] : T[other]).replace('%n%', String(n));
 
     let pill;
+    let lingerTimer = null;
     function ensurePill() {
         if (pill) return pill;
-        pill = document.createElement('div');
+        pill = document.createElement('span');
         pill.id = 'sync-pill';
+        pill.className = 'sync-pill';
+        pill.hidden = true;
         // A status that changes on its own must be announced, or a screen-reader
         // user never learns their work failed to save.
         pill.setAttribute('role', 'status');
         pill.setAttribute('aria-live', 'polite');
-        pill.style.cssText =
-            'position:fixed;bottom:16px;right:16px;padding:6px 12px;border-radius:16px;' +
-            'font:13px system-ui;color:#fff;z-index:9999;box-shadow:0 4px 14px rgba(0,0,0,.25)';
-        document.body.appendChild(pill);
+        const slot = document.getElementById('saSyncSlot');
+        (slot || document.body).appendChild(pill);
         return pill;
     }
-    function setLabel(text, bg) {
+    /** tone: ok | busy | offline | failed. `linger`: hide again after 3 s. */
+    function setLabel(text, tone, linger) {
+        if (T.locked) return; // read-only page: nothing here can be saved
         const p = ensurePill();
+        clearTimeout(lingerTimer);
         p.textContent = text;
-        p.style.background = bg;
+        p.className = 'sync-pill sync-pill--' + tone;
+        p.hidden = false;
+        if (linger) {
+            lingerTimer = setTimeout(() => {
+                p.hidden = true;
+            }, OK_LINGER_MS);
+        }
     }
 
     /**
@@ -65,24 +105,28 @@
             /* store unreadable */
         }
         if (!left.length) {
-            setLabel('✓ synced', GREEN);
+            setLabel(T.synced, 'ok', true);
             return;
         }
         if (!navigator.onLine) {
-            setLabel(`offline — ${left.length} draft(s) stored on this device`, RED);
+            setLabel(plural(left.length, 'offlineOne', 'offlineOther'), 'offline');
             return;
         }
-        setLabel(`⚠ ${left.length} draft(s) NOT saved — retry`, AMBER);
+        setLabel(plural(left.length, 'failedOne', 'failedOther'), 'failed');
     }
 
     async function replay() {
+        if (T.locked) return; // a locked campaign refuses every save (409)
         if (!window.AppDraftStore) return;
         const owner = ownerId();
         if (!owner) return; // cannot attribute the drafts — never guess an owner
+        // A sign-out wipe still in progress finishes first: a draft the
+        // person's own sign-out removed is never replayed.
+        if (window.AppDraftStore.wipeDone) await window.AppDraftStore.wipeDone;
         const pending = await window.AppDraftStore.listPending(owner);
-        if (!pending.length) return setLabel('✓ synced', GREEN);
+        if (!pending.length) return; // nothing to send: stay quiet
 
-        setLabel(`↻ syncing ${pending.length}…`, BLUE);
+        setLabel(plural(pending.length, 'syncingOne', 'syncingOther'), 'busy');
         let backoff = 1000;
         for (const row of pending) {
             for (;;) {
@@ -125,12 +169,12 @@
     }
 
     window.addEventListener('online', () => {
-        setLabel('online', GREEN);
+        setLabel(T.online, 'ok', true);
         replay();
     });
-    window.addEventListener('offline', () => setLabel('offline — draft stored locally', RED));
+    window.addEventListener('offline', () => setLabel(T.offline, 'offline'));
     window.addEventListener('load', () => {
-        setLabel(navigator.onLine ? 'online' : 'offline', navigator.onLine ? GREEN : RED);
-        if (navigator.onLine) replay();
+        if (!navigator.onLine) setLabel(T.offline, 'offline');
+        else replay();
     });
 })();

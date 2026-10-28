@@ -213,8 +213,8 @@
             </div>
             <div class="form-group" style="margin:0;min-width:220px;">
                 <label for="rule-skill"><%= __('compliance:skill_cert') %></label>
-                <select name="skillId" id="rule-skill" required class="form-control">
-                    <% skills.forEach(function (s) { %><option value="<%= s.id %>"><%= s.name %></option><% }); %>
+                <select name="skillId" id="rule-skill" required class="form-control" data-searchable>
+                    <%- include('../../partials/skill-options-by-domain', { skills: skills }) %>
                 </select>
             </div>
             <div class="form-group" style="margin:0;width:90px;">
@@ -258,7 +258,7 @@
                     <td><a href="/employees/<%= c.employeeId %>"><%= c.fullName %></a>
                         <div style="font-size:.78rem;color:var(--text-muted);"><%= c.departmentName %></div></td>
                     <td><%= c.skillName %></td>
-                    <td><%= c.certNumber || '-' %></td>
+                    <td><%= c.certNumber || '-' %><% if (c.issuer) { %><div style="font-size:.78rem;color:var(--text-muted);"><%= __('compliance:issued_by', { issuer: c.issuer }) %></div><% } %></td>
                     <td><%= c.issuedOn ? fmtPeriodBound(c.issuedOn) : '-' %></td>
                     <td><%= c.expiresOn ? fmtPeriodBound(c.expiresOn) : __('compliance:never') %></td>
                     <td>
@@ -266,7 +266,10 @@
                         <% } else if (c.certStatus === 'expiring') { %><span class="badge badge-warning"><%= c.daysToExpiry %><%= __('compliance:days_left') %></span>
                         <% } else { %><span class="badge badge-success"><%= c.certStatus === 'no_expiry' ? __('compliance:no_expiry') : __('compliance:valid') %></span><% } %>
                     </td>
-                    <td><% if (c.avStatus === 'clean') { %><a href="/compliance/evidence/<%= c.certificationId %>" class="btn btn-sm btn-secondary"><i class="fas fa-paperclip" aria-hidden="true"></i></a><% } else { %>-<% } %></td>
+                    <%# An evidence file that is not « clean » says why, with a status badge:
+                        infected / quarantined = risk, scan_error / not_scanned = warn,
+                        pending = neutral. No evidence at all stays « - ». %>
+                    <td><% if (c.avStatus === 'clean') { %><a href="/compliance/evidence/<%= c.certificationId %>" class="btn btn-sm btn-secondary" aria-label="<%= __('compliance:th_evidence') %>"><i class="fas fa-paperclip" aria-hidden="true"></i></a><% } else if (c.avStatus) { const _avTone = ({ infected: 'risk', quarantined: 'risk', scan_error: 'warn', not_scanned: 'warn', pending: 'neutral' })[c.avStatus] || 'neutral'; %><%- include('../../partials/status-badge', { tone: _avTone, text: true, label: __('common:av_status_' + c.avStatus) }) %><% } else { %>-<% } %></td>
                 </tr>
                 <% }); %>
                 <% if (!expiring.length) { %>
@@ -301,10 +304,29 @@
         true for a manager (their own reports) and for any delegate holding
         manage_compliance; the route enforces the same and the controller
         scope-checks the target employee. %>
+    <%# Antivirus on the evidence files (MalwareScanService.status): the engine in
+        use, or an alert when none scans them. Uploaders and configurers only. %>
+    <% if (typeof malwareScan !== 'undefined' && malwareScan) { %>
+    <div class="card hz-callout <%= malwareScan.alert ? 'hz-sec-warn' : 'hz-sec-note' %>" role="status" data-compliance-av="<%= malwareScan.engine || 'none' %>">
+        <p>
+            <i class="fas fa-shield-virus" aria-hidden="true"></i>
+            <% if (malwareScan.alert && !malwareScan.requireMalwareScan) { %>
+                <%= __('compliance:av_no_scanner_alert') %>
+            <% } else if (malwareScan.alert) { %>
+                <%= __('admin:health_av_none') %> · <%= __('admin:health_av_required_on') %>.
+            <% } else { %>
+                <%= __('compliance:av_engine_on', { engine: malwareScan.engine === 'clamd' ? __('admin:health_av_engine_clamd') : malwareScan.engine === 'defender' ? __('admin:health_av_engine_defender') : malwareScan.engine }) %>
+                <%= malwareScan.requireMalwareScan ? __('admin:health_av_required_on') : __('admin:health_av_required_off') %>.
+            <% } %>
+        </p>
+    </div>
+    <% } %>
     <% if (canRecord) { %>
     <div class="card" style="padding:1.1rem 1.25rem;margin-top:1rem;">
         <h3 style="margin:0 0 .8rem;font-size:1rem;"><%= __('compliance:record_title') %></h3>
-        <form method="POST" action="/compliance/certifications" enctype="multipart/form-data" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+        <%# Native multipart form: multer parses the body after the CSRF check, so the
+            token rides on the action (?_csrf=, multipart only; redacted in logs). %>
+        <form method="POST" action="/compliance/certifications?_csrf=<%= encodeURIComponent(csrfToken) %>" enctype="multipart/form-data" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <div class="form-group" style="margin:0;min-width:240px;">
                 <label for="cert-employee"><%= __('compliance:th_employee') %></label>
@@ -315,13 +337,17 @@
             </div>
             <div class="form-group" style="margin:0;min-width:220px;">
                 <label for="cert-skill"><%= __('compliance:skill_cert') %></label>
-                <select name="skillId" id="cert-skill" required class="form-control">
-                    <% skills.forEach(function (s) { %><option value="<%= s.id %>"><%= s.name %></option><% }); %>
+                <select name="skillId" id="cert-skill" required class="form-control" data-searchable>
+                    <%- include('../../partials/skill-options-by-domain', { skills: skills }) %>
                 </select>
             </div>
             <div class="form-group" style="margin:0;">
                 <label for="cert-number"><%= __('compliance:th_cert_no') %></label>
                 <input type="text" id="cert-number" name="certNumber" class="form-control" placeholder="<%= __('compliance:optional') %>">
+            </div>
+            <div class="form-group" style="margin:0;min-width:220px;">
+                <label for="cert-issuer"><%= __('compliance:issuer') %></label>
+                <input type="text" id="cert-issuer" name="issuer" maxlength="200" autocomplete="off" class="form-control" placeholder="<%= __('compliance:issuer_ph') %>">
             </div>
             <div class="form-group" style="margin:0;">
                 <label for="cert-issued-on"><%= __('compliance:issued_on') %></label>
@@ -349,8 +375,8 @@
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <div class="form-group" style="margin:0;min-width:220px;">
                 <label for="policy-skill"><%= __('compliance:skill') %></label>
-                <select name="skillId" id="policy-skill" required class="form-control">
-                    <% skills.forEach(function (s) { %><option value="<%= s.id %>"><%= s.name %></option><% }); %>
+                <select name="skillId" id="policy-skill" required class="form-control" data-searchable>
+                    <%- include('../../partials/skill-options-by-domain', { skills: skills }) %>
                 </select>
             </div>
             <div class="form-group" style="margin:0;width:130px;">
@@ -462,7 +488,7 @@
         fd.append('_csrf', '<%= csrfToken %>');
         resEl.style.color = 'var(--text-muted,#6b7280)';
         resEl.textContent = dryRun ? 'Validating…' : 'Importing…';
-        fetch('/data-management/import/certifications', { method: 'POST', body: fd })
+        fetch('/data-management/import/certifications', { method: 'POST', body: fd, headers: { 'x-csrf-token': '<%= csrfToken %>' } })
             .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
             .then(function (o) {
                 if (!o.ok || o.j.error) { resEl.style.color = '#b91c1c'; resEl.textContent = o.j.error || 'Import failed'; commitBtn.disabled = true; return; }
@@ -497,9 +523,9 @@
     // Localised strings for every dialog/result on this page. Native confirm
     // is not used any more (house dialog + FR-first copy).
     var CT = <%- include('../../partials/json-script', { v: {
-        confirmAbsence: __('compliance:js_confirm_absence'),
         confirmToggle: __('compliance:js_confirm_toggle'),
-        confirmDelete: __('compliance:js_confirm_delete'),
+        absenceReason: __('compliance:absence_reason_prompt'),
+        ruleReason: __('compliance:rule_reason_prompt'),
         netErr: __('compliance:js_neterr'),
         denied: __('compliance:js_denied'),
         genPlanned: __('compliance:gen_planned'),
@@ -518,17 +544,27 @@
     function ask(msg) {
         return window.confirmDialog(msg);
     }
-    function post(url) {
-        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CSRF-Token': '<%= csrfToken %>' }, body: '{}' })
+    // Cancelling an absence or deactivating a rule needs a written reason:
+    // nothing is deleted, and the reason is kept with the row and the audit line.
+    function askReason(msg) {
+        return window.promptDialog(msg, '', { required: true, multiline: true }).then(function (r) {
+            return r && r.trim() ? r.trim() : null;
+        });
+    }
+    function post(url, body) {
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CSRF-Token': '<%= csrfToken %>' }, body: JSON.stringify(body || {}) })
             .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
     }
 
     document.querySelectorAll('[data-del-absence]').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            ask(CT.confirmAbsence).then(function (yes) {
-                if (!yes) return;
-                post('/compliance/absences/' + btn.getAttribute('data-del-absence') + '/delete')
-                    .then(function () { location.reload(); })
+            askReason(CT.absenceReason).then(function (reason) {
+                if (!reason) return;
+                post('/compliance/absences/' + btn.getAttribute('data-del-absence') + '/delete', { reason: reason })
+                    .then(function (o) {
+                        if (!o.ok) { window.toast(o.j && o.j.code === 'reason_required' ? o.j.error : CT.netErr, 'error'); return; }
+                        location.reload();
+                    })
                     .catch(function () { window.toast(CT.netErr, 'error'); });
             });
         });
@@ -545,15 +581,15 @@
         });
     });
 
-    // Delete ONE rule. Destructive and named in the prompt — the bulk generator
-    // can produce a grid nobody wants, and disabling every bad rule one by one
-    // was the only escape hatch there used to be.
+    // Remove ONE rule from use, named in the prompt, with a reason. The rule is
+    // deactivated, never deleted: the bulk generator can produce a grid nobody
+    // wants, and this keeps a record of what each removed rule required.
     document.querySelectorAll('[data-del-rule]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var name = btn.getAttribute('data-rule-name') || '';
-            ask(CT.confirmDelete.replace('{name}', name)).then(function (yes) {
-                if (!yes) return;
-                post('/compliance/rules/' + btn.getAttribute('data-del-rule') + '/delete')
+            askReason(CT.ruleReason.replace('{name}', name)).then(function (reason) {
+                if (!reason) return;
+                post('/compliance/rules/' + btn.getAttribute('data-del-rule') + '/delete', { reason: reason })
                     .then(function (o) {
                         if (!o.ok) { var m = o.j && o.j.error ? CT.denied : CT.netErr; window.toast(m, 'error'); return; }
                         location.reload();

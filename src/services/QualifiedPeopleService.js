@@ -106,9 +106,10 @@ const QualifiedPeopleService = {
                     cc.expires_on       AS "certExpiresOn",
                     sc.is_lapsed        AS "isLapsed",
                     (SELECT MIN(pa.starts_on) FROM planned_absences pa
-                      WHERE pa.employee_id = e.id AND pa.ends_on >= CURRENT_DATE) AS "nextAbsenceFrom",
+                      WHERE pa.employee_id = e.id AND pa.is_active AND pa.ends_on >= CURRENT_DATE) AS "nextAbsenceFrom",
                     EXISTS (SELECT 1 FROM planned_absences pa
                              WHERE pa.employee_id = e.id
+                               AND pa.is_active
                                AND pa.starts_on <= COALESCE(?::date, CURRENT_DATE)
                                AND pa.ends_on   >= COALESCE(?::date, CURRENT_DATE)) AS "awayOnDate"
              FROM v_resolved_assessments ra

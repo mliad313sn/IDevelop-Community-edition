@@ -1,17 +1,38 @@
 /**
  * ui-feedback.js — app-wide notification + dialog utilities.
  *
- * - window.toast(msg, type)              non-blocking styled toast ('success'|'error'|'info'|'warn')
- * - window.confirmDialog(msg, opts)      Promise<boolean> styled confirm
- *       opts: { title, confirmText, cancelText, danger }
+ * THE app-wide toast + dialog component: one implementation every page uses —
+ * no local toast, no native alert() / confirm().
+ *
+ * - window.toast(text, kind, opts)       non-blocking toast; kind ∈ success|error|warn|info
+ *   window.toast(kind, text, opts)       (both orders accepted: the kind is recognised
+ *                                         whichever side it is on)
+ *       opts: { duration: ms, persist: true } — an ERROR always persists.
+ * - window.confirmDialog(opts)           Promise — the object form:
+ *       { title, body, confirmLabel (VERB-FIRST, e.g. « Retirer le périmètre »),
+ *         cancelLabel, danger, reason }
+ *       reason:false → resolves true / false
+ *       reason:true  → resolves the typed reason (string) or null when cancelled
+ *   window.confirmDialog(msg, opts)      legacy form, still works: opts { title,
+ *       confirmText, cancelText, danger } → true / false
+ *   An action label that is not a verb (« OK », « Oui », « Yes ») is refused:
+ *   the default verb (« Confirmer ») is used and a console warning names it.
  * - window.promptDialog(msg, def, opts)  Promise<string|null> styled prompt
  *       opts: { title, okText, cancelText, multiline, required, placeholder }
  *       `required` keeps OK disabled until something is typed — the "mandatory
  *       reason" every cancellation / exclusion must carry (product rule 3).
+ * - window.ratingDialog(opts)            Promise<{rating, reason}|null> — a rating
+ *       decision: five level buttons (0-4, outside [min, max] disabled), the
+ *       context recalled, a mandatory reason, a confirm naming the level.
  * - <form data-confirm="…">              declarative confirm before a POST (replaces the
  *       native onsubmit="return confirm(…)"): data-confirm-title, data-confirm-yes,
  *       data-confirm-no, data-confirm-danger, and data-confirm-reason="fieldName" to
  *       collect a required reason into a hidden input before submitting.
+ *
+ * Dialog contract: role=dialog, aria-modal, labelled by its heading and described
+ * by its message, Tab trapped inside, Escape and a backdrop click cancel, the
+ * focus returns to the opener; a destructive dialog opens on its cancel button.
+ * Colours, radii and layers are IDevelop's tokens (style.css), never literals.
  *
  * window.alert is transparently replaced by a toast (alert is fire-and-forget, so
  * this is safe and instantly upgrades every legacy alert call to a styled toast).
@@ -48,29 +69,51 @@
         };
     })();
 
+    // Tokens only: brand primary, the semantic status colours, the radius and
+    // spacing scales and the --z-* layers of style.css (fallbacks for a page that
+    // loads this script without it).
     var css =
         '' +
-        // Below the fixed top bar (48px), so a toast never covers the notification
-        // bell and its counter while it talks about them.
-        '.uif-toasts{position:fixed;top:calc(var(--topbar-height,48px) + 12px);right:18px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:90vw}' +
-        '.uif-toast{min-width:240px;max-width:420px;padding:12px 16px;border-radius:10px;color:#fff;font:500 14px/1.4 system-ui,Segoe UI,Roboto,sans-serif;box-shadow:0 8px 24px rgba(2,32,71,.22);opacity:0;transform:translateY(-8px);transition:opacity .25s,transform .25s;display:flex;gap:10px;align-items:flex-start}' +
+        // Below the fixed top bar, so a toast never covers the bell it talks about.
+        '.uif-toasts{position:fixed;top:calc(var(--topbar-height,48px) + 12px);right:var(--space-4,16px);z-index:var(--z-toast,700);display:flex;flex-direction:column;gap:var(--space-2,8px);max-width:90vw}' +
+        '.uif-toast{min-width:240px;max-width:420px;padding:var(--space-3,12px) var(--space-4,16px);border-radius:var(--radius-md,10px);color:var(--toast-ink,#fff);font:500 14px/1.4 var(--font-body,system-ui,sans-serif);box-shadow:var(--shadow-lg,0 8px 24px rgba(0,0,0,.25));opacity:0;transform:translateY(-8px);transition:opacity .2s,transform .2s;display:flex;gap:var(--space-3,12px);align-items:flex-start}' +
         '.uif-toast.show{opacity:1;transform:translateY(0)}' +
-        // A real <button> (UX-07): 24x24 minimum target (WCAG 2.5.8), inherits
-        // the toast colour, visible ring on keyboard focus.
-        '.uif-toast .uif-x{margin-left:auto;cursor:pointer;opacity:.85;font:700 16px/1 system-ui,Segoe UI,Roboto,sans-serif;background:none;border:0;color:inherit;min-width:24px;min-height:24px;padding:0 2px;border-radius:4px}' +
-        '.uif-toast .uif-x:hover{opacity:1}.uif-toast .uif-x:focus-visible{outline:2px solid #fff;outline-offset:1px;opacity:1}' +
-        '.uif-success{background:#15803d}.uif-error{background:#b91c1c}.uif-info{background:#1d4ed8}.uif-warn{background:#b45309}' +
-        '.uif-backdrop{position:fixed;inset:0;background:rgba(2,8,20,.55);z-index:99998;display:flex;align-items:center;justify-content:center;padding:16px}' +
-        // Theme-aware surface: tokens (dark+gold / light) with light fallbacks so the
-        // dialog no longer renders a jarring white box over the dark UI.
-        '.uif-modal{background:var(--bg-elevated,#fff);color:var(--text-primary,#0f172a);border:1px solid var(--border-color,transparent);border-radius:14px;max-width:440px;width:100%;padding:22px 24px;box-shadow:0 20px 50px rgba(2,32,71,.45)}' +
-        '.uif-modal h4{margin:0 0 10px;font-size:17px;color:var(--text-primary,#0f172a)}.uif-modal p{margin:0 0 16px;color:var(--text-secondary,#334155);font-size:14px;white-space:pre-wrap}' +
-        '.uif-modal input,.uif-modal textarea,.uif-modal select{width:100%;padding:9px 12px;border:1px solid var(--border-color,#cbd5e1);background:var(--bg-input,#fff);color:var(--text-primary,#0f172a);border-radius:8px;font-size:14px;margin-bottom:16px;font-family:inherit}' +
+        // A real <button>: 24x24 minimum target (WCAG 2.5.8), inherits the toast
+        // colour, visible ring on keyboard focus.
+        '.uif-toast .uif-x{margin-left:auto;cursor:pointer;opacity:.85;font:700 16px/1 var(--font-body,system-ui,sans-serif);background:none;border:0;color:inherit;min-width:24px;min-height:24px;padding:0 2px;border-radius:4px}' +
+        '.uif-toast .uif-x:hover{opacity:1}.uif-toast .uif-x:focus-visible{outline:2px solid currentColor;outline-offset:2px;opacity:1}' +
+        // White text at 4.5:1 or more on each fill.
+        '.uif-success{background:var(--toast-success-bg,#15803d)}.uif-error{background:var(--toast-error-bg,#b91c1c)}.uif-info{background:var(--toast-info-bg,#3f4a6b)}.uif-warn{background:var(--toast-warn-bg,#a94e08)}' +
+        '.uif-toast .uif-ic{flex:0 0 auto;margin-top:2px}.uif-toast .uif-msg{flex:1;min-width:0;overflow-wrap:anywhere}' +
+        '.uif-sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}' +
+        '@media (max-width:480px){.uif-toasts{left:var(--space-3,12px);right:var(--space-3,12px);max-width:none}.uif-toast{min-width:0;max-width:none}}' +
+        '.uif-backdrop{position:fixed;inset:0;background:var(--overlay,rgba(2,6,23,.55));z-index:var(--z-modal,600);display:flex;align-items:center;justify-content:center;padding:var(--space-4,16px)}' +
+        '.uif-modal{background:var(--bg-elevated,#fff);color:var(--text-primary,#0f172a);border:1px solid var(--border,transparent);border-radius:var(--radius-lg,14px);max-width:440px;width:100%;padding:var(--space-6,24px);box-shadow:var(--shadow-xl,0 20px 50px rgba(0,0,0,.45));font-family:var(--font-body,system-ui,sans-serif)}' +
+        '.uif-modal h4{margin:0 0 var(--space-3,12px);font-size:17px;font-weight:600;color:var(--text-primary,#0f172a)}.uif-modal p{margin:0 0 var(--space-4,16px);color:var(--text-secondary,#334155);font-size:14px;white-space:pre-wrap}' +
+        '.uif-modal label{display:block;margin:0 0 var(--space-2,8px);font-size:13px;font-weight:600;color:var(--text-primary,#0f172a)}' +
+        '.uif-modal input,.uif-modal textarea,.uif-modal select{width:100%;min-height:40px;padding:var(--space-2,8px) var(--space-3,12px);border:1px solid var(--border,#cbd5e1);background:var(--bg-inset,#fff);color:var(--text-primary,#0f172a);border-radius:var(--radius-md,8px);font-size:14px;margin-bottom:var(--space-4,16px);font-family:inherit}' +
         '.uif-modal textarea{min-height:84px;resize:vertical}' +
-        '.uif-actions{display:flex;justify-content:flex-end;gap:10px}' +
-        '.uif-btn{padding:8px 16px;border-radius:8px;border:0;font-size:14px;font-weight:600;cursor:pointer}' +
+        '.uif-hint{display:block;margin:-12px 0 12px;font-size:13px;color:var(--text-secondary,#334155)}' +
+        '.uif-actions{display:flex;justify-content:flex-end;gap:var(--space-3,12px);flex-wrap:wrap}' +
+        // ratingDialog: the context, the person's words, five level buttons.
+        '.uif-rd-ctx{list-style:none;margin:0 0 var(--space-3,12px);padding:0;display:flex;flex-wrap:wrap;gap:var(--space-2,8px) var(--space-4,16px);font-size:14px;color:var(--text-primary,#0f172a)}' +
+        '.uif-rd-k{color:var(--text-secondary,#334155)}' +
+        '.uif-rd-quote{margin:0 0 var(--space-3,12px);padding:var(--space-2,8px) var(--space-3,12px);border-left:3px solid var(--border,#cbd5e1);background:var(--bg-subtle,#e2e8f0);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}' +
+        '.uif-rd-levels{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--space-2,8px);margin:0 0 var(--space-4,16px)}' +
+        '.uif-rd-level{min-height:56px;border:1px solid var(--border,#cbd5e1);border-radius:var(--radius-md,8px);background:var(--bg-inset,#fff);color:var(--text-primary,#0f172a);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-family:inherit}' +
+        '.uif-rd-level[aria-pressed="true"]{background:var(--brand,#2563eb);color:var(--text-inverse,#fff);border-color:transparent}' +
+        '.uif-rd-level[disabled]{opacity:.45;cursor:not-allowed}' +
+        '.uif-rd-level:focus-visible{outline:2px solid var(--focus-ring,var(--brand,#2563eb));outline-offset:2px}' +
+        '.uif-rd-n{font-size:17px;font-weight:700}.uif-rd-mark{font-size:12px}' +
+        '.uif-btn{min-height:40px;padding:var(--space-2,8px) var(--space-4,16px);border-radius:999px;border:1px solid transparent;font:600 14px/1 var(--font-body,system-ui,sans-serif);cursor:pointer}' +
         '.uif-btn[disabled]{opacity:.5;cursor:not-allowed}' +
-        '.uif-btn-primary{background:#2563eb;color:#fff}.uif-btn-danger{background:#b91c1c;color:#fff}.uif-btn-secondary{background:var(--bg-subtle,#e2e8f0);color:var(--text-primary,#0f172a);border:1px solid var(--border-color,transparent)}';
+        '.uif-btn:focus-visible{outline:2px solid var(--focus-ring,var(--brand,#2563eb));outline-offset:2px}' +
+        '.uif-btn-primary{background:var(--brand,#2563eb);color:var(--text-inverse,#fff)}' +
+        '.uif-btn-primary:hover{background:var(--brand-hover,var(--brand,#2563eb))}' +
+        '.uif-btn-danger{background:var(--danger,#b91c1c);color:var(--toast-ink,#fff)}' +
+        '.uif-btn-secondary{background:transparent;color:var(--text-primary,#0f172a);border-color:var(--border,#cbd5e1)}' +
+        '.uif-btn-secondary:hover{background:var(--bg-subtle,#e2e8f0)}' +
+        '@media (pointer:coarse){.uif-toast .uif-x{min-width:44px;min-height:44px}.uif-btn{min-height:44px}}';
     var style = document.createElement('style');
     style.textContent = css;
     (document.head || document.documentElement).appendChild(style);
@@ -80,6 +123,7 @@
         if (!c) {
             c = document.createElement('div');
             c.className = 'uif-toasts';
+            c.id = 'uifToasts';
             // POLITE by default. This was 'assertive' for every toast, so a
             // routine "enregistré" cut a screen-reader user off mid-sentence —
             // including in the middle of the very content they were reading to
@@ -126,41 +170,98 @@
         warning: 'warn',
     };
 
-    window.toast = function (msg, type) {
+    // A screen reader hears the kind before the text (« Erreur : … »): the colour
+    // and the icon alone are not the meaning.
+    var TYPE_WORD = {
+        fr: { success: 'Succès', error: 'Erreur', warn: 'Attention', info: 'Information' },
+        en: { success: 'Success', error: 'Error', warn: 'Warning', info: 'Information' },
+    };
+    var TYPE_ICON = {
+        success: 'fa-circle-check',
+        error: 'fa-circle-exclamation',
+        warn: 'fa-triangle-exclamation',
+        info: 'fa-circle-info',
+    };
+    function lang() {
+        try {
+            return String(document.documentElement.getAttribute('lang') || 'fr')
+                .toLowerCase()
+                .indexOf('en') === 0
+                ? 'en'
+                : 'fr';
+        } catch (_) {
+            return 'fr';
+        }
+    }
+    function typeWord(type) {
+        var key = 'toast' + type.charAt(0).toUpperCase() + type.slice(1);
+        if (L()[key]) return L()[key];
+        return TYPE_WORD[lang()][type];
+    }
+
+    /**
+     * window.toast(msg, type, opts)  — or —  window.toast(type, msg, opts)
+     *   type   'success' | 'error' | 'warn' | 'info' (+ aliases ok, danger, warning)
+     *   opts   { duration: ms, persist: true } — persist = stays until closed.
+     */
+    window.toast = function (msg, type, opts) {
+        if (msg == null && type == null) return;
+        if (
+            typeof msg === 'string' &&
+            Object.prototype.hasOwnProperty.call(TYPE_ALIAS, msg) &&
+            (type == null || typeof type === 'string') &&
+            !Object.prototype.hasOwnProperty.call(TYPE_ALIAS, String(type))
+        ) {
+            var swap = msg;
+            msg = type;
+            type = swap;
+        }
         if (msg == null) return;
+        var o = opts || {};
         // An explicit type always wins. Wording is only a FALLBACK for callers that
-        // give none (legacy alert above all), never an override (UX-07).
+        // give none (legacy alert above all), never an override.
         type = TYPE_ALIAS[type] || detectType(msg);
         var c = container();
         var t = document.createElement('div');
         t.className = 'uif-toast uif-' + type;
+        t.setAttribute('data-type', type);
         // An error interrupts; nothing else does. role="alert" carries its own
         // assertive politeness, so only this one preempts the reader.
         if (type === 'error') t.setAttribute('role', 'alert');
+        var ic = document.createElement('i');
+        ic.className = 'fas ' + TYPE_ICON[type] + ' uif-ic';
+        ic.setAttribute('aria-hidden', 'true');
         var span = document.createElement('span');
-        span.textContent = String(msg);
-        // UX-07: the close control is a real <button> — it was a <span>, so it was
-        // not in the Tab order and had no name for a screen reader.
+        span.className = 'uif-msg';
+        var sr = document.createElement('span');
+        sr.className = 'uif-sr';
+        sr.textContent = typeWord(type) + ' : ';
+        span.appendChild(sr);
+        var body = document.createElement('span');
+        body.textContent = String(msg);
+        span.appendChild(body);
+        // The close control is a real <button> with a name.
         var x = document.createElement('button');
         x.setAttribute('type', 'button');
         x.className = 'uif-x';
-        x.setAttribute('aria-label', L().close || 'Fermer');
+        x.setAttribute('aria-label', L().close || (lang() === 'en' ? 'Close' : 'Fermer'));
         x.textContent = '×';
         x.onclick = function () {
             dismiss();
         };
+        t.appendChild(ic);
         t.appendChild(span);
         t.appendChild(x);
         c.appendChild(t);
         requestAnimationFrame(function () {
             t.classList.add('show');
         });
-        // §2.4: a timer that removes information reads the same table as the CSS.
-        // Under prefers-reduced-motion autoDismiss returns 0 = never.
-        // UX-07: an ERROR never leaves on its own — it used to vanish after 6 s,
-        // before a slow reader (or one who looked away) had read what went wrong.
-        // It stays until its close button is pressed.
+        // A timer that removes information reads the motion table: under
+        // prefers-reduced-motion autoDismiss returns 0 = never. An ERROR never
+        // leaves on its own: it stays until its close button is pressed.
         var ttl = type === 'error' ? 0 : window.MOTION.autoDismiss(3500);
+        if (o.persist) ttl = 0;
+        else if (ttl && Number(o.duration) > 0) ttl = window.MOTION.autoDismiss(Number(o.duration));
         var timer = ttl ? setTimeout(dismiss, ttl) : null;
         function dismiss() {
             clearTimeout(timer);
@@ -210,6 +311,11 @@
                 if (!h.id) h.id = 'uif-title-' + Math.random().toString(36).slice(2);
                 box.setAttribute('aria-labelledby', h.id);
             }
+            var desc = box.querySelector('p');
+            if (desc && desc.textContent) {
+                if (!desc.id) desc.id = 'uif-desc-' + Math.random().toString(36).slice(2);
+                box.setAttribute('aria-describedby', desc.id);
+            }
             function focusables() {
                 return Array.prototype.slice
                     .call(
@@ -232,10 +338,11 @@
                 if (!f.length) return;
                 var first = f[0],
                     last = f[f.length - 1];
-                if (e.shiftKey && document.activeElement === first) {
+                var inside = box.contains(document.activeElement);
+                if (e.shiftKey && (document.activeElement === first || !inside)) {
                     e.preventDefault();
                     last.focus();
-                } else if (!e.shiftKey && document.activeElement === last) {
+                } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
                     e.preventDefault();
                     first.focus();
                 }
@@ -258,29 +365,86 @@
         });
     }
 
+    // No « OK », no « Oui / Yes » on an action button: the label says what
+    // happens. A non-verb label is replaced by the default verb and reported, so
+    // the page author sees it in the console.
+    var NOT_A_VERB = /^\s*(ok|okay|oui|yes|non|no|d'accord|go)\s*[!.]?\s*$/i;
+    function verbLabel(label, fallback, where) {
+        if (label == null || label === '') return fallback;
+        if (NOT_A_VERB.test(String(label))) {
+            try {
+                console.warn(
+                    '[ui-feedback] ' +
+                        where +
+                        ': the confirm label must be verb-first (« ' +
+                        label +
+                        ' » refused, « ' +
+                        fallback +
+                        ' » used).'
+                );
+            } catch (_) {
+                /* no console */
+            }
+            return fallback;
+        }
+        return String(label);
+    }
+    function defaultConfirm() {
+        return L().confirm || (lang() === 'en' ? 'Confirm' : 'Confirmer');
+    }
+    function defaultCancel() {
+        return L().cancel || (lang() === 'en' ? 'Cancel' : 'Annuler');
+    }
+
+    /**
+     * confirmDialog({ title, body, confirmLabel, cancelLabel, danger, reason })
+     * confirmDialog(msg, { title, confirmText, cancelText, danger })   (legacy)
+     */
     window.confirmDialog = function (msg, opts) {
+        if (msg && typeof msg === 'object') {
+            opts = msg;
+            msg = opts.body != null ? opts.body : opts.message != null ? opts.message : '';
+        }
         opts = opts || {};
+        var confirmLabel = verbLabel(
+            opts.confirmLabel || opts.confirmText || opts.okText,
+            defaultConfirm(),
+            'confirmDialog'
+        );
+        var cancelLabel = opts.cancelLabel || opts.cancelText || defaultCancel();
+        if (opts.reason) {
+            return window.promptDialog(msg, '', {
+                title: opts.title,
+                okText: confirmLabel,
+                cancelText: cancelLabel,
+                required: true,
+                multiline: true,
+                danger: !!opts.danger,
+                placeholder: opts.placeholder,
+            });
+        }
         return modal(function (box, close) {
             box.innerHTML =
                 '<h4>' +
                 esc(opts.title || L().confirmTitle || 'Confirmation') +
                 '</h4><p></p>' +
                 '<div class="uif-actions"><button type="button" class="uif-btn uif-btn-secondary" data-no>' +
-                esc(opts.cancelText || L().cancel || 'Annuler') +
+                esc(cancelLabel) +
                 '</button>' +
                 '<button type="button" class="uif-btn ' +
                 (opts.danger ? 'uif-btn-danger' : 'uif-btn-primary') +
                 '" data-yes>' +
-                esc(opts.confirmText || L().confirm || 'Confirmer') +
+                esc(confirmLabel) +
                 '</button></div>';
-            box.querySelector('p').textContent = msg;
+            box.querySelector('p').textContent = msg == null ? '' : String(msg);
             box.querySelector('[data-yes]').onclick = function () {
                 close(true);
             };
             box.querySelector('[data-no]').onclick = function () {
                 close(false);
             };
-            box.querySelector('[data-yes]').focus();
+            // A destructive dialog opens on CANCEL: Enter never destroys by reflex.
+            box.querySelector(opts.danger ? '[data-no]' : '[data-yes]').focus();
         }, false);
     };
 
@@ -290,7 +454,9 @@
     window.promptDialog = function (msg, def, opts) {
         opts = opts || {};
         var choices = Array.isArray(opts.choices) ? opts.choices : null;
+        var okLabel = verbLabel(opts.okText, defaultConfirm(), 'promptDialog');
         return modal(function (box, close) {
+            var fieldId = 'uif-field-' + Math.random().toString(36).slice(2);
             box.innerHTML =
                 '<h4>' +
                 esc(opts.title || L().promptTitle || 'Saisie requise') +
@@ -308,21 +474,31 @@
                           .join('') +
                       '</select>'
                     : '') +
-                (opts.multiline ? '<textarea rows="3"></textarea>' : '<input type="text">') +
+                '<label for="' +
+                fieldId +
+                '">' +
+                esc(opts.label || L().reasonLabel || (lang() === 'en' ? 'Reason' : 'Motif')) +
+                '</label>' +
+                (opts.multiline
+                    ? '<textarea rows="3" id="' + fieldId + '"></textarea>'
+                    : '<input type="text" id="' + fieldId + '">') +
                 (opts.required
-                    ? '<small class="uif-hint" style="display:block;margin:-10px 0 12px;opacity:.75">' +
+                    ? '<small class="uif-hint">' +
                       esc(L().reasonRequired || 'Champ obligatoire') +
                       '</small>'
                     : '') +
                 '<div class="uif-actions">' +
                 '<button type="button" class="uif-btn uif-btn-secondary" data-no>' +
-                esc(opts.cancelText || L().cancel || 'Annuler') +
+                esc(opts.cancelText || defaultCancel()) +
                 '</button>' +
-                '<button type="button" class="uif-btn uif-btn-primary" data-yes>' +
-                esc(opts.okText || L().ok || 'OK') +
+                '<button type="button" class="uif-btn ' +
+                (opts.danger ? 'uif-btn-danger' : 'uif-btn-primary') +
+                '" data-yes>' +
+                esc(okLabel) +
                 '</button></div>';
-            box.querySelector('p').textContent = msg;
+            box.querySelector('p').textContent = msg == null ? '' : String(msg);
             var inp = box.querySelector('input, textarea');
+            if (opts.required) inp.setAttribute('aria-required', 'true');
             var sel = box.querySelector('select[data-choice]');
             inp.value = def || '';
             if (opts.placeholder) inp.placeholder = opts.placeholder;
@@ -357,6 +533,141 @@
         }, null);
     };
 
+    /**
+     * ratingDialog(opts) — ONE dialog for every rating decision (a dispute at
+     * any level). Promise<{ rating, reason } | null>.
+     *   opts: { title, body, context: [{ label, value }], quote, quoteLabel,
+     *           levelsLabel, min, max, marks: { <level>: '<label>' },
+     *           reasonLabel, reasonHint, pickHint, confirmTpl ('… {n}'),
+     *           reason (text kept from a previous attempt), cancelText }
+     * Five level buttons 0-4; those outside [min, max] are disabled, so a
+     * level is chosen, never typed. The context (both ratings) and the
+     * person's own words are recalled above them. The reason is mandatory and
+     * checked inline; the confirm button names the chosen level. Built with
+     * createElement / textContent only: nothing the page passes is parsed as
+     * markup.
+     */
+    window.ratingDialog = function (opts) {
+        opts = opts || {};
+        var num = function (v, d) {
+            var n = Number(v);
+            return v !== null && v !== undefined && v !== '' && isFinite(n) ? n : d;
+        };
+        var min = Math.max(0, Math.min(4, num(opts.min, 0)));
+        var max = Math.max(min, Math.min(4, num(opts.max, 4)));
+        var marks = opts.marks && typeof opts.marks === 'object' ? opts.marks : {};
+        var el = function (tag, cls, text) {
+            var n = document.createElement(tag);
+            if (cls) n.className = cls;
+            if (text !== undefined && text !== null) n.textContent = String(text);
+            return n;
+        };
+        return modal(function (box, close) {
+            box.appendChild(el('h4', null, opts.title || ''));
+            box.appendChild(el('p', null, opts.body || ''));
+            var ctx = Array.isArray(opts.context) ? opts.context : [];
+            if (ctx.length) {
+                var ul = el('ul', 'uif-rd-ctx');
+                ctx.forEach(function (c) {
+                    var li = el('li');
+                    li.appendChild(el('span', 'uif-rd-k', c && c.label));
+                    li.appendChild(document.createTextNode(' '));
+                    li.appendChild(el('strong', null, c && c.value));
+                    ul.appendChild(li);
+                });
+                box.appendChild(ul);
+            }
+            if (opts.quote) {
+                var bq = el('blockquote', 'uif-rd-quote');
+                bq.appendChild(el('span', 'uif-rd-k', opts.quoteLabel || ''));
+                bq.appendChild(document.createTextNode(' ' + String(opts.quote)));
+                box.appendChild(bq);
+            }
+            var group = el('div', 'uif-rd-levels');
+            group.setAttribute('role', 'group');
+            group.setAttribute('aria-label', opts.levelsLabel || '');
+            var buttons = [];
+            for (var n = 0; n <= 4; n++) {
+                var b = el('button', 'uif-rd-level');
+                b.type = 'button';
+                b.setAttribute('data-level', String(n));
+                b.setAttribute('aria-pressed', 'false');
+                if (n < min || n > max) {
+                    b.disabled = true;
+                    b.setAttribute('aria-disabled', 'true');
+                }
+                b.appendChild(el('span', 'uif-rd-n', n));
+                if (Object.prototype.hasOwnProperty.call(marks, n) && marks[n])
+                    b.appendChild(el('span', 'uif-rd-mark', marks[n]));
+                group.appendChild(b);
+                buttons.push(b);
+            }
+            box.appendChild(group);
+            var fieldId = 'uif-rd-' + Math.random().toString(36).slice(2);
+            var lab = el(
+                'label',
+                null,
+                opts.reasonLabel || L().reasonLabel || (lang() === 'en' ? 'Reason' : 'Motif')
+            );
+            lab.setAttribute('for', fieldId);
+            box.appendChild(lab);
+            var ta = el('textarea');
+            ta.id = fieldId;
+            ta.rows = 3;
+            ta.setAttribute('aria-required', 'true');
+            ta.value = opts.reason ? String(opts.reason) : '';
+            box.appendChild(ta);
+            var hint = el('small', 'uif-hint');
+            hint.setAttribute('aria-live', 'polite');
+            box.appendChild(hint);
+            var actions = el('div', 'uif-actions');
+            var no = el('button', 'uif-btn uif-btn-secondary', opts.cancelText || defaultCancel());
+            no.type = 'button';
+            var yes = el('button', 'uif-btn uif-btn-primary');
+            yes.type = 'button';
+            actions.appendChild(no);
+            actions.appendChild(yes);
+            box.appendChild(actions);
+            var chosen = null;
+            var tpl =
+                opts.confirmTpl ||
+                (lang() === 'en' ? 'Confirm rating {n}' : 'Confirmer la note {n}');
+            function sync() {
+                yes.textContent = tpl.replace('{n}', chosen === null ? '…' : String(chosen));
+                var okReason = !!ta.value.trim();
+                hint.textContent =
+                    chosen === null
+                        ? opts.pickHint || ''
+                        : okReason
+                          ? ''
+                          : opts.reasonHint || L().reasonRequired || '';
+                yes.disabled = chosen === null || !okReason;
+            }
+            buttons.forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    if (btn.disabled) return;
+                    chosen = Number(btn.getAttribute('data-level'));
+                    buttons.forEach(function (o) {
+                        o.setAttribute('aria-pressed', o === btn ? 'true' : 'false');
+                    });
+                    sync();
+                });
+            });
+            ta.addEventListener('input', sync);
+            yes.addEventListener('click', function () {
+                if (!yes.disabled) close({ rating: chosen, reason: ta.value.trim() });
+            });
+            no.addEventListener('click', function () {
+                close(null);
+            });
+            sync();
+            var first = buttons.filter(function (x) {
+                return !x.disabled;
+            })[0];
+            if (first) first.focus();
+        }, null);
+    };
+
     // Declarative confirm on forms: one dialog component for every POST
     // that used to rely on the native confirm. Capture phase so it runs before the
     // double-submit guard, which skips a prevented submit.
@@ -384,6 +695,7 @@
                       cancelText: opts.cancelText,
                       required: true,
                       multiline: true,
+                      danger: opts.danger,
                   })
                 : window.confirmDialog(form.getAttribute('data-confirm'), opts);
             p.then(function (v) {

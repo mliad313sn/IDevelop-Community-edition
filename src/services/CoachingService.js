@@ -108,12 +108,18 @@ class CoachingService {
         );
     }
 
-    static async signOff({ sessionId, role, userId, ip, ua }) {
+    /**
+     * `userId` is the PERSON who signs (an employee id: the person coached, or
+     * the coach in coaching_sessions.coach_id); `actorRef` names the ACCOUNT
+     * used ('employee:<id>' or 'admin:<id>', migration 177), because `user_id`
+     * alone cannot say which id space it belongs to.
+     */
+    static async signOff({ sessionId, role, userId, ip, ua, actorRef = null }) {
         await db.run(
-            `INSERT INTO coaching_signoffs (session_id, role, user_id, ip, ua)
-             VALUES (?, ?, ?, ?, ?)
+            `INSERT INTO coaching_signoffs (session_id, role, user_id, ip, ua, actor_ref)
+             VALUES (?, ?, ?, ?, ?, ?)
              ON CONFLICT (session_id, role) DO NOTHING`,
-            [sessionId, role, userId, ip, ua || null]
+            [sessionId, role, userId, ip, ua || null, actorRef]
         );
     }
 }

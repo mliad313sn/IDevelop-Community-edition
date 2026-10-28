@@ -28,7 +28,7 @@
         </ul>
 
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button type="button" class="btn btn-secondary" onclick="copyBackupCodes()">
+            <button type="button" class="btn btn-secondary" data-on-click="copyBackupCodes" data-args="[]">
                 <i class="fas fa-copy" aria-hidden="true"></i>&nbsp; <%= __('chrome:mfa_backup_copy_btn') %>
             </button>
             <a href="/v2/uam/mfa/manage" class="btn btn-primary"><%= __('chrome:mfa_backup_done_btn') %></a>

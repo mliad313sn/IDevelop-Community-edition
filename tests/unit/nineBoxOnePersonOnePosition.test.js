@@ -91,6 +91,10 @@ const insertRow = (employeeId, status, perf, pot, box, extra = '') =>
         [employeeId, perf, pot, box, status]
     );
 
+// Four eyes (migration 190, on for a new install): the SuperAdmin of this
+// suite drafts AND approves, so every approval carries the override reason.
+const FOUR_EYES = 'Drafted and approved by the suite SuperAdmin.';
+
 describe('AMDEC C1 — one person, one position', () => {
     test('Postgres is reachable (these tests are worthless without it)', () => {
         expect(reachable).toBe(true);
@@ -250,7 +254,11 @@ describe('AMDEC C1 — one person, one position', () => {
                 potential: 'high',
                 comments: 'UAT-C1 new',
             });
-            await NineBox.approve(USER, fresh.id);
+            // Migration 175: a box change needs its written reason.
+            await NineBox.approve(USER, fresh.id, null, {
+                fourEyesReason: FOUR_EYES,
+                movementJustification: 'UAT-C1: results and potential confirmed in review',
+            });
             const rows = await db.all(
                 'SELECT id, status FROM nine_box_evaluations WHERE employee_id = ? ORDER BY id',
                 [EMP]
@@ -278,7 +286,11 @@ describe('AMDEC C1 — one person, one position', () => {
                 performance: 'high',
                 potential: 'high',
             });
-            await NineBox.approve(USER, fresh.id);
+            // Migration 175: a box change needs its written reason.
+            await NineBox.approve(USER, fresh.id, null, {
+                fourEyesReason: FOUR_EYES,
+                movementJustification: 'UAT-C1: results and potential confirmed in review',
+            });
             return NineBox.placementTrend(EMP, USER);
         });
         expect(out.length).toBe(2);

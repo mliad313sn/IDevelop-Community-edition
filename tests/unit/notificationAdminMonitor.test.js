@@ -16,9 +16,10 @@ const fs = require('fs');
 const ROOT = path.join(__dirname, '../..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 // Needs a POPULATED database (several sites, assessed people, reviews): runs
 // only against an opt-in fixture database — see CONTRIBUTING.md.
-const HAS_DB = /idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''));
+const HAS_DB = isFixturesDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 const db = HAS_DB ? require('../../src/config/database') : null;
 let S;
@@ -112,7 +113,7 @@ describe('the module is wired end to end', () => {
     });
 
     test('the sidebar links to it and both locales define the labels', () => {
-        expect(read('views/partials/sidebar.ejs')).toMatch(/href="\/admin\/notifications"/);
+        expect(read('src/config/navigation.js')).toMatch(/href: '\/admin\/notifications'/);
         const en = require('../../locales/en/admin.json');
         const fr = require('../../locales/fr/admin.json');
         for (const k of ['notif_nav', 'notif_title', 'notif_state_failed', 'notif_retry']) {

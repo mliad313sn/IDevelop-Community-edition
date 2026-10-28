@@ -1,0 +1,72 @@
+<%#
+  The scope bar: what the page shows, in one sentence, and the form to change it.
+
+    include('../partials/scope-bar', { vizScope: {
+        id:         element id (default 'scope-bar')
+        scopeLabel: « All of my scope », a site, a department, « My team »
+        people:     head count of the scope
+        coverage:   % of required skills assessed (K3), null = not measured
+        asOf:       Date of the figures
+        form:       optional { action, sites:[{id,name}], departments:[{id,label,siteId}],
+                               noSite: bool, site, department, keep:{name: value} }
+                    — a plain GET form (works without JavaScript); the chosen
+                    scope is remembered on the server for the account
+    } })
+
+  Locals read: `__`, `lang`, `numFmt`, `fmtDateTime`.
+-%><%
+  var _s = (typeof vizScope !== 'undefined' && vizScope) ? vizScope : {};
+  var _lang = (typeof lang !== 'undefined' && lang === 'en') ? 'en' : 'fr';
+  var _F = (typeof numFmt !== 'undefined' && numFmt) ? numFmt : { num: function (v) { return String(v); }, pct: function (v) { return Number(v).toFixed(1) + (_lang === 'en' ? '%' : ' %'); } };
+  var _num = function (v) { return v !== null && v !== undefined && v !== '' && isFinite(Number(v)); };
+  var _n = _num(_s.people) ? Number(_s.people) : 0;
+  var _cov = _num(_s.coverage) ? Number(_s.coverage) : null;
+  var _id = _s.id || 'scope-bar';
+  var _when = _s.asOf ? (typeof fmtDateTime === 'function' ? fmtDateTime(_s.asOf) : String(_s.asOf)) : null;
+  var _f = _s.form || null;
+  var _sel = function (a, b) { return String(a) === String(b) ? ' selected' : ''; };
+-%>
+<section class="viz-scope" id="<%= _id %>" aria-label="<%= __('viz:scope.viewing', { scope: _s.scopeLabel || '' }) %>">
+    <p class="viz-scope-line">
+        <span class="viz-scope-what"><%= __('viz:scope.viewing', { scope: _s.scopeLabel || '' }) %></span>
+        <span class="viz-scope-sep" aria-hidden="true">·</span>
+        <span><%= __('viz:scope.people', { count: _n, n: _F.num(_n, 0) }) %></span>
+        <span class="viz-scope-sep" aria-hidden="true">·</span>
+        <% if (_cov === null) { %>
+            <span class="viz-scope-cov viz-scope-cov--none"><%= __('viz:scope.coverage_none') %></span>
+        <% } else { %>
+            <span class="viz-scope-cov"><%= __('viz:scope.coverage', { pct: _F.pct(_cov, 1) }) %></span>
+            <% if (_cov < 50) { %><span class="viz-chip viz-chip--warn"><span class="viz-chip-icon" aria-hidden="true">!</span><span><%= __('viz:scope.coverage_low') %></span></span><% } %>
+        <% } %>
+        <% if (_when) { %><span class="viz-scope-sep" aria-hidden="true">·</span><span class="viz-scope-asof"><%= __('viz:scope.as_of', { date: _when }) %></span><% } %>
+    </p>
+    <% if (_s.editHref) { %><p class="viz-scope-edit"><a href="<%= _s.editHref %>"><%= __('viz:scope.change') %></a></p><% } %>
+    <% if (_f && ((_f.sites || []).length + (_f.noSite ? 1 : 0) > 1 || (_f.departments || []).length > 1)) { %>
+    <details class="viz-scope-form"<%= _f.open ? ' open' : '' %>>
+        <summary><%= __('viz:scope.change') %></summary>
+        <form method="get" action="<%= _f.action || '' %>" class="viz-scope-fields">
+            <% Object.keys(_f.keep || {}).forEach(function (k) { %><input type="hidden" name="<%= k %>" value="<%= _f.keep[k] %>"><% }); %>
+            <% if ((_f.sites || []).length + (_f.noSite ? 1 : 0) > 1) { %>
+            <label class="viz-scope-field"><span><%= __('dash:d3_scope_site') %></span>
+                <select name="site">
+                    <option value=""><%= __('dash:d3_scope_any_site') %></option>
+                    <% (_f.sites || []).forEach(function (o) { %><option value="<%= o.id %>"<%= _sel(o.id, _f.site) %>><%= o.name %></option><% }); %>
+                    <% if (_f.noSite) { %><option value="none"<%= _sel('none', _f.site) %>><%= __('dash:d3_scope_no_site') %></option><% } %>
+                </select>
+            </label>
+            <% } %>
+            <% if ((_f.departments || []).length > 1) { %>
+            <label class="viz-scope-field"><span><%= __('dash:d3_scope_department') %></span>
+                <select name="department">
+                    <option value=""><%= __('dash:d3_scope_any_department') %></option>
+                    <% (_f.departments || []).forEach(function (o) { %><option value="<%= o.id %>"<%= _sel(o.id, _f.department) %>><%= o.label %></option><% }); %>
+                </select>
+            </label>
+            <% } %>
+            <input type="hidden" name="scope" value="all">
+            <button type="submit" class="btn btn-sm btn-primary"><%= __('dash:d3_scope_apply') %></button>
+        </form>
+        <p class="viz-scope-note"><%= __('dash:d3_scope_saved') %></p>
+    </details>
+    <% } %>
+</section>

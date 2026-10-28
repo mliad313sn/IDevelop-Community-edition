@@ -10,7 +10,7 @@
 <%
     const C = counts || {};
     const badge = { draft: 'badge-secondary', active: 'badge-success', completed: 'badge-info', archived: 'badge-secondary' };
-    const statusLabel = { draft: __('idp:st_draft'), active: __('idp:st_active'), completed: __('idp:st_completed'), archived: __('idp:st_archived') };
+    const statusLabel = { draft: __('idp:st_draft'), active: __('idp:st_active'), completed: __('idp:st_completed'), archived: __('idp:st_archived'), cancelled: __('idp:st_cancelled') };
     const priorityLabel = { low: __('idp:pr_low'), medium: __('idp:pr_medium'), high: __('idp:pr_high') };
 %>
 <div style="margin-bottom:1rem;">
@@ -18,6 +18,44 @@
     <span class="pill" style="display:inline-block;background:var(--emerald-dim);color:var(--emerald-text);border:1px solid var(--emerald);border-radius:20px;padding:2px 10px;margin:2px 4px 2px 0"><%= __('idp:st_active') %>: <%= C.active || 0 %></span>
     <span class="pill" style="display:inline-block;background:var(--blue-dim,rgba(91,157,245,.1));color:var(--blue-text);border:1px solid var(--blue);border-radius:20px;padding:2px 10px;margin:2px 4px 2px 0"><%= __('idp:st_completed') %>: <%= C.completed || 0 %></span>
 </div>
+
+<%# What the people of the line PROPOSED (4.0.0 port, wave 4): accept into the
+    plan (a draft is created when none is open) or decline with a reason the
+    person reads. A module page under requireManagerOrAdmin: names allowed. %>
+<% const _props = (typeof proposals !== 'undefined' && Array.isArray(proposals)) ? proposals : []; %>
+<% if (_props.length) { %>
+<link rel="stylesheet" href="/css/idp.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
+<section class="card" style="padding:1.25rem;margin-bottom:1rem" id="proposals" aria-labelledby="idp-props-h">
+    <h2 id="idp-props-h"><%= __('idp:proposals_heading') %> <%- include('../../partials/status-badge', { tone: 'warn', label: String(_props.length) }) %></h2>
+    <ul class="idp-proposals">
+        <% _props.forEach(function (pr) { %>
+        <li>
+            <strong><%= ((pr.firstName || '') + ' ' + (pr.lastName || '')).trim() %></strong> — <%= pr.text %>
+            <span class="idp-meta"><%= __('idp:act_' + pr.actionType) %><% if (pr.skillName) { %> · <%= pr.skillName %><% } %> · <%= pr.createdAt ? locals.fmtDate(pr.createdAt) : '' %><% if (pr.routedTo === 'hr') { %> · <%= __('idp:proposal_routed_hr') %><% } %></span>
+            <div class="idp-ctl-actions">
+                <form method="post" action="/v2/idp/proposals/<%= pr.id %>/decide" class="idp-inline-form">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <input type="hidden" name="decision" value="accept">
+                    <button type="submit" class="btn btn-sm btn-primary"><%= __('idp:proposal_accept') %></button>
+                </form>
+                <details class="idp-ctl-panel">
+                    <summary class="btn btn-sm btn-secondary"><%= __('idp:proposal_decline') %></summary>
+                    <form method="post" action="/v2/idp/proposals/<%= pr.id %>/decide" class="idp-form">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <input type="hidden" name="decision" value="decline">
+                        <div class="form-group">
+                            <label for="idp-pr-reason-<%= pr.id %>"><%= __('idp:reason') %></label>
+                            <textarea id="idp-pr-reason-<%= pr.id %>" name="reason" rows="2" required maxlength="1000" class="form-control"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-secondary"><%= __('idp:proposal_decline') %></button>
+                    </form>
+                </details>
+            </div>
+        </li>
+        <% }); %>
+    </ul>
+</section>
+<% } %>
 
 <% if (!list || list.length === 0) { %>
     <div class="dashboard-section"><p><%= __('idp:manage_empty') %></p></div>
@@ -47,14 +85,14 @@
                             </th>
                             <td class="text-muted" style="font-size:.9em"><%= [p.siteName, p.departmentName].filter(Boolean).join(' / ') || '—' %></td>
                             <td>
-                                <span class="badge <%= badge[p.status] || 'badge-secondary' %>"><%= statusLabel[p.status] || p.status %></span>
+                                <%- include('../../partials/status-badge', { state: p.status, label: statusLabel[p.status] || p.status }) %>
                                 <% if (p.status === 'active' && p.endsOn && new Date(p.endsOn) < new Date()) { %>
                                     <span class="badge badge-danger" title="<%= __('idp:overdue_title') %>"><%= __('idp:overdue') %></span>
                                 <% } %>
                             </td>
                             <td><%= priorityLabel[p.priority] || p.priority %></td>
                             <td style="text-align:center"><%= p.objectiveCount %></td>
-                            <td style="text-align:center"><%= p.openActionCount %><span class="text-muted" style="font-size:.85em">/<%= p.actionCount %></span></td>
+                            <td style="text-align:center"><%= p.openActionCount %><span class="text-muted" style="font-size:.85em">/<%= p.actionCount %></span><% if (p.toValidateCount > 0) { %> <%- include('../../partials/status-badge', { tone: 'warn', label: __('idp:to_validate_n', { count: p.toValidateCount }) }) %><% } %></td>
                             <td class="text-muted" style="font-size:.9em">
                                 <%= p.startsOn ? new Date(p.startsOn).toLocaleDateString(typeof lang !== 'undefined' ? lang : 'fr') : '—' %><%= p.endsOn ? ' → ' + new Date(p.endsOn).toLocaleDateString(typeof lang !== 'undefined' ? lang : 'fr') : '' %>
                             </td>

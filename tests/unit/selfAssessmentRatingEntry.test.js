@@ -45,9 +45,37 @@ describe('progress and submission use separate flags', () => {
     });
 
     test('data-answered still requires the row to be editable', () => {
+        // 4.0.0 port (wave 5): editable = neither the row lock nor a locked campaign.
+        expect(view).toMatch(/const rowRO = saLocked \|\| _ro;/);
         expect(view).toMatch(
-            /data-answered="<%= \(skill\.selfRatedLevel != null && !saLocked\) \? '1' : '0' %>"/
+            /data-answered="<%= \(skill\.selfRatedLevel != null && !rowRO\) \? '1' : '0' %>"/
         );
+    });
+
+    test('every rating select has a real label and is named by its own row', () => {
+        expect(view).toMatch(
+            /<label class="sr-only" for="sa-rate-<%= skill\.skillId %>" id="sk-rlbl-<%= skill\.skillId %>">/
+        );
+        expect(view).toMatch(/id="sa-rate-<%= skill\.skillId %>"/);
+        expect(view).toMatch(
+            /aria-labelledby="sk-rlbl-<%= skill\.skillId %> sk-name-<%= skill\.skillId %>/
+        );
+    });
+
+    test('five 0-4 buttons drive the select, which stays the value holder', () => {
+        expect(view).toMatch(
+            /class="sa-seg" role="radiogroup" data-seg-for="<%= skill\.skillId %>"/
+        );
+        expect(view).toMatch(/class="sa-seg-b" role="radio" data-v="<%= n %>"/);
+        // a tap sets the SELECT and fires the same change event
+        expect(view).toMatch(/sel\.value = btn\.dataset\.v;/);
+        expect(view).toMatch(/if \(!sel \|\| sel\.disabled \|\| btn\.disabled\) return;/);
+    });
+
+    test('a read-only page neither autosaves nor sends', () => {
+        expect(view).toMatch(/const SA_RO = !!\(SA_FORM && SA_FORM\.dataset\.readonly\);/);
+        expect(view).toMatch(/if \(!SA_RO\) selects\.forEach/);
+        expect(view).toMatch(/<% if \(!_ro\) \{ %>\s*<span class="sa-autosave"/);
     });
 
     test('progress reads data-rated', () => {

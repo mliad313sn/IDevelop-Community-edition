@@ -52,6 +52,7 @@ const STATUS_BY_CODE = {
     exclusion_until_invalid: 400,
     exclusion_until_past: 400,
     exclusion_selection_empty: 400,
+    exclusion_filter_empty: 400,
     nudge_selection_empty: 400,
     cycle_code_required: 400,
     cycle_code_invalid: 400,
@@ -277,16 +278,8 @@ class CycleController {
         const sort = sortLinks(req.query, CycleService.SORT_COLUMNS, roster.sort, {
             basePath: `/cycles/${id}`,
         });
-        const filtered = !!(
-            f.state ||
-            f.q ||
-            f.siteId.length ||
-            f.departmentId.length ||
-            f.serviceId.length ||
-            f.roleId.length ||
-            f.supervisorId.length ||
-            f.noSupervisor
-        );
+        // state, q, siteId, departmentId, serviceId, roleId, supervisorId, noSupervisor
+        const filtered = CycleService.isFiltered(f);
 
         // SECTION campaign-rules — the three campaign-lifecycle facts the console must state:
         // A8 the closure proposal (and its whole history, decided ones included),

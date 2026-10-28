@@ -141,5 +141,15 @@
   "saw_err_comment_empty": "Le commentaire ne peut pas être vide.",
   "saw_err_comment_not_authorized": "Vous n'êtes pas autorisé à commenter cette évaluation.",
   "saw_err_view_not_authorized": "Vous n'êtes pas autorisé à consulter cette évaluation.",
-  "saw_err_timeline_not_authorized": "Vous n'êtes pas autorisé à consulter cette chronologie."
+  "saw_err_timeline_not_authorized": "Vous n'êtes pas autorisé à consulter cette chronologie.",
+  "svr_err_level_range": "Le niveau validé doit être un nombre entier de 0 à 4.",
+  "svr_err_review_not_found": "Cette revue est introuvable.",
+  "svr_err_review_not_pending": "Cette revue a déjà été décidée ou clôturée.",
+  "svr_err_round_missing": "L’auto-évaluation sur laquelle porte cette revue n’existe plus.",
+  "svr_err_round_not_reviewable": "Cette auto-évaluation n’attend plus de revue : elle ne peut pas être décidée ici.",
+  "svr_err_complete_failed": "La revue n’a pas pu être enregistrée. Veuillez réessayer.",
+  "saw_err_arbitrate_reject_reason": "Un motif est obligatoire pour rejeter une évaluation en arbitrage.",
+  "saw_err_arbitrate_no_dispute": "Une évaluation ne peut être mise en arbitrage que si une contestation est ouverte sur sa revue.",
+  "saw_err_reset_reason_required": "Un motif est obligatoire pour réinitialiser une évaluation.",
+  "saw_err_cannot_reset": "Une évaluation à l’état « {{state}} » ne peut pas être réinitialisée."
 }

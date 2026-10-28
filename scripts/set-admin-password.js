@@ -4,14 +4,22 @@
  * Used by the installer to replace the seed default (admin123) with a strong
  * random password on a fresh database.
  *
- * Usage: node scripts/set-admin-password.js <newPassword> [username]
+ * Usage: SET_ADMIN_PASSWORD=<newPassword> node scripts/set-admin-password.js [username]
+ *        (legacy: node scripts/set-admin-password.js <newPassword> [username])
+ *
+ * The password comes from the environment. On the command line it was readable
+ * by any local user in the process list (Get-CimInstance Win32_Process,
+ * tasklist /v, ps) for the life of the process. The variable is removed from
+ * this process's environment as soon as it is read.
  */
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const db = require('../src/config/database');
 
-const pw = process.argv[2];
-const username = process.argv[3] || 'admin';
+const fromEnv = process.env.SET_ADMIN_PASSWORD;
+const pw = fromEnv || process.argv[2];
+const username = (fromEnv ? process.argv[2] : process.argv[3]) || 'admin';
+delete process.env.SET_ADMIN_PASSWORD;
 if (!pw || pw.length < 8) {
     console.error('A password of at least 8 characters is required.');
     process.exit(1);

@@ -49,20 +49,22 @@ describe('C3e — the invitation content', () => {
     };
     const emp = { type: 'employee', isAdmin: false, firstName: 'Awa', name: 'Awa Silva' };
 
-    test('FR first, EN after; only a /login link; UPN; never-a-password line; contact', () => {
+    test('one language per mail; only a /login link; UPN; never-a-password line; contact', () => {
         const m = Inv.compose({ ...base, rec: emp });
-        expect(m.subject).toBe(
-            '[MonApp] Connectez-vous avec votre compte Contoso / Sign in with your Contoso account'
-        );
-        const links = [...m.html.matchAll(/href="([^"]+)"/g)].map((x) => x[1]);
+        // The subject is the catalogue's: no provider, no name, one language.
+        expect(m.subject).toBe('MonApp — Connexion avec votre compte d’entreprise : ce qui change');
+        const links = [...new Set([...m.html.matchAll(/href="([^"]+)"/g)].map((x) => x[1]))];
         expect(links).toEqual(['https://app.example.test/login']);
         expect(m.text.indexOf('Bonjour Awa')).toBe(0);
-        expect(m.text.indexOf('Hello Awa')).toBeGreaterThan(m.text.indexOf('Bonjour Awa'));
+        expect(m.text).not.toMatch(/Hello Awa/);
         expect(m.text).toMatch(
             /Saisissez votre identifiant d’entreprise : awa\.silva@contoso\.example/
         );
         expect(m.text).toMatch(/Nous ne vous demanderons jamais votre mot de passe par e-mail/);
-        expect(m.text).toMatch(/We will never ask for your password by e-mail/);
+        const en = Inv.compose({ ...base, rec: emp, lang: 'en' });
+        expect(en.text.indexOf('Hello Awa')).toBe(0);
+        expect(en.text).toMatch(/We will never ask for your password by e-mail/);
+        expect(en.text).not.toMatch(/Bonjour/);
         expect(m.text).toMatch(/Un problème \? Contactez le support RH \(poste 1234\)/);
         expect(m.text).toMatch(/Poste partagé/);
         expect(m.text).not.toMatch(/Compte administrateur/);
@@ -71,8 +73,10 @@ describe('C3e — the invitation content', () => {
 
     test('an admin gets the second-factor block; a first e-mail match gets the security notice', () => {
         const a = Inv.compose({ ...base, rec: { ...emp, type: 'admin', isAdmin: true } });
+        // The local code is asked only when the company sign-in did not already
+        // prove a second factor (AdminSsoService.mfaFromEvidence).
         expect(a.text).toMatch(
-            /Compte administrateur : après la connexion Contoso, un code à 6 chiffres/
+            /Compte administrateur : si votre connexion d’entreprise ne vous a pas déjà demandé une seconde vérification .*un code à 6 chiffres/
         );
         const s = Inv.compose({ ...base, variant: 'security_notice', rec: emp });
         expect(s.text).toMatch(/Si ce n’est pas vous, contactez immédiatement le support RH/);

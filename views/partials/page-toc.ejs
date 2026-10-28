@@ -1,0 +1,13 @@
+<%# page-toc — « Sur cette page »: a table of contents for a long page (settings,
+    data management…). Locals: tocItems = [{ id, label, icon }], tocId (optional).
+    Every id must be an anchor on the page. Styles: style.css (.page-toc). %>
+<% const _tocId = (typeof tocId !== 'undefined' && tocId) ? String(tocId) : 'pageToc';
+   const _tocItems = (typeof tocItems !== 'undefined' && Array.isArray(tocItems)) ? tocItems : []; %>
+<% if (_tocItems.length) { %>
+<nav class="page-toc" id="<%= _tocId %>" aria-labelledby="<%= _tocId %>H">
+    <p class="page-toc-h" id="<%= _tocId %>H"><%= __('chrome:pg_toc_title') %></p>
+    <ul>
+        <% _tocItems.forEach(function (e) { %><li><a href="#<%= String(e.id || '').replace(/[^A-Za-z0-9_-]/g, '') %>"><i class="fas <%= /^fa-[a-z0-9-]+$/.test(String(e.icon || '')) ? e.icon : 'fa-circle-dot' %>" aria-hidden="true"></i> <%= e.label %></a></li><% }); %>
+    </ul>
+</nav>
+<% } %>

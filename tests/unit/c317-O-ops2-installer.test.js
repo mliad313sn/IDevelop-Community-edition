@@ -70,6 +70,8 @@ const ACL = [
     'Test-AclHardened',
     'Set-ServiceSidAce',
     'Protect-SensitivePath',
+    'Get-HrisDropRoot',
+    'Get-AppAclTargets',
     'Protect-AppDataAcls',
 ];
 const SYSTEM = 'S-1-5-18';
@@ -194,7 +196,7 @@ Get-ChildItem -LiteralPath '${b}' -Recurse -Force -ErrorAction SilentlyContinue 
         );
 
         wt(
-            'Virtual: the service SID gets Read on .env, Modify on folders and on the install root',
+            'Virtual: the service SID gets Read on .env, Modify on folders, ReadAndExecute on the install root',
             () => {
                 const sid = r.svcSid;
                 const READ = 1179785; // FileSystemRights.Read (+Synchronize)
@@ -202,7 +204,10 @@ Get-ChildItem -LiteralPath '${b}' -Recurse -Force -ErrorAction SilentlyContinue 
                 expect(r.p2.bad).toBe(0);
                 expect(r.p2.env.sids).toEqual([SYSTEM, ADMINS, sid].sort());
                 expect(r.p2.env.rights).toContain(`${sid}=${READ}`);
-                expect(r.p2.root.rights).toContain(`${sid}=${MODIFY}`);
+                // ReadAndExecute on the install root (the code), never Modify.
+                const RX = 1179817; // FileSystemRights.ReadAndExecute (+Synchronize)
+                expect(r.p2.root.rights).toContain(`${sid}=${RX}`);
+                expect(r.p2.root.rights).not.toContain(`${sid}=${MODIFY}`);
                 expect(r.p2.again).toBe('already restricted');
                 expect(r.p2.staleTls).toBe('restricted');
                 expect(r.p2.tls.rights).toContain(`${sid}=${MODIFY}`);
@@ -342,13 +347,15 @@ $o = [ordered]@{
 });
 
 describe('config.psd1 — shipped defaults', () => {
-    test('LocalSystem, HTTPS off, audit separation off; NO credential ships in the public config', () => {
+    test('service account Auto, HTTPS off, audit separation Auto (off for a new install); NO credential ships', () => {
         const cfg = fs.readFileSync(CONFIG, 'utf8');
-        expect(cfg).toMatch(/^\s*ServiceAccount\s*=\s*'LocalSystem'/m);
+        // 'Auto': a new install runs as NT SERVICE\<name>; an upgrade keeps its account.
+        expect(cfg).toMatch(/^\s*ServiceAccount\s*=\s*'Auto'/m);
         expect(cfg).toMatch(
             /Https\s*=\s*@\{[\s\S]*?Enabled\s*=\s*\$false[\s\S]*?Port\s*=\s*3443[\s\S]*?CertThumbprint\s*=\s*''[\s\S]*?SelfSigned\s*=\s*\$true/
         );
-        expect(cfg).toMatch(/^\s*AuditOwnerSeparation\s*=\s*\$false/m);
+        // 'Auto': off for a new install (it disables four SuperAdmin tools), offered.
+        expect(cfg).toMatch(/^\s*AuditOwnerSeparation\s*=\s*'Auto'/m);
         // A public repository must never carry a working credential: both
         // appliance-wide passwords ship blank (the installer then generates or
         // asks for them).

@@ -44,8 +44,12 @@
  *
  * Usage:
  *   node scripts/reset-for-golive.js                 # dry-run: print the plan only
- *   node scripts/reset-for-golive.js --confirm       # execute (pg_dump backup first)
- *   node scripts/reset-for-golive.js --confirm --skip-backup   # execute without backup (NOT advised)
+ *   node scripts/reset-for-golive.js --confirm --confirm-word=PRODUCTION
+ *                                                    # execute (pg_dump backup first)
+ *   node scripts/reset-for-golive.js --confirm --confirm-word=PRODUCTION --skip-backup
+ *                                                    # execute without backup (NOT advised)
+ * The typed word is checked by the script itself: --confirm without it (or
+ * with another word) aborts before anything is read or wiped.
  */
 
 const { execFileSync } = require('child_process');
@@ -80,6 +84,7 @@ const KEEP = new Set([
     // employees (identity + core profile)
     'employees',
     'employee_demographics',
+    'dei_consents',
     // admin accounts + authentication + identity + delegation of authority
     'admins',
     'admin_scopes',
@@ -112,7 +117,21 @@ const KEEP = new Set([
     'app_settings',
     'report_templates',
     'report_schedules',
+    // SA-38: the recipient accounts of a schedule are part of its configuration.
+    'report_schedule_recipients',
     'notification_preferences',
+    // Migration 183: each person's notification settings and category grid are
+    // their own choices, kept like notification_preferences.
+    'notification_user_settings',
+    'notification_category_prefs',
+    // Migration 185: each person's last dashboard scope, a screen preference
+    // re-validated on every read, kept like the notification settings.
+    'dashboard_scope_prefs',
+    // Migration 187: each person's digest cadence, kept like the notification
+    // settings. Migration 186: the KPI targets are governance decisions
+    // (append-only by trigger), kept like the report schedules.
+    'persona_digest_prefs',
+    'kpi_targets',
     'webhook_subscriptions',
     'lms_integrations',
     // HRIS sync (migration 160): the connector settings and the value mappings
@@ -136,6 +155,16 @@ const KEEP = new Set([
     // and the retention ledger is the record of what the purge did.
     'erasure_tombstones',
     'retention_ledger',
+    // Privacy (migration 165): the notice (configuration), who acknowledged
+    // which version, the people's objections to profiling (a right they
+    // exercised) and the record of their self-service downloads: registers, kept.
+    'privacy_notice_versions',
+    'privacy_notice_acks',
+    'profiling_objections',
+    'privacy_self_exports',
+    // Erasure under legal hold (migration 166): the two-person override
+    // requests are a legal register, kept like dsr_requests.
+    'erasure_override_requests',
 ]);
 
 // Tables to WIPE: assessment, talent, performance, workflow and operational data.
@@ -185,10 +214,25 @@ const WIPE = new Set([
     // IDP lifecycle journal (migration 146): follows its plans.
     'idp_plan_events',
     'idp_signoffs',
+    // Development proposals (migration 192): follow the plans they fed.
+    'dev_proposals',
+    // End-of-campaign records (migration 193): follow the campaigns they
+    // describe. Row triggers only (no TRUNCATE guard), so the wipe needs none lifted.
+    'review_records',
+    // Board decisions, their history and the recorded packs (migrations 197,
+    // 198): what was decided on the trial figures. Row triggers only.
+    'board_decisions',
+    'board_decision_events',
+    'board_pack_runs',
     'job_runs',
     'hris_links',
     'hris_sync_runs',
     'kpi_snapshots',
+    // Migration 186: alert states and transitions follow the figures they
+    // describe. Migration 187: the archived digests follow the notifications.
+    'kpi_alert_states',
+    'kpi_alert_events',
+    'persona_digests',
     // SAML replay protection (migration 145): short-lived operational state.
     'saml_request_cache',
     'saml_assertion_seen',
@@ -210,12 +254,19 @@ const WIPE = new Set([
     'perf_events',
     'pii_cleanup_jobs',
     'pip_milestones',
+    // The checkpoints of the plans (migration 195).
+    'pip_reviews',
     'pips',
     'planned_absences',
     'post_approval_reviews',
+    // Privacy (migration 165): 9-box development triggers held for review follow
+    // the 9-box evaluations they came from (wiped here).
+    'privacy_paused_triggers',
     'readiness_snapshots',
     'recognitions',
     'reminder_log',
+    // SA-38: in-app copies of scheduled reports hold pilot data: wiped.
+    'report_schedule_runs',
     'retention_risk',
     'review_signatures',
     'review_summaries',
@@ -235,6 +286,9 @@ const WIPE = new Set([
     'safety_gate_status',
     'safety_gate_status_history',
     'safety_gate_webhook_deliveries',
+    // Waivers and contests (migration 174): decisions taken on pre-go-live data.
+    'safety_gate_waivers',
+    'safety_gate_contests',
     'successors',
     'supervisor_reviews',
     // Who a survey was sent to (migration 147): follows its responses.
@@ -310,7 +364,19 @@ function triggerPlan(triggers) {
     return { disable, refused };
 }
 
-module.exports = { KEEP, WIPE, APPEND_ONLY_WIPE, CRITICAL, classify, triggerPlan };
+/**
+ * The typed word given with --confirm (`--confirm-word=PRODUCTION`, any case,
+ * with or without accents). Without it --confirm wipes nothing.
+ * @param {string[]} args the command-line arguments
+ */
+function confirmWordOk(args) {
+    const prefix = '--confirm-word=';
+    const arg = (args || []).find((a) => typeof a === 'string' && a.startsWith(prefix));
+    const { typedWordMatches } = require('../src/utils/typedConfirmation');
+    return typedWordMatches('goLive', arg ? arg.slice(prefix.length) : '');
+}
+
+module.exports = { KEEP, WIPE, APPEND_ONLY_WIPE, CRITICAL, classify, triggerPlan, confirmWordOk };
 
 function mask(url) {
     return String(url || '').replace(/:[^:@/]+@/, ':****@');
@@ -358,6 +424,13 @@ async function main() {
     const args = process.argv.slice(2);
     const CONFIRM = args.includes('--confirm');
     const SKIP_BACKUP = args.includes('--skip-backup');
+    // The typed word is checked by the script itself, not only by the menu
+    // that runs it: `--confirm` alone wipes nothing.
+    if (CONFIRM && !confirmWordOk(args)) {
+        throw new Error(
+            'ABORT: --confirm needs the typed word too (--confirm-word=PRODUCTION). Nothing was changed.'
+        );
+    }
 
     await db.connect();
     const client = db._client();
@@ -454,7 +527,7 @@ async function main() {
 
     if (!CONFIRM) {
         console.log(
-            '\nDRY RUN — nothing was changed. Re-run with --confirm to execute' +
+            '\nDRY RUN — nothing was changed. Re-run with --confirm --confirm-word=PRODUCTION to execute' +
                 (SKIP_BACKUP ? '' : ' (a pg_dump backup is taken first)') +
                 '.'
         );

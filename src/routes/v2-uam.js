@@ -67,9 +67,16 @@ router.get(
     })
 );
 
+// Both second-factor checks below are rate-limited per signed-in user
+// (mfaReauthLimiter: only REFUSED posts count) and every refusal also counts
+// toward the account's lockout policy (noteAuthenticatedFailure): a borrowed
+// session must not be an unlimited TOTP / backup-code oracle.
+const { mfaReauthLimiter, noteAuthenticatedFailure } = require('../middleware/rateLimiter');
+
 router.post(
     '/mfa/verify',
     requireAuth,
+    mfaReauthLimiter,
     ah(async (req, res) => {
         const userType = MfaService.mfaUserType(req.user);
         const ok = await MfaService.verifyAndConfirm({
@@ -78,6 +85,7 @@ router.post(
             code: String(req.body.code || '').trim(),
         });
         if (!ok) {
+            await noteAuthenticatedFailure(req.user, req.ip);
             req.flash(
                 'error',
                 req.t
@@ -123,6 +131,7 @@ router.post(
 router.post(
     '/mfa/disable',
     requireAuth,
+    mfaReauthLimiter,
     ah(async (req, res) => {
         const userType = MfaService.mfaUserType(req.user);
         // C2 (3.23.20): a SuperAdmin's MFA is ALWAYS mandatory — it cannot be
@@ -153,6 +162,7 @@ router.post(
             (await MfaService.verifyAtLogin({ userType, userId: req.user.id, code })) ||
             (await MfaService.consumeBackupCode({ userType, userId: req.user.id, code }));
         if (!ok) {
+            await noteAuthenticatedFailure(req.user, req.ip);
             req.flash(
                 'error',
                 req.t

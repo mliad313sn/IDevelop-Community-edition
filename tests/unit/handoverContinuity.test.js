@@ -369,7 +369,10 @@ describe('cert-expiry — the expired are the ones who most need a refresher', (
         const out = await require('../../src/jobs/cert-expiry').tick();
         expect(out.alerts).toBe(1);
         expect(out.lmsAssigned).toBe(1);
-        expect(assignCourse).toHaveBeenCalledWith(10, 501, { assignedBy: null });
+        expect(assignCourse).toHaveBeenCalledWith(10, 501, {
+            assignedBy: null,
+            notifyLearner: false, // the expiry mail says it (wave 7)
+        });
     });
 
     test('stages 2 and 3 still assign, stage 1 still does not', async () => {

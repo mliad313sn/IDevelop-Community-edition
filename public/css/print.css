@@ -1,0 +1,216 @@
+/* ═══════════════════════════════════════════════════════════════════
+   IDevelop — the paper sheet (linked last by views/layouts/main.ejs with
+   media="print", so it never touches the screen).
+
+   One sheet for every page that uses the main layout:
+     • paper is Daylight whatever the screen shows: the surface, ink, border
+       and status tokens below are the Daylight values of horizon.css,
+       style.css and viz.css, forced with !important so a dark screen theme
+       or a colour theme can never print dark;
+     • the brand tokens are the Iris Daylight ones WITHOUT !important, so an
+       organisation's accent (branding.js prints its own Daylight block with
+       a higher specificity) still wins on paper;
+     • no chrome: top bar, rail, breadcrumbs, help, palette, buttons;
+     • A4 portrait (a page sheet such as the board pack may set its own @page);
+     • a printed header: product · page · date · internal-use line;
+     • blocks are never cut across two sheets; badges read without colour.
+   tests/unit/printSheet.test.js measures every ink below against the paper.
+   ═══════════════════════════════════════════════════════════════════ */
+
+@page {
+    size: A4;
+    margin: 14mm;
+}
+
+:root,
+:root[data-theme='light'] {
+    --bg-base: #ffffff !important;
+    --bg-panel: #ffffff !important;
+    --bg-card: #ffffff !important;
+    --bg-elevated: #f7f6fc !important;
+    --bg-input: #ffffff !important;
+    --bg-body: #ffffff !important;
+    --bg-surface: #ffffff !important;
+    --bg-subtle: #f7f6fc !important;
+    --bg-inset: #f1eff9 !important;
+
+    --text-primary: #1f1d3a !important;
+    --text-secondary: #514f6b !important;
+    --text-muted: #63617d !important;
+    --text-tertiary: #63617d !important;
+    --text-inverse: #ffffff !important;
+
+    --border: #c9c7d9 !important;
+    --border-subtle: #e4e2f0 !important;
+    --border-light: #e4e2f0 !important;
+    --border-input: #7d7a95 !important;
+
+    --emerald: #0b7a56 !important;
+    --emerald-text: #0b7a56 !important;
+    --emerald-dim: transparent !important;
+    --amber: #a94e08 !important;
+    --amber-text: #a94e08 !important;
+    --amber-dim: transparent !important;
+    --red: #c03030 !important;
+    --red-text: #c03030 !important;
+    --red-dim: transparent !important;
+    --blue: #3066c2 !important;
+    --blue-text: #3066c2 !important;
+    --blue-dim: transparent !important;
+
+    --viz-good: #1f7a56 !important;
+    --viz-warn: #a3490b !important;
+    --viz-risk: #c62828 !important;
+    --viz-unmeasured: #63617d !important;
+    --viz-neutral: #514f6b !important;
+    --viz-target: #1f1d3a !important;
+    --viz-grid: #e4e2f0 !important;
+    --viz-required: #1f1d3a !important;
+    --viz-surface: #ffffff !important;
+    --viz-text: #1f1d3a !important;
+    --viz-text-dim: #514f6b !important;
+    --viz-track: rgba(31, 29, 58, 0.07) !important;
+
+    --shadow-sm: none !important;
+    --shadow-md: none !important;
+    --shadow-lg: none !important;
+    --shadow-xl: none !important;
+
+    color-scheme: light;
+}
+
+/* The accent on paper: Iris Daylight, out-ranked by an organisation's own
+   Daylight block (branding.js, :root ×5 under @media print). */
+:root:root:root:root {
+    --brand: #5b4be0;
+    --brand-hover: #4e3fd0;
+    --brand-pressed: #4334b8;
+    --brand-text: #4e3fd0;
+    --brand-dim: transparent;
+    --brand-subtle: transparent;
+    --brand-glow: transparent;
+    --focus-ring: #4e3fd0;
+}
+
+html,
+body {
+    background: #ffffff !important;
+    color: #1f1d3a !important;
+    font-size: 10.5pt;
+}
+
+/* Chrome and interaction-only UI never reach the paper. */
+.skip-link,
+.topbar,
+#appTopbar,
+.sidebar,
+#appSidebar,
+.nav-backdrop,
+.breadcrumbs,
+.app-footer,
+.help-fab,
+.help-panel,
+.cmdk,
+.scroll-to-top,
+.toast-container,
+.nav-pending,
+.lic-banner,
+#mfa-grace-banner,
+.flash-close,
+.btn,
+button,
+input[type='submit'],
+input[type='button'],
+.no-print {
+    display: none !important;
+}
+.print-keep,
+.print-keep .btn {
+    display: revert !important;
+}
+
+body.has-sidebar .main-content,
+.main-content {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+}
+.content-wrapper {
+    padding: 0 !important;
+    max-width: none !important;
+}
+
+/* The printed header (views/layouts/main.ejs): hidden on screen. */
+.print-header {
+    display: flex !important;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid #7d7a95;
+    padding-bottom: 4px;
+    margin-bottom: 10px;
+    font-size: 9pt;
+    color: #514f6b;
+}
+
+/* Cards: flat, ruled, never cut in two. */
+.card,
+.stat-card,
+.kpi-tile,
+.idp-card,
+.idp-print-sign,
+tr,
+li,
+figure {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+.card,
+.stat-card {
+    background: #ffffff !important;
+    border: 1px solid #c9c7d9 !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+h1,
+h2,
+h3,
+h4 {
+    break-after: avoid;
+    color: #1f1d3a !important;
+}
+
+/* Badges read in black and white: a border and the text, no fill. */
+.badge,
+.status-badge,
+.viz-chip,
+.chip {
+    background: transparent !important;
+    border: 1px solid currentColor !important;
+}
+
+/* Links print as text; a long table is never capped. */
+a,
+a:visited {
+    color: inherit !important;
+    text-decoration: none !important;
+}
+.table-wrapper {
+    overflow: visible !important;
+    max-height: none !important;
+}
+.table th {
+    position: static !important;
+    background: #f1eff9 !important;
+}
+
+/* A printed form shows its values, not empty widgets. */
+input,
+select,
+textarea {
+    border: 0 !important;
+    background: transparent !important;
+    color: #1f1d3a !important;
+}
+details:not([open]) {
+    display: none !important;
+}

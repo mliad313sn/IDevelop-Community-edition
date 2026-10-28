@@ -330,6 +330,17 @@ describe('F10/F12 — a resolution carries an integer 0-4 rating, refused server
 
 describe('F6 — the L2 SLA cannot finalise an absence of measurement', () => {
     const MARK = '[hr_arbitration_required: no supervisor rating to finalise]';
+    // Automatic finalisation is OFF by default since migration 194: these
+    // cases are about what it does once an administrator switched it on.
+    const AppSettings = require('../../src/models/AppSettingsModel');
+    beforeEach(() => {
+        AppSettings.getValue.mockImplementation(async (key, def) =>
+            key === 'dispute.autoFinalizeOnExpiry' ? 'true' : def
+        );
+    });
+    afterEach(() => {
+        AppSettings.getValue.mockImplementation(async (key, def) => def);
+    });
 
     test('a NULL supervisor rating is NOT finalised: HR is raised once, marker recorded, 0 finalised', async () => {
         mockDb.all.mockResolvedValue([{ id: 5 }]);
@@ -453,7 +464,19 @@ describe('F3 — a terminal arbitration finalises the supervisor review', () => 
 
     test('a plain hold (no outcome → arbitration) decides nothing on the review', async () => {
         wireWorkflow({ state: 'submitted' });
+        // The neutral "arbitration" outcome only exists to settle an open
+        // dispute: without one it is refused and nothing is written (SA-42).
+        await expect(WF.arbitrate(555, mgrUser, { note: 'looking into it' })).rejects.toThrow(
+            /without an open dispute/
+        );
+        expect(stateUpdate()).toBeUndefined();
+        // With an open dispute on the review, the hold is taken and still decides nothing.
+        const base = mockDb.get.getMockImplementation();
+        mockDb.get.mockImplementation(async (sql, p) =>
+            /FROM assessment_disputes ad/.test(sql) ? { id: 31 } : base(sql, p)
+        );
         await WF.arbitrate(555, mgrUser, { note: 'looking into it' });
+        expect(stateUpdate()[1][0]).toBe('arbitration');
         expect(reviewFinalisation()).toHaveLength(0);
         expect(mockSkill.upsert).not.toHaveBeenCalled();
     });
@@ -865,7 +888,8 @@ describe('routes/v2-slf.js answers a service refusal as the 4xx it is', () => {
     const routes = read('src/routes/v2-slf.js');
 
     test('every dispute mutation catches the refusal', () => {
-        for (const p of ['resolveL0', 'resolveL1', 'resolveL2', 'open']) {
+        // Level 0 proposes since migration 194; the person answers it.
+        for (const p of ['proposeL0', 'respondToProposal', 'resolveL1', 'resolveL2', 'open']) {
             expect(routes).toMatch(
                 new RegExp(
                     `await DisputeServiceV2\\.${p}\\([\\s\\S]{0,300}?\\}\\);\\s*\\} catch \\(e\\) \\{\\s*if \\(sendDisputeRefusal\\(req, res, e\\)\\) return;\\s*throw e;`

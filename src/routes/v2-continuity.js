@@ -121,6 +121,72 @@ function deny(res) {
     return res.status(403).json({ ok: false, error: 'Not authorized for this record' });
 }
 
+/** '' / null / undefined → null (cleared); a positive integer → it; anything else → undefined (400). */
+function parseIncoming(v) {
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+/** 'admin:<id>' | 'employee:<id>': who acted, stored on the row. */
+function actorRefOf(user) {
+    if (!user || user.id == null) return null;
+    return `${isAdmin(user) ? 'admin' : 'employee'}:${Number(user.id)}`;
+}
+
+/** One audit line per succession act (SA-43), same shape as plan review. */
+async function auditContinuity(req, action, entityType, entityId, details) {
+    try {
+        await LogService.log({
+            adminId: isAdmin(req.user) ? Number(req.user.id) : null,
+            action,
+            entityType,
+            entityId,
+            details,
+            actorRef: actorRefOf(req.user),
+            category: 'continuity',
+        });
+    } catch (e) {
+        console.error('[continuity] audit failed:', e && e.message);
+    }
+}
+
+/**
+ * Flight risk (SA-43): a person's risk of loss (flight risk, impact) is read only by
+ * their MANAGER or by a holder of view_retention_risk. The module mount also
+ * admits view_continuity / manage_succession / manage_handover delegates —
+ * none of them may read flight risk on that ground.
+ *   - SuperAdmin                               → null (everyone)
+ *   - admin holding view_ / manage_retention_risk → null (inside its clearance)
+ *   - manager (an employee leading a line)     → null (inside their governed line)
+ *   - any other admin                           → only the people it is directly
+ *     named manager of (employees.manager_type = 'admin'), inside its clearance
+ *   - anybody else                              → [] (nothing)
+ * `null` = no extra restriction beyond the caller's scope; an array = only these.
+ * Fails closed ([]) on any lookup error.
+ */
+async function retentionRestriction(user) {
+    if (!user) return [];
+    if (RBACService.isSuperAdmin && RBACService.isSuperAdmin(user)) return null;
+    if (isAdmin(user)) {
+        if (
+            RBACService.hasPermission(user, 'view_retention_risk') ||
+            RBACService.hasPermission(user, 'manage_retention_risk')
+        )
+            return null;
+        try {
+            const ids = await require('../services/GovernanceService').adminDesignatedEmployeeIds(
+                user.id
+            );
+            return (ids || []).map(Number).filter(Boolean);
+        } catch (_) {
+            return [];
+        }
+    }
+    if (user.userType === 'manager') return null;
+    return [];
+}
+
 // ---- Overview --------------------------------------------------------------
 router.get(
     '/',
@@ -139,12 +205,16 @@ router.get(
         // governed set and always for the caller themselves (a manager must not read
         // their own flight-risk through a role one of their reports holds). Without
         // the span it fails closed and masks every incumbent, in-span ones included.
+        // The incumbent's risk is unmasked only where the caller may read
+        // risk-of-loss (manager of the person, or view_retention_risk).
+        const riskOnly = isSuper ? null : await retentionRestriction(req.user);
+        const riskIds = riskOnly === null ? govIds : govIds.filter((id) => riskOnly.includes(id));
         const coverage = await ContinuityService.listCoverage(
             isSuper ? null : govRoleIds,
             isSuper
                 ? null
                 : {
-                      governedIds: govIds,
+                      governedIds: riskIds,
                       callerEmployeeId: req.user.userType !== 'admin' ? Number(req.user.id) : null,
                   }
         );
@@ -215,7 +285,7 @@ router.post(
             entityType: 'succession_plan',
             entityId: Number(req.params.id),
             details: `review_due -> ${nextDue || '—'}`,
-            actorRef: isAdmin(req.user) ? null : `employee#${req.user && req.user.id}`,
+            actorRef: actorRefOf(req.user),
             category: 'continuity',
         });
         res.json({ ok: true, id: row.id, reviewDue: nextDue });
@@ -309,7 +379,15 @@ router.post(
         // Clearing the incumbent (null) stays allowed.
         if (incumbentEmployeeId && !(await inScope(req.user, incumbentEmployeeId)))
             return deny(res);
-        await ContinuityService.setIncumbent(Number(req.params.id), incumbentEmployeeId);
+        const ch = await ContinuityService.setIncumbent(Number(req.params.id), incumbentEmployeeId);
+        // An incumbent change is audited (from → to).
+        await auditContinuity(
+            req,
+            'succession_plan_incumbent_changed',
+            'succession_plan',
+            Number(req.params.id),
+            `incumbent ${ch && ch.fromIncumbent != null ? `#${ch.fromIncumbent}` : '—'} -> ${incumbentEmployeeId ? `#${incumbentEmployeeId}` : '—'}`
+        );
         res.json({ ok: true });
     })
 );
@@ -320,7 +398,16 @@ router.post(
     requireSuccessionWrite,
     ah(async (req, res) => {
         if (!(await canAccessPlan(req.user, req.params.id))) return deny(res);
-        await ContinuityService.archivePlan(Number(req.params.id));
+        const row = await ContinuityService.archivePlan(Number(req.params.id));
+        // Archiving a plan is audited.
+        if (row)
+            await auditContinuity(
+                req,
+                'succession_plan_archived',
+                'succession_plan',
+                Number(req.params.id),
+                `status ${row.fromStatus || '—'} -> archived`
+            );
         res.json({ ok: true });
     })
 );
@@ -370,6 +457,17 @@ router.post(
             employeeId,
             await actorAdminId(req.user)
         );
+        // Measurement (migration 183): the succession-review reminder was acted
+        // upon. Best-effort, never throws.
+        await Promise.resolve()
+            .then(() =>
+                require('../services/NotificationService').actedQuietly({
+                    userType: req.user && req.user.userType === 'admin' ? 'admin' : 'employee',
+                    userId: Number(req.user && req.user.id),
+                    kinds: ['succession.review_due'],
+                })
+            )
+            .catch(() => 0);
         res.json({ ok: true, id: row.id, readinessBand: row.readinessBand });
     })
 );
@@ -384,18 +482,47 @@ router.post(
             return res.status(400).json({ ok: false, error: 'invalid readiness band' });
         }
         if (!(await canAccessPlanBySuccessor(req.user, req.params.id))) return deny(res);
-        await ContinuityService.setSuccessorBand(Number(req.params.id), band);
+        const row = await ContinuityService.setSuccessorBand(Number(req.params.id), band);
+        if (!row) return res.status(404).json({ ok: false, error: 'Successor not found' });
+        // A manual band override is audited (from → to).
+        await auditContinuity(
+            req,
+            'successor_band_overridden',
+            'successor',
+            Number(req.params.id),
+            `plan #${row.planId}, candidate #${row.candidateEmployeeId}: ${row.fromBand || '—'} -> ${row.toBand}`
+        );
         res.json({ ok: true });
     })
 );
 
+// Never deleted (SA-43): state 'removed' with who, when and why, audited.
 router.post(
     '/successor/:id/remove',
     requireAuth,
     requireSuccessionWrite,
     ah(async (req, res) => {
         if (!(await canAccessPlanBySuccessor(req.user, req.params.id))) return deny(res);
-        await ContinuityService.removeSuccessor(Number(req.params.id));
+        const reason = String((req.body && req.body.reason) || '').trim();
+        if (!reason) {
+            return res.status(400).json({
+                ok: false,
+                code: 'reason_required',
+                error: req.t ? req.t('talentx:err_reason_required') : 'A reason is required.',
+            });
+        }
+        const row = await ContinuityService.removeSuccessor(Number(req.params.id), {
+            reason,
+            actorRef: actorRefOf(req.user),
+        });
+        if (!row) return res.status(404).json({ ok: false, error: 'Successor not found' });
+        await auditContinuity(
+            req,
+            'successor_removed',
+            'successor',
+            Number(req.params.id),
+            `plan #${row.planId}, candidate #${row.candidateEmployeeId}; reason: ${reason.slice(0, 200)}`
+        );
         res.json({ ok: true });
     })
 );
@@ -424,7 +551,14 @@ router.get(
     '/retention',
     requireAuth,
     ah(async (req, res) => {
+        // The manager of the person, or view_retention_risk: a
+        // view_continuity / handover / succession delegate reads no flight risk.
+        const only = await retentionRestriction(req.user);
+        if (Array.isArray(only) && !only.length) return res.json({ ok: true, list: [] });
         const sc = await RBACService.scopeFilter(req.user, { empAlias: 'e' });
+        const onlyClause = Array.isArray(only)
+            ? ` AND e.id IN (${only.map(() => '?').join(',')})`
+            : '';
         // Self-view lockout: a manager never sees their own risk record.
         const selfId = actorEmployeeId(req.user);
         // NOT `rr.*`. `RetentionRiskService` stores the employee's exact 9-box position
@@ -441,10 +575,10 @@ router.get(
                 (rr.risk_factors - 'nineBox') AS risk_factors,
                 e.first_name, e.last_name, e.employee_number
          FROM retention_risk rr JOIN employees e ON e.id = rr.employee_id
-         WHERE 1=1 ${sc.clause} ${selfId ? 'AND e.id <> ?' : ''}
+         WHERE 1=1 ${sc.clause}${onlyClause} ${selfId ? 'AND e.id <> ?' : ''}
          ORDER BY CASE rr.flight_risk WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
                   rr.computed_score DESC NULLS LAST`,
-            selfId ? [...sc.params, selfId] : sc.params
+            [...sc.params, ...(Array.isArray(only) ? only : []), ...(selfId ? [selfId] : [])]
         );
         res.json({ ok: true, list });
     })
@@ -546,11 +680,15 @@ router.post(
         if (!outgoingEmployeeId)
             return res.status(400).json({ ok: false, error: 'outgoingEmployeeId required' });
         if (!(await inScope(req.user, outgoingEmployeeId))) return deny(res);
+        // The incoming person must be in the caller's scope too:
+        // naming someone outside it then reading the plan back exposes them.
+        const incoming = parseIncoming(req.body.incomingEmployeeId);
+        if (incoming === undefined)
+            return res.status(400).json({ ok: false, error: 'invalid incomingEmployeeId' });
+        if (incoming !== null && !(await inScope(req.user, incoming))) return deny(res);
         const plan = await HandoverService.createManual({
             outgoingEmployeeId,
-            incomingEmployeeId: req.body.incomingEmployeeId
-                ? Number(req.body.incomingEmployeeId)
-                : null,
+            incomingEmployeeId: incoming,
             dueDate: req.body.dueDate || null,
             ownerAdminId: await actorAdminId(req.user),
         });
@@ -564,10 +702,12 @@ router.post(
     requireHandoverWrite,
     ah(async (req, res) => {
         if (!(await canAccessHandover(req.user, req.params.id))) return deny(res);
-        await HandoverService.setIncoming(
-            Number(req.params.id),
-            req.body.incomingEmployeeId ? Number(req.body.incomingEmployeeId) : null
-        );
+        // In scope, or cleared (null).
+        const incoming = parseIncoming(req.body.incomingEmployeeId);
+        if (incoming === undefined)
+            return res.status(400).json({ ok: false, error: 'invalid incomingEmployeeId' });
+        if (incoming !== null && !(await inScope(req.user, incoming))) return deny(res);
+        await HandoverService.setIncoming(Number(req.params.id), incoming);
         res.json({ ok: true });
     })
 );

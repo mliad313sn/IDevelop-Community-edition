@@ -8,7 +8,7 @@
   <% if (status.unmanaged) { %>
     <p><span class="chip" style="background:rgba(127,127,127,.18)"><%= __('admin:lic_unmanaged') %></span> <span class="text-muted"><%= __('admin:lic_unmanaged_hint') %></span></p>
   <% } %>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.8rem;">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(160px, 100%), 1fr));gap:.8rem;">
     <div><div class="text-muted" style="font-size:.75rem;"><%= __('admin:lic_customer') %></div><div style="font-weight:600"><%= status.customer || '—' %></div></div>
     <div><div class="text-muted" style="font-size:.75rem;"><%= __('admin:lic_seats') %></div>
       <div style="font-weight:600<%= status.overSeat ? ';color:#b45309' : '' %>">

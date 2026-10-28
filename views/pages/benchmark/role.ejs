@@ -7,9 +7,9 @@
 <!-- Summary -->
 <div class="rb-summary">
     <div class="rb-stat"><span class="rb-n"><%= occupants.length %></span><span class="rb-l"><%= __('dash:occupants') %></span></div>
-    <div class="rb-stat"><span class="rb-n"><%= summary && summary.benchmarkFit != null ? summary.benchmarkFit + '%' : '—' %></span><span class="rb-l"><%= __('dash:benchmark_fit') %></span></div>
-    <div class="rb-stat"><span class="rb-n"><%= summary && summary.coverage != null ? summary.coverage + '%' : '—' %></span><span class="rb-l"><%= __('dash:assessment_coverage') %></span></div>
-    <div class="rb-stat"><span class="rb-n"><%= summary && summary.criticalFit != null ? summary.criticalFit + '%' : '—' %></span><span class="rb-l"><%= __('dash:critical_fit') %></span></div>
+    <div class="rb-stat"><span class="rb-n"><%= summary && summary.benchmarkFit != null ? numFmt.pct(summary.benchmarkFit, 0) : '—' %></span><span class="rb-l"><%= __('dash:benchmark_fit') %></span></div>
+    <div class="rb-stat"><span class="rb-n"><%= summary && summary.coverage != null ? numFmt.pct(summary.coverage, 0) : '—' %></span><span class="rb-l"><%= __('dash:assessment_coverage') %></span></div>
+    <div class="rb-stat"><span class="rb-n"><%= summary && summary.criticalFit != null ? numFmt.pct(summary.criticalFit, 0) : '—' %></span><span class="rb-l"><%= __('dash:critical_fit') %></span></div>
     <%# A critical-gap count of 0 over occupants nobody assessed is an all-clear the
         data does not support — show a dash, like the fit figures beside it. %>
     <% const rbMeasured = summary && summary.measuredOccupants != null ? Number(summary.measuredOccupants) : null; %>
@@ -32,7 +32,7 @@
                 <th class="sticky-col skill-col"><%= __('dash:skill') %></th>
                 <th class="delta-col" title="<%= __('dash:req_title') %>"><%= __('dash:req') %></th>
                 <% occupants.forEach(function(o){ %>
-                    <th class="role-col" title="<%= o.fullName %> — <%= __('dash:fit_lc') %> <%= o.fit==null?'—':o.fit+'%' %> · <%= __('dash:click_view_profile') %>"><span><a href="/employees/<%= o.employeeId %>" class="rb-occlink"><%= o.fullName %></a></span><br><small class="rb-occfit <%= o.fit==null?'':(o.fit>=80?'fit-good':(o.fit>=50?'fit-mid':'fit-low')) %>"><%= o.fit==null?'—':o.fit+'%' %></small><% if (o.critGap>0) { %><br><a href="/employees/<%= o.employeeId %>/development" class="rb-occdev" title="<%= __('dash:plan_dev_title') %>"><%= __('dash:develop_arrow') %></a><% } %></th>
+                    <th class="role-col" title="<%= o.fullName %> — <%= __('dash:fit_lc') %> <%= o.fit==null?'—':numFmt.pct(o.fit, 0) %> · <%= __('dash:click_view_profile') %>"><span><a href="/employees/<%= o.employeeId %>" class="rb-occlink"><%= o.fullName %></a></span><br><small class="rb-occfit <%= o.fit==null?'':(o.fit>=80?'fit-good':(o.fit>=50?'fit-mid':'fit-low')) %>"><%= o.fit==null?'—':numFmt.pct(o.fit, 0) %></small><% if (o.critGap>0) { %><br><a href="/employees/<%= o.employeeId %>/development" class="rb-occdev" title="<%= __('dash:plan_dev_title') %>"><%= __('dash:develop_arrow') %></a><% } %></th>
                 <% }); %>
             </tr>
         </thead>
@@ -42,15 +42,39 @@
                 <% sd.skills.forEach(function(sk){ %>
                     <tr>
                         <td class="sticky-col skill-col"><%= sk.name %><% if (sk.isCritical) { %> <span class="bm-crit-tag" title="<%= __('dash:critical') %>"><%= __('dash:critical_lc') %></span><% } %></td>
-                        <td class="delta-col bm-heat-<%= sk.required %>"><%= sk.required %></td>
+                        <td class="delta-col vh-c" data-bin="seq-<%= Math.max(0, Math.min(4, Math.round(Number(sk.required) || 0))) %>"><%= sk.required %></td>
                         <% occupants.forEach(function(o){ var c = sk.cells[o.employeeId]; %>
-                            <% if (c) { %><td class="bm-cell bm-heat-<%= c.actual %> <%= c.met ? '' : 'bm-gap' %> <%= c.assessed ? '' : 'bm-unassessed' %>" title="<%= o.fullName %>: <%= __('dash:actual_lc') %> <%= c.actual %> / <%= __('dash:required_lc') %> <%= sk.required %><%= c.met ? '' : ' — ' + __('dash:gap_upper') %><%= c.assessed ? '' : ' ' + __('dash:not_assessed_paren') %>"><%= c.assessed ? c.actual : '—' %></td><% } else { %><td class="bm-cell bm-empty">·</td><% } %>
+                            <%# The actual level coloured by what is MISSING against the requirement (the heatmap scale: orange below, neutral when met). A requirement nobody assessed is hatched and says « Not assessed »: it is never level 0 and never a gap. %>
+                            <% if (c && c.assessed) { var _bin = personGapBin(c.actual, sk.required, true); %><td class="bm-cell vh-c" data-bin="<%= _bin %>"<% if (!c.met) { %> data-below="1"<% } %> title="<%= o.fullName %>: <%= __('dash:actual_lc') %> <%= c.actual %> / <%= __('dash:required_lc') %> <%= sk.required %><%= c.met ? '' : ' — ' + __('dash:gap_upper') %>"><%= c.actual %><% if (!c.met) { %><span class="vh-mk" aria-hidden="true">▼</span><span class="viz-live"> — <%= __('dash:gap_upper') %></span><% } %></td><% } else if (c) { %><td class="bm-cell vh-c vh-c--unmeasured viz-hatch bm-unassessed" title="<%= o.fullName %>: <%= __('dash:required_lc') %> <%= sk.required %> <%= __('dash:not_assessed_paren') %>"><span class="bm-na"><%= __('dash:bm_not_assessed') %></span></td><% } else { %><td class="bm-cell bm-empty">·</td><% } %>
                         <% }); %>
                     </tr>
                 <% }); %>
             <% }); }); %>
         </tbody>
     </table>
+</div>
+<p class="bm-legend" aria-hidden="true">
+    <span><%= __('dash:bm_legend_actual') %></span>
+    <span class="bm-legend-item"><span class="vh-sw" data-bin="at"></span> <%= __('viz:heat.bin_deficit_at') %></span>
+    <span class="bm-legend-item"><span class="vh-sw" data-bin="below-1"></span> <%= __('viz:heat.bin_deficit_below_1') %></span>
+    <span class="bm-legend-item"><span class="vh-sw" data-bin="below-2"></span> <%= __('viz:heat.bin_deficit_below_2') %></span>
+    <span class="bm-legend-item"><span class="vh-sw" data-bin="below-3"></span> <%= __('viz:heat.bin_deficit_below_3') %></span>
+    <span class="bm-legend-item">▼ <%= __('dash:gap_upper') %></span>
+    <span class="bm-legend-item"><span class="vh-sw viz-hatch"></span> <%= __('dash:bm_not_assessed_legend') %></span>
+</p>
+<% } %>
+
+<% if (profileAxes && profileAxes.length) { %>
+<!-- Role profile: demonstrated against required, by sub-domain (assessed cells only) -->
+<div class="section-divider" style="margin-top:22px;">
+    <h2 class="section-title"><span class="section-icon"><i class="fas fa-chart-simple" aria-hidden="true"></i></span> <%= __('dash:bm_profile_title') %></h2>
+    <p class="section-subtitle"><%= __('dash:bm_profile_sub') %></p>
+</div>
+<div class="rb-profile">
+    <% if (profileAxes.length >= 3) { %>
+    <%- include('../../partials/viz/radar', { radar: { id: 'rb-radar', title: __('dash:bm_profile_radar'), axes: profileAxes, max: 4 } }) %>
+    <% } %>
+    <%- include('../../partials/viz/dumbbell', { dumbbell: { id: 'rb-gaps', title: __('viz:dumbbell.title'), rows: profileAxes, max: 4 } }) %>
 </div>
 <% } %>
 
@@ -73,7 +97,7 @@
                     <%# Fit is NULL for a candidate nobody assessed: say "not measured", never a red 1 % bar. The coverage (assessed / department-designed requirements) always travels with the score. %>
                     <td><% if (v==null) { %><span class="bm-nodata" title="<%= __('dash:rd_not_measured_title') %>"><%= __('dash:rd_not_measured') %></span><% } else { %><div class="bm-fitbar"><div class="bm-fitbar-fill <%= v>=80?'fit-good':(v>=50?'fit-mid':'fit-low') %>" style="width:<%= v %>%;"></div><span class="bm-fitbar-label"><%= v %>%</span></div><% } %><small class="text-muted bm-cand-cov" title="<%= __('dash:rd_not_measured_title') %>"><%= cAssessed %> / <%= cReq %> <%= __('dash:bm_cand_coverage_suffix') %></small></td>
                     <td style="text-align:center;" title="<%= __('dash:bm_cand_gaps_measured_title') %>"><% if (cAssessed===0) { %>—<% } else { %><%= c.gapSkills %><% } %></td>
-                    <td style="text-align:center;<%= c.critGapSkills>0 ? 'color:#F44336;font-weight:700;' : '' %>" title="<%= __('dash:bm_cand_gaps_measured_title') %>"><% if (cAssessed===0) { %>—<% } else { %><%= c.critGapSkills %><% } %></td>
+                    <td style="text-align:center;<%= c.critGapSkills>0 ? 'color:var(--viz-risk);font-weight:700;' : '' %>" title="<%= __('dash:bm_cand_gaps_measured_title') %>"><% if (cAssessed===0) { %>—<% } else { %><%= c.critGapSkills %><% } %></td>
                     <td style="text-align:center;"><% if (typeof appModules === 'undefined' || !appModules || appModules.development) { %><a href="/v2/idp/new?employeeId=<%= c.employeeId %>" class="btn btn-xs btn-secondary" title="<%= __('dash:start_idp_title') %>"><%= __('dash:develop') %></a><% } else { %>—<% } %></td>
                 </tr>
             <% }); } %>
@@ -83,96 +107,76 @@
 
 <style>
 .rb-summary { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin:6px 0 4px; }
-.rb-stat { background:var(--bg-subtle); border:1px solid var(--border-color,#2a2a2a); border-radius:12px; padding:14px 12px; text-align:center; }
-.rb-n { display:block; font-size:1.5rem; font-weight:800; color:var(--brand,#7C6CFF); font-variant-numeric:tabular-nums; }
-.rb-n.rb-danger { color:#F44336; }
-.rb-l { display:block; font-size:.72rem; letter-spacing:.03em; color:var(--text-secondary); margin-top:2px; }
-.benchmark-scroll { overflow:auto; max-height:62vh; border:1px solid var(--border-color,#2a2a2a); border-radius:12px; }
-.benchmark-matrix { border-collapse:separate; border-spacing:0; font-size:.8rem; min-width:100%; }
-.benchmark-matrix th, .benchmark-matrix td { padding:5px 8px; border-bottom:1px solid var(--border-color,#242424); white-space:nowrap; text-align:center; }
-.benchmark-matrix thead th { position:sticky; top:0; z-index:3; background:var(--bg-elevated,#1b1b1b); color:var(--text-primary); }
+.rb-stat { background:var(--bg-subtle); border:1px solid var(--border-color); border-radius:12px; padding:14px 12px; text-align:center; }
+.rb-n { display:block; font-size:1.5rem; font-weight:800; color:var(--brand-text, var(--brand)); font-variant-numeric:tabular-nums; }
+.rb-n.rb-danger { color:var(--viz-risk); }
+.rb-l { display:block; font-size:.75rem; letter-spacing:.03em; color:var(--text-secondary); margin-top:2px; }
+.benchmark-scroll { overflow:auto; max-height:62vh; border:1px solid var(--border-color); border-radius:12px; }
+.benchmark-matrix { border-collapse:separate; border-spacing:0; font-size:.8125rem; min-width:100%; }
+.benchmark-matrix th, .benchmark-matrix td { padding:5px 8px; border-bottom:1px solid var(--border-color); white-space:nowrap; text-align:center; }
+.benchmark-matrix thead th { position:sticky; top:0; z-index:3; background:var(--bg-elevated); color:var(--text-primary); }
 .benchmark-matrix .role-col span { display:inline-block; max-width:120px; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom; }
-.rb-occfit { font-weight:700; } .rb-occfit.fit-good { color:#4CAF50; } .rb-occfit.fit-mid { color:#FF9800; } .rb-occfit.fit-low { color:#F44336; }
-.bm-nodata { display:inline-block; padding:2px 10px; border-radius:6px; background:var(--bg-subtle); border:1px dashed var(--border-color,#3a3a3a); color:var(--text-muted); font-size:.78rem; }
-.bm-cand-cov { display:block; font-size:.72rem; margin-top:2px; }
-.benchmark-matrix .sticky-col { position:sticky; left:0; z-index:2; background:var(--bg-elevated,#1b1b1b); text-align:left; }
+.rb-occfit { font-weight:700; } .rb-occfit.fit-good { color:var(--viz-good); } .rb-occfit.fit-mid { color:var(--viz-warn); } .rb-occfit.fit-low { color:var(--viz-risk); }
+.bm-nodata { display:inline-block; padding:2px 10px; border-radius:6px; background:var(--bg-subtle); border:1px dashed var(--border-color); color:var(--text-muted); font-size:.78rem; }
+.bm-cand-cov { display:block; font-size:.75rem; margin-top:2px; }
+.benchmark-matrix .sticky-col { position:sticky; left:0; z-index:2; background:var(--bg-elevated); text-align:left; }
 .benchmark-matrix thead .sticky-col { z-index:4; }
 .benchmark-matrix .skill-col { min-width:230px; max-width:320px; white-space:normal; }
 .delta-col { color:var(--text-secondary); font-variant-numeric:tabular-nums; }
 .bm-group-row td { background:var(--bg-subtle); font-size:.82rem; color:var(--text-secondary); text-align:left; }
 .bm-group-sep { color:var(--text-muted); }
-.bm-crit-tag { font-size:.62rem; letter-spacing:.03em; color:var(--brand,#7C6CFF); border:1px solid var(--brand,#7C6CFF); border-radius:999px; padding:0 6px; }
+.bm-crit-tag { font-size:.75rem; letter-spacing:.03em; color:var(--brand-text, var(--brand)); border:1px solid currentColor; border-radius:999px; padding:0 6px; }
 .bm-cell { position:relative; font-variant-numeric:tabular-nums; }
-.bm-empty { color:var(--text-muted); opacity:.5; }
-.bm-gap { box-shadow: inset 0 0 0 2px rgba(244,67,54,.75); font-weight:700; }
-.bm-unassessed { opacity:.45; }
-.bm-heat-0 { background:rgba(120,120,120,.10); } .bm-heat-1 { background:rgba(244,67,54,.30); } .bm-heat-2 { background:rgba(255,152,0,.32); } .bm-heat-3 { background:rgba(139,195,74,.36); } .bm-heat-4 { background:rgba(76,175,80,.48); }
+/* the heatmap scale on the matrix cells (public/css/viz.css .vh-*): a compact cell */
+.benchmark-matrix .vh-c { height:auto; border-radius:6px; padding:3px 6px; font-weight:600; }
+.benchmark-matrix .bm-unassessed { white-space:normal; min-width:5.5rem; }
+.bm-na { font-size:.75rem; font-weight:600; }
+.bm-empty { color:var(--text-muted); }
+.bm-legend { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; font-size:.8125rem; color:var(--text-secondary); margin:10px 2px 0; }
+.bm-legend-item { display:inline-flex; align-items:center; gap:6px; }
 .bm-fitbar { position:relative; height:20px; background:var(--bg-subtle); border-radius:6px; overflow:hidden; min-width:140px; }
-.bm-fitbar-fill { height:100%; background:#4CAF50; } .bm-fitbar-fill.fit-good { background:#4CAF50; } .bm-fitbar-fill.fit-mid { background:#FF9800; } .bm-fitbar-fill.fit-low { background:#F44336; }
+.bm-fitbar-fill { height:100%; background:var(--viz-good); } .bm-fitbar-fill.fit-good { background:var(--viz-good); } .bm-fitbar-fill.fit-mid { background:var(--viz-warn); } .bm-fitbar-fill.fit-low { background:var(--viz-risk); }
 .bm-fitbar-label { position:absolute; top:0; left:8px; line-height:20px; font-size:.75rem; font-weight:600; color:var(--text-primary); }
 .rb-emp { color:var(--text-muted); font-size:.78rem; }
 .rb-occlink { color:var(--text-primary); text-decoration:none; border-bottom:1px dotted var(--text-muted); }
-.rb-occlink:hover { color:var(--brand,#7C6CFF); }
-.rb-occdev { display:inline-block; margin-top:2px; font-size:.66rem; color:var(--brand,#7C6CFF); text-decoration:none; }
+.rb-occlink:hover { color:var(--brand-text, var(--brand)); }
+.rb-occdev { display:inline-block; margin-top:2px; font-size:.75rem; color:var(--brand-text, var(--brand)); text-decoration:none; }
 .rb-occdev:hover { text-decoration:underline; }
-.btn-xs { padding:2px 9px; font-size:.72rem; border-radius:6px; }
-.rb-trend-card { background:var(--bg-card); border:1px solid var(--border-color,#2a2a2a); border-radius:12px; padding:14px 16px; margin-top:22px; }
-.rb-trend-note { font-size:.8rem; color:var(--text-muted); margin:6px 2px 0; }
-@media (max-width:900px){ .rb-summary{grid-template-columns:repeat(2,1fr);} }
+.btn-xs { padding:2px 9px; font-size:.75rem; border-radius:6px; }
+.rb-profile { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; margin-top:12px; }
+.rb-profile > section { background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-lg, 18px); padding:14px 16px; min-width:0; }
+.rb-trend { margin-top:22px; }
+.rb-trend-note { font-size:.8125rem; color:var(--text-muted); margin:6px 2px 0; }
+@media (max-width:900px){ .rb-summary{grid-template-columns:repeat(2,1fr);} .rb-profile{grid-template-columns:minmax(0, 1fr);} }
+@media print { .search-bar, .rb-occdev { display:none !important; } .benchmark-scroll { max-height:none; overflow:visible; } }
 </style>
 
-<!-- Fit trend: daily snapshots from benchmark_fit_history -->
-<div class="rb-trend-card">
-    <h2 class="section-title" style="margin:0 0 4px;"><span class="section-icon"><i class="fas fa-chart-line" aria-hidden="true"></i></span> <%= __('dash:fit_trend_title') %></h2>
+<!-- Fit trend: daily snapshots from benchmark_fit_history, drawn by the viz layer.
+     A null day (nobody measured that day) is a gap, never bridged (spanGaps:false
+     in public/js/viz.js); the axis fits the data (ChartAxisFit.fitRange, `fitAxis`). -->
+<div class="rb-trend">
     <% if (!fitHistory || fitHistory.length < 2) { %>
+    <div class="viz-chart">
+        <h2 class="viz-title"><%= __('dash:fit_trend_title') %></h2>
         <p class="rb-trend-note"><%= __('dash:fit_trend_pending') %></p>
+    </div>
     <% } else { %>
-        <div style="height:220px;"><canvas id="rb-fit-trend"></canvas></div>
+    <%- include('../../partials/viz/chart', { vizChart: {
+        id: 'rb-fit-trend',
+        title: __('dash:fit_trend_title'),
+        height: 240,
+        config: {
+            kind: 'line',
+            unit: 'pct',
+            decimals: 0,
+            fitAxis: true,
+            labels: fitHistory.map(function (x) { return fmtDate(x.day); }),
+            series: [
+                { key: 'fit', label: __('dash:benchmark_fit_label'), data: fitHistory.map(function (x) { return x.fit === null || x.fit === undefined ? null : Number(x.fit); }) },
+                { key: 'coverage', label: __('dash:coverage_label'), data: fitHistory.map(function (x) { return x.coverage === null || x.coverage === undefined ? null : Number(x.coverage); }) }
+            ]
+        }
+    } }) %>
     <% } %>
 </div>
-<% if (fitHistory && fitHistory.length >= 2) { %>
-<script src="/vendor/chart.umd.min.js?v=<%= assetVersion %>"></script>
-<script src="/js/chart-theme.js?v=<%= assetVersion %>"></script>
-<script src="/js/chart-axis-fit.js?v=<%= assetVersion %>"></script>
-<script nonce="<%= cspNonce %>">
-(function(){
-    var H = <%- include('../../partials/json-script', { v: fitHistory }) %>;
-    // Fit the % axis to both series: a fixed 0-100 axis flattens a narrow but
-    // real fit movement into a straight line (see chart-axis-fit.js).
-    var YF = window.ChartAxisFit
-        ? ChartAxisFit.fitRange(H.map(function(x){ return x.fit; }).concat(H.map(function(x){ return x.coverage; })), ChartAxisFit.PERCENT)
-        : { min: 0, max: 100 };
-    var CT = window.ChartTheme || {};
-    var TT = CT.tokens || {};
-    // The fit trend is "actual vs the role benchmark": accent for the measured
-    // line, neutral dashed for the target. Both from the theme, so the chart
-    // follows whichever identity is running.
-    var SEMB = CT.SEMANTIC || { accent: TT.gold || '#7C6CFF', neutral: TT.blue || '#5B9DF5' };
-    var ROLEB = CT.ROLE || { accentFill: 'rgba(124, 108, 255,.12)' };
-    new Chart(document.getElementById('rb-fit-trend'), {
-        type: 'line',
-        data: {
-            labels: H.map(function(x){ return x.day; }),
-            datasets: [
-                // spanGaps:false — a null day means the fit/coverage COULD NOT be
-                // measured (no measured occupant that day). Bridging it draws a
-                // straight line over data that does not exist, the exact
-                // fabrication the null is there to prevent; the line must break.
-                { label: <%- JSON.stringify(__('dash:benchmark_fit_label')) %>, data: H.map(function(x){ return x.fit; }),
-                  borderColor: SEMB.accent, backgroundColor: ROLEB.accentFill, fill: true, tension: .3, pointRadius: 2, spanGaps: false },
-                { label: <%- JSON.stringify(__('dash:coverage_label')) %>, data: H.map(function(x){ return x.coverage; }),
-                  borderColor: SEMB.neutral, borderDash: [6,3], fill: false, tension: .3, pointRadius: 2, spanGaps: false },
-            ],
-        },
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            scales: {
-                y: { min: YF.min, max: YF.max, ticks: { callback: function(v){ return v + '%'; } }, grid: { color: CT.GRID_SOFT || 'rgba(255,255,255,.05)' } },
-                x: { grid: { display: false } },
-            },
-            plugins: { legend: { position: 'bottom' } },
-        },
-    });
-})();
-</script>
-<% } %>
+<%- include('../../partials/viz/scripts', { viz: { chart: true, radar: profileAxes && profileAxes.length >= 3, dumbbell: true, axisFit: true } }) %>

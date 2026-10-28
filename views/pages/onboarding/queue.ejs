@@ -51,7 +51,7 @@
                 <form action="/onboarding/<%= r.id %>/merge" method="POST" style="display:flex; flex-wrap:wrap; gap:.5rem; align-items:center;">
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                     <select name="_target" class="form-control" style="max-width:420px;"
-                        onchange="var v=this.value.split(':'); this.form.targetType.value=v[0]; this.form.targetId.value=v[1];">
+                        data-on-change="onbMergeTarget" data-args='["$el"]'>
                         <% mergeable.forEach(function(m){ %>
                             <option value="<%= m._admin ? 'admin' : 'employee' %>:<%= m.id %>">
                                 <%= m._admin ? __('admin:onb_role_admin') : __('admin:onb_role_employee') %>: <%= m.username %><%= m.email ? ' · ' + m.email : '' %><%= m._admin ? ' · ' + m.role : (m.employeeNumber ? ' · ' + m.employeeNumber : '') %><%= m.hasIdentity ? __('admin:onb_already_linked') : '' %>
@@ -76,7 +76,7 @@
                     <span><%= __('admin:ssom_onb_create_anyway_check') %></span>
                 </label>
                 <% } %>
-                <div class="form-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem;">
+                <div class="form-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(min(220px, 100%), 1fr)); gap:1rem;">
                     <div class="form-group">
                         <label for="onb-<%= r.id %>-f2-employeeNumber"><%= __('admin:employee_number_label') %></label>
                         <input id="onb-<%= r.id %>-f2-employeeNumber" type="text" name="employeeNumber" class="form-control" value="<%= pd ? (pd.employeeNumber || '') : '' %>" placeholder="ONB-<%= r.id %> <%= __('admin:auto_if_blank') %>">
@@ -90,28 +90,28 @@
                         <input id="onb-<%= r.id %>-f2-lastName" type="text" name="lastName" class="form-control" value="<%= pd ? (pd.lastName || '') : (r.lastName || '') %>" required>
                     </div>
                     <div class="form-group">
-                        <label for="onb-<%= r.id %>-f2-siteId"><%= __('admin:site') %> *</label>
+                        <label for="onb-<%= r.id %>-f2-siteId" class="required"><%= __('admin:site') %></label>
                         <select id="onb-<%= r.id %>-f2-siteId" name="siteId" class="form-control" required data-cascade="site">
                             <option value=""><%= __('admin:select_option') %></option>
                             <% (sites || []).forEach(s => { %><option value="<%= s.id %>" <%= pd && String(pd.siteId) === String(s.id) ? 'selected' : '' %>><%= s.name %></option><% }); %>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="onb-<%= r.id %>-f2-departmentId"><%= __('admin:department') %> *</label>
+                        <label for="onb-<%= r.id %>-f2-departmentId" class="required"><%= __('admin:department') %></label>
                         <select id="onb-<%= r.id %>-f2-departmentId" name="departmentId" class="form-control" required data-cascade="department">
                             <option value=""><%= __('admin:select_option') %></option>
                             <% (departments || []).forEach(d => { %><option value="<%= d.id %>" data-site-id="<%= d.siteId || '' %>" <%= pd && String(pd.departmentId) === String(d.id) ? 'selected' : '' %>><%= d.name %><%= d.siteId && siteName[String(d.siteId)] ? ' (' + siteName[String(d.siteId)] + ')' : '' %></option><% }); %>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="onb-<%= r.id %>-f2-serviceId"><%= __('admin:service') %> *</label>
+                        <label for="onb-<%= r.id %>-f2-serviceId" class="required"><%= __('admin:service') %></label>
                         <select id="onb-<%= r.id %>-f2-serviceId" name="serviceId" class="form-control" required data-cascade="service">
                             <option value=""><%= __('admin:select_option') %></option>
                             <% (services || []).forEach(sv => { %><option value="<%= sv.id %>" data-department-id="<%= sv.departmentId || '' %>" data-site-id="<%= sv.departmentId && departments && (departments.find(function(d){return String(d.id)===String(sv.departmentId);})||{}).siteId || '' %>" <%= pd && String(pd.serviceId) === String(sv.id) ? 'selected' : '' %>><%= sv.name %><%= sv.departmentId && deptName[String(sv.departmentId)] ? ' (' + deptName[String(sv.departmentId)] + ')' : '' %></option><% }); %>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="onb-<%= r.id %>-f2-roleId"><%= __('admin:role') %> *</label>
+                        <label for="onb-<%= r.id %>-f2-roleId" class="required"><%= __('admin:role') %></label>
                         <select id="onb-<%= r.id %>-f2-roleId" name="roleId" class="form-control" required>
                             <option value=""><%= __('admin:select_option') %></option>
                             <% (roles || []).forEach(ro => { %><option value="<%= ro.id %>" <%= pd && String(pd.roleId) === String(ro.id) ? 'selected' : '' %>><%= ro.name %></option><% }); %>
@@ -153,6 +153,13 @@
     department). Options carry data-site-id / data-department-id; we only
     show/hide — the POST payload is unchanged. %>
 <script nonce="<%= cspNonce %>">
+    // Merge picker: the "<type>:<id>" option value feeds the two hidden fields
+    // (CSP — was an inline onchange; wired by csp-actions.js).
+    function onbMergeTarget(sel) {
+        var v = String(sel.value || '').split(':');
+        sel.form.targetType.value = v[0];
+        sel.form.targetId.value = v[1];
+    }
     (function () {
         // Show only options whose `attr` matches `value` (empty value or empty
         // option attribute => always shown, e.g. the "— select —" placeholder).

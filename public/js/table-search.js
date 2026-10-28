@@ -14,6 +14,8 @@
  *       the selected value ('' = all). Combines with the search input.
  *   <select data-searchable>                     — augments a long <select>
  *       with a type-to-filter box (for 1000-option skill/employee pickers).
+ *       Options grouped in <optgroup>s also match on their group's label (a
+ *       skill is found by its domain), and a group left empty is hidden.
  *
  * Rows hidden get [data-ts-hidden]; an auto "no results" row appears when all
  * rows are hidden. Multiple tables per page are independent.
@@ -227,8 +229,10 @@
         box.style.marginBottom = '4px';
         select.parentNode.insertBefore(box, select);
         var all = Array.prototype.map.call(select.options, function (o) {
-            return { el: o, text: fold(o.textContent) };
+            var g = o.parentNode && o.parentNode.tagName === 'OPTGROUP' ? o.parentNode : null;
+            return { el: o, text: fold(o.textContent), group: g ? fold(g.label) : '' };
         });
+        var groups = Array.prototype.slice.call(select.querySelectorAll('optgroup'));
         box.addEventListener(
             'input',
             debounce(function () {
@@ -236,11 +240,20 @@
                 var firstMatch = null,
                     matches = 0;
                 all.forEach(function (o) {
-                    var show = !q || o.text.indexOf(q) !== -1 || o.el.value === '';
+                    var show =
+                        !q ||
+                        o.text.indexOf(q) !== -1 ||
+                        (o.group && o.group.indexOf(q) !== -1) ||
+                        o.el.value === '';
                     o.el.hidden = !show;
                     o.el.disabled = !show; // Safari ignores hidden options
                     if (show && o.el.value !== '' && !firstMatch) firstMatch = o.el;
                     if (show && o.el.value !== '') matches++;
+                });
+                groups.forEach(function (g) {
+                    g.hidden = !Array.prototype.some.call(g.children, function (o) {
+                        return !o.hidden;
+                    });
                 });
                 // If the current selection was filtered out, jump to the first match
                 var cur = select.selectedOptions[0];

@@ -20,7 +20,7 @@
   "f_to": "To",
   "problems_only": "Problems only",
   "filter_btn": "Filter",
-  "clear_btn": "Clear",
+  "clear_btn": "Reset filters",
   "total_entries": "Total Log Entries:",
   "filtered": " (filtered)",
   "th_datetime": "Date/Time",
@@ -121,5 +121,11 @@
   "log_entity_department": "Department",
   "log_entity_service": "Service",
   "log_entity_skill": "Skill",
-  "log_entity_domain": "Domain"
+  "log_entity_domain": "Domain",
+  "erased_person": "Erased person #{{id}}",
+  "verify_btn": "Verify integrity",
+  "verify_title": "Recomputes the log's hash chain: erasures (GDPR) and sealed purges are accepted, any other change is flagged.",
+  "verify_running": "Verifying the chain…",
+  "verify_ok": "Chain intact: {rows} rows verified, {redacted} of them pseudonymised by an attested erasure; {seals} monthly seal(s).",
+  "verify_broken": "Chain broken. Rows to examine: {ids}. Keep a copy of the database and compare it with the external anchors (audit-anchors folder)."
 }

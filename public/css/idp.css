@@ -1,0 +1,141 @@
+/*
+ * idp.css — the development plan pages (4.0.0 port, wave 4): the action
+ * loop's controls, the proposals and the printed plan with its signature
+ * block. Open Horizon tokens only (style.css); no colour of its own.
+ */
+
+.idp-meta {
+    display: block;
+    margin-top: var(--space-1);
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+}
+
+.idp-ctl {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 12rem;
+}
+
+.idp-ctl-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: flex-start;
+}
+
+.idp-inline-form {
+    display: inline;
+    margin: 0;
+}
+
+.idp-ctl-panel > summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.idp-ctl-panel > summary::-webkit-details-marker {
+    display: none;
+}
+
+.idp-ctl-panel[open] > summary {
+    margin-bottom: var(--space-2);
+}
+
+.idp-form {
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+    margin-top: var(--space-2);
+}
+
+.idp-form-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+}
+
+.idp-form-row > .form-group {
+    flex: 1 1 10rem;
+}
+
+.idp-propose-link {
+    margin-top: var(--space-4);
+}
+
+.idp-proposals {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+}
+
+.idp-proposals > li {
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.idp-proposals > li:last-child {
+    border-bottom: 0;
+}
+
+.idp-print-actions {
+    margin-top: var(--space-2);
+}
+
+/* The signature block is paper only. */
+.idp-print-sign {
+    display: none;
+}
+
+@media print {
+    .sidebar,
+    .header,
+    .breadcrumbs,
+    .skip-link,
+    .idp-print-actions,
+    .idp-ctl-actions,
+    .idp-propose-link,
+    .idp-sign-card,
+    details#idp-add-objective,
+    details#idp-add-action,
+    form {
+        display: none !important;
+    }
+
+    .main-content {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .card {
+        break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #999;
+    }
+
+    .idp-print-sign {
+        display: block;
+        break-inside: avoid;
+        margin-top: var(--space-6);
+    }
+
+    .idp-print-sign-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--space-6);
+    }
+
+    .idp-print-sign-box {
+        min-height: 7rem;
+        padding: var(--space-3);
+        border: 1px solid #999;
+    }
+
+    .idp-print-sign-note {
+        margin-top: var(--space-3);
+        font-size: 0.75rem;
+    }
+}

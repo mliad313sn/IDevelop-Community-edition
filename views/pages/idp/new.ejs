@@ -27,6 +27,13 @@
         <% } %>
     </div>
 
+    <% if (typeof targetRole !== 'undefined' && targetRole) { %>
+        <%# Target role -> gap -> plan: the objectives are measured against the
+            target role's levels and tagged with it. %>
+        <input type="hidden" name="targetRoleId" value="<%= targetRole.id %>">
+        <p class="form-help"><%= __('idp:towards_role', { role: targetRole.name }) %></p>
+    <% } %>
+
     <div class="form-group" style="margin-bottom:1rem;">
         <label for="priority"><strong><%= __('idp:priority') %></strong></label>
         <select name="priority" id="priority" style="width:180px;">

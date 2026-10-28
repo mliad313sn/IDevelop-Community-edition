@@ -1,0 +1,10 @@
+<%#
+  One indicator result in a table cell: the value and its status chip, « 2 of 3 »
+  below 5 people, « Not measured yet » or « Not configured » — never 0.
+  Locals: r (a KpiService result or null), unit ('pct' | 'count').
+-%><%
+  var _F = numFmt;
+  var _num = function (v) { return v !== null && v !== undefined && isFinite(Number(v)); };
+  var _st = { compliant: 'good', watch: 'warn', at_risk: 'risk' }[r && r.status];
+  var _icon = { good: '✓', warn: '!', risk: '▲' };
+-%><% if (!r || r.status === 'not_configured') { %><span class="ds-unmeasured"><%= __('kpi:status_not_configured') %></span><% } else if (r.status === 'small_n') { %><%= __('viz:tile.of', { a: _F.num(r.numerator, 0), b: _F.num(r.denominator, 0) }) %><% } else if (!_num(r.value)) { %><span class="ds-unmeasured"><%= __('viz:unmeasured') %></span><% } else { %><%= unit === 'pct' ? _F.pct(r.value, 1) : _F.num(r.value, 0) %><% if (_st) { %> <span class="viz-chip viz-chip--<%= _st %>"><span class="viz-chip-icon" aria-hidden="true"><%= _icon[_st] %></span><span><%= __('viz:status.' + _st) %></span></span><% } %><% } %>

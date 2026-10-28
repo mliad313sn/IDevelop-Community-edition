@@ -1,0 +1,40 @@
+<%# DEI — values of unknown provenance awaiting HR review (migration 171).
+    Field NAMES only, never values. Plain forms: no inline handlers. %>
+<% const _d = (typeof fmtDate === 'function') ? fmtDate : function (x) { return x ? String(x).slice(0, 10) : '—'; }; %>
+<div class="page-header">
+    <h1><i class="fas fa-clipboard-check" aria-hidden="true"></i> <%= __('talentx:dei_review_title') %></h1>
+    <a class="btn btn-secondary" href="/v2/cap#dei"><i class="fas fa-arrow-left" aria-hidden="true"></i> <%= __('talentx:dei_review_back') %></a>
+</div>
+<p class="help-text" style="margin-bottom:1rem;"><%= __('talentx:dei_review_intro') %></p>
+
+<% if (!rows.length) { %>
+    <p class="help-text"><%= __('talentx:dei_review_empty') %></p>
+<% } else { %>
+<div class="table-wrapper">
+<table class="table">
+    <thead><tr>
+        <th scope="col"><%= __('talentx:dei_review_th_person') %></th>
+        <th scope="col"><%= __('talentx:dei_review_th_held') %></th>
+        <th scope="col"><%= __('talentx:dei_review_th_since') %></th>
+        <th scope="col"><%= __('talentx:dei_review_th_action') %></th>
+    </tr></thead>
+    <tbody>
+    <% rows.forEach(function (r) { %>
+        <tr>
+            <td><%= r.name || ('#' + r.employeeId) %></td>
+            <td><%= r.held.filter(function (f) { return f !== 'ethnicity' || ethnicityOn; }).map(function (f) { return __('talentx:dei_field_' + f, { defaultValue: f }); }).join(', ') %><% if (!ethnicityOn && r.held.indexOf('ethnicity') !== -1) { %> <span class="badge badge-secondary"><%= __('talentx:dei_review_hidden_field') %></span><% } %></td>
+            <td><%= _d(r.updatedAt) %></td>
+            <td>
+                <form method="POST" action="/v2/cap/dei/review/<%= r.employeeId %>/clear" style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:flex-end;">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <label class="sr-only" for="dei-rv-<%= r.employeeId %>"><%= __('talentx:dei_review_reason') %></label>
+                    <input id="dei-rv-<%= r.employeeId %>" name="reason" class="form-control" required minlength="5" maxlength="500" placeholder="<%= __('talentx:dei_review_reason') %>">
+                    <button type="submit" class="btn btn-secondary"><%= __('talentx:dei_review_clear_btn') %></button>
+                </form>
+            </td>
+        </tr>
+    <% }); %>
+    </tbody>
+</table>
+</div>
+<% } %>

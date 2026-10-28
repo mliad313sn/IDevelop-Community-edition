@@ -23,29 +23,16 @@ const ah = require('../utils/asyncHandler');
 
 PipService.register();
 
-// Manager-managed model (no HR): a user may manage PIPs only for employees in
-// their governed set (super admin → all; local admin → scope; manager → reports).
-// The /v2/pip mount is already gated to manager/admin in routes/index.js.
-//
-// A VIEWER NEVER ACTS. The mount guard is by the SHAPE of the role
-// (requireManagerOrAdmin) and let a read-only delegation through: measured,
-// viewer 1035 POST /v2/pip/propose {employeeId:87} -> 200, pips 0 -> 1,
-// initiated_by = 1035. Every write route below goes through this predicate.
-//
-// And the LINE of the person behind an administration account counts: a
-// manager signed in on their linked admin account (admins.linked_employee_id)
-// was listed their team by scopeFilter and refused every one of them here
-// (getFilteredEmployees is clearance only). Same union as RBACService.scopeFilter.
+// Who may act on a PIP (SA-42): the plan authority, PipService.actingAuthority.
+// That is the person's direct manager (an employee manager, or the admin account
+// named as manager), a SuperAdmin, or an administrator whose clearance covers
+// the person. The same rule decides a 9-box approval. Refused, fail closed:
+// supervisors, managers higher up the line, read-only delegates and the person
+// themselves. This predicate used to accept the whole governed sub-tree,
+// supervisors included. Reading the console stays scoped by
+// RBACService.scopeFilter.
 async function canManage(user, employeeId) {
-    if (RBACService.isViewer(user)) return false;
-    if (RBACService.isSuperAdmin(user)) return true;
-    const emps = await RBACService.getFilteredEmployees(user);
-    if (emps.some((e) => Number(e.id) === Number(employeeId))) return true;
-    if (user && user.userType === 'admin') {
-        const line = await require('../services/GovernanceService').lineAuthorityEmployeeIds(user);
-        return line.some((id) => Number(id) === Number(employeeId));
-    }
-    return false;
+    return Boolean((await PipService.actingAuthority(user, employeeId)).canAct);
 }
 
 router.get(
@@ -59,18 +46,36 @@ router.get(
          WHERE 1=1 ${sc.clause} ORDER BY p.created_at DESC`,
             sc.params
         );
-        const employees = (await RBACService.getFilteredEmployees(req.user)).map((e) => ({
+        const scoped = await RBACService.getFilteredEmployees(req.user);
+        // « New in the role » (4.0.0 port, wave 5): said next to the name, so
+        // nobody opens a plan on someone who has just started without seeing it.
+        const nir = await require('../utils/newInRole')
+            .newInRoleIds(scoped.map((e) => e.id))
+            .catch(() => new Set());
+        const employees = scoped.map((e) => ({
             id: Number(e.id),
             name: `${e.firstName} ${e.lastName}`,
             number: e.employeeNumber || '',
+            newInRole: nir.has(Number(e.id)),
         }));
         // the tasks a low placement raised, waiting on THIS manager's decision.
         // Fail-soft — the console must still open if the queue query fails.
         const tasks = await TalentTaskService.listOpen(req.user).catch(() => []);
+        // The optional HR visa (migration 195): while it is on, each plan not
+        // yet activated says whether it has its visa, and the button shows only
+        // where THIS account may give it (never on its own plan).
+        const hrVisaRequired = await PipService.hrVisaRequired();
+        if (hrVisaRequired)
+            for (const p of list)
+                p.canHrVisa =
+                    ['proposed', 'approved'].includes(p.state) &&
+                    !p.hrVisaAt &&
+                    (await PipService.canGiveHrVisa(req.user, p.employeeId).catch(() => false));
         res.render('pages/pip/index', {
             list,
             employees,
             tasks,
+            hrVisaRequired,
             title: req.t ? req.t('pip:title') : 'Performance Improvement Plans',
         });
     })
@@ -253,7 +258,19 @@ router.post(
         // `activate` reports whether it actually changed anything. Answering ok:true
         // regardless meant a second click, or a PIP already active or closed, was
         // confirmed as a fresh activation.
-        const activated = await PipService.activate(Number(req.params.id));
+        let activated;
+        try {
+            activated = await PipService.activate(Number(req.params.id), req.user, req);
+        } catch (e) {
+            // The optional HR visa is missing (pip.hrVisaRequired).
+            if (e && e.code === 'PIP_HR_VISA_REQUIRED')
+                return res.status(409).json({
+                    ok: false,
+                    code: e.code,
+                    error: sayText(req, 'pip:err_hr_visa_required', e.message),
+                });
+            throw e;
+        }
         if (!activated) {
             return res
                 .status(409)
@@ -297,6 +314,13 @@ router.post(
                     ? req.t('flash:pip_close_note_required', { defaultValue: e.message })
                     : e.message;
                 return res.status(400).json({ ok: false, error: msg });
+            }
+            if (e && e.code === 'PIP_NOT_ACTIVE') {
+                return res.status(409).json({
+                    ok: false,
+                    code: e.code,
+                    error: sayText(req, 'pip:err_close_not_active', e.message),
+                });
             }
             throw e;
         }
@@ -346,4 +370,124 @@ router.post(
 );
 // ---- withdraw ------------------------------------------------
 
+// ---- The plan's evidence (4.0.0 port, wave 6, migration 195) -------------
+// Checkpoints as held, the optional HR visa, and the printable letter. The
+// person's own side (acknowledge, observations, answers, their letter) lives
+// in routes/employee-pip.js.
+
+/** A refusal from PipService (`status` + `code`) as JSON in the reader's language. */
+const PIP_ERROR_KEYS = new Map([
+    ['PIP_NOT_FOUND', 'pip:err_not_found'],
+    ['PIP_NOT_ACTIVE', 'pip:err_not_active'],
+    ['TEXT_REQUIRED', 'pip:err_text_required'],
+    ['TEXT_TOO_LONG', 'pip:err_text_too_long'],
+    ['INVALID_DATE', 'pip:err_checkpoint_date'],
+    ['FORBIDDEN', 'common:err_not_authorized_employee'],
+    ['PIP_VISA_OWN_PROPOSAL', 'pip:err_visa_own_proposal'],
+]);
+function sendPipRefusal(req, res, e) {
+    if (!e || !Number.isInteger(e.status) || e.status < 400 || e.status > 499) return false;
+    const key = PIP_ERROR_KEYS.get(e.code);
+    res.status(e.status).json({
+        ok: false,
+        code: e.code,
+        error: key ? sayText(req, key, e.message) : e.message,
+    });
+    return true;
+}
+
+// The plan authority records a checkpoint as held (a note is required).
+router.post(
+    '/:id/checkpoint',
+    requireAuth,
+    ah(async (req, res) => {
+        try {
+            const id = await PipService.addReview(
+                Number(req.params.id),
+                req.user,
+                { note: req.body.note, heldOn: req.body.heldOn },
+                req
+            );
+            res.json({ ok: true, id });
+        } catch (e) {
+            if (!sendPipRefusal(req, res, e)) throw e;
+        }
+    })
+);
+
+// The HR visa before activation (meaningful while pip.hrVisaRequired is on).
+router.post(
+    '/:id/hr-visa',
+    requireAuth,
+    ah(async (req, res) => {
+        const id = Number(req.params.id);
+        const pip = Number.isInteger(id)
+            ? await db.get('SELECT employee_id FROM pips WHERE id = ?', [id])
+            : null;
+        if (!pip)
+            return res.status(404).json({
+                ok: false,
+                code: 'PIP_NOT_FOUND',
+                error: sayText(req, 'pip:err_not_found', 'Plan not found.'),
+            });
+        if (!(await PipService.canGiveHrVisa(req.user, pip.employeeId)))
+            return res.status(403).json({ ok: false, error: notAuthorizedForEmployee(req) });
+        let done;
+        try {
+            done = await PipService.giveHrVisa(id, req.user, req);
+        } catch (e) {
+            if (sendPipRefusal(req, res, e)) return;
+            throw e;
+        }
+        if (!done)
+            return res.status(409).json({
+                ok: false,
+                error: sayText(req, 'pip:err_visa_state', 'No visa can be given in this state.'),
+            });
+        res.json({ ok: true });
+    })
+);
+
+// The printable letter of one plan, for the plan authority or the HR visa
+// holder. A refusal is a 404 / 403 PAGE, never a 500.
+router.get(
+    '/:id/letter',
+    requireAuth,
+    ah(async (req, res) => {
+        const id = Number(req.params.id);
+        const p = Number.isInteger(id)
+            ? await db.get(
+                  `SELECT p.*, e.first_name, e.last_name, e.employee_number
+                     FROM pips p JOIN employees e ON e.id = p.employee_id WHERE p.id = ?`,
+                  [id]
+              )
+            : null;
+        if (!p)
+            return res.status(404).render('pages/error', {
+                message: sayText(req, 'pip:err_not_found', 'Plan not found.'),
+                title: req.t
+                    ? req.t('chrome:pt_not_found', { defaultValue: 'Not found' })
+                    : 'Not found',
+            });
+        const may =
+            (await canManage(req.user, p.employeeId)) ||
+            (await PipService.canGiveHrVisa(req.user, p.employeeId).catch(() => false));
+        if (!may)
+            return res.status(403).render('pages/error', {
+                message: notAuthorizedForEmployee(req),
+                title: req.t
+                    ? req.t('chrome:pt_forbidden', { defaultValue: 'Forbidden' })
+                    : 'Forbidden',
+            });
+        res.set('Cache-Control', 'no-store');
+        res.render('pages/pip/letter', {
+            title: req.t ? req.t('pip:letter_title') : 'Improvement plan letter',
+            pip: p,
+            reviews: await PipService.listReviews(id),
+            own: false,
+        });
+    })
+);
+
 module.exports = router;
+module.exports.sendPipRefusal = sendPipRefusal;

@@ -20,6 +20,17 @@ async function scopeFor(user) {
     return { adminId: Number(user && user.id) || -1, actorRefs: refs };
 }
 
+// Rows carry ids only; SystemLogModel.resolvePeople names people when the log
+// is read. An erased person is worded in the reader's language.
+function readOpts(req) {
+    return {
+        erasedLabel: (id) =>
+            req && typeof req.t === 'function'
+                ? req.t('syslogs:erased_person', { id })
+                : `Erased person #${id}`,
+    };
+}
+
 const SEVERITIES = ['info', 'warn', 'error', 'critical'];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -183,7 +194,7 @@ class SystemLogController {
             // even when the user set no filters (empty f = no extra predicates).
             const [total, logs, facets] = await Promise.all([
                 SystemLogModel.countFiltered(f, scope),
-                SystemLogModel.findFiltered(f, perPage, offset, scope),
+                SystemLogModel.findFiltered(f, perPage, offset, scope, readOpts(req)),
                 SystemLogModel.facets(scope),
             ]);
             const pager = buildPager(req.query, { page, total, perPage, basePath: '/system-logs' });
@@ -224,7 +235,11 @@ class SystemLogController {
                 return res.status(403).json({ error: 'Access denied' });
             }
             const scope = await scopeFor(req.user);
-            const trail = await SystemLogModel.findByRequestId(String(req.params.id), scope);
+            const trail = await SystemLogModel.findByRequestId(
+                String(req.params.id),
+                scope,
+                readOpts(req)
+            );
             // Not a uuid → 404 with an empty trail, never a 500.
             if (trail.invalid)
                 return res.status(404).json({
@@ -283,12 +298,18 @@ class SystemLogController {
                 res.setHeader('Content-Type', 'application/json; charset=utf-8');
                 res.write('{"logs":[');
                 let first = true;
-                await SystemLogModel.eachFilteredPage(f, scope, async (rows) => {
-                    for (const log of rows) {
-                        res.write((first ? '' : ',') + JSON.stringify(log));
-                        first = false;
-                    }
-                });
+                await SystemLogModel.eachFilteredPage(
+                    f,
+                    scope,
+                    async (rows) => {
+                        for (const log of rows) {
+                            res.write((first ? '' : ',') + JSON.stringify(log));
+                            first = false;
+                        }
+                    },
+                    1000,
+                    readOpts(req)
+                );
                 res.write(']}');
                 return res.end();
             }
@@ -296,14 +317,21 @@ class SystemLogController {
             res.setHeader('Content-Type', 'text/csv; charset=utf-8');
             // Same Excel treatment as every other export (ReportBuilderService.excelCsv).
             res.write('﻿' + 'sep=,\r\n' + EXPORT_HEADERS.map(csvCell).join(',') + '\r\n');
-            await SystemLogModel.eachFilteredPage(f, scope, async (rows) => {
-                // csvCell neutralizes spreadsheet formula injection (=,+,-,@,tab,CR) +
-                // RFC-4180 quotes. Critical here: action/details/userAgent embed
-                // attacker-controllable values (e.g. a crafted User-Agent on a failed login).
-                res.write(
-                    rows.map((log) => exportRow(log).map(csvCell).join(',')).join('\r\n') + '\r\n'
-                );
-            });
+            await SystemLogModel.eachFilteredPage(
+                f,
+                scope,
+                async (rows) => {
+                    // csvCell neutralizes spreadsheet formula injection (=,+,-,@,tab,CR) +
+                    // RFC-4180 quotes. Critical here: action/details/userAgent embed
+                    // attacker-controllable values (e.g. a crafted User-Agent on a failed login).
+                    res.write(
+                        rows.map((log) => exportRow(log).map(csvCell).join(',')).join('\r\n') +
+                            '\r\n'
+                    );
+                },
+                1000,
+                readOpts(req)
+            );
             res.end();
         } catch (error) {
             console.error('System logs export error:', error);
@@ -334,6 +362,7 @@ class SystemLogController {
 
 const controller = new SystemLogController();
 controller.scopeFor = scopeFor; // reused by the employee "Journal" section
+controller.readOpts = readOpts;
 controller.parseFilters = parseFilters;
 controller.exportFilename = exportFilename;
 controller.EXPORT_HEADERS = EXPORT_HEADERS;

@@ -1,0 +1,98 @@
+<%#
+  One indicator tile of the data-visualisation layer.
+
+    include('../partials/kpi-tile', { vizKpi: {
+        id:          the element id (required), e.g. 'kpi-k1'
+        label:       the indicator's name
+        value:       number | null — null is « Not measured yet », never 0
+        unit:        'pct' (default) | 'count' | 'num' | 'level';  decimals
+        numerator, denominator: a percentage's counts. Denominator 0 is « Not
+                     measured »; below 5 the tile prints « 2 of 3 » and no %
+        status:      'good' | 'warn' | 'risk' | null — ignored when nothing is measured
+        sub:         one line under the value (e.g. « of 57 people with a verdict »)
+        delta:       movement since `since`, null = none (never « +0 »);
+                     points for a %, a count otherwise; `polarity` 'lower_better'
+                     turns a rise into « worse »
+        sparkline:   [number|null] (≥ 3 numbers, a null is a gap)
+        extra:       [{label, value}] counts beside the value (null = Not measured)
+        drillHref, drillLabel, drillCount: « See the list (n) »
+        glossaryHref, asOf, since
+        emptyState:  {state, message} replaces the value (e.g. not configured)
+    } })
+
+  Colour is never the only carrier: the status chip has an icon and a word.
+  Locals read: `__`, `lang`, `numFmt` (utils/kpiFormat.forLang).
+-%><%
+  var _k = (typeof vizKpi !== 'undefined' && vizKpi) ? vizKpi : {};
+  var _lang = (typeof lang !== 'undefined' && lang === 'en') ? 'en' : 'fr';
+  var _F = (typeof numFmt !== 'undefined' && numFmt) ? numFmt : { num: function (v, d) { return Number(v).toFixed(d || 0); }, pct: function (v, d) { return Number(v).toFixed(d === undefined ? 1 : d) + (_lang === 'en' ? '%' : ' %'); } };
+  var _num = function (v) { return v !== null && v !== undefined && v !== '' && typeof v !== 'boolean' && isFinite(Number(v)); };
+  var _unit = _k.unit || 'pct';
+  var _dec = (typeof _k.decimals === 'number') ? _k.decimals : (_unit === 'pct' ? 1 : (_unit === 'level' ? 1 : 0));
+  var _den = _num(_k.denominator) ? Number(_k.denominator) : null;
+  var _unmeasured = !_num(_k.value) || (_unit === 'pct' && _den === 0);
+  var _small = !_unmeasured && _unit === 'pct' && _den !== null && _den < 5;
+  if (_unit === 'pct' && _den !== null && _den > 0 && _den < 5 && !_num(_k.value) && _num(_k.numerator)) { _unmeasured = false; _small = true; }
+  var _status = (_unmeasured || _small) ? null : (['good', 'warn', 'risk'].indexOf(_k.status) >= 0 ? _k.status : null);
+  var _icon = { good: '✓', warn: '!', risk: '▲' };
+  var _fmtVal = function (v) {
+      if (_unit === 'pct') return _F.pct(v, _dec);
+      return _F.num(v, _dec);
+  };
+  var _delta = (!_unmeasured && !_small && _num(_k.delta)) ? Number(_k.delta) : null;
+  var _dCls = null;
+  if (_delta !== null) {
+      var _better = _k.polarity === 'lower_better' ? _delta < 0 : _delta > 0;
+      _dCls = _delta === 0 ? 'same' : (_better ? 'better' : 'worse');
+  }
+  var _dText = _delta === null ? '' : ((_delta > 0 ? '+' : (_delta < 0 ? '−' : '')) + (_unit === 'pct' ? _F.num(Math.abs(_delta), 1) + ' ' + __('viz:tile.pts') : _F.num(Math.abs(_delta), _unit === 'count' ? 0 : 1)));
+  // sparkline: ≥ 3 numeric points, a null is a gap (one polyline per run)
+  var _spark = (!_unmeasured && !_small && Array.isArray(_k.sparkline)) ? _k.sparkline : null;
+  var _runs = [];
+  if (_spark && _spark.filter(_num).length >= 3) {
+      var _vals = _spark.filter(_num).map(Number);
+      var _min = Math.min.apply(null, _vals), _max = Math.max.apply(null, _vals);
+      var _span = _max - _min || 1;
+      var _w = 96, _h = 24, _step = _spark.length > 1 ? _w / (_spark.length - 1) : _w;
+      var _cur = [];
+      _spark.forEach(function (v, i) {
+          if (!_num(v)) { if (_cur.length) _runs.push(_cur); _cur = []; return; }
+          _cur.push((i * _step).toFixed(1) + ',' + (_h - 2 - ((Number(v) - _min) / _span) * (_h - 4)).toFixed(1));
+      });
+      if (_cur.length) _runs.push(_cur);
+  }
+-%>
+<article class="viz-kpi<%= _status ? ' viz-kpi--' + _status : '' %><%= _unmeasured ? ' viz-kpi--unmeasured' : '' %>" id="<%= _k.id || 'kpi' %>">
+    <header class="viz-kpi-head">
+        <h3 class="viz-kpi-label"><%= _k.label || '' %></h3>
+        <% if (_status) { %><span class="viz-chip viz-chip--<%= _status %>"><span class="viz-chip-icon" aria-hidden="true"><%= _icon[_status] %></span><span><%= __('viz:status.' + _status) %></span></span><% } %>
+    </header>
+    <% if (_k.emptyState) { %>
+        <p class="viz-kpi-empty" data-viz-empty="<%= _k.emptyState.state || 'unmeasured' %>"><%= _k.emptyState.message || __('viz:unmeasured') %></p>
+    <% } else if (_unmeasured) { %>
+        <p class="viz-kpi-value viz-kpi-value--unmeasured"><span class="viz-kpi-hatch viz-hatch" aria-hidden="true"></span><span><%= __('viz:unmeasured') %></span></p>
+    <% } else if (_small) { %>
+        <p class="viz-kpi-value viz-kpi-value--small"><%= __('viz:tile.of', { a: _F.num(_k.numerator, 0), b: _F.num(_den, 0) }) %></p>
+        <p class="viz-kpi-note"><%= __('viz:small_n') %></p>
+    <% } else { %>
+        <p class="viz-kpi-value"><%= _fmtVal(_k.value) %><% if (_dCls) { %> <span class="viz-delta viz-delta--<%= _dCls %>" title="<%= _k.since ? __('viz:tile.delta_since', { date: (typeof fmtDate === 'function' ? fmtDate(_k.since) : _k.since) }) : '' %>"><%= _dText %></span><span class="viz-live"> <%= __('viz:tile.delta_' + _dCls) %></span><% } %></p>
+    <% } %>
+    <% if (_k.sub && !_unmeasured) { %><p class="viz-kpi-sub"><%= _k.sub %></p><% } %>
+    <% if (_runs.length) { %>
+    <svg class="viz-kpi-spark" viewBox="0 0 96 24" width="96" height="24" role="img" aria-label="<%= __('viz:tile.spark') %>" focusable="false">
+        <% _runs.forEach(function (pts) { %><polyline points="<%= pts.join(' ') %>" fill="none"></polyline><% }); %>
+    </svg>
+    <% } %>
+    <% if (Array.isArray(_k.extra) && _k.extra.length) { %>
+    <dl class="viz-kpi-extra">
+        <% _k.extra.forEach(function (x) { %><div><dt><%= x.label %></dt><dd><%= _num(x.value) ? _F.num(x.value, 0) : __('viz:unmeasured') %></dd></div><% }); %>
+    </dl>
+    <% } %>
+    <% if (_k.drillHref || _k.glossaryHref || _k.asOf) { %>
+    <footer class="viz-kpi-foot">
+        <% if (_k.drillHref) { %><a class="viz-kpi-drill" href="<%= _k.drillHref %>"><%= _k.drillLabel || '' %> (<%= _F.num(_k.drillCount, 0) %>)</a><% } %>
+        <% if (_k.glossaryHref) { %><a class="viz-kpi-how" href="<%= _k.glossaryHref %>"><%= __('viz:tile.how') %></a><% } %>
+        <% if (_k.asOf) { %><span class="viz-kpi-asof"><%= __('viz:tile.as_of', { date: (typeof fmtDate === 'function' ? fmtDate(_k.asOf) : _k.asOf) }) %></span><% } %>
+    </footer>
+    <% } %>
+</article>

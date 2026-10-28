@@ -191,6 +191,40 @@ const toSign = idps.filter(function (p) { return p.canSign; });
                     <% } %>
                 </dl>
 
+                <%# The person's evidence (migration 195): the checkpoints and their
+                    answers, their reading (a date, never an agreement), their
+                    observations, and the printable letter. %>
+                <% if (p.reviews && p.reviews.length) { %>
+                    <h4 class="pipx-h"><%= __('employee:dev_pip_reviews_title') %></h4>
+                    <ul class="pipx-reviews">
+                    <% p.reviews.forEach(function (r) { %>
+                        <li data-pip-review="<%= r.id %>">
+                            <strong><%= r.heldOn %></strong> — <span style="white-space:pre-wrap;"><%= r.note %></span>
+                            <% if (r.response) { %>
+                                <div class="text-muted"><%= __('employee:dev_pip_your_response') %> <span style="white-space:pre-wrap;"><%= r.response %></span></div>
+                            <% } else if (p.isOpen) { %>
+                                <div><button type="button" class="btn btn-sm btn-secondary" data-on-click="PIPX.respond" data-args="<%= JSON.stringify([r.id]) %>"><%= __('employee:dev_pip_respond') %></button></div>
+                            <% } %>
+                        </li>
+                    <% }); %>
+                    </ul>
+                <% } %>
+                <div class="pipx-ack">
+                    <% if (p.acknowledgedOn) { %>
+                        <p class="text-muted" data-pip-ack="1"><i class="fas fa-check" aria-hidden="true"></i> <%= __('employee:dev_pip_acknowledged_on', { date: p.acknowledgedOn }) %></p>
+                    <% } else if (p.isOpen) { %>
+                        <button type="button" class="btn btn-sm btn-primary" data-pip-ack="0" data-on-click="PIPX.ack" data-args="<%= JSON.stringify([p.id]) %>"><%= __('employee:dev_pip_ack_btn') %></button>
+                        <span class="text-muted pipx-note"><%= __('employee:dev_pip_ack_help') %></span>
+                    <% } %>
+                    <% if (p.employeeComment) { %>
+                        <p><strong><%= __('employee:dev_pip_your_observations') %></strong> <span style="white-space:pre-wrap;"><%= p.employeeComment %></span> <span class="text-muted">(<%= p.employeeCommentOn %>)</span></p>
+                    <% } %>
+                    <% if (p.isOpen) { %>
+                        <button type="button" class="btn btn-sm btn-secondary" data-on-click="PIPX.comment" data-args="<%= JSON.stringify([p.id, p.employeeComment || '']) %>"><%= p.employeeComment ? __('employee:dev_pip_edit_observations') : __('employee:dev_pip_add_observations') %></button>
+                    <% } %>
+                    <a class="btn btn-sm btn-secondary" href="/employee/pip/<%= p.id %>/letter"><i class="fas fa-print" aria-hidden="true"></i> <%= __('employee:dev_pip_letter') %></a>
+                </div>
+
                 <p class="text-muted" style="margin:0;font-size:.85rem;">
                     <i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('employee:dev_pip_readonly') %>
                 </p>
@@ -210,8 +244,20 @@ const toSign = idps.filter(function (p) { return p.canSign; });
         <% if (!idps.length) { %>
             <p><em><%= __('employee:dev_idp_none') %></em></p>
         <% } %>
+        <% if (typeof canPropose !== 'undefined' && canPropose) { %>
+            <link rel="stylesheet" href="/css/idp.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
+            <p class="idp-propose-link"><a class="btn btn-secondary" href="/v2/idp/propose"><i class="fas fa-lightbulb" aria-hidden="true"></i> <%= __('idp:propose_cta') %></a></p>
+        <% } %>
 
-        <% idps.forEach(function (plan) { %>
+        <%# The plans in progress first; the finished ones fold into a
+            « History » after them (open plans are what the person acts on). %>
+        <% const _openIdps = idps.filter(function (p) { return p.isOpen; });
+           const _pastIdps = idps.filter(function (p) { return !p.isOpen; }); %>
+        <link rel="stylesheet" href="/css/emp-loop.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
+        <div id="devIdp">
+        <% [[_openIdps, false], [_pastIdps, true]].forEach(function (grp) { if (!grp[0].length) return; %>
+        <% if (grp[1]) { %><details class="card dev-history" id="devHistory"><summary><%= __('employee:dev_history_sum', { count: grp[0].length }) %></summary><% } %>
+        <% grp[0].forEach(function (plan) { %>
             <section class="card" style="padding:1rem;margin-top:1rem;<%= plan.isOpen ? '' : 'opacity:.85;' %>">
                 <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;justify-content:space-between;">
                     <h3 style="margin:0;font-size:1.05rem;"><%= __('employee:dev_idp_item_title') %></h3>
@@ -265,6 +311,7 @@ const toSign = idps.filter(function (p) { return p.canSign; });
                                     <th scope="col"><%= __('employee:dev_th_type') %></th>
                                     <th scope="col"><%= __('employee:dev_th_state') %></th>
                                     <th scope="col"><%= __('employee:dev_th_completed') %></th>
+                                    <% if (plan.canMoveActions) { %><th scope="col"><%= __('idp:action_next') %></th><% } %>
                                 </tr>
                             </thead>
                             <tbody>
@@ -279,6 +326,7 @@ const toSign = idps.filter(function (p) { return p.canSign; });
                                         <td><%= actionType[a.type] || enumLabel(a.type) %></td>
                                         <td><span class="badge <%= badge(itemState, a.status).cls %>"><%= badge(itemState, a.status).label %></span></td>
                                         <td><%= a.completedAt || '—' %></td>
+                                        <% if (plan.canMoveActions) { %><td><%- include('../../partials/idp-action-controls', { action: a, info: {}, canAct: false, isSubject: true, planStatus: plan.status, back: 'mine', courses: null }) %></td><% } %>
                                     </tr>
                                 <% }); %>
                             </tbody>
@@ -328,6 +376,9 @@ const toSign = idps.filter(function (p) { return p.canSign; });
                 <% } %>
             </section>
         <% }); %>
+        <% if (grp[1]) { %></details><% } %>
+        <% }); %>
+        </div>
     </div>
 
     <!-- ── Coaching pointer ──────────────────────────────────────────────── -->
@@ -347,3 +398,56 @@ const toSign = idps.filter(function (p) { return p.canSign; });
     </div>
 
 <% } %>
+
+<%# The person's actions on their own PIP (4.0.0 port, wave 6). One network
+    discipline (sa-console-net.js): a redirected or non-JSON answer is a failure. %>
+<style>
+  .pipx-h{margin:1rem 0 .4rem;font-size:.95rem}
+  .pipx-reviews{margin:0 0 .75rem;padding-left:1.1rem}
+  .pipx-reviews li{margin:.35rem 0}
+  .pipx-ack{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.75rem 0}
+  .pipx-ack p{flex-basis:100%;margin:0}
+  .pipx-note{font-size:.85rem}
+</style>
+<script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script nonce="<%= cspNonce %>">
+(function () {
+  const T = <%- include('../../partials/json-script', { v: {
+    ackTitle: __('employee:dev_pip_ack_title'), ackBody: __('employee:dev_pip_ack_body'), ackYes: __('employee:dev_pip_ack_btn'),
+    obsTitle: __('employee:dev_pip_obs_title'), obsBody: __('employee:dev_pip_obs_body'), obsYes: __('employee:dev_pip_obs_yes'),
+    respTitle: __('employee:dev_pip_resp_title'), respBody: __('employee:dev_pip_resp_body'), respYes: __('employee:dev_pip_resp_yes'),
+    saved: __('employee:dev_pip_saved'), err: __('employee:sr_err_generic'),
+    err_session: __('talentx:sar_err_session'), err_forbidden: __('talentx:sar_err_forbidden'),
+    err_notfound: __('talentx:sar_err_notfound'), err_server: __('talentx:sar_err_server'),
+    err_http: __('talentx:sar_err_http'), err_ref: __('talentx:sar_err_ref'),
+    err_network: __('talentx:sar_err_network'), err_format: __('talentx:sar_err_format'),
+    retry: __('talentx:sar_retry'), relogin: __('talentx:sar_relogin')
+  } }) %>;
+  if (window.SAConsoleNet) SAConsoleNet.configure(T);
+  const say = (kind, msg) => (window.toast || window.alert)(msg, kind);
+  async function post(url, body) {
+    try {
+      const r = await SAConsoleNet.api(url, 'POST', body || {});
+      if (r && r.ok) { say('success', T.saved); location.reload(); }
+      else say('error', (r && r.error) || T.err);
+    } catch (e) {
+      say('error', e.message || T.err);
+      if (e.code === 'session') SAConsoleNet.navigate('/login?expired=1');
+    }
+  }
+  window.PIPX = {
+    async ack(id) {
+      const ok = await window.confirmDialog({ title: T.ackTitle, body: T.ackBody, confirmLabel: T.ackYes });
+      if (ok) post('/employee/pip/' + Number(id) + '/acknowledge');
+    },
+    async comment(id, current) {
+      const v = await window.promptDialog(T.obsBody, current || '', { title: T.obsTitle, okText: T.obsYes, required: true, multiline: true });
+      if (v && v.trim()) post('/employee/pip/' + Number(id) + '/comment', { comment: v.trim() });
+    },
+    async respond(rid) {
+      const v = await window.promptDialog(T.respBody, '', { title: T.respTitle, okText: T.respYes, required: true, multiline: true });
+      if (v && v.trim()) post('/employee/pip/checkpoints/' + Number(rid) + '/respond', { response: v.trim() });
+    }
+  };
+})();
+</script>

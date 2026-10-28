@@ -18,7 +18,9 @@ const EmployeeModel = require('../models/EmployeeModel');
 const LogService = require('./LogService');
 const RBACService = require('./RBACService');
 const GovernanceService = require('./GovernanceService');
+const AuthorityService = require('./AuthorityService');
 const DevelopmentTriggerService = require('./DevelopmentTriggerService');
+const { agoBucket, daysBetween } = require('../utils/agoBucket');
 
 const BAND = { low: 0, medium: 1, high: 2 };
 // Labels + colour categories keyed by `${potential}-${performance}` (see the
@@ -79,6 +81,80 @@ function say(e, key, vars = null) {
     return e;
 }
 
+// MOVEMENT (migration 175) — from the person's previous APPROVED placement to
+// the new one. A change of box must be justified in writing, at least this long.
+const MOVEMENT_MIN_JUSTIFICATION = 20;
+// Directions that change the box, hence require a justification.
+const MOVING = new Set(['up', 'down', 'lateral']);
+// A placement cancelled by the maintenance panel was a mistake, never a position
+// someone held: it is not a "previous placement". `p` is the candidate alias.
+const notCancelled = (p) =>
+    `NOT (${p}.status = 'archived' AND EXISTS (
+          SELECT 1 FROM nine_box_events cx WHERE cx.evaluation_id = ${p}.id AND cx.action = 'cancel'))`;
+/**
+ * The previous approved placement of the row aliased `ev`, as a LATERAL join
+ * aliased `lp`. Used only when `ev` has no snapshot yet (an open proposal): the
+ * snapshot, once taken, is the answer and is never recomputed.
+ */
+const PREV_LATERAL = `LEFT JOIN LATERAL (
+        SELECT p.id, p.box, p.performance, p.potential,
+               COALESCE(p.cycle_id, p.movement_cycle_id) AS cycle_id, p.approved_at
+          FROM nine_box_evaluations p
+         WHERE p.employee_id = ev.employee_id AND p.id <> ev.id
+           AND p.approved_at IS NOT NULL AND p.status IN ('approved', 'archived')
+           AND (ev.approved_at IS NULL OR p.approved_at < ev.approved_at)
+           AND ${notCancelled('p')}
+         ORDER BY p.approved_at DESC, p.id DESC LIMIT 1
+    ) lp ON ev.movement_snapshot_at IS NULL`;
+// The previous-placement columns: the snapshot when there is one, else the live preview.
+const PREV_COLS = `
+    CASE WHEN ev.movement_snapshot_at IS NOT NULL THEN ev.previous_evaluation_id ELSE lp.id END AS prev_id,
+    CASE WHEN ev.movement_snapshot_at IS NOT NULL THEN ev.previous_box ELSE lp.box END AS prev_box,
+    CASE WHEN ev.movement_snapshot_at IS NOT NULL THEN ev.previous_performance ELSE lp.performance END AS prev_performance,
+    CASE WHEN ev.movement_snapshot_at IS NOT NULL THEN ev.previous_potential ELSE lp.potential END AS prev_potential,
+    CASE WHEN ev.movement_snapshot_at IS NOT NULL THEN ev.previous_cycle_id ELSE lp.cycle_id END AS prev_cycle_id,
+    CASE WHEN ev.movement_snapshot_at IS NOT NULL THEN ev.previous_approved_at ELSE lp.approved_at END AS prev_approved_at,
+    (ev.movement_snapshot_at IS NOT NULL) AS movement_snapshot,
+    ev.movement_backfilled, ev.movement_justification,
+    ev.movement_justified_by, ev.movement_justified_by_type, ev.movement_justified_at`;
+
+/**
+ * A justification is a SENTENCE, not a way around the minimum.
+ * Refused: whitespace/punctuation/symbols only, one repeated character
+ * (« aaaaaaaaaaaaaaaaaaaaa », « …….. »), or a copy — ignoring case and spaces —
+ * of the same employee's previous justification.
+ */
+const JUST_NOISE = /[\s\p{P}\p{S}]/gu;
+function justificationCore(text) {
+    return String(text || '')
+        .toLowerCase()
+        .replace(JUST_NOISE, '');
+}
+function justificationKey(text) {
+    return String(text || '')
+        .toLowerCase()
+        .replace(/\s+/g, '');
+}
+function justificationRefused(code, key, message) {
+    const e = new Error(message);
+    say(e, key, { min: MOVEMENT_MIN_JUSTIFICATION });
+    e.code = code;
+    e.status = 400;
+    e.expose = true;
+    return e;
+}
+
+function justificationRequired(min = MOVEMENT_MIN_JUSTIFICATION) {
+    const e = new Error(
+        `A written justification of at least ${min} characters is required when the box changes.`
+    );
+    say(e, 'talentx:nb_mv_err_justification_required', { min });
+    e.code = 'MOVEMENT_JUSTIFICATION_REQUIRED';
+    e.status = 400;
+    e.expose = true;
+    return e;
+}
+
 class NineBoxService {
     /** Pure placement model (potential x performance) → box 1..9 + label. */
     computeBox(performance, potential) {
@@ -86,6 +162,470 @@ class NineBoxService {
             throw new Error('performance/potential must be low|medium|high');
         const box = BAND[potential] * 3 + BAND[performance] + 1; // 1..9
         return { box, label: BOX_LABELS[`${potential}-${performance}`] || null };
+    }
+
+    static get MOVEMENT_MIN_JUSTIFICATION() {
+        return MOVEMENT_MIN_JUSTIFICATION;
+    }
+
+    /**
+     * MOVEMENT DIRECTION between two placements, from the two axes only
+     * (band deltas dPerf = new − old performance, dPot = new − old potential):
+     *   first    no previous approved placement
+     *   stable   same box (dPerf = 0 and dPot = 0)
+     *   up       progression — neither axis down, at least one up
+     *   down     régression  — neither axis up, at least one down
+     *   lateral  one axis up and the other down
+     * The cell's colour category plays no part: a move is judged on the two
+     * judgements it is made of, never on the palette.
+     */
+    movementDirection(prev, next) {
+        if (!prev || !(prev.performance in BAND) || !(prev.potential in BAND)) return 'first';
+        if (!next || !(next.performance in BAND) || !(next.potential in BAND)) return null;
+        const dPerf = BAND[next.performance] - BAND[prev.performance];
+        const dPot = BAND[next.potential] - BAND[prev.potential];
+        if (dPerf === 0 && dPot === 0) return 'stable';
+        if (dPerf >= 0 && dPot >= 0) return 'up';
+        if (dPerf <= 0 && dPot <= 0) return 'down';
+        return 'lateral';
+    }
+
+    /** True when this direction changes the box, hence needs a written justification. */
+    movementNeedsJustification(direction) {
+        return MOVING.has(direction);
+    }
+
+    /**
+     * The whole justification rule (≥ 20 characters + the placeholder and copy rules). Throws a 400 with
+     * its own code and catalogue key; returns nothing when the text is acceptable.
+     * `evaluationId` is excluded from the "previous justification" comparison
+     * (the proposal's own stored text is not a copy of itself).
+     */
+    async _assertJustification(text, employeeId, evaluationId) {
+        const t = this._cleanJustification(text);
+        if (t.length < MOVEMENT_MIN_JUSTIFICATION) throw justificationRequired();
+        const core = justificationCore(t);
+        if (!core || /^(.)\1*$/u.test(core))
+            throw justificationRefused(
+                'MOVEMENT_JUSTIFICATION_PLACEHOLDER',
+                'talentx:nb_mv_err_justification_placeholder',
+                'The justification must be a real sentence: not only spaces, punctuation or one repeated character.'
+            );
+        const prev = await db.get(
+            `SELECT movement_justification FROM nine_box_evaluations
+              WHERE employee_id = ? AND id <> ? AND movement_justification IS NOT NULL
+              ORDER BY movement_justified_at DESC NULLS LAST, id DESC LIMIT 1`,
+            [employeeId, evaluationId == null ? 0 : evaluationId]
+        );
+        if (prev && justificationKey(prev.movementJustification) === justificationKey(t))
+            throw justificationRefused(
+                'MOVEMENT_JUSTIFICATION_COPY',
+                'talentx:nb_mv_err_justification_copy',
+                "The justification repeats this employee's previous justification word for word: explain this change."
+            );
+    }
+
+    _cleanJustification(text) {
+        return text == null ? '' : String(text).trim().slice(0, 4000);
+    }
+
+    _justifierType(user) {
+        return user && user.userType === 'admin' ? 'admin' : 'employee';
+    }
+
+    /**
+     * The person's previous APPROVED placement, relative to evaluation `excludeId`
+     * (approved strictly before `before` when given). Cancelled placements are not
+     * positions and are skipped.
+     */
+    async _previousApproved(employeeId, excludeId, before = null) {
+        return db.get(
+            `SELECT p.id, p.box, p.performance, p.potential,
+                    COALESCE(p.cycle_id, p.movement_cycle_id) AS cycle_id, p.approved_at
+               FROM nine_box_evaluations p
+              WHERE p.employee_id = ? AND p.id <> ?
+                AND p.approved_at IS NOT NULL AND p.status IN ('approved', 'archived')
+                AND (?::timestamptz IS NULL OR p.approved_at < ?::timestamptz)
+                AND ${notCancelled('p')}
+              ORDER BY p.approved_at DESC, p.id DESC LIMIT 1`,
+            [employeeId, excludeId == null ? 0 : excludeId, before, before]
+        );
+    }
+
+    /**
+     * SNAPSHOT THE MOVE onto evaluation `ev` (at submit, or at approval straight
+     * from a draft) and enforce the justification rule. `newText` is a
+     * justification supplied with this act; otherwise the one already stored on
+     * the proposal is used. Throws MOVEMENT_JUSTIFICATION_REQUIRED, writing
+     * nothing, when the box changes and no ≥ 20-character justification exists.
+     */
+    async _snapshotMovement(ev, user, auth, newText = null, { enforce = true } = {}) {
+        const prev = await this._previousApproved(ev.employeeId, ev.id);
+        const direction = this.movementDirection(prev, ev);
+        const fresh = this._cleanJustification(newText);
+        const text = fresh || this._cleanJustification(ev.movementJustification);
+        if (enforce && this.movementNeedsJustification(direction))
+            await this._assertJustification(text, ev.employeeId, ev.id);
+        let movementCycle = null;
+        if (ev.cycleId == null) {
+            const cyc = await this._resolveMirrorCycle();
+            movementCycle = cyc ? cyc.id : null;
+        }
+        await db.run(
+            `UPDATE nine_box_evaluations
+                SET previous_evaluation_id = ?, previous_box = ?, previous_performance = ?,
+                    previous_potential = ?, previous_cycle_id = ?, previous_approved_at = ?,
+                    movement_direction = ?, movement_snapshot_at = now(), movement_backfilled = false,
+                    movement_cycle_id = COALESCE(movement_cycle_id, ?),
+                    movement_justification = CASE WHEN ? THEN ?::text ELSE movement_justification END,
+                    movement_justified_by = CASE WHEN ? THEN ?::bigint ELSE movement_justified_by END,
+                    movement_justified_by_type = CASE WHEN ? THEN ?::text ELSE movement_justified_by_type END,
+                    movement_justified_at = CASE WHEN ? THEN now() ELSE movement_justified_at END
+              WHERE id = ?`,
+            [
+                prev ? prev.id : null,
+                prev ? prev.box : null,
+                prev ? prev.performance : null,
+                prev ? prev.potential : null,
+                prev ? prev.cycleId : null,
+                prev ? prev.approvedAt : null,
+                direction,
+                movementCycle,
+                Boolean(fresh),
+                fresh || null,
+                Boolean(fresh),
+                user && user.id != null ? user.id : null,
+                Boolean(fresh),
+                this._justifierType(user),
+                Boolean(fresh),
+                ev.id,
+            ]
+        );
+        // Ids only (audit rule): no name, and not the text itself — the
+        // text lives in the row, where DSR erasure and confidentiality apply.
+        await this._event(ev.id, ev.employeeId, user, auth, 'movement', ev.status, ev.status, {
+            previousEvaluationId: prev ? Number(prev.id) : null,
+            fromBox: prev ? Number(prev.box) : null,
+            toBox: Number(ev.box),
+            direction,
+            justified: text.length >= MOVEMENT_MIN_JUSTIFICATION,
+        });
+        return { direction, previous: prev || null };
+    }
+
+    /**
+     * A BOX CHANGE on a proposal or a placement that already carries a snapshot
+     * (a reviewer editing a submitted proposal, or a calibration). The previous
+     * placement stays the snapshot; the direction is recomputed; a moving
+     * direction needs a NEW justification, because the old one explained a box
+     * that is no longer proposed. Without a snapshot (a draft) nothing is
+     * enforced yet, but a stale justification is cleared.
+     */
+    async _onBoxChange(ev, next, user, auth, newText, { enforce }) {
+        const fresh = this._cleanJustification(newText);
+        if (!ev.movementSnapshotAt) {
+            await db.run(
+                `UPDATE nine_box_evaluations
+                    SET movement_justification = ?, movement_justified_by = ?,
+                        movement_justified_by_type = ?, movement_justified_at = ?
+                  WHERE id = ?`,
+                fresh
+                    ? [
+                          fresh,
+                          user && user.id != null ? user.id : null,
+                          this._justifierType(user),
+                          new Date(),
+                          ev.id,
+                      ]
+                    : [null, null, null, null, ev.id]
+            );
+            return null;
+        }
+        const prev =
+            ev.previousPerformance != null && ev.previousPotential != null
+                ? { performance: ev.previousPerformance, potential: ev.previousPotential }
+                : null;
+        const direction = this.movementDirection(prev, next);
+        if (enforce && this.movementNeedsJustification(direction))
+            await this._assertJustification(fresh, ev.employeeId, ev.id);
+        await db.run(
+            `UPDATE nine_box_evaluations
+                SET movement_direction = ?, movement_justification = ?, movement_justified_by = ?,
+                    movement_justified_by_type = ?, movement_justified_at = ?
+              WHERE id = ?`,
+            [
+                direction,
+                fresh || null,
+                fresh && user && user.id != null ? user.id : null,
+                fresh ? this._justifierType(user) : null,
+                fresh ? new Date() : null,
+                ev.id,
+            ]
+        );
+        await this._event(ev.id, ev.employeeId, user, auth, 'movement', ev.status, ev.status, {
+            previousEvaluationId: ev.previousEvaluationId ? Number(ev.previousEvaluationId) : null,
+            fromBox: ev.previousBox != null ? Number(ev.previousBox) : null,
+            toBox: Number(this.computeBox(next.performance, next.potential).box),
+            direction,
+            justified: fresh.length >= MOVEMENT_MIN_JUSTIFICATION,
+            boxChangedFrom: Number(ev.box),
+        });
+        return direction;
+    }
+
+    /** Names for justifier refs (a Map), two queries whatever the size. Erased → null. */
+    async _names(refs) {
+        const emp = [
+            ...new Set(refs.filter((r) => r && r.type === 'employee').map((r) => Number(r.id))),
+        ];
+        const adm = [
+            ...new Set(refs.filter((r) => r && r.type === 'admin').map((r) => Number(r.id))),
+        ];
+        // A Map, never an object keyed by data.
+        const out = new Map();
+        try {
+            if (emp.length) {
+                const rows = await db.all(
+                    `SELECT id, first_name, last_name, erased_at FROM employees WHERE id = ANY(?::bigint[])`,
+                    [emp]
+                );
+                for (const r of rows)
+                    out.set(
+                        `employee:${r.id}`,
+                        r.erasedAt
+                            ? null
+                            : [r.firstName, r.lastName].filter(Boolean).join(' ') || null
+                    );
+            }
+            if (adm.length) {
+                const rows = await db.all(
+                    `SELECT id, username FROM admins WHERE id = ANY(?::bigint[])`,
+                    [adm]
+                );
+                for (const r of rows)
+                    out.set(`admin:${r.id}`, r.username ? String(r.username) : null);
+            }
+        } catch (_) {
+            /* a failed lookup leaves names out — never a wrong one */
+        }
+        return out;
+    }
+
+    /** Shape a row carrying PREV_COLS into the `movement` object the pages read. */
+    _movementOf(r, names = new Map()) {
+        // Keyed on the snapshot's BANDS, not its id: the id goes NULL if that row is
+        // ever deleted (FK ON DELETE SET NULL), the recorded origin does not.
+        const prev =
+            r.prevPerformance != null && r.prevPotential != null
+                ? {
+                      evaluationId: r.prevId != null ? Number(r.prevId) : null,
+                      box: r.prevBox != null ? Number(r.prevBox) : null,
+                      performance: r.prevPerformance,
+                      potential: r.prevPotential,
+                      cycleId: r.prevCycleId != null ? Number(r.prevCycleId) : null,
+                      cycleLabel: r.prevCycleLabel || null,
+                      approvedAt: r.prevApprovedAt || null,
+                  }
+                : null;
+        const direction = this.movementDirection(prev, r);
+        const text = this._cleanJustification(r.movementJustification);
+        const byKey =
+            r.movementJustifiedBy != null
+                ? `${r.movementJustifiedByType === 'admin' ? 'admin' : 'employee'}:${r.movementJustifiedBy}`
+                : null;
+        return {
+            direction,
+            previous: prev,
+            requiresJustification: this.movementNeedsJustification(direction),
+            justified: text.length >= MOVEMENT_MIN_JUSTIFICATION,
+            justification: text || null,
+            justifiedBy: byKey ? (names.get(byKey) ?? null) : null,
+            justifiedAt: r.movementJustifiedAt || null,
+            // false = a live preview of an open proposal, not yet a snapshot
+            snapshot: Boolean(r.movementSnapshot),
+            backfilled: Boolean(r.movementBackfilled),
+            minJustification: MOVEMENT_MIN_JUSTIFICATION,
+        };
+    }
+
+    /** One evaluation's movement (detail panel). */
+    async _movementForId(id) {
+        const r = await db.get(
+            `SELECT ev.performance, ev.potential, ${PREV_COLS}, pc.label AS prev_cycle_label
+               FROM nine_box_evaluations ev ${PREV_LATERAL}
+               LEFT JOIN assessment_cycles pc ON pc.id =
+                    CASE WHEN ev.movement_snapshot_at IS NOT NULL THEN ev.previous_cycle_id ELSE lp.cycle_id END
+              WHERE ev.id = ?`,
+            [id]
+        );
+        if (!r) return null;
+        const names = await this._names([
+            r.movementJustifiedBy != null
+                ? { type: r.movementJustifiedByType, id: r.movementJustifiedBy }
+                : null,
+        ]);
+        return this._movementOf(r, names);
+    }
+
+    /**
+     * The previous approved placement of an employee, for the assess dialog
+     * (before any proposal exists). Same authority as suggestPosition.
+     */
+    async previousPlacement(employeeId, user) {
+        const auth = await this.resolveAuthority(user, employeeId);
+        if (!auth.canDraft && !auth.canView)
+            throw say(
+                new Error('Not authorized for this employee'),
+                'talentx:nb_err_not_authorized_employee'
+            );
+        const p = await this._previousApproved(employeeId, 0);
+        if (!p) return { previous: null, minJustification: MOVEMENT_MIN_JUSTIFICATION };
+        let cycleLabel = null;
+        if (p.cycleId != null) {
+            const c = await db.get('SELECT label FROM assessment_cycles WHERE id = ?', [p.cycleId]);
+            cycleLabel = c ? c.label : null;
+        }
+        return {
+            previous: {
+                evaluationId: Number(p.id),
+                box: Number(p.box),
+                performance: p.performance,
+                potential: p.potential,
+                cycleId: p.cycleId != null ? Number(p.cycleId) : null,
+                cycleLabel,
+                approvedAt: p.approvedAt,
+            },
+            minJustification: MOVEMENT_MIN_JUSTIFICATION,
+        };
+    }
+
+    /**
+     * 9-BOX MOVEMENTS — every DECIDED placement in the reader's scope (the
+     * same scope as the grid: super admin all, local admin clearance ∪ line,
+     * manager their sub-tree), with where it came from, the direction and the
+     * justification. Filters: cycle (id | 'none'), siteId, departmentId,
+     * direction. Returns the rows, the counts per direction, the 9×9 transition
+     * matrix (first evaluations have no origin and stay out of it) and the
+     * filter options — built from the scope itself, so an option never names a
+     * site the reader cannot see. Audited as a view.
+     */
+    async movements(user, filters = {}, req = null) {
+        const scope = await this._scopedEmployeeIds(user);
+        const empty = {
+            rows: [],
+            counts: { first: 0, stable: 0, up: 0, down: 0, lateral: 0, total: 0 },
+            matrix: Array.from({ length: 9 }, () => Array(9).fill(0)),
+            options: { cycles: [], sites: [], departments: [], hasNoCycle: false },
+        };
+        // Leavers and erased people are out of the report for every reader,
+        // the super administrator included.
+        let where = `ev.approved_at IS NOT NULL AND ev.status IN ('approved', 'archived') AND ${notCancelled('ev')}
+                     AND e.is_active = true AND e.erased_at IS NULL`;
+        const params = [];
+        if (!scope.all) {
+            if (!scope.ids.length) return empty;
+            where += ' AND ev.employee_id = ANY(?::bigint[])';
+            params.push(scope.ids);
+        }
+        const all = await db.all(
+            `SELECT ev.id, ev.employee_id, ev.performance, ev.potential, ev.box, ev.status,
+                    ev.approved_at, COALESCE(ev.cycle_id, ev.movement_cycle_id) AS cycle_id,
+                    c.label AS cycle_label, pc.label AS prev_cycle_label,
+                    e.first_name, e.last_name, e.employee_number,
+                    e.site_id, s.name AS site_name, e.department_id, d.name AS department_name,
+                    ${PREV_COLS}
+               FROM nine_box_evaluations ev
+               JOIN employees e ON e.id = ev.employee_id
+               LEFT JOIN sites s ON s.id = e.site_id
+               LEFT JOIN departments d ON d.id = e.department_id
+               LEFT JOIN assessment_cycles c ON c.id = COALESCE(ev.cycle_id, ev.movement_cycle_id)
+               ${PREV_LATERAL}
+               LEFT JOIN assessment_cycles pc ON pc.id =
+                    CASE WHEN ev.movement_snapshot_at IS NOT NULL THEN ev.previous_cycle_id ELSE lp.cycle_id END
+              WHERE ${where}
+              ORDER BY ev.approved_at DESC, ev.id DESC`,
+            params
+        );
+        const names = await this._names(
+            all
+                .filter((r) => r.movementJustifiedBy != null)
+                .map((r) => ({ type: r.movementJustifiedByType, id: r.movementJustifiedBy }))
+        );
+        const opt = {
+            cycles: new Map(),
+            sites: new Map(),
+            departments: new Map(),
+            hasNoCycle: false,
+        };
+        const shaped = all.map((r) => {
+            if (r.cycleId != null)
+                opt.cycles.set(Number(r.cycleId), r.cycleLabel || `#${r.cycleId}`);
+            else opt.hasNoCycle = true;
+            if (r.siteId != null) opt.sites.set(Number(r.siteId), r.siteName || `#${r.siteId}`);
+            if (r.departmentId != null)
+                opt.departments.set(
+                    Number(r.departmentId),
+                    r.departmentName || `#${r.departmentId}`
+                );
+            return {
+                evaluationId: Number(r.id),
+                employeeId: Number(r.employeeId),
+                firstName: r.firstName,
+                lastName: r.lastName,
+                employeeNumber: r.employeeNumber || null,
+                siteId: r.siteId != null ? Number(r.siteId) : null,
+                siteName: r.siteName || null,
+                departmentId: r.departmentId != null ? Number(r.departmentId) : null,
+                departmentName: r.departmentName || null,
+                cycleId: r.cycleId != null ? Number(r.cycleId) : null,
+                cycleLabel: r.cycleLabel || null,
+                status: r.status,
+                approvedAt: r.approvedAt,
+                box: Number(r.box),
+                performance: r.performance,
+                potential: r.potential,
+                movement: this._movementOf(r, names),
+            };
+        });
+        const f = filters || {};
+        const num = (v) => (v == null || v === '' ? null : Number(v));
+        const rows = shaped.filter((x) => {
+            if (f.cycle === 'none' && x.cycleId != null) return false;
+            if (f.cycle && f.cycle !== 'none' && x.cycleId !== num(f.cycle)) return false;
+            if (num(f.siteId) != null && x.siteId !== num(f.siteId)) return false;
+            if (num(f.departmentId) != null && x.departmentId !== num(f.departmentId)) return false;
+            if (f.direction && x.movement.direction !== f.direction) return false;
+            return true;
+        });
+        const counts = { first: 0, stable: 0, up: 0, down: 0, lateral: 0, total: rows.length };
+        const matrix = Array.from({ length: 9 }, () => Array(9).fill(0));
+        for (const x of rows) {
+            if (counts[x.movement.direction] != null) counts[x.movement.direction] += 1;
+            const from = x.movement.previous && x.movement.previous.box;
+            if (from >= 1 && from <= 9 && x.box >= 1 && x.box <= 9)
+                matrix[from - 1][x.box - 1] += 1;
+        }
+        const sorted = (m) =>
+            [...m.entries()]
+                .map(([id, name]) => ({ id, name }))
+                .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        await this._audit(
+            req,
+            'NINEBOX_MOVEMENTS_VIEW',
+            null,
+            `viewed 9-box movements (${rows.length} of ${shaped.length})`
+        );
+        return {
+            rows,
+            counts,
+            matrix,
+            options: {
+                cycles: sorted(opt.cycles),
+                sites: sorted(opt.sites),
+                departments: sorted(opt.departments),
+                hasNoCycle: opt.hasNoCycle,
+            },
+        };
     }
 
     /** Normalise the in-cell position (tier 1-3, trend up/stable/down). */
@@ -218,59 +758,34 @@ class NineBoxService {
         if (!employee)
             throw say(new Error('Employee not found'), 'talentx:nb_err_employee_not_found');
 
-        const isAdmin = Boolean(user && user.userType === 'admin');
-        const isSuper = RBACService.isSuperAdmin(user);
-        const isLocalAdmin = RBACService.isLocalAdmin(user);
-        const isViewer = RBACService.isViewer(user);
-        // THE PERSON BEHIND THE ACCOUNT, and the manager_type DISCRIMINATOR — the
-        // same predicate as SelfAssessmentWorkflowService.resolveAuthority, which
-        // is the reference. Two defects lived here, in opposite directions:
+        // THE PERSON BEHIND THE ACCOUNT, and the manager_type DISCRIMINATOR, through
+        // the resolver every review service shares (AuthorityService.relation).
+        // Two defects lived here, in opposite directions:
         //   * `manager_id` is polymorphic (an EMPLOYEE or an ADMIN id) and the two
         //     id spaces overlap. Compared without `manager_type`, the employee
         //     whose id equals the ADMIN id named manager of this person was handed
-        //     isManager — canDraft AND canApprove over a stranger (measured:
-        //     employee 145 over 139 whose manager is admin 145).
+        //     isManager — canDraft AND canApprove over a stranger.
         //   * a manager signed in on their LINKED administration account
         //     (admins.linked_employee_id) compared the ADMIN id to the employee
         //     line and lost their whole team: the grid listed them (scopeFilter
         //     unions the line), the guard refused every one of them.
-        const personId = await GovernanceService.actingPersonId(user);
-        const isSelf = personId != null && personId === Number(employeeId);
-        const isSupervisor = Boolean(
-            personId != null &&
-            employee.supervisorId != null &&
-            personId === Number(employee.supervisorId)
-        );
-        const isManager = Boolean(
-            (personId != null &&
-                employee.managerId != null &&
-                employee.managerType === 'employee' &&
-                personId === Number(employee.managerId)) ||
-            (isAdmin &&
-                employee.managerId != null &&
-                employee.managerType === 'admin' &&
-                Number(user.id) === Number(employee.managerId))
-        );
+        const rel = await AuthorityService.relation(user, employee);
+        const isAdmin = rel.isAdmin;
+        const isSuper = rel.isSuper;
+        const isLocalAdmin = rel.isLocalAdmin;
+        const isViewer = rel.isViewer;
+        const isSelf = rel.isSelf;
+        const isSupervisor = rel.isSupervisor;
+        const isManager = Boolean(rel.isDirectManager || rel.isAdminManager);
 
         // CLEARANCE — admin scopes only. A bounded admin's right to ACT rests on
         // this and nothing else (the line grants reading, and the direct link).
-        const inClearance = isSuper
-            ? true
-            : isAdmin
-              ? await RBACService.canAccessEmployeeData(user, employee)
-              : false;
+        const inClearance = rel.inClearance;
         // READING scope — the UNION of the clearance and the reporting line.
-        // The SUB-TREE, not only the direct link. The roster and the grid have
-        // always listed the whole span (findGoverned), so an N+2 manager saw names
-        // and cells here and then got 403 on opening one: over-disclosure in the
-        // list and a dead end in the workflow, from the same screen. A manager's
-        // authority follows the hierarchy, which is the sub-tree.
-        const inScope = Boolean(
-            inClearance ||
-            isSupervisor ||
-            isManager ||
-            (personId != null && (await EmployeeModel.governs(personId, employeeId)))
-        );
+        // The SUB-TREE, not only the direct link: the roster and the grid list the
+        // whole span (findGoverned), so an N+2 manager saw names and cells and
+        // then got 403 on opening one.
+        const inScope = Boolean(inClearance || isSupervisor || isManager || rel.inLine);
 
         // A "self" is never in their own scope (they don't supervise themselves),
         // so confidential self-view is already excluded.
@@ -285,8 +800,19 @@ class NineBoxService {
             (isLocalAdmin &&
                 inClearance &&
                 RBACService.hasPermission(user, 'manage_talent_reviews'));
-        const canDraft = !isViewer && Boolean(adminMayDecide || isSupervisor || isManager);
-        const canApprove = !isViewer && Boolean(adminMayDecide || isManager);
+        // Nobody drafts or approves their own placement, by either of their
+        // accounts or through an unlinked admin account sharing their identity.
+        const ownRecord = Boolean(isSelf || rel.selfByIdentity);
+        const strictDraft =
+            !isViewer && !ownRecord && Boolean(adminMayDecide || isSupervisor || isManager);
+        const strictApprove = !isViewer && !ownRecord && Boolean(adminMayDecide || isManager);
+        // Strict (the default) is the rule above; the ladder (extended mode) adds
+        // the line above as the manager and a local admin in clearance without
+        // the slug.
+        const draft = AuthorityService.allows(rel, 'ninebox.draft', { strict: strictDraft });
+        const approve = AuthorityService.allows(rel, 'ninebox.approve', { strict: strictApprove });
+        const canDraft = draft.ok;
+        const canApprove = approve.ok;
 
         return {
             employee,
@@ -295,11 +821,14 @@ class NineBoxService {
             isLocalAdmin,
             isViewer,
             isSelf,
+            selfByIdentity: rel.selfByIdentity,
             isSupervisor,
-            isManager,
+            // the line above acting by the ladder labels its events as a manager
+            isManager: Boolean(isManager || (rel.isLineAbove && draft.by === 'ladder')),
             canDraft,
             canApprove,
             canView,
+            as: (canApprove ? approve.as : canDraft ? draft.as : null) || 'none',
         };
     }
 
@@ -363,7 +892,8 @@ class NineBoxService {
                     action,
                     entityType: 'nineBox',
                     entityId: id,
-                    details,
+                    // The rung the act used (AuthorityService), when one was resolved.
+                    details: AuthorityService.withAs(details, u),
                     ipAddress: req ? req.ip : null,
                     userAgent: req && req.get ? req.get('user-agent') : null,
                 })
@@ -598,7 +1128,12 @@ class NineBoxService {
                 'talentx:nb_err_not_authorized_view'
             );
         await this._event(id, ev.employeeId, user, auth, 'view', ev.status, ev.status);
-        return { ...ev, canDraft: Boolean(auth.canDraft), canApprove: Boolean(auth.canApprove) };
+        return {
+            ...ev,
+            canDraft: Boolean(auth.canDraft),
+            canApprove: Boolean(auth.canApprove),
+            movement: await this._movementForId(id),
+        };
     }
 
     /**
@@ -622,55 +1157,63 @@ class NineBoxService {
         const pos = this._cellPos(data);
 
         const open = await db.get(
-            `SELECT id, status FROM nine_box_evaluations
+            `SELECT * FROM nine_box_evaluations
               WHERE employee_id = ? AND status IN (${OPEN_STATUSES.map(() => '?').join(', ')})
               ORDER BY ${currentOrder('')} LIMIT 1`,
             [data.employeeId, ...OPEN_STATUSES]
         );
-        if (open) {
-            await db.run(
-                `UPDATE nine_box_evaluations
+        const fresh = this._cleanJustification(data.movementJustification);
+        if (open)
+            return db.runTransaction(async () => {
+                // Movement first: a refused justification writes nothing.
+                if (Number(open.box) !== Number(box) || fresh)
+                    await this._onBoxChange(open, data, user, auth, fresh, {
+                        enforce: open.status === 'under_review',
+                    });
+                await db.run(
+                    `UPDATE nine_box_evaluations
                     SET performance=?, potential=?, box=?, box_label=?,
                         comments=COALESCE(?, comments), evidence=COALESCE(?, evidence),
                         calibration_notes=COALESCE(?, calibration_notes),
                         cell_tier=?, cell_trend=?, position_source=?, updated_at=now()
                   WHERE id=?`,
-                [
-                    data.performance,
-                    data.potential,
-                    box,
-                    label,
-                    data.comments || null,
-                    data.evidence || null,
-                    data.calibrationNotes || null,
-                    pos.tier,
-                    pos.trend,
-                    pos.source,
+                    [
+                        data.performance,
+                        data.potential,
+                        box,
+                        label,
+                        data.comments || null,
+                        data.evidence || null,
+                        data.calibrationNotes || null,
+                        pos.tier,
+                        pos.trend,
+                        pos.source,
+                        open.id,
+                    ]
+                );
+                await this._event(
                     open.id,
-                ]
-            );
-            await this._event(
-                open.id,
-                data.employeeId,
-                user,
-                auth,
-                'update',
-                open.status,
-                open.status,
-                { box, label, reason: 'reassessed an open proposal' }
-            );
-            await this._audit(
-                req,
-                'NINEBOX_UPDATE',
-                open.id,
-                `re-assessed open proposal → box ${box} (${label}) for employee ${data.employeeId}`
-            );
-            return db.get('SELECT * FROM nine_box_evaluations WHERE id = ?', [open.id]);
-        }
+                    data.employeeId,
+                    user,
+                    auth,
+                    'update',
+                    open.status,
+                    open.status,
+                    { box, label, reason: 'reassessed an open proposal' }
+                );
+                await this._audit(
+                    req,
+                    'NINEBOX_UPDATE',
+                    open.id,
+                    `re-assessed open proposal → box ${box} (${label}) for employee ${data.employeeId}`
+                );
+                return db.get('SELECT * FROM nine_box_evaluations WHERE id = ?', [open.id]);
+            });
 
         const ev = await db.get(
-            `INSERT INTO nine_box_evaluations (employee_id, cycle_id, performance, potential, box, box_label, comments, evidence, calibration_notes, clearance, status, created_by, cell_tier, cell_trend, position_source)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?) RETURNING *`,
+            `INSERT INTO nine_box_evaluations (employee_id, cycle_id, performance, potential, box, box_label, comments, evidence, calibration_notes, clearance, status, created_by, cell_tier, cell_trend, position_source,
+                                               movement_justification, movement_justified_by, movement_justified_by_type, movement_justified_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN now() END) RETURNING *`,
             [
                 data.employeeId,
                 data.cycleId || null,
@@ -686,6 +1229,10 @@ class NineBoxService {
                 pos.tier,
                 pos.trend,
                 pos.source,
+                fresh || null,
+                fresh && user && user.id != null ? user.id : null,
+                fresh ? this._justifierType(user) : null,
+                Boolean(fresh),
             ]
         );
         await this._event(ev.id, data.employeeId, user, auth, 'create', null, 'draft', {
@@ -722,31 +1269,40 @@ class NineBoxService {
         const { box, label } = this.computeBox(performance, potential);
         const tier = data.cellTier != null ? this._cellPos(data).tier : null;
         const trend = data.cellTrend != null ? this._cellPos(data).trend : null;
-        await db.run(
-            `UPDATE nine_box_evaluations SET performance=?, potential=?, box=?, box_label=?, comments=COALESCE(?,comments), evidence=COALESCE(?,evidence), calibration_notes=COALESCE(?,calibration_notes), cell_tier=COALESCE(?,cell_tier), cell_trend=COALESCE(?,cell_trend), updated_at=now() WHERE id=?`,
-            [
-                performance,
-                potential,
+        const fresh = this._cleanJustification(data.movementJustification);
+        return db.runTransaction(async () => {
+            // A REVIEWER CHANGING THE BOX of a submitted proposal must say why, again
+            // (migration 175). Checked before any write, so a refusal changes nothing.
+            if (Number(ev.box) !== Number(box) || fresh)
+                await this._onBoxChange(ev, { performance, potential }, user, auth, fresh, {
+                    enforce: ev.status === 'under_review',
+                });
+            await db.run(
+                `UPDATE nine_box_evaluations SET performance=?, potential=?, box=?, box_label=?, comments=COALESCE(?,comments), evidence=COALESCE(?,evidence), calibration_notes=COALESCE(?,calibration_notes), cell_tier=COALESCE(?,cell_tier), cell_trend=COALESCE(?,cell_trend), updated_at=now() WHERE id=?`,
+                [
+                    performance,
+                    potential,
+                    box,
+                    label,
+                    data.comments ?? null,
+                    data.evidence ?? null,
+                    data.calibrationNotes ?? null,
+                    tier,
+                    trend,
+                    id,
+                ]
+            );
+            await this._event(id, ev.employeeId, user, auth, 'update', ev.status, ev.status, {
                 box,
                 label,
-                data.comments ?? null,
-                data.evidence ?? null,
-                data.calibrationNotes ?? null,
-                tier,
-                trend,
-                id,
-            ]
-        );
-        await this._event(id, ev.employeeId, user, auth, 'update', ev.status, ev.status, {
-            box,
-            label,
+            });
+            await this._audit(req, 'NINEBOX_UPDATE', id, `updated → box ${box}`);
+            return db.get('SELECT * FROM nine_box_evaluations WHERE id = ?', [id]);
         });
-        await this._audit(req, 'NINEBOX_UPDATE', id, `updated → box ${box}`);
-        return db.get('SELECT * FROM nine_box_evaluations WHERE id = ?', [id]);
     }
 
     /** Supervisor submits draft for manager review. */
-    async submit(user, id, req = null) {
+    async submit(user, id, req = null, { movementJustification = null } = {}) {
         const ev = await db.get('SELECT * FROM nine_box_evaluations WHERE id = ?', [id]);
         if (!ev) throw say(new Error('Evaluation not found'), 'talentx:nb_err_not_found');
         const auth = await this.resolveAuthority(user, ev.employeeId);
@@ -761,17 +1317,78 @@ class NineBoxService {
                 'talentx:nb_err_cannot_submit_from',
                 { statusRaw: ev.status }
             );
-        await db.run(
-            "UPDATE nine_box_evaluations SET status='under_review', submitted_by=?, updated_at=now() WHERE id=?",
-            [user.id, id]
+        return db.runTransaction(async () => {
+            // MOVEMENT SNAPSHOT (migration 175): link to the previous approved
+            // placement and refuse — writing nothing — when the box changes
+            // without a written justification.
+            const mv = await this._snapshotMovement(ev, user, auth, movementJustification);
+            await db.run(
+                "UPDATE nine_box_evaluations SET status='under_review', submitted_by=?, updated_at=now() WHERE id=?",
+                [user.id, id]
+            );
+            await this._event(id, ev.employeeId, user, auth, 'submit', 'draft', 'under_review');
+            await this._audit(
+                req,
+                'NINEBOX_SUBMIT',
+                id,
+                `submitted for manager review (movement ${mv.direction}` +
+                    `${mv.previous ? ` from evaluation ${mv.previous.id}` : ''})`
+            );
+            return db.get('SELECT * FROM nine_box_evaluations WHERE id = ?', [id]);
+        });
+    }
+
+    /**
+     * FOUR EYES on a placement (App Setting nineBoxFourEyes; on for a new
+     * install, off after an upgrade until a SuperAdmin switches it on): the
+     * person who DRAFTED the placement — its 'create' event, by either of their
+     * accounts or an unlinked admin account sharing their identity
+     * (personIdentity.isSamePerson) — does not approve it. A SuperAdmin may
+     * approve their own draft with a written reason (10 characters or more),
+     * journalled. Returns null when allowed, or the override reason to journal.
+     */
+    async _assertFourEyes(user, ev, overrideReason) {
+        let on = true;
+        try {
+            const v = await require('../models/AppSettingsModel').getValue('nineBoxFourEyes', true);
+            on = !(v === false || v === 'false' || v === 0 || v === '0');
+        } catch (_) {
+            on = true;
+        }
+        if (!on) return null;
+        const d = await db.get(
+            `SELECT actor_id, actor_type FROM nine_box_events
+              WHERE evaluation_id = ? AND action = 'create' ORDER BY id LIMIT 1`,
+            [ev.id]
         );
-        await this._event(id, ev.employeeId, user, auth, 'submit', 'draft', 'under_review');
-        await this._audit(req, 'NINEBOX_SUBMIT', id, 'submitted for manager review');
-        return db.get('SELECT * FROM nine_box_evaluations WHERE id = ?', [id]);
+        let ref = null;
+        if (d && d.actorId != null)
+            ref = `${d.actorType === 'admin' ? 'admin' : 'employee'}:${Number(d.actorId)}`;
+        else if (ev.createdBy != null) ref = `employee:${Number(ev.createdBy)}`;
+        if (!ref) return null; // no recorded drafter (a row older than the journal)
+        const same = await require('../utils/personIdentity').isSamePerson(user, ref);
+        if (!same) return null;
+        const why = String(overrideReason == null ? '' : overrideReason).trim();
+        if (RBACService.isSuperAdmin(user) && why.length >= 10) return why.slice(0, 500);
+        const e = say(
+            new Error(
+                'Four eyes: whoever drafted this placement cannot approve it (a SuperAdmin may, with a written reason).'
+            ),
+            'talentx:nb_err_four_eyes'
+        );
+        e.status = 409;
+        e.expose = true;
+        e.code = 'NINEBOX_FOUR_EYES';
+        throw e;
     }
 
     /** MANAGER ONLY (admin inherits) — approve/publish. */
-    async approve(user, id, req = null) {
+    async approve(
+        user,
+        id,
+        req = null,
+        { movementJustification = null, fourEyesReason = null } = {}
+    ) {
         const ev = await db.get('SELECT * FROM nine_box_evaluations WHERE id = ?', [id]);
         if (!ev) throw say(new Error('Evaluation not found'), 'talentx:nb_err_not_found');
         const auth = await this.resolveAuthority(user, ev.employeeId);
@@ -786,8 +1403,35 @@ class NineBoxService {
                 'talentx:nb_err_cannot_approve_from',
                 { statusRaw: ev.status }
             );
+        const fourEyesOverride = await this._assertFourEyes(user, ev, fourEyesReason);
         // Status change + audit event + auto-triggers commit atomically.
         return db.runTransaction(async () => {
+            if (fourEyesOverride)
+                await this._audit(
+                    req,
+                    'NINEBOX_FOUR_EYES_OVERRIDE',
+                    id,
+                    `SuperAdmin approved their own draft — reason: ${fourEyesOverride}`
+                );
+            // MOVEMENT (migration 175). A placement approved straight from a
+            // draft, or a proposal submitted before the rule existed, has no
+            // snapshot yet: it is taken now. Otherwise the snapshot stands, and
+            // the justification it calls for must already be stored or come with
+            // this approval. Checked before any other write.
+            if (!ev.movementSnapshotAt) {
+                await this._snapshotMovement(ev, user, auth, movementJustification);
+            } else {
+                const fresh = this._cleanJustification(movementJustification);
+                const prev =
+                    ev.previousPerformance != null && ev.previousPotential != null
+                        ? { performance: ev.previousPerformance, potential: ev.previousPotential }
+                        : null;
+                const dir = this.movementDirection(prev, ev);
+                const have = fresh || this._cleanJustification(ev.movementJustification);
+                if (this.movementNeedsJustification(dir))
+                    await this._assertJustification(have, ev.employeeId, ev.id);
+                if (fresh) await this._onBoxChange(ev, ev, user, auth, fresh, { enforce: true });
+            }
             // ONE APPROVED PLACEMENT PER PERSON. A new approval SUPERSEDES the
             // previous one instead of stacking beside it — employee 88 held 7 approved rows
             // in the same box, which the talent-development dashboard counted as 7 people.
@@ -823,6 +1467,12 @@ class NineBoxService {
             );
             await this._event(id, ev.employeeId, user, auth, 'approve', ev.status, 'approved');
             await this._audit(req, 'NINEBOX_APPROVE', id, 'placement approved/published');
+            // The direct manager learns when someone above them approved (best-effort).
+            await require('./LineNoticeService').actedAbove(
+                user,
+                ev.employeeId,
+                'ninebox_approved'
+            );
             const approved = await db.get('SELECT * FROM nine_box_evaluations WHERE id = ?', [id]);
 
             // MIRROR THE APPROVED PLACEMENT INTO talent_placements.
@@ -1095,6 +1745,40 @@ class NineBoxService {
         const note = ('Calibration: ' + (reason || '')).slice(0, 480);
 
         return db.runTransaction(async () => {
+            // MOVEMENT (migration 175): a calibration that CHANGES the box is a
+            // new move from the previous placement, and its rationale is the
+            // justification. It is required when the box then differs from the
+            // previous one, and also when there is no previous approved
+            // placement at all (a 'first' placement moved by the session would
+            // otherwise carry no written reason). A refusal aborts the finalize:
+            // nothing is written and the session stays open to be corrected.
+            // Checked BEFORE any write; recorded by ONE extra UPDATE below and
+            // named in the same 'calibrate' event (one act, one event).
+            let mv = null;
+            if (fromBox !== String(toBox)) {
+                const prev = ev.movementSnapshotAt
+                    ? ev.previousPerformance != null && ev.previousPotential != null
+                        ? {
+                              id: ev.previousEvaluationId,
+                              box: ev.previousBox,
+                              performance: ev.previousPerformance,
+                              potential: ev.previousPotential,
+                              cycleId: ev.previousCycleId,
+                              approvedAt: ev.previousApprovedAt,
+                          }
+                        : null
+                    : (await this._previousApproved(employeeId, ev.id)) || null;
+                const direction = this.movementDirection(prev, { performance, potential });
+                const text = this._cleanJustification(reason);
+                // The copy rule applies to the session's rationale too. Here the
+                // calibrated placement's OWN stored justification is the
+                // person's previous one (the session replaces it), so it is not
+                // excluded from the comparison: pasting the manager's text back
+                // word for word is refused.
+                if (this.movementNeedsJustification(direction) || direction === 'first')
+                    await this._assertJustification(text, employeeId, null);
+                mv = { prev, direction, text };
+            }
             await db.run(
                 `UPDATE nine_box_evaluations
                     SET potential = ?, performance = ?, box = ?, box_label = ?,
@@ -1102,6 +1786,37 @@ class NineBoxService {
                   WHERE id = ? AND status = 'approved'`,
                 [potential, performance, box, label, note, ev.id]
             );
+            if (mv) {
+                const p = mv.prev;
+                await db.run(
+                    `UPDATE nine_box_evaluations
+                        SET previous_evaluation_id = ?, previous_box = ?, previous_performance = ?,
+                            previous_potential = ?, previous_cycle_id = ?, previous_approved_at = ?,
+                            movement_direction = ?,
+                            movement_snapshot_at = COALESCE(movement_snapshot_at, now()),
+                            movement_justification = COALESCE(?, movement_justification),
+                            movement_justified_by = COALESCE(?, movement_justified_by),
+                            movement_justified_by_type = COALESCE(?, movement_justified_by_type),
+                            movement_justified_at = CASE WHEN ?::text IS NULL THEN movement_justified_at ELSE now() END
+                      WHERE id = ?`,
+                    [
+                        p ? p.id : null,
+                        p ? p.box : null,
+                        p ? p.performance : null,
+                        p ? p.potential : null,
+                        p ? p.cycleId : null,
+                        p ? p.approvedAt : null,
+                        mv.direction,
+                        // An empty rationale never blanks a stored justification,
+                        // its author or its date.
+                        mv.text || null,
+                        mv.text ? (actor && actor.id != null ? actor.id : null) : null,
+                        mv.text ? this._justifierType(actor) : null,
+                        mv.text || null,
+                        ev.id,
+                    ]
+                );
+            }
             await this._event(ev.id, employeeId, actor, auth, 'calibrate', 'approved', 'approved', {
                 fromBox,
                 toBox: String(toBox),
@@ -1110,7 +1825,25 @@ class NineBoxService {
                 fromLabel: ev.boxLabel,
                 toLabel: label,
                 sessionId: sessionId != null ? Number(sessionId) : null,
-                reason: reason || null,
+                // Ids only: the session's rationale is NOT copied into the
+                // journal. It lives in calibration_notes, movement_justification
+                // and calibration_adjustments, which erasure redacts and the
+                // self-service export withholds. The event records only that a
+                // rationale was given.
+                reasonRecorded: Boolean(reason && String(reason).trim()),
+                // Migration 175: the move, ids only.
+                ...(mv
+                    ? {
+                          movement: {
+                              previousEvaluationId:
+                                  mv.prev && mv.prev.id != null ? Number(mv.prev.id) : null,
+                              fromBox: mv.prev && mv.prev.box != null ? Number(mv.prev.box) : null,
+                              toBox: box,
+                              direction: mv.direction,
+                              justified: mv.text.length >= MOVEMENT_MIN_JUSTIFICATION,
+                          },
+                      }
+                    : {}),
             });
             await this._audit(
                 auditReq,
@@ -1213,7 +1946,11 @@ class NineBoxService {
             `SELECT cur.id, cur.box, cur.box_label, cur.performance, cur.potential, cur.status,
                     cur.clearance, cur.cell_tier, cur.cell_trend, cur.disclosed_to_employee,
                     cur.provisional, cur.pending_proposal,
-                    cur.employee_id, cur.first_name, cur.last_name
+                    cur.employee_id, cur.first_name, cur.last_name,
+                    cur.prev_id, cur.prev_box, cur.prev_performance, cur.prev_potential,
+                    cur.prev_cycle_id, cur.prev_approved_at, cur.movement_snapshot,
+                    cur.movement_backfilled, cur.movement_justification, cur.movement_justified_by,
+                    cur.movement_justified_by_type, cur.movement_justified_at
              FROM (
                 SELECT DISTINCT ON (ev.employee_id)
                        ev.id, ev.box, ev.box_label, ev.performance, ev.potential, ev.status,
@@ -1223,8 +1960,10 @@ class NineBoxService {
                             SELECT 1 FROM nine_box_evaluations o
                              WHERE o.employee_id = ev.employee_id
                                AND o.status IN ('draft', 'under_review'))) AS pending_proposal,
-                       e.id AS employee_id, e.first_name, e.last_name
+                       e.id AS employee_id, e.first_name, e.last_name,
+                       ${PREV_COLS}
                   FROM nine_box_evaluations ev JOIN employees e ON e.id = ev.employee_id
+                  ${PREV_LATERAL}
                  WHERE ${where}
                  ORDER BY ev.employee_id, ${currentOrder('ev.')}
              ) cur
@@ -1237,7 +1976,39 @@ class NineBoxService {
             null,
             `viewed grid (${rows.length} placements)`
         );
-        return rows;
+        return this._withMovement(rows);
+    }
+
+    /**
+     * Attach `movement` (before → now, direction, justification) to rows
+     * that carry PREV_COLS, and drop the raw prev_* columns from the payload.
+     */
+    async _withMovement(rows) {
+        const names = await this._names(
+            rows
+                .filter((r) => r.movementJustifiedBy != null)
+                .map((r) => ({ type: r.movementJustifiedByType, id: r.movementJustifiedBy }))
+        );
+        const RAW = [
+            'prevId',
+            'prevBox',
+            'prevPerformance',
+            'prevPotential',
+            'prevCycleId',
+            'prevApprovedAt',
+            'movementSnapshot',
+            'movementBackfilled',
+            'movementJustification',
+            'movementJustifiedBy',
+            'movementJustifiedByType',
+            'movementJustifiedAt',
+        ];
+        return rows.map((r) => {
+            const movement = this._movementOf(r, names);
+            const out = { ...r, movement };
+            for (const k of RAW) delete out[k];
+            return out;
+        });
     }
 
     /**
@@ -1263,15 +2034,20 @@ class NineBoxService {
         // two answers, for the same person.
         if (ids.length) {
             placements = await db.all(
-                `SELECT DISTINCT ON (employee_id) employee_id, id, box, box_label, performance, potential, status,
-                        COALESCE(approved_at, updated_at) AS assessed_at,
-                        (status <> 'approved') AS provisional
-                 FROM nine_box_evaluations
-                 WHERE employee_id IN (${ids.map(() => '?').join(', ')})
-                   AND status IN (${LIVE_STATUSES.map(() => '?').join(', ')})
-                 ORDER BY employee_id, ${currentOrder('')}`,
+                `SELECT DISTINCT ON (ev.employee_id) ev.employee_id, ev.id, ev.box, ev.box_label,
+                        ev.performance, ev.potential, ev.status,
+                        COALESCE(ev.approved_at, ev.updated_at) AS assessed_at,
+                        (ev.status <> 'approved') AS provisional,
+                        ${PREV_COLS}
+                 FROM nine_box_evaluations ev
+                 ${PREV_LATERAL}
+                 WHERE ev.employee_id IN (${ids.map(() => '?').join(', ')})
+                   AND ev.status IN (${LIVE_STATUSES.map(() => '?').join(', ')})
+                 ORDER BY ev.employee_id, ${currentOrder('ev.')}`,
                 [...ids, ...LIVE_STATUSES]
             );
+            // before → now for each person (migration 175).
+            placements = await this._withMovement(placements);
         }
         const byEmp = {};
         for (const p of placements) byEmp[Number(p.employeeId)] = p;
@@ -1324,6 +2100,11 @@ class NineBoxService {
 
         const cadence = await this._reassessMonths();
         const now = Date.now();
+        // « New in the role » (4.0.0 port, wave 5): a recorded role start date
+        // within newInRoleMonths — a fact next to the name, never a placement.
+        const newInRole = await require('../utils/newInRole')
+            .newInRoleIds(ids)
+            .catch(() => new Set());
         return employees.map((e) => {
             const p = byEmp[Number(e.id)] || null;
             if (p) p.boxLabel = this.computeBox(p.performance, p.potential).label; // consistent labels
@@ -1356,8 +2137,12 @@ class NineBoxService {
                 // The date of the last real DECISION, not of the last edit.
                 lastAssessedAt: approvedAt,
                 monthsSince: monthsSince == null ? null : Math.round(monthsSince * 10) / 10,
+                // « il y a 3 semaines », never « il y a 0,8 mois »: the unit a
+                // person would use (utils/agoBucket), labelled by the console.
+                sinceAgo: approvedAt ? agoBucket(daysBetween(approvedAt, now)) : null,
                 dueForReassessment: due,
                 cadenceMonths: cadence,
+                newInRole: newInRole.has(Number(e.id)),
             };
         });
     }

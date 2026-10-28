@@ -1,6 +1,44 @@
+const { plainEmail } = require('../utils/plainEmail');
 const PRODUCT = require('../config/product');
 const db = require('../config/database');
 const { TtlCache } = require('../utils/ttlCache');
+const secretBox = require('../utils/secretBox');
+
+/**
+ * SECRET SETTINGS. A setting whose key names a credential is encrypted at rest
+ * with secretBox (purpose 'app_settings') INSIDE this model: setValue() and
+ * update() encrypt, getValue() decrypts, so EmailService and CopilotService
+ * read plaintext without knowing. A legacy clear (or v1) value still reads and
+ * is re-encrypted to v2 lazily on read (best-effort) and on the next write.
+ * Listing methods (findAll / findByCategory) NEVER return the value, only
+ * SECRET_MASK when one is set, and a write of SECRET_MASK is refused as
+ * "unchanged", so a mask echoed back by a form or a restore can never
+ * overwrite the stored secret.
+ *
+ * Matched by the LAST dot-segment of the key: …password / …secret / …token /
+ * …apiKey / …privateKey / …passphrase / …pass (smtpPassword, copilotApiSecret,
+ * sso.entra.clientSecret…). SSO values arrive already encrypted by
+ * SsoSettingsService; an 'enc:' value is never encrypted twice.
+ */
+const SECRET_MASK = '••••••••';
+const SECRET_PURPOSE = 'app_settings';
+const { isSecretKey } = require('../utils/secretSettingKeys');
+/**
+ * Secrets this MODEL seals and opens. SSO keys are excluded: SsoSettingsService
+ * seals them itself and must SEE an undecryptable value as such (it then keeps
+ * the provider unconfigured instead of falling back to an older .env value),
+ * so they are stored and returned exactly as that service hands them over.
+ */
+function isManagedSecret(key, type) {
+    return isSecretKey(key, type) && !require('../utils/ssoSettingKeys').isSsoSettingKey(key);
+}
+/** Encrypt a secret value for storage ('' and already-encrypted values pass through). */
+function sealSecret(stringValue) {
+    const v = stringValue == null ? '' : String(stringValue);
+    if (v === '' || secretBox.isEncrypted(v)) return v;
+    return secretBox.encrypt(v, SECRET_PURPOSE);
+}
+const _undecryptableWarned = new Set();
 
 // Settings are read very frequently (e.g. EmailService reads ~5 keys per event,
 // ReadinessService reads the threshold per calculation) but change rarely, so
@@ -31,19 +69,44 @@ const CATALOG = {
     // by middleware/sessionActivity (SESSION_MAX_HOURS is the fallback).
     sessionTimeout: { min: 1, max: 720, integer: true },
     sessionIdleMinutes: { min: 1, max: 1440, integer: true },
+    // Shared-computer (kiosk) mode — security-class (^kiosk), OFF by default.
+    kioskModeEnabled: { type: 'boolean' },
+    kioskIdleMinutes: { min: 1, max: 30, integer: true },
+    kioskIpRanges: { kind: 'cidrs', optional: true },
     // Read by middleware/rateLimiter.checkAccountLockout.
     maxLoginAttempts: { min: 1, max: 100, integer: true },
     loginLockoutMinutes: { min: 1, max: 10080, integer: true },
     mfaRequiredForPrivileged: { type: 'boolean' },
+    // Migration 162: managers with a local password, and the upgrade grace
+    // periods. mfaGraceStartedAt is written once by the migration.
+    mfaRequiredForManagers: { type: 'boolean' },
+    mfaGraceAdminDays: { min: 0, max: 365, integer: true },
+    mfaGraceManagerDays: { min: 0, max: 365, integer: true },
+    mfaGraceStartedAt: { readOnly: true },
     // 3.23.19 (S6, migration 152): extra multi-factor acr values, comma list; blank = built-ins only.
     'sso.mfaAcrValues': { optional: true },
+    // SAML strict mode (whole response signed). Written on the SSO page only
+    // (category 'sso'); security-class through ^saml.
+    samlStrict: { type: 'boolean' },
     // 3.23.20 (C3, migration 153): help contact (free text) + invitation batch size.
     'sso.helpContact': { optional: true },
     'ssoInvite.batchSize': { min: 1, max: 500, integer: true },
     smtpHost: { kind: 'host', optional: true },
     smtpPort: { min: 1, max: 65535, integer: true },
     smtpFromAddress: { kind: 'email', optional: true },
+    // ONE named private/loopback relay may be reached without TLS. Written only
+    // by EmailService.setPlaintextRelay (SuperAdmin, mandatory reason, audited),
+    // never by the generic settings form.
+    smtpPlaintextRelayHost: { readOnly: true },
+    smtpPlaintextRelayReason: { readOnly: true },
+    smtpPlaintextRelaySetBy: { readOnly: true },
+    // Private/loopback AI hosts a SuperAdmin explicitly allows (comma list of
+    // host or host:port), and the recorded external-transfer basis.
+    copilotAllowedPrivateHosts: { optional: true },
+    copilotTransferRecord: { readOnly: true },
     appBaseUrl: { kind: 'url', optional: true },
+    // Migration 182: one language per e-mail; this one when the recipient's is unknown.
+    mailDefaultLanguage: { enum: ['fr', 'en'] },
     invitationExpiryDays: { min: 0, max: 3650, integer: true },
     'onboarding.allowedDomains': { kind: 'domains', optional: true },
     copilotProvider: {
@@ -74,6 +137,8 @@ const CATALOG = {
     'dispute.l0SlaDays': { min: 0, max: 365, integer: true },
     'dispute.l1SlaDays': { min: 0, max: 365, integer: true },
     'dispute.l2SlaDays': { min: 0, max: 365, integer: true },
+    // Off by default since migration 194 (an untouched seed was switched off).
+    'dispute.autoFinalizeOnExpiry': { type: 'boolean' },
     backupHour: { kind: 'hour' },
     backupKeep: { min: 0, max: 3650, integer: true },
     digestDow: { kind: 'dow' },
@@ -81,6 +146,24 @@ const CATALOG = {
     perfEventsRetentionDays: { min: 0, max: 3650, integer: true },
     notificationRetentionDays: { min: 0, max: 3650, integer: true },
     reminderLogRetentionDays: { min: 0, max: 3650, integer: true },
+    // SA-38: in-app copies of scheduled reports, 1 to 365 days (retention-purge).
+    reportRunRetentionDays: { min: 1, max: 365, integer: true },
+    // Blank = follow notificationRetentionDays (read by jobs/telemetry-prune.js).
+    unreadNotificationRetentionDays: { min: 0, max: 3650, integer: true, optional: true },
+    onboardingRejectedRetentionDays: { min: 0, max: 3650, integer: true },
+    // Audit-log retention by whole sealed months (AuditRetentionService);
+    // ^auditLog in utils/securitySettings → security-class (SuperAdmin only).
+    auditLogRetentionYears: { min: 1, max: 10, integer: true },
+    // Tri-state: 'auto' = required as soon as a scanner is detected
+    // (MalwareScanService.requireScan reads anything but true/false as auto).
+    requireMalwareScan: { enum: ['auto', 'true', 'false'] },
+    // The antivirus gate on every upload (middleware/uploadGuard). On by default.
+    uploadAvScan: { type: 'boolean' },
+    // Comma list of feedback360 / oneonone / hris.sync kinds or families that
+    // webhooks may carry (WebhookService.parseOptIn ignores anything else).
+    webhookOptInEvents: { optional: true },
+    // Self-service "my data" downloads per person per hour (PrivacyService).
+    privacySelfExportPerHour: { min: 1, max: 100, integer: true },
     cycleAutoLock: { type: 'boolean' },
     // -1 = automatic closing off; 0 = close at the deadline.
     cycleAutoCloseGraceDays: { min: -1, max: 365, integer: true },
@@ -88,9 +171,23 @@ const CATALOG = {
     // 3.23.18: retention purge — 'report' (default) never erases anyone.
     retentionPurgeMode: { enum: ['report', 'apply'] },
     nineBoxReassessMonths: { min: 1, max: 60, integer: true },
+    // 4.0.0 port (wave 5): months a person is « new in the role » after
+    // employees.role_start_date (utils/newInRole). 0 = never. Not security-class.
+    newInRoleMonths: { min: 0, max: 60, integer: true },
     // Off = employees never see the 9-box, even a disclosed placement
     // (TalentConfidentialityService.nineBoxVisibleToEmployees). Default on.
     nineBoxVisibleToEmployees: { type: 'boolean' },
+    // 4.0.0 port (wave 2), governance-class (utils/securitySettings): who may
+    // act on a person's record (AuthorityService) and the 9-box four eyes.
+    'authority.ladder': { enum: ['strict', 'extended'] },
+    nineBoxFourEyes: { type: 'boolean' },
+    // 4.0.0 port (wave 6), governance-class: the optional HR visa before a PIP
+    // is activated (migration 195).
+    'pip.hrVisaRequired': { type: 'boolean' },
+    // DEI ethnicity switch (migration 171): written only by the SuperAdmin DEI
+    // panel with a typed legal sign-off (DEIService.setEthnicityEnabled).
+    deiEthnicityEnabled: { readOnly: true },
+    deiEthnicitySignoff: { readOnly: true },
     dormantAccountDays: { min: 1, max: 3650, integer: true },
     edition: { enum: ['community'] },
     localContentHomeCountry: { optional: true },
@@ -101,6 +198,8 @@ const CATALOG = {
     // rule of their own are declared. deptBriefHour is a UTC hour — the brief
     // reads ONE clock for the gate, the bucket and the period bounds.
     deptBriefWeeklyEnabled: { type: 'boolean' },
+    // « What changed » digests (migration 187): OPT-IN, off by default.
+    personaDigestsEnabled: { type: 'boolean' },
     deptBriefMonthlyEnabled: { type: 'boolean' },
     deptBriefQuarterlyEnabled: { type: 'boolean' },
     deptBriefYearlyEnabled: { type: 'boolean' },
@@ -116,6 +215,9 @@ const CATALOG = {
     backupLastStatus: { readOnly: true },
     backupLastFile: { readOnly: true },
     backupLastSize: { readOnly: true },
+    backupLastVerify: { readOnly: true },
+    backupKeyCheck: { readOnly: true },
+    backupOffHostLastStatus: { readOnly: true },
     certExpiryLastRunOn: { readOnly: true },
     retentionRecomputeLastRunOn: { readOnly: true },
     digestLastSentOn: { readOnly: true },
@@ -139,7 +241,6 @@ const CATALOG = {
 
 const RE = {
     url: /^https?:\/\/[^\s/$.?#][^\s]*$/i,
-    email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
     host: /^[a-z0-9.-]+$/i,
     domain: /^[a-z0-9.-]+\.[a-z]{2,}$/i,
 };
@@ -221,12 +322,20 @@ function validate(key, storedType, raw) {
     }
     if (s === '' && rule.optional) return { ok: true, value: '' };
     if (rule.kind === 'url' && !RE.url.test(s)) return { ok: false, code: 'url', params: { key } };
-    if (rule.kind === 'email' && !RE.email.test(s))
+    if (rule.kind === 'email' && !plainEmail(s))
         return { ok: false, code: 'email', params: { key } };
     if (rule.kind === 'host' && !RE.host.test(s))
         return { ok: false, code: 'host', params: { key } };
     if (rule.kind === 'domains' && s && !s.split(',').every((d) => RE.domain.test(d.trim())))
         return { ok: false, code: 'domains', params: { key } };
+    // IP addresses / CIDR ranges (kioskIpRanges): one parser with the reader.
+    if (rule.kind === 'cidrs') {
+        const { parseRangeToken } = require('../middleware/sessionActivity');
+        const toks = s.split(/[\s,;]+/).filter(Boolean);
+        if (!toks.every((t) => parseRangeToken(t)))
+            return { ok: false, code: 'cidrs', params: { key } };
+        return { ok: true, value: toks.join(', ') };
+    }
     return { ok: true, value: s };
 }
 
@@ -251,24 +360,87 @@ class AppSettingsModel {
     isReadOnly(key) {
         return Boolean(ruleFor(key).readOnly);
     }
+    get SECRET_MASK() {
+        return SECRET_MASK;
+    }
+    isSecretKey(key, type) {
+        return isSecretKey(key, type);
+    }
+
+    /**
+     * A settings row safe to hand to a view or an export: a secret's value is
+     * replaced by SECRET_MASK (set) or '' (not set), and `secretSet` says which.
+     */
+    maskRow(row) {
+        if (
+            !row ||
+            !(
+                isSecretKey(row.settingKey, row.settingType) ||
+                secretBox.isEncrypted(row.settingValue)
+            )
+        )
+            return row;
+        const set = row.settingValue != null && String(row.settingValue) !== '';
+        return { ...row, settingValue: set ? SECRET_MASK : '', isSecret: true, secretSet: set };
+    }
 
     async findAll() {
         // Attribution: who last changed each row, for the "Modifié le · par" column.
-        return await db.all(
+        const rows = await db.all(
             `SELECT s.*, a.username AS updatedByUsername
                FROM appSettings s LEFT JOIN admins a ON a.id = s.updatedBy
               ORDER BY s.category, s.settingKey`
         );
+        return (rows || []).map((r) => this.maskRow(r));
     }
 
+    /** RAW row (a secret is still sealed): internal use; never render it. */
     async findByKey(key) {
         return await db.get('SELECT * FROM appSettings WHERE settingKey = ?', [key]);
     }
 
     async findByCategory(category) {
-        return await db.all('SELECT * FROM appSettings WHERE category = ? ORDER BY settingKey', [
-            category,
-        ]);
+        const rows = await db.all(
+            'SELECT * FROM appSettings WHERE category = ? ORDER BY settingKey',
+            [category]
+        );
+        return (rows || []).map((r) => this.maskRow(r));
+    }
+
+    /**
+     * The plaintext of a stored secret value. Undecryptable (APP_KEY changed)
+     * gives null, warned once per key, never thrown into the caller.
+     */
+    _openSecret(key, raw) {
+        if (raw == null || raw === '') return raw;
+        try {
+            return secretBox.decrypt(String(raw));
+        } catch (e) {
+            if (!_undecryptableWarned.has(key)) {
+                _undecryptableWarned.add(key);
+                console.warn(
+                    `[security] app setting ${key} is stored encrypted but cannot be decrypted (${e.code || e.message}). ` +
+                        'Treated as unset until it is re-entered, or run scripts/rotate-app-key.js with the old key.'
+                );
+            }
+            return null;
+        }
+    }
+
+    /** Lazy re-encryption: a secret still stored clear or v1 is resealed as v2 (best-effort). */
+    async _upgradeSecretAtRest(setting, plain) {
+        try {
+            if (plain == null || plain === '' || !secretBox.isEnabled()) return;
+            if (!secretBox.needsUpgrade(setting.settingValue)) return;
+            const sealed = secretBox.encrypt(String(plain), SECRET_PURPOSE);
+            await db.run(
+                'UPDATE appSettings SET settingValue = ? WHERE settingKey = ? AND settingValue = ?',
+                [sealed, setting.settingKey, setting.settingValue]
+            );
+            settingsCache.bust();
+        } catch (_) {
+            /* best-effort: the next write re-encrypts anyway */
+        }
     }
 
     async getValue(key, defaultValue = null) {
@@ -279,6 +451,13 @@ class AppSettingsModel {
             settingsCache.set(key, setting || null); // null sentinel for "absent"
         }
         if (!setting) return defaultValue;
+
+        if (isManagedSecret(setting.settingKey || key, setting.settingType)) {
+            const plain = this._openSecret(key, setting.settingValue);
+            await this._upgradeSecretAtRest(setting, plain);
+            if (plain == null) return defaultValue;
+            setting = { ...setting, settingValue: plain };
+        }
 
         switch (setting.settingType) {
             case 'number': {
@@ -322,6 +501,13 @@ class AppSettingsModel {
         }
 
         const existing = await this.findByKey(key);
+        if (isSecretKey(key, type) && stringValue === SECRET_MASK) {
+            // The mask is what a listing shows, never a value: echoing it back
+            // (a form, an import, a restore) leaves the stored secret untouched.
+            if (existing) return;
+            stringValue = '';
+        }
+        if (isManagedSecret(key, type)) stringValue = sealSecret(stringValue);
         if (existing) {
             await db.run(
                 'UPDATE appSettings SET settingValue = ?, settingType = ?, description = ?, category = ?, updatedBy = ?, updatedAt = CURRENT_TIMESTAMP WHERE settingKey = ?',
@@ -337,7 +523,23 @@ class AppSettingsModel {
     }
 
     async update(data) {
-        const { id, settingValue, settingType, description, category, updatedBy } = data;
+        const { id, settingType, description, category, updatedBy } = data;
+        let { settingValue } = data;
+        // The key decides whether the value is a secret: taken from the ROW,
+        // never trusted from the caller alone.
+        let key = data.settingKey;
+        try {
+            const row = await db.get('SELECT settingKey FROM appSettings WHERE id = ?', [id]);
+            if (row && row.settingKey) key = row.settingKey;
+        } catch (_) {
+            /* fall back to the caller's key */
+        }
+        if (
+            isSecretKey(key, settingType) &&
+            String(settingValue == null ? '' : settingValue) === SECRET_MASK
+        )
+            return; // a mask is never a value (see setValue)
+        if (isManagedSecret(key, settingType)) settingValue = sealSecret(settingValue);
         await db.run(
             'UPDATE appSettings SET settingValue = ?, settingType = ?, description = ?, category = ?, updatedBy = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
             [settingValue, settingType, description, category, updatedBy, id]
@@ -365,6 +567,44 @@ class AppSettingsModel {
                 category: 'readiness',
             },
             {
+                // Also seeded by migration 193. Read by utils/newInRole.
+                key: 'newInRoleMonths',
+                value: '6',
+                type: 'number',
+                description:
+                    'For how many months after the recorded start date in the role a person is shown as « new in the role » on the 9-box and PIP screens (0 = never). Without a recorded start date, nobody is.',
+                category: 'readiness',
+            },
+            {
+                // Governance-class (SuperAdmin only, utils/securitySettings). Read
+                // by AuthorityService; anything but 'extended' reads as strict.
+                key: 'authority.ladder',
+                value: 'strict',
+                type: 'string',
+                description:
+                    "Who may act on a person's record. strict (default): the direct supervisor and manager, a local administrator in clearance (with the feature permission where one is required) and a SuperAdmin; the line above reads. extended: also the line above, and a local administrator in clearance without the feature permission.",
+                category: 'security',
+            },
+            {
+                // Governance-class (SuperAdmin only). Also seeded by migration 190:
+                // on for a new install, off on an upgrade (the SuperAdmins are told).
+                key: 'nineBoxFourEyes',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    'Four eyes on a 9-box placement: whoever drafted it cannot approve it. A SuperAdmin may approve their own draft with a written reason, kept in the audit log.',
+                category: 'security',
+            },
+            {
+                // Governance-class (SuperAdmin only). Also seeded by migration 195.
+                key: 'pip.hrVisaRequired',
+                value: 'false',
+                type: 'boolean',
+                description:
+                    'When on, a performance-improvement plan needs an HR visa (a SuperAdmin, or an administrator holding the dispute-arbitration permission for the person) before its manager can activate it. Off by default: the manager owns the plan.',
+                category: 'security',
+            },
+            {
                 key: 'appName',
                 value: PRODUCT.name,
                 type: 'string',
@@ -373,7 +613,10 @@ class AppSettingsModel {
             },
             {
                 key: 'sessionTimeout',
-                value: String(Number(process.env.SESSION_MAX_HOURS) || 24),
+                // 12 h by default (ASVS 3.3.2). Seeded only when absent: an
+                // upgraded install keeps its row (migration 162 moves only the
+                // untouched old default).
+                value: String(Number(process.env.SESSION_MAX_HOURS) || 12),
                 type: 'number',
                 description:
                     'Absolute session lifetime in hours — a session older than this is signed out even while active (applies to new requests immediately; SESSION_MAX_HOURS is the fallback)',
@@ -439,6 +682,14 @@ class AppSettingsModel {
                 value: '',
                 type: 'string',
                 description: 'From address for outgoing emails (e.g. no-reply@yourcompany.com)',
+                category: 'email',
+            },
+            {
+                key: 'mailDefaultLanguage',
+                value: 'fr',
+                type: 'string',
+                description:
+                    'Language of e-mails when the recipient’s own language is not known: fr or en. Every e-mail is written in one language.',
                 category: 'email',
             },
             // ---- Per-domain email triggers (category: emailEvents) ----
@@ -565,6 +816,14 @@ class AppSettingsModel {
                 category: 'copilot',
             },
             {
+                key: 'copilotAllowedPrivateHosts',
+                value: '',
+                type: 'string',
+                description:
+                    'Private, loopback or link-local AI hosts the copilot may call (comma list: host or host:port, e.g. localhost:11434, llm.lan). Hosts listed in copilotTrustedHosts are allowed too. Blank = none: every other private target is refused. Plain http is accepted only for a LOOPBACK host listed here and only without an API key.',
+                category: 'copilot',
+            },
+            {
                 key: 'copilotAnonymizationMode',
                 value: 'always',
                 type: 'string',
@@ -686,6 +945,18 @@ class AppSettingsModel {
             // database) is loaded, validated… and never displayed.
             // initializeDefaults never overwrites an existing row, so changing
             // one of these defaults after a deployment takes a migration.
+            // « What changed » digests (PersonaDigestService, migration 187).
+            // Opt-in on every install: off until an administrator switches it
+            // on. The weekly manager digest and the department digests are
+            // not affected either way.
+            {
+                key: 'personaDigestsEnabled',
+                value: 'false',
+                type: 'boolean',
+                description:
+                    'Send the « What changed » summaries: administrators get the movements of their scope and what is left to do, employees their next step in the app. Off by default; each person chooses the frequency under My summaries. The manager and department digests are not affected.',
+                category: 'jobs',
+            },
             {
                 key: 'deptBriefWeeklyEnabled',
                 value: 'true',
@@ -838,11 +1109,172 @@ class AppSettingsModel {
                 category: 'jobs',
             },
             {
+                // SA-38: read by jobs/retention-purge.js; also seeded by migration
+                // 173. Security-class via RetentionDays$ (utils/securitySettings).
+                key: 'reportRunRetentionDays',
+                value: '90',
+                type: 'number',
+                description:
+                    'Days the content of a scheduled report copy is kept (1-365, default 90). Past it the copy is emptied; the row (date, schedule, row count) stays and its link answers « copy expired ».',
+                category: 'jobs',
+            },
+            {
+                // Read by jobs/telemetry-prune.js. Blank (the default) = the same
+                // window as READ notifications.
+                key: 'unreadNotificationRetentionDays',
+                value: '',
+                type: 'number',
+                description:
+                    'Days to keep UNREAD in-app notifications before pruning. Blank = the same window as read notifications (notificationRetentionDays); 0 = keep forever. A notification scheduled for later is never pruned.',
+                category: 'jobs',
+            },
+            {
+                // Read by jobs/telemetry-prune.js (ONBOARDING_REJECTED_RETENTION_DAYS
+                // is the fallback).
+                key: 'onboardingRejectedRetentionDays',
+                value: String(Number(process.env.ONBOARDING_REJECTED_RETENTION_DAYS) || 180),
+                type: 'number',
+                description:
+                    'Days after the decision before a REJECTED self-onboarding request is pseudonymised (name, e-mail, password hash, SSO subject and note removed; the decision, its date and who decided are kept). 0 = keep forever.',
+                category: 'jobs',
+            },
+            {
+                // Read by AuditRetentionService (sealed purge). Also seeded by
+                // migration 170. Security-class via ^auditLog (utils/securitySettings).
+                key: 'auditLogRetentionYears',
+                value: '5',
+                type: 'number',
+                description:
+                    'Years the audit log is kept (1-10, default 5). Older rows are deleted by whole sealed months only; seals, redaction and purge entries and rows about a person under legal hold are always kept.',
+                category: 'jobs',
+            },
+            {
+                // Security-class (SuperAdmin only, utils/securitySettings). The
+                // REQUIRE_MALWARE_SCAN environment variable still wins.
+                key: 'requireMalwareScan',
+                value: 'auto',
+                type: 'string',
+                description:
+                    'auto (default): an antivirus scan of uploads is required as soon as a scanner (ClamAV or Microsoft Defender) is detected. true: a new upload that cannot be scanned is refused, and a stored file that could not be scanned is held and never served. false: files are accepted and served even without a scan (marked as not scanned, restricted access).',
+                category: 'security',
+            },
+            {
+                // Security-class (SuperAdmin only, utils/securitySettings). Read by
+                // middleware/uploadGuard on every upload; an absent row reads as on.
+                key: 'uploadAvScan',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    'Antivirus check of every uploaded file (ClamAV or Microsoft Defender), before the file is used. On (default): a detected threat is refused, deleted and audited; when no scanner gives a verdict the upload is refused if requireMalwareScan applies, otherwise accepted and audited as not scanned. Off: no check at upload time.',
+                category: 'security',
+            },
+            {
+                // Security-class (SuperAdmin only, utils/securitySettings). Read by
+                // WebhookService.emit: the 360° feedback, one-to-one and HRIS sync
+                // kinds never leave unless listed here.
+                key: 'webhookOptInEvents',
+                value: '',
+                type: 'string',
+                description:
+                    'Extra notification kinds that outgoing webhooks may carry, comma-separated: a kind (feedback360.released) or a family (feedback360.*, oneonone.*, hris.sync.*). Empty (default): none of them leaves. Payloads stay limited to ids, dates and a link.',
+                category: 'security',
+            },
+            {
+                // PrivacyService.exportLimit: a download is refused past this many in
+                // the last hour, per person (the ledger is the audit trail).
+                key: 'privacySelfExportPerHour',
+                value: '5',
+                type: 'number',
+                description:
+                    'How many "my data" downloads (JSON or printable) one person may make per hour (1-100).',
+                category: 'security',
+            },
+            {
                 key: 'sessionIdleMinutes',
-                value: String(Number(process.env.SESSION_IDLE_MINUTES) || 60),
+                // 30 min by default (ASVS 3.3.2).
+                value: String(Number(process.env.SESSION_IDLE_MINUTES) || 30),
                 type: 'number',
                 description:
                     'Sign users out after this many minutes of inactivity (applies to admins and employees; takes effect immediately)',
+                category: 'security',
+            },
+            {
+                // SAML strict mode: the whole response must be signed, not only the
+                // assertion. ON by default; an install that relaxed it through the
+                // environment (SAML_WANT_RESPONSE_SIGNED=0) keeps its choice.
+                // Category 'sso': written on the SuperAdmin SSO page only.
+                key: 'samlStrict',
+                value:
+                    String(process.env.SAML_WANT_RESPONSE_SIGNED || '').trim() === '0'
+                        ? 'false'
+                        : 'true',
+                type: 'boolean',
+                description:
+                    'SAML strict mode: require the whole SAML response to be signed as well as the assertion (default ON). OFF accepts an identity provider that signs the assertion only.',
+                category: 'sso',
+            },
+            // ---- Shared-computer (kiosk) mode. SuperAdmin only (security
+            // category + ^kiosk in utils/securitySettings). OFF by default on new
+            // installs AND upgrades (insert-if-absent).
+            {
+                key: 'kioskModeEnabled',
+                value: 'false',
+                type: 'boolean',
+                description:
+                    'Shared-computer mode. OFF (default): the login page has no « Shared computer » box and kioskIpRanges is ignored. ON: the box is offered and addresses in kioskIpRanges are always in shared-computer mode.',
+                category: 'security',
+            },
+            {
+                key: 'kioskIdleMinutes',
+                value: '5',
+                type: 'number',
+                description:
+                    'Inactivity window of a shared-computer session (1-30 min, default 5). It can only shorten sessionIdleMinutes, never lengthen it; the absolute session lifetime is unchanged.',
+                category: 'security',
+            },
+            {
+                key: 'kioskIpRanges',
+                value: '',
+                type: 'string',
+                description:
+                    'IP addresses / CIDR ranges of shared computers (comma or space separated). A sign-in from these addresses is always in shared-computer mode (tab-close sign-out, short idle). Blank = none.',
+                category: 'security',
+            },
+            // Two-factor policy. Same rows as migration 162 (insert-if-absent, so
+            // the migration's values always win). The grace start
+            // (mfaGraceStartedAt) is deliberately NOT seeded here: it is the
+            // migration's own first-run marker, and an empty row written before
+            // the migration would cancel the upgrade grace period.
+            {
+                key: 'mfaRequiredForPrivileged',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    'Require two-factor authentication for every administrator role (HR-wide viewers included). Upgrades: grace period of mfaGraceAdminDays from the upgrade, then enrolment is forced.',
+                category: 'security',
+            },
+            {
+                key: 'mfaRequiredForManagers',
+                value: 'true',
+                type: 'boolean',
+                description:
+                    "Require two-factor authentication for managers who sign in with a local password (managers signing in through SSO use their organisation's MFA). Upgrades: grace period of mfaGraceManagerDays.",
+                category: 'security',
+            },
+            {
+                key: 'mfaGraceAdminDays',
+                value: '14',
+                type: 'number',
+                description:
+                    'Upgrade grace period (days) before two-factor enrolment is forced for administrators.',
+                category: 'security',
+            },
+            {
+                key: 'mfaGraceManagerDays',
+                value: '30',
+                type: 'number',
+                description:
+                    'Upgrade grace period (days) before two-factor enrolment is forced for managers with a local password.',
                 category: 'security',
             },
             {

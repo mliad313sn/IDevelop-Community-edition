@@ -92,7 +92,9 @@ router.get(
                 s.name AS site_name, d.name AS department_name,
                 (SELECT COUNT(*) FROM idp_objectives o WHERE o.idp_id = p.id)::int AS objective_count,
                 (SELECT COUNT(*) FROM idp_actions a WHERE a.idp_id = p.id)::int AS action_count,
-                (SELECT COUNT(*) FROM idp_actions a WHERE a.idp_id = p.id AND a.status NOT IN ('completed','cancelled'))::int AS open_action_count
+                (SELECT COUNT(*) FROM idp_actions a WHERE a.idp_id = p.id AND a.status NOT IN ('completed','cancelled'))::int AS open_action_count,
+                (SELECT COUNT(*) FROM idp_actions a WHERE a.idp_id = p.id AND a.reported_done_at IS NOT NULL
+                    AND a.status NOT IN ('completed','cancelled'))::int AS to_validate_count
          FROM idp_plans p
          JOIN employees e ON e.id = p.employee_id
          LEFT JOIN sites s ON s.id = e.site_id
@@ -105,9 +107,14 @@ router.get(
             a[p.status] = (a[p.status] || 0) + 1;
             return a;
         }, {});
+        // The proposals of the people this reader may decide for (the line, or
+        // HR by clearance when the person has no line). The list of plans never
+        // depends on them.
+        const proposals = await IDPService.pendingProposalsFor(req.user).catch(() => []);
         res.render('pages/idp/manage', {
             list,
             counts,
+            proposals,
             title: req.t ? req.t('idp:manage_heading') : 'Team development plans',
         });
     })
@@ -139,12 +146,130 @@ async function canManageEmployee(user, emp) {
         if (await RBACService.canAccessEmployeeData(user, emp)) return true;
         if (emp.managerType === 'admin' && Number(emp.managerId) === Number(user.id)) return true;
     }
-    if (personId == null) return false;
-    const pid = Number(personId);
-    return Boolean(
-        (emp.supervisorId != null && Number(emp.supervisorId) === pid) ||
-        (emp.managerType === 'employee' && emp.managerId != null && Number(emp.managerId) === pid)
+    const pid = personId == null ? null : Number(personId);
+    const direct = Boolean(
+        pid != null &&
+        ((emp.supervisorId != null && Number(emp.supervisorId) === pid) ||
+            (emp.managerType === 'employee' &&
+                emp.managerId != null &&
+                Number(emp.managerId) === pid))
     );
+    if (direct) return true;
+    // The authority ladder, extended mode only (AuthorityService): the line
+    // above acts as the manager. Strict mode (the default) adds nothing.
+    return (await require('../services/AuthorityService').widen(user, 'idp.act', emp)).ok;
+}
+
+/**
+ * What the plan page shows per action and per objective (the action loop):
+ * the action's skill (its own link, else its objective's), the level the plan's
+ * role asks, the person's current level, the evidence recorded, who reported or
+ * validated it (employees and admins are separate id spaces: the *_by_type
+ * column picks the table), and the course attached. For the line, the courses
+ * a training action can be given. The migrations 191 / 192 not applied yet:
+ * the page still renders, without the loop controls.
+ */
+async function actionLoopInfo(plan, actions, canManagePlan) {
+    const out = { actionInfo: {}, objectiveProgress: {}, courses: null };
+    try {
+        const info = await db.all(
+            `SELECT a.id,
+                    COALESCE((SELECT l.skill_id FROM action_skill_links l WHERE l.action_id = a.id
+                               ORDER BY l.skill_id LIMIT 1), o.skill_id) AS "skillId",
+                    ae.rating_pre AS "ratingPre", ae.rating_post AS "ratingPost",
+                    ae.evidence_source AS "evidenceSource", ae.official AS "official",
+                    a.reported_by_type AS "reportedByType",
+                    CASE WHEN a.reported_by_type IN ('employee', 'manager')
+                         THEN (SELECT NULLIF(btrim(concat_ws(' ', re.first_name, re.last_name)), '')
+                                 FROM employees re WHERE re.id = a.reported_by_id)
+                         WHEN a.reported_by_type = 'admin'
+                         THEN (SELECT ra.username FROM admins ra WHERE ra.id = a.reported_by_id)
+                    END AS "reportedByName",
+                    CASE a.validated_by_type
+                         WHEN 'admin' THEN (SELECT va.username FROM admins va WHERE va.id = a.validated_by_id)
+                         WHEN 'employee' THEN (SELECT NULLIF(btrim(concat_ws(' ', ve.first_name, ve.last_name)), '')
+                                                 FROM employees ve WHERE ve.id = a.validated_by_id)
+                         WHEN 'manager' THEN (SELECT NULLIF(btrim(concat_ws(' ', ve.first_name, ve.last_name)), '')
+                                                 FROM employees ve WHERE ve.id = a.validated_by_id)
+                    END AS "validatedByName"
+               FROM idp_actions a
+               LEFT JOIN idp_objectives o ON o.id = a.objective_id
+               LEFT JOIN action_effectiveness ae ON ae.action_id = a.id
+              WHERE a.idp_id = ?`,
+            [Number(plan.id)]
+        );
+        const skillIds = [...new Set(info.map((i) => i.skillId).filter((x) => x != null))].map(
+            Number
+        );
+        const reqRows = skillIds.length
+            ? await db.all(
+                  `SELECT s.id, s.name, rsr.required_level AS "required", sa.current_level AS "current"
+                     FROM skills s
+                     LEFT JOIN employees e ON e.id = ?
+                     LEFT JOIN role_skill_requirements rsr
+                            ON rsr.skill_id = s.id AND rsr.role_id = COALESCE(?, e.role_id)
+                     LEFT JOIN skill_assessments sa ON sa.employee_id = e.id AND sa.skill_id = s.id
+                    WHERE s.id = ANY(?)`,
+                  [Number(plan.employeeId), plan.targetRoleId || null, skillIds]
+              )
+            : [];
+        const bySkill = new Map(reqRows.map((r) => [Number(r.id), r]));
+        const ids = (actions || []).map((a) => Number(a.id));
+        const enr = ids.length
+            ? await db.all(
+                  `SELECT e.source_action_id AS "actionId", c.title, e.status::text AS "status",
+                          e.due_at AS "dueAt"
+                     FROM lms_enrollments e JOIN lms_courses c ON c.id = e.course_id
+                    WHERE e.source_action_id = ANY(?)`,
+                  [ids]
+              )
+            : [];
+        const byAction = new Map(enr.map((e) => [Number(e.actionId), e]));
+        // Keys are database ids (numbers), never client input.
+        const map = Object.create(null);
+        for (const i of info) {
+            const sk = i.skillId != null ? bySkill.get(Number(i.skillId)) : null;
+            map[Number(i.id)] = {
+                skillId: i.skillId == null ? null : Number(i.skillId),
+                skillName: sk ? sk.name : null,
+                required: sk && sk.required != null ? Number(sk.required) : null,
+                current: sk && sk.current != null ? Number(sk.current) : null,
+                ratingPre: i.ratingPre == null ? null : Number(i.ratingPre),
+                ratingPost: i.ratingPost == null ? null : Number(i.ratingPost),
+                evidenceSource: i.evidenceSource || null,
+                official: i.official === true,
+                validatedByName: i.validatedByName || null,
+                reportedBySystem: i.reportedByType === 'system',
+                reportedByName: i.reportedByName || null,
+                training: byAction.get(Number(i.id)) || null,
+            };
+        }
+        out.actionInfo = map;
+        out.objectiveProgress = await IDPService.objectivesProgress(plan.id);
+        if (canManagePlan) {
+            const LmsService = require('../services/LmsService');
+            const all = await LmsService.coursesForSkill(0);
+            const maps = skillIds.length
+                ? await db.all(
+                      `SELECT skill_id AS "skillId", course_id AS "courseId", level_delta AS "levelTo"
+                         FROM course_skill_map WHERE skill_id = ANY(?)`,
+                      [skillIds]
+                  )
+                : [];
+            const mapBySkill = Object.create(null);
+            for (const m of maps) {
+                const k = Number(m.skillId);
+                if (!mapBySkill[k]) mapBySkill[k] = Object.create(null);
+                mapBySkill[k][Number(m.courseId)] = Number(m.levelTo);
+            }
+            out.courses = { list: [...all.mapped, ...all.others], bySkill: mapBySkill };
+        }
+    } catch (e) {
+        // Migration 191 not applied yet: no loop controls, the page renders.
+        if (!(e && (e.code === '42703' || e.code === '42P01'))) throw e;
+        out.actionInfo = {};
+    }
+    return out;
 }
 
 // Manager-initiated IDP: pick an employee (or arrive pre-filled from a gap) and
@@ -163,6 +288,11 @@ router.get(
         );
         const preEmpId = req.query.employeeId ? Number(req.query.employeeId) : null;
         const preSkillId = req.query.skillId ? Number(req.query.skillId) : null;
+        const preRole = req.query.targetRoleId
+            ? await db.get('SELECT id, name FROM roles WHERE id = ?', [
+                  Number(req.query.targetRoleId) || 0,
+              ])
+            : null;
         let gaps = [];
         let target = null;
         if (preEmpId) {
@@ -179,6 +309,7 @@ router.get(
             target,
             gaps,
             preSkillId,
+            targetRole: target && preRole ? preRole : null,
             title: req.t ? req.t('idp:new_heading') : 'New development plan',
         });
     })
@@ -207,12 +338,20 @@ router.post(
         if (!Array.isArray(skillIds)) skillIds = [skillIds];
         const priority = req.body.priority || 'medium';
         let idpId;
+        let merged = false;
         try {
-            ({ idpId } = await IDPService.createManualPlan({
+            ({ idpId, merged } = await IDPService.createManualPlan({
                 employeeId,
                 priority,
                 skillIds,
-                locale: req.getLocale ? req.getLocale() : 'fr',
+                // Target role -> gap -> plan (career path): the target role's
+                // requirements, tagged with it.
+                targetRoleId: Number(req.body.targetRoleId) || null,
+                user: req.user,
+                // The seeded objectives and actions are written in the reader's
+                // language (req.getLocale does not exist here: every plan came
+                // out in French).
+                locale: String(req.language || 'fr').slice(0, 2) === 'en' ? 'en' : 'fr',
             }));
         } catch (e) {
             // One open plan per person (uq_idp_open_per_employee): a 409 with a
@@ -232,16 +371,22 @@ router.post(
         }
         req.flash(
             'success',
-            req.t
-                ? req.t('flash:idp_draft_created')
-                : 'Draft IDP created — add objectives and route for sign-off.'
+            merged
+                ? req.t
+                    ? req.t('idp:flash_target_merged')
+                    : 'The target role objectives were added to the open plan.'
+                : req.t
+                  ? req.t('flash:idp_draft_created')
+                  : 'Draft IDP created — add objectives and route for sign-off.'
         );
-        res.redirect('/v2/idp/' + idpId);
+        res.redirect('/v2/idp/' + Number(idpId));
     })
 );
 
+// Digits only: '/propose' (v2-idp-lifecycle, mounted after this router) must
+// not be read as a plan id.
 router.get(
-    '/:id',
+    '/:id(\\d+)',
     requireAuth,
     ah(async (req, res) => {
         const plan = await db.get(`SELECT * FROM idp_plans WHERE id = ?`, [req.params.id]);
@@ -288,18 +433,56 @@ router.get(
         } catch (_) {
             canManagePlan = false;
         }
+        // The page is "Development plan for <name>": a module page behind its own
+        // permission (canAccessIdp above), so the name is allowed here. The
+        // skills of the person's role feed the "Add an objective" picker.
+        const subject = await EmployeeModel.findById(plan.employeeId);
+        const subjectName = subject
+            ? [subject.firstName, subject.lastName].filter(Boolean).join(' ')
+            : '#' + plan.employeeId;
+        let roleSkills = [];
+        if (canManagePlan && subject && subject.roleId) {
+            roleSkills = await db.all(
+                `SELECT s.id, s.name FROM role_skill_requirements rsr
+                   JOIN skills s ON s.id = rsr.skill_id
+                  WHERE rsr.role_id = ? ORDER BY s.name`,
+                [subject.roleId]
+            );
+        }
+        // The action loop: what each action needs on screen (its skill, the
+        // level the role asks, the course attached, who reported or validated
+        // it) and the live level beside each objective. A machine-written
+        // objective is printed in the reader's language.
+        const loop = await actionLoopInfo(plan, actions, canManagePlan);
+        const t = req.t ? req.t.bind(req) : null;
+        const display = require('../utils/idpObjectiveText').display;
+        objectives = objectives.map((o) => ({
+            ...o,
+            displayText: display(o.smartText || '', t),
+        }));
+        const loopUser = req.user && req.user.userType !== 'admin';
         res.render('pages/idp/detail', {
             plan,
             objectives,
             actions,
+            actionInfo: loop.actionInfo,
+            objectiveProgress: loop.objectiveProgress,
+            courses: loop.courses,
+            viewerIsPerson: Boolean(loopUser && viewerIsSubject),
             canManagePlan,
-            title: (req.t ? req.t('idp:title') : 'Individual Development Plans') + ' #' + plan.id,
+            viewerIsSubject,
+            subjectName,
+            roleSkills,
+            actionTypes: IDPService.ACTION_TYPES,
+            title: req.t
+                ? req.t('idp:detail_title_short', { name: subjectName })
+                : 'IDP for ' + subjectName,
         });
     })
 );
 
 router.post(
-    '/:id/sign',
+    '/:id(\\d+)/sign',
     requireAuth,
     ah(async (req, res) => {
         const plan = await db.get(`SELECT * FROM idp_plans WHERE id = ?`, [Number(req.params.id)]);
@@ -329,6 +512,23 @@ router.post(
                     .status(403)
                     .json({ ok: false, error: 'Not authorized to sign this IDP' });
             }
+        }
+        // A plan is never signed EMPTY: at least one action and a due date on
+        // every objective, refused in words (never a 500).
+        const wantsJsonEarly = req.xhr || (req.headers.accept || '').indexOf('json') > -1;
+        try {
+            if (plan.status === 'draft') await IDPService.assertSignable(Number(req.params.id));
+        } catch (e) {
+            if (!e || e.code !== 'IDP_NOT_SIGNABLE') throw e;
+            const msg = req.t
+                ? req.t(e.i18n.key, { ...(e.i18n.vars || {}), defaultValue: e.message })
+                : e.message;
+            if (wantsJsonEarly)
+                return res
+                    .status(409)
+                    .json({ ok: false, code: e.code, missing: e.missing, error: msg });
+            req.flash('error', msg);
+            return res.redirect('/v2/idp/' + Number(req.params.id));
         }
         const result = await IDPService.signOff({
             idpId: Number(req.params.id),

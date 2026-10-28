@@ -1,0 +1,110 @@
+<%# « My diversity data » — self-declaration with explicit consent only
+    (DEIService, migration 171). Reachable whatever the talent module says, so
+    consent can always be withdrawn. Plain forms: no inline handlers (CSP). %>
+<% const _d = (typeof fmtDate === 'function') ? fmtDate : function (x) { return x ? String(x).slice(0, 10) : '—'; }; %>
+<% const _v = (mine && mine.values) || {}; %>
+<% const _ethOn = !!(mine && mine.ethnicityEnabled); %>
+<% const _consent = mine && mine.consent; %>
+<% const _opts = function (list, current) {
+     const out = list.slice();
+     if (current && out.indexOf(current) === -1) out.push(current);
+     return out;
+   }; %>
+<div class="page-header">
+    <h1><i class="fas fa-people-group" aria-hidden="true"></i> <%= __('talentx:dei_my_title') %></h1>
+</div>
+<p class="help-text" style="margin-bottom:1rem;"><%= __('talentx:dei_my_intro') %></p>
+
+<% if (!isEmployee) { %>
+    <div class="alert alert-info" role="status"><%= __('talentx:dei_my_employees_only') %></div>
+<% } else if (unavailable) { %>
+    <div class="alert alert-warning" role="status"><%= __('talentx:dei_my_unavailable') %></div>
+<% } else { %>
+
+<% if (_v.needsReview) { %>
+    <div class="alert alert-warning" role="status">
+        <strong><%= __('talentx:dei_my_legacy_title') %></strong>
+        <%= __('talentx:dei_my_legacy_body') %>
+    </div>
+<% } %>
+
+<section class="card" aria-labelledby="dei-form-h" style="margin-bottom:1rem;padding:1rem;">
+    <h2 id="dei-form-h"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('talentx:dei_my_form_title') %></h2>
+    <p class="help-text"><%= __('talentx:dei_my_form_help') %></p>
+    <form method="POST" action="/v2/cap/my-diversity" style="max-width:40rem;">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+        <label for="dei-gender"><%= __('talentx:dei_field_gender') %></label>
+        <select id="dei-gender" name="gender" class="form-control">
+            <option value=""><%= __('talentx:dei_not_declared') %></option>
+            <% _opts(['female', 'male', 'other'], _v.gender).forEach(function (o) { %>
+                <option value="<%= o %>" <%= _v.gender === o ? 'selected' : '' %>><%= __('talentx:dei_gender_' + o, { defaultValue: o }) %></option>
+            <% }); %>
+        </select>
+
+        <label for="dei-age" style="margin-top:.5rem;"><%= __('talentx:dei_field_ageBand') %></label>
+        <select id="dei-age" name="ageBand" class="form-control">
+            <option value=""><%= __('talentx:dei_not_declared') %></option>
+            <% _opts(['18-24', '25-34', '35-44', '45-54', '55-64', '65+'], _v.ageBand).forEach(function (o) { %>
+                <option value="<%= o %>" <%= _v.ageBand === o ? 'selected' : '' %>><%= o %></option>
+            <% }); %>
+        </select>
+
+        <%# Nationality is offered only while the localContent module is on (the one
+            nationality switch, utils/featureFlags). Off, a value already held is
+            shown read-only and kept untouched until the person withdraws it. %>
+        <% if (mine && mine.nationalityEnabled) { %>
+        <label for="dei-nat" style="margin-top:.5rem;"><%= __('talentx:dei_field_nationality') %></label>
+        <input id="dei-nat" name="nationality" class="form-control" maxlength="64" value="<%= _v.nationality || '' %>">
+        <% } else if (_v.nationality) { %>
+            <p class="help-text" style="margin-top:.5rem;"><i class="fas fa-circle-info" aria-hidden="true"></i>
+                <%= __('talentx:dei_my_nat_held', { value: _v.nationality }) %></p>
+        <% } %>
+
+        <% if (_ethOn) { %>
+            <label for="dei-eth" style="margin-top:.5rem;"><%= __('talentx:dei_field_ethnicity') %></label>
+            <input id="dei-eth" name="ethnicity" class="form-control" maxlength="64" value="<%= _v.ethnicity || '' %>">
+        <% } else if (_v.ethnicity) { %>
+            <p class="help-text" style="margin-top:.5rem;"><i class="fas fa-circle-info" aria-hidden="true"></i>
+                <%= __('talentx:dei_my_eth_held', { value: _v.ethnicity }) %></p>
+        <% } %>
+
+        <fieldset style="margin-top:.75rem;border:0;padding:0;">
+            <legend style="font-size:1em;"><%= __('talentx:dei_disability_label') %></legend>
+            <p class="help-text" style="margin:.1rem 0 .3rem;"><%= __('talentx:dei_disability_purpose') %></p>
+            <label><input type="radio" name="disability" value="" <%= _v.disability == null ? 'checked' : '' %>> <%= __('talentx:dei_not_declared') %></label><br>
+            <label><input type="radio" name="disability" value="true" <%= _v.disability === true ? 'checked' : '' %>> <%= __('talentx:dei_yes') %></label><br>
+            <label><input type="radio" name="disability" value="false" <%= _v.disability === false ? 'checked' : '' %>> <%= __('talentx:dei_no') %></label>
+        </fieldset>
+
+        <div class="card" style="margin-top:.75rem;padding:.75rem;">
+            <label><input type="checkbox" name="consent" value="true">
+                <%= __('talentx:dei_consent_stats') %></label>
+            <label style="display:block;margin-top:.5rem;"><input type="checkbox" name="consentDisability" value="true">
+                <%= __('talentx:dei_consent_disability') %></label>
+            <p class="help-text" style="margin:.5rem 0 0;"><%= __('talentx:dei_consent_withdraw_note') %>
+                <span class="text-muted">(<%= consentVersion %>)</span></p>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="margin-top:.75rem;"><%= __('talentx:dei_save_btn') %></button>
+    </form>
+</section>
+
+<section class="card" aria-labelledby="dei-consent-h" style="margin-bottom:1rem;padding:1rem;">
+    <h2 id="dei-consent-h"><i class="fas fa-file-signature" aria-hidden="true"></i> <%= __('talentx:dei_my_consent_title') %></h2>
+    <% if (_consent) { %>
+        <p><%= __('talentx:dei_my_consent_since', { date: _d(_consent.grantedAt), version: _consent.textVersion }) %></p>
+        <p class="help-text"><%= __('talentx:dei_my_consent_fields', { fields: (_consent.fields || []).map(function (f) { return __('talentx:dei_field_' + f, { defaultValue: f }); }).join(', ') }) %></p>
+    <% } else { %>
+        <p class="help-text"><%= __('talentx:dei_my_no_consent') %></p>
+    <% } %>
+    <% const _held = _v.gender || _v.ageBand || _v.nationality || _v.ethnicity || _v.disability != null; %>
+    <% if (_consent || _held) { %>
+        <form method="POST" action="/v2/cap/my-diversity/withdraw" data-confirm="<%= __('talentx:dei_withdraw_confirm') %>" data-confirm-yes="<%= __('talentx:dei_withdraw_btn') %>" data-confirm-danger>
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <p class="help-text"><%= __('talentx:dei_withdraw_help') %></p>
+            <button type="submit" class="btn btn-secondary"><i class="fas fa-eraser" aria-hidden="true"></i> <%= __('talentx:dei_withdraw_btn') %></button>
+        </form>
+    <% } %>
+</section>
+<% } %>

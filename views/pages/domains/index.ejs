@@ -1,6 +1,6 @@
 <div class="page-header">
     <h1>Domains</h1>
-    <button class="btn btn-primary" onclick="document.getElementById('createModal').style.display='block'">Create Domain</button>
+    <button class="btn btn-primary" data-on-click="setCreateModalDisplay" data-args='["block"]'>Create Domain</button>
 </div>
 
 <table class="table">
@@ -29,7 +29,7 @@
 
 <div id="createModal" class="modal" style="display:none;">
     <div class="modal-content">
-        <span class="close" onclick="document.getElementById('createModal').style.display='none'">&times;</span>
+        <span class="close" data-on-click="setCreateModalDisplay" data-args='["none"]'>&times;</span>
         <h2>Create Domain</h2>
         <form action="/domains" method="POST">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
@@ -42,8 +42,15 @@
                 <textarea name="description"></textarea>
             </div>
             <button type="submit" class="btn btn-primary">Create</button>
-            <button type="button" class="btn btn-secondary" onclick="document.getElementById('createModal').style.display='none'">Cancel</button>
+            <button type="button" class="btn btn-secondary" data-on-click="setCreateModalDisplay" data-args='["none"]'>Cancel</button>
         </form>
     </div>
 </div>
+
+<script nonce="<%= cspNonce %>">
+// CSP: the modal controls use data-on-click (public/js/csp-actions.js).
+function setCreateModalDisplay(value) {
+    document.getElementById('createModal').style.display = value;
+}
+</script>
 

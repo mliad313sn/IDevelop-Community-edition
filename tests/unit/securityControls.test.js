@@ -24,7 +24,8 @@ describe('secrets at rest (secretBox, AES-256-GCM)', () => {
     test('round-trips, never stores the clear text, uses a fresh IV each time', () => {
         const a = box().encrypt('smtp-password');
         const b = box().encrypt('smtp-password');
-        expect(a.startsWith('enc:v1:')).toBe(true);
+        // secretBox v2 (enc:v2:<purpose>:iv:tag:ct); v1 is read-only.
+        expect(a.startsWith('enc:v2:')).toBe(true);
         expect(a).not.toContain('smtp-password');
         expect(a).not.toBe(b);
         expect(box().decrypt(a)).toBe('smtp-password');
@@ -32,14 +33,17 @@ describe('secrets at rest (secretBox, AES-256-GCM)', () => {
 
     test('a tampered ciphertext or a truncated tag is refused', () => {
         const v = box().encrypt('secret');
-        const [p1, p2, iv, tag, ct] = v.split(':');
+        // v2 layout: enc:v2:<purpose>:<iv>:<tag>:<ct>
+        const [p1, p2, purpose, iv, tag, ct] = v.split(':');
         const flipped = Buffer.from(ct, 'base64');
         flipped[0] ^= 0xff;
         expect(() =>
-            box().decrypt([p1, p2, iv, tag, flipped.toString('base64')].join(':'))
+            box().decrypt([p1, p2, purpose, iv, tag, flipped.toString('base64')].join(':'))
         ).toThrow();
         const shortTag = Buffer.from(tag, 'base64').subarray(0, 8).toString('base64');
-        expect(() => box().decrypt([p1, p2, iv, shortTag, ct].join(':'))).toThrow(/tag length/);
+        expect(() => box().decrypt([p1, p2, purpose, iv, shortTag, ct].join(':'))).toThrow(
+            /tag length/
+        );
     });
 
     test('another key cannot decrypt', () => {

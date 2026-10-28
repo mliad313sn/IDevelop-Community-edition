@@ -66,10 +66,16 @@ jest.mock('../../src/jobs/db-backup', () => ({ tick: jest.fn() }));
 jest.mock('../../src/jobs/telemetry-prune', () => ({ tick: jest.fn() }));
 jest.mock('../../src/services/NotificationService', () => ({ releaseSnoozed: jest.fn() }));
 jest.mock('../../src/services/LmsService', () => ({ runScheduledSync: jest.fn() }));
-jest.mock('../../src/services/PriorityIndexService', () => ({ refresh: jest.fn() }), {
-    virtual: true,
-}); // service is OPTIONAL in the registry (try/require/catch) and absent in this build
 jest.mock('../../src/services/IDPService', () => ({ generateDrafts: jest.fn(() => 'drafts') }));
+
+// Independent of the developer's environment: a REDIS_URL set in the shell
+// must neither leak into the in-process path nor be lost after the run.
+const SAVED_REDIS_URL = process.env.REDIS_URL;
+delete process.env.REDIS_URL;
+afterAll(() => {
+    if (SAVED_REDIS_URL === undefined) delete process.env.REDIS_URL;
+    else process.env.REDIS_URL = SAVED_REDIS_URL;
+});
 
 const { Queue, Worker } = require('bullmq');
 const jobs = require('../../src/jobs/index');
@@ -83,7 +89,6 @@ describe('TICKS registry — single source of truth for both scheduler runtimes'
             expect.arrayContaining([
                 'dispute-escalator.tick',
                 'notifications.release-snoozed',
-                'priority-index.refresh',
                 'lms.sync.tick',
                 'report-scheduler.tick',
                 'fit-history.tick',
@@ -94,6 +99,24 @@ describe('TICKS registry — single source of truth for both scheduler runtimes'
         );
         // No duplicates — one registration per tick per runtime.
         expect(new Set(names).size).toBe(names.length);
+        // The dead priority-index tick (its service never existed) is gone.
+        expect(names).not.toContain('priority-index.refresh');
+    });
+
+    test('every module a tick or the registry requires exists (no silent no-op tick)', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const dir = path.join(__dirname, '../../src/jobs');
+        const src = fs.readFileSync(path.join(dir, 'index.js'), 'utf8');
+        const missing = [...src.matchAll(/require\('(\.\.?\/[^']+)'\)/g)]
+            .map((m) => m[1])
+            .filter((rel) => {
+                const base = path.resolve(dir, rel);
+                return ![base, base + '.js', path.join(base, 'index.js')].some((f) =>
+                    fs.existsSync(f)
+                );
+            });
+        expect(missing).toEqual([]);
     });
 
     test('every entry is fully specified (fail-fast validation contract)', () => {

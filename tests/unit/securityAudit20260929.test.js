@@ -425,21 +425,21 @@ describe('SA-10 container build context excludes secrets', () => {
 
 // ---------------------------------------------------------------------------
 describe('SA-11 dashboard employee list page size is bounded', () => {
-    test('pageSize and page are clamped before reaching the service', async () => {
-        jest.resetModules();
-        jest.doMock('../../src/config/database', () => mockDb);
-        const getEmployeeList = jest.fn(async () => ({ rows: [] }));
-        jest.doMock('../../src/services/DashboardService', () => ({ getEmployeeList }));
-        const DashboardController = require('../../src/controllers/DashboardController');
-        const ctl = new DashboardController();
-        const res = { json: jest.fn(), status: jest.fn(() => res) };
-        await ctl.getEmployeeList(
-            { query: { pageSize: '100000000', page: '-4' }, user: { userType: 'admin' } },
-            res
+    // wave 12 (D3): the nominative employee list of the former dashboard is
+    // RETIRED — it answers 410 for everyone and reaches no service at all.
+    test('the employee list endpoint is retired (410), so no page size reaches a query', () => {
+        const src = require('fs').readFileSync(
+            require('path').join(__dirname, '..', '..', 'src', 'routes', 'dashboard.js'),
+            'utf8'
         );
-        const opts = getEmployeeList.mock.calls[0][1];
-        expect(opts.pageSize).toBe(200);
-        expect(opts.page).toBe(1);
+        const retired = src.slice(
+            src.indexOf('const RETIRED'),
+            src.indexOf(']);', src.indexOf('const RETIRED'))
+        );
+        expect(retired).toMatch(/'\/api\/dashboard\/employee-list'/);
+        expect(src).toMatch(/for \(const p of RETIRED\) router\.get\(p, authMiddleware, retired\)/);
+        expect(src).toMatch(/res\.status\(410\)/);
+        expect(src).not.toMatch(/getEmployeeList/);
     });
 });
 

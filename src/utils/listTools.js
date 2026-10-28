@@ -91,12 +91,13 @@ function whitelistMap(whitelist) {
  * append after ORDER BY; an optional `tiebreak` keeps paging stable.
  */
 function sortClause(query, whitelist, defaultKey, { defaultDir = 'asc', tiebreak = '' } = {}) {
-    const map = whitelistMap(whitelist);
+    const map = new Map(Object.entries(whitelistMap(whitelist)));
     const wanted = String((query && query.sort) || '');
-    const key = Object.prototype.hasOwnProperty.call(map, wanted) ? wanted : defaultKey;
+    // The key used below is the whitelist's own string, never the client's.
+    const key = [...map.keys()].find((k) => k === wanted) || defaultKey;
     const rawDir = String((query && query.dir) || '').toLowerCase();
-    const dir = DIRS.has(rawDir) && key === wanted ? rawDir : defaultDir;
-    const expr = map[key] || key;
+    const dir = (key === wanted && [...DIRS].find((d) => d === rawDir)) || defaultDir;
+    const expr = map.get(key) || key;
     const orderBy = `${expr} ${dir.toUpperCase()}${tiebreak ? `, ${tiebreak}` : ''}`;
     return { key, dir, orderBy, isDefault: key === defaultKey && dir === defaultDir };
 }

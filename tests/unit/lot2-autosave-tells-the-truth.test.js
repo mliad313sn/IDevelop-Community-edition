@@ -97,7 +97,9 @@ describe('a failure persists and can be retried', () => {
     });
 
     test('the failed state is visually distinct — it is the one the reader must act on', () => {
-        expect(VIEW).toMatch(/\.sa-autosave-failed\s*\{[^}]*color:/);
+        expect(read('public/css/self-assessment.css')).toMatch(
+            /\.sa-autosave-failed\s*\{[^}]*color:/
+        );
         expect(VIEW).toMatch(/classList\.toggle\('sa-autosave-failed', state === 'failed'\)/);
     });
 });

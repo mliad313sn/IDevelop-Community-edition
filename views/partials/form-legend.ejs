@@ -1,0 +1,7 @@
+<%#
+  form-legend — the ONE explanation of the required marker. Place it once at the
+  top of a form that has required fields; the « * » itself is drawn by CSS on
+  every required label (.is-required, or a label of a required control) — never
+  write a literal « * » in a label.
+  include('../partials/form-legend')
+%><p class="form-legend"><span class="form-legend-star" aria-hidden="true">*</span> <%= __('common:form_required_legend') %></p>

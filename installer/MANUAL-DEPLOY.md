@@ -12,25 +12,31 @@ Two things to know up front:
   **§8**. The app itself is just **Node.js + PostgreSQL**.
 
 Defaults used throughout (change to taste, keep them consistent):
-| Setting | Value |
-|---|---|
+
+| Setting     | Value                       |
+| ----------- | --------------------------- |
 | Install dir | `C:\Program Files\IDevelop` |
-| App port | `3000` |
-| Database | `idevelop` |
-| DB role | `idevelop_app` |
+| App port    | `3000`                      |
+| Database    | `idevelop`                  |
+| DB role     | `idevelop_app`              |
 
 ---
 
 ## PHASE A — Download the requirements
 
-| #   | Component                          | Where to get it                                                           | Needed                         |
-| --- | ---------------------------------- | ------------------------------------------------------------------------- | ------------------------------ |
-| A1  | **Node.js 22.x LTS (x64 MSI)**     | https://nodejs.org/dist/v22.23.3/node-v22.23.3-x64.msi                    | Required (20.19+ minimum)      |
-| A2  | **PostgreSQL 17 (x64)**            | https://get.enterprisedb.com/postgresql/postgresql-17.2-1-windows-x64.exe | Required                       |
-| A3  | **Visual C++ Redistributable x64** | https://aka.ms/vs/17/release/vc_redist.x64.exe                            | Required (PostgreSQL needs it) |
-| A4  | **The IDevelop package**           | `IDevelop-Installer-<version>.zip` (this package)                         | Required                       |
-| A5  | _(Optional)_ **Redis / Memurai**   | https://www.memurai.com/ (Windows)                                        | Background jobs only           |
-| A6  | _(Optional)_ **ClamAV**            | https://www.clamav.net/downloads                                          | Upload virus-scan only         |
+| #   | Component                          | Where to get it                                                            | Needed                         |
+| --- | ---------------------------------- | -------------------------------------------------------------------------- | ------------------------------ |
+| A1  | **Node.js 22.x LTS (x64 MSI)**     | https://nodejs.org/dist/v22.23.3/node-v22.23.3-x64.msi                     | Required (20.19+ minimum)      |
+| A2  | **PostgreSQL 17 (x64)**            | https://get.enterprisedb.com/postgresql/postgresql-17.11-4-windows-x64.exe | Required                       |
+| A3  | **Visual C++ Redistributable x64** | the `VcRedistUrl` of `config.psd1` (a versioned Microsoft URL)             | Required (PostgreSQL needs it) |
+| A4  | **The IDevelop package**           | `IDevelop-Installer-<version>.zip` (this package)                          | Required                       |
+| A5  | _(Optional)_ **Redis / Memurai**   | https://www.memurai.com/ (Windows)                                         | Background jobs only           |
+| A6  | _(Optional)_ **ClamAV**            | https://www.clamav.net/downloads                                           | Upload virus-scan only         |
+
+Verify every file you fetch by hand against the SHA-256 pinned in `config.psd1`
+(`NodeMsiSha256`, `PgInstallerSha256`, `VcRedistSha256`, `WinSwSha256`) with
+`Get-FileHash <file> -Algorithm SHA256` before running it. The installer itself
+refuses a file whose hash or Authenticode publisher does not match.
 
 ---
 
@@ -83,6 +89,26 @@ ALTER SCHEMA public OWNER TO idevelop_app;
 > `ALTER TABLE/SEQUENCE/VIEW ... OWNER TO idevelop_app` for every object in `public` (the
 > automated installer does this on every install/patch).
 
+**Recommended PostgreSQL hardening.** The automated installer applies these on a
+server it installed itself and offers them (never silently) on any other server
+(`-ApplyPgHardening`). By hand, as `postgres`:
+
+```sql
+ALTER SYSTEM SET log_connections = 'on';
+ALTER SYSTEM SET log_disconnections = 'on';
+ALTER SYSTEM SET log_line_prefix = '%m [%p] user=%u,db=%d,client=%h ';
+GRANT CONNECT ON DATABASE idevelop TO idevelop_app;
+REVOKE CONNECT ON DATABASE idevelop FROM PUBLIC;
+SELECT pg_reload_conf();
+-- ONLY when the app reaches PostgreSQL on localhost (same machine); needs a restart:
+ALTER SYSTEM SET listen_addresses = 'localhost';
+```
+
+Any other role that must read this database (a reporting account, for example)
+then needs its own `GRANT CONNECT`. Replace every `trust` line of `pg_hba.conf`
+with `scram-sha-256` (check `password_encryption = scram-sha-256` first and reset
+the passwords of roles created under md5), then reload.
+
 ---
 
 ## PHASE D — Deploy the application files
@@ -122,7 +148,9 @@ ALTER SCHEMA public OWNER TO idevelop_app;
     V2_FEATURES=1
     # Optional — only if you installed them:
     # REDIS_URL=redis://localhost:6379
-    # CLAMD_SOCKET=\\.\pipe\clamd      (or set a ClamAV host/port)
+    # CLAMD_HOST=127.0.0.1  CLAMD_PORT=3310   (ClamAV daemon; else Microsoft Defender is used,
+    #                                        else uploads are recorded as "not scanned")
+    # REQUIRE_MALWARE_SCAN=1                 (hold unscanned uploads instead of accepting them)
     # Optional — outgoing email (notifications). Normally configured in the app
     # (Settings → Email (SMTP)); these are only a fallback used when the matching
     # in-app Setting is blank. Email stays OFF until enabled in Settings.
@@ -167,10 +195,25 @@ To pin a known value instead (for automated deploys), set
 `BOOTSTRAP_ADMIN_PASSWORD` before seeding; it must satisfy the normal password
 policy or the seed refuses it. Nothing is echoed when you pin it.
 
-If you would rather set the password explicitly after seeding:
+If you would rather set the password explicitly after seeding, pass it in the
+environment, never as an argument (an argument is visible to every local user in
+the process list):
+
+```powershell
+$env:SET_ADMIN_PASSWORD = Read-Host 'New admin password'
+node scripts/set-admin-password.js
+Remove-Item Env:\SET_ADMIN_PASSWORD
+```
+
+On Linux: `read -rs SET_ADMIN_PASSWORD && export SET_ADMIN_PASSWORD && node scripts/set-admin-password.js; unset SET_ADMIN_PASSWORD`.
+
+**Backup key (Windows).** Create the backup encryption key and export its
+recovery copy once, to removable media kept offline (see
+[docs/BACKUPS.md](../docs/BACKUPS.md)):
 
 ```
-node scripts/set-admin-password.js "A-Strong-Admin-Password!"
+node scripts/backup-key.js init
+node scripts/backup-key.js export --out E:\idevelop-backup-recovery-key.txt
 ```
 
 ---
@@ -189,7 +232,9 @@ self-heals a missed Phase F — except the admin-password hardening.)
 
 ## PHASE H — Run as a service (survives reboot)
 
-**Windows — SYSTEM scheduled task** (what the installer registers). In an **admin** PowerShell:
+**Windows — SYSTEM scheduled task** (the installer's fallback when the WinSW service wrapper
+cannot be obtained; by default it registers a real Windows service, see _Least privilege_
+below). In an **admin** PowerShell:
 
 ```powershell
 $node = (Get-Command node.exe).Source
@@ -204,6 +249,32 @@ Start-ScheduledTask -TaskName 'IDevelop'
 
 _(Alternatives: [NSSM](https://nssm.cc/) or `pm2` + `pm2-windows-startup`.)_
 
+**Least privilege.** A Scheduled Task runs as SYSTEM. The automated installer
+instead registers a real Windows service (WinSW) that runs as its **virtual
+account** `NT SERVICE\IDevelop` on a new install. To do the same by hand with a
+service host, after registering the service as `IDevelop`:
+
+```powershell
+sc.exe config IDevelop obj= "NT SERVICE\IDevelop"
+$a = 'NT SERVICE\IDevelop'
+# Modify where the app writes; ReadAndExecute on the code; Read on .env and the keyring.
+foreach ($d in 'C:\ProgramData\IDevelop', 'C:\Program Files\IDevelop\uploads', 'C:\Program Files\IDevelop\data',
+               'C:\Program Files\IDevelop\logs', 'C:\Program Files\IDevelop\backups', 'C:\Program Files\IDevelop\tmp',
+               'C:\Program Files\IDevelop\certs', 'C:\Program Files\IDevelop\AI_Engine_Docs', 'C:\Program Files\IDevelop\service\logs') {
+    New-Item -ItemType Directory -Force -Path $d | Out-Null
+    icacls $d /grant "${a}:(OI)(CI)M"
+}
+icacls 'C:\Program Files\IDevelop' /grant "${a}:(OI)(CI)RX"
+icacls 'C:\Program Files\IDevelop\.env' /grant "${a}:R"
+icacls 'C:\ProgramData\IDevelop\keys\backup-keyring.json' /grant "${a}:R"
+Restart-Service IDevelop
+```
+
+Never grant it Modify on the install directory itself, nor anything on
+`C:\ProgramData\IDevelop\app-backups` or `restore-points` (code an administrator
+may run later). Then check `http://localhost:3000/health`, run "Back up now" in
+Admin → Instance health and upload a file.
+
 ---
 
 ## PHASE I — Firewall & TLS
@@ -214,6 +285,14 @@ _(Alternatives: [NSSM](https://nssm.cc/) or `pm2` + `pm2-windows-startup`.)_
     ```
 - **TLS** — the app serves **HTTP** by default. For production, front it with a reverse proxy
   that terminates HTTPS (IIS + ARR, nginx, or Caddy) pointing at `http://localhost:3000`.
+- **Reverse proxy on the same machine: set `TRUST_PROXY`.** Every request then reaches
+  the app from `127.0.0.1`. Without `TRUST_PROXY` every client looks like the server
+  itself: the per-address rate limits apply to everybody at once and the audit trail
+  records `127.0.0.1`. In `.env` set `TRUST_PROXY=loopback` (or the proxy's exact
+  address; for a proxy on another machine its address or subnet, or `1` for one hop),
+  make the proxy append the client to `X-Forwarded-For` and pass `X-Forwarded-Proto`,
+  then restart the service. A value that would trust every client is refused at start-up
+  with the reason. Check in System logs that sign-ins show the workstations' addresses.
 
 ---
 
@@ -230,7 +309,7 @@ _(Alternatives: [NSSM](https://nssm.cc/) or `pm2` + `pm2-windows-startup`.)_
 
 - **Node 20:** `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install -y nodejs`
 - **PostgreSQL:** `sudo apt install -y postgresql` then the same `CREATE ROLE/DATABASE/EXTENSION` SQL via `sudo -u postgres psql`.
-- **App:** same `npm ci --omit=dev`, `.env`, `npm run db:migrate:all`, `npm run db:seed`, `node scripts/set-admin-password.js`.
+- **App:** same `npm ci --omit=dev`, `.env`, `npm run db:migrate:all`, `npm run db:seed`, then `SET_ADMIN_PASSWORD=… node scripts/set-admin-password.js` if you set the admin password yourself. The backup key is derived from `APP_KEY` on Linux: keep an offline copy of `APP_KEY` (see `docs/BACKUPS.md`).
 - **Service:** systemd unit:
     ```ini
     [Unit]
@@ -262,14 +341,14 @@ The only steps needing internet are the **Phase A downloads** and **`npm ci`**. 
 
 ## §10 — Troubleshooting
 
-| Symptom                            | Cause / fix                                                                               |
-| ---------------------------------- | ----------------------------------------------------------------------------------------- |
-| `npm ci` fails                     | No internet, or wrong Node version. Use Node 20; for offline see §9.                      |
-| App won't start, DB error          | `DATABASE_URL` wrong, or PostgreSQL not running, or role/password mismatch (Phase C/E).   |
-| Migration error about an extension | Extensions weren't created as superuser — re-run the `CREATE EXTENSION` lines in Phase C. |
-| Login fails on fresh DB            | Seed didn't run, or you set a new admin password — use the one from Phase F.              |
-| Port 3000 in use                   | Change `PORT` in `.env` (and the firewall rule / service).                                |
-| Evidence upload shows "scan_error" | ClamAV not installed/reachable — optional; set `CLAMD_SOCKET` or ignore.                  |
+| Symptom                             | Cause / fix                                                                                                                                                                  |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm ci` fails                      | No internet, or wrong Node version. Use Node 20; for offline see §9.                                                                                                         |
+| App won't start, DB error           | `DATABASE_URL` wrong, or PostgreSQL not running, or role/password mismatch (Phase C/E).                                                                                      |
+| Migration error about an extension  | Extensions weren't created as superuser — re-run the `CREATE EXTENSION` lines in Phase C.                                                                                    |
+| Login fails on fresh DB             | Seed didn't run, or you set a new admin password — use the one from Phase F.                                                                                                 |
+| Port 3000 in use                    | Change `PORT` in `.env` (and the firewall rule / service).                                                                                                                   |
+| Evidence upload shows "not scanned" | No antivirus engine answered: neither clamd (`CLAMD_HOST` / `CLAMD_PORT`, or `CLAMD_SOCKET`) nor Microsoft Defender. Optional; the file stays usable with restricted access. |
 
 A clean run leaves the app at `http://localhost:3000/`, an auto-start service, and admin
 secured. To remove later, stop/unregister the service, delete the install dir, and

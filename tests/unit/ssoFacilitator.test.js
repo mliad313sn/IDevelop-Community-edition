@@ -229,12 +229,17 @@ describe('wiring (source guards)', () => {
             .replace(/\/\/.*$/gm, '')
             .replace(/\/\*[\s\S]*?\*\//g, '');
         expect(ctl).not.toMatch(/\(info && info\.message\) \|\| req\.t\s*\?/);
-        expect(ctl).toMatch(/authAudit\(req, 'SSO_DENIED', `\$\{provider\.key\}: \$\{reason\}`\)/);
+        expect(ctl).toMatch(
+            /recordAccountEvent\(req, 'SSO_DENIED', `\$\{provider\.key\}: \$\{reason\}`\)/
+        );
     });
     test('SSO secrets are encrypted at rest and covered by the key rotation', () => {
         expect(read('src/services/SsoSettingsService.js')).toMatch(
-            /secretBox\.encrypt\(String\(raw\)\)/
+            /secretBox\.encrypt\(String\(raw\), 'sso'\)/
         );
-        expect(read('scripts/rotate-app-key.js')).toMatch(/settingKey LIKE 'sso\.%'/);
+        // The rotation now re-encrypts EVERY sealed setting, SSO included.
+        expect(read('scripts/rotate-app-key.js')).toMatch(
+            /FROM appSettings WHERE settingValue LIKE 'enc:%'/
+        );
     });
 });

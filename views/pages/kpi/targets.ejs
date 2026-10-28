@@ -1,0 +1,128 @@
+<%#
+    « Indicator targets » (/kpi/targets, migration 186). Server-rendered, no
+    script, no inline handler. Values arrive formatted in the reader's
+    language (KpiTargetController); a missing target prints « No target set »,
+    never 0. `kpis` already omits the indicators of a module that is off. The
+    history names the deciding administrator account and the reason; it never
+    names an employee.
+%>
+<%
+  var K = (typeof kpis !== 'undefined' && kpis) ? kpis : [];
+  var R = (typeof rows !== 'undefined' && rows) ? rows : [];
+  var H = (typeof history !== 'undefined' && history) ? history : [];
+  var ES = (typeof editableSites !== 'undefined' && editableSites) ? editableSites : [];
+  var U = (typeof units !== 'undefined' && units) ? units : {};
+  var scopeName = function (r) {
+    return r.scopeType === 'org' ? __('kpi:targets_scope_org') : (r.name || r.scopeLabel || __('kpi:targets_scope_site_unknown'));
+  };
+  var kpiOptions = K.map(function (k) { return { value: k, label: k + ' — ' + __('kpi:' + k.toLowerCase() + '_name') + ' (' + __('kpi:targets_unit_' + U[k]) + ')' }; });
+  var scopeOptions = (canEditOrg ? [{ value: 'org', label: __('kpi:targets_scope_org') }] : []).concat(ES.map(function (s) { return { value: 'site:' + s.id, label: s.name }; }));
+%>
+<div class="page-header">
+    <h1><i class="fas fa-bullseye" aria-hidden="true"></i> <%= __('kpi:targets_title') %></h1>
+</div>
+<p class="text-muted kt-lead"><%= __('kpi:targets_subtitle') %></p>
+<p class="text-muted kt-lead"><%= __('kpi:targets_alerts_note') %></p>
+
+<% if (canEdit && K.length) { %>
+<section class="card kt-form" aria-labelledby="kt-form-title">
+    <h2 id="kt-form-title" class="h3"><%= __('kpi:targets_form_title') %></h2>
+    <%- include('../../partials/form-legend') %>
+    <form method="POST" action="/kpi/targets" class="kt-grid">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <%- include('../../partials/form-field', { id: 'kt-kpi', name: 'kpiId', label: __('kpi:targets_field_kpi'), type: 'select', options: kpiOptions, required: true }) %>
+        <%- include('../../partials/form-field', { id: 'kt-scope', name: 'scope', label: __('kpi:targets_field_scope'), type: 'select', options: scopeOptions, required: true }) %>
+        <%- include('../../partials/form-field', { id: 'kt-value', name: 'targetValue', label: __('kpi:targets_field_value'), hint: __('kpi:targets_field_value_help'), attrs: { inputmode: 'decimal', autocomplete: 'off', maxlength: 16 } }) %>
+        <%- include('../../partials/form-field', { id: 'kt-date', name: 'effectiveFrom', label: __('kpi:targets_field_effective'), type: 'date', value: today, required: true }) %>
+        <div class="kt-wide">
+            <%- include('../../partials/form-field', { id: 'kt-reason', name: 'reason', label: __('kpi:targets_field_reason'), type: 'textarea', required: true, attrs: { maxlength: 500, rows: 2 } }) %>
+        </div>
+        <div class="kt-wide kt-actions">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('kpi:targets_submit') %></button>
+        </div>
+    </form>
+    <p class="text-muted kt-note"><%= __('kpi:targets_audit_note') %></p>
+</section>
+<% } else { %>
+<p class="text-muted"><%= __('kpi:targets_readonly') %></p>
+<% } %>
+
+<section class="card kt-wrap" aria-labelledby="kt-current-title">
+    <h2 id="kt-current-title" class="h3 kt-h"><%= __('kpi:targets_current_title') %></h2>
+    <div class="table-responsive">
+    <table class="table" data-kt="current">
+        <caption class="sr-only"><%= __('kpi:targets_current_title') %></caption>
+        <thead>
+            <tr>
+                <th scope="col"><%= __('kpi:targets_col_kpi') %></th>
+                <th scope="col"><%= __('kpi:targets_col_scope') %></th>
+                <th scope="col" class="num"><%= __('kpi:targets_col_target') %></th>
+                <th scope="col"><%= __('kpi:targets_col_effective') %></th>
+            </tr>
+        </thead>
+        <tbody>
+        <% R.forEach(function (r) { %>
+            <tr data-kpi="<%= r.kpiId %>">
+                <th scope="row"><%= r.kpiId %> — <%= __('kpi:' + r.kpiId.toLowerCase() + '_name') %></th>
+                <td><%= scopeName(r) %></td>
+                <td class="num">
+                    <% if (r.display) { %><%= r.display %><% if (r.inherited) { %> <span class="kt-tag"><%= __('kpi:targets_inherited') %></span><% } %>
+                    <% } else { %><span class="text-muted"><%= __('kpi:targets_none') %></span><% } %>
+                </td>
+                <td><%= r.effectiveFrom || '—' %></td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table>
+    </div>
+</section>
+
+<section class="card kt-wrap" aria-labelledby="kt-history-title">
+    <h2 id="kt-history-title" class="h3 kt-h"><%= __('kpi:targets_history_title') %></h2>
+    <% if (!H.length) { %>
+    <p class="text-muted kt-h"><%= __('kpi:targets_history_empty') %></p>
+    <% } else { %>
+    <div class="table-responsive">
+    <table class="table" data-kt="history">
+        <caption class="sr-only"><%= __('kpi:targets_history_title') %></caption>
+        <thead>
+            <tr>
+                <th scope="col"><%= __('kpi:targets_col_recorded') %></th>
+                <th scope="col"><%= __('kpi:targets_col_kpi') %></th>
+                <th scope="col"><%= __('kpi:targets_col_scope') %></th>
+                <th scope="col" class="num"><%= __('kpi:targets_col_target') %></th>
+                <th scope="col"><%= __('kpi:targets_col_effective') %></th>
+                <th scope="col"><%= __('kpi:targets_col_by') %></th>
+                <th scope="col"><%= __('kpi:targets_col_reason') %></th>
+            </tr>
+        </thead>
+        <tbody>
+        <% H.forEach(function (h) { %>
+            <tr>
+                <td><%= h.createdAtLabel %></td>
+                <th scope="row"><%= h.kpiId %></th>
+                <td><%= scopeName(h) %></td>
+                <td class="num"><%= h.display || __('kpi:targets_withdrawn_value') %></td>
+                <td><%= h.effectiveFromLabel || '—' %></td>
+                <td><%= h.by %></td>
+                <td class="kt-reason"><%= h.reason %></td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table>
+    </div>
+    <% } %>
+</section>
+
+<style>
+.kt-lead{max-width:72ch}
+.kt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px 16px;align-items:start}
+.kt-wide{grid-column:1/-1}
+.kt-actions{display:flex;justify-content:flex-start}
+.kt-note{font-size:.85rem;margin:.75rem 0 0}
+.kt-wrap{padding:0;margin-top:1rem}
+.kt-h{padding:.75rem 1rem 0;margin:0}
+.kt-wrap .table td.num,.kt-wrap .table th.num{text-align:right;font-variant-numeric:tabular-nums}
+.kt-tag{display:inline-block;font-size:.78rem;color:var(--text-muted,#64748b)}
+.kt-reason{max-width:40ch;overflow-wrap:anywhere}
+</style>
