@@ -401,7 +401,11 @@ describe('The successive measurements are visible where progression is already s
         expect(b.rounds[0].current).toBe(false);
         expect(b.rounds[1].current).toBe(true);
         expect(b.rounds[1].cycleLabel).toBeNull(); // off-campaign
-        expect(b.delta).toBe(1);
+        // 4.0.0 port (wave 5): the evolution compares VALIDATED levels only. The
+        // second round is a draft nobody decided: it is pending, not a « +1 ».
+        expect(b.rounds.map((r) => r.validatedLevel)).toEqual([2, null]);
+        expect(b.rounds[1].pending).toBe(true);
+        expect(b.delta).toBeNull();
         const c = m.skills.find((s) => s.skillId === 301);
         expect(c.delta).toBeNull(); // NOT 0
     });

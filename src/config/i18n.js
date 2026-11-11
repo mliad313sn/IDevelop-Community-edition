@@ -54,6 +54,10 @@ async function init() {
                 'exec',
                 // AI companion (the « Assistant » tab of the help panel)
                 'companion',
+                // KPI module: indicator definitions, status and readiness labels
+                'kpi',
+                // Data-visualisation layer: charts, heatmaps, radars, gap bars
+                'viz',
                 // Form validation messages (utils/validators.js withMessage keys) —
                 'validation',
             ],

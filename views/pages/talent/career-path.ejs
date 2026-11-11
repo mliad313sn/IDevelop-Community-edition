@@ -1,3 +1,10 @@
+<%
+  // Pre-filled from a link (?employeeId=&targetRoleId=): the analysis runs at once.
+  var _pre = (typeof pre !== 'undefined' && pre) ? pre : { employeeId: null, targetRoleId: null };
+  // The plan towards the role is a development-module page: offered only when
+  // that module is on (the career path itself is the mobility module's).
+  var _devOn = typeof appModules === 'undefined' || !appModules || appModules.development === true;
+%>
 <div class="page-header">
   <h1><i class="fas fa-route" aria-hidden="true"></i> <%= __('talentx:cp_title') %></h1>
   <p class="text-muted"><%= __('talentx:cp_intro_1') %> <strong><%= __('talentx:cp_target_role') %></strong> <%= __('talentx:cp_intro_2') %></p>
@@ -5,19 +12,19 @@
 
 <div class="card" style="padding:1rem;margin-bottom:1rem">
   <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end">
-    <div><label><%= __('talentx:employee') %> *</label><br>
+    <div><label class="required"><%= __('talentx:employee') %></label><br>
       <select id="cp-emp" class="form-control" style="min-width:240px">
         <option value=""><%= __('talentx:cp_select') %></option>
         <% (employees||[]).forEach(function(e){ %>
-          <option value="<%= e.id %>" data-role="<%= e.roleId || '' %>"><%= e.name %><%= e.number ? ' (' + e.number + ')' : '' %></option>
+          <option value="<%= e.id %>" data-role="<%= e.roleId || '' %>"<%= (_pre.employeeId === e.id) ? ' selected' : '' %>><%= e.name %><%= e.number ? ' (' + e.number + ')' : '' %></option>
         <% }); %>
       </select>
     </div>
-    <div><label><%= __('talentx:cp_target_role_label') %> *</label><br>
+    <div><label class="required"><%= __('talentx:cp_target_role_label') %></label><br>
       <select id="cp-role" class="form-control" style="min-width:240px">
         <option value=""><%= __('talentx:cp_select') %></option>
         <% (roles||[]).forEach(function(r){ %>
-          <option value="<%= r.id %>"><%= r.name %></option>
+          <option value="<%= r.id %>"<%= (Number(_pre.targetRoleId) === Number(r.id)) ? ' selected' : '' %>><%= r.name %></option>
         <% }); %>
       </select>
     </div>
@@ -44,6 +51,18 @@
       <tbody id="cp-rows"></tbody>
     </table>
   </div>
+  <% if (_devOn) { %>
+  <%# Target role -> gap -> plan: create (or extend) the person's development
+      plan towards this role. The server applies the acting rule of a plan
+      (canManageEmployee) and tags the objectives with the target role. %>
+  <form method="post" action="/v2/idp/new" class="cp-next" id="cp-plan-form">
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <input type="hidden" name="employeeId" id="cp-plan-emp" value="">
+    <input type="hidden" name="targetRoleId" id="cp-plan-role" value="">
+    <button type="submit" class="btn btn-primary"><i class="fas fa-seedling" aria-hidden="true"></i> <%= __('talentx:cp_create_plan') %></button>
+    <span class="help-text"><%= __('talentx:cp_create_plan_hint') %></span>
+  </form>
+  <% } %>
 </div>
 
 <div id="cp-empty" class="text-muted" style="padding:1rem"><%= __('talentx:cp_empty_pre') %> <strong><%= __('talentx:cp_analyze') %></strong>.</div>
@@ -61,6 +80,7 @@
 .cp-met-badge{padding:2px 9px;border-radius:999px;font-size:.76rem;color:#fff;background:#15803d}
 .cp-gap-badge{padding:2px 9px;border-radius:999px;font-size:.76rem;color:#fff;background:#b45309}
 .cp-gap-badge.crit{background:#b91c1c}
+.cp-next{display:flex;gap:var(--space-3, 12px);align-items:center;flex-wrap:wrap;margin-top:var(--space-4, 16px)}
 </style>
 <script nonce="<%= cspNonce %>">
 (function(){
@@ -77,7 +97,8 @@
     notMeasuredTitle: <%- JSON.stringify(__('talentx:cp_not_measured_title')) %>
   };
   var empSel=document.getElementById('cp-emp'), roleSel=document.getElementById('cp-role');
-  document.getElementById('cp-go').addEventListener('click', async function(){
+  var goBtn=document.getElementById('cp-go');
+  goBtn.addEventListener('click', async function(){
     var employeeId=empSel.value, targetRoleId=roleSel.value;
     if(!employeeId||!targetRoleId){ if(window.toast)window.toast(CP_T.selectBoth,'warn'); return; }
     this.disabled=true;
@@ -89,6 +110,9 @@
     } finally { this.disabled=false; }
   });
   function render(j){
+    var pe=document.getElementById('cp-plan-emp'), pr=document.getElementById('cp-plan-role');
+    if(pe) pe.value=String(Number(j.employee.id));
+    if(pr) pr.value=String(Number(j.target.id));
     document.getElementById('cp-empty').style.display='none';
     document.getElementById('cp-result').style.display='';
     var ring=document.getElementById('cp-ring');
@@ -114,5 +138,7 @@
     }).join('');
   }
   function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  // Pre-filled from a link: run the analysis at once.
+  if(empSel.value&&roleSel.value) goBtn.click();
 })();
 </script>

@@ -1,0 +1,50 @@
+<%#
+  « Safety and certifications »: the K9, K8 and K4 tiles (from _panel), the
+  required certificates expiring in the next 13 weeks, the critical-skill
+  coverage heatmap, then the health and safety operations (K40 to K44,
+  _hse-ops). Aggregates only.
+  Locals: P (tabModel 'safety'), units.
+-%><%
+  var _F = numFmt;
+  var Cal = P.calendar || null;
+-%>
+<% if (P.blocks.indexOf('certCalendar') >= 0) { %>
+<section class="ds-card" id="ds-cal" aria-labelledby="ds-cal-h">
+    <% if (!Cal || !Cal.configured) { %>
+        <h3 id="ds-cal-h"><%= __('dash:d3_sf_cal_title') %></h3>
+        <p class="ds-note"><%= __('dash:d3_sf_cal_not_configured') %></p>
+    <% } else if (!Cal.total) { %>
+        <h3 id="ds-cal-h"><%= __('dash:d3_sf_cal_title') %></h3>
+        <p class="ds-note"><%= __('dash:d3_sf_cal_none') %></p>
+    <% } else { %>
+        <h3 class="sr-only-ds" id="ds-cal-h"><%= __('dash:d3_sf_cal_title') %></h3>
+        <%- include('../../partials/viz/chart', { vizChart: {
+            id: 'ds-cal-chart',
+            title: __('dash:d3_sf_cal_title'),
+            subtitle: __('dash:d3_sf_cal_sub', { n: _F.num(Cal.total, 0), p: _F.num(Cal.people, 0) }),
+            config: {
+                kind: 'bar', unit: 'count', decimals: 0,
+                labels: Cal.weeks.map(function (w) { return __('dash:d3_sf_cal_week', { date: fmtDate(w.start) }); }),
+                series: [{ key: 'certs', label: __('dash:d3_k8_expiring'), data: Cal.weeks.map(function (w) { return Cal.sites.reduce(function (s, x) { return s + (x.counts[w.index] || 0); }, 0); }) }]
+            },
+            height: 240
+        } }) %>
+    <% } %>
+</section>
+<% } %>
+
+<% if (P.blocks.indexOf('coverageHeat') >= 0) { %>
+<section class="ds-card" id="ds-coverage" aria-labelledby="ds-coverage-h">
+    <h3 id="ds-coverage-h"><%= __('viz:heat.title_coverage') %></h3>
+    <% if (!P.coverageHeat || P.coverageHeat.emptyScope || !(P.coverageHeat.rows || []).length) { %>
+        <p class="ds-note"><%= __('dash:d3_sf_cov_none') %></p>
+    <% } else { %>
+        <p class="ds-sub"><%= __('viz:heat.sub_coverage') %></p>
+        <%- include('../../partials/viz/heat', { H: P.coverageHeat, heatId: 'ds-heat-coverage', topRows: 10 }) %>
+    <% } %>
+</section>
+<% } %>
+
+<% if (P.blocks.indexOf('hseOps') >= 0 && P.hseOps && P.hseOps.people) { %>
+<%- include('_hse-ops', { O: P.hseOps }) %>
+<% } %>

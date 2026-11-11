@@ -17,8 +17,9 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 const fs = require('fs');
 
+const { isTestDatabaseUrl } = require('../helpers/testDatabase');
 // Rolled back: safe on the fixture database and on any *_test database.
-const HAS_DB = /idevelop_fixtures|_test/.test(String(process.env.DATABASE_URL || ''));
+const HAS_DB = isTestDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 const db = HAS_DB ? require('../../src/config/database') : null;
 const Packs = require('../../src/services/FrameworkPackService');

@@ -148,6 +148,30 @@ choose a new password and enrol an authenticator app (MFA is enforced for
 super-administrators). The **Setup checklist** on the dashboard walks you
 through the rest.
 
+#### Moving the compose database to PostgreSQL 18
+
+The compose file stays on `postgres:17-alpine`; CI also runs the full suite on
+PostgreSQL 18. Changing the image tag alone does **not** upgrade an existing
+`pgdata` volume: PostgreSQL 18 refuses to start on a 17 data directory, and the
+18 image keeps its data under `/var/lib/postgresql/18/docker`, so it expects
+the volume on `/var/lib/postgresql` instead of `/var/lib/postgresql/data`.
+Upgrade with a dump and restore into a new volume:
+
+```bash
+docker compose stop app
+docker compose exec -T db pg_dump -U idevelop -d idevelop --no-owner > idevelop-pg17.sql
+docker compose stop db
+# docker-compose.yml: image postgres:18-alpine, mount `pgdata18:/var/lib/postgresql`
+# (declare pgdata18 under volumes:); keep the old pgdata volume until verified.
+docker compose up -d db
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U idevelop -d idevelop < idevelop-pg17.sql
+docker compose up -d app
+```
+
+`pg_upgrade --link` is the faster alternative for large databases, but it needs
+the 17 and 18 binaries side by side (for example a one-off container built for
+the purpose). Back up `pgdata` and `appdata` first either way.
+
 ### Option B — Node.js + PostgreSQL
 
 Requirements: Node.js **20.19+** (22 LTS recommended) and PostgreSQL **16+**.
@@ -233,17 +257,18 @@ _Administration → Modules_, by adoption stage:
 
 Modules can also be switched one by one, without a restart. The essentials:
 
-| Variable                                  | Purpose                                                                                                                       |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                            | PostgreSQL connection string (required)                                                                                       |
-| `SESSION_SECRET`                          | Session signing secret — **required and checked for strength in production**                                                  |
-| `APP_KEY`                                 | At-rest encryption key for stored secrets (MFA seeds, SSO/LMS/SMTP credentials); rotate only with `scripts/rotate-app-key.js` |
-| `REDIS_URL`                               | Optional: BullMQ workers and shared rate-limit store for multi-instance deployments                                           |
-| `V2_FEATURES=1`                           | Legacy: forces every optional module on. Otherwise modules are switched in the app (_Administration → Modules_)               |
-| `SQL_CONSOLE_ENABLED=1`                   | Switches on the super-admin SQL console (off by default — separation of duties; routes answer 404 while off)                  |
-| `APP_BASE_URL`, `TRUSTED_HOSTS`           | Public URL used in e-mails and host-header allow-list                                                                         |
-| `SMTP_*`                                  | Outgoing mail (can also be set in _Settings → Email_)                                                                         |
-| `OIDC_*`, `AZURE_*`, `SAML_*`, `GOOGLE_*` | Single sign-on providers                                                                                                      |
+| Variable                                                       | Purpose                                                                                                                                                                                                  |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                 | PostgreSQL connection string (required)                                                                                                                                                                  |
+| `SESSION_SECRET`                                               | Session signing secret — **required and checked for strength in production**                                                                                                                             |
+| `APP_KEY`                                                      | At-rest encryption key for stored secrets (MFA seeds, SSO/LMS/SMTP credentials) and, on Linux and Docker, for the database backups; keep a copy offline and rotate only with `scripts/rotate-app-key.js` |
+| `BACKUP_KEY_MODE`, `BACKUP_KEYRING_FILE`, `BACKUP_OFFHOST_DIR` | Backup encryption key store and off-host copy folder; see [docs/BACKUPS.md](docs/BACKUPS.md)                                                                                                             |
+| `REDIS_URL`                                                    | Optional: BullMQ workers and shared rate-limit store for multi-instance deployments                                                                                                                      |
+| `V2_FEATURES=1`                                                | Legacy: forces every optional module on. Otherwise modules are switched in the app (_Administration → Modules_)                                                                                          |
+| `SQL_CONSOLE_ENABLED=1`                                        | Switches on the super-admin SQL console (off by default — separation of duties; routes answer 404 while off)                                                                                             |
+| `APP_BASE_URL`, `TRUSTED_HOSTS`                                | Public URL used in e-mails and host-header allow-list                                                                                                                                                    |
+| `SMTP_*`                                                       | Outgoing mail (can also be set in _Settings → Email_)                                                                                                                                                    |
+| `OIDC_*`, `AZURE_*`, `SAML_*`, `GOOGLE_*`                      | Single sign-on providers                                                                                                                                                                                 |
 
 Most business behaviour (readiness threshold, dispute SLAs, notification
 triggers, retention, branding, optional modules) is configured at run time in
@@ -294,13 +319,13 @@ docs/                     architecture, brand guide, contracts, user guide
 ```bash
 npm run dev                 # nodemon
 npm run lint && npm run format:check && npm run lint:icons
-npm test                    # Jest; set DATABASE_URL to a disposable *_test database
+npm test                    # Jest, one file at a time (DB suites share the test database); set DATABASE_URL to a disposable *_test database
 npm run test:smoke          # Playwright (needs a running instance + E2E_* credentials)
 npm run contracts:export    # refresh docs/contracts/ after changing the API or palette
 ```
 
 The Jest suite runs against a real PostgreSQL database. CI does exactly this on
-PostgreSQL 16 and 17:
+PostgreSQL 16, 17 and 18:
 
 ```bash
 createdb idevelop_test

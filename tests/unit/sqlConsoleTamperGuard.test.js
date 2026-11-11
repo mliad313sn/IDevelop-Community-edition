@@ -66,4 +66,22 @@ describe('SqlConsoleService._auditTamperViolation — audit-table tamper guard',
         const batch = ['SELECT 1', 'DELETE FROM review_signatures WHERE id=1'];
         expect(svc._auditTamperViolation(batch)).toBeTruthy();
     });
+
+    test('a view whose name holds regex syntax ($, .) is still protected', () => {
+        for (const name of ['v$', 'v$x', 'a.b']) {
+            const q = name.includes('.') ? `"${name}"` : name;
+            const batch = [
+                `CREATE VIEW ${q} AS SELECT * FROM system_logs`,
+                `DELETE FROM ${q} WHERE id=12`,
+            ];
+            expect(svc._auditTamperViolation(batch)).toBeTruthy();
+        }
+        // …and a name that merely ends with the same characters is not caught.
+        expect(
+            svc._auditTamperViolation([
+                'CREATE VIEW v$ AS SELECT * FROM system_logs',
+                'DELETE FROM xv$ WHERE id=12',
+            ])
+        ).toBeNull();
+    });
 });

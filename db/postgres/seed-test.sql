@@ -30,6 +30,7 @@ INSERT INTO role_skill_requirements (role_id, skill_id, required_level, is_criti
 
 -- Default SuperAdmin (password is 'Admin123!'; bcrypt hash 12 rounds)
 -- Generate with: node -e "console.log(require('bcryptjs').hashSync('Admin123!',12))"
+-- (bcryptjs 3 emits $2b$; $2a$ and $2b$ hashes are both accepted at login.)
 INSERT INTO admins (id, username, email, password_hash, role, is_active, force_password_change)
 VALUES (
     1,

@@ -51,6 +51,27 @@
                               install new deps, apply pending migrations, restart the
                               service. Preserves .env, the database and all data; backs
                               up the current code first. Fails if no install exists.
+.PARAMETER MigrateServiceAccount  Upgrade: move the service from LocalSystem to its virtual
+                              account NT SERVICE\<ServiceName> once the upgrade is healthy
+                              (re-ACL + restart + health check; automatic return to
+                              LocalSystem if it is not healthy). A new install gets the
+                              virtual account by default.
+.PARAMETER EnableAuditOwnerSeparation  Turn on audit-trail ownership separation (off by
+                              default: four SuperAdmin tools are refused while it is on).
+.PARAMETER ApplyPgHardening   Apply the recommended PostgreSQL hardening on a server this
+                              installer did not create (otherwise: report it, and ask
+                              when a console is attached). Applied automatically on a
+                              server Setup created.
+.PARAMETER EnforceManifest    Move the files of the install directory that the release
+                              manifest does not list (customer folders excluded) to
+                              %ProgramData%\IDevelop\app-backups\retired-<stamp>\.
+                              Never deletes. Default: report them only.
+.PARAMETER SkipPreMigrationDump  Upgrade of an existing install: do NOT take the encrypted,
+                              verified database dump that otherwise precedes the
+                              migrations (%ProgramData%\IDevelop\backups\pre-upgrade-*).
+                              For a very large database that has its own verified
+                              backup only. Logged as a WARN. Default: the dump is taken,
+                              and a failed dump stops the run before any migration.
 .PARAMETER NoRollback         Disable the automatic restore-on-failure safety net. By
                               default, when patching / upgrading an EXISTING install,
                               the installer backs up the running version first and — if
@@ -151,7 +172,32 @@ param(
     # count to confirm" guard that a -Reinstall triggers when the target database
     # still holds real employee data. Pass this ONLY for automated/headless runs
     # that genuinely intend to destroy and recreate a test instance.
-    [switch]$ConfirmDataLoss
+    [switch]$ConfirmDataLoss,
+    # Allow the forgotten-password recovery of a LOCAL PostgreSQL, which opens a
+    # temporary pg_hba.conf 'trust' window on loopback (~10 s, database and user
+    # 'postgres' only) to reset the 'postgres' password. Without it an unattended
+    # run FAILS with a clear message and an interactive run ASKS; every use is
+    # written to %ProgramData%\IDevelop\logs\pg-trust-window.log.
+    [switch]$AllowPasswordRecovery,
+    # Switch an EXISTING service from LocalSystem to its least-privilege virtual
+    # account NT SERVICE\<ServiceName>. Done AFTER the upgrade is healthy: every
+    # data folder is re-ACLed for the account, the service is restarted as it, and
+    # put back on LocalSystem automatically if it does not come up healthy. (A new
+    # install gets the virtual account by default; an upgrade is never forced.)
+    [switch]$MigrateServiceAccount,
+    # Turn on audit-trail ownership separation (off by default). Four SuperAdmin
+    # tools are then refused (see config.psd1 AuditOwnerSeparation).
+    [switch]$EnableAuditOwnerSeparation,
+    # Apply the recommended PostgreSQL hardening on a server this installer did
+    # NOT create, without asking (unattended consent). Without it: report + ask.
+    [switch]$ApplyPgHardening,
+    # ENFORCE the release manifest: files in the install dir that the package does
+    # not list are MOVED (never deleted) to app-backups\retired-<stamp>\.
+    # Without it the unknown files are only reported.
+    [switch]$EnforceManifest,
+    # Do NOT take the encrypted pre-migration database dump of an upgrade (a very
+    # large database with its own verified backup only). Logged as a WARN.
+    [switch]$SkipPreMigrationDump
 )
 
 $ErrorActionPreference = 'Stop'
@@ -358,12 +404,17 @@ function Fail($m) {
 # SIDs is left alone, so the (large) app-backups tree is walked once, not on
 # every patch. Never fatal: a failure is logged as WARN and the run goes on.
 # ---------------------------------------------------------------------------
-$script:HardenedAclSids = @('S-1-5-18', 'S-1-5-32-544')
+# + OWNER RIGHTS (S-1-3-4): the app itself closes the folders and files it writes
+# (audit-anchors, the backup keyring, the database dumps) to SYSTEM + Administrators
+# + OWNER RIGHTS. OWNER RIGHTS is only ever the creator, never a group, so a folder
+# the app restricted that way IS hardened; without it audit-anchors read 'PARTIAL',
+# was re-walked on every patch and refused -MigrateServiceAccount.
+$script:HardenedAclSids = @('S-1-5-18', 'S-1-5-32-544', 'S-1-3-4')
 # 3.23.18 (S-04): with ServiceAccount = 'Virtual' the service runs as its virtual
-# account NT SERVICE\<ServiceName>. That SID is then ALSO granted on every
-# hardened target (Modify on folders, Read on the .env file) and Modify on the
-# install dir. $null = LocalSystem (nothing extra). RevokeAclSids: removed on
-# sight - the virtual SID after a switch back to LocalSystem.
+# account NT SERVICE\<ServiceName>. That SID is then ALSO granted on the data
+# folders (Modify), the .env file (Read) and the code (ReadAndExecute only) -
+# see Get-AppAclTargets. $null = LocalSystem (nothing extra). RevokeAclSids:
+# removed on sight - the virtual SID after a switch back to LocalSystem.
 $script:ServiceAclSid = $null
 $script:RevokeAclSids = @()
 
@@ -388,9 +439,12 @@ function Resolve-ServiceAccount($Configured, [string]$ServiceName) {
     if (-not $v -or $v -eq 'LocalSystem') { return [pscustomobject]@{ Mode = 'LocalSystem'; Account = 'LocalSystem'; Sid = $null } }
     return [pscustomobject]@{ Mode = 'Custom'; Account = $v; Sid = $null }
 }
-function Test-AclHardened([string]$Path) {
+# $WithService = $false: the service account must NOT be on this target (a folder
+# it is never granted, such as the code backups): its ACE then fails the check.
+function Test-AclHardened([string]$Path, [bool]$WithService = $true) {
     try {
-        $allowed = @($script:HardenedAclSids) + @(@($script:ServiceAclSid) | Where-Object { $_ })
+        $svc = if ($WithService) { @(@($script:ServiceAclSid) | Where-Object { $_ }) } else { @() }
+        $allowed = @($script:HardenedAclSids) + $svc
         $seen = @()
         $acl = Get-Acl -LiteralPath $Path -ErrorAction Stop
         if (-not $acl.AreAccessRulesProtected) { return $false }
@@ -399,15 +453,18 @@ function Test-AclHardened([string]$Path) {
             $seen += $r.IdentityReference.Value
         }
         # The service account must actually HOLD its grant, not merely be allowed one.
-        if ($script:ServiceAclSid -and ($seen -notcontains $script:ServiceAclSid)) { return $false }
+        if ($svc.Count -and ($seen -notcontains $script:ServiceAclSid)) { return $false }
         return $true
     } catch { return $false }
 }
 # Grant / revoke the virtual service account's ACE through .NET, NOT icacls:
 # icacls refuses a SID it cannot map to a name (error 1332), and NT SERVICE\<name>
 # only maps once the service exists - the data folders are hardened BEFORE the
-# service is registered. $Grant: '' = revoke only, 'Modify' (inherited by
-# children) or 'Read'. Writes only when something changes. Returns $true / $false.
+# service is registered. $Grant: '' = revoke only, or a FileSystemRights name
+# ('Modify' / 'ReadAndExecute' inherited by children on a folder, 'Read' on a
+# file). EXACTLY that right is left: a broader ACE an older release laid (Modify
+# on the install root or on the WinSW folder) is replaced, not kept because it
+# "includes" the new one. Writes only when something changes. Returns $true / $false.
 function Set-ServiceSidAce([string]$Path, [bool]$IsDir, [string]$Grant) {
     try {
         $sec = if ($IsDir) { New-Object System.Security.AccessControl.DirectorySecurity($Path, [System.Security.AccessControl.AccessControlSections]::Access) }
@@ -423,8 +480,10 @@ function Set-ServiceSidAce([string]$Path, [bool]$IsDir, [string]$Grant) {
             $sid = New-Object System.Security.Principal.SecurityIdentifier($script:ServiceAclSid)
             $right = [System.Security.AccessControl.FileSystemRights]$Grant
             $inhF = if ($IsDir) { [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit' } else { [System.Security.AccessControl.InheritanceFlags]::None }
-            $have = @($rules | Where-Object { $_.IdentityReference.Value -eq $script:ServiceAclSid -and $_.AccessControlType -eq 'Allow' -and (($_.FileSystemRights -band $right) -eq $right) -and $_.InheritanceFlags -eq $inhF })
-            if (-not $have.Count) {
+            $want = [int]$right; $sync = [int][System.Security.AccessControl.FileSystemRights]::Synchronize
+            $mine = @($rules | Where-Object { $_.IdentityReference.Value -eq $script:ServiceAclSid })
+            $exact = @($mine | Where-Object { $_.AccessControlType -eq 'Allow' -and $_.InheritanceFlags -eq $inhF -and (([int]$_.FileSystemRights -band $want) -eq $want) -and (([int]$_.FileSystemRights -band (-bnot ($want -bor $sync))) -eq 0) })
+            if (-not ($mine.Count -eq 1 -and $exact.Count -eq 1)) {
                 $sec.PurgeAccessRules($sid)
                 $sec.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sid, $right, $inhF, [System.Security.AccessControl.PropagationFlags]::None, [System.Security.AccessControl.AccessControlType]::Allow)))
                 $changed = $true
@@ -436,10 +495,20 @@ function Set-ServiceSidAce([string]$Path, [bool]$IsDir, [string]$Grant) {
         return $true
     } catch { return $false }
 }
-function Protect-SensitivePath([string]$Path) {
+# $DirGrant: what the virtual service account gets on a FOLDER ('Modify', or
+# 'ReadAndExecute' for the WinSW folder), or 'None' (a folder it must never
+# touch: its ACE is removed). A FILE always gets 'Read' (the .env).
+function Protect-SensitivePath([string]$Path, [string]$DirGrant = 'Modify') {
     if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return 'absent' }
-    if (Test-AclHardened $Path) { return 'already restricted' }
     $isDir = (Get-Item -LiteralPath $Path -Force).PSIsContainer
+    $svcGrant = if (-not $script:ServiceAclSid -or $DirGrant -eq 'None') { '' } elseif ($isDir) { $DirGrant } else { 'Read' }
+    $withSvc = [bool]$svcGrant
+    if (Test-AclHardened $Path $withSvc) {
+        # The service account's LEVEL is re-checked as well (an older release
+        # granted Modify where ReadAndExecute is now the rule).
+        if ($svcGrant -and -not (Set-ServiceSidAce $Path $isDir $svcGrant)) { return 'FAILED (service-account ACE)' }
+        return 'already restricted'
+    }
     $inh = if ($isDir) { '(OI)(CI)' } else { '' }
     $rc = 1
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
@@ -455,54 +524,304 @@ function Protect-SensitivePath([string]$Path) {
         $rc = $LASTEXITCODE
     } catch { $rc = 1 } finally { $ErrorActionPreference = $prev }
     if ($rc -ne 0) { return "FAILED (icacls exit $rc)" }
-    # 3) The virtual service account (S-04): Modify on a folder, Read on a file
-    #    (the .env) - or its stale grant removed after a switch back to LocalSystem.
+    # 3) The virtual service account: its grant on this target, or its ACE (and a
+    #    stale one after a switch back to LocalSystem) removed.
     if ($script:ServiceAclSid -or @(@($script:RevokeAclSids) | Where-Object { $_ }).Count) {
-        $g = if (-not $script:ServiceAclSid) { '' } elseif ($isDir) { 'Modify' } else { 'Read' }
-        if (-not (Set-ServiceSidAce $Path $isDir $g)) { return 'FAILED (service-account ACE)' }
+        if ($svcGrant) {
+            if (-not (Set-ServiceSidAce $Path $isDir $svcGrant)) { return 'FAILED (service-account ACE)' }
+        } else {
+            $keepRevoke = $script:RevokeAclSids
+            try {
+                $script:RevokeAclSids = @(@($keepRevoke) + @($script:ServiceAclSid) | Where-Object { $_ })
+                if (-not (Set-ServiceSidAce $Path $isDir '')) { return 'FAILED (service-account ACE)' }
+            } finally { $script:RevokeAclSids = $keepRevoke }
+        }
     }
-    if (Test-AclHardened $Path) { return 'restricted' }
+    if (Test-AclHardened $Path $withSvc) { return 'restricted' }
     return 'PARTIAL (an explicit non-admin ACE remains)'
+}
+# HRIS_DROP_ROOT of the installed .env (docs/HRIS-SYNC.md): the folder tree the
+# HRIS CSV connector reads its exports from. '' when unset.
+function Get-HrisDropRoot([string]$InstallDir) {
+    try {
+        $envFile = Join-Path $InstallDir '.env'
+        if (-not $InstallDir -or -not (Test-Path -LiteralPath $envFile)) { return '' }
+        $m = [regex]::Match([IO.File]::ReadAllText($envFile), '(?m)^[ \t]*HRIS_DROP_ROOT[ \t]*=[ \t]*"?([^"\r\n]*)"?')
+        if ($m.Success -and $m.Groups[1].Value.Trim()) { return $m.Groups[1].Value.Trim() }
+    } catch {}
+    return ''
+}
+# WHERE THE APP WRITES, and what the service account gets there. One pure
+# function (a test runs it, and checks Install and Manage compute the same list)
+# so the virtual account is granted EVERY place the app writes:
+#   %ProgramData%\IDevelop: backups (daily dumps, erasure tombstones),
+#     sql-restore-points (SQL console), audit-anchors, tls, keys (the backup
+#     keyring), logs, and the root itself - Modify.
+#   <InstallDir>: uploads, data, logs, backups, tmp (upload staging), certs,
+#     AI_Engine_Docs (Data Management upload staging), service\logs (WinSW
+#     logs) - Modify; .env - Read; service\ (the wrapper EXE + XML) and the
+#     install root - ReadAndExecute, NEVER Modify: the code (src, scripts,
+#     node_modules, the installer scripts) is run by administrators, so a
+#     service able to rewrite it could escalate to whoever runs it next.
+#   app-backups and restore-points (code backups, Manage restore points whose
+#     code Manage -Restore runs as administrator): restricted, and NOTHING for
+#     the service, for the same reason.
+#   maintenance\config.psd1 (the servicing copy of the configuration, which can
+#     hold the standard PostgreSQL and admin passwords): restricted, and NOTHING
+#     for the service. Only the FILE: the maintenance scripts beside it start
+#     unelevated and elevate themselves, so they must stay readable; each one
+#     reads config.psd1 only after it has elevated.
+#   HRIS_DROP_ROOT (when set in .env): ReadAndExecute, additive (a customer
+#     folder: never restricted by Setup). Local paths only: on a network share
+#     (\\server\share) the virtual account authenticates as the COMPUTER account
+#     (DOMAIN\<machine>$), which the share's owner must grant.
+# Each entry: Path; Kind Dir|File; Restrict (cut down to SYSTEM + Administrators);
+# Grant for the virtual account ('' when there is none); ProtectedFiles: the app
+# writes files there with their OWN protected DACL (SYSTEM + Administrators +
+# OWNER RIGHTS: dumps, the keyring, SQL-console restore points). Nothing
+# inherits into such a file, so a file created by an administrator or by
+# LocalSystem stays closed to the virtual account (a keyring it cannot read =
+# every backup refused) unless its SID is put on the file itself.
+function Get-AppAclTargets([string]$DataRoot, [string]$InstallDir, [string]$ServiceSid, [string]$HrisDropRoot = '') {
+    $out = @()
+    $m = if ($ServiceSid) { 'Modify' } else { '' }
+    $rx = if ($ServiceSid) { 'ReadAndExecute' } else { '' }
+    $pf = @('backups', 'sql-restore-points', 'keys', 'audit-anchors')
+    foreach ($sub in @('backups', 'app-backups', 'restore-points', 'sql-restore-points', 'logs', 'audit-anchors', 'tls', 'keys')) {
+        $gr = if ($sub -in @('app-backups', 'restore-points')) { '' } else { $m }
+        $out += [pscustomobject]@{ Path = (Join-Path $DataRoot $sub); Kind = 'Dir'; Restrict = $true; Grant = $gr; ProtectedFiles = ($pf -contains $sub)
+                    # keys\: the keyring only (Read) - never an exported backup-recovery-*.txt.
+                    ProtectedFilter = $(if ($sub -eq 'keys') { 'backup-keyring*.json' } else { '*' }) }
+    }
+    $out += [pscustomobject]@{ Path = $DataRoot; Kind = 'Dir'; Restrict = $true; Grant = $m; ProtectedFiles = $false; ProtectedFilter = '*' }
+    if ($InstallDir) {
+        $out += [pscustomobject]@{ Path = (Join-Path $InstallDir '.env'); Kind = 'File'; Restrict = $true; Grant = $(if ($ServiceSid) { 'Read' } else { '' }); ProtectedFiles = $false; ProtectedFilter = '*' }
+        foreach ($sub in @('logs', 'backups', 'uploads', 'data', 'tmp', 'certs', 'AI_Engine_Docs')) {
+            $out += [pscustomobject]@{ Path = (Join-Path $InstallDir $sub); Kind = 'Dir'; Restrict = $true; Grant = $m; ProtectedFiles = ($sub -in @('backups', 'data')); ProtectedFilter = '*' }
+        }
+        $out += [pscustomobject]@{ Path = (Join-Path $InstallDir 'service\logs'); Kind = 'Dir'; Restrict = $true; Grant = $m; ProtectedFiles = $false; ProtectedFilter = '*' }
+        $out += [pscustomobject]@{ Path = (Join-Path $InstallDir 'service'); Kind = 'Dir'; Restrict = $true; Grant = $rx; ProtectedFiles = $false; ProtectedFilter = '*' }
+        $out += [pscustomobject]@{ Path = (Join-Path $InstallDir 'maintenance\config.psd1'); Kind = 'File'; Restrict = $true; Grant = ''; ProtectedFiles = $false; ProtectedFilter = '*' }
+        # The install root stays readable (Program Files rules): additive grant only.
+        $out += [pscustomobject]@{ Path = $InstallDir; Kind = 'Dir'; Restrict = $false; Grant = $rx; ProtectedFiles = $false; ProtectedFilter = '*' }
+    }
+    if ($HrisDropRoot -and -not $HrisDropRoot.StartsWith('\\')) {
+        $out += [pscustomobject]@{ Path = $HrisDropRoot; Kind = 'Dir'; Restrict = $false; Grant = $rx; ProtectedFiles = $false; ProtectedFilter = '*' }
+    }
+    return $out
 }
 # $DataRoot = %ProgramData%\IDevelop; $InstallDir optional (the .env lives there).
 # Sub-folders first, root last. Returns the number of targets NOT restricted.
-# 3.23.18: + audit-anchors and tls (ProgramData), + uploads and data (install dir:
-# uploaded evidence files and the in-app backups were readable by BUILTIN\Users).
 function Protect-AppDataAcls([string]$DataRoot, [string]$InstallDir) {
-    $targets = @()
-    foreach ($sub in @('backups', 'app-backups', 'restore-points', 'sql-restore-points', 'logs', 'audit-anchors', 'tls')) { $targets += (Join-Path $DataRoot $sub) }
-    $targets += $DataRoot
-    if ($InstallDir) {
-        $targets += (Join-Path $InstallDir '.env')
-        foreach ($sub in @('logs', 'backups', 'uploads', 'data')) { $targets += (Join-Path $InstallDir $sub) }
-    }
+    $all = @(Get-AppAclTargets $DataRoot $InstallDir $script:ServiceAclSid (Get-HrisDropRoot $InstallDir))
+    $targets = @($all | Where-Object { $_.Restrict })
     $who = if ($script:ServiceAclSid) { "SYSTEM + Administrators + the service account $($script:ServiceAclSid)" } else { 'SYSTEM + Administrators only' }
+    $touchSvc = $script:ServiceAclSid -or @(@($script:RevokeAclSids) | Where-Object { $_ }).Count
     $bad = 0
-    foreach ($t in $targets) {
-        $r = Protect-SensitivePath $t
+    # The service SID on (or off) every PROTECTED file of those folders - first,
+    # while the folders are still listable by whoever runs this.
+    if ($touchSvc) {
+        foreach ($t in @($all | Where-Object { $_.ProtectedFiles -and (Test-Path -LiteralPath $_.Path -ErrorAction SilentlyContinue) })) {
+            $fg = if (-not $script:ServiceAclSid) { '' } elseif ($t.ProtectedFilter -ne '*') { 'Read' } else { 'Modify' }
+            $n = 0; $nf = 0
+            foreach ($f in @(Get-ChildItem -LiteralPath $t.Path -Recurse -File -Force -Filter $t.ProtectedFilter -ErrorAction SilentlyContinue)) {
+                $isProt = $false
+                try { $isProt = (New-Object System.Security.AccessControl.FileSecurity($f.FullName, [System.Security.AccessControl.AccessControlSections]::Access)).AreAccessRulesProtected } catch { $isProt = $true }
+                if (-not $isProt) { continue }
+                if (Set-ServiceSidAce $f.FullName $false $fg) { $n++ } else { $nf++ }
+            }
+            if ($nf) { $bad++; Log "ACL: $nf protected file(s) under $($t.Path) could not be updated for the service account." 'WARN' }
+            elseif ($n) { Log "ACL: service-account access $(if ($fg) { 'granted' } else { 'withdrawn' }) on $n protected file(s) under $($t.Path)." }
+        }
+    }
+    foreach ($tt in $targets) {
+        $t = $tt.Path
+        # A FILE: Read for the service when it has a grant (.env), none otherwise.
+        $dg = if ($tt.Kind -ne 'Dir') { if ($tt.Grant) { 'Modify' } else { 'None' } } elseif ($tt.Grant) { $tt.Grant } elseif ($script:ServiceAclSid) { 'None' } else { 'Modify' }
+        $r = Protect-SensitivePath $t $dg
         if ($r -eq 'absent') { continue }
         if ($r -like 'FAILED*' -or $r -like 'PARTIAL*') { $bad++; Log "ACL hardening: $t -> $r" 'WARN' }
-        else { Log "ACL hardening: $t -> $r ($who)" }
+        else { Log "ACL hardening: $t -> $r ($who$(if ($script:ServiceAclSid -and -not $tt.Grant) { ' - not the service account' }))" }
     }
-    # The install dir itself stays readable (Program Files rules), but the virtual
-    # service account needs Modify on it (WinSW writes its logs under service\).
-    # Additive grant on the root only; revoked after a switch back to LocalSystem.
-    if ($InstallDir -and (Test-Path -LiteralPath $InstallDir) -and ($script:ServiceAclSid -or @(@($script:RevokeAclSids) | Where-Object { $_ }).Count)) {
-        $g = if ($script:ServiceAclSid) { 'Modify' } else { '' }
-        if (-not (Set-ServiceSidAce $InstallDir $true $g)) { $bad++; Log "ACL: service-account access on $InstallDir could not be updated." 'WARN' }
-        elseif ($g) { Log "ACL: service account $($script:ServiceAclSid) holds Modify on $InstallDir." }
+    # Additive grants on folders Setup does not restrict (the install root, the
+    # HRIS drop folder): ReadAndExecute for the virtual account, revoked after a
+    # switch back to LocalSystem.
+    if ($touchSvc) {
+        foreach ($tt in @($all | Where-Object { -not $_.Restrict -and (Test-Path -LiteralPath $_.Path -ErrorAction SilentlyContinue) })) {
+            if (-not (Set-ServiceSidAce $tt.Path $true $tt.Grant)) { $bad++; Log "ACL: service-account access on $($tt.Path) could not be updated." 'WARN' }
+            elseif ($tt.Grant) { Log "ACL: service account $($script:ServiceAclSid) holds $($tt.Grant) on $($tt.Path) (read-only; Modify only on the data folders)." }
+        }
     }
     return $bad
 }
-$script:SvcAcct = Resolve-ServiceAccount $cfg.ServiceAccount $cfg.ServiceName
-if ($script:SvcAcct.Mode -eq 'Virtual') { $script:ServiceAclSid = $script:SvcAcct.Sid }
-else { $script:RevokeAclSids = @(Get-ServiceSid $cfg.ServiceName) }
+# ---------------------------------------------------------------------------
+# WHICH ACCOUNT THE SERVICE RUNS AS. config.psd1 ServiceAccount:
+#   'Auto' (shipped) - a NEW install gets the virtual account NT SERVICE\<name>;
+#                      an UPGRADE keeps what the service runs as today: a virtual
+#                      service stays virtual, a LocalSystem one stays LocalSystem
+#                      (never forced) with the recommendation shown, and moves only
+#                      on -MigrateServiceAccount or a 'yes' at the console.
+#   'Virtual' / 'LocalSystem' / '<account>' - explicit.
+# A move of an EXISTING service from LocalSystem to the virtual account is never
+# made in passing by the re-registration: the upgrade runs on the current account
+# and, once it is healthy, Invoke-ServiceAccountMigration switches it with its own
+# health check and its own way back (Migrate = $true below).
+# Pure: returns @{ Mode; Account; Sid; VirtualSid; Migrate; Recommend; Reason }.
+# ---------------------------------------------------------------------------
+function Resolve-ServiceAccountPlan($Configured, [string]$ServiceName, [string]$CurrentStartName, [bool]$ServiceExists, [bool]$MigrateRequested) {
+    $virtualName = "NT SERVICE\$ServiceName"
+    $vsid = Get-ServiceSid $ServiceName
+    $cur = "$CurrentStartName".Trim()
+    $curIsVirtual = $ServiceExists -and ($cur -ieq $virtualName)
+    $v = "$Configured".Trim()
+    $mk = {
+        param($mode, $account, $migrate, $recommend, $reason)
+        [pscustomobject]@{
+            Mode = $mode; Account = $account; Sid = $(if ($mode -eq 'Virtual') { $vsid } else { $null })
+            VirtualSid = $vsid; Migrate = [bool]$migrate; Recommend = [bool]$recommend; Reason = $reason
+        }
+    }
+    if ($v -ieq 'LocalSystem') { return (& $mk 'LocalSystem' 'LocalSystem' $false $false 'config.psd1 ServiceAccount = LocalSystem (explicit)') }
+    if ($v -ieq 'Virtual' -or $v -ieq $virtualName) {
+        $mig = $ServiceExists -and -not $curIsVirtual
+        return (& $mk 'Virtual' $virtualName $mig $false $(if ($mig) { 'config.psd1 ServiceAccount = Virtual (explicit): the existing service is moved to the virtual account after the upgrade, with a health check' } else { 'config.psd1 ServiceAccount = Virtual (explicit)' }))
+    }
+    if ($v -and $v -ine 'Auto') { return (& $mk 'Custom' $v $false $false "config.psd1 ServiceAccount = $v (explicit)") }
+    if (-not $ServiceExists) { return (& $mk 'Virtual' $virtualName $false $false 'new install: least-privilege virtual account (default)') }
+    if ($curIsVirtual) { return (& $mk 'Virtual' $virtualName $false $false 'upgrade: the service already runs as its virtual account - kept') }
+    if ($MigrateRequested) { return (& $mk 'Virtual' $virtualName $true $false 'upgrade: migration to the virtual account requested') }
+    $shown = if ($cur) { $cur } else { 'LocalSystem' }
+    return (& $mk 'LocalSystem' 'LocalSystem' $false $true "upgrade: the service keeps its current account ($shown) - not forced")
+}
+# Point the ACL helpers and Register-WindowsService at a plan. While a migration
+# is pending the run stays on LocalSystem and revokes NOTHING (the switch comes last).
+function Set-ServiceAccountContext($Plan) {
+    if ($Plan.Mode -eq 'Virtual' -and -not $Plan.Migrate) {
+        $script:SvcAcct = [pscustomobject]@{ Mode = 'Virtual'; Account = $Plan.Account; Sid = $Plan.Sid }
+        $script:ServiceAclSid = $Plan.Sid; $script:RevokeAclSids = @()
+    } elseif ($Plan.Mode -eq 'Virtual') {
+        $script:SvcAcct = [pscustomobject]@{ Mode = 'LocalSystem'; Account = 'LocalSystem'; Sid = $null }
+        $script:ServiceAclSid = $null; $script:RevokeAclSids = @()
+    } else {
+        $script:SvcAcct = [pscustomobject]@{ Mode = $Plan.Mode; Account = $Plan.Account; Sid = $null }
+        $script:ServiceAclSid = $null; $script:RevokeAclSids = @($Plan.VirtualSid)
+    }
+}
+# The switch itself, with its way back. $Ops are scriptblocks so the sequence can
+# be proven without a real service:
+#   ApplyAcls {param($grantSid, $revokeSids)} -> number of targets NOT restricted
+#   SetAccount {param($account)} -> $true when the SCM reports that account
+#   Restart {} ; Healthy {} -> $true when the app answers its health check
+# Result: MIGRATED | ABORTED-ACL | ABORTED-SC | ROLLED-BACK | ROLLBACK-UNHEALTHY.
+function Invoke-ServiceAccountMigration([string]$Sid, [string]$Account, [hashtable]$Ops) {
+    $steps = New-Object System.Collections.Generic.List[string]
+    $done = { param($r) [pscustomobject]@{ Result = $r; Steps = @($steps) } }
+    # 1. Grant the virtual account on every data folder FIRST (nothing revoked). A
+    #    folder that could not be granted would fail later, at night, in a backup
+    #    job: refuse the switch instead (fail closed) and take the grants back.
+    $bad = [int](& $Ops.ApplyAcls $Sid @())
+    $steps.Add("acl-grant:$bad")
+    if ($bad -gt 0) {
+        [void](& $Ops.ApplyAcls $null @($Sid)); $steps.Add('acl-revoke')
+        return (& $done 'ABORTED-ACL')
+    }
+    # 2. The SCM switch (the service keeps running on LocalSystem until the restart).
+    if (-not (& $Ops.SetAccount $Account)) {
+        $steps.Add("sc:$Account=failed")
+        [void](& $Ops.ApplyAcls $null @($Sid)); $steps.Add('acl-revoke')
+        return (& $done 'ABORTED-SC')
+    }
+    $steps.Add("sc:$Account")
+    # 3. Restart as the virtual account and prove it serves.
+    & $Ops.Restart | Out-Null; $steps.Add('restart')
+    if (& $Ops.Healthy) { $steps.Add('healthy'); return (& $done 'MIGRATED') }
+    $steps.Add('unhealthy')
+    # 4. Way back: LocalSystem again, virtual grants removed, restart, re-check.
+    $back = [bool](& $Ops.SetAccount 'LocalSystem'); $steps.Add("sc:LocalSystem=$back")
+    [void](& $Ops.ApplyAcls $null @($Sid)); $steps.Add('acl-revoke')
+    & $Ops.Restart | Out-Null; $steps.Add('restart')
+    if (& $Ops.Healthy) { $steps.Add('healthy'); return (& $done 'ROLLED-BACK') }
+    $steps.Add('unhealthy')
+    return (& $done 'ROLLBACK-UNHEALTHY')
+}
+# AUDIT-TRAIL OWNERSHIP SEPARATION. config.psd1 AuditOwnerSeparation:
+#   'Auto' (shipped) - OFF for a new install: while it is on, four SuperAdmin
+#                      tools are refused (Danger-Zone cleanup, data reset, snapshot
+#                      restore, SQL-console revert), so it is the operator's call.
+#                      It is OFFERED (-EnableAuditOwnerSeparation, or a 'yes' at the
+#                      console on an upgrade). An upgrade keeps the CURRENT state of
+#                      the database: separated stays separated.
+#   $true / $false   - explicit.
+# Pure: returns @{ On; Recommend; Reason } (Recommend = the offer is shown).
+function Resolve-AuditOwnerPlan($Configured, [bool]$FreshInstall, [bool]$CurrentlySeparated, [bool]$EnableRequested) {
+    $mk = { param($on, $rec, $why) [pscustomobject]@{ On = [bool]$on; Recommend = [bool]$rec; Reason = $why } }
+    if ($Configured -is [bool]) {
+        if ($Configured) { return (& $mk $true $false 'config.psd1 AuditOwnerSeparation = $true (explicit)') }
+        return (& $mk $false $false 'config.psd1 AuditOwnerSeparation = $false (explicit)')
+    }
+    if ($CurrentlySeparated) { return (& $mk $true $false 'upgrade: the audit tables are already separated - kept') }
+    if ($EnableRequested) { return (& $mk $true $false 'separation requested (-EnableAuditOwnerSeparation)') }
+    if ($FreshInstall) { return (& $mk $false $true 'new install: off by default (available: -EnableAuditOwnerSeparation)') }
+    return (& $mk $false $true 'upgrade: not separated today - kept (not forced)')
+}
+# An operator can answer: a console (Test-InteractiveSession, defined below), the
+# progress window not on auto-close (-GuiAutoClose N marks a scripted run) and not
+# -NoGui (the unattended switch). Otherwise: never ask, just report.
+function Test-CanAsk { return ((Test-InteractiveSession) -and -not $NoGui -and $GuiAutoClose -eq 0) }
+# Yes = O / OUI / Y / YES (any case). Anything else, or no console, = no.
+function Test-YesAnswer([string]$Answer) { return ("$Answer".Trim().ToUpperInvariant() -in @('O', 'OUI', 'Y', 'YES')) }
+function Read-OperatorYes([string]$Question) {
+    Log "QUESTION (answer in the setup CONSOLE window): $Question" 'STEP'
+    $a = ''
+    try { $a = Read-Host "  $Question [Y/N]" } catch { $a = '' }
+    return (Test-YesAnswer $a)
+}
+
+# What the service runs as today (an upgrade keeps it unless asked otherwise).
+$script:SvcStartName = $null; $script:SvcHostExists = $false
+try {
+    $w0 = Get-CimInstance Win32_Service -Filter "Name='$($cfg.ServiceName)'" -ErrorAction Stop
+    if ($w0) { $script:SvcHostExists = $true; $script:SvcStartName = "$($w0.StartName)" }
+} catch {}
+if (-not $script:SvcHostExists) {
+    # A Scheduled Task host runs as SYSTEM.
+    try { if (Get-ScheduledTask -TaskName $cfg.ServiceName -ErrorAction Stop) { $script:SvcHostExists = $true; $script:SvcStartName = 'LocalSystem' } } catch {}
+}
+$script:SvcPlan = Resolve-ServiceAccountPlan $cfg.ServiceAccount $cfg.ServiceName $script:SvcStartName $script:SvcHostExists $MigrateServiceAccount.IsPresent
+Set-ServiceAccountContext $script:SvcPlan
+$script:SvcMigration = $null
 
 # Firewall profiles (3.23.17, S-05). The rule used to be '-Profile Any', i.e.
 # open on Public networks too. Default: Domain + Private. When a network the
 # machine is CONNECTED to right now is classified Public, Public is added (with
 # a WARN) - otherwise the appliance would become unreachable on the only network
 # it has. config.psd1 FirewallProfiles overrides the default list.
+# Firewall rules this product owns carry the Group 'IDevelop'. Older versions
+# left untagged 'IDevelop (<port>)' rules, one per port ever used.
+$script:FirewallGroup = 'IDevelop'
+function Get-AppFirewallRules {
+    $byName = @{}
+    foreach ($r in @(Get-NetFirewallRule -Group $script:FirewallGroup -ErrorAction SilentlyContinue) +
+                   @(Get-NetFirewallRule -DisplayName 'IDevelop*' -ErrorAction SilentlyContinue)) {
+        if ($r -and -not $byName.ContainsKey($r.Name)) { $byName[$r.Name] = $r }
+    }
+    return @($byName.Values)
+}
+# Pure planner (no side effect): which owned rules to REMOVE. Kept = the first
+# tagged rule per wanted display name; removed = stale ports, duplicates, and an
+# untagged rule for a wanted name (the caller re-creates it tagged).
+function Get-FirewallRulePlan($Existing, [string[]]$Wanted, [string]$Group) {
+    $remove = @(); $keep = @(); $seen = @{}
+    foreach ($r in @($Existing | Where-Object { $_ })) {
+        $dn = "$($r.DisplayName)"
+        if ($Wanted -notcontains $dn) { $remove += [pscustomobject]@{ Name = $r.Name; DisplayName = $dn; Why = 'port no longer in use' }; continue }
+        if ("$($r.Group)" -ne $Group) { $remove += [pscustomobject]@{ Name = $r.Name; DisplayName = $dn; Why = 'untagged - re-created in group ' + $Group }; continue }
+        if ($seen.ContainsKey($dn)) { $remove += [pscustomobject]@{ Name = $r.Name; DisplayName = $dn; Why = 'duplicate' }; continue }
+        $seen[$dn] = $true; $keep += $r
+    }
+    return [pscustomobject]@{ Remove = $remove; Keep = $keep }
+}
+
 function Resolve-FirewallProfiles($configured, [string[]]$activeCategories) {
     $valid = @('Domain', 'Private', 'Public')
     $list = @()
@@ -606,9 +925,20 @@ if (-not $NoGui -and [Environment]::UserInteractive -and $Host.Name -ne 'ServerR
 }
 
 function New-Secret([int]$bytes = 32) {
-    $b = New-Object byte[] $bytes
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
-    -join ($b | ForEach-Object { $_.ToString('x2') })
+    # Re-roll a value that contains a "year" digit run (20xx): earlier releases
+    # refused such a SESSION_SECRET as guessable and the service boot-looped
+    # (about 9 % of 64-hex values). The app no longer does, but a secret must be
+    # valid for whichever version reads it.
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        for ($try = 0; $try -lt 64; $try++) {
+            $b = New-Object byte[] $bytes
+            $rng.GetBytes($b)
+            $s = -join ($b | ForEach-Object { $_.ToString('x2') })
+            if ($s -notmatch '20\d\d') { return $s }
+        }
+        return $s
+    } finally { $rng.Dispose() }
 }
 
 # ---------------------------------------------------------------------------
@@ -709,13 +1039,46 @@ function Get-TlsCertificate($Https, [string[]]$DnsNames) {
     return $c
 }
 
-function Get-File([string]$Url, [string]$OutFile) {
+# DOWNLOAD INTEGRITY: everything the installer downloads and RUNS is checked.
+# Returns @{ Ok; Reason; Hash; Signer }. $Sha256 is mandatory (config.psd1 pins
+# one per artefact: fail closed when it is missing). $Publisher, when set, must
+# be the CN / O of a VALID Authenticode signature (Microsoft, OpenJS Foundation,
+# EnterpriseDB); empty = the vendor does not sign the file (WinSW): hash only.
+function Test-DownloadedArtifact([string]$Path, [string]$Sha256, [string]$Publisher) {
+    $res = [pscustomobject]@{ Ok = $false; Reason = ''; Hash = ''; Signer = '' }
+    if (-not (Test-Path -LiteralPath $Path)) { $res.Reason = 'file not found'; return $res }
+    if (-not $Sha256 -or $Sha256.Trim() -notmatch '^[0-9A-Fa-f]{64}$') {
+        $res.Reason = 'no pinned SHA-256 for this artefact in config.psd1 (refusing to run an unverified file)'; return $res
+    }
+    $res.Hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($res.Hash -ne $Sha256.Trim().ToLowerInvariant()) {
+        $res.Reason = "SHA-256 mismatch (expected $($Sha256.Trim().ToLowerInvariant()), got $($res.Hash))"; return $res
+    }
+    if ($Publisher) {
+        $sig = Get-AuthenticodeSignature -LiteralPath $Path
+        $subj = if ($sig.SignerCertificate) { "$($sig.SignerCertificate.Subject)" } else { '' }
+        $res.Signer = $subj
+        if ("$($sig.Status)" -ne 'Valid') { $res.Reason = "Authenticode signature is '$($sig.Status)', not Valid"; return $res }
+        $pubRx = '(^|,\s*)(CN|O)="?' + [regex]::Escape($Publisher) + '"?(\s*,|$)'
+        if ($subj -notmatch $pubRx) { $res.Reason = "signed by '$subj', expected publisher '$Publisher'"; return $res }
+    }
+    $res.Ok = $true
+    return $res
+}
+
+function Get-File([string]$Url, [string]$OutFile, [string]$Sha256, [string]$Publisher) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12, [Net.SecurityProtocolType]::Tls13
-    # If the file is already present and non-trivial in size (e.g. pre-placed for
-    # an offline / slow-link install), reuse it rather than re-downloading.
-    if ((Test-Path $OutFile) -and ((Get-Item $OutFile).Length -gt 1MB)) {
-        Log "Using already-present file: $OutFile ($([math]::Round((Get-Item $OutFile).Length/1MB,1)) MB)" 'OK'
-        return
+    # A file already present (pre-placed for an offline / slow-link install) is
+    # reused ONLY when it is the pinned file; anything else is removed and fetched.
+    if (Test-Path -LiteralPath $OutFile) {
+        $pre = Test-DownloadedArtifact $OutFile $Sha256 $Publisher
+        if ($pre.Ok) {
+            Log "Using already-present file: $OutFile ($([math]::Round((Get-Item $OutFile).Length/1MB,1)) MB) - SHA-256 verified$(if ($Publisher) { ", signed by $Publisher" })." 'OK'
+            return
+        }
+        Log "Ignoring the already-present $OutFile - $($pre.Reason). It is removed and the pinned file is downloaded." 'WARN'
+        Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $OutFile) { Fail "Cannot remove the unverified file $OutFile - delete it and re-run." }
     }
     # PS 5.1's Invoke-WebRequest renders a per-byte progress bar that can slow a
     # large download to a crawl. Suppressing it dramatically speeds big files.
@@ -725,7 +1088,8 @@ function Get-File([string]$Url, [string]$OutFile) {
         # Up to 5 attempts. NO short timeout: large prerequisites (PostgreSQL is
         # ~350 MB) over a slow/throttled link can legitimately take a long time,
         # and that is acceptable - we never abort a download for being slow.
-        for ($i = 1; $i -le 5; $i++) {
+        $downloaded = $false
+        for ($i = 1; $i -le 5 -and -not $downloaded; $i++) {
             try {
                 Log "Downloading $Url (attempt $i of 5 - large files may take a while; this is normal)"
                 $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -734,7 +1098,7 @@ function Get-File([string]$Url, [string]$OutFile) {
                 $sw.Stop()
                 $mb = if (Test-Path $OutFile) { [math]::Round((Get-Item $OutFile).Length/1MB,1) } else { 0 }
                 Log "Downloaded $mb MB in $([int]$sw.Elapsed.TotalSeconds)s." 'OK'
-                return
+                $downloaded = $true
             }
             catch {
                 Log "Download attempt $i failed: $($_.Exception.Message)" 'WARN'
@@ -742,7 +1106,17 @@ function Get-File([string]$Url, [string]$OutFile) {
                 Start-Sleep -Seconds ([Math]::Min(30, 5 * $i))   # back off: 5,10,15,20,25s
             }
         }
-        Fail "Could not download $Url after 5 attempts. Check internet access, or pre-place the file at: $OutFile (the installer will reuse it)."
+        if (-not $downloaded) {
+            Fail "Could not download $Url after 5 attempts. Check internet access, or pre-place the file at: $OutFile (the installer will reuse it when its SHA-256 matches config.psd1)."
+        }
+        # Integrity is not a transient failure: never retried, and the file is
+        # never run - it is deleted before the install aborts.
+        $chk = Test-DownloadedArtifact $OutFile $Sha256 $Publisher
+        if (-not $chk.Ok) {
+            Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue
+            Fail "INTEGRITY CHECK FAILED for $Url - $($chk.Reason). The file was deleted and NOT run. Check the URL / hash pair in config.psd1 (or a proxy rewriting downloads)."
+        }
+        Log "Integrity verified: SHA-256 $($chk.Hash)$(if ($Publisher) { "; Authenticode Valid, $Publisher" })." 'OK'
     } finally {
         $ProgressPreference = $prevPref
     }
@@ -788,6 +1162,38 @@ function Test-HttpUp([string]$url, [int]$timeoutMs = 4000) {
         if ($_.Exception.Response) { return $true }   # server answered (3xx/4xx/5xx)
         return $false
     } catch { return $false }
+}
+
+# TIME SYNC. TOTP codes (MFA) are valid for 30 s either side, and session
+# expiry and the audit trail's timestamps all trust this clock. Parses
+# 'w32tm /query /status' (the Source line reads the same on an English and a
+# French Windows) and the W32Time service state.
+function ConvertFrom-W32tmStatus([string[]]$Lines, [string]$ServiceStatus, [string]$StartType) {
+    $src = ''
+    foreach ($l in @($Lines)) { if ("$l" -match '^\s*Source\s*:\s*(.+?)\s*$') { $src = $Matches[1]; break } }
+    # A free-running / CMOS clock (or no answer at all) is "not synchronised";
+    # a domain controller, an NTP peer or Hyper-V's VM IC provider is a source.
+    $localClock = (-not $src) -or ($src -match '(?i)CMOS|Free-running|Horloge')
+    $running = ("$ServiceStatus" -eq 'Running')
+    return [pscustomobject]@{
+        Source = $src; ServiceStatus = "$ServiceStatus"; StartType = "$StartType"
+        Ok = ($running -and -not $localClock)
+    }
+}
+# A console someone can answer (not a service session, not redirected stdin).
+function Test-InteractiveSession {
+    try { return ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and $Host.Name -ne 'ServerRemoteHost') } catch { return $false }
+}
+function Get-TimeSyncStatus {
+    $svc = Get-Service -Name 'W32Time' -ErrorAction SilentlyContinue
+    $st = if ($svc) { "$($svc.Status)" } else { 'Missing' }
+    $stt = if ($svc) { "$($svc.StartType)" } else { '' }
+    $lines = @()
+    if ($svc -and $svc.Status -eq 'Running') {
+        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try { $lines = @(& w32tm.exe /query /status 2>$null) } catch { $lines = @() } finally { $ErrorActionPreference = $prev }
+    }
+    return (ConvertFrom-W32tmStatus $lines $st $stt)
 }
 
 function Test-VcRedist {
@@ -902,13 +1308,20 @@ function Get-WinSwExePath      { Join-Path (Join-Path $cfg.InstallDir 'service')
 function Resolve-WinSw {
     foreach ($name in @('WinSW-x64.exe', 'WinSW.exe', 'winsw.exe')) {
         $bundled = Join-Path (Join-Path $ScriptRoot 'bin') $name
-        if (Test-Path -LiteralPath $bundled) { Log "Using bundled service wrapper: $bundled"; return $bundled }
+        if (Test-Path -LiteralPath $bundled) {
+            # The bundled wrapper runs as the service account: it is held to the
+            # same pinned hash as a downloaded one.
+            $chk = Test-DownloadedArtifact $bundled $cfg.WinSwSha256 $cfg.WinSwPublisher
+            if ($chk.Ok) { Log "Using bundled service wrapper: $bundled (SHA-256 verified)"; return $bundled }
+            Log "The bundled service wrapper $bundled failed its integrity check - $($chk.Reason). It is NOT used; replace bin\WinSW-x64.exe with the pinned WinSW release." 'ERROR'
+            return $null
+        }
     }
     if (-not $cfg.WinSwUrl) { return $null }
     $dest = Join-Path $env:TEMP 'WinSW-x64.exe'
     try {
         Log "Downloading the service wrapper (WinSW) from $($cfg.WinSwUrl) ..."
-        Get-File $cfg.WinSwUrl $dest
+        Get-File $cfg.WinSwUrl $dest $cfg.WinSwSha256 $cfg.WinSwPublisher
         if (Test-Path -LiteralPath $dest) { return $dest }
     } catch { Log "WinSW download failed: $($_.Exception.Message)" 'WARN' }
     return $null
@@ -967,6 +1380,21 @@ function Register-WindowsService {
     if (-not $winsw) { return $false }
     $svcDir = Join-Path $cfg.InstallDir 'service'
     New-Item -ItemType Directory -Force -Path $svcDir | Out-Null
+    # WinSW writes the app's stdout/stderr here (<name>.out.log / .err.log: stack
+    # traces, SQL errors, e-mail addresses) and the folder used to inherit
+    # BUILTIN\Users read from Program Files. Restricted like the other data
+    # folders (SYSTEM + Administrators, + the service account), BEFORE the
+    # wrapper writes its first line. The folder holds the wrapper EXE + XML:
+    # ReadAndExecute for the service account; the logs go to service\logs, the
+    # only place it may write here (WinSW <logpath> below).
+    $svcLogDir = Join-Path $svcDir 'logs'
+    New-Item -ItemType Directory -Force -Path $svcLogDir | Out-Null
+    $svcLogAcl = Protect-SensitivePath $svcLogDir 'Modify'
+    if ($svcLogAcl -like 'FAILED*' -or $svcLogAcl -like 'PARTIAL*') { Log "ACL hardening: $svcLogDir -> $svcLogAcl" 'WARN' }
+    else { Log "ACL hardening: $svcLogDir -> $svcLogAcl (service logs)" }
+    $svcAcl = Protect-SensitivePath $svcDir 'ReadAndExecute'
+    if ($svcAcl -like 'FAILED*' -or $svcAcl -like 'PARTIAL*') { Log "ACL hardening: $svcDir -> $svcAcl" 'WARN' }
+    else { Log "ACL hardening: $svcDir -> $svcAcl (service wrapper, read-only)" }
     $svcExe = Join-Path $svcDir "$($cfg.ServiceName).exe"
     $svcXml = Join-Path $svcDir "$($cfg.ServiceName).xml"
 
@@ -992,7 +1420,8 @@ function Register-WindowsService {
         }
     }
 
-    $acct = if ($cfg.ServiceAccount) { $cfg.ServiceAccount } else { 'LocalSystem' }
+    # From the resolved plan, never the raw config value ('Auto' is not an account).
+    $acct = if ($script:SvcAcct -and $script:SvcAcct.Mode -eq 'Custom') { $script:SvcAcct.Account } else { 'LocalSystem' }
     # 'Virtual' (S-04): WinSW 2.x has no virtual-account form, so the service is
     # registered as LocalSystem and switched to NT SERVICE\<name> with sc.exe
     # right after the install, BEFORE its first start (see below).
@@ -1017,6 +1446,7 @@ $acctXml
   <onfailure action="restart" delay="10 sec" />
   <resetfailure>1 hour</resetfailure>
   <stoptimeout>15 sec</stoptimeout>
+  <logpath>$([System.Security.SecurityElement]::Escape($svcLogDir))</logpath>
   <log mode="roll-by-size">
     <sizeThreshold>10240</sizeThreshold>
     <keepFiles>8</keepFiles>
@@ -1242,6 +1672,26 @@ if ($priorAny) {
     else { Log 'No existing installation detected - performing a fresh install.' }
 }
 
+# The service account decision, said out loud; on an upgrade that keeps
+# LocalSystem, the recommendation and the one-switch migration are offered.
+Log "Service account: $($script:SvcPlan.Account) - $($script:SvcPlan.Reason)."
+if ($script:SvcPlan.Recommend) {
+    Log "RECOMMENDED: run the service as its virtual account NT SERVICE\$($cfg.ServiceName) (least privilege: no password, no rights on the rest of the machine) instead of LocalSystem. Re-run with -MigrateServiceAccount: every data folder is re-ACLed for it, the service restarts as it, and goes back to LocalSystem by itself if it does not come up healthy." 'WARN'
+    if ($NoService) {
+        Log 'Service account migration not offered: -NoService.'
+    } elseif (Test-CanAsk) {
+        if (Read-OperatorYes "Move the $($cfg.ServiceName) service to NT SERVICE\$($cfg.ServiceName) now (automatic return to LocalSystem if unhealthy)?") {
+            $script:SvcPlan = Resolve-ServiceAccountPlan $cfg.ServiceAccount $cfg.ServiceName $script:SvcStartName $script:SvcHostExists $true
+            Set-ServiceAccountContext $script:SvcPlan
+            Log 'Operator accepted the service account migration - it runs after the upgrade is healthy.' 'OK'
+        } else { Log 'Service account left on LocalSystem (operator declined).' }
+    }
+}
+if ($script:SvcPlan.Migrate -and $NoService) {
+    Log 'Service account migration requested but -NoService is set - nothing to migrate.' 'WARN'
+    $script:SvcPlan.Migrate = $false
+}
+
 # --- Migrate mode is an upgrade with proof around it. ---
 if ($Migrate) {
     if ($SkipMigrations) { Fail 'MIGRATE MODE applies migrations by definition; -SkipMigrations cannot be combined with -Migrate.' }
@@ -1293,12 +1743,41 @@ Log "OS: $($os.Caption) (build $build)"
 if ($build -lt 17763) { Log 'Windows older than Server 2019 / Win10 1809 - not officially supported.' 'WARN' }
 Refresh-Path
 
+# Time sync. Warn; change the W32Time service ONLY with the operator's consent
+# (typed Y at the console): it is a machine-wide setting.
+try {
+    $ts = Get-TimeSyncStatus
+    if ($ts.Ok) {
+        Log "Time sync: W32Time $($ts.ServiceStatus) ($($ts.StartType)), source '$($ts.Source)'." 'OK'
+    } else {
+        Log ("Time sync: NOT synchronised (W32Time service $($ts.ServiceStatus), start type '$($ts.StartType)', source '" + $(if ($ts.Source) { $ts.Source } else { 'none' }) + "'). MFA codes (TOTP, 30 s window), session expiry and audit timestamps depend on this clock.") 'WARN'
+        $ans = ''
+        # Asked on an interactive install / repair only: a Patch is the scripted
+        # deploy path and must never stop on a question it did not need.
+        if (-not $Patch -and (Test-InteractiveSession)) {
+            try { $ans = Read-Host "  Type Y to set the Windows Time service (W32Time) to Automatic, start it and resync (anything else: leave it)" } catch { $ans = '' }
+        }
+        if ("$ans".Trim() -eq 'Y') {
+            try {
+                Set-Service -Name 'W32Time' -StartupType Automatic -ErrorAction Stop
+                if ((Get-Service -Name 'W32Time').Status -ne 'Running') { Start-Service -Name 'W32Time' -ErrorAction Stop }
+                $prevT = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+                & w32tm.exe /resync /nowait *> $null
+                $ErrorActionPreference = $prevT
+                Log 'Time sync: W32Time set to Automatic and started (operator consent); a resync was requested.' 'OK'
+            } catch { Log "Time sync: could not configure W32Time ($($_.Exception.Message))." 'WARN' }
+        } else {
+            Log 'Time sync: left unchanged. Fix: Set-Service W32Time -StartupType Automatic; Start-Service W32Time; w32tm /resync (or point it at the domain / an NTP server).' 'WARN'
+        }
+    }
+} catch { Log "Time sync check skipped: $($_.Exception.Message)" 'WARN' }
+
 if (Test-VcRedist) {
     Log 'Visual C++ Redistributable already present - reusing.' 'OK'
 } else {
     Log 'Visual C++ Redistributable not found - installing.'
     $vc = Join-Path $env:TEMP 'vc_redist.x64.exe'
-    Get-File $cfg.VcRedistUrl $vc
+    Get-File $cfg.VcRedistUrl $vc $cfg.VcRedistSha256 $cfg.VcRedistPublisher
     $p = Start-Process -FilePath $vc -ArgumentList @('/install', '/quiet', '/norestart') -Wait -PassThru
     if ($p.ExitCode -notin 0, 1638, 3010) { Log "VC++ redist returned $($p.ExitCode) (continuing)." 'WARN' }
     else { Log 'Visual C++ Redistributable installed.' 'OK' }
@@ -1360,7 +1839,7 @@ if (Test-NodeVersionOk $nodeHave $nodeNeed) {
     if ($nodeHave) { Log "Node v$nodeHave does not meet the requirement (>= $nodeNeed; 21.x and 22.0-22.11 lack require(esm) for Entra SSO) - installing v$($cfg.NodeVersion)." 'WARN' }
     else { Log 'Node.js not found - installing.' }
     $msi = Join-Path $env:TEMP "node-$($cfg.NodeVersion).msi"
-    Get-File $cfg.NodeMsiUrl $msi
+    Get-File $cfg.NodeMsiUrl $msi $cfg.NodeMsiSha256 $cfg.NodeMsiPublisher
     Log 'Installing Node.js silently...'
     $p = Start-Process msiexec.exe -ArgumentList @('/i', "`"$msi`"", '/qn', '/norestart', 'ADDLOCAL=ALL') -Wait -PassThru
     if ($p.ExitCode -ne 0) { Fail "Node.js MSI failed (exit $($p.ExitCode))." }
@@ -1398,12 +1877,48 @@ function Find-PgBin {
 function Test-PgListening([string]$h, [int]$port) {
     try { return (Test-NetConnection -ComputerName $h -Port $port -WarningAction SilentlyContinue).TcpTestSucceeded } catch { return $false }
 }
+# SECRETS OFF THE COMMAND LINE: the EDB PostgreSQL installer used to receive the
+# superuser password as '--superpassword <pw>', visible to every local user in
+# the process list (Get-CimInstance Win32_Process, tasklist /v) for the minutes
+# the install takes. It now reads it from an InstallBuilder option file
+# ('--optionfile', key=value lines, UTF-8 without BOM) written in a fresh folder
+# under the elevated user's own %TEMP% (profile ACL: that user, SYSTEM,
+# Administrators). The caller deletes .Dir as soon as the installer returns.
+# Returns @{ Args; Dir; OptionFile }. Nothing secret is in .Args.
+function New-PgInstallerArgs([string]$SuperPassword, [int]$Port, [string]$TempRoot = $env:TEMP) {
+    $dir = Join-Path $TempRoot ('idevelop-pgopt-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $opt = Join-Path $dir 'pg-install.options'
+    [IO.File]::WriteAllText($opt, "superpassword=$SuperPassword`r`n", (New-Object System.Text.UTF8Encoding($false)))
+    $a = @(
+        '--mode', 'unattended', '--unattendedmodeui', 'none',
+        '--optionfile', "`"$opt`"",
+        '--serverport', "$Port",
+        '--enable-components', 'server,commandlinetools'
+    )
+    return @{ Args = $a; Dir = $dir; OptionFile = $opt }
+}
 
 $isLocalPg   = $cfg.PgHost -in @('localhost', '127.0.0.1', '::1', $env:COMPUTERNAME)
 $pgService   = if ($isLocalPg) { Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
 $pgBin       = Find-PgBin
 $pgListening = Test-PgListening $cfg.PgHost $cfg.PgPort
 $pgExists    = $UseExistingPostgres -or $pgService -or $pgListening -or (-not $isLocalPg)
+# Was this server created by this installer (now or on an earlier run)? The
+# marker is trusted only when an administrator or SYSTEM owns it: the service
+# account may write in %ProgramData%\IDevelop and must not be able to forge it
+# (it would make Setup change and restart a server it does not own).
+$script:PgMarkerFile = Join-Path $LogDir 'pg-created-by-installer.json'
+$script:PgCreatedByUs = $false
+function Test-PgMarkerTrusted([string]$Path, [int]$Port) {
+    try {
+        if (-not (Test-Path -LiteralPath $Path)) { return $false }
+        $own = (New-Object System.Security.AccessControl.FileSecurity($Path, [System.Security.AccessControl.AccessControlSections]::Owner)).GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+        if ($own -notin @('S-1-5-18', 'S-1-5-32-544')) { return $false }
+        return ([int]((Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json).port) -eq $Port)
+    } catch { return $false }
+}
+if ($pgExists -and $isLocalPg) { $script:PgCreatedByUs = Test-PgMarkerTrusted $script:PgMarkerFile ([int]$cfg.PgPort) }
 
 if ($pgExists) {
     Log "Existing PostgreSQL (service=$([bool]$pgService), psql=$([bool]$pgBin), port $($cfg.PgPort) open=$pgListening, local=$isLocalPg) - reusing." 'OK'
@@ -1428,17 +1943,12 @@ if ($pgExists) {
         }
     }
     $exe = Join-Path $env:TEMP "postgresql-$($cfg.PgMajor).exe"
-    Get-File $cfg.PgInstallerUrl $exe
+    Get-File $cfg.PgInstallerUrl $exe $cfg.PgInstallerSha256 $cfg.PgInstallerPublisher
     Log 'Installing PostgreSQL unattended (large component - this can take a while; please wait)...'
-    $pgArgs = @(
-        '--mode', 'unattended', '--unattendedmodeui', 'none',
-        '--superpassword', $cfg.PgSuperPassword,
-        '--serverport', "$($cfg.PgPort)",
-        '--enable-components', 'server,commandlinetools'
-    )
+    $pgInst = New-PgInstallerArgs -SuperPassword $cfg.PgSuperPassword -Port $cfg.PgPort
     $prevPP = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
-    try { $p = Start-Process -FilePath $exe -ArgumentList $pgArgs -Wait -PassThru }
-    finally { $ProgressPreference = $prevPP }
+    try { $p = Start-Process -FilePath $exe -ArgumentList $pgInst.Args -Wait -PassThru }
+    finally { $ProgressPreference = $prevPP; Remove-Item -LiteralPath $pgInst.Dir -Recurse -Force -ErrorAction SilentlyContinue }
     if ($p.ExitCode -ne 0) { Fail "PostgreSQL installer failed (exit $($p.ExitCode))." }
     # Wait for the service to actually accept connections, not just a fixed sleep.
     Start-Sleep -Seconds 3
@@ -1446,6 +1956,18 @@ if ($pgExists) {
     if (-not $pgBin) { Fail 'PostgreSQL installed but psql.exe not found.' }
     for ($i = 0; $i -lt 15; $i++) { if (Test-PgListening $cfg.PgHost $cfg.PgPort) { break }; Start-Sleep -Seconds 2 }
     Log 'PostgreSQL installed.' 'OK'
+    # Remember that THIS installer created the server, so its recommended
+    # hardening is applied now and re-applied on later runs. SYSTEM +
+    # Administrators only (see Test-PgMarkerTrusted).
+    $script:PgCreatedByUs = $true
+    try {
+        Set-Content -LiteralPath $script:PgMarkerFile -Value (@{ createdBy = 'IDevelop installer'; created = (Get-Date -Format o); port = $cfg.PgPort; major = $cfg.PgMajor } | ConvertTo-Json -Compress) -Encoding ASCII
+        # Owner = Administrators explicitly: on a Windows client the default owner
+        # is the creating user, and only an administrator can hand a file to the
+        # Administrators group (what Test-PgMarkerTrusted checks).
+        & icacls.exe $script:PgMarkerFile /setowner '*S-1-5-32-544' /Q *> $null
+        & icacls.exe $script:PgMarkerFile /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' /Q *> $null
+    } catch { Log "Could not write $($script:PgMarkerFile): $($_.Exception.Message)" 'WARN' }
 }
 $psql = Join-Path $pgBin 'psql.exe'
 # Ensure psql's bin is on PATH for this session (the environment header showed
@@ -1486,6 +2008,49 @@ function Hide-Secrets([string]$s) {
         if ($sec) { $s = $s -replace [regex]::Escape($sec), '***' }
     }
     return $s
+}
+
+# SQL THAT CARRIES A SECRET (ALTER/CREATE ROLE ... PASSWORD) goes through
+# psql's STANDARD INPUT, never its command line: an argv is readable by any
+# process that can query this one (and lands in crash dumps and EDR process
+# logs). The SQL is written as UTF-8 bytes (no BOM) to stdin ('-f -'); the
+# connection password stays in PGPASSWORD (environment, not argv).
+# Returns @{ Code; Out }.
+function Format-NativeArg([string]$a) {
+    if ($a -ne '' -and $a -notmatch '[\s"]') { return $a }
+    return '"' + (($a -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"'
+}
+function Invoke-PsqlStdin([string]$Exe, [string[]]$ArgList, [string]$Sql) {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $Exe
+    $psi.Arguments = (@($ArgList) | ForEach-Object { Format-NativeArg "$_" }) -join ' '
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.EnvironmentVariables['PGCLIENTENCODING'] = 'UTF8'
+    # .NET Framework builds the child's stdin writer from [Console]::InputEncoding
+    # and writes that encoding's preamble at once: a UTF-8 console would put a BOM
+    # in front of the SQL. Start the child under a BOM-less UTF-8 input encoding,
+    # then restore the console's own.
+    $prevIn = $null
+    try { $prevIn = [Console]::InputEncoding; [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { $prevIn = $null }
+    try { $p = [System.Diagnostics.Process]::Start($psi) }
+    finally { if ($prevIn) { try { [Console]::InputEncoding = $prevIn } catch {} } }
+    $errTask = $p.StandardError.ReadToEndAsync()
+    $outTask = $p.StandardOutput.ReadToEndAsync()
+    $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($Sql + "`n")
+    $p.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+    $p.StandardInput.BaseStream.Flush()
+    $p.StandardInput.Close()
+    $p.WaitForExit()
+    return [pscustomobject]@{ Code = $p.ExitCode; Out = (($outTask.Result + $errTask.Result).Trim()) }
+}
+function PsqlSecret([string]$db, [string]$sql) {
+    $r = Invoke-PsqlStdin $psql @('-h', $cfg.PgHost, '-p', "$($cfg.PgPort)", '-U', 'postgres', '-d', $db, '-t', '-A', '-v', 'ON_ERROR_STOP=1', '-f', '-') $sql
+    if ($r.Code -ne 0) { Fail ("psql failed on [$db]: " + (Hide-Secrets $r.Out)) }
+    return $r.Out
 }
 
 function Psql([string]$db, [string]$sql) {
@@ -1555,25 +2120,52 @@ function PsqlFile([string]$db, [string]$sql) {
 # app role for the migration pass; this runs again right after it.
 # Single quotes only: the text goes through psql -f, but no double quotes by rule.
 # ---------------------------------------------------------------------------
-$script:AuditOwnerRole = 'fourmp_audit_owner'
-function Get-AuditOwnerSql([string]$Owner, [string]$App) {
+$script:AuditOwnerRole = 'idevelop_audit_owner'
+# Earlier installers created the role under a name inherited from the product
+# IDevelop was derived from; it is renamed in place (ownerships and grants are
+# kept). Assembled from two parts so the repository carries no trace of that
+# name (tests/unit/brandTokensAbsent.test.js). Migration 169 does the same.
+$script:LegacyAuditOwnerRole = 'four' + 'mp_audit_owner'
+function Get-AuditOwnerSql([string]$Owner, [string]$App, [string]$Legacy = '') {
     $sql = @'
 DO $audit$
 DECLARE
-  r record; s record; n int := 0;
-  own text := '__OWNER__'; app text := '__APP__';
+  r record; s record; n int := 0; t text;
+  own text := '__OWNER__'; app text := '__APP__'; legacy text := '__LEGACY__';
 BEGIN
   IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
     RAISE WARNING 'AUDIT_OWNER_SKIPPED: % is not a superuser - the audit tables stay owned by the app role', current_user;
     RETURN;
   END IF;
+  IF legacy <> '' AND legacy <> own
+     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = legacy)
+     AND NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = own) THEN
+    EXECUTE format('ALTER ROLE %I RENAME TO %I', legacy, own);
+    RAISE NOTICE 'AUDIT_OWNER_RENAMED: legacy audit owner role renamed to %', own;
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = own) THEN
     EXECUTE format('CREATE ROLE %I NOLOGIN', own);
   END IF;
   -- The guard functions first: an owner could CREATE OR REPLACE them into no-ops.
+  -- + the audit-log redaction / purge / seal functions and their helpers
+  -- (migration 170): the SECURITY DEFINER ones work on system_logs, so they must
+  -- belong to its owner, or every GDPR erasure (redaction) is refused and fails
+  -- closed; the helpers decide what block_mutation lets through, so the app role
+  -- must not be able to replace them.
   FOR r IN SELECT p.oid::regprocedure AS sig FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
-            WHERE ns.nspname = 'public' AND p.proname IN ('block_mutation', 'block_truncate', 'fn_system_logs_hashchain') LOOP
+            WHERE ns.nspname = 'public' AND p.proname IN ('block_mutation', 'block_truncate', 'fn_system_logs_hashchain',
+                  'fn_system_logs_redact', '_fn_system_logs_redact_flush', 'fn_system_logs_purge', 'fn_system_logs_seal',
+                  'fn_system_logs_mutation_allowed', 'fn_system_logs_rowhash') LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO %I', r.sig, own);
+  END LOOP;
+  -- A change of owner hands the OLD owner's privileges to the new one. Migration
+  -- 170 revoked EXECUTE on the writing functions from PUBLIC and left it to the
+  -- app role as their owner, so after the move the app could no longer call
+  -- them ('permission denied for function fn_system_logs_redact'): EXECUTE is
+  -- granted back on exactly the functions the app calls.
+  FOR r IN SELECT p.oid::regprocedure AS sig FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
+            WHERE ns.nspname = 'public' AND p.proname IN ('fn_system_logs_redact', 'fn_system_logs_purge', 'fn_system_logs_seal') LOOP
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %I', r.sig, app);
   END LOOP;
   FOR r IN SELECT DISTINCT c.oid, c.relname
              FROM pg_trigger t
@@ -1593,10 +2185,21 @@ BEGIN
     END LOOP;
     n := n + 1;
   END LOOP;
+  -- The SECURITY DEFINER functions above run AS the owner role and read ordinary
+  -- tables it does not own: fn_system_logs_redact and fn_system_logs_mutation_allowed
+  -- check employees.erased_at; fn_system_logs_purge reads the legal holds
+  -- (employees.legal_hold_at, pii_cleanup_jobs, admins.linked_employee_id).
+  -- Without SELECT every GDPR erasure fails with 'permission denied'. Keep this
+  -- list in step with what those functions read (a test compares them).
+  FOREACH t IN ARRAY ARRAY['employees', 'admins', 'pii_cleanup_jobs'] LOOP
+    IF to_regclass('public.' || quote_ident(t)) IS NOT NULL THEN
+      EXECUTE format('GRANT SELECT ON TABLE public.%I TO %I', t, own);
+    END IF;
+  END LOOP;
   RAISE NOTICE 'AUDIT_OWNER_APPLIED: % table(s) owned by %, app role % limited to SELECT + INSERT', n, own, app;
 END $audit$;
 '@
-    return $sql.Replace('__OWNER__', $Owner).Replace('__APP__', $App)
+    return $sql.Replace('__OWNER__', $Owner).Replace('__APP__', $App).Replace('__LEGACY__', $Legacy)
 }
 
 # Connectivity preflight - robust. Try each candidate superuser password, and if
@@ -1625,11 +2228,41 @@ function Wait-PgReady([int]$tries = 20) {
     return $false
 }
 
+# The temporary 'trust' window is NEVER opened silently.
+#   -AllowPasswordRecovery         -> allowed (the operator said so on the command line)
+#   interactive console            -> asked; only the typed word TRUST allows it
+#   unattended (no console/stdin)  -> refused; the caller FAILS with a clear message
+# Returns @{ Granted; Mode = switch | interactive | declined | unattended }.
+function Resolve-TrustWindowConsent([bool]$Allowed, [bool]$Interactive, [scriptblock]$Ask) {
+    if ($Allowed) { return [pscustomobject]@{ Granted = $true; Mode = 'switch' } }
+    if (-not $Interactive) { return [pscustomobject]@{ Granted = $false; Mode = 'unattended' } }
+    $ans = ''
+    try { $ans = "$(& $Ask)".Trim() } catch { $ans = '' }
+    if ($ans -ceq 'TRUST') { return [pscustomobject]@{ Granted = $true; Mode = 'interactive' } }
+    return [pscustomobject]@{ Granted = $false; Mode = 'declined' }
+}
+# Every decision about the window, and every opening / closing of it, is written
+# to the install log AND to a dedicated ledger
+# (%ProgramData%\IDevelop\logs\pg-trust-window.log) that outlives the per-run logs.
+function Write-TrustWindowAudit([string]$Event, [string]$Detail) {
+    $who = "$env:USERDOMAIN\$env:USERNAME"
+    try { $who = [Security.Principal.WindowsIdentity]::GetCurrent().Name } catch {}
+    Log "PG TRUST WINDOW - $Event - $Detail" 'WARN'
+    try {
+        $dir = Join-Path $LogDir 'logs'
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        Add-Content -LiteralPath (Join-Path $dir 'pg-trust-window.log') -Value ('{0} | {1} | {2} | {3} | {4}' -f (Get-Date -Format o), $env:COMPUTERNAME, $who, $Event, $Detail)
+    } catch {}
+}
+
 # Reset an UNKNOWN local postgres password to $targetPw using the standard
 # forgotten-password recovery: temporarily switch pg_hba.conf loopback auth to
 # 'trust', restart PostgreSQL, ALTER the password, then RESTORE pg_hba.conf and
 # restart again. Local PG + admin only (both hold here). Returns $true on success.
 # pg_hba.conf is always restored (even on error) so PG is never left open.
+# Only after Resolve-TrustWindowConsent granted it; the trust lines are narrowed
+# to database 'postgres' / user 'postgres' on loopback, and the new password
+# travels through psql's stdin (never its command line).
 function Reset-PgSuperViaTrust([string]$targetPw) {
     $bak = $null; $hba = $null; $svcName = $null
     try {
@@ -1655,33 +2288,157 @@ function Reset-PgSuperViaTrust([string]$targetPw) {
         $bak = "$hba.idevelop-bak"
         Copy-Item -LiteralPath $hba -Destination $bak -Force
         $orig = Get-Content -LiteralPath $hba -Raw
-        $trust = "# IDevelop installer - TEMPORARY trust (auto-removed)`r`nhost all all 127.0.0.1/32 trust`r`nhost all all ::1/128 trust`r`n# end temporary`r`n"
+        $trust = "# IDevelop installer - TEMPORARY trust (auto-removed)`r`nhost postgres postgres 127.0.0.1/32 trust`r`nhost postgres postgres ::1/128 trust`r`n# end temporary`r`n"
         Set-Content -LiteralPath $hba -Value ($trust + $orig) -Encoding ASCII
+        Write-TrustWindowAudit 'OPENED' "$hba (loopback, database/user postgres only)"
 
         Restart-Service -Name $svcName -Force -ErrorAction Stop
         [void](Wait-PgReady 25)
 
         $env:PGPASSWORD = ''
         $lit = $targetPw -replace "'", "''"
-        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-        $altOut = & $psql -h 127.0.0.1 -p $cfg.PgPort -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER ROLE postgres WITH PASSWORD '$lit'" 2>&1
-        $altOk = ($LASTEXITCODE -eq 0)
-        $ErrorActionPreference = $prev
+        $alt = Invoke-PsqlStdin $psql @('-h', '127.0.0.1', '-p', "$($cfg.PgPort)", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-f', '-') "ALTER ROLE postgres WITH PASSWORD '$lit'"
+        $altOk = ($alt.Code -eq 0); $altOut = $alt.Out
 
         # Restore pg_hba.conf + restart (removes trust) no matter the ALTER outcome.
         Copy-Item -LiteralPath $bak -Destination $hba -Force
         Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue; $bak = $null
         Restart-Service -Name $svcName -Force -ErrorAction SilentlyContinue
         [void](Wait-PgReady 25)
+        Write-TrustWindowAudit 'CLOSED' "$hba restored (password reset $(if ($altOk) { 'succeeded' } else { 'FAILED' }))"
 
         if ($altOk) { Log 'postgres password reset to the standard appliance value; loopback trust removed.' 'OK'; return $true }
         Log ("Auto-reset: ALTER ROLE did not confirm success (" + (Hide-Secrets ("$altOut")) + ").") 'WARN'; return $false
     } catch {
         Log "Auto-reset error: $($_.Exception.Message). Restoring pg_hba.conf." 'WARN'
-        try { if ($bak -and $hba -and (Test-Path $bak)) { Copy-Item -LiteralPath $bak -Destination $hba -Force; Remove-Item $bak -Force -ErrorAction SilentlyContinue } } catch {}
+        try { if ($bak -and $hba -and (Test-Path $bak)) { Copy-Item -LiteralPath $bak -Destination $hba -Force; Remove-Item $bak -Force -ErrorAction SilentlyContinue; Write-TrustWindowAudit 'CLOSED' "$hba restored after an error" } } catch {}
         try { if ($svcName) { Restart-Service -Name $svcName -Force -ErrorAction SilentlyContinue; [void](Wait-PgReady 20) } } catch {}
         return $false
     }
+}
+
+# READ-ONLY check of pg_hba.conf for 'trust' entries. A 'trust' line lets anyone
+# who reaches that address log in as any role without a password - on a
+# database of HR data. Lines inside our own marked block (the installer's
+# temporary recovery window) are ignored; everything else is reported. Returns
+# the offending lines as @{ Line; Text }. Nothing is ever changed.
+function Get-PgHbaTrustLines([string]$Text) {
+    $hits = @()
+    $inOurs = $false
+    $n = 0
+    foreach ($raw in ($Text -split "`r?`n")) {
+        $n++
+        $t = $raw.Trim()
+        if ($t -like '# IDevelop installer - TEMPORARY trust*') { $inOurs = $true; continue }
+        if ($inOurs) { if ($t -like '# end temporary*') { $inOurs = $false }; continue }
+        $body = ($t -replace '#.*$', '').Trim()
+        if (-not $body) { continue }
+        $tok = @($body -split '\s+')
+        $method = $null
+        if ($tok[0] -eq 'local') { if ($tok.Count -ge 4) { $method = $tok[3] } }
+        elseif ($tok[0] -like 'host*') {
+            # host DB USER ADDRESS [MASK] METHOD - a bare IPv4/IPv6 mask shifts the method.
+            if ($tok.Count -ge 6 -and $tok[4] -match '^[0-9a-fA-F:.]+$' -and $tok[3] -notmatch '/') { $method = $tok[5] }
+            elseif ($tok.Count -ge 5) { $method = $tok[4] }
+        }
+        if ($method -and $method.ToLowerInvariant() -eq 'trust') { $hits += [pscustomobject]@{ Line = $n; Text = $t } }
+    }
+    return , $hits
+}
+
+# ---------------------------------------------------------------------------
+# RECOMMENDED POSTGRESQL HARDENING.
+#   log_connections / log_disconnections = on, a log_line_prefix naming the user,
+#   the database and the client address, CONNECT on the application database for
+#   the app role only (REVOKE ... FROM PUBLIC), and listen_addresses = 'localhost'
+#   ONLY when the app reaches PostgreSQL on a loopback address (co-located).
+# On a server this installer CREATED: applied automatically. On any other server
+# (we do not own it; changing it silently can break other applications): WARN,
+# then ask at the console, or apply only with -ApplyPgHardening. Every run writes
+# a report (checked / applied / to do + the pg_hba.conf 'trust' check) to the log.
+# pg_hba.conf itself is NEVER changed by Setup.
+# ---------------------------------------------------------------------------
+function Test-LoopbackHost([string]$HostName) {
+    $x = "$HostName".Trim().Trim('[', ']').ToLowerInvariant()
+    return ($x -eq 'localhost' -or $x -eq '::1' -or $x -match '^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+}
+function Get-PgHardeningPlan($Current, [bool]$PublicCanConnect, [bool]$CoLocated, [string]$DbName, [string]$AppRole) {
+    $qi = { param($n) '"' + ("$n" -replace '"', '""') + '"' }
+    $on = { param($v) ("$v".Trim().ToLowerInvariant() -notin @('', 'off', 'false', '0', 'no')) }
+    $item = {
+        param($key, $cur, $rec, $offered, $needed, $restart, $sql, $note)
+        [pscustomobject]@{ Key = $key; Current = "$cur"; Recommended = $rec; Offered = [bool]$offered; Needed = [bool]($offered -and $needed)
+                           Restart = [bool]$restart; Sql = @($sql); Note = $note; Status = ''; Error = '' }
+    }
+    $items = @()
+    foreach ($k in @('log_connections', 'log_disconnections')) {
+        $cur = $Current[$k]
+        $items += (& $item $k $cur 'on' $true (-not (& $on $cur)) $false @("ALTER SYSTEM SET $k = 'on'") 'who connected / disconnected, and when')
+    }
+    $prefix = '%m [%p] user=%u,db=%d,client=%h '
+    $lp = "$($Current['log_line_prefix'])"
+    $items += (& $item 'log_line_prefix' $lp $prefix $true (-not ($lp -match '%u' -and $lp -match '%d' -and $lp -match '%h')) $false @("ALTER SYSTEM SET log_line_prefix = '$($prefix -replace "'", "''")'") 'every log line names the user, the database and the client address')
+    $items += (& $item "CONNECT ON DATABASE $DbName" $(if ($PublicCanConnect) { 'PUBLIC (every role)' } else { 'granted roles only' }) "$AppRole only" $true $PublicCanConnect $false @(
+            "GRANT CONNECT ON DATABASE $(& $qi $DbName) TO $(& $qi $AppRole)",
+            "REVOKE CONNECT ON DATABASE $(& $qi $DbName) FROM PUBLIC") 'no other login role of this server can open the HR database')
+    $la = "$($Current['listen_addresses'])"
+    $exposed = @(@($la -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not (Test-LoopbackHost $_) })
+    if ($CoLocated) {
+        $items += (& $item 'listen_addresses' $la 'localhost' $true ($exposed.Count -gt 0) $true @("ALTER SYSTEM SET listen_addresses = 'localhost'") 'the app and PostgreSQL are on this machine: nothing else needs to reach PostgreSQL over the network')
+    } else {
+        $items += (& $item 'listen_addresses' $la 'localhost' $false $false $true @() 'not offered: the app reaches PostgreSQL through a non-loopback address (PgHost), so PostgreSQL must keep listening on the network')
+    }
+    return $items
+}
+# Created by us -> applied; -ApplyPgHardening -> applied; console -> asked; else report only.
+function Resolve-PgHardeningConsent([bool]$CreatedByUs, [bool]$Switch, [bool]$CanAsk, [scriptblock]$Ask) {
+    if ($CreatedByUs) { return [pscustomobject]@{ Granted = $true; Mode = 'created' } }
+    if ($Switch) { return [pscustomobject]@{ Granted = $true; Mode = 'switch' } }
+    if (-not $CanAsk) { return [pscustomobject]@{ Granted = $false; Mode = 'unattended' } }
+    $ans = ''
+    try { $ans = "$(& $Ask)" } catch { $ans = '' }
+    if (Test-YesAnswer $ans) { return [pscustomobject]@{ Granted = $true; Mode = 'interactive' } }
+    return [pscustomobject]@{ Granted = $false; Mode = 'declined' }
+}
+# Applies each needed item on its own (a refused ALTER SYSTEM on a managed server
+# must not hide that the REVOKE worked) and sets Status: OK | APPLIED | FAILED |
+# TO DO | NOT OFFERED. $RunSql {param($sql)} -> @{ Code; Out } (psql via stdin).
+function Invoke-PgHardening($Items, [bool]$Granted, [scriptblock]$RunSql) {
+    $reload = $false
+    foreach ($it in @($Items)) {
+        if (-not $it.Offered) { $it.Status = 'NOT OFFERED'; continue }
+        if (-not $it.Needed) { $it.Status = 'OK'; continue }
+        if (-not $Granted) { $it.Status = 'TO DO'; continue }
+        $r = & $RunSql ((@($it.Sql) -join ";`n") + ';')
+        # A reloadable ALTER SYSTEM setting (log_*) needs pg_reload_conf(); GRANT /
+        # REVOKE act at once; listen_addresses needs a restart, not a reload.
+        if ($r -and $r.Code -eq 0) { $it.Status = 'APPLIED'; if ($it.Key -like 'log_*') { $reload = $true } }
+        else { $it.Status = 'FAILED'; $it.Error = "$(if ($r) { $r.Out })".Trim() }
+    }
+    if ($reload) { [void](& $RunSql 'SELECT pg_reload_conf();') }
+    return @($Items)
+}
+function Get-PgHardeningReport($Items, $HbaTrust, [string]$HbaFile, [string]$ConsentMode, [bool]$CreatedByUs, [string]$Target) {
+    $l = @()
+    $l += "PostgreSQL hardening report - server $Target, created by this installer: $(if ($CreatedByUs) { 'yes' } else { 'no' }), decision: $ConsentMode"
+    foreach ($it in @($Items)) {
+        $st = if ($it.Status) { $it.Status } else { '?' }
+        $line = '  [{0}] {1}: {2}' -f $st, $it.Key, $(if ($it.Current) { $it.Current } else { '(empty)' })
+        if ($st -in @('APPLIED', 'TO DO', 'FAILED')) { $line += " -> $($it.Recommended)" }
+        $line += " ($($it.Note))"
+        if ($st -eq 'FAILED' -and $it.Error) { $line += " - $($it.Error)" }
+        $l += $line
+    }
+    if ($null -eq $HbaTrust) { $l += '  [NOT CHECKED] pg_hba.conf trust entries (neither the file nor pg_hba_file_rules could be read)' }
+    elseif (@($HbaTrust).Count) {
+        $l += "  [TO DO] pg_hba.conf ($HbaFile): $(@($HbaTrust).Count) 'trust' entr$(if (@($HbaTrust).Count -eq 1) { 'y' } else { 'ies' }) - replace with scram-sha-256 and reload (never changed by Setup):"
+        foreach ($h in @($HbaTrust)) { $l += "      $h" }
+    } else { $l += '  [OK] pg_hba.conf: no trust entries' }
+    $todo = @(@($Items) | Where-Object { $_.Status -eq 'TO DO' }).Count
+    if ($todo -and $ConsentMode -in @('unattended', 'declined')) {
+        $l += "  $todo recommendation(s) not applied: re-run with -ApplyPgHardening (or answer Y at the console) to apply them."
+    }
+    return $l
 }
 
 $pgCandidates = New-Object System.Collections.Generic.List[string]
@@ -1709,13 +2466,37 @@ if (-not $pgConnected) {
     # a distinct supplied password -> ask, and abort silently when nobody answers.
     $distinctSupplied = $PgSuperPassword -and ($PgSuperPassword -ne $cfg.StandardPgSuperPassword)
     $armReset = $isLocalPg -and $cfg.StandardPgSuperPassword
+    $trustConsented = $false
     if ($armReset -and $distinctSupplied) {
         Log 'A postgres password was SUPPLIED and it does not work. The automatic reset of the postgres password is NOT armed for a supplied value (a mistyped password must not overwrite the real one).' 'WARN'
         $ans = ''
         try { $ans = Read-Host "  Type RESET to replace the postgres password with the standard appliance value anyway (anything else: keep the current password)" } catch { $ans = '' }
         $armReset = ($ans -eq 'RESET')
-        if ($armReset) { Log 'Operator confirmed the postgres password reset.' 'WARN' }
+        if ($armReset) { Log 'Operator confirmed the postgres password reset.' 'WARN'; $trustConsented = $true; Write-TrustWindowAudit 'CONSENT' 'operator typed RESET at the console' }
         else { Log 'postgres password left untouched (no confirmation).' }
+    }
+    # The reset needs a temporary pg_hba.conf 'trust' window. It is opened only
+    # with -AllowPasswordRecovery or an operator's typed TRUST; an unattended run
+    # stops here with the reason instead of opening it silently.
+    if ($armReset -and -not $trustConsented) {
+        $consent = Resolve-TrustWindowConsent $AllowPasswordRecovery.IsPresent (Test-InteractiveSession) {
+            Write-Host ''
+            Write-Host "  The 'postgres' password of this LOCAL PostgreSQL is unknown. Setup can reset it to the" -ForegroundColor Yellow
+            Write-Host "  standard appliance value by opening a temporary pg_hba.conf 'trust' window (~10 s," -ForegroundColor Yellow
+            Write-Host "  loopback only, database/user postgres only); pg_hba.conf is restored right after." -ForegroundColor Yellow
+            Read-Host "  Type TRUST to allow it (anything else: do not touch pg_hba.conf)"
+        }
+        switch ($consent.Mode) {
+            'switch'      { Write-TrustWindowAudit 'CONSENT' 'operator passed -AllowPasswordRecovery' }
+            'interactive' { Write-TrustWindowAudit 'CONSENT' 'operator typed TRUST at the console' }
+            'declined'    { Write-TrustWindowAudit 'REFUSED' 'operator did not type TRUST - pg_hba.conf left untouched' }
+            'unattended'  {
+                Write-TrustWindowAudit 'REFUSED' 'unattended run without -AllowPasswordRecovery - pg_hba.conf left untouched'
+                Fail ("Cannot authenticate as 'postgres' on the LOCAL PostgreSQL and this run is UNATTENDED. Recovering the password needs a temporary pg_hba.conf 'trust' window (~10 s, loopback only), which is never opened silently. " +
+                      "Either supply the current password (SETUP_PG_SUPER_PASSWORD environment variable or -PgSuperPassword), or re-run with -AllowPasswordRecovery to allow the recovery (it is logged in %ProgramData%\IDevelop\logs\pg-trust-window.log), or run Setup interactively to be asked.")
+            }
+        }
+        $armReset = $consent.Granted
     }
     if ($armReset) {
         if (Reset-PgSuperViaTrust $cfg.StandardPgSuperPassword) {
@@ -1751,6 +2532,36 @@ Log "Connected. $pgVer" 'OK'
 $pgServerMajor = 0
 if ($pgVer -match 'PostgreSQL (\d+)') { $pgServerMajor = [int]$Matches[1] }
 
+# Warn LOUDLY about 'trust' authentication (read-only; never changed). Not Psql:
+# that one Fail()s the step, and a diagnostic must never fail the run.
+function Get-PsqlText([string]$db, [string]$sql) {
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try {
+        $o = & $psql -h $cfg.PgHost -p $cfg.PgPort -U postgres -d $db -t -A -c $sql 2>$null
+        if ($LASTEXITCODE -ne 0) { return $null }
+        return ($o | Out-String).Trim()
+    } finally { $ErrorActionPreference = $prevEAP }
+}
+$script:PgHbaTrust = $null; $script:PgHbaFile = $null   # $null = not checked
+try {
+    $hbaTrust = @()
+    $hbaFile = Get-PsqlText 'postgres' 'SHOW hba_file'
+    if ($isLocalPg -and $hbaFile -and (Test-Path -LiteralPath $hbaFile)) {
+        $hbaTrust = Get-PgHbaTrustLines ([System.IO.File]::ReadAllText($hbaFile))
+        $hbaTrust = @($hbaTrust | ForEach-Object { "line $($_.Line): $($_.Text)" })
+    } elseif ($pgServerMajor -ge 10) {
+        $rows = Get-PsqlText 'postgres' "SELECT line_number || ': ' || type || ' ' || array_to_string(database, ',') || ' ' || array_to_string(user_name, ',') || ' ' || coalesce(address, '') FROM pg_hba_file_rules WHERE auth_method = 'trust'"
+        $hbaTrust = @(("$rows" -split "`r?`n") | Where-Object { $_.Trim() } | ForEach-Object { "line $_" })
+    }
+    $script:PgHbaTrust = @($hbaTrust); $script:PgHbaFile = $hbaFile
+    if ($hbaTrust.Count) {
+        Log "SECURITY: pg_hba.conf ($hbaFile) has $($hbaTrust.Count) 'trust' entr$(if ($hbaTrust.Count -eq 1) { 'y' } else { 'ies' }) - anyone reaching those addresses logs in to PostgreSQL WITHOUT a password, as any role, including the HR database. Replace 'trust' with 'scram-sha-256' and reload PostgreSQL (Setup does not change a server's authentication itself):" 'WARN'
+        foreach ($l in $hbaTrust) { Log "    $l" 'WARN' }
+    } else {
+        Log 'pg_hba.conf: no trust authentication entries.' 'OK'
+    }
+} catch { Log "pg_hba.conf trust check skipped: $($_.Exception.Message)" 'WARN' }
+
 # Standardize the 'postgres' superuser password to the appliance value. We do
 # this AFTER authenticating with the current password, so an existing PG is
 # changed and a fresh PG is re-affirmed. Every deployment then has a known,
@@ -1759,7 +2570,7 @@ if ($pgVer -match 'PostgreSQL (\d+)') { $pgServerMajor = [int]$Matches[1] }
 if ($cfg.ContainsKey('StandardPgSuperPassword') -and $cfg.StandardPgSuperPassword) {
     if ($cfg.PgSuperPassword -ne $cfg.StandardPgSuperPassword) {
         $stdPwLit = $cfg.StandardPgSuperPassword -replace "'", "''"
-        Psql 'postgres' "ALTER ROLE postgres WITH PASSWORD '$stdPwLit'" | Out-Null
+        PsqlSecret 'postgres' "ALTER ROLE postgres WITH PASSWORD '$stdPwLit'" | Out-Null
         $cfg.PgSuperPassword = $cfg.StandardPgSuperPassword
         $env:PGPASSWORD = $cfg.PgSuperPassword
         Log "postgres superuser password set to the standard appliance value." 'OK'
@@ -1772,10 +2583,10 @@ if ($cfg.ContainsKey('StandardPgSuperPassword') -and $cfg.StandardPgSuperPasswor
 $dbPwLit = $cfg.DbPassword -replace "'", "''"
 $roleExists = Psql 'postgres' "SELECT 1 FROM pg_roles WHERE rolname='$($cfg.DbUser)'"
 if ($roleExists -ne '1') {
-    Psql 'postgres' "CREATE ROLE ""$($cfg.DbUser)"" LOGIN PASSWORD '$dbPwLit'" | Out-Null
+    PsqlSecret 'postgres' "CREATE ROLE ""$($cfg.DbUser)"" LOGIN PASSWORD '$dbPwLit'" | Out-Null
     Log "Created DB role '$($cfg.DbUser)'." 'OK'
 } else {
-    Psql 'postgres' "ALTER ROLE ""$($cfg.DbUser)"" LOGIN PASSWORD '$dbPwLit'" | Out-Null
+    PsqlSecret 'postgres' "ALTER ROLE ""$($cfg.DbUser)"" LOGIN PASSWORD '$dbPwLit'" | Out-Null
     Log "DB role '$($cfg.DbUser)' exists - password reset." 'OK'
 }
 
@@ -1807,6 +2618,65 @@ Psql $cfg.DbName "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ""$($cfg.DbUser
 Psql $cfg.DbName "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ""$($cfg.DbUser)""" | Out-Null
 Psql $cfg.DbName "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ""$($cfg.DbUser)""" | Out-Null
 Log "Extensions + privileges applied (server major $pgServerMajor)." 'OK'
+
+# Recommended PostgreSQL hardening + its report. Never fatal.
+$script:PgHardeningSummary = $null
+try {
+    $pgCur = @{}
+    foreach ($k in @('log_connections', 'log_disconnections', 'log_line_prefix', 'listen_addresses')) { $pgCur[$k] = Get-PsqlText 'postgres' "SHOW $k" }
+    $dbLit = $cfg.DbName -replace "'", "''"
+    $pubConnect = ((Get-PsqlText 'postgres' "SELECT has_database_privilege('public', '$dbLit', 'CONNECT')::int") -eq '1')
+    $coLocated = Test-LoopbackHost $cfg.PgHost
+    $pgItems = Get-PgHardeningPlan $pgCur $pubConnect $coLocated $cfg.DbName $cfg.DbUser
+    $pgNeeded = @($pgItems | Where-Object { $_.Needed })
+    if ($pgNeeded.Count -and -not $script:PgCreatedByUs) {
+        Log "PostgreSQL at $($cfg.PgHost):$($cfg.PgPort) was NOT created by this installer and $($pgNeeded.Count) recommended hardening setting(s) are missing: $(($pgNeeded | ForEach-Object { $_.Key }) -join ', '). Setup never changes a server it did not create without your consent." 'WARN'
+    }
+    $pgConsent = if ($pgNeeded.Count) {
+        Resolve-PgHardeningConsent $script:PgCreatedByUs $ApplyPgHardening.IsPresent (Test-CanAsk) {
+            foreach ($it in $pgNeeded) { Write-Host ("    - {0}: {1} -> {2}{3}" -f $it.Key, $(if ($it.Current) { $it.Current } else { '(empty)' }), $it.Recommended, $(if ($it.Restart) { ' (effective at the next PostgreSQL restart)' } else { '' })) -ForegroundColor Yellow }
+            $qh = 'Apply the recommended PostgreSQL hardening listed above?'
+            Log "QUESTION (answer in the setup CONSOLE window): $qh" 'STEP'
+            Read-Host "  $qh [Y/N]"
+        }
+    } else { [pscustomobject]@{ Granted = $false; Mode = 'nothing to apply' } }
+    $runSql = { param($sql) Invoke-PsqlStdin $psql @('-h', $cfg.PgHost, '-p', "$($cfg.PgPort)", '-U', 'postgres', '-d', 'postgres', '-t', '-A', '-v', 'ON_ERROR_STOP=1', '-f', '-') $sql }
+    $pgItems = Invoke-PgHardening $pgItems $pgConsent.Granted $runSql
+    $listenItem = $pgItems | Where-Object { $_.Key -eq 'listen_addresses' -and $_.Status -eq 'APPLIED' } | Select-Object -First 1
+    if ($listenItem) {
+        # A server we created is ours to restart now; any other one restarts in its
+        # owner's maintenance window (the setting waits in postgresql.auto.conf).
+        $pgSvc = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Running' } | Select-Object -First 1
+        if ($script:PgCreatedByUs -and $pgSvc) {
+            try {
+                Restart-Service -Name $pgSvc.Name -Force -ErrorAction Stop
+                $up = $false
+                for ($i = 0; $i -lt 30 -and -not $up; $i++) { Start-Sleep -Seconds 1; $up = (Test-PgProbe $cfg.PgSuperPassword).ok }
+                $env:PGPASSWORD = $cfg.PgSuperPassword
+                $listenItem.Status = if ($up) { 'APPLIED' } else { 'FAILED' }
+                $listenItem.Note += $(if ($up) { ' - PostgreSQL restarted' } else { ' - PostgreSQL did not answer after its restart' })
+            } catch { $listenItem.Note += " - restart failed: $($_.Exception.Message)" }
+        } else {
+            $listenItem.Note += ' - effective at the NEXT PostgreSQL restart (not restarted by Setup)'
+        }
+    }
+    $pgReport = Get-PgHardeningReport $pgItems $script:PgHbaTrust $script:PgHbaFile $pgConsent.Mode $script:PgCreatedByUs "$($cfg.PgHost):$($cfg.PgPort)"
+    foreach ($line in $pgReport) {
+        $lvl = if ($line -match '^\s+\[(TO DO|FAILED)\]') { 'WARN' } elseif ($line -match '^\s+\[APPLIED\]') { 'OK' } else { 'INFO' }
+        Log $line $lvl
+    }
+    $cnt = { param($s) @($pgItems | Where-Object { $_.Status -eq $s }).Count }
+    $script:PgHardeningSummary = "{0} applied, {1} to do, {2} failed, {3} already OK; pg_hba trust entries: {4}" -f (& $cnt 'APPLIED'), (& $cnt 'TO DO'), (& $cnt 'FAILED'), (& $cnt 'OK'), $(if ($null -eq $script:PgHbaTrust) { 'not checked' } else { @($script:PgHbaTrust).Count })
+} catch { Log "PostgreSQL hardening check skipped: $($_.Exception.Message)" 'WARN' }
+
+# Is the audit trail ALREADY separated in this database? Read before the ownership
+# reconcile below hands the tables back to the app role for the migration pass
+# (the plan then keeps an upgrade in the state it was in).
+$script:AuditSeparatedNow = $false
+try {
+    $aoN = Get-PsqlText $cfg.DbName "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tableowner IN ('$($script:AuditOwnerRole)', '$($script:LegacyAuditOwnerRole)')"
+    $script:AuditSeparatedNow = ("$aoN".Trim() -match '^\d+$') -and ([int]"$aoN".Trim() -gt 0)
+} catch { $script:AuditSeparatedNow = $false }
 
 # ---------------------------------------------------------------------------
 # STEP 4b - Import bundled data snapshot (full DB)
@@ -1954,6 +2824,64 @@ Log 'STEP 5/7 - Deploy application' 'STEP'
 $payload = Join-Path $ScriptRoot 'app'
 if (-not (Test-Path (Join-Path $payload 'server.js'))) { Fail "Application payload not found at $payload (expected an 'app' folder beside this script)." }
 
+# PACKAGE INTEGRITY: the payload is VERIFIED against app\release-manifest.sha256
+# (written by Build-Package: the SHA-256 of every shipped file) BEFORE anything
+# is stopped or copied. A file altered, missing or added since the build stops
+# the install (fail closed) and every difference is listed: a tampered or
+# half-extracted package never reaches Program Files. (Authenticode signing of
+# the exe / zip is the next step: it needs a code-signing certificate.)
+function Read-ReleaseManifest([string]$Path) {
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $null }
+    $known = @{}; $ver = ''
+    foreach ($line in [System.IO.File]::ReadAllLines($Path)) {
+        if ($line -match '^#.*\bversion=(\S+)') { $ver = $Matches[1]; continue }
+        if ($line -match '^([0-9a-fA-F]{64})\s+\*?(.+)$') {
+            $rel = ($Matches[2].Trim() -replace '/', '\').TrimStart('\')
+            if ($rel) { $known[$rel.ToLowerInvariant()] = @{ Hash = $Matches[1].ToLowerInvariant(); Rel = $rel } }
+        }
+    }
+    if (-not $known.Count) { return $null }
+    return [pscustomobject]@{ Version = $ver; Known = $known }
+}
+function Test-PayloadManifest([string]$PayloadDir) {
+    $res = [pscustomobject]@{ Present = $false; Version = ''; Count = 0; Mismatch = @(); Missing = @(); Extra = @() }
+    $mf = Read-ReleaseManifest (Join-Path $PayloadDir 'release-manifest.sha256')
+    if (-not $mf) { return $res }
+    $res.Present = $true; $res.Version = $mf.Version; $res.Count = $mf.Known.Count
+    $root = [IO.Path]::GetFullPath($PayloadDir).TrimEnd('\')
+    $seen = @{}
+    $mm = New-Object System.Collections.Generic.List[string]
+    $ex = New-Object System.Collections.Generic.List[string]
+    foreach ($f in @(Get-ChildItem -LiteralPath $root -Recurse -File -Force -ErrorAction SilentlyContinue)) {
+        $rel = $f.FullName.Substring($root.Length + 1)
+        $low = $rel.ToLowerInvariant()
+        if ($low -eq 'release-manifest.sha256') { continue }
+        # Explorer's own metadata (thumbnail caches, folder settings) appears as
+        # soon as someone browses the extracted folder: not code, not refused.
+        if (-not $mf.Known.ContainsKey($low) -and $f.Name -in @('Thumbs.db', 'ehthumbs.db', 'desktop.ini', '.DS_Store')) { continue }
+        if (-not $mf.Known.ContainsKey($low)) { $ex.Add($rel); continue }
+        $seen[$low] = $true
+        $h = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($h -ne $mf.Known[$low].Hash) { $mm.Add($rel) }
+    }
+    $res.Mismatch = @($mm | Sort-Object)
+    $res.Extra = @($ex | Sort-Object)
+    $res.Missing = @($mf.Known.Keys | Where-Object { -not $seen.ContainsKey($_) } | ForEach-Object { $mf.Known[$_].Rel } | Sort-Object)
+    return $res
+}
+$pv = Test-PayloadManifest $payload
+if (-not $pv.Present) {
+    Fail "Package integrity: app\release-manifest.sha256 is missing - this package cannot be verified and is refused. Use the complete package produced by Build-Package.ps1 (the manifest is written there)."
+}
+$pvBad = @($pv.Mismatch).Count + @($pv.Missing).Count + @($pv.Extra).Count
+if ($pvBad -gt 0) {
+    foreach ($x in @($pv.Mismatch)) { Log "    ALTERED (SHA-256 differs from the manifest): $x" 'ERROR' }
+    foreach ($x in @($pv.Missing))  { Log "    MISSING (listed in the manifest): $x" 'ERROR' }
+    foreach ($x in @($pv.Extra))    { Log "    NOT IN THE MANIFEST (added after the build): $x" 'ERROR' }
+    Fail "Package integrity check FAILED: $(@($pv.Mismatch).Count) altered, $(@($pv.Missing).Count) missing, $(@($pv.Extra).Count) added file(s) against release-manifest.sha256 $($pv.Version) - nothing was stopped or copied. Re-extract the original package (or rebuild it) and run Setup again."
+}
+Log "Package integrity: $($pv.Count) file(s) match release-manifest.sha256 $($pv.Version) (SHA-256)." 'OK'
+
 # Stop a previous host so files aren't locked (upgrade). Handle BOTH hosting modes —
 # a real Windows service (the Auto/Service default) AND a Scheduled Task — otherwise a
 # service-hosted node.exe keeps node_modules/files locked during the robocopy/npm step.
@@ -1979,7 +2907,7 @@ if (Test-Path $existingEnv) {
         # notifications, Redis, ClamAV, proxy/cookie tuning) so regenerating a
         # broken .env doesn't silently drop them.
         $carryOverEnv = ((Get-Content $existingEnv) |
-            Where-Object { $_ -match '^\s*(SMTP_|REDIS_URL|CLAMD_|TRUST_PROXY|COOKIE_SECURE|PG_POOL_MAX|LOG_LEVEL|APP_BASE_URL)\S*\s*=' }) -join "`r`n"
+            Where-Object { $_ -match '^\s*(SMTP_|REDIS_URL|CLAMD_|REQUIRE_MALWARE_SCAN|TRUST_PROXY|COOKIE_SECURE|PG_POOL_MAX|LOG_LEVEL|APP_BASE_URL)\S*\s*=' }) -join "`r`n"
         if ($carryOverEnv) { Log 'Carrying over custom SMTP / Redis / ClamAV settings from the old .env into the regenerated one.' }
     }
 }
@@ -1987,14 +2915,40 @@ if (Test-Path $existingEnv) {
 # Back up the CURRENT app code before overlaying the new version so a patch /
 # upgrade can be rolled back. Excludes node_modules/logs/tmp/data (large or
 # re-creatable); the preserved .env IS included for a complete restore point.
+# uploads and backups are not code and an upgrade never touches them: copying
+# them on every run grew app-backups without limit, and a code rollback must
+# never put older evidence files back over newer ones.
 if ($priorInstallDir) {
     $bkVer = if ($script:OldVersion) { $script:OldVersion } else { 'prev' }
     $backupDir = Join-Path (Join-Path $LogDir 'app-backups') ("app-$bkVer-$stamp")
     New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-    $bxd = @('node_modules', 'logs', 'tmp', 'data', 'coverage', 'certs') | ForEach-Object { Join-Path $cfg.InstallDir $_ }
+    $bxd = @('node_modules', 'logs', 'tmp', 'data', 'coverage', 'certs', 'uploads', 'backups') | ForEach-Object { Join-Path $cfg.InstallDir $_ }
     robocopy $cfg.InstallDir $backupDir /E /XD $bxd /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { Log "Pre-upgrade backup hit a copy error (robocopy exit $LASTEXITCODE) - continuing." 'WARN' }
     else { Log "Previous app code backed up to: $backupDir" 'OK'; Log '  (rollback: stop the service, copy this folder back over the install dir, restart the service)'; $script:BackupDir = $backupDir }
+    # Keep the newest AppBackupKeep code copies (config.psd1, default 5; 0 = keep
+    # all). Only superseded app-<version>-<stamp> CODE copies are removed: never a
+    # retired-* folder (-EnforceManifest), never the copy just taken (the rollback
+    # source of this run), never a restore point or a database dump. Each removal
+    # is logged by name.
+    try {
+        $keepN = 5
+        if ($cfg.ContainsKey('AppBackupKeep')) { $keepN = [int]$cfg.AppBackupKeep }
+        if ($keepN -gt 0) {
+            $abRoot = Join-Path $LogDir 'app-backups'
+            $old = @(Get-ChildItem -LiteralPath $abRoot -Directory -Filter 'app-*' -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -ne $backupDir } | Sort-Object LastWriteTime -Descending | Select-Object -Skip ([Math]::Max(0, $keepN - 1)))
+            $prunedN = 0
+            foreach ($o in $old) {
+                try { Remove-Item -LiteralPath $o.FullName -Recurse -Force -ErrorAction Stop; $prunedN++; Log "  pruned superseded code copy: $($o.Name)" }
+                catch { Log "  could not prune $($o.Name): $($_.Exception.Message)" 'WARN' }
+            }
+            $script:AppBackupPruned = "kept newest $keepN, pruned $prunedN"
+            if ($prunedN -gt 0) { Log "Code backups: kept the newest $keepN app-* copies, pruned $prunedN older one(s)." 'OK' }
+        } else {
+            $script:AppBackupPruned = 'all kept (AppBackupKeep = 0)'
+        }
+    } catch { Log "Code-backup pruning skipped: $($_.Exception.Message)" 'WARN' }
 }
 
 # APP-ONLY PATCH (-Patch -SkipMigrations) PROMISES "no database change". The
@@ -2115,6 +3069,91 @@ if ((Test-Path -LiteralPath $scriptsLive) -and (Test-Path -LiteralPath $scriptsS
         Log "Removed $removed stale dev-only script(s) from scripts\ - the package ships $($shipped.Count)" 'OK'
     }
 }
+
+# --- RELEASE MANIFEST: DRIFT IN THE INSTALL DIRECTORY ---------------------------
+# Whatever the install dir holds beyond the manifest - outside the customer
+# folders below - is drift: a file an older version shipped, a hand-copied
+# hotfix, a leftover. It is REPORTED (install log + summary); -EnforceManifest
+# MOVES it, never deletes it, to %ProgramData%\IDevelop\app-backups\retired-<stamp>\.
+# Customer folders are never walked: runtime data (uploads, branding, logs,
+# backups, data, tmp, AI_Engine_Docs upload staging, the WinSW service folder,
+# certs), configuration (.env, config), dependencies (node_modules), HRIS drop
+# folders, and HRIS_DROP_ROOT when it lies inside the install dir.
+$script:ManifestName = 'release-manifest.sha256'
+$script:ManifestCustomerDirs = @('uploads', 'branding', 'logs', 'backups', 'config', '.env', 'certs', 'data',
+    'node_modules', 'tmp', 'app-backups', 'service', 'maintenance', 'AI_Engine_Docs', 'hris', 'hris-drop', 'imports')
+$script:ManifestCustomerNested = @('public\uploads', 'public\branding')
+# Relative paths (install-dir case) of files NOT in $Known. Customer folders are
+# never walked: $ExcludeTop by top-level name, $ExcludeNested by relative prefix.
+function Get-ManifestUnknownFiles([string]$InstallDir, [hashtable]$Known, [string[]]$ExcludeTop, [string[]]$ExcludeNested) {
+    $root = [IO.Path]::GetFullPath($InstallDir).TrimEnd('\')
+    $nested = @(@($ExcludeNested) | Where-Object { $_ } | ForEach-Object { ($_ -replace '/', '\').Trim('\').ToLowerInvariant() + '\' })
+    $unknown = New-Object System.Collections.Generic.List[string]
+    foreach ($e in @(Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue)) {
+        if (@($ExcludeTop) -contains $e.Name) { continue }
+        $files = if ($e.PSIsContainer) { @(Get-ChildItem -LiteralPath $e.FullName -Recurse -File -Force -ErrorAction SilentlyContinue) } else { @($e) }
+        foreach ($f in $files) {
+            $rel = $f.FullName.Substring($root.Length + 1)
+            $low = $rel.ToLowerInvariant()
+            if ($Known.ContainsKey($low)) { continue }
+            if (@($nested | Where-Object { $low.StartsWith($_) }).Count) { continue }
+            $unknown.Add($rel)
+        }
+    }
+    # Unrolled on purpose: callers wrap the call in @() (0, 1 or N paths alike).
+    return @($unknown | Sort-Object)
+}
+# -EnforceManifest: MOVE (never delete) each file to $RetiredDir\<same relative
+# path>. Refuses any path that resolves outside the install dir. Returns the count moved.
+function Move-ManifestUnknownFiles([string]$InstallDir, [string[]]$RelPaths, [string]$RetiredDir) {
+    $root = [IO.Path]::GetFullPath($InstallDir).TrimEnd('\') + '\'
+    $moved = 0
+    foreach ($rel in @($RelPaths)) {
+        $src = [IO.Path]::GetFullPath((Join-Path $InstallDir $rel))
+        if (-not $src.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { Log "Refusing to move a path outside the install directory: $rel" 'WARN'; continue }
+        if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { continue }
+        try {
+            $dest = Join-Path $RetiredDir $rel
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+            Move-Item -LiteralPath $src -Destination $dest -Force -ErrorAction Stop
+            $moved++
+            Log "Moved out of the install directory (not in the release manifest): $rel -> $dest" 'OK'
+        } catch { Log "COULD NOT move $rel out of the install directory: $($_.Exception.Message)" 'WARN' }
+    }
+    return $moved
+}
+$script:ManifestSummary = $null
+try {
+    $mf = Read-ReleaseManifest (Join-Path $payload $script:ManifestName)
+    if (-not $mf) {
+        Log "Release manifest: $($script:ManifestName) is not in this package - unknown-file check skipped." 'WARN'
+    } else {
+        $mf.Known[$script:ManifestName.ToLowerInvariant()] = @{ Hash = 'self'; Rel = $script:ManifestName }
+        $nestedEx = @($script:ManifestCustomerNested)
+        $hrisRoot = Get-HrisDropRoot $cfg.InstallDir
+        if ($hrisRoot) {
+            $instFull = [IO.Path]::GetFullPath($cfg.InstallDir).TrimEnd('\') + '\'
+            try { $hrisFull = [IO.Path]::GetFullPath($hrisRoot) } catch { $hrisFull = '' }
+            if ($hrisFull -and $hrisFull.StartsWith($instFull, [StringComparison]::OrdinalIgnoreCase)) { $nestedEx += $hrisFull.Substring($instFull.Length) }
+        }
+        $unk = @(Get-ManifestUnknownFiles $cfg.InstallDir $mf.Known $script:ManifestCustomerDirs $nestedEx)
+        if ($unk.Count -eq 0) {
+            Log "Release manifest $($mf.Version): the install directory holds exactly the release (customer folders excluded)." 'OK'
+            $script:ManifestSummary = 'no unknown file'
+        } else {
+            Log "Release manifest $($mf.Version): $($unk.Count) file(s) in $($cfg.InstallDir) are NOT part of this release (customer folders $($script:ManifestCustomerDirs -join ', ') excluded):" 'WARN'
+            foreach ($u in $unk) { Log "    unknown: $u" 'WARN' }
+            if ($EnforceManifest) {
+                $retDir = Join-Path (Join-Path $LogDir 'app-backups') ("retired-$stamp")
+                $nMoved = Move-ManifestUnknownFiles $cfg.InstallDir $unk $retDir
+                $script:ManifestSummary = "$nMoved of $($unk.Count) unknown file(s) moved to $retDir (-EnforceManifest)"
+            } else {
+                Log "REPORT ONLY: nothing was moved. Re-run with -EnforceManifest to move these files (never deleted) to $(Join-Path $LogDir 'app-backups')\retired-<stamp>\." 'WARN'
+                $script:ManifestSummary = "$($unk.Count) unknown file(s) reported - -EnforceManifest moves them out"
+            }
+        }
+    }
+} catch { Log "Release manifest check skipped: $($_.Exception.Message)" 'WARN' }
 
 # Resolve the effective HTTP port. The old service (if any) was just stopped, so
 # if the preferred port is STILL occupied it belongs to ANOTHER application -
@@ -2247,6 +3286,12 @@ try {
 # code backups are for SYSTEM + Administrators only - on EVERY mode (fresh
 # install, Repair, Patch, Upgrade, Migrate), so existing appliances are fixed too.
 try {
+    # The service account only READS the install root, so it can no longer create
+    # the folders it writes to: they are created here, before the ACLs are laid.
+    foreach ($wd in @('logs', 'tmp', 'uploads', 'data', 'backups', 'certs', 'AI_Engine_Docs', 'service\logs')) {
+        $wp = Join-Path $cfg.InstallDir $wd
+        if (-not (Test-Path -LiteralPath $wp)) { New-Item -ItemType Directory -Force -Path $wp | Out-Null }
+    }
     $aclBad = Protect-AppDataAcls $LogDir $cfg.InstallDir
     if ($aclBad -gt 0) { Log "ACL hardening: $aclBad target(s) could not be fully restricted - see the WARN lines above." 'WARN' }
     else { Log 'ACL hardening: .env, backups, code backups, restore points and logs are restricted to SYSTEM + Administrators.' 'OK' }
@@ -2270,7 +3315,29 @@ if (($Repair -or $ForceDeps) -and (Test-Path $nmPath)) {
 $npmCommon = @('--omit=dev', '--no-audit', '--no-fund', '--loglevel=error', '--ignore-scripts')
 $hasLock = Test-Path (Join-Path $cfg.InstallDir 'package-lock.json')
 $npmArgs = if ($hasLock) { @('ci') + $npmCommon } else { @('install') + $npmCommon }
-$code = Invoke-Logged -File $npmCmd -Arguments $npmArgs -WorkDir $cfg.InstallDir -EnvVars $childEnv
+# OFFLINE FIRST. The package carries npm-cache\ (every production tarball of the
+# lockfile, stored under its sha512; Build-Package.ps1 step 3a). With it, a
+# server without registry access installs and upgrades, and the service is
+# down for less time. npm still checks each tarball against the lockfile. The
+# registry path below is only the fallback, and the summary says which ran.
+$code = 1
+$script:DepsSource = $null
+$offlineCache = Join-Path $ScriptRoot 'npm-cache'
+if ($hasLock -and (Test-Path -LiteralPath (Join-Path $offlineCache '_cacache'))) {
+    Log "Installing dependencies OFFLINE from the package cache ($offlineCache)..."
+    $code = Invoke-Logged -File $npmCmd -Arguments (@('ci', '--offline', '--cache', $offlineCache) + $npmCommon) -WorkDir $cfg.InstallDir -EnvVars $childEnv
+    if ($code -eq 0) { $script:DepsSource = 'offline (package npm-cache)' }
+    else {
+        Log "Offline npm ci failed (exit $code) - removing the partial node_modules and falling back to the registry..." 'WARN'
+        Remove-Item -Recurse -Force $nmPath -ErrorAction SilentlyContinue
+    }
+} else {
+    Log 'No npm-cache\ in this package - dependencies come from the npm registry.' 'WARN'
+}
+if ($code -ne 0) {
+    $code = Invoke-Logged -File $npmCmd -Arguments $npmArgs -WorkDir $cfg.InstallDir -EnvVars $childEnv
+    if ($code -eq 0) { $script:DepsSource = 'online (npm registry)' }
+}
 # `npm ci` is strict: it fails if node_modules/lockfile are out of sync (common
 # on a partially-installed repair). Fall back to `npm install`, which reconciles.
 if ($code -ne 0 -and $hasLock) {
@@ -2287,7 +3354,8 @@ if ($code -ne 0) {
     $code = Invoke-Logged -File $npmCmd -Arguments (@('install') + $npmCommon) -WorkDir $cfg.InstallDir -EnvVars $childEnv
 }
 if ($code -ne 0) { Fail "npm install failed (exit $code). See the captured output above in $LogFile (common causes: no registry access - point npm at an internal mirror or vendor node_modules; or a package-lock mismatch)." }
-Log 'Dependencies installed.' 'OK'
+if (-not $script:DepsSource) { $script:DepsSource = 'online (npm install fallback)' }
+Log "Dependencies installed ($($script:DepsSource))." 'OK'
 
 # Refresh the self-hosted browser assets (public\vendor\chart.umd.min.js) from the
 # freshly installed node_modules so the served file always matches package.json.
@@ -2371,6 +3439,40 @@ if ($SkipMigrations -and $Patch) {
         if ($pre -eq 2) { Fail 'MIGRATE REFUSED: this database was produced by a NEWER version than this package (see the pre-flight list above). Use a package of that version or newer.' }
         if ($pre -ne 0) { Fail "MIGRATE pre-flight failed (exit $pre). See $LogFile." }
     }
+    # PRE-MIGRATION DUMP (SA-57). On an EXISTING install, an encrypted and verified
+    # pg_dump is taken BEFORE a single migration statement runs
+    # (scripts\pre-upgrade-dump.js: the key and pipeline of the daily backup, then
+    # pg_restore --list on the decrypted stream; nothing clear on disk). It is the
+    # database half of the rollback (docs\ROLLBACK.md): once the new schema is in,
+    # the pre-flight refuses the older package, and the code copy alone cannot go
+    # back. A failed dump STOPS the run here - nothing has changed in the database
+    # yet. -SkipPreMigrationDump is the logged way past it. Never on -Reinstall
+    # (the database is recreated) and never on a fresh install.
+    $script:PreUpgradeDump = $null
+    if ($priorInstallDir -and -not $Reinstall) {
+        if ($SkipPreMigrationDump) {
+            Log 'Pre-migration database dump SKIPPED (-SkipPreMigrationDump): after these migrations the only way back is your own verified backup.' 'WARN'
+            $script:PreUpgradeDump = 'SKIPPED (-SkipPreMigrationDump)'
+        } elseif (-not (Test-Path -LiteralPath (Join-Path $cfg.InstallDir 'scripts\pre-upgrade-dump.js'))) {
+            Fail 'Pre-migration database dump: scripts\pre-upgrade-dump.js is missing from the install directory - NO migration was applied. Use the complete package produced by Build-Package.ps1, or pass -SkipPreMigrationDump if you hold your own verified backup.'
+        } else {
+            $dumpDir = Join-Path $LogDir 'backups'
+            New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+            Log "Taking the encrypted pre-migration database dump into $dumpDir ..." 'STEP'
+            $fromV = if ($script:OldVersion) { $script:OldVersion } else { 'prev' }
+            $toV = if ($script:NewVersion) { $script:NewVersion } else { 'new' }
+            $dumpEnv = $childEnv.Clone()
+            # The pg_dump beside the psql this run uses (same client major); the
+            # verification then picks the pg_restore next to it.
+            $pgDumpExe = if ($pgBin) { Join-Path $pgBin 'pg_dump.exe' } else { '' }
+            if ($pgDumpExe -and (Test-Path -LiteralPath $pgDumpExe)) { $dumpEnv['PG_DUMP_PATH'] = $pgDumpExe }
+            $dcode = Invoke-Logged -File $nodeExe -Arguments @('scripts\pre-upgrade-dump.js', '--from', $fromV, '--to', $toV, '--out-dir', $dumpDir) -WorkDir $cfg.InstallDir -EnvVars $dumpEnv
+            if ($dcode -ne 0) { Fail "Pre-migration database dump FAILED (exit $dcode) - NO migration was applied, the database is unchanged. Fix the cause shown above (backup key, pg_dump, disk space) and run Setup again, or pass -SkipPreMigrationDump if you hold your own verified backup." }
+            $script:PreUpgradeDump = Get-ChildItem -LiteralPath $dumpDir -File -Filter 'pre-upgrade-*.dump.enc' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+            Log "Pre-migration dump verified: $($script:PreUpgradeDump)" 'OK'
+            Log '  (rollback: docs\ROLLBACK.md in the package - restore this dump, then the code copy app-backups\app-<old>-<stamp>)'
+        }
+    }
     Log 'Applying database migrations...'
     $code = Invoke-Logged -File $npmCmd -Arguments @('run', 'db:migrate:all') -WorkDir $cfg.InstallDir -EnvVars $childEnv
     if ($code -ne 0) { Fail "Migrations failed (exit $code). The full SQL error is captured above in $LogFile." }
@@ -2422,7 +3524,10 @@ if ($freshDb -or $dataImported) {
         $script:adminPw = New-Secret 9   # 18 hex chars
     }
     if ($script:adminPw) {
-        $code = Invoke-Logged -File $nodeExe -Arguments @('scripts\set-admin-password.js', $script:adminPw) -WorkDir $cfg.InstallDir -EnvVars $childEnv -RedactArgs @(1)
+        # In the child's ENVIRONMENT, never on its command line (the process list
+        # is readable by every local user); Invoke-Logged removes it right after.
+        $pwEnv = @{} + $childEnv; $pwEnv['SET_ADMIN_PASSWORD'] = $script:adminPw
+        $code = Invoke-Logged -File $nodeExe -Arguments @('scripts\set-admin-password.js') -WorkDir $cfg.InstallDir -EnvVars $pwEnv
         if ($code -ne 0) {
             Log "Could not set the admin password (exit $code). The database's own admin credential still applies (seed output above, or the imported snapshot)." 'WARN'
             $script:adminPw = $null; $script:adminPwStandard = $false
@@ -2435,13 +3540,30 @@ if ($freshDb -or $dataImported) {
 }
 
 # S-06: audit-trail ownership, AFTER migrations + seed (they need the app role to
-# own everything; the reconcile above handed it back). Opt-in, never fatal.
-if ($cfg.ContainsKey('AuditOwnerSeparation') -and $cfg.AuditOwnerSeparation -eq $true) {
+# own everything; the reconcile above handed it back). Never fatal. OFF by default
+# for a new install; an upgrade keeps the state the database was in (read before
+# the reconcile) and is offered the switch (-EnableAuditOwnerSeparation, or a
+# 'yes' at the console).
+$aoCfg = if ($cfg.ContainsKey('AuditOwnerSeparation')) { $cfg.AuditOwnerSeparation } else { 'Auto' }
+$aoFresh = (-not $priorAny) -or $freshDb -or $dataImported
+$script:AuditPlan = Resolve-AuditOwnerPlan $aoCfg $aoFresh $script:AuditSeparatedNow $EnableAuditOwnerSeparation.IsPresent
+Log "Audit-trail ownership: $($script:AuditPlan.Reason)."
+if ($script:AuditPlan.Recommend) {
+    Log "AVAILABLE: audit-trail ownership separation - the append-only tables and their guard triggers owned by the NOLOGIN role '$($script:AuditOwnerRole)'; '$($cfg.DbUser)' keeps SELECT + INSERT, so a stolen DATABASE_URL cannot rewrite history. While it is on, four SuperAdmin tools are refused (Danger-Zone cleanup, data reset, snapshot restore, SQL-console revert). Re-run with -EnableAuditOwnerSeparation to turn it on."
+    # Asked on an upgrade only: a new install keeps the default without a question.
+    if (-not $aoFresh -and (Test-CanAsk)) {
+        if (Read-OperatorYes 'Separate the audit-trail ownership now (the four SuperAdmin tools above are then refused)?') {
+            $script:AuditPlan = Resolve-AuditOwnerPlan $aoCfg $aoFresh $script:AuditSeparatedNow $true
+            Log 'Operator accepted the audit-trail ownership separation.' 'OK'
+        } else { Log 'Audit-trail ownership left with the app role (operator declined).' }
+    }
+}
+if ($script:AuditPlan.On) {
     # Not PsqlFile: that one Fails the step, and this must never fail the run.
     $aoFile = Join-Path $env:TEMP 'idevelop-audit-owner.sql'
     $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     try {
-        Set-Content -LiteralPath $aoFile -Value (Get-AuditOwnerSql $script:AuditOwnerRole $cfg.DbUser) -Encoding UTF8
+        Set-Content -LiteralPath $aoFile -Value (Get-AuditOwnerSql $script:AuditOwnerRole $cfg.DbUser $script:LegacyAuditOwnerRole) -Encoding UTF8
         $aoOut = & $psql -h $cfg.PgHost -p $cfg.PgPort -U postgres -d $cfg.DbName -t -A -v ON_ERROR_STOP=1 -f $aoFile 2>&1
         $aoRc = $LASTEXITCODE
         $aoTxt = Hide-Secrets (($aoOut | Out-String).Trim())
@@ -2451,8 +3573,113 @@ if ($cfg.ContainsKey('AuditOwnerSeparation') -and $cfg.AuditOwnerSeparation -eq 
     } catch { Log "Audit-trail ownership separation failed: $($_.Exception.Message)" 'WARN' }
     finally { $ErrorActionPreference = $prevEAP; Remove-Item -LiteralPath $aoFile -ErrorAction SilentlyContinue }
 } else {
-    Log "Audit-trail ownership: not separated (config.psd1 AuditOwnerSeparation is off) - '$($cfg.DbUser)' owns the append-only tables."
+    Log "Audit-trail ownership: not separated - '$($cfg.DbUser)' owns the append-only tables."
 }
+
+# THE BACKUP ENCRYPTION KEY (scripts\backup-key.js, docs/BACKUPS.md), run from
+# the install dir (it reads .env / APP_KEY there):
+#   init              idempotent - creates the key ONLY when none exists (never
+#                     regenerates); exit 0; JSON { keyId, protection, keyring, created }
+#   status            exit 0; JSON { keyId, protection, exportedAt }
+#   export --out <f>  the recovery copy, ONCE: exit 0 written; exit 3 already exported
+# Only the parsed flags are logged (created / protection / exportedAt), never the
+# raw output, and never the recovery key itself (it goes to a file).
+# $RunNode {param([string[]]$KeyArgs)} -> @{ Code; Out }; $AskPath {} -> path or
+# $null; $AfterWrite {} -> re-grant the service account on the keyring (the
+# script writes it with a protected DACL: SYSTEM + Administrators + owner).
+# Result: absent | init-failed | <created|existing>/<exported-now|exported-to-server|exported-earlier|NOT-exported|app-key-derived>
+function Invoke-BackupKeyHook([string]$InstallDir, [scriptblock]$RunNode, [scriptblock]$AskPath, [scriptblock]$AfterWrite) {
+    if (-not (Test-Path -LiteralPath (Join-Path $InstallDir 'scripts\backup-key.js'))) {
+        Log 'Backup encryption key: scripts\backup-key.js is not in this package - no key initialised.' 'WARN'
+        return 'absent'
+    }
+    $parse = { param($t) $m = [regex]::Match("$t", '(?s)\{.*\}'); if ($m.Success) { try { $m.Value | ConvertFrom-Json } catch { $null } } }
+    $in = & $RunNode @('init')
+    if ([int]$in.Code -ne 0) { Log "Backup encryption key: init failed (exit $($in.Code)) - the daily backup creates it, or fails and alerts, until it exists." 'WARN'; return 'init-failed' }
+    $ij = & $parse $in.Out
+    $state = if ($ij -and $ij.created -eq $true) { 'created' } else { 'existing' }
+    if ($state -eq 'created') { Log "Backup encryption key created (protection: $(if ($ij.protection) { $ij.protection } else { '?' }))." 'OK' }
+    else { Log 'Backup encryption key: present - kept (init never regenerates an existing key).' 'OK' }
+    if ($AfterWrite) { & $AfterWrite | Out-Null }
+    if ($ij -and $ij.protection -and $ij.protection -ne 'dpapi-localmachine') {
+        Log "Backup encryption key is DERIVED from APP_KEY (protection '$($ij.protection)'): there is no separate recovery key - keep an OFFLINE copy of the APP_KEY line of .env instead, and change APP_KEY only with scripts\rotate-app-key.js." 'WARN'
+        return "$state/app-key-derived"
+    }
+    $sj = & $parse ((& $RunNode @('status')).Out)
+    if ($sj -and $sj.exportedAt) {
+        Log "Backup recovery key: already exported on $($sj.exportedAt) - not shown again."
+        return "$state/exported-earlier"
+    }
+    # Where the ONE export goes: the path the operator types (interactive), else
+    # %ProgramData%\IDevelop\keys\backup-recovery-<keyId>.txt (SYSTEM +
+    # Administrators only, never granted to the service) with a loud WARN to move
+    # it offline. Never inside the install dir (copied into every code backup).
+    $keyTag = if ($ij -and $ij.keyId) { ("$($ij.keyId)" -replace '[^A-Za-z0-9_-]', '_') } else { 'current' }
+    $fallback = Join-Path (Join-Path $LogDir 'keys') "backup-recovery-$keyTag.txt"
+    $cands = @()
+    $dest = & $AskPath
+    if ($dest) {
+        $full = $null
+        try { $full = [IO.Path]::GetFullPath($dest) } catch { $full = $null }
+        $instRoot = [IO.Path]::GetFullPath($InstallDir).TrimEnd('\') + '\'
+        if (-not $full) { Log "Recovery key: '$dest' is not a valid path - written to the server's key folder instead." 'WARN' }
+        elseif ($full.StartsWith($instRoot, [StringComparison]::OrdinalIgnoreCase)) { Log "Recovery key: not inside the install directory ('$full') - written to the server's key folder instead." 'WARN' }
+        else { $cands += $full }
+    }
+    $cands += $fallback
+    foreach ($target in $cands) {
+        try { New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null } catch {}
+        $ex = & $RunNode @('export', '--out', $target)
+        if ($AfterWrite) { & $AfterWrite | Out-Null }   # export stamps exportedAt in the keyring
+        if ([int]$ex.Code -eq 3) { Log 'Backup recovery key: already exported earlier - not shown again.'; return "$state/exported-earlier" }
+        if ([int]$ex.Code -ne 0) { Log "Recovery key export to '$target' failed (exit $($ex.Code); the file must not exist yet)." 'WARN'; continue }
+        if ($target -ne $fallback) {
+            Log "Backup recovery key saved to $target - move it to OFFLINE storage (removable media in a safe) and delete any other copy." 'OK'
+            return "$state/exported-now"
+        }
+        Log "BACKUP RECOVERY KEY WRITTEN TO $target (SYSTEM + Administrators only). MOVE IT TO OFFLINE STORAGE NOW (removable media in a safe) AND DELETE IT FROM THIS SERVER: whoever holds this file and a backup can read the HR data, and without it the backups cannot be restored on another server (backup-key.js import --in <file>)." 'WARN'
+        return "$state/exported-to-server"
+    }
+    Log "RECOVERY KEY NOT EXPORTED YET: as an administrator, from $InstallDir run  node scripts\backup-key.js export --out <removable drive>\idevelop-backup-recovery-key.txt  and keep that file OFFLINE. Without it, encrypted backups cannot be restored on another server." 'WARN'
+    return "$state/NOT-exported"
+}
+
+# Every run (fresh install AND upgrade): 'init' once .env / APP_KEY exist - it
+# creates the key only when there is none and never regenerates one; the
+# recovery-key export is offered until it has been done ONCE. Never fatal.
+$script:BackupKeyResult = $null
+try {
+    $script:BackupKeyResult = Invoke-BackupKeyHook -InstallDir $cfg.InstallDir -RunNode {
+        param([string[]]$KeyArgs)
+        $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        Push-Location $cfg.InstallDir
+        try {
+            $o = & $nodeExe (@('scripts\backup-key.js') + $KeyArgs) 2>&1
+            return [pscustomobject]@{ Code = $LASTEXITCODE; Out = (($o | Out-String).Trim()) }
+        } finally { Pop-Location; $ErrorActionPreference = $prevEAP }
+    } -AfterWrite {
+        # The keyring gets a protected DACL (SYSTEM + Administrators + OWNER RIGHTS)
+        # and its owner is the administrator running Setup: a virtual-account
+        # service must be put on the file itself or every backup is refused.
+        # (A migration still pending does it in Protect-AppDataAcls.) Read on the
+        # keyring ONLY - never on an exported backup-recovery-*.txt.
+        if ($script:ServiceAclSid) {
+            foreach ($kf in @(Get-ChildItem -LiteralPath (Join-Path $LogDir 'keys') -File -Force -Filter 'backup-keyring*.json' -ErrorAction SilentlyContinue)) {
+                if (-not (Set-ServiceSidAce $kf.FullName $false 'Read')) { Log "ACL: could not grant the service account on $($kf.FullName) - backups would be refused under the virtual account." 'WARN' }
+            }
+        }
+    } -AskPath {
+        if (-not (Test-CanAsk)) { return $null }
+        Write-Host ''
+        Write-Host '  BACKUP RECOVERY KEY - written ONCE. Backups are encrypted with a key kept on this server.' -ForegroundColor Yellow
+        Write-Host '  If this server is lost, the backups can only be restored with the recovery key.' -ForegroundColor Yellow
+        Write-Host '  Save it to REMOVABLE media and keep it OFFLINE (a safe), never on this server or a share.' -ForegroundColor Yellow
+        Log 'QUESTION (answer in the setup CONSOLE window): where to save the backup recovery key' 'STEP'
+        $p = ''
+        try { $p = Read-Host '  Full path of the file to write (e.g. E:\idevelop-backup-recovery-key.txt; blank = the server key folder, to move offline yourself)' } catch { $p = '' }
+        return "$p".Trim().Trim('"')
+    }
+} catch { Log "Backup key step skipped: $($_.Exception.Message)" 'WARN' }
 
 # ---------------------------------------------------------------------------
 # STEP 6/7 - Service (Windows service via WinSW, or SYSTEM Scheduled Task)
@@ -2493,6 +3720,18 @@ function Install-MaintenanceTools {
                      'Maintain-IDevelop.ps1', 'Installer-Gui.ps1')) {
         $src = Join-Path $ScriptRoot $f
         if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination $dest -Force }
+    }
+    # The servicing config.psd1 can hold StandardPgSuperPassword and
+    # StandardAdminPassword (Manage -SetPgPassword / -SetAdminPassword read them),
+    # and the install root is readable by every local user. Cut the FILE down to
+    # SYSTEM + Administrators at once, nothing for the service account (the same
+    # rule Protect-AppDataAcls re-applies on every run). The scripts stay
+    # readable: they start unelevated and read the config only once elevated.
+    $mcfg = Join-Path $dest 'config.psd1'
+    if (Test-Path -LiteralPath $mcfg) {
+        $r = Protect-SensitivePath $mcfg 'None'
+        if ($r -like 'FAILED*' -or $r -like 'PARTIAL*') { Log "ACL hardening: $mcfg -> $r - the servicing config stays readable by local users; restrict it by hand." 'WARN' }
+        else { Log "ACL hardening: $mcfg -> $r (SYSTEM + Administrators only)" }
     }
     return $dest
 }
@@ -2628,9 +3867,24 @@ if (-not $SkipFirewall -and ($cfg.OpenFirewall -ne $false)) {
         Log ("Firewall: a network this machine is connected to is classified PUBLIC - the rule is opened on the Public profile too, otherwise the app would be unreachable. Classify that network as Private/Domain (Settings > Network) and re-run a Patch to close it on Public.") 'WARN'
     }
     $fwName = "IDevelop ($($cfg.AppPort))"
+    # Every rule this product owns carries the Group 'IDevelop', and on every run
+    # the rules it owns are ENUMERATED (by group, and by the 'IDevelop*' display
+    # name older versions used): a rule for a port no longer in use (an old
+    # fallback port, a disabled HTTPS port) is removed, an untagged rule for a
+    # current port is re-created tagged.
+    $fwWanted = @($fwName)
+    if ($script:HttpsOn) { $fwWanted += "IDevelop HTTPS ($($script:HttpsPort))" }
+    try {
+        $fwOwned = @(Get-AppFirewallRules)
+        $fwPlan = Get-FirewallRulePlan $fwOwned $fwWanted $script:FirewallGroup
+        foreach ($r in @($fwPlan.Remove)) {
+            try { Remove-NetFirewallRule -Name $r.Name -ErrorAction Stop; Log "Firewall: removed '$($r.DisplayName)' ($($r.Why))." 'OK' }
+            catch { Log "Firewall: could not remove '$($r.DisplayName)': $($_.Exception.Message)" 'WARN' }
+        }
+    } catch { Log "Firewall: rule enumeration skipped ($($_.Exception.Message))." 'WARN' }
     $existingRule = Get-NetFirewallRule -DisplayName $fwName -ErrorAction SilentlyContinue
     if (-not $existingRule) {
-        New-NetFirewallRule -DisplayName $fwName -Direction Inbound -Action Allow `
+        New-NetFirewallRule -DisplayName $fwName -Group $script:FirewallGroup -Direction Inbound -Action Allow `
             -Protocol TCP -LocalPort $cfg.AppPort -Profile $fwProfiles | Out-Null
         Log "Firewall rule added for TCP $($cfg.AppPort) on profile(s): $($fwProfiles -join ', ')." 'OK'
     } else {
@@ -2653,7 +3907,7 @@ if (-not $SkipFirewall -and ($cfg.OpenFirewall -ne $false)) {
         try {
             $tlsRule = Get-NetFirewallRule -DisplayName $fwTls -ErrorAction SilentlyContinue
             if (-not $tlsRule) {
-                New-NetFirewallRule -DisplayName $fwTls -Direction Inbound -Action Allow -Protocol TCP -LocalPort $script:HttpsPort -Profile $fwProfiles -ErrorAction Stop | Out-Null
+                New-NetFirewallRule -DisplayName $fwTls -Group $script:FirewallGroup -Direction Inbound -Action Allow -Protocol TCP -LocalPort $script:HttpsPort -Profile $fwProfiles -ErrorAction Stop | Out-Null
                 Log "Firewall rule added for TCP $($script:HttpsPort) (HTTPS) on profile(s): $($fwProfiles -join ', ')." 'OK'
             } else {
                 foreach ($rule in @($tlsRule)) { Set-NetFirewallRule -Name $rule.Name -Profile $fwProfiles -ErrorAction Stop }
@@ -2682,6 +3936,42 @@ if (-not $NoService) {
         # Fresh install with nothing to roll back to: report clearly, don't fail
         # the whole run (the app may simply still be warming up).
         Log "App not responding on port $($cfg.AppPort) after ~60s. Check the '$($cfg.ServiceName)' task, or run:  cd `"$($cfg.InstallDir)`"; node server.js" 'WARN'
+    }
+}
+
+# LocalSystem -> NT SERVICE\<name>, only now that the upgrade is known healthy on
+# the old account, with its own health check and way back (a failure here
+# reverts the ACCOUNT, never the upgrade that just succeeded).
+if ($script:SvcPlan.Migrate) {
+    if ($NoService -or $script:ServiceKind -ne 'WindowsService') {
+        Log "Service account migration skipped: the app is hosted as '$($script:ServiceKind)', not a Windows service (a Scheduled Task host always runs as SYSTEM)." 'WARN'
+        $script:SvcMigration = [pscustomobject]@{ Result = 'NOT-APPLICABLE'; Steps = @() }
+    } else {
+        Log "Service account migration: LocalSystem -> $($script:SvcPlan.Account) (SID $($script:SvcPlan.Sid))..." 'STEP'
+        $script:SvcMigration = Invoke-ServiceAccountMigration $script:SvcPlan.Sid $script:SvcPlan.Account @{
+            ApplyAcls  = { param($grantSid, $revokeSids) $script:ServiceAclSid = $grantSid; $script:RevokeAclSids = @($revokeSids); return [int](Protect-AppDataAcls $LogDir $cfg.InstallDir) }
+            SetAccount = {
+                param($account)
+                $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+                try { & sc.exe config $cfg.ServiceName obj= $account *> $null } finally { $ErrorActionPreference = $prevEAP }
+                $sn = $null
+                try { $sn = (Get-CimInstance Win32_Service -Filter "Name='$($cfg.ServiceName)'" -ErrorAction Stop).StartName } catch { $sn = $null }
+                return ("$sn" -ieq $account)
+            }
+            Restart    = { try { Restart-Service -Name $cfg.ServiceName -Force -ErrorAction Stop } catch { Log "Service restart: $($_.Exception.Message)" 'WARN' } }
+            Healthy    = { return [bool](Wait-AppHealthy) }
+        }
+        Log "Service account migration steps: $($script:SvcMigration.Steps -join ' > ')"
+        switch ($script:SvcMigration.Result) {
+            'MIGRATED' {
+                Set-ServiceAccountContext ([pscustomobject]@{ Mode = 'Virtual'; Account = $script:SvcPlan.Account; Sid = $script:SvcPlan.Sid; VirtualSid = $script:SvcPlan.VirtualSid; Migrate = $false })
+                Log "Service account: the service now runs as $($script:SvcPlan.Account) and answers its health check." 'OK'
+            }
+            'ROLLED-BACK' { Log 'Service account migration: the service was NOT healthy as the virtual account - put back on LocalSystem, healthy again. The upgrade itself is kept. See the ACL lines above, then retry with -MigrateServiceAccount.' 'WARN' }
+            'ABORTED-ACL' { Log 'Service account migration NOT attempted: a data folder could not be granted to the virtual account (see the ACL WARN lines above). The service stays on LocalSystem.' 'WARN' }
+            'ABORTED-SC'  { Log 'Service account migration NOT attempted: sc.exe could not change the service account. The service stays on LocalSystem.' 'WARN' }
+            default       { Log "Service account migration: the way back to LocalSystem did NOT bring the app up ($($script:SvcMigration.Result)). Check the service '$($cfg.ServiceName)' now: sc.exe qc $($cfg.ServiceName); Restart-Service $($cfg.ServiceName)." 'ERROR' }
+        }
     }
 }
 
@@ -2791,6 +4081,20 @@ finally {
             $sum += "Version       : $ovS -> $nvS"
         }
         if ($script:BackupDir) { $sum += "Code backup   : $($script:BackupDir)" }
+        if ($script:AppBackupPruned) { $sum += "Code backups  : $($script:AppBackupPruned)" }
+        # Least-privilege / hardening / drift outcomes, one line each.
+        if ($script:SvcPlan) {
+            $svcTxt = "$($script:SvcAcct.Account) - $($script:SvcPlan.Reason)"
+            if ($script:SvcMigration) { $svcTxt += " - migration: $($script:SvcMigration.Result)" }
+            elseif ($script:SvcPlan.Recommend) { $svcTxt += ' - RECOMMENDED: -MigrateServiceAccount' }
+            $sum += "Service acct  : $svcTxt"
+        }
+        if ($script:AuditPlan) { $sum += "Audit owner   : $(if ($script:AuditPlan.On) { 'separated' } else { 'not separated' }) - $($script:AuditPlan.Reason)" }
+        if ($script:PgHardeningSummary) { $sum += "PG hardening  : $($script:PgHardeningSummary)" }
+        if ($script:ManifestSummary) { $sum += "Manifest      : $($script:ManifestSummary)" }
+        if ($script:BackupKeyResult) { $sum += "Backup key    : $($script:BackupKeyResult)" }
+        if ($script:PreUpgradeDump) { $sum += "DB dump (pre) : $($script:PreUpgradeDump)" }
+        if ($script:DepsSource) { $sum += "Dependencies  : $($script:DepsSource)" }
         if (-not $script:InstallSucceeded) {
             $sum += "Failed at     : Step $($script:CurrentStep)/$($script:TotalSteps) - $($script:CurrentName)"
         }

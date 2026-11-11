@@ -39,6 +39,7 @@ const C = require('../config/feedback360');
 const Report = require('./Feedback360Report');
 const RBACService = require('./RBACService');
 const GovernanceService = require('./GovernanceService');
+const AuthorityService = require('./AuthorityService');
 const EmployeeModel = require('../models/EmployeeModel');
 
 const MAX_SKILLS = 40;
@@ -152,6 +153,18 @@ function mapSubject(r) {
     };
 }
 
+/** The rung an HR account acts with (AuthorityService naming). */
+function hrRung(user) {
+    return RBACService.isSuperAdmin(user) ? 'superadmin' : 'localadmin';
+}
+
+/** The audit details of an act, with the rung it used when one was noted. */
+function withRung(details, user) {
+    const as = AuthorityService.auditAs(user).replace(' as=', '');
+    if (!as || !details || typeof details !== 'object') return details;
+    return { ...details, as };
+}
+
 class Feedback360Service {
     // ------------------------------------------------------------------
     // Authority
@@ -195,6 +208,10 @@ class Feedback360Service {
             s.round.createdByType === actorType(user) &&
             s.round.createdById != null &&
             Number(s.round.createdById) === Number(user.id);
+        // The rung for the audit line (AuthorityService). A 360° round keeps its
+        // reach in both modes of the authority ladder (a two-party space).
+        if (r.canWrite && (r.isManager || r.isHr))
+            AuthorityService.noteAs(user, s.employeeId, r.isManager ? 'manager' : hrRung(user));
         return r;
     }
 
@@ -203,9 +220,14 @@ class Feedback360Service {
         if (!user || RBACService.isViewer(user)) return false;
         const personId = await GovernanceService.actingPersonId(user);
         if (personId != null && Number(personId) === Number(employeeId)) return false;
-        if (await this._hrCovers(user, employeeId)) return true;
+        if (await this._hrCovers(user, employeeId)) {
+            AuthorityService.noteAs(user, employeeId, hrRung(user));
+            return true;
+        }
         const line = await GovernanceService.lineAuthorityEmployeeIds(user);
-        return line.some((id) => Number(id) === Number(employeeId));
+        const inLine = line.some((id) => Number(id) === Number(employeeId));
+        if (inLine) AuthorityService.noteAs(user, employeeId, 'manager');
+        return inLine;
     }
 
     /** The people a user may launch a round for (id + name), for the form. */
@@ -1121,7 +1143,7 @@ class Feedback360Service {
                     user && user.userType !== 'admin' && user.id != null
                         ? `${user.userType}:${user.id}`
                         : null,
-                details,
+                details: withRung(details, user),
             });
         } catch (_) {
             /* audit best-effort */

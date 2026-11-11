@@ -141,6 +141,17 @@ describe('credentials-sheet contract (OnboardingCredentialService)', () => {
         const updateArg = mockEmployeeModel.update.mock.calls[0][1];
         expect(updateArg.invitedBy).toBe(42);
         expect(updateArg.invitedAt).toBeTruthy();
+        // E-mailed: the person sets the password through the one-time link (SA-37).
+        expect(updateArg.forcePasswordChange).toBe(false);
+    });
+
+    test('sheet path stamps the invitation and forces the first-login change', async () => {
+        wireIssue();
+        mockEmail.send.mockResolvedValue({ sent: false, skipped: 'disabled' });
+        await OCS.issueAndSend(5, { userType: 'admin', id: 42 }, null);
+        const updateArg = mockEmployeeModel.update.mock.calls.at(-1)[1];
+        expect(updateArg.invitedBy).toBe(42);
+        expect(updateArg.invitedAt).toBeTruthy();
         expect(updateArg.forcePasswordChange).toBe(true);
     });
 });

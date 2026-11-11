@@ -359,37 +359,55 @@ const selected = function (arr, id) { return (arr || []).some(function (x) { ret
       <% }); %>
     </select>
   </div>
+  <%# Site, department, service, role and manager: a list of checkboxes under
+      a disclosure (a finger or a glove can tick one; a Ctrl+click multi-select
+      could not). Same field names, so the query string and the server filters
+      are unchanged. %>
+  <% var _n_siteId = (options.sites).filter(function (o) { return selected(filters.siteId, o.id); }).length; %>
   <div>
-    <label for="cyc-site"><%= __('admin:cyc_th_site') %></label>
-    <select id="cyc-site" name="siteId" class="form-control" multiple size="3">
-      <% options.sites.forEach(function (o) { %><option value="<%= o.id %>" <%= selected(filters.siteId, o.id) ? 'selected' : '' %>><%= o.label %></option><% }); %>
-    </select>
+    <details class="cyc-ms" id="cyc-site">
+      <summary class="form-control"><span><%= __('admin:cyc_th_site') %></span><% if (_n_siteId) { %> <span class="badge badge-info" aria-label="<%= __('admin:cyc_ms_count', { n: _n_siteId }) %>"><%= _n_siteId %></span><% } %></summary>
+      <div class="cyc-ms-list" role="group" aria-label="<%= __('admin:cyc_th_site') %>">
+        <% (options.sites).forEach(function (o) { %><label class="cyc-ms-opt"><input type="checkbox" name="siteId" value="<%= o.id %>" <%= selected(filters.siteId, o.id) ? 'checked' : '' %>> <%= o.label %></label><% }); %>
+      </div>
+    </details>
   </div>
+  <% var _n_departmentId = (options.departments).filter(function (o) { return selected(filters.departmentId, o.id); }).length; %>
   <div>
-    <label for="cyc-dept"><%= __('admin:cyc_th_department') %></label>
-    <select id="cyc-dept" name="departmentId" class="form-control" multiple size="3">
-      <% options.departments.forEach(function (o) { %><option value="<%= o.id %>" <%= selected(filters.departmentId, o.id) ? 'selected' : '' %>><%= o.label %></option><% }); %>
-    </select>
+    <details class="cyc-ms" id="cyc-dept">
+      <summary class="form-control"><span><%= __('admin:cyc_th_department') %></span><% if (_n_departmentId) { %> <span class="badge badge-info" aria-label="<%= __('admin:cyc_ms_count', { n: _n_departmentId }) %>"><%= _n_departmentId %></span><% } %></summary>
+      <div class="cyc-ms-list" role="group" aria-label="<%= __('admin:cyc_th_department') %>">
+        <% (options.departments).forEach(function (o) { %><label class="cyc-ms-opt"><input type="checkbox" name="departmentId" value="<%= o.id %>" <%= selected(filters.departmentId, o.id) ? 'checked' : '' %>> <%= o.label %></label><% }); %>
+      </div>
+    </details>
   </div>
+  <% var _n_serviceId = (options.services).filter(function (o) { return selected(filters.serviceId, o.id); }).length; %>
   <div>
-    <label for="cyc-service"><%= __('admin:cyc_th_service') %></label>
-    <select id="cyc-service" name="serviceId" class="form-control" multiple size="3">
-      <% options.services.forEach(function (o) { %><option value="<%= o.id %>" <%= selected(filters.serviceId, o.id) ? 'selected' : '' %>><%= o.label %></option><% }); %>
-    </select>
+    <details class="cyc-ms" id="cyc-service">
+      <summary class="form-control"><span><%= __('admin:cyc_th_service') %></span><% if (_n_serviceId) { %> <span class="badge badge-info" aria-label="<%= __('admin:cyc_ms_count', { n: _n_serviceId }) %>"><%= _n_serviceId %></span><% } %></summary>
+      <div class="cyc-ms-list" role="group" aria-label="<%= __('admin:cyc_th_service') %>">
+        <% (options.services).forEach(function (o) { %><label class="cyc-ms-opt"><input type="checkbox" name="serviceId" value="<%= o.id %>" <%= selected(filters.serviceId, o.id) ? 'checked' : '' %>> <%= o.label %></label><% }); %>
+      </div>
+    </details>
   </div>
+  <% var _n_roleId = (options.roles).filter(function (o) { return selected(filters.roleId, o.id); }).length; %>
   <div>
-    <label for="cyc-role"><%= __('admin:cyc_th_role') %></label>
-    <select id="cyc-role" name="roleId" class="form-control" multiple size="3">
-      <% options.roles.forEach(function (o) { %><option value="<%= o.id %>" <%= selected(filters.roleId, o.id) ? 'selected' : '' %>><%= o.label %></option><% }); %>
-    </select>
+    <details class="cyc-ms" id="cyc-role">
+      <summary class="form-control"><span><%= __('admin:cyc_th_role') %></span><% if (_n_roleId) { %> <span class="badge badge-info" aria-label="<%= __('admin:cyc_ms_count', { n: _n_roleId }) %>"><%= _n_roleId %></span><% } %></summary>
+      <div class="cyc-ms-list" role="group" aria-label="<%= __('admin:cyc_th_role') %>">
+        <% (options.roles).forEach(function (o) { %><label class="cyc-ms-opt"><input type="checkbox" name="roleId" value="<%= o.id %>" <%= selected(filters.roleId, o.id) ? 'checked' : '' %>> <%= o.label %></label><% }); %>
+      </div>
+    </details>
   </div>
+  <% var _n_supervisorId = (options.supervisors.concat(options.adminResponsibles || [])).filter(function (o) { return selected(filters.supervisorId, o.id); }).length + (filters.noSupervisor ? 1 : 0); %>
   <div>
-    <label for="cyc-sup"><%= __('admin:cyc_th_manager') %></label>
-    <select id="cyc-sup" name="supervisorId" class="form-control" multiple size="3">
-      <option value="none" <%= filters.noSupervisor ? 'selected' : '' %>><%= __('admin:cyc_no_manager') %> (<%= options.noSupervisor %>)</option>
-      <% options.supervisors.forEach(function (o) { %><option value="<%= o.id %>" <%= selected(filters.supervisorId, o.id) ? 'selected' : '' %>><%= o.label %></option><% }); %>
-      <% (options.adminResponsibles || []).forEach(function (o) { %><option value="<%= o.id %>" <%= selected(filters.supervisorId, o.id) ? 'selected' : '' %>><%= o.label %></option><% }); %>
-    </select>
+    <details class="cyc-ms" id="cyc-sup">
+      <summary class="form-control"><span><%= __('admin:cyc_th_manager') %></span><% if (_n_supervisorId) { %> <span class="badge badge-info" aria-label="<%= __('admin:cyc_ms_count', { n: _n_supervisorId }) %>"><%= _n_supervisorId %></span><% } %></summary>
+      <div class="cyc-ms-list" role="group" aria-label="<%= __('admin:cyc_th_manager') %>">
+        <label class="cyc-ms-opt"><input type="checkbox" name="supervisorId" value="none" <%= filters.noSupervisor ? 'checked' : '' %>> <%= __('admin:cyc_no_manager') %> (<%= options.noSupervisor %>)</label>
+        <% (options.supervisors.concat(options.adminResponsibles || [])).forEach(function (o) { %><label class="cyc-ms-opt"><input type="checkbox" name="supervisorId" value="<%= o.id %>" <%= selected(filters.supervisorId, o.id) ? 'checked' : '' %>> <%= o.label %></label><% }); %>
+      </div>
+    </details>
   </div>
   <div>
     <label for="cyc-limit"><%= __('admin:cyc_per_page') %></label>
@@ -414,7 +432,10 @@ const selected = function (arr, id) { return (arr || []).some(function (x) { ret
   <span id="cyc-sel-count" class="text-muted"><%= __('admin:cyc_selected_n', { n: 0 }) %></span>
   <% if (canBulkExclude) { %>
     <button type="button" class="btn btn-sm btn-warning" id="cyc-bulk-exclude" disabled><i class="fas fa-user-slash" aria-hidden="true"></i> <%= __('admin:cyc_exclude_selection') %> (<span data-sel-n>0</span>)</button>
-    <button type="button" class="btn btn-sm btn-warning" id="cyc-filter-exclude" <%= roster.total ? '' : 'disabled' %>><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:cyc_exclude_filter', { n: roster.total }) %></button>
+    <%# Excusing a whole filter is offered only while a filter is on (the
+        service refuses it otherwise): with nothing filtered it would excuse
+        the entire campaign in one click. %>
+    <% if (filters.filtered) { %><button type="button" class="btn btn-sm btn-secondary" id="cyc-filter-exclude" <%= roster.total ? '' : 'disabled' %>><i class="fas fa-filter" aria-hidden="true"></i> <%= __('admin:cyc_exclude_filter', { n: roster.total }) %></button><% } %>
   <% } %>
   <% if (canChase) { %>
     <% if (isOpen) { %>
@@ -591,7 +612,7 @@ const selected = function (arr, id) { return (arr || []).some(function (x) { ret
   .cyc-pill[data-s="cancelled"]{background:#7f1d1d}
   .cyc-overdue{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.6em;vertical-align:middle;
                background:rgba(200,81,75,.16);color:#c8514b;font-weight:600}
-  .cyc-tag{display:inline-block;margin-left:.3rem;padding:1px 6px;border-radius:8px;font-size:.7rem;
+  .cyc-tag{display:inline-block;margin-left:.3rem;padding:1px 6px;border-radius:8px;font-size:.75rem;
            background:rgba(180,83,9,.16);color:#b45309}
   .cyc-kpis{display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:.75rem}
   .cyc-kpi{flex:1;min-width:130px;padding:.75rem;text-align:center;text-decoration:none;color:inherit;
@@ -603,13 +624,18 @@ const selected = function (arr, id) { return (arr || []).some(function (x) { ret
   .cyc-k-in_review .cyc-kpi-n{color:#b45309}
   .cyc-k-approved .cyc-kpi-n{color:#0f8a3c}
   .cyc-k-in_progress .cyc-kpi-n{color:#5b8bd0}
-  .cyc-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1.25rem}
+  .cyc-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px, 100%), 1fr));gap:1.25rem}
   .cyc-by{display:inline-flex;gap:.25rem;font-size:.8rem;font-weight:400}
   .cyc-by a{padding:2px 8px;border-radius:10px;background:rgba(127,127,127,.14);text-decoration:none;color:inherit}
   .cyc-by a.on{background:var(--accent,#6656f0);color:#111}
   .cyc-filters{display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;margin:.6rem 0}
   .cyc-filters label{display:block;font-size:.8rem;color:var(--text-muted,#9aa1ac)}
-  .cyc-filters select[multiple]{min-width:150px}
+  .cyc-filters .cyc-ms{position:relative;min-width:170px}
+  .cyc-ms > summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:.4rem;min-height:var(--control-h, 40px)}
+  .cyc-ms > summary::-webkit-details-marker{display:none}
+  .cyc-ms-list{position:absolute;z-index:var(--z-dropdown, 100);min-width:100%;max-height:260px;overflow:auto;background:var(--bg-panel);border:1px solid var(--border-input);border-radius:var(--radius-md, 12px);box-shadow:var(--shadow-md);padding:.35rem}
+  .cyc-filters .cyc-ms-opt{display:flex;align-items:center;gap:.5rem;min-height:44px;padding:0 .5rem;white-space:nowrap;cursor:pointer;font-size:.875rem;color:var(--text-primary)}
+  .cyc-ms-opt:hover{background:var(--brand-subtle)}
   .cyc-bulk{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
   .cyc-bar{display:flex;height:8px;border-radius:6px;overflow:hidden;background:rgba(127,127,127,.18);margin-bottom:.2rem}
   .cyc-seg{display:block;height:100%}

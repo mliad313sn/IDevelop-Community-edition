@@ -178,6 +178,13 @@ class RetentionRiskService {
      * @returns the resulting row (camelCase).
      */
     async computeFor(employeeId, ownerAdminId = null) {
+        // Objection to profiling (GDPR art. 21): a person who objected is never
+        // scored, not by the nightly sweep, not by a single-employee recompute.
+        // The lookup FAILS CLOSED (it throws on anything but an absent table), so
+        // an unreadable objection never turns into a fresh verdict.
+        if (await require('./PrivacyService').isObjecting(employeeId)) {
+            return this.suppressForObjection(employeeId);
+        }
         const s = await this._signals(employeeId);
         const factors = {
             ...s.factors,
@@ -205,6 +212,32 @@ class RetentionRiskService {
                 JSON.stringify(factors),
                 ownerAdminId,
             ]
+        );
+    }
+
+    /**
+     * OBJECTION TO PROFILING (GDPR art. 21). The stored AUTOMATED verdict is
+     * withdrawn: computed bands and score go to NULL and `risk_factors` carries
+     * only `{ profilingObjection: true }`, so every surface reads "not computed:
+     * objection" and never a low or zero score. The previous computed factors are
+     * not kept: storing them would continue the very processing objected to.
+     *
+     * A MANUAL override is a human judgement, not automated profiling: its bands
+     * stay (the automated score and factors still go).
+     *
+     * Only an EXISTING row is touched. Idempotent. Returns the row or null.
+     */
+    async suppressForObjection(employeeId) {
+        return db.get(
+            `UPDATE retention_risk SET
+                 flight_risk = CASE WHEN manual_override THEN flight_risk ELSE NULL END,
+                 impact_of_loss = CASE WHEN manual_override THEN impact_of_loss ELSE NULL END,
+                 computed_score = NULL,
+                 risk_factors = '{"profilingObjection": true}'::jsonb,
+                 updated_at = now()
+               WHERE employee_id = ?
+             RETURNING *`,
+            [employeeId]
         );
     }
 

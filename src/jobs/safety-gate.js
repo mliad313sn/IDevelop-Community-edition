@@ -25,6 +25,13 @@ async function tick() {
     } catch (e) {
         console.error('[safety-gate] webhook retry failed:', e && e.message);
     }
+    // Waivers past their window are marked expired and the person
+    // and their line notified within one tick, not at the next nightly recompute.
+    try {
+        out.waivers = await require('../services/SafetyWaiverService').expireDue();
+    } catch (e) {
+        console.error('[safety-gate] waiver expiry failed:', e && e.message);
+    }
     if (await SafetyGateService.nightlyDue()) {
         const rows = await SafetyGateService.recomputeAll('nightly');
         out.recomputed = rows.length;

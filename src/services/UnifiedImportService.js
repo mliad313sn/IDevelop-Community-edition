@@ -765,11 +765,14 @@ class UnifiedImportService {
                         continue;
                     }
                     await db.run(
+                        // An imported level has no proven provenance: the
+                        // level changes here, so it is 'self' again.
                         `UPDATE skillAssessments
                             SET currentLevel = ?,
                                 assessedBy = COALESCE(?, assessedBy),
                                 notes = COALESCE(?, notes),
-                                assessedAt = COALESCE(?::timestamptz, CURRENT_TIMESTAMP)
+                                assessedAt = COALESCE(?::timestamptz, CURRENT_TIMESTAMP),
+                                validation = 'self'
                           WHERE id = ?`,
                         [
                             cleanLevel,
@@ -963,10 +966,21 @@ class UnifiedImportService {
 
                 if (existing) {
                     await db.run(
-                        `UPDATE skillAssessments 
-                         SET currentLevel = ?, assessedBy = ?, notes = ?, assessedAt = COALESCE(?::timestamptz, now())
+                        // A changed imported level is unproven ('self'); an
+                        // unchanged one keeps its provenance.
+                        // (SET expressions read the OLD row: the CASE compares the stored level.)
+                        `UPDATE skillAssessments
+                         SET currentLevel = ?, assessedBy = ?, notes = ?, assessedAt = COALESCE(?::timestamptz, now()),
+                             validation = CASE WHEN currentLevel = ? THEN validation ELSE 'self' END
                          WHERE id = ?`,
-                        [currentLevel, assessorId, notes || null, assessedAt, existing.id]
+                        [
+                            currentLevel,
+                            assessorId,
+                            notes || null,
+                            assessedAt,
+                            currentLevel,
+                            existing.id,
+                        ]
                     );
                     results.updated++;
                 } else {
@@ -1074,8 +1088,10 @@ class UnifiedImportService {
                 );
                 if (existing) {
                     await db.run(
-                        `UPDATE skillAssessments SET currentLevel = ?, assessedBy = ?, notes = ?, assessedAt = COALESCE(?::timestamptz, now()) WHERE id = ?`,
-                        [currentLevel, assessorId, notes, assessedAt, existing.id]
+                        // A changed imported level is unproven ('self').
+                        // (SET expressions read the OLD row: the CASE compares the stored level.)
+                        `UPDATE skillAssessments SET currentLevel = ?, assessedBy = ?, notes = ?, assessedAt = COALESCE(?::timestamptz, now()), validation = CASE WHEN currentLevel = ? THEN validation ELSE 'self' END WHERE id = ?`,
+                        [currentLevel, assessorId, notes, assessedAt, currentLevel, existing.id]
                     );
                     results.updated++;
                 } else {

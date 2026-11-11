@@ -251,8 +251,9 @@ describe('command line', () => {
     });
 });
 
+const { isTestDatabaseUrl } = require('../helpers/testDatabase');
 // Dry run only (rolled back): safe on any test database.
-const HAS_DB = /_test/.test(String(process.env.DATABASE_URL || ''));
+const HAS_DB = isTestDatabaseUrl(process.env.DATABASE_URL);
 (HAS_DB ? describe : describe.skip)('seed-starter-framework --file (dry run)', () => {
     test('seeds the generated file and rolls back', () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'esco-'));

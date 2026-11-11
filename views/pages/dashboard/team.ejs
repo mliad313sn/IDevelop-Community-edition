@@ -1,0 +1,87 @@
+<%#
+  The manager's « Dashboard » (/supervisor/dashboard): their team in counts —
+  the scope bar « My team », « In brief », the tiles (role readiness,
+  self-assessments to validate, certificates, plans), the people per
+  readiness state and per next step, the most frequent gaps; then what waits
+  on the manager, what expires in the team and who is ready to move on
+  (_manager-watch, ManagerHomeService). No name: the named roster is « My
+  team » (/supervisor/team). On a phone « Waiting on me » comes first.
+  Locals: ctx, home (DashboardHomeService.teamHome), scopeLabel, asOf.
+-%><%
+  var _F = numFmt;
+  var H = home || {};
+  var S = H.summary || { total: 0, byState: {}, byNext: {} };
+  var _toneMark = { risk: '▲', warn: '!', good: '✓' };
+  var STATES = [
+      { k: 'not_ready', cls: 'risk', icon: '▲' },
+      { k: 'partial', cls: 'warn', icon: '!' },
+      { k: 'not_assessed', cls: 'unmeasured', icon: '—' },
+      { k: 'ready', cls: 'good', icon: '✓' },
+      { k: 'no_requirement', cls: 'unmeasured', icon: '—' }
+  ];
+  var NEXT = [
+      { k: 'validate', href: '/supervisor/self-assessment-reviews', primary: true },
+      { k: 'assess', href: '/supervisor/gap-analysis' },
+      { k: 'develop', href: '/supervisor/gap-analysis' }
+  ];
+-%>
+<link rel="stylesheet" href="/css/dashboard.css?v=<%= assetVersion %>">
+<div class="ds-page" id="ds-team-home">
+    <div class="ds-header page-header">
+        <div>
+            <h1><%= __('dash:d3_title') %></h1>
+            <p><%= __('dash:d3_tm_subtitle') %></p>
+        </div>
+    </div>
+
+    <% if (H.empty) { %>
+        <section class="ds-card"><%- include('../../partials/empty-state', { icon: 'fa-users', title: __('dash:d3_tm_empty'), text: __('talentx:mgr_purpose') }) %></section>
+    <% } else { %>
+        <%- include('../../partials/scope-bar', { vizScope: { id: 'ds-scope', scopeLabel: scopeLabel, people: ctx.pop.ids.length, coverage: H.coverage, asOf: asOf } }) %>
+
+        <% if (H.brief && H.brief.length) { %>
+        <section class="ds-brief" id="ds-brief" aria-labelledby="ds-brief-h">
+            <h2 id="ds-brief-h"><%= __('dash:d3_h_brief') %></h2>
+            <ul>
+                <% H.brief.forEach(function (l) { %><li><span class="ds-brief-mark<%= l.tone ? ' ds-brief-mark--' + l.tone : '' %>" aria-hidden="true"><%= l.tone ? _toneMark[l.tone] : '·' %></span><span><%= l.text %></span></li><% }); %>
+            </ul>
+        </section>
+        <% } %>
+
+        <section aria-labelledby="ds-tiles-h">
+            <h2 class="sr-only-ds" id="ds-tiles-h"><%= __('dash:d3_h_tiles') %></h2>
+            <div class="viz-kpi-row" id="ds-tiles">
+                <% (H.tiles || []).forEach(function (k) { %><%- include('../../partials/kpi-tile', { vizKpi: k }) %><% }); %>
+            </div>
+        </section>
+
+        <% if (H.watch && !H.watch.empty) { %><%- include('_manager-watch', { W: H.watch, _F: _F }) %><% } %>
+
+        <div class="ds-pair">
+            <section class="ds-card" id="ds-team" aria-labelledby="ds-team-h">
+                <h2 id="ds-team-h"><%= __('dash:d3_tm_states') %></h2>
+                <ul class="ds-team-states">
+                    <% STATES.forEach(function (s) { var n = S.byState[s.k] || 0; if (!n && s.k === 'no_requirement') return; %>
+                    <li data-state="<%= s.k %>"><span class="viz-chip viz-chip--<%= s.cls %>"><span class="viz-chip-icon" aria-hidden="true"><%= s.icon %></span><span><%= __('kpi:state_' + s.k) %></span></span> <strong><%= _F.num(n, 0) %></strong></li>
+                    <% }); %>
+                </ul>
+                <h3><%= __('dash:d3_tm_next') %></h3>
+                <p class="ds-team-next">
+                    <% NEXT.forEach(function (x) { var n = S.byNext[x.k] || 0; if (!n) return; %><a class="btn btn-sm <%= x.primary ? 'btn-primary' : 'btn-secondary' %>" href="<%= x.href %>" data-next="<%= x.k %>"><%= __('dash:d3_tm_next_' + x.k) %> (<%= _F.num(n, 0) %>)</a> <% }); %>
+                    <a class="btn btn-sm btn-secondary" href="/supervisor/team" data-team-list><%= __('dash:d3_tm_roster') %> (<%= _F.num(S.total, 0) %>)</a>
+                </p>
+            </section>
+            <section class="ds-card" id="ds-gaps" aria-labelledby="ds-gaps-h">
+                <h2 id="ds-gaps-h"><%= __('dash:d3_tm_gaps') %></h2>
+                <% if (!(H.gaps || []).length) { %>
+                    <p class="ds-note"><%= __('dash:d3_tm_gaps_none') %></p>
+                <% } else { %>
+                <ol class="ds-gaps">
+                    <% H.gaps.forEach(function (g) { %><li><strong><%= _F.num(g.people, 0) %></strong><span><%= g.skillName %><% if (g.critical) { %> <span class="viz-chip viz-chip--neutral"><%= __('kpi:crit_skill') %></span><% } %><br><span class="ds-note"><%= __('dash:d3_tm_gap_people', { count: g.people, n: _F.num(g.people, 0) }) %></span></span></li><% }); %>
+                </ol>
+                <p><a class="btn btn-sm btn-secondary" href="/supervisor/gap-analysis"><i class="fas fa-graduation-cap" aria-hidden="true"></i> <%= __('dash:d3_tm_plan_training') %></a></p>
+                <% } %>
+            </section>
+        </div>
+    <% } %>
+</div>

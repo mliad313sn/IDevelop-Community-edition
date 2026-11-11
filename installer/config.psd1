@@ -57,13 +57,19 @@
     # tables (system_logs, assessment_history, review_signatures,
     # self_assessment_events... - every table with an append-only or hash-chain
     # trigger) and their guard functions are owned by the NOLOGIN role
-    # fourmp_audit_owner; the app role keeps SELECT + INSERT only, so it can no
+    # idevelop_audit_owner; the app role keeps SELECT + INSERT only, so it can no
     # longer disable, drop or rewrite the guards. OFF by default in this release:
     # while it is on, four SuperAdmin tools that suspend those triggers as the app
     # role are refused by PostgreSQL (Danger-Zone database cleanup, data reset,
     # snapshot restore, SQL-console revert). A Manage -Restore hands the tables back
     # to the app role until the next Patch.
-    AuditOwnerSeparation = $false
+    #   'Auto' (shipped) - OFF for a new install (the four tools above stay usable);
+    #                      the separation is OFFERED: -EnableAuditOwnerSeparation, or
+    #                      a 'yes' at the console on an upgrade. An upgrade keeps the
+    #                      state its database is in: separated stays separated.
+    #   $true / $false   - explicit ($false also hands a separated database back to
+    #                      the app role on the next run).
+    AuditOwnerSeparation = 'Auto'
 
     # ---- Service hosting ----
     # How the app is hosted as a background, auto-start, restart-on-failure process:
@@ -73,29 +79,60 @@
     #   'Auto'          - prefer a real Windows service; fall back to a Scheduled Task only
     #                     if the WinSW wrapper can't be obtained (offline + not bundled).
     ServiceMode    = 'Auto'
-    # Account the Windows service runs as (3.23.18, S-04):
-    #   'LocalSystem' - DEFAULT, unchanged. Full control of the machine.
+    # Account the Windows service runs as (S-04):
+    #   'Auto'        - SHIPPED. A NEW install runs as the virtual account below. An
+    #                   UPGRADE keeps the account the service runs as today (never
+    #                   forced): a LocalSystem service gets the recommendation and the
+    #                   one-switch migration (-MigrateServiceAccount, or a 'yes' at the
+    #                   console), done after the upgrade is healthy, with an automatic
+    #                   return to LocalSystem if the service does not come up healthy.
     #   'Virtual'     - the service's own virtual account NT SERVICE\<ServiceName>
-    #                   (no password, least privilege). The installer then grants
-    #                   that SID Modify on the install dir and on every restricted
-    #                   data folder (%ProgramData%\IDevelop\backups, sql-restore-points,
-    #                   logs, audit-anchors, tls..., <InstallDir>\uploads, data, logs)
-    #                   and Read on .env, so the daily pg_dump backups, uploads and
-    #                   restore points keep working. Applies to ServiceMode 'Service'
-    #                   (a Scheduled Task host always runs as SYSTEM).
-    # This release ships 'LocalSystem': switching a live appliance is the operator's
-    # decision - set 'Virtual' and run a Patch; set it back and Patch to revert
-    # (the virtual account's grants are then removed).
-    ServiceAccount = 'LocalSystem'
+    #                   (no password, least privilege). The installer grants that SID
+    #                   Modify on every folder the app writes to (%ProgramData%\IDevelop
+    #                   backups, sql-restore-points, logs, audit-anchors, tls, keys;
+    #                   <InstallDir>\uploads, data, logs, backups, tmp, certs,
+    #                   AI_Engine_Docs, service\logs), Read on .env, ReadAndExecute
+    #                   ONLY on the code (the install root and service\), and
+    #                   ReadAndExecute on HRIS_DROP_ROOT when .env sets it. Nothing on
+    #                   the code backups (app-backups, restore-points). Applies to
+    #                   ServiceMode 'Service' (a Scheduled Task host runs as SYSTEM).
+    #   'LocalSystem' - full control of the machine. Set it and run a Patch to revert
+    #                   a virtual-account service (the virtual account's grants are
+    #                   then removed).
+    ServiceAccount = 'Auto'
     # WinSW (github.com/winsw/winsw) - a tiny, self-contained service wrapper. The
     # installer uses a copy bundled at <package>\bin\WinSW-x64.exe if present, else
     # downloads this URL at install time (same pattern as the Node/PG/VC++ downloads).
     WinSwUrl       = 'https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW-x64.exe'
 
+    # ---- Download integrity ----
+    # Every artefact the installer downloads and runs is pinned by SHA-256 and,
+    # when the vendor signs it, by an Authenticode signature that must be Valid
+    # AND issued to the publisher named here. A mismatch ABORTS the install; a file
+    # pre-placed in %TEMP% (offline install) is used only when its hash matches.
+    # Changing a URL means changing its hash in the same edit.
+    # How each pin below was obtained (re-check them before every release):
+    #   WinSW      downloaded from the URL and hashed (2026-10-02). Not signed by
+    #              its project: the hash is the only check (a copy bundled in
+    #              bin\ is held to the same hash).
+    #   Node.js    the line for the MSI in nodejs.org/dist/v<version>/SHASUMS256.txt.
+    #   VC++       Microsoft's versioned download URL carries the file's SHA-256
+    #              in its path; the pin is that value.
+    #   PostgreSQL taken from the EDB 17.11-4 release; NOT re-derived on the build
+    #              machine that wrote this file (no access to the EDB CDN). Verify
+    #              it (Get-FileHash) before shipping: a wrong pin aborts a fresh
+    #              install that has to download PostgreSQL, it never runs a file.
+    WinSwSha256    = '05b82d46ad331cc16bdc00de5c6332c1ef818df8ceefcd49c726553209b3a0da'
+    WinSwPublisher = ''
+
     # ---- Prerequisites ----
     # Visual C++ Redistributable (x64) - required by PostgreSQL and several
-    # native node modules. Installed only if not already present.
-    VcRedistUrl = 'https://aka.ms/vs/17/release/vc_redist.x64.exe'
+    # native node modules. Installed only if not already present. A VERSIONED URL:
+    # the aka.ms/vs/17/release/vc_redist.x64.exe link moves with every Microsoft
+    # release and would break the pin.
+    VcRedistUrl       = 'https://download.visualstudio.microsoft.com/download/pr/bd1c8d9d-ba95-4eee-bc6e-df1fcc876373/CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B/VC_redist.x64.exe'
+    VcRedistSha256    = 'cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b'
+    VcRedistPublisher = 'Microsoft Corporation'
 
     # ---- Node.js (downloaded only if missing or older than the app's engines) ----
     # The required minimum is read from app\package.json "engines.node" (major.minor,
@@ -105,13 +142,20 @@
     NodeMinMajor = 20
     NodeVersion  = '22.23.3'
     NodeMsiUrl   = 'https://nodejs.org/dist/v22.23.3/node-v22.23.3-x64.msi'
+    # = the line for node-v22.23.3-x64.msi in nodejs.org/dist/v22.23.3/SHASUMS256.txt
+    NodeMsiSha256    = '1c0efc8449987e7da5d184786a0a96da83ffa11d334421201e5c09b93017cb8d'
+    NodeMsiPublisher = 'OpenJS Foundation'
 
     # ---- Redis (OPTIONAL - background jobs only; app runs fine without it) ----
     RedisExpected = $false
 
     # ---- PostgreSQL ----
     PgMajor        = 17
-    PgInstallerUrl = 'https://get.enterprisedb.com/postgresql/postgresql-17.2-1-windows-x64.exe'
+    # PostgreSQL 17.11 (EDB installer build 4). Used only when NO PostgreSQL is
+    # found; an existing server is never upgraded by Setup.
+    PgInstallerUrl       = 'https://get.enterprisedb.com/postgresql/postgresql-17.11-4-windows-x64.exe'
+    PgInstallerSha256    = 'c9828fd3a4daebbeeace19bec2de5f38d73c047fce47278148b525cfbe28a5e4'
+    PgInstallerPublisher = 'EnterpriseDB Corporation'
     PgHost         = 'localhost'
     PgPort         = 5432
     # Superuser (postgres) password.
@@ -156,4 +200,13 @@
 
     # ---- Feature flags written to .env ----
     V2Features = '1'
+
+    # ---- Code backups ----
+    # Each upgrade copies the previous application CODE to
+    # %ProgramData%\IDevelop\app-backups\app-<version>-<stamp> (the rollback
+    # source). Only the newest AppBackupKeep copies are kept (0 = keep all).
+    # uploads\ and backups\ are never copied (not code, and never restored over
+    # newer files). The database is protected separately by the encrypted
+    # pre-migration dump (%ProgramData%\IDevelop\backups\pre-upgrade-*).
+    AppBackupKeep = 5
 }

@@ -176,6 +176,15 @@ async function collect() {
         restorePoints = [];
     }
 
+    // Which antivirus engine scans uploads (clamd / Defender); `.alert` when none,
+    // plus the uploads per scan status. The page renders it when the view knows it.
+    let malwareScan = null;
+    try {
+        malwareScan = await require('../services/MalwareScanService').status();
+    } catch {
+        malwareScan = null;
+    }
+
     return {
         ticks,
         failures,
@@ -184,6 +193,7 @@ async function collect() {
         database,
         license,
         restorePoints,
+        malwareScan,
         // Separation of duties: the SQL console is an operator (env) switch, shown
         // here so a super admin can see whether it is on without being able to flip it.
         sqlConsoleEnabled: require('../services/SqlConsoleService').isEnabled(),

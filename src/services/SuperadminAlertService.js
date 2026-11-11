@@ -10,6 +10,8 @@
  *                                    and was refused (superadmin_sso_forbidden);
  *   security.superadmin_mfa_changed  a SuperAdmin's MFA was enrolled, reset
  *                                    (peer, OS-admin CLI) or a recovery code used;
+ *   security.admin_account_locked    an admin account was hard-locked after
+ *                                    repeated failed sign-ins.
  *   security.superadmin_password_reset  a SuperAdmin password was reset (its
  *                                    MFA is never touched by a reset).
  *
@@ -25,6 +27,8 @@ const KINDS = new Set([
     'security.superadmin_sso_refused',
     'security.superadmin_mfa_changed',
     'security.superadmin_password_reset',
+    // A privileged account hard-locked after repeated failed sign-ins.
+    'security.admin_account_locked',
 ]);
 
 function hourBucket(d = new Date()) {

@@ -1,0 +1,96 @@
+<%#
+  The manager's « Waiting on me », « Expiring in my team » and « Ready to move
+  on » (ManagerHomeService.forManager). COUNTS AND AGES ONLY: every line is a
+  count, a fact and an age, and opens the module page where the names are,
+  under that page's own rules. A source not configured or not readable is a
+  sentence, never 0; an item that arrived today says « today », never
+  « 0 days ». On a phone the « Waiting on me » card comes first, its top
+  line marked « Start here » (dashboard.css).
+  Locals: W (home.watch), _F (numFmt).
+-%><%
+  var BL = (W.backlog && W.backlog.lines) || [];
+  var TOP = (W.backlog && W.backlog.top) || null;
+  var _isN = function (v) { return v !== null && v !== undefined && v !== '' && isFinite(Number(v)); };
+  var _pick = function (map, k) { return Object.prototype.hasOwnProperty.call(map, k) ? map[k] : null; };
+  var LABEL = { validations: 'dash:mw_l_validations', disputes: 'dash:mw_l_disputes', changes: 'dash:mw_l_changes', actions: 'dash:mw_l_actions', proposals: 'dash:mw_l_proposals', plans: 'dash:mw_l_plans', handovers: 'dash:mw_l_handovers', safety: 'dash:mw_l_safety' };
+  var SHORT = { validations: 'dash:mw_s_validations', disputes: 'dash:mw_s_disputes', changes: 'dash:mw_s_changes', actions: 'dash:mw_s_actions', proposals: 'dash:mw_s_proposals', plans: 'dash:mw_s_plans', handovers: 'dash:mw_s_handovers', safety: 'dash:mw_s_safety' };
+  var ICON = { validations: 'fa-stamp', disputes: 'fa-scale-balanced', changes: 'fa-pen-to-square', actions: 'fa-list-check', proposals: 'fa-lightbulb', plans: 'fa-route', handovers: 'fa-people-arrows', safety: 'fa-helmet-safety' };
+  var ageOf = function (l) {
+      if (!_isN(l.oldestDays)) return '';
+      var n = Number(l.oldestDays);
+      if (l.ageKind === 'late') return n > 0 ? __('dash:mw_late', { count: n, n: _F.num(n, 0) }) : '';
+      var a = n === 0 ? __('dash:mw_oldest_today') : __('dash:mw_oldest', { count: n, n: _F.num(n, 0) });
+      if (_isN(l.over7) && Number(l.over7) > 0) a += ' · ' + __('dash:mw_over7', { count: Number(l.over7), n: _F.num(l.over7, 0) });
+      return a;
+  };
+  var waiting = BL.filter(function (l) { return _isN(l.count) && Number(l.count) > 0 && _pick(LABEL, l.key); });
+  var clear = BL.filter(function (l) { return _isN(l.count) && Number(l.count) === 0 && !l.notConfigured && _pick(SHORT, l.key); });
+  var off = BL.filter(function (l) { return l.unavailable && _pick(SHORT, l.key); });
+  var gate = BL.filter(function (l) { return l.notConfigured; })[0];
+  var EX = W.expiry;
+  var RD = W.ready;
+-%>
+<section class="ds-card mh-backlog" id="mh-backlog" aria-labelledby="mh-backlog-h">
+    <h2 id="mh-backlog-h"><i class="fas fa-hourglass-half" aria-hidden="true"></i> <%= __('dash:mw_backlog_title') %></h2>
+    <p class="ds-sub"><%= __('dash:mw_backlog_sub') %></p>
+    <% if (waiting.length) { %>
+    <ul class="mh-lines">
+        <% waiting.forEach(function (l) { var c = Number(l.count); var age = ageOf(l); var isTop = TOP && TOP.key === l.key; %>
+        <li<% if (isTop) { %> class="mh-top"<% } %>><a class="mh-line" href="<%= l.href %>" data-mh="<%= l.key %>"><i class="fas <%= _pick(ICON, l.key) %>" aria-hidden="true"></i><strong class="mh-n"><%= _F.num(c, 0) %></strong><span class="mh-fact"><%= __(_pick(LABEL, l.key), { count: c }) %><% if (age) { %><span class="mh-age"><%= age %></span><% } %></span><% if (isTop) { %><span class="viz-chip viz-chip--neutral mh-top-badge"><%= __('dash:mw_top_badge') %></span><% } %></a></li>
+        <% }); %>
+    </ul>
+    <% } else if (!off.length && !gate) { %>
+    <p class="ds-note" data-mh="all_clear"><%= __('dash:mw_all_clear') %></p>
+    <% } %>
+    <% if (clear.length && waiting.length) { %><p class="ds-note" data-mh-clear><%= __('dash:mw_clear', { list: clear.map(function (l) { return __(_pick(SHORT, l.key)); }).join(', ') }) %></p><% } %>
+    <% if (gate) { %><p class="ds-note" data-mh-gate="not_configured"><%= __('dash:mw_safety_not_configured') %></p><% } %>
+    <% off.forEach(function (l) { %><p class="ds-note" data-mh-off="<%= l.key %>"><%= __('dash:mw_unavailable', { what: __(_pick(SHORT, l.key)) }) %></p><% }); %>
+</section>
+
+<% if (EX || RD) { %>
+<div class="ds-pair mh-watch">
+    <% if (EX && EX.state !== 'no_population') { %>
+    <section class="ds-card" id="mh-expiry" aria-labelledby="mh-exp-h">
+        <h2 id="mh-exp-h"><i class="fas fa-id-card" aria-hidden="true"></i> <%= __('dash:mw_exp_title') %></h2>
+        <% if (EX.state === 'not_configured') { %>
+            <p class="ds-note" data-mh="exp_not_configured"><span class="viz-chip viz-chip--unmeasured"><span class="viz-chip-icon" aria-hidden="true">—</span><span><%= __('kpi:status_not_configured') %></span></span> <%= __('dash:mw_exp_not_configured') %></p>
+        <% } else {
+               var exRows = [
+                   { k: 'exp_expired', label: 'dash:mw_exp_expired', n: EX.expired, icon: 'fa-circle-xmark', sub: '' },
+                   { k: 'exp_90', label: 'dash:mw_exp_90', n: EX.expiring90, icon: 'fa-hourglass-end', sub: EX.expiring30 > 0 ? __('dash:mw_exp_30', { count: EX.expiring30, n: _F.num(EX.expiring30, 0) }) : '' },
+                   { k: 'exp_missing', label: 'dash:mw_exp_missing', n: EX.missing, icon: 'fa-file-circle-question', sub: '' }
+               ].filter(function (r) { return Number(r.n) > 0; }); %>
+            <% if (exRows.length) { %>
+            <ul class="mh-lines">
+                <% exRows.forEach(function (r) { %>
+                <li><a class="mh-line" href="<%= EX.href %>" data-mh="<%= r.k %>"><i class="fas <%= r.icon %>" aria-hidden="true"></i><strong class="mh-n"><%= _F.num(r.n, 0) %></strong><span class="mh-fact"><%= __(r.label, { count: Number(r.n) }) %><% if (r.sub) { %><span class="mh-age"><%= r.sub %></span><% } %></span></a></li>
+                <% }); %>
+            </ul>
+            <% } else { %>
+            <p class="ds-note" data-mh="exp_none"><%= __('dash:mw_exp_none', { count: EX.requiredPeople, n: _F.num(EX.requiredPeople, 0) }) %></p>
+            <% } %>
+        <% } %>
+    </section>
+    <% } %>
+    <% if (RD) { %>
+    <section class="ds-card" id="mh-ready" aria-labelledby="mh-ready-h">
+        <h2 id="mh-ready-h"><i class="fas fa-arrow-up-right-dots" aria-hidden="true"></i> <%= __('dash:mw_ready_title') %></h2>
+        <p class="ds-sub"><%= __('dash:mw_ready_sub') %></p>
+        <% if (RD.unavailable) { %>
+            <p class="ds-note" data-mh="ready_unavailable"><%= __('dash:mw_ready_unavailable') %></p>
+        <% } else if (!RD.readyNow) { %>
+            <p class="ds-note" data-mh="ready_none"><%= __('dash:mw_ready_none') %></p>
+        <% } else if (!RD.withTarget) { %>
+            <p class="ds-note" data-mh="ready_no_target"><%= __('dash:mw_ready_no_target', { count: RD.readyNow, n: _F.num(RD.readyNow, 0) }) %></p>
+        <% } else { %>
+            <ul class="mh-lines">
+                <li><a class="mh-line" href="<%= RD.href %>" data-mh="ready_target"><i class="fas fa-user-check" aria-hidden="true"></i><strong class="mh-n"><%= _F.num(RD.readyForTarget, 0) %></strong><span class="mh-fact"><%= __('dash:mw_ready_target', { count: RD.readyForTarget }) %><span class="mh-age"><%= __('dash:mw_ready_of', { count: RD.withTarget, n: _F.num(RD.withTarget, 0) }) %></span></span></a></li>
+                <% if (RD.toAssess > 0) { %>
+                <li><a class="mh-line" href="<%= RD.href %>" data-mh="ready_to_assess"><i class="fas fa-clipboard-question" aria-hidden="true"></i><strong class="mh-n"><%= _F.num(RD.toAssess, 0) %></strong><span class="mh-fact"><%= __('dash:mw_ready_toassess', { count: RD.toAssess }) %></span></a></li>
+                <% } %>
+            </ul>
+        <% } %>
+    </section>
+    <% } %>
+</div>
+<% } %>

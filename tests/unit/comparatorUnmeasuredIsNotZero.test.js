@@ -21,13 +21,10 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const fs = require('fs');
-const ROOT = path.join(__dirname, '../..');
-const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
-
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 // Needs a POPULATED database (several sites, assessed people, reviews): runs
 // only against an opt-in fixture database — see CONTRIBUTING.md.
-const HAS_DB = /idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''));
+const HAS_DB = isFixturesDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 const db = HAS_DB ? require('../../src/config/database') : null;
 const DashboardModel = HAS_DB ? require('../../src/models/DashboardModel') : null;
@@ -99,29 +96,4 @@ suite('a group with no measurement in a domain is not plotted at zero', () => {
     });
 });
 
-describe('the client no longer coalesces an absent domain to zero', () => {
-    // Count occurrences rather than asserting against the whole normalised
-    // file: a failed toMatch on a 3 000-line string prints the entire source.
-    const src = read('public/js/dashboard.js');
-    const js = src.replace(/\s+/g, ' ');
-    const count = (re) => (js.match(re) || []).length;
-
-    test('both radar builders use has()/null rather than || 0', () => {
-        expect(count(/labels\.map\( ?\(l\) => \(?dataMap\.has\(l\)/g)).toBe(2);
-        expect(count(/labels\.map\( ?\(l\) => dataMap\.get\(l\) \|\| 0 ?\)/g)).toBe(0);
-    });
-
-    test('every radar tooltip guards the skipped vertex', () => {
-        // The org radar called .toFixed(2) straight on the value, which THROWS
-        // when the point is null — so the guard is not cosmetic. There are two
-        // radar tooltips reading `parsed.r`; both must check for null first.
-        expect(count(/parsed\.r/g)).toBe(4); // 2 guards + 2 value reads
-        expect(count(/parsed\.r == null/g)).toBe(2);
-        // and no unguarded .toFixed directly on the parsed value
-        expect(count(/parsed\.r\.toFixed/g)).toBe(1);
-        // The single .toFixed must sit AFTER its guard, not before it.
-        expect(js.indexOf('context.parsed.r == null')).toBeLessThan(
-            js.indexOf('context.parsed.r.toFixed')
-        );
-    });
-});
+// the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)

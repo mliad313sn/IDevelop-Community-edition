@@ -110,6 +110,8 @@
         preserveOk: __('datamgmt:sqlc_preserve_ok'),
         preservePartial: __('datamgmt:sqlc_preserve_partial'),
         revertedTo: __('datamgmt:sqlc_reverted_to'),
+        secretRefused: __('datamgmt:sqlc_secret_refused'),
+        columnPrivilege: __('datamgmt:sqlc_column_privilege'),
         locale: (typeof lang !== 'undefined' && lang === 'en') ? 'en-GB' : 'fr-FR'
     } }) %>;
     function fill(tpl, vars) {
@@ -198,7 +200,7 @@
               + (d.mode === 'autocommit' ? esc(T.bannerAutocommit) : '') + '.</div>';
         html += renderWarnings(d);
         if (!d.success) {
-            html += '<div style="padding:8px 12px; background:#fdedec; color:#1a1a1a; border:1px solid #c0392b; border-radius:4px;"><strong>' + esc(T.error) + '</strong> ' + esc(d.error) + '</div>';
+            html += '<div style="padding:8px 12px; background:#fdedec; color:#1a1a1a; border:1px solid #c0392b; border-radius:4px;"><strong>' + esc(T.error) + '</strong> ' + esc(d.errorCode === 'secret_refused' ? T.secretRefused : (d.errorCode === 'column_privilege' ? T.columnPrivilege : d.error)) + '</div>';
             if (d.autoReverted) {
                 html += '<div style="padding:8px 12px; background:#eafaf1; color:#1a1a1a; border:1px solid #27ae60; border-radius:4px; margin-top:8px;"><i class="fas fa-clock-rotate-left"></i> ' + T.autoReverted + '</div>';
                 html += renderPreservation(d);

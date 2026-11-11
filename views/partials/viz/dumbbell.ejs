@@ -1,0 +1,48 @@
+<%#
+  Gap bars: the demonstrated level (●) against the required level (◆) per row,
+  drawn by public/js/dumbbell.js; the table below is what shows without JS.
+  An unmeasured row is "Not measured" (a hatched track), never a dot at 0, and
+  it is never ranked among the widest gaps.
+
+    include('../partials/viz/dumbbell', { dumbbell: {
+        id, title?, colLabel?,
+        rows: [{ label, actual: number|null, required: number|null, n? }],
+        max: 4, topN?
+    } })
+  Locals read: `__`, `lang`, `numFmt`.
+-%><%
+  var _D = (typeof dumbbell !== 'undefined' && dumbbell) ? dumbbell : {};
+  var _id = String(_D.id || 'dumbbell');
+  var _lang = (typeof lang !== 'undefined' && lang) ? lang : 'fr';
+  var _rows = Array.isArray(_D.rows) ? _D.rows : [];
+  var _lv = function (v) { return (typeof numFmt !== 'undefined' && numFmt) ? numFmt.level(v) : String(v); };
+  var _isNum = function (v) { return v !== null && v !== undefined && v !== '' && isFinite(Number(v)); };
+  var _i18n = {
+      actual: __('viz:dumbbell.actual'),
+      required: __('viz:dumbbell.required'),
+      gap: __('viz:dumbbell.gap'),
+      unmeasured: __('viz:unmeasured'),
+      widest: __('viz:dumbbell.widest'),
+      toggle: __('viz:chart.toggle_show'),
+      colLabel: _D.colLabel || __('viz:dumbbell.col_label'),
+      empty: __('viz:dumbbell.empty')
+  };
+-%>
+<section class="viz-dumbbell" id="<%= _id %>" data-dumbbell aria-labelledby="<%= _id %>-h">
+    <% if (_D.title) { %><h3 class="viz-title" id="<%= _id %>-h"><%= _D.title %></h3><% } else { %><span class="viz-live" id="<%= _id %>-h"><%= __('viz:dumbbell.title') %></span><% } %>
+    <div class="dumbbell-body">
+        <% if (!_rows.length) { %>
+        <p class="db-empty"><%= _i18n.empty %></p>
+        <% } else { %>
+        <table class="viz-table">
+            <thead><tr><th scope="col"><%= _i18n.colLabel %></th><th scope="col" class="viz-num"><%= _i18n.actual %></th><th scope="col" class="viz-num"><%= _i18n.required %></th><th scope="col" class="viz-num"><%= _i18n.gap %></th></tr></thead>
+            <tbody>
+            <% _rows.forEach(function (r) { var m = _isNum(r.actual) && _isNum(r.required); %>
+                <tr><th scope="row"><%= r.label %></th><td class="viz-num<%= _isNum(r.actual) ? '' : ' viz-unmeasured-cell' %>"><%= _isNum(r.actual) ? _lv(r.actual) : _i18n.unmeasured %></td><td class="viz-num"><%= _isNum(r.required) ? _lv(r.required) : '—' %></td><td class="viz-num<%= m ? '' : ' viz-unmeasured-cell' %>"><%= m ? _lv(Math.round((Number(r.required) - Number(r.actual)) * 100) / 100) : _i18n.unmeasured %></td></tr>
+            <% }); %>
+            </tbody>
+        </table>
+        <% } %>
+    </div>
+    <script type="application/json" class="dumbbell-data"><%- include('../json-script', { v: { rows: _rows, opts: { max: _D.max || 4, topN: _D.topN || null, title: _D.title || '', lang: _lang, i18n: _i18n } } }) %></script>
+</section>

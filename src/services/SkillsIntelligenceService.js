@@ -365,11 +365,12 @@ class SkillsIntelligenceService {
                 [by, suggestionId]
             );
             await db.run(
-                `INSERT INTO skill_assessments (employee_id, skill_id, current_level, assessed_by, notes)
-                 VALUES (?, ?, ?, ?, 'Accepted skill suggestion')
+                `INSERT INTO skill_assessments (employee_id, skill_id, current_level, assessed_by, notes, validation)
+                 VALUES (?, ?, ?, ?, 'Accepted skill suggestion', 'manager_validated')
                  ON CONFLICT (employee_id, skill_id) DO UPDATE SET
                    current_level = GREATEST(skill_assessments.current_level, EXCLUDED.current_level),
-                   assessed_by = EXCLUDED.assessed_by, assessed_at = now()`,
+                   assessed_by = EXCLUDED.assessed_by, assessed_at = now(),
+                   validation = EXCLUDED.validation`,
                 [s.employeeId, s.skillId, Math.max(0, Math.min(4, Number(level) || 1)), by]
             );
         });

@@ -18,6 +18,7 @@
   "close": "Close",
   "colon": ":",
   "err_not_authorized_employee": "You are not authorized to act on this employee.",
+  "err_csrf_session": "Security token missing or expired: reload the page.",
   "edp_grow_heading": "GROW model",
   "edp_grow_goal": "G — Goal",
   "edp_grow_reality": "R — Reality",
@@ -31,5 +32,14 @@
   "edp_sign_coach": "Coach / mentor",
   "edp_sign_hr": "HR business partner",
   "choose_placeholder": "— Choose —",
-  "choose_required_fields": "Choose a value for every required field (*)."
+  "choose_required_fields": "Choose a value for every required field (*).",
+  "sensitive_setting": "Sensitive setting",
+  "form_required_legend": "Fields marked with an asterisk are required.",
+  "loading_skeleton_sr": "Loading…",
+  "av_status_pending": "Virus scan pending",
+  "av_status_clean": "File clean",
+  "av_status_infected": "File infected, blocked",
+  "av_status_quarantined": "File quarantined",
+  "av_status_scan_error": "Virus scan failed",
+  "av_status_not_scanned": "Not scanned (no antivirus available)"
 }

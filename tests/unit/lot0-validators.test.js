@@ -151,7 +151,7 @@ describe('Lot 0 F2 — messages are validation:* keys translated through req.t',
     test('weak password → each policy message once, in French', async () => {
         const req = mockReq({
             path: '/admins',
-            body: { username: 'u', password: 'short', passwordConfirm: 'short', role: 'viewer' },
+            body: { username: 'u1', password: 'short', passwordConfirm: 'short', role: 'viewer' },
         });
         const res = mockRes();
         await runChain(V.adminValidation, req, res);
@@ -166,7 +166,7 @@ describe('Lot 0 F2 — messages are validation:* keys translated through req.t',
             const req = mockReq({
                 path: '/admins',
                 body: {
-                    username: 'u',
+                    username: 'u1',
                     password: 'short',
                     passwordConfirm: 'short',
                     role: 'viewer',

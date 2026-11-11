@@ -4,8 +4,6 @@ const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const { writeActionLimiter } = require('../middleware/rateLimiter');
-const TalentService = require('../services/TalentService');
-const DevelopmentTriggerService = require('../services/DevelopmentTriggerService');
 const BiasDetectionService = require('../services/BiasDetectionService');
 const RBACService = require('../services/RBACService');
 /**
@@ -52,14 +50,6 @@ async function canManageEmployee(user, employeeId) {
     }
     return false;
 }
-
-// talent_ratings.reviewer_id is a foreign key to EMPLOYEES and
-// talent_placements.placed_by to ADMINS: the two id spaces overlap, so
-// `req.user.id` written blindly named a stranger or failed the FK. The reviewer
-// is the person behind the account; the placer is the admin account, or nobody.
-const reviewerIdFor = (user) => require('../services/GovernanceService').actingPersonId(user);
-const placedByFor = (user) =>
-    user && user.userType === 'admin' && user.id != null ? user.id : null;
 
 // Helper — assemble the full grid payload used by the page + JSON API.
 // Scoped to the viewer's span of control (super → all; manager → reports;
@@ -137,166 +127,35 @@ router.get(
     })
 );
 
-router.post(
-    '/ratings',
-    requireAuth,
-    ah(async (req, res) => {
-        if (!(await canManageEmployee(req.user, Number(req.body.employeeId)))) {
-            return res.status(403).json({ ok: false, error: notAuthorizedForEmployee(req) });
-        }
-        const reviewerId = await reviewerIdFor(req.user);
-        if (reviewerId == null) {
-            return res.status(400).json({
-                ok: false,
-                error: 'Only a person can rate: this administration account is linked to no employee.',
-            });
-        }
-        const id = await TalentService.recordRating({
-            employeeId: Number(req.body.employeeId),
-            reviewerId,
-            reviewerRole: req.body.reviewerRole,
-            performance: req.body.performance,
-            potential: req.body.potential,
-            cycleId: req.body.cycleId ? Number(req.body.cycleId) : null,
-        });
-        if (req.body.cycleId) {
-            try {
-                await TalentService.computePlacement({
-                    employeeId: Number(req.body.employeeId),
-                    cycleId: Number(req.body.cycleId),
-                });
-            } catch (_) {
-                /* recompute is best-effort */
-            }
-        }
-        res.json({ ok: true, id });
-    })
-);
-
-router.post(
-    '/placements/:employeeId/compute',
-    requireAuth,
-    ah(async (req, res) => {
-        if (!(await canManageEmployee(req.user, Number(req.params.employeeId)))) {
-            return res.status(403).json({ ok: false, error: notAuthorizedForEmployee(req) });
-        }
-        const cycleId = await resolveCycleId(req);
-        if (!cycleId)
-            return res
-                .status(400)
-                .json({ ok: false, error: 'cycleId required (no open assessment cycle found)' });
-        const placement = await TalentService.computePlacement({
-            employeeId: Number(req.params.employeeId),
-            cycleId,
-        });
-        res.json({ ok: true, placement });
-    })
-);
-
-router.post(
-    '/placements/:employeeId/override',
-    requireAuth,
-    writeActionLimiter,
-    ah(async (req, res) => {
-        if (!(await canManageEmployee(req.user, Number(req.params.employeeId)))) {
-            return res.status(403).json({ ok: false, error: notAuthorizedForEmployee(req) });
-        }
-        const cycleId = await resolveCycleId(req);
-        if (!cycleId)
-            return res
-                .status(400)
-                .json({ ok: false, error: 'cycleId required (no open assessment cycle found)' });
-        await TalentService.override({
-            employeeId: Number(req.params.employeeId),
-            cycleId,
-            box: req.body.box,
-            tier: req.body.tier,
-            reason: req.body.reason,
-            placedBy: placedByFor(req.user),
-        });
-        // Red ⇒ PIP + coaching; blue ⇒ IDP proposal. Best-effort: never block placement.
-        let autoTrigger = null;
-        try {
-            const { performance, potential } = DevelopmentTriggerService.levelsFromBox(
-                req.body.box
-            );
-            autoTrigger = await DevelopmentTriggerService.triggerForPlacement(
-                req.user,
-                {
-                    employeeId: Number(req.params.employeeId),
-                    performance,
-                    potential,
-                    label: req.body.box,
-                },
-                req
-            );
-        } catch (e) {
-            autoTrigger = { error: e && e.message ? e.message : 'auto-trigger failed' };
-            // A mandated PIP/IDP that failed to create must NOT be silent — surface it in
-            // the response (autoTrigger.error) AND log at warn so ops can see the gap.
-            console.warn(
-                `[9box] development auto-trigger failed for employee ${req.params.employeeId} (box ${req.body.box}): ${autoTrigger.error}`
-            );
-        }
-        res.json({ ok: true, autoTrigger });
-    })
-);
-
-// Criteria-based automated placement (4 sliders 0..100) — mirrors nine-box-tool-enhanced.html
-router.post(
-    '/placements/:employeeId/from-criteria',
-    requireAuth,
-    ah(async (req, res) => {
-        if (!(await canManageEmployee(req.user, Number(req.params.employeeId)))) {
-            return res.status(403).json({ ok: false, error: notAuthorizedForEmployee(req) });
-        }
-        const onduty = Number(req.body.onduty || 0);
-        const teamwork = Number(req.body.teamwork || 0);
-        const learning = Number(req.body.learning || 0);
-        const leadership = Number(req.body.leadership || 0);
-        const perfScore = (onduty + teamwork) / 2;
-        const potScore = (learning + leadership) / 2;
-        const perf = perfScore >= 70 ? 'high' : perfScore >= 40 ? 'medium' : 'low';
-        const pot = potScore >= 70 ? 'high' : potScore >= 40 ? 'medium' : 'low';
-        const box = `${pot}-${perf}`;
-        const tier =
-            perfScore + potScore >= 140 ? 'up' : perfScore + potScore >= 80 ? 'mid' : 'low';
-        const cycleId = await resolveCycleId(req);
-        if (!cycleId)
-            return res
-                .status(400)
-                .json({ ok: false, error: 'cycleId required (no open assessment cycle found)' });
-        await TalentService.override({
-            employeeId: Number(req.params.employeeId),
-            cycleId,
-            box,
-            tier,
-            reason: `Criteria placement (onduty=${onduty}, teamwork=${teamwork}, learning=${learning}, leadership=${leadership})`,
-            placedBy: placedByFor(req.user),
-        });
-        let autoTrigger = null;
-        try {
-            autoTrigger = await DevelopmentTriggerService.triggerForPlacement(
-                req.user,
-                {
-                    employeeId: Number(req.params.employeeId),
-                    performance: perf,
-                    potential: pot,
-                    label: box,
-                },
-                req
-            );
-        } catch (e) {
-            autoTrigger = { error: e && e.message ? e.message : 'auto-trigger failed' };
-            // A mandated PIP/IDP that failed to create must NOT be silent — surface it in
-            // the response (autoTrigger.error) AND log at warn so ops can see the gap.
-            console.warn(
-                `[9box] development auto-trigger failed for employee ${req.params.employeeId} (box ${req.body.box}): ${autoTrigger.error}`
-            );
-        }
-        res.json({ ok: true, box, tier, perf, pot, perfScore, potScore, autoTrigger });
-    })
-);
+// ---- Retired write routes (SA-42) ----
+// POST /ratings, /placements/:id/compute, /placements/:id/override and
+// /placements/:id/from-criteria wrote talent_placements directly. They had no
+// draft and approval, no evaluation event, no audit line and only a short
+// free-text reason (filled in automatically by from-criteria, where a missing
+// criterion counted as 0). A rating could overwrite a calibrated or approved
+// box, and they fired the PIP and IDP triggers, while supervisors could reach
+// them. The single 9-box is /talent/nine-box: draft and approval, the
+// movement journal, a justification, and triggers on the approved placement
+// only. These routes now answer 410 Gone with a sentence that points there.
+// Nothing they wrote is deleted, and the reads below (/state and
+// /employees/:id/report) are unchanged.
+const RETIRED_TO = '/talent/nine-box';
+function retiredWrite(req, res) {
+    res.status(410).json({
+        ok: false,
+        retired: true,
+        location: RETIRED_TO,
+        error: sayText(
+            req,
+            'talentx:legacy_write_retired',
+            'This former 9-box write is retired. Place or move a person, with a justification, in the 9-box: /talent/nine-box.'
+        ),
+    });
+}
+router.post('/ratings', requireAuth, retiredWrite);
+router.post('/placements/:employeeId/compute', requireAuth, retiredWrite);
+router.post('/placements/:employeeId/override', requireAuth, retiredWrite);
+router.post('/placements/:employeeId/from-criteria', requireAuth, retiredWrite);
 
 router.post(
     '/bias/scan',

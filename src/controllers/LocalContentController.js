@@ -101,9 +101,29 @@ class LocalContentController {
         return out;
     }
 
+    /**
+     * Who may open the report: a SuperAdmin, or an administrator holding
+     * `view_local_content`. Nationality is sensitive personal data, so the
+     * report is no longer open to every manager (a manager read « 3 people ·
+     * 2 expatriates » about their own team). The localContent module stays the
+     * single switch: with it off nobody opens the page.
+     */
+    canSeeReport(user) {
+        const RBACService = require('../services/RBACService');
+        if (!user || user.userType !== 'admin') return false;
+        if (RBACService.isSuperAdmin(user)) return true;
+        return RBACService.hasPermission(user, 'view_local_content');
+    }
+
     async index(req, res) {
         try {
-            if (!(await this._enabled())) {
+            const enabled = await this._enabled();
+            if (enabled && !this.canSeeReport(req.user)) {
+                if (req.flash)
+                    req.flash('error', req.t ? req.t('flash:no_permission') : 'Access denied');
+                return res.redirect('/dashboard');
+            }
+            if (!enabled) {
                 req.flash(
                     'error',
                     req.t
@@ -156,7 +176,10 @@ class LocalContentController {
             const kpi = await db.get(
                 `SELECT count(*)::int AS total,
                         count(*) FILTER (WHERE ${NAT} = 1)::int AS nationals,
-                        count(*) FILTER (WHERE ${NAT} = 0)::int AS expats
+                        count(*) FILTER (WHERE ${NAT} = 0)::int AS expats,
+                        -- people whose operating country is unknown (a site
+                        -- without a country and no fallback setting)
+                        count(*) FILTER (WHERE COALESCE(_co.id, _hc.id) IS NULL)::int AS no_country
                    FROM employees e ${CO_JOIN}
                   WHERE e.is_active = true${kpiScope}`,
                 [homeCountryId, ...kpiP]
@@ -220,6 +243,12 @@ class LocalContentController {
                 })(),
             ]);
 
+            // No breakdown cell under MIN_CELL people (with complementary
+            // suppression) — the anonymity floor of the other people reports —
+            // on the page AND in the CSV.
+            for (const rows of [byCountry, byDepartment, byFamily, bySite])
+                LocalContentController.maskSmallGroups(rows);
+
             // CSV export: country + department + role-family breakdowns (the quota artifact).
             if (req.query.format === 'csv') {
                 // `Unspecified` is a column of its own so Headcount = Nationals +
@@ -239,6 +268,25 @@ class LocalContentController {
                 const lines = [header.map(csvCell).join(',')];
                 const push = (type, rows) =>
                     rows.forEach((r) => {
+                        if (r.masked) {
+                            lines.push(
+                                [
+                                    type,
+                                    r.name,
+                                    r.masked === 'small'
+                                        ? '<' + LocalContentController.MIN_CELL
+                                        : '',
+                                    '',
+                                    '',
+                                    '',
+                                    '',
+                                    r.masked === 'small' ? 'masked' : 'masked (complementary)',
+                                ]
+                                    .map(csvCell)
+                                    .join(',')
+                            );
+                            return;
+                        }
                         const specified = Number(r.nationals) + Number(r.expats);
                         lines.push(
                             [
@@ -301,5 +349,36 @@ class LocalContentController {
 }
 
 LocalContentController.TABS = ['overview', 'nationalisation', 'regulatory'];
+
+/** The anonymity floor of a breakdown cell (people). */
+LocalContentController.MIN_CELL = 5;
+
+/**
+ * Mask every group whose headcount is under MIN_CELL (counts removed,
+ * `masked: 'small'`), then COMPLEMENTARY suppression: when exactly one group
+ * is masked, the smallest other group is masked too (`masked:
+ * 'complementary'`), so the hidden figures cannot be recovered by subtracting
+ * the visible ones from the total. Mutates and returns `rows`.
+ */
+LocalContentController.maskSmallGroups = function maskSmallGroups(rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    const MIN = LocalContentController.MIN_CELL;
+    const hide = (r, why) => {
+        r.masked = why;
+        r.headcount = null;
+        r.nationals = null;
+        r.expats = null;
+        r.unspecified = null;
+    };
+    const small = list.filter((r) => Number(r.headcount) < MIN);
+    small.forEach((r) => hide(r, 'small'));
+    if (small.length === 1) {
+        const rest = list
+            .filter((r) => !r.masked)
+            .sort((a, b) => Number(a.headcount) - Number(b.headcount));
+        if (rest.length) hide(rest[0], 'complementary');
+    }
+    return list;
+};
 
 module.exports = new LocalContentController();

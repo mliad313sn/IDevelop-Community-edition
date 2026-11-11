@@ -309,15 +309,17 @@ describe('hub lists are filtered for a non-SuperAdmin', () => {
     });
 });
 
-describe('DEI — a malformed label is a 400, never stored', () => {
-    test('POST /dei/:employeeId with markup is refused', async () => {
+describe('DEI — nobody writes someone else’s diversity data, markup or not', () => {
+    test('POST /dei/:employeeId with markup is refused before anything is stored', async () => {
         const r = await invoke('post', '/dei/:employeeId', {
             user: SUPER,
             params: { employeeId: '31' },
             body: { gender: '<img src=x onerror=alert(1)>' },
         });
-        expect(r.status).toBe(400);
-        expect(r.body.code).toBe('dei_invalid_gender');
+        // Self-declared with consent only (migration 171): the on-behalf write is
+        // refused outright; the label check still applies to the person's own form.
+        expect(r.status).toBe(403);
+        expect(r.body.code).toBe('dei_self_declared_only');
         expect(mockDb.get).not.toHaveBeenCalled();
     });
 });

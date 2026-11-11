@@ -271,14 +271,11 @@ function actorRef(actor) {
 }
 function actorLabel(actor) {
     if (!actor) return 'système';
-    const who =
-        actor.username ||
-        actor.displayName ||
-        [actor.firstName, actor.lastName].filter(Boolean).join(' ') ||
-        `#${actor.id}`;
-    return actor.userType === 'admin'
-        ? `admin ${who}`
-        : `${actor.userType || 'utilisateur'} ${who}`;
+    // Ids only in the audit log. The ref form (`admin:3`, `employee:84`) is what
+    // SystemLogModel.resolvePeople turns into the person's name when the log is
+    // READ ("Erased person #id" once they are erased).
+    const type = actor.userType === 'admin' ? 'admin' : 'employee';
+    return `${type}:${actor.id}`;
 }
 async function audit(entry) {
     try {
@@ -1467,6 +1464,22 @@ class CycleService {
         };
     }
 
+    /** Whether a parsed filter narrows the roster at all (the console and the bulk exclusion). */
+    static isFiltered(f) {
+        const x = f || {};
+        const any = (v) => Array.isArray(v) && v.length > 0;
+        return !!(
+            x.state ||
+            x.q ||
+            any(x.siteId) ||
+            any(x.departmentId) ||
+            any(x.serviceId) ||
+            any(x.roleId) ||
+            any(x.supervisorId) ||
+            x.noSupervisor
+        );
+    }
+
     /** WHERE fragments + params for the roster filters (shared by list, count, export, bulk-by-filter). */
     static _rosterWhere(f, params) {
         const where = [];
@@ -1770,7 +1783,8 @@ class CycleService {
 
     static _excludeLine(cycle, employeeId, name, x, actor) {
         return (
-            `Cycle #${cycle.id} (${cycle.code || ''}) — ${name || 'participant'} (#${employeeId}) excusé(e) (personne) : ` +
+            // Ids only: `name` is no longer written (resolved when the log is read).
+            `Cycle #${cycle.id} (${cycle.code || ''}) — participant employee:${employeeId} excusé(e) (personne) : ` +
             `${CATEGORY_FR[x.category] || x.category} — ${x.reason.slice(0, 200)}` +
             (x.until ? ` — jusqu'au ${x.until}` : '') +
             ` — par ${actorLabel(actor)}`
@@ -1791,6 +1805,9 @@ class CycleService {
         { scope: pre } = {}
     ) {
         const x = CycleService._normaliseExclusion(reasonOrOpts);
+        // Excusing « the whole filter » with no filter would excuse the entire
+        // campaign at once: refused here, whatever the page offered.
+        if (filter && !CycleService.isFiltered(filter)) throw err('exclusion_filter_empty');
         const cycle = await CycleService._assertRunning(cycleId);
         const scope = await CycleService._scope(actor, pre);
         const wanted = filter
@@ -1860,13 +1877,12 @@ class CycleService {
         );
         const changed = res && res.changes ? res.changes : 0;
         if (changed) {
-            const names = await CycleService._names([Number(employeeId)]);
             await audit({
                 adminId: actorId(actor),
                 action: 'cycle_participant_included',
                 entityType: 'cycle_participant',
                 entityId: Number(employeeId),
-                details: `Cycle #${cycle.id} (${cycle.code || ''}) — ${names.get(Number(employeeId)) || 'participant'} (#${employeeId}) réintégré(e) à la campagne par ${actorLabel(actor)}`,
+                details: `Cycle #${cycle.id} (${cycle.code || ''}) — participant employee:${employeeId} réintégré(e) à la campagne par ${actorLabel(actor)}`,
             });
         }
         return { changed };
@@ -1918,7 +1934,7 @@ class CycleService {
                     Number(employeeId),
                 ]
             );
-            line = `${[sup.firstName, sup.lastName].filter(Boolean).join(' ')} (#${sup.id})`;
+            line = `employee:${Number(sup.id)}`;
         } else if (Number(adminId) > 0) {
             const adm = await db.get(
                 'SELECT id, username FROM admins WHERE id = ? AND COALESCE(is_active, true) = true',
@@ -1938,7 +1954,7 @@ class CycleService {
                     Number(employeeId),
                 ]
             );
-            line = `admin ${adm.username} (#${adm.id})`;
+            line = `admin:${Number(adm.id)}`;
         } else {
             throw err('reviewer_invalid');
         }

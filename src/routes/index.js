@@ -128,6 +128,33 @@ router.get(Object.keys(GUIDE_FILES), requireAuth, (req, res) => {
         }
     );
 });
+// The third-party notices the package build writes at the app root
+// (scripts/build-third-party-notices.js), linked from /about. Read ONCE when the
+// routes load, never per request. A tree that was not packaged (development)
+// has no file: the page then says where the notices come from.
+const THIRD_PARTY_NOTICES = (() => {
+    try {
+        return require('fs').readFileSync(
+            require('path').join(__dirname, '..', '..', 'THIRD-PARTY-NOTICES.txt'),
+            'utf8'
+        );
+    } catch (_) {
+        return null;
+    }
+})();
+router.get('/about/third-party-notices', requireAuth, (req, res) => {
+    if (THIRD_PARTY_NOTICES === null) {
+        return res.status(404).render('pages/error', {
+            message: req.t
+                ? req.t('admin:about_notices_missing')
+                : 'The third-party notices are written when the application is packaged.',
+            title: req.t ? req.t('chrome:pt_not_found') : 'Not found',
+        });
+    }
+    res.set('Content-Type', 'text/plain; charset=utf-8');
+    res.set('Cache-Control', 'private, max-age=3600');
+    return res.send(THIRD_PARTY_NOTICES);
+});
 // About / version info — full live detail of the running version.
 router.get('/about', requireAuth, async (req, res) => {
     let pkg = {};
@@ -336,6 +363,24 @@ router.get(
 // Both POST (form_post / SAML ACS) and GET (query mode) callbacks are supported.
 router.post('/auth/sso/:provider/callback', SsoController.callback);
 router.get('/auth/sso/:provider/callback', SsoController.callback);
+// Installs whose base URL was set to the sign-in page ("https://host/login")
+// registered "/login/auth/sso/<p>/callback" at the IdP and "/login/login" in
+// every invitation. No route answered, so each SSO sign-in bounced to /login.
+// Same handler (same signature, destination and state checks); the SSO page
+// tells the operator to move the IdP to the canonical address.
+router.post('/login/auth/sso/:provider/callback', SsoController.callback);
+router.get('/login/auth/sso/:provider/callback', SsoController.callback);
+router.get('/login/login', (req, res) => res.redirect(302, '/login'));
+// The SAML ACS is also answered at the path configured on the SSO page when it
+// differs from the canonical one (config/sso.js samlCallbackAliasPath): same
+// handler, same checks; the SSO page names the address to register instead.
+router.use((req, res, next) => {
+    if (req.method !== 'POST' && req.method !== 'GET') return next();
+    const alias = require('../config/sso').samlCallbackAliasPath();
+    if (!alias || req.path.replace(/\/+$/, '') !== alias) return next();
+    req.params = { ...(req.params || {}), provider: 'saml' };
+    return SsoController.callback(req, res, next);
+});
 
 // Self-service onboarding — public entry points (gated at runtime by the
 // onboarding.* settings; the controller bounces back to /login when disabled).
@@ -348,9 +393,20 @@ router.get('/onboarding/pending', OnboardingController.pending);
 const { requireApiKey } = require('../middleware/apiAuth');
 // ASVS 3.7.1: recent sign-in or current password for sensitive actions.
 const { requireRecentAuth } = require('../middleware/recentAuth');
+const requireSessionCsrf = require('../middleware/requireSessionCsrf');
+// The route half of the authority ladder (services/AuthorityService).
+const { requireLineOrPermission } = require('../middleware/requireLineAuthority');
 router.get('/api/powerbi/employees', requireApiKey, ReportController.powerbIEmployees);
 router.get('/api/powerbi/assessments', requireApiKey, ReportController.powerbIAssessments);
 router.get('/api/powerbi/readiness', requireApiKey, ReportController.powerbIReadiness);
+// Version 2 of the readiness feed: K1 four-state (ReadinessState, IsReady null
+// for a person without a verdict). Version 1 above keeps its shape for one
+// release and answers with Deprecation / Link successor headers.
+router.get('/api/powerbi/v2/readiness', requireApiKey, ReportController.powerbIReadinessV2);
+// Version 2 of the assessments feed: the levels the indicators count (NULL while
+// a required skill is not assessed; a skill the role does not require is never
+// "met" or "not met"). Version 1 keeps its shape for one release, deprecated.
+router.get('/api/powerbi/v2/assessments', requireApiKey, ReportController.powerbIAssessmentsV2);
 router.get('/api/powerbi/organization', requireApiKey, ReportController.powerbIOrganization);
 router.get('/api/powerbi/ninebox', requireApiKey, ReportController.powerbINineBox);
 router.get('/api/powerbi/pips', requireApiKey, ReportController.powerbIPips);
@@ -466,6 +522,14 @@ router.get(
     requireEmployeeOrManager,
     EmployeePortalController.myDevelopment
 );
+// The end-of-campaign record (4.0.0 port, wave 5): the person's OWN records of
+// the locked / closed campaigns they had ratings in — read, acknowledge (a
+// reading, never an agreement), comment. Core: no module switch.
+router.use('/employee/review-record', require('./review-record'));
+// The person's side of their own PIP (4.0.0 port, wave 6): acknowledge,
+// observations, answers to checkpoints, the printable letter. Development
+// module: 404 while it is off, like /v2/pip.
+router.use('/employee/pip', _mod('development'), require('./employee-pip'));
 // « Mes certifications » — where the cert-expiry ladder lands. The employee is
 // alerted four times (90/60/30 days, then expired) that a certificate is running
 // out, but the only certification surface, /compliance, is manager/
@@ -476,21 +540,20 @@ router.get(
     requireEmployeeOrManager,
     EmployeePortalController.myCertifications
 );
-// "My team": one row per DIRECT report (TeamRosterService scopes on the
-// reporting line of the person behind the account). A failure to read it
-// leaves `team` null, which the page says, rather than an empty team.
-router.get('/supervisor/dashboard', requireManager, async (req, res) => {
-    let team = null;
-    try {
-        team = await require('../services/TeamRosterService').forManager(req.user);
-    } catch (_) {
-        team = null;
-    }
-    res.render('pages/supervisor/dashboard', {
-        title: req.t ? req.t('chrome:mgr_workspace_title') : 'Manager workspace',
-        team,
-    });
-});
+// The manager's « Dashboard »: their team in counts (no name); the named
+// roster is « My team » (/supervisor/team, TeamRosterService: one row per
+// DIRECT report).
+{
+    const DashboardHomeController = require('../controllers/DashboardHomeController');
+    const ahome = require('../utils/asyncHandler');
+    router.get(
+        '/supervisor/dashboard',
+        requireManager,
+        rbacMiddleware,
+        ahome(DashboardHomeController.teamHome)
+    );
+    router.get('/supervisor/team', requireManager, ahome(DashboardHomeController.teamRoster));
+}
 
 // Managers are employees too — let them complete their own self-assessment.
 router.get(
@@ -545,15 +608,33 @@ router.get(
 );
 router.post(
     '/api/self-assessment/employee/:employeeId/approve-all',
-    requireManagerOrAnyPermission('approve_assessments'),
+    // The authority ladder (AuthorityService): in strict mode, exactly the
+    // former requireManagerOrAnyPermission('approve_assessments').
+    requireLineOrPermission('approve_assessments'),
+    // Many official levels in one request: the session's CSRF token is
+    // required on top of the same-origin guard that covers /api/*.
+    requireSessionCsrf,
     SelfAssessmentWorkflowController.bulkApprove
+);
+// Approve the SELECTED skills of one person in one action (one request, one
+// transaction, all or nothing). Authority is approve()'s, per skill, in the
+// service; the session's CSRF token is required on top of the origin guard;
+// more than one item is a bulk approval and asks what approve-all asks
+// (requireBulkApproveRight → requireLineOrPermission('approve_assessments')).
+router.post(
+    '/api/self-assessment/employee/:employeeId/approve-selected',
+    requireAuth,
+    requireSessionCsrf,
+    require('../middleware/requireBulkApproveRight'),
+    SelfAssessmentWorkflowController.approveSelected
 );
 // "Approve all agreed ratings for my team": same guard and the same JSON/CSRF
 // contract as the per-employee approve-all above; the service loops that very
 // method, agreed ratings only, re-authorising every employee and every row.
 router.post(
     '/api/self-assessment/team/approve-all',
-    requireManagerOrAnyPermission('approve_assessments'),
+    requireLineOrPermission('approve_assessments'),
+    requireSessionCsrf,
     SelfAssessmentWorkflowController.teamApproveAgreed
 );
 // Per-employee assessment movement timeline (employee ↔ reviewer handoffs).
@@ -725,6 +806,9 @@ router.get(
     asyncHandler(TalentActionsController.careerPathData)
 );
 router.get('/api/my-actions', requireAuth, asyncHandler(TalentActionsController.myActions));
+// « À traiter »: the grouped list behind the bell (same collector). Managers and
+// admins who can act; everyone else is sent to their own home page.
+router.get('/tasks', requireAuth, asyncHandler(require('../controllers/TasksController').page));
 // AI companion (help panel « Assistant » tab) — every signed-in user; the
 // router carries its own requireAuth, rate limit and companion.enabled switch.
 router.use('/api/companion', require('./companion'));
@@ -798,6 +882,14 @@ router.get(
     requireAuth,
     asyncHandler(NotificationController.go.bind(NotificationController))
 );
+// Read / opened are stamped by the landing page's same-origin beacon
+// (the static script js/notif-open.js, session CSRF), never by the GET above.
+// Signed-in only.
+router.post(
+    '/notifications/opened',
+    requireAuth,
+    asyncHandler(NotificationController.opened.bind(NotificationController))
+);
 router.post(
     '/notifications/read-all',
     requireAuth,
@@ -822,6 +914,15 @@ router.get('/api/org-chart', requireManagerOrAdmin, (req, res) =>
 router.get('/talent/nine-box', requireManagerOrAdmin, NineBoxController.gridPage);
 router.get('/api/ninebox/grid', requireManagerOrAdmin, NineBoxController.grid);
 router.get('/api/ninebox/roster', requireManagerOrAdmin, NineBoxController.roster);
+// 9-box movements (migration 175): the page and its CSV, same guard and scope as
+// the console. Mounted before /api/ninebox/:id so "movements.csv" is never an id.
+router.get('/talent/nine-box/movements', requireManagerOrAdmin, NineBoxController.movementsPage);
+router.get('/api/ninebox/movements.csv', requireManagerOrAdmin, NineBoxController.movementsCsv);
+router.get(
+    '/api/ninebox/employee/:id/previous',
+    requireManagerOrAdmin,
+    NineBoxController.previousPlacement
+);
 router.get('/api/ninebox/:id', requireManagerOrAdmin, NineBoxController.get);
 router.get('/api/ninebox/:id/history', requireManagerOrAdmin, NineBoxController.history);
 router.get('/api/ninebox/employee/:id/trend', requireManagerOrAdmin, NineBoxController.trend);
@@ -835,39 +936,43 @@ router.get(
 // reject/archive/disclose were role-shape gated, so a local admin DENIED the
 // slug archived and disclosed placements (NineBoxService asked only
 // isLocalAdmin && inScope).
+// The authority ladder (AuthorityService): in strict mode (the default) the
+// guard is exactly requireManagerOrAnyPermission('manage_talent_reviews'); in
+// extended mode any account that is not read-only reaches the service, which
+// decides on the person.
 router.post(
     '/api/ninebox',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.create
 );
 router.post(
     '/api/ninebox/:id/update',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.update
 );
 router.post(
     '/api/ninebox/:id/submit',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.submit
 );
 router.post(
     '/api/ninebox/:id/approve',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.approve
 );
 router.post(
     '/api/ninebox/:id/reject',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.reject
 );
 router.post(
     '/api/ninebox/:id/archive',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.archive
 );
 router.post(
     '/api/ninebox/:id/disclose',
-    requireManagerOrAnyPermission('manage_talent_reviews'),
+    requireLineOrPermission('manage_talent_reviews'),
     NineBoxController.disclose
 );
 
@@ -876,12 +981,24 @@ router.post(
 // Supervisor Review Routes (available to managers AND admins — admins stand in
 // for absent managers; requireManagerOrAdmin matches every other talent surface
 // and redirects to /dashboard rather than bouncing admins to /login).
-router.get('/supervisor/reviews', requireManagerOrAdmin, SupervisorReviewController.index);
+// The legacy one-skill review pages duplicate the grouped queue: they answer a
+// PERMANENT redirect to it (a bookmark or an old e-mail still lands somewhere
+// useful). Nothing is deleted: SupervisorReviewController.index / .review stay,
+// and POST …/complete still works. The legacy id travels as ?review=<id>; the
+// target is a fixed relative path.
+const LEGACY_REVIEW_QUEUE = '/supervisor/self-assessment-reviews';
+router.get('/supervisor/reviews', requireManagerOrAdmin, (req, res) =>
+    res.redirect(301, LEGACY_REVIEW_QUEUE)
+);
 router.get(
     '/supervisor/reviews/:reviewId',
     requireManagerOrAdmin,
     requireNumericParam('reviewId'),
-    SupervisorReviewController.review
+    (req, res) =>
+        res.redirect(
+            301,
+            `${LEGACY_REVIEW_QUEUE}?review=${encodeURIComponent(String(Number(req.params.reviewId)))}`
+        )
 );
 router.post(
     '/supervisor/reviews/:reviewId/complete',
@@ -1016,7 +1133,11 @@ router.get('/lang/:lng', (req, res) => {
 
 // Change Password
 router.get('/change-password', AuthController.showChangePassword);
-router.post('/change-password', AuthController.changePassword);
+// The current-password check is rate-limited per signed-in user (only REFUSED
+// posts count) and each wrong current password counts toward the account's
+// lockout policy (AuthController.changePassword -> noteAuthenticatedFailure).
+const { passwordReauthLimiter } = require('../middleware/rateLimiter');
+router.post('/change-password', passwordReauthLimiter, AuthController.changePassword);
 
 // Session monitoring is an ADMIN capability: admins review their own device
 // list at /account/sessions, and SuperAdmins get the platform-wide monitor
@@ -1122,10 +1243,16 @@ router.post(
 // upload is multipart, sent by public/js/hris-admin.js with the CSRF header.
 const HrisSyncController = require('../controllers/HrisSyncController');
 const _hris = (fn) => _ahAR(fn.bind(HrisSyncController));
+// Every multer mount in this file goes through guardUpload: parser errors
+// (truncated or malformed multipart) answer 4xx instead of 500, and the file
+// CONTENT must match its extension (magic bytes, OOXML [Content_Types].xml,
+// macro parts refused, zip-bomb caps). ASVS 12.2.1.
+const _ug = require('../middleware/uploadGuard');
 const _hrisUpload = require('multer')({
     storage: require('multer').memoryStorage(),
+    preservePath: true, // the upload guard refuses a client name carrying a path
     limits: { fileSize: 25 * 1024 * 1024, files: 1 },
-    fileFilter: (req, file, cb) => cb(null, /\.(csv|tsv|txt)$/i.test(file.originalname || '')),
+    fileFilter: _ug.extensionFilter(['.csv', '.tsv', '.txt']),
 });
 const _hrisHasCredentials = (req) =>
     Boolean(
@@ -1161,15 +1288,7 @@ router.post(
 router.post(
     '/admin/integrations/hris/upload',
     requireSuperAdmin,
-    (req, res, next) =>
-        _hrisUpload.single('file')(req, res, (err) => {
-            if (!err) return next();
-            return res.status(400).json({
-                ok: false,
-                code: 'upload_refused',
-                error: req.t ? req.t('admin:hris_err_upload') : 'Upload refused',
-            });
-        }),
+    _ug.guardUpload(_hrisUpload.single('file'), { kinds: ['text'], json: true }),
     _hris(HrisSyncController.upload)
 );
 router.post(
@@ -1213,6 +1332,16 @@ router.post(
     '/admin/maintenance/reopen-assessment',
     requireSuperAdmin,
     _ahAR(MaintenanceController.reopenAssessment.bind(MaintenanceController))
+);
+router.post(
+    '/admin/maintenance/reset-assessment',
+    requireSuperAdmin,
+    _ahAR(MaintenanceController.resetAssessment.bind(MaintenanceController))
+);
+router.get(
+    '/admin/maintenance/reset-assessment/campaigns',
+    requireSuperAdmin,
+    _ahAR(MaintenanceController.resetCandidates.bind(MaintenanceController))
 );
 router.post(
     '/admin/maintenance/withdraw-review',
@@ -1450,6 +1579,27 @@ router.post(
     requireSuperAdmin,
     _ahAR(ModulesController.save.bind(ModulesController))
 );
+
+// « Data quality » and « Usage by site » (4.0.0 port, wave 10): read-only,
+// counts only. Data quality: SuperAdmin or ANY permission whose module one of
+// its sections reads (each section is then computed only for its own
+// permission). Usage by site: an administrator holding view_employees; the
+// figures cover the reader's cleared population only.
+{
+    const AdminInsightController = require('../controllers/AdminInsightController');
+    const DQ = require('../services/DataQualityService');
+    router.get(
+        '/admin/data-quality',
+        requireAnyPermission(...DQ.PANEL_SLUGS),
+        _ahAR(AdminInsightController.dataQuality)
+    );
+    router.get(
+        '/admin/usage',
+        requireAdmin,
+        requirePermission('view_employees'),
+        _ahAR(AdminInsightController.usage)
+    );
+}
 
 // Appliance license & entitlement (superadmin)
 const LicenseController = require('../controllers/LicenseController');
@@ -1768,8 +1918,9 @@ router.post(
 const SkillQualityController = require('../controllers/SkillQualityController');
 const _sqUpload = require('multer')({
     storage: require('multer').memoryStorage(),
+    preservePath: true, // the upload guard refuses a client name carrying a path
     limits: { fileSize: 5 * 1024 * 1024, files: 1 },
-    fileFilter: (req, file, cb) => cb(null, /\.xlsx$/i.test(file.originalname || '')),
+    fileFilter: _ug.extensionFilter(['.xlsx']),
 });
 const _sqManage = requirePermission('manage_domains_skills');
 router.get(
@@ -1787,7 +1938,7 @@ router.get(
 router.post(
     '/framework/quality/import',
     _sqManage,
-    _sqUpload.single('file'),
+    _ug.guardUpload(_sqUpload.single('file'), { kinds: ['xlsx'] }),
     SkillQualityController.importXlsx
 );
 router.post('/framework/quality/load-starter', _sqManage, SkillQualityController.loadStarter);
@@ -1802,23 +1953,21 @@ router.post('/framework/proposals/:id/reject', _sqManage, SkillQualityController
 const FrameworkLibraryController = require('../controllers/FrameworkLibraryController');
 const _libUpload = require('multer')({
     storage: require('multer').memoryStorage(),
+    preservePath: true, // the upload guard refuses a client name carrying a path
     limits: {
         fileSize: (Number(process.env.ESCO_UPLOAD_MAX_MB) || 30) * 1024 * 1024,
         files: 5,
     },
-    fileFilter: (req, file, cb) => cb(null, /\.(csv|zip)$/i.test(file.originalname || '')),
+    fileFilter: _ug.extensionFilter(['.csv', '.zip']),
 });
-// multer rejects an oversized upload with an error; answer it as JSON like the
-// rest of the upload endpoint instead of the generic error page.
-const _libUploadMw = (req, res, next) =>
-    _libUpload.array('files', 5)(req, res, (err) => {
-        if (!err) return next();
-        return res.status(400).json({
-            ok: false,
-            code: 'upload_refused',
-            message: req.t ? req.t('framework:lib_esco_err_upload') : 'Upload refused',
-        });
-    });
+// Refusals (oversize, wrong type, content not matching the extension, unsafe
+// archive) answer JSON like the rest of the upload endpoint. A .zip must be a
+// sane archive (not encrypted, not ZIP64, bounded entries); the importer then
+// extracts only the CSVs it needs through importGuards.readZipEntries (capped).
+const _libUploadMw = _ug.guardUpload(_libUpload.array('files', 5), {
+    kinds: ['text', 'zip'],
+    json: true,
+});
 router.get('/framework/library', _sqManage, FrameworkLibraryController.page);
 router.post(
     '/framework/library/packs/:id/dry-run',
@@ -1887,24 +2036,49 @@ router.post(
     requirePermission('manage_app_settings'),
     AppSettingsController.testCopilot
 );
+// External AI transfer basis: SuperAdmin only (the controller re-checks the
+// role); CSRF as every other /app-settings POST.
+const CopilotEgressController = require('../controllers/CopilotEgressController');
+router.get(
+    '/app-settings/copilot/egress',
+    requireSuperAdmin,
+    CopilotEgressController.status.bind(CopilotEgressController)
+);
+router.post(
+    '/app-settings/copilot/transfer-basis',
+    requireSuperAdmin,
+    CopilotEgressController.record.bind(CopilotEgressController)
+);
+router.post(
+    '/app-settings/copilot/transfer-basis/revoke',
+    requireSuperAdmin,
+    CopilotEgressController.revoke.bind(CopilotEgressController)
+);
+// The ONE named plaintext SMTP relay: SuperAdmin only, reason mandatory,
+// audited (EmailService.setPlaintextRelay re-checks the role). CSRF global.
+const SmtpRelayController = require('../controllers/SmtpRelayController');
+router.post(
+    '/app-settings/smtp/plaintext-relay',
+    requireSuperAdmin,
+    SmtpRelayController.set.bind(SmtpRelayController)
+);
 // White-label branding (logo/favicon are small images → dedicated multer instance).
 const brandUpload = require('multer')({
     dest: require('path').join(__dirname, '../../tmp'),
-    fileFilter: (req, file, cb) => {
-        const ok = ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico'].includes(
-            require('path').extname(file.originalname).toLowerCase()
-        );
-        cb(ok ? null : new Error('Images only (PNG, JPG, WEBP, SVG, ICO)'), ok);
-    },
+    preservePath: true, // the upload guard refuses a client name carrying a path
+    fileFilter: _ug.extensionFilter(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico']),
     limits: { fileSize: 512 * 1024 },
 });
 router.post(
     '/app-settings/branding',
     requirePermission('manage_app_settings'),
-    brandUpload.fields([
-        { name: 'logoFile', maxCount: 1 },
-        { name: 'faviconFile', maxCount: 1 },
-    ]),
+    _ug.guardUpload(
+        brandUpload.fields([
+            { name: 'logoFile', maxCount: 1 },
+            { name: 'faviconFile', maxCount: 1 },
+        ]),
+        { kinds: ['png', 'jpeg', 'webp', 'svg', 'ico'] }
+    ),
     AppSettingsController.updateBranding
 );
 router.post(
@@ -1923,7 +2097,9 @@ const _serveBrandingAsset = (kind) => async (req, res) => {
         if (!m) return res.status(404).end();
         const buf = Buffer.from(m[2], 'base64');
         const etag =
-            '"' + require('crypto').createHash('sha1').update(buf).digest('hex').slice(0, 16) + '"';
+            '"' +
+            require('crypto').createHash('sha256').update(buf).digest('hex').slice(0, 16) +
+            '"';
         if (req.headers['if-none-match'] === etag) return res.status(304).end();
         res.setHeader('Content-Type', m[1]);
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -2097,22 +2273,21 @@ if (!fs.existsSync(tmpDir)) {
     fs.mkdirSync(tmpDir, { recursive: true });
 }
 
-// Configure multer for Excel file uploads
-const upload = multer({
+// Configure multer for Excel / JSON file uploads (guarded, see _ug above).
+const _rawUpload = multer({
     dest: tmpDir,
-    fileFilter: (req, file, cb) => {
-        const allowedExts = ['.xlsx', '.xls', '.json'];
-        const ext = path.extname(file.originalname).toLowerCase();
-        if (allowedExts.includes(ext)) {
-            cb(null, true);
-        } else {
-            cb(new Error('Invalid file type. Allowed types: Excel (.xlsx, .xls) and JSON (.json)'));
-        }
-    },
+    preservePath: true, // the upload guard refuses a client name carrying a path
+    fileFilter: _ug.extensionFilter(['.xlsx', '.xls', '.json']),
     limits: {
         fileSize: 10 * 1024 * 1024, // 10MB limit
+        files: 1,
     },
 });
+// Same `upload.single(field)` shape the routes below use, guarded.
+const upload = {
+    single: (field) =>
+        _ug.guardUpload(_rawUpload.single(field), { kinds: ['xlsx', 'xls', 'text'] }),
+};
 
 // ---- API Keys & Power BI (per-profile, superadmin only) --------------------
 const ApiKeyService = require('../services/ApiKeyService');
@@ -2339,6 +2514,29 @@ router.post(
     requireSuperAdmin,
     NotificationAdminController.retry.bind(NotificationAdminController)
 );
+// Migration 183: the catalogue of every declared kind (channels, mandatory,
+// 30-day volume, sample mail), the sites' default quiet hours, and the
+// effectiveness of each kind. SuperAdmin only, like the monitor.
+router.get(
+    '/admin/notifications/catalogue',
+    requireSuperAdmin,
+    asyncHandler(NotificationController.catalogue.bind(NotificationController))
+);
+router.get(
+    '/admin/notifications/catalogue/preview',
+    requireSuperAdmin,
+    asyncHandler(NotificationController.cataloguePreview.bind(NotificationController))
+);
+router.post(
+    '/admin/notifications/site-quiet-hours',
+    requireSuperAdmin,
+    asyncHandler(NotificationController.saveSiteQuietHours.bind(NotificationController))
+);
+router.get(
+    '/admin/notifications/metrics',
+    requireSuperAdmin,
+    asyncHandler(NotificationController.metricsPage.bind(NotificationController))
+);
 
 // Reports — manager/admin only
 router.get('/reports/builder', requireManagerOrAdmin, ReportController.builder);
@@ -2360,13 +2558,15 @@ router.get('/reports/templates', requireManagerOrAdmin, ReportController.listTem
 router.post('/reports/templates', requireManagerOrAdmin, ReportController.saveTemplate);
 router.get('/reports/templates/:id', requireManagerOrAdmin, ReportController.loadTemplate);
 router.delete('/reports/templates/:id', requireManagerOrAdmin, ReportController.deleteTemplate);
-// First-run setup checklist. SuperAdmin-only. The wizard reports
-// GLOBAL counts (all sites, all departments, the whole headcount) and its steps
-// link to /organization, /domains-skills, /roles and /app-settings — pages a
-// site-scoped admin is refused on. Shown to a local admin it leaked out-of-scope
-// headcount and nagged with a dead-end wizard it could not dismiss.
+// First-run setup checklist and « Ready for go-live ». A SuperAdmin reads the
+// organisation's counts and may dismiss the banner. Since the 4.0.0 port (wave
+// 10) every other administrator may READ it: their people counts are limited
+// to their clearance (never the organisation's headcount), a step links only to
+// a page their permissions open (never a SuperAdmin page), the administrator-
+// account lines show a state without a count, and dismiss stays SuperAdmin-only
+// (route below). Nothing on the page writes.
 const SetupController = require('../controllers/SetupController');
-router.get('/setup', requireSuperAdminPage, SetupController.index.bind(SetupController));
+router.get('/setup', requireAdmin, SetupController.index.bind(SetupController));
 router.post('/setup/dismiss', requireSuperAdmin, SetupController.dismiss.bind(SetupController));
 
 // Local Content / Nationalization — OPTIONAL module (settings-gated in the controller)
@@ -2404,6 +2604,31 @@ router.post(
 );
 router.get('/reports/readiness', requireManagerOrAdmin, ReportController.readiness);
 router.get('/reports/gaps', requireManagerOrAdmin, ReportController.gaps);
+// « How is it calculated? »: the indicator definitions (KPI module). Same
+// audience as the reports; module-aware (KpiGlossaryController).
+router.get('/kpi/glossary', requireManagerOrAdmin, (req, res, next) =>
+    require('../controllers/KpiGlossaryController').page(req, res, next)
+);
+// « Indicator targets » (migration 186): read by any administrator account;
+// a decision needs manage_kpi_targets, and KpiTargetService checks the scope
+// (a site inside the clearance; the organisation with an unrestricted one).
+router.get('/kpi/targets', requireAdmin, (req, res, next) =>
+    require('../controllers/KpiTargetController').page(req, res, next)
+);
+router.post('/kpi/targets', requirePermission('manage_kpi_targets'), (req, res, next) =>
+    require('../controllers/KpiTargetController').save(req, res, next)
+);
+// « My summaries » (migration 187): every signed-in account reads its OWN
+// archived « What changed » summaries and sets its frequency.
+router.get('/digests', requireAuth, (req, res, next) =>
+    require('../controllers/DigestController').list(req, res, next)
+);
+router.post('/digests/preferences', requireAuth, (req, res, next) =>
+    require('../controllers/DigestController').savePrefs(req, res, next)
+);
+router.get('/digests/:id', requireAuth, (req, res, next) =>
+    require('../controllers/DigestController').show(req, res, next)
+);
 
 // Skill Matrix — manager/admin only
 router.get('/skill-matrix', requireManagerOrAdmin, SkillMatrixController.index);
@@ -2542,7 +2767,9 @@ router.get(
     DataManagementController.downloadAssessmentsJsonTemplate
 );
 
-// Import routes (with multer middleware if available)
+// Import routes (with multer middleware if available). The controller's
+// `upload.single` is already guarded (guardUpload: 4xx on parser errors, content
+// must match the extension, zip-bomb caps before any ExcelJS read).
 const uploadMiddleware = DataManagementController.upload
     ? DataManagementController.upload.single('file')
     : (req, res, next) => {
@@ -3023,7 +3250,7 @@ router.post(
             action: 'AUTH_POLICY_SET',
             entityType: 'admin',
             entityId: admin.id,
-            details: `Authentication policy for admin ${admin.username} set to '${policy}'`,
+            details: `Authentication policy for admin:${Number(admin.id)} set to '${policy}'`,
             ipAddress: req.ip,
             userAgent: req.get('user-agent'),
         });
@@ -3118,14 +3345,18 @@ router.post(
 //                 org-wide safe-shift rules.
 // =====================================================================
 const ComplianceController = require('../controllers/ComplianceController');
-const _cmul = require('multer')({
+// A refused evidence type is a typed 400: it used to be dropped silently and
+// the certificate recorded WITHOUT its evidence, with nothing said.
+const _cmulRaw = require('multer')({
     dest: require('path').resolve('tmp'),
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-        const allowed = ['.pdf', '.jpg', '.jpeg', '.png', '.docx', '.xlsx'];
-        cb(null, allowed.includes(require('path').extname(file.originalname).toLowerCase()));
-    },
+    preservePath: true, // the upload guard refuses a client name carrying a path
+    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+    fileFilter: _ug.extensionFilter(['.pdf', '.jpg', '.jpeg', '.png', '.docx', '.xlsx']),
 });
+const _cmul = {
+    single: (field) =>
+        _ug.guardUpload(_cmulRaw.single(field), { kinds: ['pdf', 'jpeg', 'png', 'docx', 'xlsx'] }),
+};
 const _cc = ComplianceController;
 router.get(
     '/compliance',
@@ -3138,6 +3369,36 @@ router.get('/compliance/register', requireSuperAdminPage, _m55(_cc.register.bind
 // « Ce qui est enregistré sur moi » — the signed-in person's own data only
 // (the controller keys on req.user.id; no :id, no query-string id).
 router.get('/employee/my-data', requireEmployeeOrManager, _m55(_cc.myData.bind(_cc)));
+// Privacy (GDPR art. 13/14, 15, 20 and 21; migration 165): the notice every
+// signed-in person acknowledges once a SuperAdmin has published it, the "my
+// data" download and the objection to profiling on the page above, and the
+// SuperAdmin's publishing and review actions on the register page.
+const PrivacyController = require('../controllers/PrivacyController');
+const _pv = (fn) => _m55(fn.bind(PrivacyController));
+router.get('/privacy/notice', requireAuth, _pv(PrivacyController.notice));
+router.post('/privacy/notice/acknowledge', requireAuth, _pv(PrivacyController.acknowledge));
+router.get('/employee/my-data/download', requireEmployeeOrManager, _pv(PrivacyController.download));
+router.post('/employee/my-data/objection', requireEmployeeOrManager, _pv(PrivacyController.object));
+router.post(
+    '/employee/my-data/objection/withdraw',
+    requireEmployeeOrManager,
+    _pv(PrivacyController.withdraw)
+);
+router.post(
+    '/compliance/register/privacy-notice',
+    requireSuperAdminPage,
+    _pv(PrivacyController.publish)
+);
+router.post(
+    '/compliance/privacy/objections/:id(\\d+)/review',
+    requireSuperAdminPage,
+    _pv(PrivacyController.markReviewed)
+);
+router.post(
+    '/compliance/privacy/triggers/:id(\\d+)/resolve',
+    requireSuperAdminPage,
+    _pv(PrivacyController.resolveTrigger)
+);
 router.get(
     '/api/compliance/certifications',
     requireManagerOrAnyPermission('view_compliance'),
@@ -3163,9 +3424,9 @@ router.post(
     requirePermission('manage_compliance'),
     _m55(_cc.setPolicy.bind(_cc))
 );
-// Multipart (evidence file) — CSRF-exempted in server.js like the other
-// multer routes (multer parses the body AFTER the CSRF middleware), and
-// permission-gated + scope-checked inside the controller.
+// Multipart (evidence file): a native form, so the CSRF token travels as
+// ?_csrf= on the action (main.js adds it at submit; multer parses the body after
+// the global check). Permission-gated + scope-checked inside the controller.
 router.post(
     '/compliance/certifications',
     requireManagerOrAnyPermission('manage_compliance'),
@@ -3213,6 +3474,13 @@ router.post(
 // reset_employee_password runs it for THEIR scope (SuperAdmin implicitly);
 // the controller enforces scope on every read and write.
 const InvitationController = require('../controllers/InvitationController');
+// The page the in-app SSO notice opens: the same explanation as the e-mail, for
+// the signed-in person only (employee, manager or admin).
+router.get(
+    '/account/sso-change',
+    requireAuth,
+    asyncHandler(InvitationController.ssoChange.bind(InvitationController))
+);
 // the console lives at /admin/accounts; bookmarks and the sidebar link land there.
 router.get(
     '/admin/invitations',
@@ -3265,12 +3533,20 @@ router.get(
                 params
             );
         }
+        // A result links to a page: offer it only to a person who can OPEN that
+        // page. Skills open /domains-skills and roles /roles/:id, behind
+        // requirePermission('view_domains_skills' / 'view_roles'): employees and
+        // managers were handed links that answered 403.
+        const RBAC = require('../services/RBACService');
+        const mayOpen = (slug) => u.userType === 'admin' && RBAC.hasPermission(u, slug);
         const [skills, roles] = await Promise.all([
-            db.all(
-                'SELECT id, name FROM skills WHERE is_active AND name ILIKE ? ORDER BY name LIMIT 5',
-                [like]
-            ),
-            canSeePeople
+            mayOpen('view_domains_skills')
+                ? db.all(
+                      'SELECT id, name FROM skills WHERE is_active AND name ILIKE ? ORDER BY name LIMIT 5',
+                      [like]
+                  )
+                : Promise.resolve([]),
+            canSeePeople && mayOpen('view_roles')
                 ? db.all(
                       'SELECT id, name FROM roles WHERE is_active AND name ILIKE ? ORDER BY name LIMIT 5',
                       [like]
@@ -3293,8 +3569,8 @@ router.post(
     requireNumericParam('id'),
     _m55(EmployeeController.unlock.bind(EmployeeController))
 );
-// Bulk certification import — lives under the data-management namespace so the
-// existing multipart CSRF exemption prefix (/data-management/import/) applies.
+// Bulk certification import, under the data-management namespace. The page
+// sends the CSRF token in the x-csrf-token header (multipart, audit SA-15).
 // dryRun=1 in the form body = preview (nothing written).
 router.get(
     '/data-management/templates/certifications',
@@ -3316,6 +3592,7 @@ router.get(
     requireApiKey,
     _m55(async (req, res) => {
         const db = require('../config/database');
+        const { sqlDateIso } = require('../utils/dateFormat');
         const { scopedEmployeeIds, scopeClause } = require('../utils/rbacScope');
         const ids = await scopedEmployeeIds(req.user);
         const params = [];
@@ -3338,8 +3615,9 @@ router.get(
                 SkillID: Number(r.skillId),
                 Skill: r.skillName,
                 CertNumber: r.certNumber || null,
-                IssuedOn: r.issuedOn ? new Date(r.issuedOn).toISOString().slice(0, 10) : null,
-                ExpiresOn: r.expiresOn ? new Date(r.expiresOn).toISOString().slice(0, 10) : null,
+                // DATE columns: the stored day, never shifted by the server zone.
+                IssuedOn: sqlDateIso(r.issuedOn),
+                ExpiresOn: sqlDateIso(r.expiresOn),
                 DaysToExpiry: r.daysToExpiry != null ? Number(r.daysToExpiry) : null,
                 Status: r.certStatus,
             }))
@@ -3463,6 +3741,28 @@ router.post(
     requireSuperAdmin,
     _m55(MaintenanceController.dsrErase.bind(MaintenanceController))
 );
+// Erasure under legal hold (migration 166): status, pending list, request,
+// decision. A second, different SuperAdmin must approve; the service re-checks.
+router.get(
+    '/admin/maintenance/dsr/:id(\\d+)/erase-status',
+    requireSuperAdmin,
+    _m55(MaintenanceController.dsrEraseStatus.bind(MaintenanceController))
+);
+router.get(
+    '/admin/maintenance/dsr-erase-overrides',
+    requireSuperAdmin,
+    _m55(MaintenanceController.dsrOverrideList.bind(MaintenanceController))
+);
+router.post(
+    '/admin/maintenance/dsr-erase-override',
+    requireSuperAdmin,
+    _m55(MaintenanceController.dsrOverrideRequest.bind(MaintenanceController))
+);
+router.post(
+    '/admin/maintenance/dsr-erase-override/:rid(\\d+)/decide',
+    requireSuperAdmin,
+    _m55(MaintenanceController.dsrOverrideDecide.bind(MaintenanceController))
+);
 // ---- end SECTION accounts ----------------------------------------------------------------
 
 // ---- SECTION operations — Operations health & settings (2026-09-10) -----------------------
@@ -3523,6 +3823,20 @@ router.post(
     requireManagerOrAdmin,
     requireNumericParam('id'),
     _ahD(ReportController.toggleSchedule.bind(ReportController))
+);
+// SA-38: recipients are accounts; the notice links to an in-app copy whose
+// download re-checks the reader's clearance.
+router.post(
+    '/reports/schedules/:id/recipients',
+    requireManagerOrAdmin,
+    requireNumericParam('id'),
+    _ahD(ReportController.updateScheduleRecipients)
+);
+router.get(
+    '/reports/schedules/runs/:runId',
+    requireManagerOrAdmin,
+    requireNumericParam('runId'),
+    _ahD(ReportController.downloadScheduleRun)
 );
 // ---- end SECTION operations ----------------------------------------------------------------
 
@@ -3598,9 +3912,14 @@ router.post(
 // `/account/my-access` is the English spelling of « Mon accès » used throughout
 // the documentation; the page itself lives at /mon-acces.
 router.get('/account/my-access', requireAuth, (req, res) => res.redirect(302, '/mon-acces'));
-// `/action-center` is the old name of the merged Action Center + bell; the
-// Notification Centre replaced it (v3.22.56/.57) and is the page people mean.
-router.get('/action-center', requireAuth, (req, res) => res.redirect(302, '/notifications'));
+// `/action-center` is the old name of the action list: managers and admins who
+// can act get a permanent redirect to « À traiter »; employees keep their
+// dashboard (their to-do list), read-only accounts their own home.
+router.get(
+    '/action-center',
+    requireAuth,
+    require('../controllers/TasksController').legacyActionCenter
+);
 // ---- end SECTION ux ----------------------------------------------------------------
 
 module.exports = router;

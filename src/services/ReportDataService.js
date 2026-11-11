@@ -382,6 +382,18 @@ function L(t, key, fallback) {
     }
 }
 
+/** reports-namespace label with a fallback (the KPI strip). */
+function LR(t, key, fallback, vars) {
+    if (typeof t !== 'function') return fallback;
+    try {
+        const full = 'reports:' + key;
+        const s = vars ? t(full, vars) : t(full);
+        return s && s !== full && s !== key ? s : fallback;
+    } catch (_) {
+        return fallback;
+    }
+}
+
 class ReportDataService {
     // Build the WHERE clause (RBAC + global filters) for a source.
     async _where(schema, filters, user) {
@@ -511,17 +523,20 @@ class ReportDataService {
                 rows: rows.map((r) => {
                     const total = n2(r.totalCt);
                     const never = n2(r.neverCt);
-                    const out = {
-                        [dimName]: r.label == null ? '—' : r.label,
-                        [metName]: num(r.value),
-                    };
+                    // Column names come from the request: build the row in a Map.
+                    const out = new Map([
+                        [dimName, r.label == null ? '—' : r.label],
+                        [metName, num(r.value)],
+                    ]);
                     if (schema.statusCol) {
-                        out[covCol] =
+                        out.set(
+                            covCol,
                             total > 0 && never >= total
                                 ? L(t, 'rb_status_never_assessed', 'Never assessed')
-                                : `${total - never} / ${total}`;
+                                : `${total - never} / ${total}`
+                        );
                     }
-                    return out;
+                    return Object.fromEntries(out);
                 }),
             };
         }
@@ -574,102 +589,144 @@ class ReportDataService {
         return { labels, datasets };
     }
 
+    /**
+     * The builder KPI strip. Every figure is a KpiService indicator on the SAME
+     * population as the reports, the API and the Power BI feed
+     * (c326-DR-reconciliation-db.test.js: K1 here = K1 on /reports/readiness
+     * = Power BI v2 = KpiService):
+     *   K1 Role-ready rate "of N with a verdict · coverage Y %",
+     *   K2 Average readiness, K3 Assessment coverage, K4 Critical-skill
+     *   compliance, then the ACTIVE headcount and the "Partially assessed" /
+     *   "Not assessed" counts (never folded into a failure).
+     * Site / department / role filters narrow the population (never widen it);
+     * a domain filter is NOT applied to K1–K4: trimming a role's requirement
+     * set is not allowed. An absence of measurement prints "Not measured",
+     * a small group prints counts ("2 of 3"), never 0 %.
+     */
     async _kpi(schema, config, user, t) {
-        // Real organisation KPIs from the readiness view (respects filters/RBAC).
-        const rs = SOURCE_SCHEMA.v_employee_readiness;
-        const where = await this._where(rs, config._filters, user);
-        const row =
-            (
-                await db.all(
-                    `SELECT ROUND(AVG(readiness_assessed_only), 1) AS avg_readiness,
-                    COUNT(*)::int AS total_employees,
-                    SUM(expected_skills)::int AS expected_skills,
-                    SUM(assessed_skills)::int AS assessed_skills,
-                    SUM(CASE WHEN assessed_skills = 0 THEN 1 ELSE 0 END)::int AS never_assessed_employees,
-                    SUM(CASE WHEN assessed_skills > 0 AND readiness_assessed_only < 50 THEN 1 ELSE 0 END)::int AS critical,
-                    ROUND(AVG(CASE WHEN assessed_skills > 0 AND total_required > 0
-                                   THEN 100.0 * skills_met / total_required END), 1) AS skills_met_pct,
-                    -- NULLIF only on the DENOMINATOR (divide-by-zero guard). The old
-                    -- NULLIF(total_gap_points,0) numerator dropped fully-met (gap=0)
-                    -- employees from the AVG, inflating avg-gap ~2x.
-                    -- Denominator is assessed_skills, not total_required: since
-                    -- migration 79 total_gap_points counts ASSESSED requirements
-                    -- only, so dividing it by the FULL requirement count mixed a
-                    -- measured numerator with an unmeasured denominator and
-                    -- understated the gap of a partially assessed population.
-                    -- The full count stays on show in its own KPI (coverage:
-                    -- assessed / expected) — it is not reduced, just not used as
-                    -- the denominator of a measured ratio.
-                    ROUND(AVG(CASE WHEN assessed_skills > 0
-                                   THEN total_gap_points::numeric / NULLIF(assessed_skills, 0) END), 2) AS avg_gap
-             FROM ${rs.view}${where.sql}`,
-                    where.params
-                )
-            )[0] || {};
-
-        const r = num(row.avgReadiness);
-        const emp = n2(row.totalEmployees);
-        const skillsMet = num(row.skillsMetPct);
-        const crit = n2(row.critical);
-        const avgGap = num(row.avgGap);
-        const expected = n2(row.expectedSkills);
-        const assessed = n2(row.assessedSkills);
-        const neverEmp = n2(row.neverAssessedEmployees);
-        const covPct = expected > 0 ? Math.round((1000 * assessed) / expected) / 10 : null;
-        const dash = '—';
-
+        const KpiService = require('./KpiService');
+        const kf = require('../utils/kpiFormat').forLang(config && config._lang);
+        const scope = await this._kpiScope(config._filters, user);
+        const pop = await KpiService.resolvePopulation(scope);
+        const s = { ...scope, __population: pop };
+        const k1 = await KpiService.k1RoleReady(s);
+        const k2 = await KpiService.k2AvgReadiness(s);
+        const k3 = await KpiService.k3Coverage(s);
+        const k4 = await KpiService.k4CriticalCompliance(s);
+        const b1 = k1.breakdown || {};
+        const b3 = k3.breakdown || {};
+        const unmeasured = LR(t, 'dr_unmeasured', 'Not measured');
+        const pctItem = (key, label, r, sub) => {
+            let display;
+            if (r.value != null) display = kf.pct(r.value, 1);
+            else if (r.status === 'small_n' && r.numerator != null && r.denominator)
+                display = LR(t, 'dr_count_of', `${r.numerator} of ${r.denominator}`, {
+                    num: r.numerator,
+                    den: r.denominator,
+                });
+            else if (r.status === 'not_configured')
+                display = LR(t, 'dr_not_configured', 'Not configured');
+            else display = unmeasured;
+            return {
+                key,
+                label: sub ? `${label} (${sub})` : label,
+                value: r.value == null ? null : r.value,
+                status: r.status || null,
+                display,
+                unmeasured: r.value == null,
+            };
+        };
+        const countItem = (key, label, v) => ({
+            key,
+            label,
+            value: v,
+            status: null,
+            display: kf.num(v, 0),
+            unmeasured: false,
+        });
+        const coverageText = k1.coverage == null ? unmeasured : kf.pct(k1.coverage, 1);
+        const k1Sub =
+            k1.denominator > 0
+                ? LR(
+                      t,
+                      'dr_k1_sub',
+                      `of ${k1.denominator} with a verdict · coverage ${coverageText}`,
+                      { n: k1.denominator, coverage: coverageText }
+                  )
+                : null;
+        const assessed = b3.assessedRequirements == null ? 0 : b3.assessedRequirements;
+        const expected = b3.expectedRequirements == null ? 0 : b3.expectedRequirements;
         return {
-            // The whole KPI strip is now provenance-aware: readiness is the
-            // assessed-only figure (identical for a fully assessed person, NULL
-            // for someone nobody ever rated) and the coverage denominator sits
-            // right next to it so no one reads 0 % as a measured result.
             items: [
-                {
-                    label: L(t, 'rb_kpi_avg_readiness', 'Avg Readiness (assessed)'),
-                    value: r,
-                    display: r === null ? dash : r + '%',
-                },
-                {
-                    label: L(t, 'rb_kpi_total_employees', 'Total Employees'),
-                    value: emp,
-                    display: String(emp),
-                },
-                {
-                    label: L(t, 'rb_kpi_coverage', 'Assessment Coverage'),
-                    value: covPct,
-                    display: covPct === null ? dash : `${assessed} / ${expected} (${covPct}%)`,
-                },
-                {
-                    label: L(t, 'rb_kpi_never_assessed', 'Never assessed (people)'),
-                    value: neverEmp,
-                    display: String(neverEmp),
-                },
-                // Was mislabeled "Assessed" — it's the avg % of REQUIRED skills met, a
-                // proficiency measure, not assessment coverage. Labeled accurately now.
-                {
-                    label: L(t, 'rb_kpi_skills_met', 'Skills Met'),
-                    value: skillsMet,
-                    display: skillsMet === null ? dash : skillsMet + '%',
-                },
-                {
-                    label: L(t, 'rb_kpi_critical_gaps', 'Critical Gaps'),
-                    value: crit,
-                    display: String(crit),
-                },
-                {
-                    label: L(t, 'rb_kpi_avg_gap', 'Avg Gap'),
-                    value: avgGap,
-                    display: avgGap === null ? dash : avgGap.toFixed(1),
-                },
+                pctItem('K1', LR(t, 'dr_kpi_k1', 'Role-ready rate'), k1, k1Sub),
+                pctItem('K2', LR(t, 'dr_kpi_k2', 'Average readiness'), k2),
+                pctItem('K3', LR(t, 'dr_kpi_k3', 'Assessment coverage'), k3),
+                pctItem('K4', LR(t, 'dr_kpi_k4', 'Critical-skill compliance'), k4),
+                countItem(
+                    'population',
+                    LR(t, 'dr_kpi_population', 'Headcount (active)'),
+                    pop.ids.length
+                ),
+                countItem(
+                    'partial',
+                    LR(t, 'dr_kpi_partial', 'Partially assessed'),
+                    b1.partial || 0
+                ),
+                countItem(
+                    'notAssessed',
+                    LR(t, 'dr_kpi_unassessed', 'Not assessed'),
+                    b1.notAssessed || 0
+                ),
             ],
+            k1: {
+                value: k1.value,
+                rawValue: k1.rawValue,
+                numerator: k1.numerator,
+                denominator: k1.denominator,
+                status: k1.status,
+                breakdown: b1,
+            },
             coverage: {
                 assessed,
                 expected,
-                pct: covPct,
-                neverAssessedEmployees: neverEmp,
-                employees: emp,
+                pct: k3.rawValue == null ? null : k3.rawValue,
+                neverAssessedEmployees: b1.notAssessed || 0,
+                employees: pop.ids.length,
             },
         };
+    }
+
+    /**
+     * KpiService scope of a builder section: the reader plus, when site /
+     * department / role name filters are set, the ids of the people matching
+     * them. resolvePopulation intersects those ids with the reader's clearance
+     * and the active population, so a filter can only narrow. The filter
+     * VALUES travel as parameters; only the three fixed column names below
+     * reach the SQL text.
+     */
+    async _kpiScope(filters, user) {
+        const f = filters || {};
+        const cond = [];
+        const params = [];
+        const add = (vals, col) => {
+            if (Array.isArray(vals) && vals.length) {
+                cond.push(`${col} = ANY(?)`);
+                params.push(vals.map(String));
+            }
+        };
+        add(f.sites, 'st.name');
+        add(f.departments, 'd.name');
+        add(f.roles, 'r.name');
+        if (!cond.length) return { viewer: user };
+        const rows = await db.all(
+            `SELECT e.id AS "id" FROM employees e
+               LEFT JOIN sites st ON st.id = e.site_id
+               LEFT JOIN departments d ON d.id = e.department_id
+               LEFT JOIN roles r ON r.id = e.role_id
+              WHERE ${cond.join(' AND ')}`,
+            params
+        );
+        return { viewer: user, employeeIds: (rows || []).map((r) => Number(r.id)) };
     }
 
     async _scatter(schema, config, user) {

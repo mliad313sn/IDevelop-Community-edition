@@ -261,7 +261,9 @@ describe('OC client — no reporting line at all (0 of N with a supervisor or a 
             expect(r.text).toContain(FR.oc_no_lines);
             expect(r.text).toContain(FR.oc_no_lines_hint);
             expect(r.text).toContain(FR.oc_see_structure);
-            expect(r.html).toContain(`onclick="OC.setMode('structure')"`);
+            // CSP (SA-14): delegated action (public/js/csp-actions.js), no inline onclick.
+            expect(r.html).toMatch(/data-on-click="OC\.setMode"\s+data-args="[^"]*structure[^"]*"/);
+            expect(r.html).not.toMatch(/\sonclick=/);
             expect(r.stats).toContain(FR.oc_no_lines_stat);
             expect(r.stats).not.toContain(`0 ${FR.oc_team_word}`);
             expect(r.stats).not.toContain(FR.oc_unassigned.toLowerCase());

@@ -1,3 +1,81 @@
+// CSRF token on every same-origin mutation (audit SA-15).
+// multer parses a multipart body AFTER the server's token check, so an upload
+// must carry the token outside the body:
+//   1. every same-origin fetch() with an unsafe method gets the `x-csrf-token`
+//      header from <meta name="csrf-token"> unless it already carries one;
+//   2. a native multipart POST <form> (one no script sends itself) gets
+//      `?_csrf=` on its action at submit time (the server reads the query token
+//      for multipart requests only, and the request log redacts it).
+// The token never goes to another origin.
+(function () {
+    'use strict';
+    if (window.__csrfFetchWrapped) return;
+    window.__csrfFetchWrapped = true;
+    function csrfToken() {
+        var m = document.querySelector('meta[name="csrf-token"]');
+        return m ? m.getAttribute('content') || '' : '';
+    }
+    function sameOrigin(u) {
+        try {
+            return new URL(u, window.location.href).origin === window.location.origin;
+        } catch (e) {
+            return false;
+        }
+    }
+    var SAFE = { GET: 1, HEAD: 1, OPTIONS: 1 };
+    if (typeof window.fetch === 'function') {
+        var origFetch = window.fetch;
+        window.fetch = function (input, init) {
+            try {
+                var isReq = typeof Request !== 'undefined' && input instanceof Request;
+                var method = String(
+                    (init && init.method) || (isReq ? input.method : 'GET')
+                ).toUpperCase();
+                var url = isReq ? input.url : String(input);
+                var t = csrfToken();
+                if (t && !SAFE[method] && sameOrigin(url)) {
+                    var h = new Headers(
+                        (init && init.headers) || (isReq ? input.headers : undefined)
+                    );
+                    if (!h.has('x-csrf-token')) {
+                        h.set('x-csrf-token', t);
+                        init = Object.assign({}, init || {}, { headers: h });
+                    }
+                }
+            } catch (e) {
+                /* never break a request over the token */
+            }
+            return origFetch.call(this, input, init);
+        };
+    }
+    // A native multipart POST <form> carries the token on its action. Decided at
+    // the END of the submit dispatch (window, bubble phase), when the page's own
+    // handlers have run: a form a script sends itself (preventDefault + fetch,
+    // which gets the header above) is left alone, so the token never lands in a
+    // fetch URL. A data-confirm form IS submitted natively after its dialog
+    // (ui-feedback.js re-submits it without a new event), so it gets the token
+    // now. The browser reads the action after the event, so the change applies
+    // to this very submission.
+    window.addEventListener('submit', function (e) {
+        var f = e.target;
+        if (!f || f.nodeName !== 'FORM') return;
+        if (String(f.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+        if (String(f.enctype || '').toLowerCase() !== 'multipart/form-data') return;
+        if (e.defaultPrevented && !f.hasAttribute('data-confirm')) return;
+        var field = f.querySelector('input[name="_csrf"]');
+        var t = (field && field.value) || csrfToken();
+        if (!t) return;
+        try {
+            var u = new URL(f.getAttribute('action') || window.location.href, window.location.href);
+            if (u.origin !== window.location.origin) return;
+            u.searchParams.set('_csrf', t);
+            f.setAttribute('action', u.pathname + u.search + u.hash);
+        } catch (err) {
+            /* leave the form as it is */
+        }
+    });
+})();
+
 // Progressive a11y/responsive enhancements applied app-wide on load:
 //  1. Wrap any bare .table in a horizontally-scrollable container so wide
 //     tables don't overflow the viewport on phones/tablets.
@@ -93,28 +171,16 @@ document.addEventListener('keydown', function (e) {
         }
     }
 
-    // Ctrl+K to focus search input (desktop power-user shortcut)
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        const searchInput = document.querySelector('.search-input');
-        if (searchInput) {
-            e.preventDefault();
-            searchInput.focus();
-            searchInput.select();
-        }
-    }
+    // Ctrl/Cmd+K is bound ONCE, by the quick-search palette
+    // (views/partials/command-palette.ejs).
 
     // Escape key to close modals/dropdowns
     if (e.key === 'Escape') {
         document.querySelectorAll('.modal.show').forEach((modal) => {
             window.hideModal(modal.id);
         });
-        const userDropdown = document.getElementById('userDropdown');
-        if (userDropdown && userDropdown.classList.contains('show')) {
-            userDropdown.classList.remove('show');
-        }
-        document.querySelectorAll('.topbar-user').forEach(function (b) {
-            b.setAttribute('aria-expanded', 'false');
-        });
+        // The account menu and the bell close themselves on Escape and give the
+        // focus back to their button (views/partials/header.ejs).
     }
 });
 
@@ -165,21 +231,7 @@ window.flashAutoDismiss = function (root) {
 document.addEventListener('DOMContentLoaded', function () {
     window.flashAutoDismiss(document);
 
-    // Close dropdowns when clicking outside
-    document.addEventListener('click', function (event) {
-        const userDropdown = document.getElementById('userDropdown');
-        const topbarUser = document.querySelector('.topbar-user');
-
-        if (
-            userDropdown &&
-            topbarUser &&
-            !topbarUser.contains(event.target) &&
-            !userDropdown.contains(event.target)
-        ) {
-            userDropdown.classList.remove('show');
-            topbarUser.setAttribute('aria-expanded', 'false');
-        }
-    });
+    // (The account menu closes itself on an outside click — views/partials/header.ejs.)
 
     // Add loading overlay for form submissions — not when a confirm dialog
     // (ui-feedback data-confirm) or a page script has already stopped the submit.
@@ -312,8 +364,13 @@ document.addEventListener('DOMContentLoaded', function () {
     // Scroll-to-top button
     const scrollBtn = document.createElement('button');
     scrollBtn.className = 'scroll-to-top';
-    scrollBtn.innerHTML = '<i class="fas fa-arrow-up"></i>';
-    scrollBtn.setAttribute('aria-label', 'Scroll to top');
+    scrollBtn.type = 'button';
+    scrollBtn.innerHTML = '<i class="fas fa-arrow-up" aria-hidden="true"></i>';
+    // In the session language (layouts/main.ejs → window.__UIF_I18N__).
+    scrollBtn.setAttribute(
+        'aria-label',
+        (window.__UIF_I18N__ && window.__UIF_I18N__.scrollTop) || 'Back to top'
+    );
     scrollBtn.addEventListener('click', function () {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     });
@@ -423,6 +480,44 @@ document.addEventListener('DOMContentLoaded', function () {
     hzLabelCardTables(document);
 });
 
+// Horizontal scroll cue on wide tables (.table-wrapper): `.is-scrollable` while
+// the content overflows, with the written hint (data-scroll-hint, in the session
+// language) until the first scroll; the scroller becomes keyboard-reachable.
+document.addEventListener('DOMContentLoaded', function () {
+    const hint = (window.__UIF_I18N__ && window.__UIF_I18N__.scrollHint) || 'Faites défiler →';
+    const boxes = Array.prototype.slice.call(document.querySelectorAll('.table-wrapper'));
+    if (!boxes.length) return;
+    function paint(box) {
+        const over = box.scrollWidth > box.clientWidth + 1;
+        box.classList.toggle('is-scrollable', over);
+        if (over && !box.hasAttribute('data-scroll-hint'))
+            box.setAttribute('data-scroll-hint', hint);
+        if (over && !box.hasAttribute('tabindex')) box.setAttribute('tabindex', '0');
+    }
+    boxes.forEach(function (box) {
+        paint(box);
+        box.addEventListener(
+            'scroll',
+            function () {
+                if (box.scrollLeft > 4) box.classList.add('is-scrolled');
+            },
+            { passive: true }
+        );
+    });
+    if (typeof ResizeObserver === 'function') {
+        const ro = new ResizeObserver(function () {
+            boxes.forEach(paint);
+        });
+        boxes.forEach(function (b) {
+            ro.observe(b);
+        });
+    } else {
+        window.addEventListener('resize', function () {
+            boxes.forEach(paint);
+        });
+    }
+});
+
 // Disclosure pattern: a button that shows a panel of two native radio groups.
 document.addEventListener('DOMContentLoaded', function () {
     const wrap = document.getElementById('hzPalette');
@@ -438,6 +533,12 @@ document.addEventListener('DOMContentLoaded', function () {
         menu.hidden = !open;
         btn.setAttribute('aria-expanded', String(open));
         if (open) hzSyncMenu();
+    });
+    // A mouse press on a choice must not move focus out of the widget first: the
+    // labels are not focusable, so the button's focusout (relatedTarget null)
+    // closed the menu before the click could pick the swatch or the mode.
+    menu.addEventListener('mousedown', function (e) {
+        if (e.target.closest('label')) e.preventDefault();
     });
     menu.addEventListener('change', function (e) {
         if (e.target.name === 'hz-mode') setThemeMode(e.target.value);
@@ -521,18 +622,8 @@ window.showToast = function (message, type = 'info', duration = 5000) {
     return toast;
 };
 
-// User menu toggle — ONE account menu, in the top bar (UX-17). It used to toggle
-// a second, differently-stocked dropdown in the sidebar footer at the same time,
-// so a single click opened two menus. The sidebar footer is now a profile link.
-function toggleUserMenu() {
-    const userDropdown = document.getElementById('userDropdown');
-    let open = false;
-    if (userDropdown) open = userDropdown.classList.toggle('show');
-    // Reflect popup state to assistive tech on the trigger (WCAG 4.1.2).
-    document.querySelectorAll('.topbar-user').forEach(function (b) {
-        b.setAttribute('aria-expanded', open ? 'true' : 'false');
-    });
-}
+// The account menu (ONE menu, in the top bar) is a real <button> with menu
+// semantics; its behaviour lives in views/partials/header.ejs.
 
 // Confirmation dialogs: <form data-confirm="…"> (ui-feedback.js) — never the native confirm.
 // Legacy client-side row filter. Opt-in ONLY: it used to bind every
@@ -795,4 +886,52 @@ document.addEventListener('click', function (e) {
             });
         }).observe(document.documentElement, { childList: true, subtree: true });
     }
+})();
+
+/* Navigation feedback. A page that takes a second or more to render (the board
+   pack, a cold dashboard) left the previous page still and silent, so people
+   clicked again. A same-origin link click now shows a thin progress bar at the
+   top (horizon.css .nav-pending, after a short delay, so fast pages never
+   flash) and marks the main region busy. Forms keep their own loading overlay.
+   Never for a new tab, a download, an in-page anchor or a modified click; the
+   bar is cleared when the page comes back from the back/forward cache. */
+(function navigationFeedback() {
+    'use strict';
+    var bar = null;
+    function start() {
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'nav-pending';
+            bar.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(bar);
+        }
+        document.documentElement.classList.add('is-navigating');
+        var main = document.getElementById('main-content');
+        if (main) main.setAttribute('aria-busy', 'true');
+    }
+    function stop() {
+        document.documentElement.classList.remove('is-navigating');
+        var main = document.getElementById('main-content');
+        if (main) main.removeAttribute('aria-busy');
+    }
+    // Only same-origin web pages get the bar: an allow-list of schemes, so
+    // mailto:, tel:, javascript:, data: and the rest never start it.
+    function quiet(a, href) {
+        if (!href || href.charAt(0) === '#') return true;
+        return a.protocol !== 'http:' && a.protocol !== 'https:';
+    }
+    document.addEventListener('click', function (ev) {
+        if (ev.defaultPrevented || ev.button !== 0) return;
+        if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+        var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+        if (!a || a.target || a.hasAttribute('download') || a.hasAttribute('data-no-progress'))
+            return;
+        if (quiet(a, a.getAttribute('href') || '')) return;
+        if (a.origin && a.origin !== window.location.origin) return;
+        var here = window.location;
+        if (a.pathname === here.pathname && a.search === here.search && a.hash) return;
+        start();
+    });
+    window.addEventListener('pageshow', stop);
+    window.__navFeedback = { start: start, stop: stop, quiet: quiet };
 })();

@@ -11,7 +11,8 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 const fs = require('fs');
 
-const HAS_DB = !!process.env.DATABASE_URL && /_test\b/.test(process.env.DATABASE_URL);
+const { isTestDatabaseUrl } = require('../helpers/testDatabase');
+const HAS_DB = isTestDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 const db = HAS_DB ? require('../../src/config/database') : null;
 const MIGRATION = fs.readFileSync(

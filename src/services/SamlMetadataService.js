@@ -39,7 +39,12 @@ function spValues(base, configured = {}) {
     const b = String(base || '').replace(/\/+$/, '');
     return {
         entityId: configured.issuer || `${b}/saml/metadata`,
-        acsUrl: configured.callbackUrl || `${b}/auth/sso/saml/callback`,
+        // ALWAYS the canonical ACS. The page used to echo the configured value,
+        // so a mistyped reply URL (e.g. ".../auth/saml/saml/callback") was handed
+        // back to the operator as the value to paste into the IdP. A configured
+        // value that differs is named by the SSO page's mismatch warning instead
+        // (SsoSettingsController.callbackMismatch).
+        acsUrl: `${b}/auth/sso/saml/callback`,
         signOnUrl: `${b}/auth/sso/saml`,
         metadataUrl: `${b}/saml/metadata`,
         // Claims the app reads (config/sso.js SAML_CLAIMS), as named in Entra.
@@ -321,18 +326,21 @@ async function fetchMetadata(
     const pinned = addrs[0];
     const https = require('https');
     return new Promise((resolve) => {
+        // Connect to the address that was CHECKED, never a fresh lookup: the
+        // socket goes to `pinned.address`, while `servername` and `Host` keep
+        // the certificate check and virtual hosting on the name the admin typed.
         const req = https.get(
-            u,
             {
+                host: pinned.address,
+                family: pinned.family,
+                port: u.port ? Number(u.port) : 443,
+                path: u.pathname + u.search,
+                servername: u.hostname.replace(/^\[|\]$/g, ''),
                 timeout: TIMEOUT_MS,
-                headers: { Accept: 'application/samlmetadata+xml, application/xml, text/xml' },
-                // Connect to the address that was CHECKED, never a fresh lookup.
-                // Node >= 22 (autoSelectFamily) calls lookup with {all:true} and wants
-                // an array: the single-address form made every URL fetch fail.
-                lookup: (_host, opts, cb) =>
-                    opts && opts.all
-                        ? cb(null, [{ address: pinned.address, family: pinned.family }])
-                        : cb(null, pinned.address, pinned.family),
+                headers: {
+                    Host: u.host,
+                    Accept: 'application/samlmetadata+xml, application/xml, text/xml',
+                },
             },
             (res) => {
                 if (res.statusCode >= 300 && res.statusCode < 400) {

@@ -78,8 +78,9 @@ if (process.env.NODE_ENV !== 'production') {
 // e.g. the password-reset link is GET /reset-password?token=<raw>, and SSO
 // callbacks carry ?code=/?access_token=. Logging req.originalUrl verbatim would
 // persist a live, single-use token to combined.log (replayable → takeover).
+// `_csrf`: a native multipart form presents its CSRF token on the action URL.
 const SENSITIVE_QS =
-    /^(token|code|access_token|refresh_token|id_token|state|api_?key|password|secret|assertion)$/i;
+    /^(token|code|access_token|refresh_token|id_token|state|api_?key|password|secret|assertion|_csrf)$/i;
 
 function safeUrl(req) {
     const keys = req.query ? Object.keys(req.query) : [];

@@ -64,21 +64,67 @@ async function tick() {
     // into today's digest (and must not be summarised away before they see it).
     // The per-user email opt-out is enforced inside sendDigest, which is the
     // single place that decides whether a given user may be mailed at all.
-    const groups = await db.all(
-        `SELECT user_type AS "userType", user_id AS "userId"
+    //
+    // A person is a candidate only for items that MAY leave the app: a kind of
+    // tier 'none' (retention risk, 9-box, privacy, performance plans) never
+    // makes a summary, so an inbox holding only those triggers no mail at all.
+    //
+    // Each person's CADENCE (migration 183): daily (the default, as before),
+    // weekly (on Monday, covering 7 days) or never. On Monday the candidate
+    // window is therefore 7 days; a daily person's summary still lists only the
+    // last 24 hours. Before sending, eight summaries in a row left unopened
+    // slow the cadence down one notch (daily → weekly → never); the
+    // preferences page says so and offers to turn it back on.
+    const monday = now.getDay() === 1;
+    const rows = await db.all(
+        `SELECT user_type AS "userType", user_id AS "userId", array_agg(DISTINCT kind) AS kinds
            FROM notifications
           WHERE channel = 'inapp' AND read_at IS NULL
-            AND created_at >= now() - interval '24 hours'
+            AND created_at >= now() - interval '${monday ? '7 days' : '24 hours'}'
             AND (state <> 'snoozed' OR release_at IS NULL OR release_at <= now())
           GROUP BY user_type, user_id`
     );
+    const { isDigestible } = require('../services/notificationCatalogue');
+    const groups = (rows || []).filter((g) =>
+        (Array.isArray(g.kinds) ? g.kinds : []).some((k) => isDigestible(k))
+    );
     let sent = 0;
     let optedOut = 0;
+    let notDue = 0;
+    let steppedDown = 0;
+    const cadenceOf = async (g) => {
+        try {
+            return await NotificationService.digestCadence(g.userType, Number(g.userId));
+        } catch (_) {
+            return 'daily';
+        }
+    };
+    const due = (c) => c === 'daily' || (c === 'weekly' && monday);
     for (const g of groups) {
         try {
+            let cadence = await cadenceOf(g);
+            if (!due(cadence)) {
+                notDue++;
+                continue;
+            }
+            const s = await NotificationService.digestStepDown({
+                userType: g.userType,
+                userId: Number(g.userId),
+                cadence,
+            });
+            if (s && s.steppedDown) {
+                steppedDown++;
+                cadence = s.to;
+                if (!due(cadence)) {
+                    notDue++;
+                    continue;
+                }
+            }
             const r = await NotificationService.sendDigest({
                 userType: g.userType,
                 userId: Number(g.userId),
+                // a daily summary keeps sendDigest's own 24 h default
+                ...(cadence === 'weekly' ? { sinceHours: 168 } : {}),
             });
             if (r && r.sent) sent++;
             else if (r && r.skipped === 'user_opt_out') optedOut++;
@@ -88,9 +134,9 @@ async function tick() {
     }
     if (process.env.NODE_ENV !== 'test')
         console.log(
-            `[personal-digest] recipients: ${groups.length}, emails sent: ${sent}, opted out: ${optedOut}`
+            `[personal-digest] recipients: ${groups.length}, emails sent: ${sent}, opted out: ${optedOut}, not due: ${notDue}, stepped down: ${steppedDown}`
         );
-    return { sent, recipients: groups.length, optedOut };
+    return { sent, recipients: groups.length, optedOut, notDue, steppedDown };
 }
 
 module.exports = { tick };

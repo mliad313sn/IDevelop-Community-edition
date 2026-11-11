@@ -11,8 +11,16 @@
     Exit code 0 = the backup restores and passes checks; non-zero = ACT NOW -
     your backups may not be restorable.
 
-.PARAMETER BackupFile     Path to a .sql/.dump backup (default: newest file in -BackupDir).
-.PARAMETER BackupDir      Where the daily backups land (default: <app>\backups\auto).
+    ENCRYPTED BACKUPS (SA-39). Daily backups are <db>-<date>.dump.enc files with
+    a SHA-256 manifest next to them. The drill checks the manifest and every
+    encrypted chunk FIRST (node scripts\backup-key.js verify) and refuses a file
+    that does not match, or whose key this server does not hold. The restore
+    then streams the decrypted dump into pg_restore's stdin (backup-key.js pipe):
+    no clear copy is written to disk. A legacy plaintext .dump is still
+    restored, with a warning. See docs\BACKUPS.md.
+
+.PARAMETER BackupFile     Path to a .sql/.dump/.dump.enc backup (default: newest file in -BackupDir).
+.PARAMETER BackupDir      Where the daily backups land (default: %ProgramData%\IDevelop\backups, else <app>\backups\auto).
 .PARAMETER PgSuperPassword postgres superuser password (default: PGPASSWORD env or prompt).
 .PARAMETER PgHost / PgPort Target PostgreSQL (default localhost:5432).
 .EXAMPLE  powershell -ExecutionPolicy Bypass -File .\scripts\Verify-BackupRestore.ps1 -PgSuperPassword 'pgpass'
@@ -29,7 +37,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $appRoot = Split-Path -Parent $here
-if (-not $BackupDir) { $BackupDir = Join-Path $appRoot 'backups\auto' }
+if (-not $BackupDir) {
+    $pdBackups = if ($env:ProgramData) { Join-Path $env:ProgramData 'IDevelop\backups' } else { $null }
+    $pdOk = $false
+    if ($pdBackups) { try { $pdOk = [bool](Test-Path $pdBackups -ErrorAction Stop) } catch { $pdOk = $false } }
+    $BackupDir = if ($pdOk) { $pdBackups } else { Join-Path $appRoot 'backups\auto' }
+}
+$backupKeyJs = Join-Path $here 'backup-key.js'
 
 function Log($m, $c = 'Gray') { Write-Host ("[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $m) -ForegroundColor $c }
 function Fail($m) { Log $m 'Red'; exit 1 }
@@ -46,7 +60,7 @@ if (-not $psql) { Fail 'psql.exe not found - install the PostgreSQL client tools
 
 # --- locate the backup ---
 if (-not $BackupFile) {
-    $candidate = Get-ChildItem $BackupDir -Include '*.sql', '*.dump' -Recurse -ErrorAction SilentlyContinue |
+    $candidate = Get-ChildItem $BackupDir -Include '*.sql', '*.dump', '*.dump.enc' -Recurse -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $candidate) { Fail "No backup files found under $BackupDir - is the daily db-backup job running?" }
     $BackupFile = $candidate.FullName
@@ -55,6 +69,28 @@ if (-not (Test-Path $BackupFile)) { Fail "Backup file not found: $BackupFile" }
 $age = [math]::Round(((Get-Date) - (Get-Item $BackupFile).LastWriteTime).TotalHours, 1)
 Log "Backup   : $BackupFile ($([math]::Round((Get-Item $BackupFile).Length/1MB,1)) MB, ${age}h old)"
 if ($age -gt 48) { Log "WARNING: newest backup is ${age}h old - the daily backup job may be failing." 'Yellow' }
+
+# --- encrypted? manifest? (magic bytes, not the extension) ---
+$head8 = New-Object byte[] 8
+$fs = [IO.File]::OpenRead($BackupFile); try { [void]$fs.Read($head8, 0, 8) } finally { $fs.Close() }
+$encrypted = ([Text.Encoding]::ASCII.GetString($head8) -eq 'IDVBKENC')
+$hasManifest = Test-Path ($BackupFile + '.manifest.json')
+$node = $null
+if ($encrypted -or $hasManifest) {
+    $node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
+    if (-not $node -and (Test-Path "$env:ProgramFiles\nodejs\node.exe")) { $node = "$env:ProgramFiles\nodejs\node.exe" }
+    if (-not $node) { Fail 'node.exe not found - it is needed to verify and decrypt an encrypted backup.' }
+    if (-not (Test-Path $backupKeyJs)) { Fail 'scripts\backup-key.js not found next to this drill.' }
+    Log 'Verifying the SHA-256 manifest and every encrypted chunk BEFORE restoring ...'
+    $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $vOut = & $node $backupKeyJs verify --in $BackupFile 2>&1
+    $vCode = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap
+    if ($vCode -ne 0) { Fail ("RESTORE REFUSED - integrity check failed: " + ((($vOut | ForEach-Object { "$_" }) -join ' ').Trim())) }
+    Log '  integrity OK' 'Green'
+} else {
+    Log 'WARNING: unencrypted legacy backup with no integrity manifest - restored as-is.' 'Yellow'
+}
 
 if (-not $PgSuperPassword) { $PgSuperPassword = $env:PGPASSWORD }
 if (-not $PgSuperPassword) {
@@ -90,9 +126,14 @@ try {
     # which need pg_restore; plain .sql dumps go through psql. Detect by magic
     # bytes, not extension. Ownership/grant noise is expected - structural
     # failures surface in the checks below.
-    $magic = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($BackupFile)[0..4])
-    if ($magic -eq 'PGDMP') {
-        $pgRestore = Join-Path (Split-Path -Parent $psql) 'pg_restore.exe'
+    $magic = [Text.Encoding]::ASCII.GetString($head8, 0, 5)
+    $pgRestore = Join-Path (Split-Path -Parent $psql) 'pg_restore.exe'
+    if ($encrypted) {
+        # Decrypted stream -> pg_restore stdin; no clear copy on disk.
+        if (-not (Test-Path $pgRestore)) { Fail "pg_restore.exe not found next to psql - cannot restore a custom-format dump." }
+        Invoke-Native { & $node $backupKeyJs pipe --in $BackupFile --run $pgRestore -h $PgHost -p $PgPort -U postgres -d $scratch --no-owner --no-privileges 2>&1 } |
+            Where-Object { "$_" -match 'error|decryption' } | Select-Object -First 5 | ForEach-Object { Log "  restore: $_" 'DarkYellow' }
+    } elseif ($magic -eq 'PGDMP') {
         if (-not (Test-Path $pgRestore)) { Fail "pg_restore.exe not found next to psql - cannot restore a custom-format dump." }
         Invoke-Native { & $pgRestore -h $PgHost -p $PgPort -U postgres -d $scratch --no-owner --no-privileges $BackupFile 2>&1 } |
             Where-Object { "$_" -match 'error' } | Select-Object -First 5 | ForEach-Object { Log "  restore: $_" 'DarkYellow' }

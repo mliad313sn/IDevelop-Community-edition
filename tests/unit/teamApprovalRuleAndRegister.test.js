@@ -212,9 +212,10 @@ describe('R4 — catalogues', () => {
         const views = [
             'views/pages/compliance/register.ejs',
             'views/pages/employee/my-data.ejs',
-            'views/pages/supervisor/dashboard.ejs',
+            'views/pages/supervisor/team.ejs',
             'views/pages/supervisor/self-assessment-review.ejs',
             'views/partials/sidebar.ejs',
+            'src/config/navigation.js',
         ];
         for (const v of views) {
             for (const m of read(v).matchAll(/__\('(compliance|talentx):([a-z0-9_]+)'\s*[,)]/gi)) {
@@ -252,7 +253,7 @@ describe('R4 — catalogues', () => {
         for (const v of [
             'views/pages/compliance/register.ejs',
             'views/pages/employee/my-data.ejs',
-            'views/pages/supervisor/dashboard.ejs',
+            'views/pages/supervisor/team.ejs',
         ]) {
             expect(read(v)).not.toMatch(/text-transform\s*:\s*uppercase/i);
         }
@@ -272,12 +273,23 @@ describe('R5 — guards and menu', () => {
         expect(body).not.toMatch(/req\.(params|query|body)/);
     });
     test('team approve-all carries the same guard as the per-employee one', () => {
-        expect(routes).toMatch(
-            /'\/api\/self-assessment\/team\/approve-all',\s*requireManagerOrAnyPermission\('approve_assessments'\),/
-        );
+        // The authority ladder's route half: in strict mode (the default) it is
+        // exactly requireManagerOrAnyPermission('approve_assessments').
+        const guard = /requireLineOrPermission\('approve_assessments'\),/;
+        for (const route of [
+            "'/api/self-assessment/team/approve-all',",
+            "'/api/self-assessment/employee/:employeeId/approve-all',",
+        ]) {
+            const at = routes.indexOf(route);
+            expect(at).toBeGreaterThan(0);
+            expect(routes.slice(at, at + 300)).toMatch(guard);
+        }
     });
-    test('the employee menu links the page', () => {
-        expect(read('views/partials/sidebar.ejs')).toMatch(/href="\/employee\/my-data"/);
+    test('the employee account menu links the page', () => {
+        const NAV = require('../../src/config/navigation');
+        const L = { user: { userType: 'employee', id: 1 } };
+        expect(NAV.accountMenu(L).map((m) => m.href)).toContain('/employee/my-data');
+        expect(read('src/config/navigation.js')).toMatch(/label: 'compliance:mydata_nav'/);
     });
     test('the register is printable', () => {
         const v = read('views/pages/compliance/register.ejs');

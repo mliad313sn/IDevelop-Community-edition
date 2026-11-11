@@ -63,18 +63,22 @@ describe('the unmeasured skills are still reported, separately', () => {
     });
 
     test('it has its own KPI tile, in amber rather than the gap red', () => {
-        expect(job).toMatch(/label: 'Non mesuré \/ Unmeasured'/);
+        expect(job).toMatch(/label: T\.pick\('Non mesuré', 'Not measured'\)/);
         expect(jobFlat).toMatch(/totals\.unmeasured \? '#b45309' : '#15803d'/);
     });
 
-    test('it has its own bilingual section, not folded into the gaps table', () => {
+    test('it has its own section (FR / EN), not folded into the gaps table', () => {
         expect(jobFlat).toMatch(
             /T\.section\( 'Compétences critiques non mesurées', 'Critical skills not yet measured'/
         );
     });
 
-    test('it appears in the plain-text summary too', () => {
-        expect(jobFlat).toMatch(/Non mesuré \/ Unmeasured: \$\{totals\.unmeasured\}/);
+    test('it appears in the plain-text part too: the renderer builds it from the same blocks', () => {
+        // One renderer: the text part is built from the very blocks of the HTML
+        // part, so the unmeasured section and its tile are in both.
+        expect(jobFlat).toMatch(/blocks,/);
+        expect(jobFlat).not.toMatch(/\b(html|subject)\s*[:,]/); // no hand-built mail
+        expect(jobFlat).toMatch(/T\.kpis\(\[/);
     });
 
     test('a team with ONLY unmeasured skills still gets a mail rather than silence', () => {

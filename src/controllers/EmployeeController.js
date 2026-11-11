@@ -521,10 +521,23 @@ class EmployeeController {
                     .catch(() => null);
                 const f = { employeeId: Number(id), excludeHttp: true };
                 const [rows, total] = await Promise.all([
-                    SystemLogModel.findFiltered(f, 25, 0, scope).catch(() => []),
+                    SystemLogModel.findFiltered(
+                        f,
+                        25,
+                        0,
+                        scope,
+                        require('./SystemLogController').readOpts(req)
+                    ).catch(() => []),
                     SystemLogModel.countFiltered(f, scope).catch(() => null),
                 ]);
-                journal = { rows, total };
+                // « See everything in the system log » only when the reader may
+                // open the system log (view_system_logs): a local admin without
+                // it was sent to the 403 page.
+                journal = {
+                    rows,
+                    total,
+                    canOpenLog: RBACService.hasPermission(req.user, 'view_system_logs'),
+                };
             }
             // ---- end SECTION operations --------------------------------------------------
 
@@ -715,15 +728,19 @@ class EmployeeController {
                 return res.redirect(keepDraft(req, '/employees/create'));
             }
 
+            const natOn = await require('../utils/featureFlags').isNationalisationEnabled();
             const employee = await EmployeeModel.create({
                 employeeNumber: employeeNumber,
                 firstName: req.body.firstName.trim(),
                 lastName: req.body.lastName.trim(),
                 email: req.body.email?.trim() || null,
                 phone: req.body.phone?.trim() || null,
-                nationality: req.body.nationality
-                    ? String(req.body.nationality).trim().slice(0, 80)
-                    : null,
+                // The one nationality switch (localContent module): off, a posted
+                // value is ignored (the field is not even shown).
+                nationality:
+                    natOn && req.body.nationality
+                        ? String(req.body.nationality).trim().slice(0, 80)
+                        : null,
                 siteId: parseInt(req.body.siteId),
                 departmentId: parseInt(req.body.departmentId),
                 serviceId: parseInt(req.body.serviceId),
@@ -754,7 +771,7 @@ class EmployeeController {
                 action: 'EMPLOYEE_CREATED',
                 entityType: 'employee',
                 entityId: employee.id,
-                details: `Created employee ${employee.employeeNumber} with login "${username}"`,
+                details: `Created employee:${Number(employee.id)} (number ${employee.employeeNumber}) with a login`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -1182,6 +1199,7 @@ class EmployeeController {
             // Tag the transaction with the signed-in user so any site/department/
             // service/role/manager change this edit causes is attributed to them in
             // the movement trail instead of falling back to "system".
+            const natOn = await require('../utils/featureFlags').isNationalisationEnabled();
             await require('../config/database').withActor(req, () =>
                 EmployeeModel.update(id, {
                     employeeNumber: req.body.employeeNumber.trim(),
@@ -1189,10 +1207,10 @@ class EmployeeController {
                     lastName: req.body.lastName.trim(),
                     email: req.body.email?.trim() || null,
                     phone: req.body.phone?.trim() || null,
-                    // Only touch nationality when the field was actually submitted — the
-                    // input is gated by the optional local-content module, and an edit
-                    // with the module OFF must not wipe previously recorded data.
-                    ...('nationality' in req.body
+                    // Only touch nationality when the field was actually submitted AND
+                    // the one nationality switch (localContent module) is on — an edit
+                    // with the module OFF neither writes nor wipes recorded data.
+                    ...(natOn && 'nationality' in req.body
                         ? {
                               nationality: req.body.nationality
                                   ? String(req.body.nationality).trim().slice(0, 80)
@@ -1219,6 +1237,7 @@ class EmployeeController {
                         oldEmail: employee.email,
                         newEmail: req.body.email?.trim() || null,
                         t: req.t,
+                        lang: req.language,
                         name: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
                     }
                 );
@@ -1492,7 +1511,7 @@ class EmployeeController {
                 entityId: parseInt(id),
                 details:
                     `Set credentials for employee ${id}` +
-                    (updates.username ? ` (username=${updates.username})` : '') +
+                    (updates.username ? ' (username changed)' : '') +
                     (updates.passwordHash ? ' (password changed)' : ''),
                 severity: 'info',
                 category: 'security',

@@ -150,4 +150,51 @@
         qs.delete('page');
         location.href = path + '?' + qs.toString();
     });
+
+    // ---- bulk-action bar (partials/bulk-bar.ejs) ------------------------------
+    // Hidden until at least one [data-bulk] checkbox (or a [data-bulk-all]
+    // "select all") in its scope is checked; the count reads
+    // chrome:bulk_selected_count; the bar takes the focus on the FIRST selection
+    // only (not on every tick).
+    Array.prototype.forEach.call(document.querySelectorAll('[data-bulk-bar]'), function (bar) {
+        var scopeSel = bar.getAttribute('data-bulk-scope');
+        var scope = (scopeSel && document.querySelector(scopeSel)) || document;
+        var countEl = bar.querySelector('[data-bulk-count]');
+        var label =
+            bar.getAttribute('data-count-label') || L.selectedCount || '{{count}} sélectionné(s)';
+        var wasShown = false;
+        function boxes() {
+            return Array.prototype.slice.call(
+                scope.querySelectorAll('input[type="checkbox"][data-bulk]')
+            );
+        }
+        function paint() {
+            var n = boxes().filter(function (b) {
+                return b.checked;
+            }).length;
+            if (countEl) countEl.textContent = String(label).replace('{{count}}', String(n));
+            bar.hidden = n === 0;
+            bar.setAttribute('data-selected', String(n));
+            if (n > 0 && !wasShown) {
+                wasShown = true;
+                try {
+                    bar.focus({ preventScroll: true });
+                } catch (_) {
+                    /* focus optional */
+                }
+            }
+            if (n === 0) wasShown = false;
+        }
+        scope.addEventListener('change', function (e) {
+            var t = e.target;
+            if (!t || t.type !== 'checkbox') return;
+            if (t.hasAttribute('data-bulk-all')) {
+                boxes().forEach(function (b) {
+                    if (!b.disabled) b.checked = t.checked;
+                });
+            }
+            if (t.hasAttribute('data-bulk') || t.hasAttribute('data-bulk-all')) paint();
+        });
+        paint();
+    });
 })();

@@ -143,7 +143,7 @@
                     <td><span class="mv-tag mv-tag-<%= r.stream %>"><%= __('admin:mv_stream_' + r.stream) %></span>
                         <span style="font-size:.82rem;"><%= r.stream === 'movement' ? __('admin:mv_kind_' + r.eventKind) : (r.skillName || r.eventKind) %></span></td>
                     <td><a href="/employees/<%= r.employeeId %>"><%= r.employeeName %></a>
-                        <div style="font-size:.74rem;color:var(--text-muted);"><%= r.employeeNumber %></div></td>
+                        <div style="font-size:.75rem;color:var(--text-muted);"><%= r.employeeNumber %></div></td>
                     <td style="font-size:.82rem;"><%= r.siteName || '—' %><% if (r.departmentName) { %> · <%= r.departmentName %><% } %></td>
                     <td style="font-size:.82rem;">
                         <% if (r.fromLabel && r.toLabel) { %>
@@ -159,11 +159,11 @@
 </div>
 
 <style>
-.mv-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:1rem}
+.mv-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px, 100%), 1fr));gap:12px;margin-bottom:1rem}
 .mv-kpi{background:var(--bg-card,#fff);border:1px solid var(--border,#e2e8f0);border-radius:10px;padding:.85rem 1rem;text-align:center}
 .mv-kpi-n{display:block;font-size:1.6rem;font-weight:700;line-height:1.1}
 .mv-kpi-l{display:block;font-size:.76rem;color:var(--text-secondary,#64748b);margin-top:.15rem}
-.mv-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:1rem}
+.mv-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px, 100%), 1fr));gap:12px;margin-bottom:1rem}
 .mv-card{padding:.9rem 1.1rem}
 .mv-card h3{margin:0 0 .6rem;font-size:.92rem}
 .mv-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:.8rem}
@@ -173,7 +173,7 @@
 .mv-bar-n{flex:0 0 34px;text-align:right;font-variant-numeric:tabular-nums}
 .mv-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:.85rem 1.1rem;margin-bottom:1rem}
 .mv-filters .form-control{max-width:190px}
-.mv-tag{display:inline-block;font-size:.68rem;letter-spacing:.04em;
+.mv-tag{display:inline-block;font-size:.75rem;letter-spacing:.04em;
     border-radius:4px;padding:1px 6px;margin-right:6px;border:1px solid var(--border,#cbd5e1)}
 .mv-tag-movement{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
 .mv-tag-assessment{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}

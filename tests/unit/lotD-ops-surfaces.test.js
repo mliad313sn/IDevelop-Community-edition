@@ -463,7 +463,7 @@ describe('L4-21 / L4-22 / L4-19 — keys, licence and schedules', () => {
     });
 
     test('the ops notification kinds are registered with a link and both languages', () => {
-        const src = read('src/services/NotificationService.js');
+        const src = read('src/services/notificationCatalogue.js');
 
         // Cut out one registry entry by BALANCING ITS BRACES, not by taking a
         // window of N characters. The previous spelling pinned the one-line

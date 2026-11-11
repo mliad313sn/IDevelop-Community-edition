@@ -12,7 +12,8 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const HAS_DB = !!process.env.DATABASE_URL && /idevelop_fixtures/.test(process.env.DATABASE_URL);
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
+const HAS_DB = isFixturesDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 jest.setTimeout(120000);
 

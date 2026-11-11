@@ -104,6 +104,7 @@ describe('UI', () => {
         featureLocalContent: false,
         sqlConsoleEnabled: enabled,
         currentPath: '/nowhere',
+        navConfig: require('../../src/config/navigation'),
         __: (k) => k,
         cspNonce: 'n',
         csrfToken: 't',

@@ -110,8 +110,11 @@ for ($i = 0; $i -lt 12 -and -not $ok; $i++) {
 }
 if (-not $ok) {
     Say "  $url ne repond toujours pas." 'Red'
-    Say "  Journal : $dir\service\$svc.err.log (20 dernieres lignes)" 'Yellow'
-    Get-Content "$dir\service\$svc.err.log" -Tail 20 -ErrorAction SilentlyContinue
+    # WinSW writes its logs to service\logs (service\ for older installs).
+    $errLog = "$dir\service\logs\$svc.err.log"
+    if (-not (Test-Path $errLog) -and (Test-Path "$dir\service\$svc.err.log")) { $errLog = "$dir\service\$svc.err.log" }
+    Say "  Journal : $errLog (20 dernieres lignes)" 'Yellow'
+    Get-Content $errLog -Tail 20 -ErrorAction SilentlyContinue
 }
 
 Say ''

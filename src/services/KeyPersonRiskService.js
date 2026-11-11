@@ -48,6 +48,13 @@
  *
  *   Employees never reach this surface; the route is manager/admin only.
  *
+ * OBJECTION TO PROFILING (GDPR art. 21)
+ *   Naming a person as the single point of failure is profiling that person.
+ *   A holder who objected is still COUNTED (removing them would invent a
+ *   coverage gap that does not exist) but is never NAMED: the holder entry
+ *   carries `objection: true` and no id, name or role. The objection lookup
+ *   fails closed: when it cannot be read, no holder is named at all.
+ *
  * SKILL COUNT PER ROLE IS UNTOUCHED
  *   The sweep reads role_skill_requirements whole (required_level > 0). It never
  *   samples, tiers, waves or subsets a role's department-designed skill set; it
@@ -246,9 +253,10 @@ const KeyPersonRiskService = {
             ...(band === 'all' ? [] : [band]),
         ];
         const rows = await db.all(rowsSql, rowsParams);
+        const objectors = await this._objectors();
 
         return {
-            rows: rows.map((r) => this._shape(r)),
+            rows: rows.map((r) => this._shape(r, objectors)),
             summary: this._summarise(summaryRows),
             scope,
         };
@@ -296,7 +304,20 @@ const KeyPersonRiskService = {
 
     // ---- internals ---------------------------------------------------------
 
-    _shape(r) {
+    /**
+     * People who objected to profiling, or `null` when the objections could not
+     * be read (fail closed: then nobody is named).
+     */
+    async _objectors() {
+        try {
+            return await require('./PrivacyService').activeObjectorIds();
+        } catch (e) {
+            console.error('[key-person] objection lookup failed, holders not named:', e.message);
+            return null;
+        }
+    },
+
+    _shape(r, objectors = new Set()) {
         // pg returns text[]/bigint[] for the array_agg columns; normalise to a
         // plain array of {id, name, role} so the view never indexes in parallel.
         const names = Array.isArray(r.holderNames) ? r.holderNames : [];
@@ -316,11 +337,12 @@ const KeyPersonRiskService = {
             qualified: Number(r.qualified) || 0,
             blockedByCert: Number(r.blockedByCert) || 0,
             band: r.band,
-            holders: names.map((n, i) => ({
-                id: hids[i] != null ? Number(hids[i]) : null,
-                name: n,
-                roleName: hroles[i] || null,
-            })),
+            holders: names.map((n, i) => {
+                const id = hids[i] != null ? Number(hids[i]) : null;
+                if (objectors === null || (id !== null && objectors.has(id)))
+                    return { id: null, name: null, roleName: null, objection: true };
+                return { id, name: n, roleName: hroles[i] || null };
+            }),
         };
     },
 

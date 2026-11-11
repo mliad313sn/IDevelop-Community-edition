@@ -34,6 +34,18 @@ router.get('/site-exposure', ah(ExecDecisionController.siteExposurePage));
 router.get('/api/site-exposure', ah(ExecDecisionController.siteExposureApi));
 
 // ---- Board pack ------------------------------------------------------------
-router.get('/board-pack', ah(ExecDecisionController.boardPackPage));
+// counts only, the same figures as the dashboard (DashboardHomeService)
+router.get('/board-pack', ah(require('../controllers/DashboardHomeController').boardPack));
+
+// ---- Board decisions and the pack recorded as presented (migrations 197, 198)
+// State-changing routes: the session CSRF token (server.js) and the service's
+// own write check (a manager, or an administrator who is not read-only); the
+// pack scope is re-validated on every request (BoardDecisionController).
+const BoardDecisionController = require('../controllers/BoardDecisionController');
+router.post('/board-pack/record', ah(BoardDecisionController.record));
+router.get('/decisions', ah(BoardDecisionController.page));
+router.post('/decisions', ah(BoardDecisionController.create));
+router.post('/decisions/:id/state', ah(BoardDecisionController.state));
+router.post('/decisions/:id/note', ah(BoardDecisionController.note));
 
 module.exports = router;

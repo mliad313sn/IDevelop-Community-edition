@@ -25,27 +25,38 @@
  *   the offline page rather than a stale copy of someone's record.
  */
 
-const CACHE = 'app-shell-v8'; // v7: + horizon.css theme layer and brand assets
+// The cache is named after the deploy: pwa-head.ejs registers this worker as
+// /service-worker.js?v=<assetVersion>. Pages ask for /css/style.css?v=<assetVersion>,
+// so the precache stores THOSE addresses (a bare path is never matched by
+// caches.match against a ?v= request). A new deploy gets a new cache, and the
+// activate handler deletes the old ones, so the cache does not grow without end.
+const ASSET_V = new URL(self.location.href).searchParams.get('v') || '';
+const CACHE = 'app-shell-' + (ASSET_V || 'v10');
+const ver = (u) => (ASSET_V ? u + '?v=' + encodeURIComponent(ASSET_V) : u);
 
 // Bumped whenever the caching RULES change, so an old worker's cache is discarded
 // wholesale by the activate handler rather than lingering with stale semantics.
-const SW_VERSION = 'v4';
+const SW_VERSION = 'v5';
 
-// Cache-first, and safe to do so: none of these vary by user.
+// Cache-first, and safe to do so: none of these vary by user. The manifests,
+// the offline page and its script are requested without ?v=.
 const SHELL = [
     '/manifest.webmanifest',
     '/manifest.fr.webmanifest',
     '/manifest.en.webmanifest',
-    '/css/style.css',
-    '/css/a11y-polish.css',
-    '/css/horizon.css',
-    '/js/draft-store.js',
-    '/js/sync-indicator.js',
+    ver('/css/style.css'),
+    ver('/css/a11y-polish.css'),
+    ver('/css/horizon.css'),
+    ver('/js/draft-store.js'),
+    ver('/js/sync-indicator.js'),
     // 3.23.21: the self-assessment help runs offline too (descriptions themselves
     // are server-rendered into the page, which is never cached).
-    '/js/sa-skill-help.js',
-    '/css/sa-skill-help.css',
+    ver('/js/sa-skill-help.js'),
+    ver('/css/sa-skill-help.css'),
+    // The "opened" beacon of a notification link (loaded by every signed-in page).
+    ver('/js/notif-open.js'),
     '/offline.html',
+    '/js/offline.js',
 ];
 
 const STATIC_PREFIXES = [
@@ -189,7 +200,22 @@ self.addEventListener('fetch', (e) => {
                     .then((r) => {
                         if (r && r.ok && r.type === 'basic') {
                             const copy = r.clone();
-                            caches.open(CACHE).then((c) => c.put(req, copy));
+                            // One entry per path: older ?v= copies of it go.
+                            caches.open(CACHE).then((c) =>
+                                c.keys().then((ks) =>
+                                    Promise.all(
+                                        ks
+                                            .filter((k) => {
+                                                const u = new URL(k.url);
+                                                return (
+                                                    u.pathname === url.pathname &&
+                                                    u.search !== url.search
+                                                );
+                                            })
+                                            .map((k) => c.delete(k))
+                                    ).then(() => c.put(req, copy))
+                                )
+                            );
                         }
                         return r;
                     })

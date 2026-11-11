@@ -10,7 +10,7 @@
  */
 const db = require('../config/database');
 const { scopedEmployeeIds } = require('../utils/rbacScope');
-const { isSamePerson, personIdOf } = require('../utils/personIdentity');
+const { isSamePerson } = require('../utils/personIdentity');
 const LogService = require('./LogService');
 
 const OPEN_STATE = 'pending';
@@ -157,19 +157,19 @@ const PostApprovalReviewService = {
         // Two-person rule, by PERSON (3.23.17, B-3): the raiser — through either
         // of their accounts (admins.linked_employee_id) — never decides their own
         // case, and nobody decides a re-review of their own score.
-        // decide is admin-only, so the decider's person is its linked employee
-        // (one lookup) — compared with the raiser AND with the subject.
-        const me = await personIdOf(user);
+        // decide is admin-only, so the decider's person is its linked employee —
+        // or, for an account linked to nobody, the employee sharing its identity
+        // (personIdentity.isSamePerson) — compared with the raiser AND the subject.
         if (
             (pr.raisedByAdmin != null &&
                 (await isSamePerson(user, { adminId: pr.raisedByAdmin }))) ||
-            (pr.raisedBy != null && me != null && me === Number(pr.raisedBy))
+            (pr.raisedBy != null && (await isSamePerson(user, { employeeId: pr.raisedBy })))
         ) {
             const e = new Error('raiser_cannot_decide');
             e.userMessage = 'raiser_cannot_decide';
             throw e;
         }
-        if (me != null && me === Number(pr.employeeId)) {
+        if (pr.employeeId != null && (await isSamePerson(user, { employeeId: pr.employeeId }))) {
             const e = new Error('own_assessment');
             e.userMessage = 'own_assessment';
             throw e;

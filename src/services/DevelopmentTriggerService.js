@@ -17,8 +17,10 @@
  *
  * TWO INVARIANTS THIS FILE MUST KEEP:
  *   1. NOTIFY. Every plan created here reaches a human: the PIP goes through
- *      PipService.proposeDirect (the only emitter of 'pip.created') and the IDP
- *      emits 'idp.created' to the employee AND their supervisor. A plan nobody is
+ *      PipService.proposeDirect, where it waits on the « PIP to activate » task
+ *      line of its manager (a proposal is not shown to its subject, who is told
+ *      when it is activated — 4.0.0 port, wave 6), and the IDP emits
+ *      'idp.created' to the employee AND their supervisor. A plan nobody is
  *      told about is a plan that never runs — do not reintroduce a raw INSERT.
  *   2. PROVENANCE. Both rows carry origin_evaluation_id (migration 72) so the
  *      chain ASSESSMENT → 9-box placement → plan is reconstructable by query.
@@ -290,13 +292,56 @@ class DevelopmentTriggerService {
      * @param placement { employeeId, performance, potential, label }
      * @returns summary object or null (neutral box)
      */
-    async triggerForPlacement(user, placement, req = null) {
+    async triggerForPlacement(user, placement, req = null, opts = {}) {
         const { employeeId } = placement;
         const zone = this.zoneFor(placement.performance, placement.potential);
         if (!zone) return null;
         const label = placement.label || `${placement.potential}/${placement.performance}`;
         // Provenance for the plan we are about to create (migration 72).
         const originEvaluationId = await this._resolveOriginEvaluationId(placement);
+
+        // OBJECTION TO PROFILING (GDPR art. 21). The automatic placement -> plan
+        // step is held for HR review instead of running: no PIP task, no draft
+        // IDP, no notification to the line. HR decides the hold
+        // (PrivacyService.resolveTrigger: 'proceed' re-enters here with
+        // `bypassObjection`). FAILS CLOSED: an objection that cannot be read
+        // holds the trigger too; nothing here throws into the 9-box approve
+        // transaction (every write is in a savepoint).
+        if (!opts.bypassObjection) {
+            const Privacy = require('./PrivacyService');
+            let objecting;
+            try {
+                objecting = await Privacy.isObjecting(employeeId);
+            } catch (e) {
+                console.error(
+                    '[dev-trigger] objection lookup failed, trigger held:',
+                    e && e.message
+                );
+                objecting = true;
+            }
+            if (objecting) {
+                let hold = { id: null, created: false };
+                try {
+                    hold = await Privacy.pauseTrigger({
+                        employeeId,
+                        zone,
+                        performance: placement.performance,
+                        potential: placement.potential,
+                        originEvaluationId,
+                    });
+                } catch (e) {
+                    console.error('[dev-trigger] hold not recorded:', e && e.message);
+                }
+                return {
+                    zone,
+                    paused: true,
+                    pausedReason: 'profiling_objection',
+                    pausedTriggerId: hold.id,
+                    createdHold: hold.created,
+                    originEvaluationId,
+                };
+            }
+        }
 
         if (zone === 'red')
             return this._triggerRed(user, employeeId, label, req, originEvaluationId);

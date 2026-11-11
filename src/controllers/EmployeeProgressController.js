@@ -53,7 +53,16 @@ async function loadMeasures(employeeId) {
                 rounds: [],
             });
         }
+        const state = r.workflowState || r.status;
+        const selfLvl = r.selfRatedLevel == null ? null : Number(r.selfRatedLevel);
+        const supLvl = r.supervisorRatedLevel == null ? null : Number(r.supervisorRatedLevel);
         bySkill.get(key).rounds.push({
+            // The level this round VALIDATED: only an APPROVED round has one (the
+            // reviewer's rating, else the self-rating approved as it was). A
+            // draft, a submitted or a reviewed-not-approved round is pending and
+            // never enters the evolution.
+            validatedLevel: state === 'approved' ? (supLvl != null ? supLvl : selfLvl) : null,
+            pending: !['approved', 'rejected', 'cancelled'].includes(state),
             id: Number(r.id),
             roundNo: Number(r.roundNo),
             // The DATE of the measurement: when it was decided, else when it was
@@ -72,13 +81,17 @@ async function loadMeasures(employeeId) {
     const skills = [];
     for (const s of bySkill.values()) {
         if (s.rounds.length < 2) continue;
-        const measured = s.rounds.filter((x) => x.selfRatedLevel != null);
-        // An absence of measurement is never a movement of 0: with fewer than
-        // two measured rounds the delta is simply not available.
+        // The evolution compares VALIDATED levels only (4.0.0 port, wave 5): it
+        // read the self-rating of every round, drafts included, so a submitted
+        // 2 followed by an unreviewed draft 4 showed « +2 ». An absence of
+        // measurement is never a movement of 0: with fewer than two validated
+        // rounds the delta is simply not available.
+        const measured = s.rounds.filter((x) => x.validatedLevel != null);
         s.delta =
             measured.length >= 2
-                ? measured[measured.length - 1].selfRatedLevel - measured[0].selfRatedLevel
+                ? measured[measured.length - 1].validatedLevel - measured[0].validatedLevel
                 : null;
+        s.hasPending = s.rounds.some((x) => x.pending);
         skills.push(s);
     }
     skills.sort((a, b) => String(a.skillName).localeCompare(String(b.skillName)));
@@ -221,7 +234,13 @@ class EmployeeProgressController {
     /** The signed-in employee's own progression. */
     async myPage(req, res) {
         const data = await loadProgress(Number(req.user.id));
+        // « What changed » on the person's OWN page only (never on a manager's
+        // view of someone else); null hides the block.
+        const changes = await require('../services/EmployeeHomeService')
+            .changesFor(Number(req.user.id))
+            .catch(() => null);
         res.render('pages/employees/progress', {
+            changes,
             title: req.t ? req.t('chrome:pt_my_progression') : 'My Progression',
             ...data,
             employee: data.employee || { id: req.user.id, fullName: req.user.username || 'Me' },
@@ -231,3 +250,4 @@ class EmployeeProgressController {
 }
 
 module.exports = new EmployeeProgressController();
+module.exports.loadMeasures = loadMeasures; // unit-testable (validated levels only)

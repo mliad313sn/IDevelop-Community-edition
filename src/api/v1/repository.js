@@ -72,6 +72,33 @@ const SkillsRepository = {
     },
 };
 
+/**
+ * The API population: active and not erased, for EVERY caller, SuperAdmin
+ * included. scopeFilter() is empty for a SuperAdmin, so /api/v1/employees, the
+ * readiness feed and the 9-box feed used to publish leavers and erased people.
+ */
+const ACTIVE_POP = ' AND e.is_active = true AND e.erased_at IS NULL';
+
+/**
+ * The K1 four-state status of the given people: the ONE K1 function
+ * (KpiService.k1RoleReady) decides, so the API can never call a person nobody
+ * finished assessing "not ready". The ids are already cleared by the caller;
+ * the KPI population rule (active, not erased) applies again.
+ * @returns {Promise<Map<number, string>>} employeeId -> state code
+ */
+async function k1States(ids) {
+    const out = new Map();
+    if (!ids.length) return out;
+    const KpiService = require('../../services/KpiService');
+    const k1 = await KpiService.k1RoleReady({ system: true, employeeIds: ids });
+    for (const [st, list] of Object.entries(k1.drillByState || {})) {
+        for (const id of list || []) out.set(Number(id), st);
+    }
+    return out;
+}
+/** isReady from a K1 state: true only for ready, false only for not_ready, else null. */
+const readyOf = (state) => (state === 'ready' ? true : state === 'not_ready' ? false : null);
+
 const ReadinessRepository = {
     /**
      * RBAC-scoped list of per-employee role readiness.
@@ -98,12 +125,15 @@ const ReadinessRepository = {
                FROM v_employee_readiness v
                JOIN employees e ON e.id = v.employee_id
                LEFT JOIN v_employee_assessment_coverage c ON c.employee_id = v.employee_id
-              WHERE 1=1 ${sc.clause}
-              ORDER BY v.full_name
+              WHERE 1=1 ${sc.clause}${ACTIVE_POP}
+              ORDER BY v.full_name, v.employee_id
               LIMIT ? OFFSET ?`,
             [...sc.params, clampLimit(limit), clampOffset(offset)]
         );
-        return rows.map(this._mapReadiness);
+        const states = await k1States(rows.map((r) => Number(r.employeeId)));
+        return rows.map((r) =>
+            ReadinessRepository._mapReadiness(r, states.get(Number(r.employeeId)))
+        );
     },
 
     /** Canonical readiness projection — one definition, used by every read below. */
@@ -129,7 +159,7 @@ const ReadinessRepository = {
         const sc = await RBACService.scopeFilter(user, { empAlias: 'e' });
         const r = await db.get(
             `SELECT COUNT(*) AS total FROM v_employee_readiness v
-               JOIN employees e ON e.id = v.employee_id WHERE 1=1 ${sc.clause}`,
+               JOIN employees e ON e.id = v.employee_id WHERE 1=1 ${sc.clause}${ACTIVE_POP}`,
             [...sc.params]
         );
         return Number(r && r.total) || 0;
@@ -147,14 +177,15 @@ const ReadinessRepository = {
             [employeeId]
         );
         if (!r) return null;
+        const states = await k1States([Number(employeeId)]);
         return {
-            ...ReadinessRepository._mapReadiness(r),
+            ...ReadinessRepository._mapReadiness(r, states.get(Number(employeeId))),
             criticalTotal: int(r.criticalTotal),
             criticalMet: int(r.criticalMet),
         };
     },
 
-    _mapReadiness(r) {
+    _mapReadiness(r, state) {
         return {
             employeeId: int(r.employeeId),
             employeeName: r.employeeName,
@@ -163,7 +194,18 @@ const ReadinessRepository = {
             roleName: r.roleName,
             // The canonical number. null — never 0 — when nothing was assessed.
             readinessPercent: num(r.readinessPercent),
+            // The legacy flag, unchanged inside /api/v1 (a breaking change
+            // goes to a new version): readiness over every requirement and
+            // every critical skill met. Deprecated: read readinessState.
             isReady: bool(r.isReady),
+            // K1 four-state (ready | not_ready | partial | not_assessed |
+            // no_requirement), the one rule of the reports and of the Power
+            // BI feed v2. A person outside the KPI population (a leaver read
+            // by id) has no state: null.
+            readinessState: state || null,
+            // true only for "ready", false only for "not_ready", null for a
+            // person without a verdict (never "not ready" for the unassessed).
+            readyForRole: readyOf(state),
             totalRequired: int(r.totalRequired),
             skillsMet: int(r.skillsMet),
             // Coverage always travels with the score.
@@ -191,8 +233,8 @@ const EmployeesRepository = {
                LEFT JOIN roles r ON r.id = e.role_id
                LEFT JOIN sites s ON s.id = e.site_id
                LEFT JOIN departments d ON d.id = e.department_id
-              WHERE 1=1 ${sc.clause}
-              ORDER BY e.last_name, e.first_name
+              WHERE 1=1 ${sc.clause}${ACTIVE_POP}
+              ORDER BY e.last_name, e.first_name, e.id
               LIMIT ? OFFSET ?`,
             [...sc.params, clampLimit(limit), clampOffset(offset)]
         );
@@ -209,9 +251,10 @@ const EmployeesRepository = {
     },
     async count(user) {
         const sc = await RBACService.scopeFilter(user, { empAlias: 'e' });
-        const r = await db.get(`SELECT COUNT(*) AS total FROM employees e WHERE 1=1 ${sc.clause}`, [
-            ...sc.params,
-        ]);
+        const r = await db.get(
+            `SELECT COUNT(*) AS total FROM employees e WHERE 1=1 ${sc.clause}${ACTIVE_POP}`,
+            [...sc.params]
+        );
         return Number(r && r.total) || 0;
     },
 };
@@ -228,7 +271,7 @@ const TalentRepository = {
                     COALESCE(nb.approved_at, nb.updated_at, nb.created_at) AS placedAt
                FROM nine_box_evaluations nb
                JOIN employees e ON e.id = nb.employee_id
-              WHERE nb.status = 'approved' ${sc.clause}
+              WHERE nb.status = 'approved' ${sc.clause}${ACTIVE_POP}
               ORDER BY nb.employee_id, COALESCE(nb.approved_at, nb.updated_at, nb.created_at) DESC
               LIMIT ? OFFSET ?`,
             [...sc.params, clampLimit(limit), clampOffset(offset)]
@@ -260,7 +303,7 @@ const TalentRepository = {
         const r = await db.get(
             `SELECT COUNT(DISTINCT nb.employee_id) AS total
                FROM nine_box_evaluations nb JOIN employees e ON e.id = nb.employee_id
-              WHERE nb.status = 'approved' ${sc.clause}`,
+              WHERE nb.status = 'approved' ${sc.clause}${ACTIVE_POP}`,
             [...sc.params]
         );
         return Number(r && r.total) || 0;

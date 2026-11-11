@@ -35,13 +35,10 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const fs = require('fs');
-const ROOT = path.join(__dirname, '../..');
-const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
-
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 // Needs a POPULATED database (several sites, assessed people, reviews): runs
 // only against an opt-in fixture database — see CONTRIBUTING.md.
-const HAS_DB = /idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''));
+const HAS_DB = isFixturesDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 const db = HAS_DB ? require('../../src/config/database') : null;
 const DashboardModel = HAS_DB ? require('../../src/models/DashboardModel') : null;
@@ -111,52 +108,4 @@ suite('a sub-domain nobody was assessed on has no proficiency, not a proficiency
     });
 });
 
-describe('the caption reports the excluded sub-domains instead of hiding them', () => {
-    // Scope to the one function, by brace matching: asserting against the whole
-    // 3 000-line file makes a failure print the entire source, and prettier is
-    // free to reflow anything inside it, so line numbers are no use either.
-    const source = read('public/js/dashboard.js');
-    const start = source.search(/async function loadSubDomainRadar\s*\(/);
-    const open = source.indexOf('{', start);
-    let depth = 0;
-    let end = open;
-    for (let i = open; i < source.length; i++) {
-        if (source[i] === '{') depth++;
-        else if (source[i] === '}' && --depth === 0) {
-            end = i + 1;
-            break;
-        }
-    }
-    const js = source.slice(open, end).replace(/\s+/g, ' ');
-
-    test('the ranking runs over measured sub-domains only', () => {
-        expect(js).toMatch(
-            /const measured = all\.filter\( ?\(d\) => d\.avgActual != null && d\.avgRequired != null && num\(d\.assessedCount\) > 0 ?\)/
-        );
-        expect(js).toMatch(/const unmeasured = all\.length - measured\.length/);
-    });
-
-    test('the old caption no longer claims the unmeasured are the largest gaps', () => {
-        expect(js).not.toMatch(/sub-domains with the largest gaps \(of \$\{/);
-    });
-
-    test('the caption strings are translated, not hardcoded English', () => {
-        for (const lang of ['fr', 'en']) {
-            const dash = JSON.parse(read(`locales/${lang}/dash.json`));
-            expect(dash.sd_radar_capped).toBeTruthy();
-            expect(dash.sd_radar_unmeasured).toBeTruthy();
-            expect(dash.sd_radar_filter_hint).toBeTruthy();
-        }
-        // and the view actually injects them, or the JS falls back to English
-        const view = read('views/pages/dashboard.ejs');
-        expect(view).toMatch(/sdRadarCapped:/);
-        expect(view).toMatch(/sdRadarUnmeasured:/);
-        expect(view).toMatch(/sdRadarFilterHint:/);
-    });
-
-    test('the French caption is really French', () => {
-        const fr = JSON.parse(read('locales/fr/dash.json'));
-        expect(fr.sd_radar_unmeasured).toMatch(/sous-domaine/);
-        expect(fr.sd_radar_unmeasured).toMatch(/\{0\}/); // the count is interpolated
-    });
-});
+// the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)

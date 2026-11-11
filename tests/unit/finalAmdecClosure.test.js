@@ -101,10 +101,18 @@ describe('one definition of a manager span (L2-7)', () => {
         // supervisor signed in on their admin account keeps their own sub-tree
         // instead of losing it. Same helper, same transitivity — assert that
         // each guard consults it, not which variable name carries the id.
-        const governsCall =
-            /await EmployeeModel\.governs\(\s*(?:user && user\.id|personId)\s*,\s*employeeId\s*\)/;
-        expect(read('src/services/NineBoxService.js')).toMatch(governsCall);
-        expect(read('src/services/CoachingPlanService.js')).toMatch(governsCall);
+        // 4.0.0 port (wave 2): the 9-box and coaching guards resolve the sub-tree
+        // through the one relation every review service shares
+        // (AuthorityService.relation), which consults the same helper.
+        expect(read('src/services/AuthorityService.js')).toMatch(
+            /await EmployeeModel\.governs\(personId, eid\)/
+        );
+        expect(read('src/services/NineBoxService.js')).toMatch(
+            /AuthorityService\.relation\(user, employee\)/
+        );
+        expect(read('src/services/CoachingPlanService.js')).toMatch(
+            /AuthorityService\.relation\(user, employee\)/
+        );
         expect(read('src/routes/v2-idp.js')).toMatch(
             /return EmployeeModel\.governs\(user\.id, emp\.id\)/
         );
@@ -120,7 +128,8 @@ describe('the V1 console leaves a trail and actually completes (L1-10 + the FK d
     const svc = read('src/services/SelfAssessmentService.js');
 
     test('a workflow event is written', () => {
-        expect(svc).toMatch(/'review_completed', 'submitted', 'reviewed'/);
+        // The trail records the real from-state (SA-42).
+        expect(svc).toMatch(/'review_completed', \?, 'reviewed'/);
         expect(svc).toMatch(/via: 'v1_supervisor_console'/);
     });
 

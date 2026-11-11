@@ -11,6 +11,7 @@
  *            claim), exceptions excluded, not before the window, not after go-live.
  * E-mail is stubbed; SSO state is mocked; settings are stubbed per key.
  */
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 require('dotenv').config();
 process.env.SSO_INVITE_PAUSE_MS = '0';
 
@@ -32,7 +33,7 @@ let AppSettingsModel;
 const settings = {};
 
 beforeAll(async () => {
-    if (!/idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''))) return;
+    if (!isFixturesDatabaseUrl(process.env.DATABASE_URL)) return;
     db = require('../../src/config/database');
     try {
         await db.connect();
@@ -118,7 +119,7 @@ const localIso = (d) => {
 };
 
 test('migration 156 is on the test database (not vacuous)', () => {
-    if (!/idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''))) return;
+    if (!isFixturesDatabaseUrl(process.env.DATABASE_URL)) return;
     expect(ready).toBe(true);
 });
 

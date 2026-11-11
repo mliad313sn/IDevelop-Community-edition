@@ -80,13 +80,17 @@ const ExecDecisionController = {
 
     async siteExposurePage(req, res, next) {
         try {
-            const { rows, scope } = await SiteExposureService.bySite(req.user);
+            const showKeyPerson = canSeeKeyPerson(req.user);
+            const { rows, scope, org, weakest } = await SiteExposureService.bySite(req.user, {
+                keyPerson: showKeyPerson,
+            });
             res.render('pages/exec/site-exposure', {
                 title: req.t ? req.t('exec:se_title') : 'Exposure by site',
                 rows,
-                totals: SiteExposureService.totals(rows),
+                totals: SiteExposureService.totals(rows, org),
+                weakest,
                 scope,
-                showKeyPerson: canSeeKeyPerson(req.user),
+                showKeyPerson,
                 currentPath: '/exec/site-exposure',
             });
         } catch (err) {
@@ -96,56 +100,23 @@ const ExecDecisionController = {
 
     async siteExposureApi(req, res, next) {
         try {
-            const { rows, scope } = await SiteExposureService.bySite(req.user);
-            res.json({ ok: true, rows, totals: SiteExposureService.totals(rows), scope });
-        } catch (err) {
-            next(err);
-        }
-    },
-
-    // ---- Board pack --------------------------------------------------------
-
-    async boardPackPage(req, res, next) {
-        try {
-            const showKeyPerson = canSeeKeyPerson(req.user);
-            const DashboardService = require('../services/DashboardService');
-
-            // The board pack quotes the SAME numbers as the dashboard, from the
-            // same service, so a director cannot be contradicted in the room.
-            const filters = ExecDecisionController._rbacFilters(req);
-
-            const [exposure, kpisWrap, trend, keyPerson] = await Promise.all([
-                SiteExposureService.bySite(req.user),
-                DashboardService.getExecutiveData(filters).catch(() => null),
-                DashboardService.getReadinessTrend(filters).catch(() => null),
-                showKeyPerson
-                    ? KeyPersonRiskService.sweep(req.user, {
-                          unit: 'site',
-                          band: 'sole_holder',
-                          limit: 25,
-                      }).catch(() => null)
-                    : Promise.resolve(null),
-            ]);
-
-            const kpis = kpisWrap && kpisWrap.kpis ? kpisWrap.kpis : null;
-
-            res.render('pages/exec/board-pack', {
-                title: req.t ? req.t('exec:bp_title') : 'Board pack',
-                kpis,
-                trend,
-                exposure: exposure.rows,
-                totals: SiteExposureService.totals(exposure.rows),
-                scope: exposure.scope,
-                keyPerson: keyPerson ? keyPerson.rows : null,
-                keyPersonSummary: keyPerson ? keyPerson.summary : null,
-                showKeyPerson,
-                generatedAt: new Date(),
-                currentPath: '/exec/board-pack',
+            const { rows, scope, org, weakest } = await SiteExposureService.bySite(req.user, {
+                keyPerson: canSeeKeyPerson(req.user),
+            });
+            res.json({
+                ok: true,
+                rows,
+                totals: SiteExposureService.totals(rows, org),
+                weakest,
+                scope,
             });
         } catch (err) {
             next(err);
         }
     },
+
+    // The board pack is DashboardHomeController.boardPack (counts only, the
+    // dashboard's own figures and scope).
 
     // ---- internals ---------------------------------------------------------
 
@@ -181,22 +152,6 @@ const ExecDecisionController = {
               ORDER BY 2`,
             params
         );
-    },
-
-    /**
-     * rbacMiddleware puts the caller's scope on `req.scope`. Built exactly like
-     * DashboardController._buildFilters so the board pack quotes the same
-     * numbers the dashboard does — a board pack that disagreed with the
-     * dashboard would be worse than no board pack.
-     */
-    _rbacFilters(req) {
-        const f = {};
-        const s = req.scope || {};
-        if (s.siteIds && s.siteIds.length) f.siteIds = s.siteIds;
-        if (s.departmentIds && s.departmentIds.length) f.departmentIds = s.departmentIds;
-        if (s.serviceIds && s.serviceIds.length) f.serviceIds = s.serviceIds;
-        if (s.employeeIds && s.employeeIds.length) f.employeeIds = s.employeeIds;
-        return f;
     },
 };
 

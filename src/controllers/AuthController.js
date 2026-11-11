@@ -19,7 +19,7 @@ function actorRefOf(u) {
 // Audit an authentication/security event to system_logs (best-effort; never throws).
 // Records WHO acted: admin_id for admins, actor_ref for employees/managers (explicit
 // actorRef wins; otherwise derived from req.user when it is already established).
-function authAudit(req, action, details, adminId = null, actorRef = null) {
+function recordAccountEvent(req, action, details, adminId = null, actorRef = null) {
     try {
         LogService.log({
             adminId,
@@ -210,6 +210,49 @@ function enforcedRefusal(req, res) {
     return res.redirect('/login?breakglass=1');
 }
 
+/**
+ * The return-to helpers (utils/returnTo): the guards set the path, sign-in
+ * reads it once. Loaded lazily; a module that cannot load degrades to « no
+ * remembered page » — never to an open redirect.
+ */
+const NO_RETURN_TO = {
+    peekReturnTo: () => null,
+    takeReturnTo: () => null,
+    returnTarget: (_p, fallback) => fallback,
+};
+function returnToApi() {
+    try {
+        const m = require('../utils/returnTo');
+        return m && typeof m.takeReturnTo === 'function' ? m : NO_RETURN_TO;
+    } catch (_) {
+        return NO_RETURN_TO;
+    }
+}
+
+/**
+ * SA-37: a set-password or reset link that was already used, has expired or
+ * never existed answers 410 Gone, on the « forgot password » page where a new
+ * link can be requested, with one neutral sentence (no account is named).
+ */
+async function linkGone(req, res) {
+    let emailEnabled = false;
+    try {
+        emailEnabled = await require('../services/EmailService').isEnabled();
+    } catch (_) {
+        emailEnabled = false;
+    }
+    res.locals.errors = [
+        req.t
+            ? req.t('auth:link_gone')
+            : 'This link has expired or has already been used. Request a new one below, or contact your administrator.',
+    ];
+    return res.status(410).render('pages/auth/forgot-password', {
+        layout: false,
+        title: req.t ? req.t('auth:forgot_title') : 'Reset your password',
+        emailEnabled,
+    });
+}
+
 function homeFor(userType) {
     if (userType === 'employee') return '/employee/dashboard';
     if (userType === 'manager') return '/supervisor/dashboard';
@@ -347,9 +390,40 @@ class AuthController {
                 }
             }
         }
+        // « Shared computer ». From an address in kioskIpRanges the box is ticked
+        // and locked (the server applies the mode whatever is posted); otherwise
+        // it is pre-ticked when this browser already carries the intent (the
+        // previous session on it was a shared-device one). No box at all while
+        // the SuperAdmin switch kioskModeEnabled is OFF (the default).
+        const kioskMode = require('../middleware/sessionActivity');
+        let kioskEnabled = false;
+        let kioskForced = false;
+        let kioskIdleMinutes = 5;
+        try {
+            kioskEnabled = await kioskMode.kioskEnabled();
+            kioskForced = kioskEnabled && (await kioskMode.isKioskIp(req));
+            kioskIdleMinutes = await kioskMode.kioskIdleMinutes();
+        } catch (_) {
+            kioskForced = false;
+        }
+        // A page sent here by an auth guard is remembered; the person reads a
+        // neutral sentence (never the red « Please log in »).
+        let returnNotice = null;
+        try {
+            if (returnToApi().peekReturnTo(req))
+                returnNotice = req.t
+                    ? req.t('auth:notice_return_to')
+                    : 'Sign in to open the page you asked for: you will be taken back to it.';
+        } catch (_) {
+            returnNotice = null;
+        }
         res.render('pages/auth/login', {
             layout: false,
             title: req.t ? req.t('chrome:pt_login') : 'Login',
+            kioskEnabled,
+            kioskForced,
+            kioskChecked: kioskForced || (kioskEnabled && kioskMode.hasKioskIntent(req)),
+            kioskIdleMinutes,
             ssoProviders,
             ssoHelpContact,
             ssoExceptions,
@@ -366,7 +440,7 @@ class AuthController {
                   ? req.t
                       ? req.t('auth:notice_signed_out')
                       : 'Vous avez été déconnecté.'
-                  : null,
+                  : returnNotice,
         });
     }
 
@@ -392,7 +466,7 @@ class AuthController {
                 );
                 if (!user || !superOk) {
                     if (user && !superOk)
-                        authAudit(
+                        recordAccountEvent(
                             req,
                             'LOGIN_BLOCKED',
                             `password_login_blocked_sso_enforced: ${user.userType} #${user.id}`,
@@ -409,10 +483,10 @@ class AuthController {
                 // unattributed LOGIN_FAILED row only repeated the same keystrokes.
                 // The passport-level failure (no strategy answer at all) is kept.
                 if (!info || !info.message)
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'LOGIN_FAILED',
-                        `Failed login for "${attempted}": no strategy answer`
+                        `Failed login for ${require('../services/AuditRetentionService').fingerprint(attempted)}: no strategy answer`
                     );
                 // an expired invitation is told to the person — it
                 // discloses nothing new (they hold the temporary password) and
@@ -460,21 +534,62 @@ class AuthController {
             // Two-factor: when the account has confirmed MFA, do NOT establish
             // the session yet — park the identity and ask for the TOTP code.
             (async () => {
+                // Shared-computer mode: the « Shared computer » box (form field,
+                // or the intent cookie the login page mirrors it into), or ALWAYS
+                // from an address listed in kioskIpRanges. Ignored entirely while
+                // kioskModeEnabled is OFF.
+                const kioskMode = require('../middleware/sessionActivity');
+                let kioskOn = false;
+                try {
+                    kioskOn = await kioskMode.kioskEnabled();
+                } catch (_) {
+                    kioskOn = false;
+                }
+                const kioskWanted =
+                    kioskOn &&
+                    (String((req.body && req.body.sharedDevice) || '') === '1' ||
+                        kioskMode.hasKioskIntent(req));
+                let kioskForced = false;
+                try {
+                    kioskForced = kioskOn && (await kioskMode.isKioskIp(req));
+                } catch (_) {
+                    kioskForced = false;
+                }
+                // Where the person was going before a guard sent them here —
+                // read NOW, the session is regenerated below.
+                const returnTo = returnToApi().takeReturnTo(req);
                 let mfaActive = false;
                 try {
                     mfaActive = await MfaService.isActive({
                         userType: MfaService.mfaUserType(user),
                         userId: user.id,
                     });
-                } catch (_) {
-                    /* MFA tables absent → treat as inactive */
+                } catch (e) {
+                    // FAIL CLOSED. A failed lookup used to be read as "no MFA" and
+                    // opened the session on the password alone: a database hiccup
+                    // (or anything that makes this query throw) skipped the second
+                    // factor. The sign-in is refused with the generic error and the
+                    // reason is logged.
+                    console.error('Login MFA lookup failed, sign-in refused:', e && e.message);
+                    recordAccountEvent(
+                        req,
+                        'LOGIN_MFA_CHECK_FAILED',
+                        `MFA state of ${user.userType} #${user.id} could not be read; sign-in refused (fail closed)`,
+                        user.userType === 'admin' ? user.id : null,
+                        actorRefOf(user)
+                    );
+                    req.flash(
+                        'error',
+                        req.t ? req.t('flash:auth_login_error') : 'An error occurred during login'
+                    );
+                    return res.redirect('/login');
                 }
 
                 if (mfaActive) {
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'MFA_CHALLENGE',
-                        `MFA code requested for ${user.userType} "${user.username || user.employeeNumber}"`,
+                        `MFA code requested for ${user.userType} #${user.id}`,
                         user.userType === 'admin' ? user.id : null
                     );
                     // Rotate the session id at the password→MFA boundary too (not
@@ -485,8 +600,16 @@ class AuthController {
                         req.session.mfaPending = {
                             id: user.id,
                             userType: user.userType,
+                            // A wrong code counts toward THIS account's lockout.
+                            username: user.username || null,
                             at: Date.now(),
+                            // Carried across the code step (validated again there).
+                            returnTo: returnTo || null,
                         };
+                        // The code step opens a NEW session (regenerated again in
+                        // logIn): the choice rides the intent cookie, which the
+                        // first request of that session consumes (sessionActivity).
+                        if (kioskWanted) kioskMode.setKioskIntent(req, res);
                         return req.session.save(() => res.redirect('/login/mfa'));
                     });
                 }
@@ -519,16 +642,21 @@ class AuthController {
                         // regenerates it inside logIn and copies nothing across —
                         // before the response (and therefore before it is saved).
                         if (holdForEnrolment) req.session.mfaEnrolRequired = true;
+                        // Same rule for the shared-computer flags: on the FINAL session.
+                        if (kioskForced || kioskWanted)
+                            kioskMode.enableSharedDevice(req, kioskForced ? 'ip' : 'checkbox');
+                        else req.session.kioskDecided = true;
+                        if (kioskMode.hasKioskIntent(req)) kioskMode.clearKioskIntent(res);
                         console.log(
                             'Login successful for:',
                             user.username || user.employeeNumber,
                             'Type:',
                             user.userType
                         );
-                        authAudit(
+                        recordAccountEvent(
                             req,
                             'LOGIN_SUCCESS',
-                            `${user.userType} "${user.username || user.employeeNumber}" signed in`,
+                            `${user.userType} #${user.id} signed in${kioskMode.isShared(req) ? ' (shared device)' : ''}`,
                             user.userType === 'admin' ? user.id : null,
                             actorRefOf(user)
                         );
@@ -537,7 +665,9 @@ class AuthController {
                                 detail: 'password, no two-factor yet (held on enrolment)',
                             });
                         if (holdForEnrolment) return res.redirect('/v2/uam/mfa/setup');
-                        return res.redirect(homeFor(user.userType));
+                        return res.redirect(
+                            returnToApi().returnTarget(returnTo, homeFor(user.userType))
+                        );
                     });
                 });
             })().catch((e) => {
@@ -594,18 +724,28 @@ class AuthController {
                 (await MfaService.consumeBackupCode({ userType, userId: pending.id, code }));
             const ok = totpOk || backupOk;
             if (!ok) {
-                authAudit(
+                recordAccountEvent(
                     req,
                     'MFA_FAILED',
                     `Invalid MFA code for ${pending.userType} #${pending.id}`,
                     pending.userType === 'admin' ? pending.id : null
+                );
+                // A wrong second factor is a failed authentication of this
+                // account: it feeds the account lockout policy too.
+                await require('../middleware/rateLimiter').noteAuthenticatedFailure(
+                    {
+                        id: pending.id,
+                        userType: pending.userType === 'admin' ? 'admin' : 'employee',
+                        username: pending.username || null,
+                    },
+                    req.ip
                 );
                 // Throttle brute force of the 6-digit code: invalidate the pending
                 // sign-in after 5 wrong codes, forcing a full re-login.
                 pending.fails = (pending.fails || 0) + 1;
                 req.session.mfaPending = pending;
                 if (pending.fails >= 5) {
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'MFA_LOCKED',
                         `Too many invalid MFA codes for ${pending.userType} #${pending.id}`,
@@ -671,7 +811,7 @@ class AuthController {
                 !AdminSsoGate.passwordAllowedWhileEnforced(user)
             ) {
                 delete req.session.mfaPending;
-                authAudit(
+                recordAccountEvent(
                     req,
                     'LOGIN_BLOCKED',
                     `password_login_blocked_sso_enforced: ${user.userType} #${user.id} at the MFA step`,
@@ -692,7 +832,7 @@ class AuthController {
                       : null;
                 if (reason) {
                     delete req.session.mfaPending;
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'SSO_DENIED',
                         `${pending.provider || 'sso'}: ${reason} — admin #${pending.id} at the MFA step`,
@@ -771,18 +911,21 @@ class AuthController {
                             pending.method || 'direct',
                             'local'
                         ))
-                            authAudit(req, action, details, adminId);
+                            recordAccountEvent(req, action, details, adminId);
                         if (pending.method === 'direct')
                             require('../services/SsoService')
                                 .stampAdminIdentityUse(pending.provider, pending.mapped, user.id)
                                 .catch(() => {});
                         const { safeRelayPath } = require('../services/SamlSecurityService');
-                        return res.redirect(safeRelayPath(pending.relay) || homeFor(user.userType));
+                        return res.redirect(
+                            safeRelayPath(pending.relay) ||
+                                returnToApi().returnTarget(pending.returnTo, homeFor(user.userType))
+                        );
                     }
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'LOGIN_SUCCESS',
-                        `${user.userType} "${user.username || user.employeeNumber}" signed in (MFA verified)`,
+                        `${user.userType} #${user.id} signed in (MFA verified)`,
                         user.userType === 'admin' ? user.id : null,
                         actorRefOf(user)
                     );
@@ -798,7 +941,10 @@ class AuthController {
                                 detail: 'a backup (recovery) code was used to sign in',
                             });
                     }
-                    return res.redirect(homeFor(user.userType));
+                    // Back to the page the person asked for (re-validated).
+                    return res.redirect(
+                        returnToApi().returnTarget(pending.returnTo, homeFor(user.userType))
+                    );
                 });
             });
         } catch (error) {
@@ -815,11 +961,13 @@ class AuthController {
 
     async logout(req, res) {
         const u = req.user;
+        const kioskMode = require('../middleware/sessionActivity');
+        const wasShared = kioskMode.isShared(req);
         if (u)
-            authAudit(
+            recordAccountEvent(
                 req,
                 'LOGOUT',
-                `${u.userType || 'user'} "${u.username || u.employeeNumber || u.id}" signed out`,
+                `${u.userType || 'user'} #${u.id} signed out${wasShared ? ' (shared device)' : ''}`,
                 u.userType === 'admin' ? u.id : null
             );
         req.logout((err) => {
@@ -830,6 +978,28 @@ class AuthController {
             // session ID can't be reused after logout.
             req.session.destroy(() => {
                 res.clearCookie(process.env.SESSION_COOKIE_NAME || 'app.sid');
+                // A shared computer: the next person finds « Shared computer »
+                // already ticked (they may untick it), and the previous person's
+                // language is dropped.
+                if (wasShared) {
+                    kioskMode.setKioskIntent(req, res);
+                    kioskMode.resetLanguage(res);
+                }
+                // This person's offline self-assessment drafts are removed from
+                // the device at sign-out (shared computer or not). The browser
+                // does it: public/js/draft-store.js reads this short cookie (a
+                // numeric id, no secret) on the next page and clears it. Admin
+                // ids live in another table — never sent (a same-number
+                // employee's drafts would be wiped).
+                if (u && u.userType !== 'admin' && Number.isInteger(Number(u.id))) {
+                    res.cookie('app_drafts_wipe', String(Number(u.id)), {
+                        path: '/',
+                        maxAge: 10 * 60 * 1000,
+                        sameSite: 'lax',
+                        httpOnly: false,
+                        secure: Boolean(req.secure),
+                    });
+                }
                 res.redirect('/login?loggedout=1');
             });
         });
@@ -884,6 +1054,7 @@ class AuthController {
                                 email: result.email,
                                 name: result.name,
                                 subjectType: result.subjectType,
+                                subjectId: result.subjectId,
                             },
                         ]
                       : [];
@@ -892,6 +1063,7 @@ class AuthController {
                 result.email = reset.email;
                 result.name = reset.name;
                 result.subjectType = reset.subjectType;
+                result.subjectId = reset.subjectId;
                 result.accountLine = resets.length > 1 ? reset.name : null;
                 // SECURITY — the reset link carries a single-use credential, so its
                 // origin comes from server-side config (APP_BASE_URL / TRUSTED_HOSTS),
@@ -905,69 +1077,87 @@ class AuthController {
                 const base = await require('../utils/emailTemplate').baseUrlAsync(req);
                 const link = `${base}/reset-password?token=${encodeURIComponent(result.rawToken)}`;
                 if (await EmailService.isEnabled().catch(() => false)) {
-                    // White-label + FR-first: the brand comes from App Settings (never the
-                    // hardcoded product name) and every sentence is localized like the rest
-                    // of the chrome. `brand` is admin-supplied, so escape it for the HTML part.
+                    // The one renderer, in the requester's language (one language
+                    // per mail); the subject is the catalogue's. The brand comes
+                    // from App Settings inside renderEmail, never a product name.
                     const brand =
                         (res.locals && res.locals.branding && res.locals.branding.appName) ||
                         PRODUCT.name;
-                    const escHtml = (s) =>
-                        String(s)
-                            .replace(/&/g, '&amp;')
-                            .replace(/</g, '&lt;')
-                            .replace(/>/g, '&gt;')
-                            .replace(/"/g, '&quot;');
                     const T = (key, opts, fallback) =>
                         req.t ? req.t(`chrome:${key}`, opts) : fallback;
                     const mins = result.ttlMinutes;
-                    const subject = T(
-                        'mail_reset_subject',
-                        { brand },
-                        `Reset your ${brand} password`
-                    );
-                    // The link is built from server-side config and a URI-encoded
-                    // token, so it cannot carry markup — escape it anyway. It is the
-                    // one credential-bearing string in this mail, and an operator
-                    // typo in APP_BASE_URL should never be able to break the attribute.
-                    const escLink = escHtml(link);
-                    const accountLine = result.accountLine
-                        ? `<p><strong>${T('mail_reset_account', { name: escHtml(result.accountLine) }, `Account: ${escHtml(result.accountLine)}`)}</strong></p>`
-                        : '';
-                    const html =
-                        `<p>${T('mail_reset_intro', { brand: escHtml(brand) }, `We received a request to reset your ${escHtml(brand)} password.`)}</p>` +
-                        accountLine +
-                        `<p><a href="${escLink}">${T('mail_reset_cta', {}, 'Choose a new password')}</a> ` +
-                        `(${T('mail_reset_validity', { mins }, `link valid for ${mins} minutes`)}).</p>` +
-                        `<p>${T('mail_reset_fallback', {}, 'If the link does not work, copy this URL:')}<br><code>${escLink}</code></p>` +
-                        `<p>${T('mail_reset_ignore', {}, 'If you did not request this, you can safely ignore this email — your password is unchanged.')}</p>`;
-                    const text =
-                        `${T('mail_reset_text_lead', { brand }, `Reset your ${brand} password:`)}\n` +
-                        (result.accountLine
-                            ? `${T('mail_reset_account', { name: result.accountLine }, `Account: ${result.accountLine}`)}\n`
-                            : '') +
-                        `${link}\n\n` +
-                        `${T('mail_reset_text_validity', { mins }, `This link is valid for ${mins} minutes.`)} ` +
-                        `${T('mail_reset_ignore', {}, 'If you did not request this, you can safely ignore this email — your password is unchanged.')}`;
-                    await EmailService.send({ to: result.email, subject, html, text }).catch((e) =>
-                        console.error('Reset email send failed:', e.message)
-                    );
+                    const blocks = [
+                        {
+                            type: 'p',
+                            text: T(
+                                'mail_reset_intro',
+                                { brand },
+                                `We received a request to reset your ${brand} password.`
+                            ),
+                        },
+                    ];
+                    if (result.accountLine)
+                        blocks.push({
+                            type: 'p',
+                            text: T(
+                                'mail_reset_account',
+                                { name: result.accountLine },
+                                `Account: ${result.accountLine}`
+                            ),
+                        });
+                    blocks.push({
+                        type: 'p',
+                        text: T(
+                            'mail_reset_text_validity',
+                            { mins },
+                            `This link is valid for ${mins} minutes.`
+                        ),
+                    });
+                    blocks.push({
+                        type: 'p',
+                        text: T(
+                            'mail_reset_ignore',
+                            {},
+                            'If you did not request this, you can safely ignore this email — your password is unchanged.'
+                        ),
+                    });
+                    // Timing: NOT awaited — neither the rendering (it reads the
+                    // branding settings) nor the SMTP round-trip. Awaiting either
+                    // only for REAL accounts would make the response slower exactly
+                    // when the identifier exists, an enumeration oracle despite the
+                    // identical message. `result` is re-used across the loop, so
+                    // capture THIS mail's inputs now.
+                    const to = result.email;
+                    const spec = {
+                        kind: 'account.password_reset',
+                        locale: req.language || 'fr',
+                        blocks,
+                        ctaUrl: link,
+                        ctaLabel: T('mail_reset_cta', {}, 'Choose a new password'),
+                    };
+                    Promise.resolve()
+                        .then(async () => {
+                            const m = await require('../utils/emailTemplate').renderEmail(spec);
+                            return EmailService.send({ to, ...m });
+                        })
+                        .catch((e) => console.error('Reset email send failed:', e && e.message));
                 } else {
                     console.warn(
                         `[reset] token created but email delivery is DISABLED — no link sent. ` +
                             `Enable Settings -> Email (SMTP), or use an admin-initiated reset.`
                     );
                 }
-                authAudit(
+                recordAccountEvent(
                     req,
                     'PASSWORD_RESET_REQUESTED',
-                    `Reset requested for ${result.subjectType} ("${identifier}")${resets.length > 1 ? ` — shared address, ${resets.length} accounts served` : ''}`
+                    `Reset requested for ${result.subjectType} #${result.subjectId}${resets.length > 1 ? ` — shared address, ${resets.length} accounts served` : ''}`
                 );
             }
             if (!resets.length) {
-                authAudit(
+                recordAccountEvent(
                     req,
                     'PASSWORD_RESET_REQUESTED',
-                    `Reset requested for unknown/no-email "${identifier}" (no link issued)`
+                    `Reset requested for unknown/no-email ${require('../services/AuditRetentionService').fingerprint(identifier)} (no link issued)`
                 );
             }
         } catch (e) {
@@ -979,21 +1169,25 @@ class AuthController {
 
     async showResetPassword(req, res) {
         const token = (req.query.token || '').toString();
+        // An invitation link (SA-37) reads « Set my password »; same form, same token.
+        const setup = String((req.query && req.query.setup) || '') === '1';
         try {
             const PasswordResetService = require('../services/PasswordResetService');
-            if (!(await PasswordResetService.validate(token))) {
-                req.flash(
-                    'error',
-                    req.t
-                        ? req.t('flash:reset_link_invalid')
-                        : 'That reset link is invalid or has expired. Please request a new one.'
-                );
-                return res.redirect('/forgot-password');
-            }
+            // A used, expired or unknown link is gone: 410 on the page where a
+            // new one can be requested.
+            if (!(await PasswordResetService.validate(token))) return linkGone(req, res);
+            const title = setup
+                ? req.t
+                    ? req.t('auth:setup_title')
+                    : 'Set my password'
+                : req.t
+                  ? req.t('auth:reset_title')
+                  : 'Choose a new password';
             res.render('pages/auth/reset-password', {
                 layout: false, // full standalone page, like /login
-                title: req.t ? req.t('auth:reset_title') : 'Choose a new password',
+                title,
                 token,
+                setup,
             });
         } catch (e) {
             console.error('Show reset password error:', e);
@@ -1011,18 +1205,12 @@ class AuthController {
         const token = (req.body.token || '').toString();
         const password = (req.body.password || '').toString();
         const passwordConfirm = (req.body.passwordConfirm || '').toString();
-        const back = `/reset-password?token=${encodeURIComponent(token)}`;
+        const setup = String((req.body && req.body.setup) || '') === '1';
+        // Fixed relative path; only the URI-encoded token and a constant flag vary.
+        const back = `/reset-password?token=${encodeURIComponent(token)}${setup ? '&setup=1' : ''}`;
         try {
             const PasswordResetService = require('../services/PasswordResetService');
-            if (!(await PasswordResetService.validate(token))) {
-                req.flash(
-                    'error',
-                    req.t
-                        ? req.t('flash:reset_link_invalid')
-                        : 'That reset link is invalid or has expired. Please request a new one.'
-                );
-                return res.redirect('/forgot-password');
-            }
+            if (!(await PasswordResetService.validate(token))) return linkGone(req, res);
             if (!password || password !== passwordConfirm) {
                 req.flash(
                     'error',
@@ -1039,16 +1227,9 @@ class AuthController {
             }
 
             const result = await PasswordResetService.consume(token, password);
-            if (!result.ok) {
-                req.flash(
-                    'error',
-                    req.t
-                        ? req.t('flash:reset_link_invalid')
-                        : 'That reset link is invalid or has expired. Please request a new one.'
-                );
-                return res.redirect('/forgot-password');
-            }
-            authAudit(
+            // Lost the race to another use of the same link: gone too.
+            if (!result.ok) return linkGone(req, res);
+            recordAccountEvent(
                 req,
                 'PASSWORD_RESET_COMPLETED',
                 `Password reset via link for ${result.subjectType} #${result.subjectId}`,
@@ -1172,10 +1353,10 @@ class AuthController {
                         T
                     );
                     if (refusal) {
-                        authAudit(
+                        recordAccountEvent(
                             req,
                             'PROFILE_EMAIL_CHANGE_REFUSED',
-                            `Own e-mail change refused for admin ${me.username} (re-authentication failed)`,
+                            `Own e-mail change refused for admin #${me.id} (re-authentication failed)`,
                             me.id
                         );
                         req.flash('error', refusal);
@@ -1193,14 +1374,21 @@ class AuthController {
                     await require('../services/PasswordResetService').onEmailChanged(
                         'admin',
                         me.id,
-                        { oldEmail: me.email, newEmail: email, t: req.t, name: me.username }
+                        {
+                            oldEmail: me.email,
+                            newEmail: email,
+                            t: req.t,
+                            name: me.username,
+                            lang: req.language,
+                        }
                     );
                 }
                 if (emailAdvisory) req.flash('warning', emailAdvisory);
-                authAudit(
+                recordAccountEvent(
                     req,
                     'ADMIN_PROFILE_UPDATED',
-                    `Own e-mail updated by admin ${me.username} ("${me.email || ''}" -> "${email}")`,
+                    // Ids only: neither address goes into the immutable log.
+                    `Own e-mail updated by admin #${me.id} (${me.email ? 'address changed' : 'address added'}${email ? '' : ', now empty'})`,
                     me.id
                 );
                 req.flash(
@@ -1246,7 +1434,7 @@ class AuthController {
                     T
                 );
                 if (refusal) {
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'PROFILE_EMAIL_CHANGE_REFUSED',
                         'Own e-mail change refused (re-authentication failed)'
@@ -1272,15 +1460,16 @@ class AuthController {
                         oldEmail: current.email,
                         newEmail: email,
                         t: req.t,
+                        lang: req.language,
                         name: `${current.firstName || ''} ${current.lastName || ''}`.trim(),
                     }
                 );
             }
             if (emailAdvisory) req.flash('warning', emailAdvisory);
-            authAudit(
+            recordAccountEvent(
                 req,
                 'PROFILE_UPDATED',
-                `Own contact details updated (email "${current.email || ''}" -> "${email}")`
+                `Own contact details updated${emailChanged ? ' (e-mail address changed)' : ''}`
             );
             req.flash('success', T('flash:profile_saved', 'Vos coordonnées ont été enregistrées.'));
             res.redirect('/account');
@@ -1338,7 +1527,7 @@ class AuthController {
                 )
             );
             const n = counts.reduce((a, b) => a + (Number(b) || 0), 0);
-            authAudit(
+            recordAccountEvent(
                 req,
                 'SESSIONS_REVOKED_OTHERS',
                 `Signed out ${n} other session(s)`,
@@ -1415,7 +1604,7 @@ class AuthController {
             }
             const SessionService = require('../services/SessionService');
             const n = await SessionService.revokeBySid(sid);
-            authAudit(
+            recordAccountEvent(
                 req,
                 'SESSION_FORCE_CLOSED',
                 `Admin closed session ${sid.slice(0, 8)}… (${n} removed)`,
@@ -1446,6 +1635,7 @@ class AuthController {
             const { currentPassword, newPassword, confirmPassword } = req.body;
 
             if (newPassword !== confirmPassword) {
+                req._reauthNotAGuess = true; // nothing was checked against the account
                 req.flash(
                     'error',
                     req.t ? req.t('flash:pw_new_mismatch') : 'New passwords do not match'
@@ -1459,6 +1649,7 @@ class AuthController {
                 // Employee/manager path enforces the same complexity policy.
                 const pw = passwordValidator.validate(newPassword);
                 if (!pw.valid) {
+                    req._reauthNotAGuess = true; // refused before the current password is read
                     // `flash:pw_policy` interpolated the validator's ENGLISH list into a
                     // French sentence ("Mot de passe : Password must be at least 12
                     // characters long"). Localize each rule instead.
@@ -1491,7 +1682,7 @@ class AuthController {
                         )
                     );
                     const n = counts.reduce((a, b) => a + (Number(b) || 0), 0);
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'PASSWORD_CHANGED',
                         `Password changed; ${n} other session(s) signed out`,
@@ -1514,6 +1705,19 @@ class AuthController {
                           : '/dashboard';
                 res.redirect(home);
             } else {
+                // A wrong CURRENT password is a failed authentication of this
+                // account: it counts toward its lockout (the route's
+                // passwordReauthLimiter caps the rate per user). A new-password
+                // rule refusal is not a guess and must not burn the re-auth budget.
+                const wrongCurrent = /current password is incorrect/i.test(
+                    String(result.message || '')
+                );
+                if (!wrongCurrent) req._reauthNotAGuess = true;
+                if (wrongCurrent)
+                    await require('../middleware/rateLimiter').noteAuthenticatedFailure(
+                        req.user,
+                        req.ip
+                    );
                 // `result.message` is English service prose ("Current password is
                 // incorrect"). It never reaches the page verbatim.
                 req.flash('error', localizeAuthMessage(req, result.message));

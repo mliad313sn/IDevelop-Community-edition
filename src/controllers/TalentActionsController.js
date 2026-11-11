@@ -40,12 +40,19 @@ async function index(req, res) {
           WHERE 1=1 ${sc.clause} ORDER BY i.created_at DESC`,
         sc.params
     );
+    // coaching_plans.progress is NOT NULL DEFAULT 0: a progress is « recorded »
+    // when it is above 0 or somebody saved it (CoachingPlanService.updateProgress
+    // audits COACHING_PROGRESS, under every spelling of the entity type).
+    const logTypes = require('../models/SystemLogModel').entityTypeVariants('coaching_plan');
     const coaching = await db.all(
         `SELECT c.id, c.kind, c.title, c.state, c.progress, c.context_type, c.target_date, c.created_at,
-                e.first_name, e.last_name, e.employee_number
+                e.first_name, e.last_name, e.employee_number,
+                (c.progress > 0 OR EXISTS (SELECT 1 FROM system_logs l
+                    WHERE l.entity_type = ANY(?) AND l.entity_id = c.id
+                      AND l.action = 'COACHING_PROGRESS')) AS "progressRecorded"
            FROM coaching_plans c JOIN employees e ON e.id = c.employee_id
           WHERE 1=1 ${sc.clause} ORDER BY c.created_at DESC`,
-        sc.params
+        [logTypes, ...sc.params]
     );
 
     let bias = [];
@@ -69,17 +76,22 @@ async function index(req, res) {
     const activeCoaching = coaching.filter((c) => c.state === 'active');
     // NULL, not 0, when nothing is active: an average over an empty set is an
     // absence of measurement, and "0 %" on the tile read as "no progress".
-    const avgProgress = activeCoaching.length
-        ? Math.round(
-              activeCoaching.reduce((a, c) => a + num(c.progress), 0) / activeCoaching.length
-          )
+    // Only plans whose progress was RECORDED count: a plan nobody has updated
+    // has no progress yet, it is not 0 %. None recorded gives null.
+    const measured = activeCoaching.filter(
+        (c) => c.progressRecorded === true || c.progressRecorded === 't'
+    );
+    const avgProgress = measured.length
+        ? Math.round(measured.reduce((a, c) => a + num(c.progress), 0) / measured.length)
         : null;
 
     // "Needs attention" — items waiting on a manager action
     const attention = {
         pipsProposed: pips.filter((p) => p.state === 'proposed').length,
         idpsDraft: idps.filter((i) => i.status === 'draft').length,
-        coachingStalled: activeCoaching.filter((c) => num(c.progress) === 0).length,
+        // « stalled » = a RECORDED progress still at 0, never the column
+        // default of a plan nobody has updated yet (that one is not measured).
+        coachingStalled: measured.filter((c) => num(c.progress) === 0).length,
         biasOpen: bias.length,
     };
 
@@ -120,9 +132,27 @@ async function careerPathPage(req, res) {
         roleId: e.roleId,
     }));
     const roles = await db.all('SELECT id, name FROM roles ORDER BY name');
+    // Arrive pre-filled (?employeeId=&targetRoleId=) from a person's stated
+    // target role or a successor plan. Without a target role in the link, the
+    // person's own stated target role (employee_aspirations). Only a person
+    // the reader may see and a role that exists are pre-selected.
+    const preEmp = Number(req.query.employeeId) || null;
+    const inScope = Boolean(preEmp && employees.some((e) => e.id === preEmp));
+    let preRole = Number(req.query.targetRoleId) || null;
+    if (inScope && !preRole) {
+        const asp = await db
+            .get(
+                'SELECT target_role_id AS "targetRoleId" FROM employee_aspirations WHERE employee_id = ?',
+                [preEmp]
+            )
+            .catch(() => null);
+        preRole = asp && asp.targetRoleId ? Number(asp.targetRoleId) : null;
+    }
+    if (preRole && !roles.some((r) => Number(r.id) === preRole)) preRole = null;
     res.render('pages/talent/career-path', {
         employees,
         roles,
+        pre: { employeeId: inScope ? preEmp : null, targetRoleId: inScope ? preRole : null },
         title: req.t ? req.t('chrome:pt_career_path') : 'Career Path',
     });
 }
@@ -207,86 +237,235 @@ async function careerPathData(req, res) {
     });
 }
 
-// ---- Action Center (G2, thin) -------------------------------------------
+// ---- « À traiter » (Action Center) ----------------------------------------
 // Live count of items waiting on THIS user, computed on read (no write pipeline).
+// ONE collector feeds the bell, the dashboards' « what needs you » strips, the
+// /tasks page and the AI companion's « what should I do next ». Each item carries
+//   - `kind`  : the group it is listed under (assessments, plans, training,
+//               accounts; `info` = not a task, listed but never counted);
+//   - `verb`  : what the person does there (« Valider », « Relancer »…);
+//   - the route GUARD its target page is mounted with, and the optional MODULE
+//     that owns that page (Administration → Modules). An item whose target
+//     would refuse this person (403) or answer 404 (module off) is never
+//     emitted, and its count query does not even run.
+// Read-only accounts (role 'viewer') get no queue item: they cannot act.
+const ACTION_KINDS = ['assessments', 'plans', 'training', 'accounts', 'info'];
+
+function actionGuards() {
+    // Lazy: middleware/auth pulls passport and the models in behind it.
+    const a = require('../middleware/auth');
+    return {
+        anyone: [a.requireAuth],
+        employeeSide: [a.requireEmployeeOrManager],
+        mgrOrAdmin: [a.requireManagerOrAdmin],
+        // routes/index.js: _cycRead = requireManagerOrAnyPermission('manage_cycles')
+        cycles: [a.requireManagerOrAnyPermission('manage_cycles')],
+        // routes/index.js: /v2/lms → requireManagerOrAnyPermission('configure_lms')
+        lms: [a.requireManagerOrAnyPermission('configure_lms')],
+        // routes/v2-uam.js: /maker-checker/queue → requireSuperAdmin
+        superadmin: [a.requireSuperAdmin],
+        // routes/index.js: GET /onboarding → requirePermission('manage_onboarding')
+        onboarding: [a.requirePermission('manage_onboarding')],
+        // routes/index.js: GET /admin/accounts → requirePermission('manage_invitations')
+        accounts: [a.requirePermission('manage_invitations')],
+        // routes/index.js: POST /api/ninebox/:id/disclose → the 9-box write slug
+        // (strict ladder; the page itself is requireManagerOrAdmin)
+        talentReviews: [a.requireManagerOrAnyPermission('manage_talent_reviews')],
+        // routes/v2-pip.js: POST /:id/hr-visa → PipService.canGiveHrVisa
+        // (a SuperAdmin, or the dispute-arbitration slug in clearance)
+        hrVisa: [a.requirePermission('arbitrate_disputes')],
+    };
+}
+
 /**
- * The signed-in user's to-do items (the Action Center list), RBAC-scoped:
- * managers/admins get their scoped queues, an employee only their OWN items.
- * Shared by GET /api/my-actions and the AI companion's "what should I do next".
+ * The signed-in user's tasks, RBAC-scoped and module-aware: managers and
+ * admins get their scoped queues, and an employee or a manager their OWN items.
  *
- * @param {object} user       req.user
+ * @param {object} user        req.user
  * @param {function} [translate] (fullKey, fallback, params) → label; defaults to
  *                             the English fallback when no i18n is at hand
- * @returns {Promise<Array<{label,count,href,icon,overdue?}>>}
+ * @returns {Promise<{total:number, items:Array, complete:boolean}>} `total`
+ *   counts the tasks only (`info` lines are listed, never counted); `complete`
+ *   is false when a source could not be read — an empty list then means « could
+ *   not be read », never « nothing to do ».
  */
-async function collectMyActions(user, translate) {
+async function collectTasks(user, translate) {
     const tr = typeof translate === 'function' ? translate : (k, fallback) => fallback;
+    const { passesGuard } = require('../utils/routeGuard');
+    const ModuleService = require('../services/ModuleService');
     const items = [];
-    // Action Center is the app's most-viewed component (bell + "what awaits you"
-    // strip) — labels must follow the user's locale, not ship English on a
-    // French-first product. Resolve server-side; the client renders verbatim.
-    const t = (key, fallback) => tr('talentx:' + key, fallback);
-    const isMgrAdmin = user.userType === 'admin' || user.userType === 'manager';
+    let complete = true;
+    if (!user) return { total: 0, items, complete };
+    let modules = {};
     try {
-        if (isMgrAdmin) {
-            const sc = await RBACService.scopeFilter(user, { empAlias: 'e' });
-            const review = await db.get(
-                `SELECT COUNT(DISTINCT sa.id) AS c FROM self_assessments sa JOIN employees e ON e.id = sa.employee_id
-                  WHERE sa.workflow_state = 'submitted' ${sc.clause}`,
-                sc.params
-            );
-            if (num(review && review.c))
-                items.push({
-                    label: t('ac_sa_review', 'Self-assessments to review'),
-                    count: num(review.c),
-                    href: '/supervisor/self-assessment-reviews',
-                    icon: 'fa-clipboard-check',
+        modules = (await ModuleService.resolve()).modules || {};
+    } catch (_) {
+        complete = false;
+    }
+    const G = actionGuards();
+    // The page opens for this person, and its module (if any) is on.
+    const can = (guard, mod) => (!mod || modules[mod] === true) && passesGuard(guard, user);
+    // Labels follow the person's language; resolved server-side, rendered verbatim.
+    const t = (key, fallback) => tr('talentx:' + key, fallback);
+    const verb = (key, fallback) => tr('chrome:todo_verb_' + key, fallback);
+    const push = (key, kind, label, count, href, icon, extra) =>
+        items.push(
+            Object.assign(
+                { key, kind, label, verb: verb(key, 'Open'), count, href, icon },
+                extra || {}
+            )
+        );
+    // One failing source must not blank the others — but it is reported.
+    const safely = async (fn) => {
+        try {
+            await fn();
+        } catch (_) {
+            complete = false;
+        }
+    };
+    const isMgrAdmin = user.userType === 'admin' || user.userType === 'manager';
+    const readOnly = user.userType === 'admin' && user.role === 'viewer';
+
+    if (isMgrAdmin && !readOnly) {
+        let sc = null;
+        await safely(async () => {
+            sc = await RBACService.scopeFilter(user, { empAlias: 'e' });
+        });
+        if (sc) {
+            if (can(G.anyone))
+                await safely(async () => {
+                    const review = await db.get(
+                        `SELECT COUNT(DISTINCT sa.id) AS c FROM self_assessments sa JOIN employees e ON e.id = sa.employee_id
+                          WHERE sa.workflow_state = 'submitted' ${sc.clause}`,
+                        sc.params
+                    );
+                    if (num(review && review.c))
+                        push(
+                            'sa_review',
+                            'assessments',
+                            t('ac_sa_review', 'Self-assessments to review'),
+                            num(review.c),
+                            '/supervisor/self-assessment-reviews',
+                            'fa-clipboard-check'
+                        );
                 });
 
-            const pip = await db.get(
-                `SELECT COUNT(*) AS c FROM pips p JOIN employees e ON e.id = p.employee_id
-                  WHERE p.state = 'proposed' ${sc.clause}`,
-                sc.params
-            );
-            if (num(pip && pip.c))
-                items.push({
-                    label: t('ac_pip_activate', 'PIPs awaiting activation'),
-                    count: num(pip.c),
-                    href: '/v2/pip',
-                    icon: 'fa-user-clock',
+            if (can(G.mgrOrAdmin, 'development'))
+                await safely(async () => {
+                    const pip = await db.get(
+                        `SELECT COUNT(*) AS c FROM pips p JOIN employees e ON e.id = p.employee_id
+                          WHERE p.state = 'proposed' ${sc.clause}`,
+                        sc.params
+                    );
+                    if (num(pip && pip.c))
+                        push(
+                            'pip_activate',
+                            'plans',
+                            t('ac_pip_activate', 'Improvement plans (PIP) to activate'),
+                            num(pip.c),
+                            '/v2/pip',
+                            'fa-user-clock'
+                        );
                 });
 
-            const idp = await db.get(
-                `SELECT COUNT(*) AS c FROM idp_plans i JOIN employees e ON e.id = i.employee_id
-                  WHERE i.status = 'draft' ${sc.clause}`,
-                sc.params
-            );
-            if (num(idp && idp.c))
-                items.push({
-                    label: t('ac_idp_draft', 'IDPs in draft'),
-                    count: num(idp.c),
-                    href: '/v2/idp',
-                    icon: 'fa-seedling',
+            // The optional HR visa (pip.hrVisaRequired, migration 195): the
+            // plans not yet activated that wait for it, for whoever may give it
+            // — never their own proposals (a visa is a second pair of eyes).
+            if (can(G.hrVisa, 'development') && user.userType === 'admin')
+                await safely(async () => {
+                    const PipService = require('../services/PipService');
+                    if (!(await PipService.hrVisaRequired())) return;
+                    const visa = await db.get(
+                        `SELECT COUNT(*) AS c FROM pips p JOIN employees e ON e.id = p.employee_id
+                          WHERE p.state IN ('proposed','approved') AND p.hr_visa_at IS NULL
+                            AND COALESCE(p.proposed_by_ref, '') <> ? ${sc.clause}`,
+                        [`admin:${Number(user.id)}`, ...sc.params]
+                    );
+                    if (num(visa && visa.c))
+                        push(
+                            'pip_hr_visa',
+                            'plans',
+                            t('ac_pip_hr_visa', 'Improvement plans waiting for the HR visa'),
+                            num(visa.c),
+                            '/v2/pip',
+                            'fa-stamp'
+                        );
                 });
 
-            const stalled = await db.get(
-                `SELECT COUNT(*) AS c FROM coaching_plans c JOIN employees e ON e.id = c.employee_id
-                  WHERE c.state = 'active' AND COALESCE(c.progress,0) = 0 ${sc.clause}`,
-                sc.params
-            );
-            if (num(stalled && stalled.c))
-                items.push({
-                    label: t('ac_coaching_notstarted', 'Coaching plans not started'),
-                    count: num(stalled.c),
-                    href: '/coaching/plans',
-                    icon: 'fa-people-arrows',
+            // A placement approved in the last 30 days and not yet told to the
+            // person (4.0.0 port, wave 6): « say it to them » while it is
+            // recent. Only where employees may see the 9-box at all, and only
+            // for whoever may disclose it (the 9-box write slug).
+            if (can(G.talentReviews, 'talent'))
+                await safely(async () => {
+                    const conf = require('../services/TalentConfidentialityService');
+                    if (!(await conf.nineBoxVisibleToEmployees())) return;
+                    const nb = await db.get(
+                        `SELECT COUNT(*) AS c FROM nine_box_evaluations n JOIN employees e ON e.id = n.employee_id
+                          WHERE n.status = 'approved' AND n.disclosed_to_employee IS NOT TRUE
+                            AND n.approved_at > now() - interval '30 days'
+                            AND e.is_active = true ${sc.clause}`,
+                        sc.params
+                    );
+                    if (num(nb && nb.c))
+                        push(
+                            'ninebox_disclose',
+                            'plans',
+                            t(
+                                'ac_ninebox_disclose',
+                                'Recent 9-box placements to share with the person'
+                            ),
+                            num(nb.c),
+                            '/talent/nine-box',
+                            'fa-comments'
+                        );
                 });
 
-            // The campaign chase: the governed people who have not started
-            // the running campaign are the manager's first item — read from the
-            // ROSTER, so the person who never opened the page is counted. "Overdue"
-            // once the deadline has passed. Fail-soft: never blocks the bell.
-            try {
+            // The team's drafts open the TEAM console, not /v2/idp (the person's
+            // OWN plans, where those drafts are not listed).
+            if (can(G.mgrOrAdmin, 'development'))
+                await safely(async () => {
+                    const idp = await db.get(
+                        `SELECT COUNT(*) AS c FROM idp_plans i JOIN employees e ON e.id = i.employee_id
+                          WHERE i.status = 'draft' ${sc.clause}`,
+                        sc.params
+                    );
+                    if (num(idp && idp.c))
+                        push(
+                            'idp_draft',
+                            'plans',
+                            t('ac_idp_draft', 'Development plans (IDP) in draft'),
+                            num(idp.c),
+                            '/v2/idp/manage',
+                            'fa-seedling'
+                        );
+                });
+
+            if (can(G.mgrOrAdmin, 'development'))
+                await safely(async () => {
+                    const stalled = await db.get(
+                        `SELECT COUNT(*) AS c FROM coaching_plans c JOIN employees e ON e.id = c.employee_id
+                          WHERE c.state = 'active' AND COALESCE(c.progress,0) = 0 ${sc.clause}`,
+                        sc.params
+                    );
+                    if (num(stalled && stalled.c))
+                        push(
+                            'coaching_notstarted',
+                            'plans',
+                            t('ac_coaching_notstarted', 'Coaching plans not started'),
+                            num(stalled.c),
+                            '/coaching/plans',
+                            'fa-people-arrows'
+                        );
+                });
+        }
+
+        // The campaign chase: the governed people who have not started the
+        // running campaign — read from the ROSTER, so the person who never
+        // opened the page is counted. "Overdue" once the deadline has passed.
+        // Only for whoever may OPEN the campaign console.
+        if (can(G.cycles, 'campaigns'))
+            await safely(async () => {
                 const CycleService = require('../services/CycleService');
                 const cycle = await CycleService.findCurrent();
                 if (cycle) {
@@ -297,187 +476,260 @@ async function collectMyActions(user, translate) {
                     const tc = (key, fallback) =>
                         tr('admin:' + key, fallback, { cycle: cycle.code });
                     if (p.states.not_started.count) {
-                        items.push({
-                            label: tc(
+                        push(
+                            'campaign_not_started',
+                            'assessments',
+                            tc(
                                 overdue ? 'camp_ac_not_started_overdue' : 'camp_ac_not_started',
                                 `Reports not started in campaign ${cycle.code}`
                             ),
-                            count: p.states.not_started.count,
-                            href: `/cycles/${cycle.id}?state=not_started`,
-                            icon: 'fa-bullhorn',
-                            overdue: !!overdue,
-                        });
+                            p.states.not_started.count,
+                            `/cycles/${cycle.id}?state=not_started`,
+                            'fa-bullhorn',
+                            { overdue: !!overdue }
+                        );
                     }
                 }
-            } catch (_) {
-                /* campaign item is best-effort */
-            }
+            });
 
-            // Admin-only queues: two-person-rule approvals (superadmin decides) and
-            // self-service onboarding requests (manage_onboarding). These are the
-            // "something awaits your approval / a new person to process" actions.
-            if (user.userType === 'admin') {
-                if (RBACService.isSuperAdmin(user)) {
-                    const appr = await db
-                        .get(
-                            `SELECT COUNT(*) AS c FROM maker_checker_requests WHERE state = 'pending'`
-                        )
-                        .catch(() => null);
+        // Training completions awaiting the person's decision. The authority
+        // test is LmsService's own (_mayDecide), per employee.
+        if (can(G.lms, 'development'))
+            await safely(async () => {
+                const waiting = await db.get(
+                    `SELECT COUNT(*) AS c FROM lms_completions
+                      WHERE applied = false AND review_reason = 'awaiting_supervisor'`
+                );
+                if (!num(waiting && waiting.c)) return;
+                const LmsService = require('../services/LmsService');
+                const mine = await LmsService.pendingUplifts(user);
+                if (mine && mine.length)
+                    push(
+                        'uplifts',
+                        'training',
+                        tr('chrome:nav_lms_uplifts', 'Training to approve'),
+                        mine.length,
+                        '/v2/lms/uplifts',
+                        'fa-graduation-cap'
+                    );
+            });
+
+        // Admin-only queues: two-person-rule approvals (SuperAdmin decides) and
+        // self-service onboarding requests (manage_onboarding).
+        if (user.userType === 'admin') {
+            if (can(G.superadmin))
+                await safely(async () => {
+                    const appr = await db.get(
+                        `SELECT COUNT(*) AS c FROM maker_checker_requests WHERE state = 'pending'`
+                    );
                     if (num(appr && appr.c))
-                        items.push({
-                            label: t('ac_approvals', 'Approvals awaiting your decision'),
-                            count: num(appr.c),
-                            href: '/v2/uam/maker-checker/queue',
-                            icon: 'fa-user-shield',
-                        });
-                }
-                if (RBACService.hasPermission(user, 'manage_onboarding')) {
-                    const onb = await db
-                        .get(
-                            `SELECT COUNT(*) AS c FROM onboarding_requests WHERE status = 'pending'`
-                        )
-                        .catch(() => null);
+                        push(
+                            'approvals',
+                            'accounts',
+                            t('ac_approvals', 'Approvals awaiting your decision'),
+                            num(appr.c),
+                            '/v2/uam/maker-checker/queue',
+                            'fa-user-shield'
+                        );
+                });
+            if (can(G.onboarding))
+                await safely(async () => {
+                    const onb = await db.get(
+                        `SELECT COUNT(*) AS c FROM onboarding_requests WHERE status = 'pending'`
+                    );
                     if (num(onb && onb.c))
-                        items.push({
-                            label: t('ac_onboarding', 'Onboarding requests to review'),
-                            count: num(onb.c),
-                            href: '/onboarding',
-                            icon: 'fa-user-plus',
-                        });
-                }
-                // ---- SECTION accounts: manager requests waiting on an admin (scoped) ----
-                // "Unlock / resend my report's credentials" → whoever holds
-                // reset_employee_password; "departure requested"
-                // → whoever holds edit_employees. Both land on the page that acts.
-                if (RBACService.hasPermission(user, 'reset_employee_password')) {
-                    const ar = await db
-                        .get(
-                            `SELECT COUNT(*) AS c FROM account_requests r JOIN employees e ON e.id = r.employee_id
+                        push(
+                            'onboarding',
+                            'accounts',
+                            t('ac_onboarding', 'Onboarding requests to review'),
+                            num(onb.c),
+                            '/onboarding',
+                            'fa-user-plus'
+                        );
+                });
+            // Manager requests waiting on an admin (scoped): "unlock / resend my
+            // report's credentials" → whoever holds reset_employee_password AND
+            // may open the accounts console; "departure requested" → whoever
+            // holds edit_employees, while the lifecycle page exists (mobility).
+            if (sc && RBACService.hasPermission(user, 'reset_employee_password') && can(G.accounts))
+                await safely(async () => {
+                    const ar = await db.get(
+                        `SELECT COUNT(*) AS c FROM account_requests r JOIN employees e ON e.id = r.employee_id
                           WHERE r.decided_at IS NULL ${sc.clause}`,
-                            sc.params
-                        )
-                        .catch(() => null);
+                        sc.params
+                    );
                     if (num(ar && ar.c))
-                        items.push({
-                            label: t('ac_account_requests', 'Account requests (unlock / resend)'),
-                            count: num(ar.c),
-                            href: '/admin/accounts?requests=1',
-                            icon: 'fa-user-lock',
-                        });
-                }
-                if (RBACService.hasPermission(user, 'edit_employees')) {
-                    const lr = await db
-                        .get(
-                            `SELECT COUNT(*) AS c FROM lifecycle_events le JOIN employees e ON e.id = le.employee_id
+                        push(
+                            'account_requests',
+                            'accounts',
+                            t('ac_account_requests', 'Account requests (unlock / resend)'),
+                            num(ar.c),
+                            '/admin/accounts?requests=1',
+                            'fa-user-lock'
+                        );
+                });
+            if (
+                sc &&
+                RBACService.hasPermission(user, 'edit_employees') &&
+                can(G.mgrOrAdmin, 'mobility')
+            )
+                await safely(async () => {
+                    const lr = await db.get(
+                        `SELECT COUNT(*) AS c FROM lifecycle_events le JOIN employees e ON e.id = le.employee_id
                           WHERE le.kind = 'leaver' AND le.requested_by IS NOT NULL AND le.decided_at IS NULL AND le.reverted_at IS NULL ${sc.clause}`,
-                            sc.params
-                        )
-                        .catch(() => null);
+                        sc.params
+                    );
                     if (num(lr && lr.c))
-                        items.push({
-                            label: t('ac_leaver_requests', 'Departure requests to decide'),
-                            count: num(lr.c),
-                            href: '/v2/lifecycle?state=requested',
-                            icon: 'fa-door-closed',
-                        });
-                }
-                // ---- end SECTION accounts ----
-            }
-        } else {
-            // Employee: the things THEY most need to act on next.
-            const eid = user.id;
-            // Self-assessment(s) sent back for changes — they're blocked until they act.
-            const cr = await db.get(
-                `SELECT COUNT(DISTINCT id) AS c FROM self_assessments WHERE employee_id = ? AND workflow_state = 'changes_requested'`,
-                [eid]
-            );
-            if (num(cr && cr.c))
-                items.push({
-                    label: t('ac_sa_changes', 'Self-assessment changes requested'),
-                    count: num(cr.c),
-                    href: '/employee/self-assessment',
-                    icon: 'fa-pen-to-square',
+                        push(
+                            'leaver_requests',
+                            'accounts',
+                            t('ac_leaver_requests', 'Departure requests to decide'),
+                            num(lr.c),
+                            '/v2/lifecycle?state=requested',
+                            'fa-door-closed'
+                        );
                 });
-            // Newly reviewed ratings (their dispute window is open).
-            const rv = await db.get(
-                `SELECT COUNT(DISTINCT id) AS c FROM self_assessments WHERE employee_id = ? AND workflow_state = 'reviewed'`,
-                [eid]
-            );
-            if (num(rv && rv.c))
-                items.push({
-                    label: t('ac_reviewed_ack', 'Reviewed assessments to acknowledge'),
-                    count: num(rv.c),
-                    href: '/employee/assessment-status',
-                    icon: 'fa-clipboard-check',
-                });
-            // Open development actions assigned to them (IDP) — on a LIVE plan
-            // only. An action still 'pending' under a cancelled/archived plan is
-            // not something they can act on, and used to keep the bell lit.
-            const acts = await db
-                .get(
-                    `SELECT COUNT(a.id) AS c FROM idp_actions a JOIN idp_plans p ON p.id = a.idp_id
-                  WHERE p.employee_id = ? AND p.status IN ('draft','active')
-                    AND a.status IN ('pending','in_progress')`,
+        }
+    }
+
+    // The person's OWN actions — an employee, and a manager (who is an employee
+    // too: « À traiter » lists their own assessment and plans).
+    if (user.userType === 'employee' || user.userType === 'manager') {
+        const eid = user.id;
+        // Self-assessment(s) sent back for changes — blocked until they act.
+        if (can(G.employeeSide))
+            await safely(async () => {
+                const cr = await db.get(
+                    `SELECT COUNT(DISTINCT id) AS c FROM self_assessments WHERE employee_id = ? AND workflow_state = 'changes_requested'`,
                     [eid]
-                )
-                .catch(() => null);
-            if (num(acts && acts.c))
-                items.push({
-                    label: t('ac_dev_actions', 'Development actions to progress'),
-                    count: num(acts.c),
-                    href: '/v2/idp',
-                    icon: 'fa-seedling',
-                });
-            // Active coaching plans.
-            const mine = await db.get(
-                `SELECT COUNT(*) AS c FROM coaching_plans WHERE employee_id = ? AND state = 'active'`,
-                [eid]
-            );
-            if (num(mine && mine.c))
-                items.push({
-                    label: t('ac_my_coaching', 'Your active coaching plans'),
-                    count: num(mine.c),
-                    href: '/employee/my-coaching',
-                    icon: 'fa-hands-helping',
-                });
-            // Recognition received (delight, not a task — but worth surfacing).
-            const rec = await db
-                .get(
+                );
+                if (num(cr && cr.c))
+                    push(
+                        'sa_changes',
+                        'assessments',
+                        t('ac_sa_changes', 'Self-assessment changes requested'),
+                        num(cr.c),
+                        '/employee/self-assessment',
+                        'fa-pen-to-square'
+                    );
+            });
+        // Newly reviewed ratings (their dispute window is open).
+        if (can(G.employeeSide))
+            await safely(async () => {
+                const rv = await db.get(
+                    `SELECT COUNT(DISTINCT id) AS c FROM self_assessments WHERE employee_id = ? AND workflow_state = 'reviewed'`,
+                    [eid]
+                );
+                if (num(rv && rv.c))
+                    push(
+                        'reviewed_ack',
+                        'assessments',
+                        t('ac_reviewed_ack', 'Reviewed assessments to acknowledge'),
+                        num(rv.c),
+                        '/employee/assessment-status',
+                        'fa-clipboard-check'
+                    );
+            });
+        // Open development actions assigned to them, on a LIVE plan only: an
+        // action still 'pending' under a cancelled plan is not something to do.
+        if (can(G.anyone, 'development'))
+            await safely(async () => {
+                const acts = await db.get(
+                    `SELECT COUNT(a.id) AS c FROM idp_actions a JOIN idp_plans p ON p.id = a.idp_id
+                      WHERE p.employee_id = ? AND p.status IN ('draft','active')
+                        AND a.status IN ('pending','in_progress')`,
+                    [eid]
+                );
+                if (num(acts && acts.c))
+                    push(
+                        'dev_actions',
+                        'plans',
+                        t('ac_dev_actions', 'Development actions to progress'),
+                        num(acts.c),
+                        '/v2/idp',
+                        'fa-seedling'
+                    );
+            });
+        // Active coaching plans.
+        if (can(G.employeeSide, 'development'))
+            await safely(async () => {
+                const mine = await db.get(
+                    `SELECT COUNT(*) AS c FROM coaching_plans WHERE employee_id = ? AND state = 'active'`,
+                    [eid]
+                );
+                if (num(mine && mine.c))
+                    push(
+                        'my_coaching',
+                        'plans',
+                        t('ac_my_coaching', 'Your active coaching plans'),
+                        num(mine.c),
+                        '/employee/my-coaching',
+                        'fa-hands-helping'
+                    );
+            });
+        // Recognition received (delight, not a task — listed, never counted).
+        if (can(G.employeeSide, 'engagement'))
+            await safely(async () => {
+                const rec = await db.get(
                     `SELECT COUNT(*) AS c FROM recognitions WHERE to_employee_id = ? AND created_at > now() - interval '14 days'`,
                     [eid]
-                )
-                .catch(() => null);
-            if (num(rec && rec.c))
-                items.push({
-                    label: t('ac_recognition', 'Recent recognition you received'),
-                    count: num(rec.c),
-                    href: '/employee/dashboard',
-                    icon: 'fa-award',
-                });
-        }
-        // 360° feedback (development module): questionnaires to fill in, raters
-        // to choose, nominations to approve — for the PERSON behind any account.
-        if (await require('../services/ModuleService').isOn('development')) {
+                );
+                if (num(rec && rec.c))
+                    push(
+                        'recognition',
+                        'info',
+                        t('ac_recognition', 'Recent recognition you received'),
+                        num(rec.c),
+                        '/employee/dashboard',
+                        'fa-award',
+                        { info: true }
+                    );
+            });
+    }
+
+    // 360° feedback (development module): questionnaires to fill in, raters to
+    // choose, nominations to approve — for the PERSON behind any account.
+    if (!readOnly && can(G.anyone, 'development'))
+        await safely(async () => {
             const f = await require('../services/Feedback360Service').pendingCounts(user);
             const f360 = [
-                [f.answer, t('ac_f360_answer', '360° questionnaires to fill in'), 'fa-comments'],
-                [f.nominate, t('ac_f360_nominate', '360° raters to choose'), 'fa-street-view'],
-                [f.approve, t('ac_f360_approve', '360° raters to approve'), 'fa-user-check'],
+                ['f360_answer', f.answer, 'fa-comments', '360° questionnaires to fill in'],
+                ['f360_nominate', f.nominate, 'fa-street-view', '360° raters to choose'],
+                ['f360_approve', f.approve, 'fa-user-check', '360° raters to approve'],
             ];
-            for (const [count, label, icon] of f360)
-                if (count) items.push({ label, count, href: '/feedback-360', icon });
-        }
-    } catch (e) {
-        /* never block the bell */
-    }
-    return items;
+            for (const [key, count, icon, fallback] of f360)
+                if (num(count))
+                    push(
+                        key,
+                        'assessments',
+                        t('ac_' + key, fallback),
+                        num(count),
+                        '/feedback-360',
+                        icon
+                    );
+        });
+
+    // The badge is a number of THINGS TO DO: `info` items are not counted.
+    const total = items.reduce((a, i) => a + (i.info ? 0 : i.count), 0);
+    return { total, items, complete };
+}
+
+/** The task list only (the AI companion's « what should I do next »). */
+async function collectMyActions(user, translate) {
+    return (await collectTasks(user, translate)).items;
 }
 
 async function myActions(req, res) {
     const translate = (key, fallback, params) =>
         req.t ? req.t(key, { defaultValue: fallback, ...(params || {}) }) : fallback;
-    const items = await collectMyActions(req.user, translate);
-    res.json({ total: items.reduce((a, i) => a + i.count, 0), items });
+    let out = { total: 0, items: [], complete: false };
+    try {
+        out = await collectTasks(req.user, translate);
+    } catch (_) {
+        /* never block the bell */
+    }
+    if (typeof res.set === 'function') res.set('Cache-Control', 'no-store');
+    res.json(out);
 }
 
 // ---- Per-employee development dossier (coaching + IDP + PIP) -------------
@@ -497,9 +749,16 @@ async function employeeDevelopment(req, res) {
            FROM idp_plans i WHERE i.employee_id = ? ORDER BY i.created_at DESC`,
         [id]
     );
+    // A proposed performance plan is not shown to its SUBJECT until it is
+    // activated (4.0.0 port, wave 6): the person reading their own record gets
+    // the plans that ran only (PipService.subjectVisibleSql).
+    const viewerIsSubject = req.user && req.user.userType !== 'admin' && Number(req.user.id) === id;
+    const pipVisible = viewerIsSubject
+        ? ` AND ${require('../services/PipService').subjectVisibleSql('pips')}`
+        : '';
     const pips = await db.all(
         `SELECT id, state, starts_on, ends_on, summary, outcome, created_at, updated_at
-           FROM pips WHERE employee_id = ? ORDER BY created_at DESC`,
+           FROM pips WHERE employee_id = ?${pipVisible} ORDER BY created_at DESC`,
         [id]
     );
     res.json({ coaching, idps, pips });
@@ -631,8 +890,13 @@ async function employeeTimeline(req, res) {
         })
     );
 
+    // The subject never learns of a plan that is still a proposal (4.0.0 port,
+    // wave 6).
+    const pipVisible = viewerIsSubject
+        ? ` AND ${require('../services/PipService').subjectVisibleSql('pips')}`
+        : '';
     const pip = await db.all(
-        `SELECT id, created_at, updated_at, state, outcome FROM pips WHERE employee_id = ?`,
+        `SELECT id, created_at, updated_at, state, outcome FROM pips WHERE employee_id = ?${pipVisible}`,
         [id]
     );
     pip.forEach((p) => {
@@ -689,6 +953,8 @@ module.exports = {
     careerPathData,
     myActions,
     collectMyActions,
+    collectTasks,
+    ACTION_KINDS,
     employeeDevelopment,
     employeeTimeline,
 };

@@ -217,6 +217,13 @@ class EmployeeModel extends BaseModel {
                 params.push(filters[key]);
             }
         });
+        // The ACTIVE population (behind RBACService.getFilteredEmployees and
+        // scopeFilter: queues, API, scope checks) excludes an erased person who
+        // is still is_active, as every dashboard already does. Callers asking for
+        // inactive or all people (exports, audit trail, leavers) keep the
+        // pseudonymised rows.
+        if (filters.isActive === true || filters.isActive === 1 || filters.isActive === '1')
+            conditions.push('e.erased_at IS NULL');
 
         if (conditions.length > 0) {
             sql += ` WHERE ${conditions.join(' AND ')}`;
@@ -299,6 +306,14 @@ class EmployeeModel extends BaseModel {
         }
 
         if (filters.search) conditions.push(searchClause(filters.search, params));
+        // Every other layer (the API repository, RBACService, the dashboards)
+        // reads `erased_at IS NULL`; this paginated list filtered is_active only,
+        // so an erasure that left is_active = true appeared here and nowhere else.
+        // The leavers list (isActive === false) keeps its pseudonymised rows.
+        const inactiveList =
+            filters.isActive === false || filters.isActive === 0 || filters.isActive === '0';
+        // Raw SQL: snake_case (the compat translator rewrites row keys, not SQL text).
+        if (!inactiveList) conditions.push('e.erased_at IS NULL');
         // supervisorId: "everyone under X" — the site HR's crew list.
         ['roleId', 'siteId', 'departmentId', 'serviceId', 'supervisorId', 'isActive'].forEach(
             (key) => {
@@ -678,6 +693,7 @@ class EmployeeModel extends BaseModel {
     // reports, …) via either reporting relationship. Iterative BFS — cycle-safe.
     async findGovernedIds(managerId) {
         const all = new Set();
+        const seen = new Set();
         let frontier = [Number(managerId)];
         while (frontier.length) {
             // `= ANY(?)` with ONE array parameter instead of an N-placeholder
@@ -698,8 +714,11 @@ class EmployeeModel extends BaseModel {
             // every authenticated request through middleware/rbac.js.
             // `governsAnyone` (:58) and `governanceOf` (:82) have always filtered
             // it; this one did not, so the three disagreed about who governs whom.
+            // An ERASED person (`erased_at` set) who is still is_active is walked
+            // THROUGH (their reports stay in the sub-tree) but never returned:
+            // every other population already reads `erased_at IS NULL`.
             const rows = await db.all(
-                `SELECT id FROM employees
+                `SELECT id, (erased_at IS NOT NULL) AS "erased" FROM employees
                  WHERE (supervisor_id = ANY(?) OR (manager_id = ANY(?) AND manager_type = 'employee'))
                    AND is_active`,
                 [frontier, frontier]
@@ -707,9 +726,10 @@ class EmployeeModel extends BaseModel {
             const next = [];
             for (const r of rows) {
                 const id = Number(r.id);
-                if (!all.has(id)) {
-                    all.add(id);
+                if (!seen.has(id)) {
+                    seen.add(id);
                     next.push(id);
+                    if (!(r.erased === true || r.erased === 't' || r.erased === 1)) all.add(id);
                 }
             }
             frontier = next;
@@ -734,7 +754,7 @@ class EmployeeModel extends BaseModel {
             INNER JOIN departments d ON e.departmentId = d.id
             INNER JOIN services sv ON e.serviceId = sv.id
             INNER JOIN roles r ON e.roleId = r.id
-            WHERE e.id IN (${ph}) AND e.isActive = 1
+            WHERE e.id IN (${ph}) AND e.isActive = 1 AND e.erased_at IS NULL
             ORDER BY e.lastName, e.firstName
         `,
             ids

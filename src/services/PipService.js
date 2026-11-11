@@ -29,6 +29,64 @@ class PipService {
         });
     }
 
+    /**
+     * Who may act on a PIP (SA-42): the plan authority, the rule the 9-box
+     * approval applies (NineBoxService.resolveAuthority, canApprove):
+     *   - the person's direct manager: an employee manager (manager_type
+     *     'employee', compared with the person behind the account) or the
+     *     admin account named as manager (manager_type 'admin');
+     *   - a SuperAdmin, or an administrator whose clearance covers the person.
+     * Refused, fail closed: the supervisor (a PIP is the manager's decision),
+     * managers higher up the line (they read, they do not act — unless a
+     * SuperAdmin chose the extended authority ladder), a read-only
+     * delegate, the person themselves from either of their accounts, and
+     * anyone when the person cannot be found or a lookup fails.
+     */
+    static async actingAuthority(user, employeeId) {
+        const no = (why) => ({ canAct: false, why });
+        try {
+            if (!user || employeeId == null) return no('no_user');
+            const RBACService = require('./RBACService');
+            if (RBACService.isViewer(user)) return no('viewer');
+            const GovernanceService = require('./GovernanceService');
+            const personId = await GovernanceService.actingPersonId(user);
+            if (personId != null && Number(personId) === Number(employeeId)) return no('subject');
+            const emp = await require('../models/EmployeeModel').findById(Number(employeeId));
+            if (!emp) return no('not_found');
+            const isAdmin = user.userType === 'admin';
+            const A = require('./AuthorityService');
+            // The rung each pre-ladder grant stands for, on the audit line.
+            const yes = (why, as) => {
+                A.noteAs(user, employeeId, as);
+                return { canAct: true, why };
+            };
+            if (isAdmin && RBACService.isSuperAdmin(user)) return yes('superadmin', 'superadmin');
+            if (isAdmin && (await RBACService.canAccessEmployeeData(user, emp)))
+                return yes('clearance', 'localadmin');
+            if (
+                isAdmin &&
+                emp.managerType === 'admin' &&
+                emp.managerId != null &&
+                Number(emp.managerId) === Number(user.id)
+            )
+                return yes('manager', 'manager');
+            if (
+                personId != null &&
+                emp.managerType === 'employee' &&
+                emp.managerId != null &&
+                Number(emp.managerId) === Number(personId)
+            )
+                return yes('manager', 'manager');
+            // The authority ladder, extended mode only (AuthorityService): the
+            // line above acts as the manager. Strict mode adds nothing.
+            const wide = await A.widen(user, 'pip.act', emp);
+            if (wide.ok) return { canAct: true, why: 'ladder' };
+            return no('not_direct_manager');
+        } catch (_) {
+            return no('error'); // fail closed
+        }
+    }
+
     // pips.initiated_by → admins(id). A manager (employee) isn't an admin, so
     // fall back to the system admin while the manager owns the lifecycle.
     static async _actorAdminId(user) {
@@ -167,8 +225,8 @@ class PipService {
             row = await db.get(
                 `INSERT INTO pips (employee_id, initiated_by, state, starts_on, ends_on, summary,
                                    objectives, success_criteria, review_checkpoints, support_offered,
-                                   origin_evaluation_id)
-                 VALUES (?, ?, 'proposed', ?, ?, ?, ?, ?, ?, ?, ?) ${onConflict}RETURNING id`,
+                                   origin_evaluation_id, proposed_by_ref)
+                 VALUES (?, ?, 'proposed', ?, ?, ?, ?, ?, ?, ?, ?, ?) ${onConflict}RETURNING id`,
                 [
                     employeeId,
                     adminId,
@@ -180,6 +238,9 @@ class PipService {
                     reviewCheckpoints || null,
                     supportOffered || null,
                     originEvaluationId || null,
+                    // The REAL author (migration 195): initiated_by stays the
+                    // system account when a manager proposes.
+                    PipService.actorRefOf(actor),
                 ]
             );
         } catch (e) {
@@ -194,29 +255,46 @@ class PipService {
         }
         // Only when a row was actually inserted (skipIfOpen may have swallowed it).
         if (!row) return null;
-        // Awaited on purpose: this can run inside the 9-box approve transaction,
-        // where a fire-and-forget INSERT could land after the client is released
-        // and be silently dropped. _notifyEmployee never rejects, so a failed
-        // notification can never roll back the plan.
-        await this._notifyEmployee(employeeId, 'pip.created', {
-            startsOn: startsOn || null,
-            endsOn: endsOn || null,
-        });
+        // A PROPOSAL IS NOT SHOWN TO ITS SUBJECT (4.0.0 port, wave 6). It is a
+        // working document between the manager and HR until it is activated:
+        // the person's own page does not list it (subjectVisibleSql), so they
+        // are told nothing yet — a notice pointing at a plan they cannot open
+        // would be worse than none. They are told when it is activated.
         return row;
     }
 
-    static async activate(pipId) {
+    static async activate(pipId, actor = null, req = null) {
         // Manager activates straight from 'proposed' (or a legacy 'approved').
         // RETURNING + a row check, exactly as `close` below already does. Without
         // it a second click — or activating a PIP that is already active or long
         // closed — changed nothing, returned "ok", and NOTIFIED THE EMPLOYEE AGAIN
         // that their performance-improvement plan had been activated. The caller
         // now learns whether anything actually happened.
+        //
+        // The optional HR visa (pip.hrVisaRequired, migration 195, off by
+        // default): while it is on, a plan without a visa is refused (409).
+        if (await PipService.hrVisaRequired()) {
+            const v = await db.get('SELECT hr_visa_at FROM pips WHERE id = ?', [Number(pipId)]);
+            if (v && !v.hrVisaAt)
+                throw PipService._refuse(
+                    409,
+                    'PIP_HR_VISA_REQUIRED',
+                    'An HR visa is required before this plan can be activated.'
+                );
+        }
+        // The activation is dated and attributed on the plan itself.
         const row = await db.get(
-            `UPDATE pips SET state='active' WHERE id=? AND state IN ('proposed','approved') RETURNING id, employee_id`,
-            [pipId]
+            `UPDATE pips SET state='active', activated_at = now(), activated_by_ref = ?
+              WHERE id=? AND state IN ('proposed','approved') RETURNING id, employee_id`,
+            [PipService.actorRefOf(actor), Number(pipId)]
         );
         if (!row) return false;
+        // Activation is when the plan starts to run against the person, so it
+        // names its author in the journal (actor_ref), as close() and withdraw()
+        // already do. It left no trace before.
+        await PipService._journal(actor, req, 'PIP_ACTIVATED', pipId, 'activated by its manager');
+        // The direct manager learns when someone above them activated it.
+        await require('./LineNoticeService').actedAbove(actor, row.employeeId, 'pip_activated');
         // Awaited: un-awaited, this query overlapped the caller's next statement on
         // the same transaction client.
         await this._notifyEmployee(row.employeeId, 'pip.activated', {});
@@ -275,7 +353,11 @@ class PipService {
         }
         const note = PipService.normaliseOutcome(why);
         const row = await db.get(
-            `UPDATE pips SET state='cancelled', outcome=? WHERE id=? AND state IN ('proposed','approved','active') RETURNING id, employee_id`,
+            `UPDATE pips SET state='cancelled', outcome=? WHERE id=? AND state IN ('proposed','approved','active')
+             RETURNING id, employee_id, activated_at,
+                       EXISTS (SELECT 1 FROM system_logs sl
+                                WHERE sl.action = 'PIP_ACTIVATED' AND sl.entity_type = 'pip'
+                                  AND sl.entity_id = pips.id) AS ran`,
             [note, pipId]
         );
         if (!row) return false;
@@ -288,8 +370,220 @@ class PipService {
         );
         // The person is told their plan has stopped, and why — a plan that
         // disappears from their page with no word is worse than one that runs.
-        await this._notifyEmployee(row.employeeId, 'pip.closed', { outcome: 'withdrawn' });
+        // A proposal withdrawn before it ran was never shown to them (4.0.0
+        // port, wave 6): they are told nothing about a plan they never saw.
+        if (row.activatedAt || row.ran === true)
+            await this._notifyEmployee(row.employeeId, 'pip.closed', { outcome: 'withdrawn' });
         return true;
+    }
+
+    // ---- The plan's evidence (4.0.0 port, wave 6, migration 195) ---------------
+
+    /** The optional HR visa before activation (governance-class, off by default). */
+    static async hrVisaRequired() {
+        try {
+            const v = await require('../models/AppSettingsModel').getValue(
+                'pip.hrVisaRequired',
+                false
+            );
+            return v === true || v === 'true' || v === 1 || v === '1';
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /**
+     * Who may give the HR visa: a SuperAdmin, or an administrator holding
+     * arbitrate_disputes (IDevelop's HR grant) whose clearance covers the
+     * person. Never the person themselves, never a read-only account.
+     */
+    static async canGiveHrVisa(user, employeeId) {
+        if (!user || user.userType !== 'admin') return false;
+        const RBAC = require('./RBACService');
+        if (RBAC.isViewer(user)) return false;
+        const GovernanceService = require('./GovernanceService');
+        const personId = await GovernanceService.actingPersonId(user).catch(() => null);
+        if (personId != null && Number(personId) === Number(employeeId)) return false;
+        if (RBAC.isSuperAdmin(user)) return true;
+        if (!RBAC.hasPermission(user, 'arbitrate_disputes')) return false;
+        const emp = await require('../models/EmployeeModel').findById(Number(employeeId));
+        return Boolean(emp && (await RBAC.canAccessEmployeeData(user, emp)));
+    }
+
+    /**
+     * Records the visa once, on a plan not yet activated. False otherwise.
+     * A visa is a second pair of eyes: whoever wrote the proposal cannot give
+     * it to their own plan (PIP_VISA_OWN_PROPOSAL, 403).
+     */
+    static async giveHrVisa(pipId, actor, req = null) {
+        const ref = PipService.actorRefOf(actor);
+        const cur = await db.get('SELECT proposed_by_ref FROM pips WHERE id = ?', [Number(pipId)]);
+        if (cur && ref && cur.proposedByRef === ref)
+            throw PipService._refuse(
+                403,
+                'PIP_VISA_OWN_PROPOSAL',
+                'Whoever proposed this plan cannot give it the HR visa.'
+            );
+        const row = await db.get(
+            `UPDATE pips SET hr_visa_at = now(), hr_visa_by_ref = ?
+              WHERE id = ? AND state IN ('proposed','approved') AND hr_visa_at IS NULL
+              RETURNING id`,
+            [ref, Number(pipId)]
+        );
+        if (!row) return false;
+        await PipService._journal(actor, req, 'PIP_HR_VISA', pipId, 'HR visa given');
+        return true;
+    }
+
+    static _refuse(status, code, message) {
+        const e = new Error(message);
+        e.status = status;
+        e.code = code;
+        e.expose = true;
+        return e;
+    }
+
+    /**
+     * The SQL predicate (on alias `a`) of a plan its SUBJECT may see: one that
+     * RAN. Active or closed (met / not met — only an active plan can be
+     * closed), or withdrawn after it had been activated (activated_at; for a
+     * plan older than migration 195, its PIP_ACTIVATED journal line). A
+     * proposal, an approved plan never activated, and a plan withdrawn before
+     * activation are never shown to the person. `alias` is a fixed identifier
+     * chosen by the caller, never input.
+     */
+    static subjectVisibleSql(alias = 'p') {
+        const a = /^[a-z_]{1,8}$/.test(String(alias)) ? alias : 'p';
+        return `(${a}.state IN ('active','closed_success','closed_failure')
+                 OR (${a}.state = 'cancelled'
+                     AND (${a}.activated_at IS NOT NULL
+                          OR EXISTS (SELECT 1 FROM system_logs sl
+                                      WHERE sl.action = 'PIP_ACTIVATED' AND sl.entity_type = 'pip'
+                                        AND sl.entity_id = ${a}.id))))`;
+    }
+
+    /** The subject's own visible plan — or « not found » (never « forbidden »). */
+    static async _subjectPlan(pipId, employeeId) {
+        const p = await db.get(
+            `SELECT p.id, p.state, p.employee_id FROM pips p
+              WHERE p.id = ? AND p.employee_id = ? AND ${PipService.subjectVisibleSql('p')}`,
+            [Number(pipId), Number(employeeId)]
+        );
+        if (!p) throw PipService._refuse(404, 'PIP_NOT_FOUND', 'Plan not found.');
+        return p;
+    }
+
+    static _cleanText(text) {
+        if (text == null || typeof text !== 'string')
+            throw PipService._refuse(400, 'TEXT_REQUIRED', 'Text required.');
+        const t = text.trim();
+        if (!t) throw PipService._refuse(400, 'TEXT_REQUIRED', 'Text required.');
+        if (t.length > 4000) throw PipService._refuse(400, 'TEXT_TOO_LONG', 'Text too long.');
+        return t;
+    }
+
+    /**
+     * « I have read this plan » — the date the person READ it, never their
+     * agreement. Once: a second click changes nothing (returns false).
+     */
+    static async acknowledge(pipId, employeeId) {
+        await PipService._subjectPlan(pipId, employeeId);
+        const row = await db.get(
+            `UPDATE pips SET acknowledged_at = now()
+              WHERE id = ? AND employee_id = ? AND acknowledged_at IS NULL RETURNING id`,
+            [Number(pipId), Number(employeeId)]
+        );
+        if (row)
+            await PipService._journal(
+                { userType: 'employee', id: Number(employeeId) },
+                null,
+                'PIP_ACKNOWLEDGED',
+                pipId,
+                'the employee stated they had read the plan'
+            );
+        return Boolean(row);
+    }
+
+    /** The person's own written observations on their plan (replaced when re-written). */
+    static async comment(pipId, employeeId, text) {
+        const t = PipService._cleanText(text);
+        await PipService._subjectPlan(pipId, employeeId);
+        await db.run(
+            `UPDATE pips SET employee_comment = ?, employee_comment_at = now()
+              WHERE id = ? AND employee_id = ?`,
+            [t, Number(pipId), Number(employeeId)]
+        );
+        await PipService._journal(
+            { userType: 'employee', id: Number(employeeId) },
+            null,
+            'PIP_EMPLOYEE_COMMENT',
+            pipId,
+            'the employee wrote observations on the plan'
+        );
+        return true;
+    }
+
+    /**
+     * A checkpoint as held: the manager's note, on an ACTIVE plan, by the plan
+     * authority only (actingAuthority: never the subject, never a viewer). A
+     * checkpoint is recorded once held, so its date is never in the future.
+     * Returns the new checkpoint id.
+     */
+    static async addReview(pipId, actor, { note, heldOn } = {}, req = null) {
+        const t = PipService._cleanText(note);
+        const p = await db.get('SELECT id, state, employee_id FROM pips WHERE id = ?', [
+            Number(pipId),
+        ]);
+        if (!p) throw PipService._refuse(404, 'PIP_NOT_FOUND', 'Plan not found.');
+        if (!(await PipService.actingAuthority(actor, p.employeeId)).canAct)
+            throw PipService._refuse(403, 'FORBIDDEN', 'Not authorized for this employee');
+        if (p.state !== 'active')
+            throw PipService._refuse(409, 'PIP_NOT_ACTIVE', 'Plan not active.');
+        if (heldOn != null && heldOn !== '' && !PipService._isoDate(heldOn))
+            throw PipService._refuse(400, 'INVALID_DATE', 'Invalid date.');
+        const day = PipService._isoDate(heldOn);
+        if (day && day > new Date().toISOString().slice(0, 10))
+            throw PipService._refuse(400, 'INVALID_DATE', 'A checkpoint is recorded once held.');
+        const row = await db.get(
+            `INSERT INTO pip_reviews (pip_id, held_on, manager_note, author_ref)
+             VALUES (?, COALESCE(?::date, CURRENT_DATE), ?, ?) RETURNING id`,
+            [Number(pipId), day, t, PipService.actorRefOf(actor)]
+        );
+        await PipService._journal(actor, req, 'PIP_CHECKPOINT', pipId, 'checkpoint recorded');
+        return Number(row.id);
+    }
+
+    /** The person's own response to a checkpoint of their own visible plan. */
+    static async respondReview(reviewId, employeeId, text) {
+        const t = PipService._cleanText(text);
+        const r = await db.get('SELECT id, pip_id FROM pip_reviews WHERE id = ?', [
+            Number(reviewId),
+        ]);
+        if (!r) throw PipService._refuse(404, 'PIP_NOT_FOUND', 'Checkpoint not found.');
+        await PipService._subjectPlan(r.pipId, employeeId);
+        await db.run(
+            `UPDATE pip_reviews SET employee_response = ?, employee_response_at = now()
+              WHERE id = ?`,
+            [t, Number(reviewId)]
+        );
+        await PipService._journal(
+            { userType: 'employee', id: Number(employeeId) },
+            null,
+            'PIP_CHECKPOINT_RESPONSE',
+            r.pipId,
+            'the employee answered a checkpoint'
+        );
+        return true;
+    }
+
+    /** The checkpoints of one plan, oldest first. The caller has checked access. */
+    static async listReviews(pipId) {
+        return db.all(
+            `SELECT id, pip_id, held_on, manager_note, author_ref, created_at,
+                    employee_response, employee_response_at
+               FROM pip_reviews WHERE pip_id = ? ORDER BY held_on, id`,
+            [Number(pipId)]
+        );
     }
 
     /** `<type>:<id>` for the audit trail — an employee is never written into admin_id. */
@@ -313,7 +607,8 @@ class PipService {
                     action,
                     entityType: 'pip',
                     entityId: Number(pipId),
-                    details,
+                    // The rung the act used (AuthorityService), when one was resolved.
+                    details: require('./AuthorityService').withAs(details, actor),
                     ipAddress: req ? req.ip : null,
                     userAgent: req && req.get ? req.get('user-agent') : null,
                 })
@@ -349,15 +644,28 @@ class PipService {
             e.expose = true;
             throw e;
         }
-        // Close from any OPEN state (active, or a proposed/approved PIP that was
-        // never activated) — previously only 'active' closed, so closing a proposed
-        // PIP silently no-op'd while the API still reported success. Returns the
-        // closed row, or null when nothing matched (already closed / bad id).
+        // A verdict (met or not met) only applies to a plan that ran: state
+        // 'active'. A proposed or approved plan never ran, so it can neither be
+        // met nor failed; it is withdrawn instead (state 'cancelled' with a
+        // reason). Returns the closed row, or null when nothing matched (already
+        // closed, unknown id); a plan that never ran is refused in words (409).
         const row = await db.get(
             `UPDATE pips SET state=?, outcome=?, closed_by_ref=?, closed_at=now()
-              WHERE id=? AND state IN ('active','proposed','approved') RETURNING id, employee_id`,
+              WHERE id=? AND state = 'active' RETURNING id, employee_id`,
             [newState, outcome || null, PipService.actorRefOf(actor), pipId]
         );
+        if (!row) {
+            const cur = await db.get('SELECT state FROM pips WHERE id = ?', [pipId]);
+            if (cur && ['proposed', 'approved'].includes(String(cur.state))) {
+                const e = new Error(
+                    'This plan was never activated, so it cannot be closed as met or not met. Withdraw it instead, with a reason.'
+                );
+                e.code = 'PIP_NOT_ACTIVE';
+                e.status = 409;
+                e.expose = true;
+                throw e;
+            }
+        }
         if (row) {
             await PipService._journal(
                 actor,

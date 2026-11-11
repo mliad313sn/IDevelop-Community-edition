@@ -71,7 +71,7 @@ jest.mock('../../src/models/EmployeeModel', () => ({
 
 const express = require('express');
 const session = require('express-session');
-const flash = require('express-flash');
+const flash = require('../../src/middleware/flash');
 const request = require('supertest');
 const { passport } = require('../../src/middleware/auth');
 const AuthController = require('../../src/controllers/AuthController');

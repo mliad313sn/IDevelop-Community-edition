@@ -82,6 +82,8 @@ describe.each(['light', 'dark'])('%s mode', (mode) => {
 describe('organisation branding still wins over a colour theme', () => {
     test('the accent override out-ranks :root[data-theme][data-palette]', () => {
         const css = require('../../src/utils/branding').buildAccentCss('#123456');
-        expect(css.startsWith(':root:root:root:root{')).toBe(true);
+        // one rule per mode (4.0.0 port, wave 11: computed per mode for AA)
+        expect(css.startsWith(":root:root:root:root:not([data-theme='light']){")).toBe(true);
+        expect(css).toContain(":root:root:root:root[data-theme='light']{");
     });
 });

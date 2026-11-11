@@ -1,0 +1,65 @@
+<%#
+  « Usage by site » (/admin/usage, UsageService.bySite): per site of the
+  reader's cleared population, the accounts activated, the people who
+  assessed themselves in the last 90 days and the share of validations made
+  within 14 days. Counts only, no name; a site under 5 people prints no
+  figure; a share with nothing to measure is « not measured yet », never 0 %;
+  every share is rounded down. Not the adoption stages of Modules (which
+  modules are on): this page measures use. Server-rendered, no script.
+  Locals: usage (the model).
+-%><%
+  var U = usage || { rows: [] };
+  var _F = numFmt;
+  var _isN = function (v) { return v !== null && v !== undefined && v !== '' && isFinite(Number(v)); };
+  var share = function (pct) { return _isN(pct) ? _F.pct(pct, 1) : null; };
+  var cell = function (n, pct) {
+      var s = share(pct);
+      return { n: _isN(n) ? _F.num(n, 0) : null, pct: s };
+  };
+  var rows = (U.rows || []).slice();
+  if (U.total) rows.push(Object.assign({ isTotal: true }, U.total));
+-%>
+<link rel="stylesheet" href="/css/admin-insight.css?v=<%= assetVersion %>">
+<div class="page-header">
+    <h1><i class="fas fa-users-line" aria-hidden="true"></i> <%= __('admin:us_title') %></h1>
+</div>
+<p class="ai-lede"><%= __('admin:us_subtitle', { days: U.windowDays, validate: U.validateDays }) %></p>
+<p class="ai-note"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:us_not_stages') %></p>
+
+<% if (!rows.length) { %>
+<p class="ai-note" data-us-empty><%= __('admin:us_empty') %></p>
+<% } else { %>
+<section class="card ai-card" aria-labelledby="us-table-h">
+    <h2 id="us-table-h" class="h3"><%= __('admin:us_table_title') %></h2>
+    <div class="table-wrapper">
+    <table class="table table-cards ai-table">
+        <caption class="sr-only"><%= __('admin:us_caption', { days: U.windowDays, validate: U.validateDays }) %></caption>
+        <thead>
+            <tr>
+                <th scope="col"><%= __('admin:us_col_site') %></th>
+                <th scope="col" class="ai-num"><%= __('admin:us_col_people') %></th>
+                <th scope="col" class="ai-num"><%= __('admin:us_col_activated') %></th>
+                <th scope="col" class="ai-num"><%= __('admin:us_col_self', { days: U.windowDays }) %></th>
+                <th scope="col" class="ai-num"><%= __('admin:us_col_validated', { validate: U.validateDays }) %></th>
+            </tr>
+        </thead>
+        <tbody>
+        <% rows.forEach(function (r) { var a = cell(r.activated, r.activatedPct); var s = cell(r.selfAssessed, r.selfAssessedPct); var v = share(r.validated14Pct); %>
+            <tr data-us-site="<%= r.isTotal ? 'total' : (r.siteId === null ? 'none' : r.siteId) %>"<% if (r.isTotal) { %> class="ai-total"<% } %>>
+                <th scope="row"><%= r.isTotal ? __('admin:us_all_sites') : (r.siteName || __('admin:us_no_site')) %></th>
+                <td class="ai-num" data-label="<%= __('admin:us_col_people') %>"><%= _F.num(r.people, 0) %></td>
+                <% if (r.masked) { %>
+                <td class="ai-num ai-masked" colspan="3" data-label="<%= __('admin:us_col_figures') %>"><span class="viz-chip viz-chip--unmeasured"><span class="viz-chip-icon" aria-hidden="true">—</span><span><%= __('admin:us_small_n', { min: U.smallN }) %></span></span></td>
+                <% } else { %>
+                <td class="ai-num" data-label="<%= __('admin:us_col_activated') %>"><%= a.n %><% if (a.pct) { %> <span class="ai-pct"><%= a.pct %></span><% } %></td>
+                <td class="ai-num" data-label="<%= __('admin:us_col_self', { days: U.windowDays }) %>"><%= s.n %><% if (s.pct) { %> <span class="ai-pct"><%= s.pct %></span><% } %></td>
+                <td class="ai-num" data-label="<%= __('admin:us_col_validated', { validate: U.validateDays }) %>"><% if (v) { %><%= v %> <span class="ai-of"><%= __('admin:us_of_approved', { count: Number(r.approved), n: _F.num(r.approved, 0) }) %></span><% } else { %><span class="viz-chip viz-chip--unmeasured"><span class="viz-chip-icon" aria-hidden="true">—</span><span><%= __('admin:us_not_measured') %></span></span><% } %></td>
+                <% } %>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table>
+    </div>
+    <p class="ai-note"><%= __('admin:us_rules', { min: U.smallN }) %></p>
+</section>
+<% } %>

@@ -90,7 +90,18 @@ const KINDS = {
         'arbitration',
         'disputed',
     ],
-    admin_role: ['superadmin', 'localadmin', 'viewer'],
+    // Every value of the PostgreSQL `admin_role` enum. The four reserved tiers
+    // keep a label (« réservé ») for history rows and audits; AdminModel still
+    // refuses to create an account in them or move one into them.
+    admin_role: [
+        'superadmin',
+        'localadmin',
+        'viewer',
+        'regional_admin',
+        'country_admin',
+        'site_admin',
+        'hr_bp',
+    ],
     api_key_status: ['active', 'revoked', 'expired'],
     schedule_frequency: ['daily', 'weekly', 'monthly'],
     movement_status: ['active', 'inactive', 'voided', 'erased', 'reactivated', 'deactivated'],

@@ -1,0 +1,91 @@
+<%#
+  The profile radar: the demonstrated level against the required level per
+  sub-domain. On screen public/js/profile-radar.js draws it (the `radar` kind of
+  viz.js); without Chart.js, or on a phone, its data table opens instead. On
+  paper a radar drawn HERE as SVG is printed (a canvas does not print): same
+  rules — a null is a gap (the polygon breaks there) and the axis label says
+  "(Not measured)", never 0; at most 12 axes; the requirement is dashed.
+
+    include('../partials/viz/radar', { radar: {
+        id:     unique id on the page
+        title:  the heading
+        axes:   [{ label, actual: number|null, required: number|null,
+                   assessed?: number, total?: number }]
+        max:    4 (levels)
+    } })
+  Locals read: `__`, `lang`, `numFmt`.
+-%><%
+  var _R = (typeof radar !== 'undefined' && radar) ? radar : {};
+  var _id = String(_R.id || 'prof-radar');
+  var _lang = (typeof lang !== 'undefined' && lang) ? lang : 'fr';
+  var _axes = (_R.axes || []).filter(function (a) { return a && a.label; });
+  var _num = function (v) { return v === null || v === undefined || v === '' || !isFinite(Number(v)) ? null : Number(v); };
+  var _lv = function (v) { return (typeof numFmt !== 'undefined' && numFmt) ? numFmt.level(v) : String(v); };
+  var _i18n = {
+      actual: __('viz:radar.actual'),
+      required: __('viz:radar.required'),
+      unmeasured: __('viz:unmeasured'),
+      unmeasuredAxes: __('viz:radar.unmeasured_axes', { list: '{{list}}' }),
+      empty: __('viz:radar.empty'),
+      colSubdomain: __('viz:radar.col_subdomain'),
+      toggle: __('viz:chart.toggle_show'),
+      coverage: __('viz:radar.coverage')
+  };
+  // ---- the print SVG (pure geometry) ----
+  var labs = _axes.slice(0, 12);
+  var n = labs.length;
+  var max = Number(_R.max) || 4;
+  var cx = 180, cy = 160, rad = 105;
+  var ang = function (i) { return -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, n); };
+  var P = function (i, v) { var r = rad * Math.max(0, Math.min(max, v)) / max; return [Math.round((cx + r * Math.cos(ang(i))) * 10) / 10, Math.round((cy + r * Math.sin(ang(i))) * 10) / 10]; };
+  var segs = function (key) {
+      var out = [], cur = [];
+      for (var i = 0; i <= n; i++) {
+          var k = i % n, v = _num(labs[k][key]);
+          if (v === null) { if (cur.length) out.push(cur); cur = []; continue; }
+          cur.push(P(k, v));
+      }
+      if (cur.length) out.push(cur);
+      // the walk wraps past axis 0: when it reaches axis 0 again, the first
+      // segment continues the last one (one polyline, never a stray point)
+      if (out.length > 1 && _num(labs[0][key]) !== null) {
+          var first = out.shift();
+          out[out.length - 1] = out[out.length - 1].concat(first.slice(1));
+      }
+      return out;
+  };
+  var series = [{ key: 'actual', label: _i18n.actual }, { key: 'required', label: _i18n.required }];
+-%>
+<section class="viz-radar" id="<%= _id %>" aria-labelledby="<%= _id %>-h">
+    <% if (_R.title) { %><h3 class="viz-title" id="<%= _id %>-h"><%= _R.title %></h3><% } else { %><span class="viz-live" id="<%= _id %>-h"><%= __('viz:radar.aria') %></span><% } %>
+    <div class="viz-radar-screen" data-profile-radar>
+        <div class="prof-radar-body">
+            <%# without JS: the data itself %>
+            <table class="viz-table">
+                <thead><tr><th scope="col"><%= _i18n.colSubdomain %></th><th scope="col" class="viz-num"><%= _i18n.actual %></th><th scope="col" class="viz-num"><%= _i18n.required %></th><th scope="col" class="viz-num"><%= _i18n.coverage %></th></tr></thead>
+                <tbody>
+                <% _axes.forEach(function (a) { var av = _num(a.actual), rv = _num(a.required); %>
+                    <tr><th scope="row"><%= a.label %></th><td class="viz-num<%= av === null ? ' viz-unmeasured-cell' : '' %>"><%= av === null ? _i18n.unmeasured : _lv(av) %></td><td class="viz-num"><%= rv === null ? '—' : _lv(rv) %></td><td class="viz-num"><%= a.assessed === undefined || a.assessed === null ? '—' : a.assessed %> / <%= a.total === undefined || a.total === null ? '—' : a.total %></td></tr>
+                <% }); %>
+                </tbody>
+            </table>
+        </div>
+        <script type="application/json" class="prof-radar-data"><%- include('../json-script', { v: { axes: _axes, i18n: _i18n, lang: _lang } }) %></script>
+    </div>
+    <% if (n >= 3) { %>
+    <div class="viz-radar-print" aria-hidden="true">
+        <svg class="viz-radar-svg" viewBox="0 0 360 330" focusable="false">
+            <% [0.25, 0.5, 0.75, 1].forEach(function (f) { %><polygon class="viz-radar-grid" points="<%= labs.map(function (_, i) { return P(i, max * f).join(','); }).join(' ') %>"/><% }); %>
+            <% labs.forEach(function (a, i) { var e = P(i, max); var t = P(i, max * 1.2); var un = _num(a.actual) === null && _num(a.required) === null; %>
+            <line class="viz-radar-axis" x1="<%= cx %>" y1="<%= cy %>" x2="<%= e[0] %>" y2="<%= e[1] %>"/>
+            <text class="viz-radar-label" x="<%= t[0] %>" y="<%= t[1] %>" text-anchor="<%= Math.abs(t[0] - cx) < 8 ? 'middle' : (t[0] > cx ? 'start' : 'end') %>"><%= String(a.label).slice(0, 26) %><%= _num(a.actual) === null ? ' (' + _i18n.unmeasured + ')' : '' %></text>
+            <% }); %>
+            <% series.forEach(function (s, si) { segs(s.key).forEach(function (seg) { %>
+            <polyline class="viz-radar-line viz-radar-line--<%= si %><%= si === 1 ? ' viz-radar-line--dashed' : '' %>" points="<%= seg.map(function (p) { return p.join(','); }).join(' ') %>"/>
+            <% seg.forEach(function (p) { %><circle class="viz-radar-line--<%= si %>" cx="<%= p[0] %>" cy="<%= p[1] %>" r="2.5"/><% }); %>
+            <% }); }); %>
+        </svg>
+        <p class="db-legend"><% series.forEach(function (s, si) { %><span><span class="viz-radar-key viz-radar-key--<%= si %>"></span><%= s.label %></span><% }); %></p>
+    </div>
+    <% } %>
+</section>

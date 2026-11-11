@@ -94,7 +94,11 @@ describe('self-assessment page', () => {
 
     test('the NAME sits in its own span; the search reads that span only', () => {
         const html = page([skill()]);
-        expect(rowOf(html, 11)).toContain('<span class="sa-skill-name">Soudage</span>');
+        // 4.0.0 port (wave 5): the name span carries an id so the rating <select>
+        // is named « rating for » + THIS name (aria-labelledby) — still its own span.
+        expect(rowOf(html, 11)).toContain(
+            '<span class="sa-skill-name" id="sk-name-11">Soudage</span>'
+        );
         // The page's own filter code (behaviour): run applyFilter's name read on a row
         // whose description contains the search term but whose name does not.
         const src = read(viewPath('employee/self-assessment.ejs'));
@@ -183,7 +187,10 @@ describe('self-assessment page', () => {
         expect(html).not.toMatch(/class="sa-lock-badge" title=/);
         // The lock reason is still given, in words linked to the select.
         expect(html).toMatch(/id="sk-lock-11"> — \[employee:sa_locked_title\]/);
-        expect(html).toMatch(/aria-describedby="sk-desc-11 sk-lvl-11 sk-lock-11"/);
+        // 4.0.0 port (wave 5): the lock reason moved into the select's accessible
+        // NAME (aria-labelledby); the description and level line stay described.
+        expect(html).toMatch(/aria-labelledby="sk-rlbl-11 sk-name-11 sk-lock-11"/);
+        expect(html).toMatch(/aria-describedby="sk-desc-11 sk-lvl-11"/);
         // The helper is loaded as an external file (CSP: no inline handlers).
         expect(html).toMatch(/<script src="\/js\/sa-skill-help\.js\?v=1"><\/script>/);
     });

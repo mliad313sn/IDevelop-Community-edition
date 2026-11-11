@@ -15,6 +15,8 @@
   "skill_category_invalid": "La catégorie doit être Technical, Behavioral, Safety ou Compliance",
   "role_name_required": "Le nom du poste est requis",
   "username_required": "Le nom d'utilisateur est requis",
+  "username_charset": "Le nom d'utilisateur ne peut contenir que des lettres, des chiffres et les caractères . _ @ -, de 2 à 64 caractères.",
+  "reason_too_long": "Le motif ne peut pas dépasser 2 000 caractères.",
   "pw_min_length": "Le mot de passe doit contenir au moins 12 caractères",
   "pw_lowercase": "Le mot de passe doit contenir au moins une minuscule",
   "pw_uppercase": "Le mot de passe doit contenir au moins une majuscule",

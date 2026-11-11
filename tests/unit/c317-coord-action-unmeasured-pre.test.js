@@ -24,7 +24,8 @@ test('never assessed: pre and uplift are NULL (not measured), never 0 / a fake g
     const out = await AES.onActionClose({ actionId: 1, postRating: 3, employeeId: 84 });
     expect(out.ratingPre).toBeNull();
     expect(out.uplift).toBeNull();
-    expect(effectivenessInsert()[1]).toEqual([1, null, 3, null]);
+    // + the evidence source and whether it became official (migration 191)
+    expect(effectivenessInsert()[1]).toEqual([1, null, 3, null, 'observation', false]);
 });
 
 test('assessed at 0 is a real measurement: uplift is post − 0', async () => {

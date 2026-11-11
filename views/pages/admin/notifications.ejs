@@ -18,6 +18,10 @@ var stateClass = { queued: 'badge-info', sent: 'badge-success', failed: 'badge-d
     <h1><i class="fas fa-bell" aria-hidden="true"></i> <%= __('admin:notif_title') %></h1>
 </div>
 <p class="text-muted" style="margin-top:-.5rem"><%= __('admin:notif_subtitle') %></p>
+<p style="display:flex;flex-wrap:wrap;gap:8px">
+    <a class="btn btn-secondary btn-sm" href="/admin/notifications/catalogue"><i class="fas fa-book-open" aria-hidden="true"></i> <%= __('chrome:ncat_title') %></a>
+    <a class="btn btn-secondary btn-sm" href="/admin/notifications/metrics"><i class="fas fa-chart-column" aria-hidden="true"></i> <%= __('chrome:nmet_title') %></a>
+</p>
 
 <!-- Summary: totals by channel and by delivery state. -->
 <div class="emp-cards" style="margin-bottom:1rem">
@@ -117,12 +121,15 @@ var stateClass = { queued: 'badge-info', sent: 'badge-success', failed: 'badge-d
                 </td>
                 <td><i class="fas <%= r.channel === 'email' ? 'fa-envelope' : 'fa-bell' %>" aria-hidden="true"></i> <%= channelLabel(r.channel) %></td>
                 <td><code style="font-size:.82rem"><%= esc(r.kind) %></code></td>
-                <td><span class="badge <%= stateClass[r.state] || 'badge-muted' %>"><%= stateLabel(r.state) %></span></td>
+                <td><span class="badge <%= stateClass[r.state] || 'badge-muted' %>"><%= stateLabel(r.state) %></span>
+                    <% if (r.emailStatus) { %><br><span class="text-muted" style="font-size:.78rem"><%= __('admin:notif_es_' + r.emailStatus) %><% if (r.channel === 'email' && r.emailAttempts) { %> · <%= __('admin:notif_attempts', { n: r.emailAttempts }) %><% } %><% if (r.emailStatus === 'retry' && r.nextAttemptAt) { %> · <%= __('admin:notif_next_attempt') %> <%= _fd(r.nextAttemptAt) %><% } %></span><% } %>
+                    <% if (r.lastError) { %><br><span class="text-muted" style="font-size:.75rem"><%= esc(r.lastError) %></span><% } %>
+                </td>
                 <td><%= _fd(r.createdAt) %></td>
                 <td><%= r.sentAt ? _fd(r.sentAt) : '—' %></td>
                 <td><%= r.readAt ? _fd(r.readAt) : '—' %></td>
                 <td>
-                    <% if (r.state === 'failed') { %>
+                    <% if (r.channel === 'email' && r.state === 'failed' && r.emailStatus !== 'suppressed' && r.emailStatus !== 'sending') { %>
                     <form method="post" action="/admin/notifications/<%= r.id %>/retry" style="margin:0">
                         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                         <button type="submit" class="btn btn-sm btn-secondary" title="<%= __('admin:notif_retry_title') %>"><i class="fas fa-rotate-right" aria-hidden="true"></i> <%= __('admin:notif_retry') %></button>

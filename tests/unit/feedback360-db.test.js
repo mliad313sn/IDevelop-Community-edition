@@ -422,9 +422,20 @@ describe('360° feedback — against the real schema (rolled back)', () => {
             const ids = await db.all('SELECT id FROM feedback360_responses WHERE subject_id = ?', [
                 sid,
             ]);
-            for (const r of ids) expect(flat).not.toContain(String(r.id));
-            const idRe = new RegExp(`\\b(${[f.P1, f.P2, f.P3, f.D1, f.D2].join('|')})\\b`);
-            expect(flat).not.toMatch(idRe);
+            // Structural check, not a substring search: a small id such as 12
+            // also appears inside dates and times ("09:24:12"). Every value held
+            // under an identifier-like key must be neither a rater nor a response.
+            const forbidden = new Set(
+                [...ids.map((r) => r.id), f.P1, f.P2, f.P3, f.D1, f.D2].map(String)
+            );
+            const idValues = [];
+            (function walk(v, key) {
+                if (Array.isArray(v)) return v.forEach((x) => walk(x, key));
+                if (v && typeof v === 'object')
+                    return Object.entries(v).forEach(([k, x]) => walk(x, k));
+                if (key && /(^id$|Id$|_id$|ids?$)/i.test(key)) idValues.push(String(v));
+            })(rep, '');
+            for (const v of idValues) expect([v, forbidden.has(v)]).toEqual([v, false]);
             expect(rep.comments.keep.sort()).toEqual(['manager keep', 'peer keep', 'self keep']);
 
             // The subject may not release their own report; the manager does.

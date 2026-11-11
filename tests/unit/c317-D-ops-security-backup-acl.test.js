@@ -4,9 +4,10 @@
  * %ProgramData%\IDevelop\backups with the folder's inherited ACL, i.e.
  * BUILTIN\Users:(RX) — any local account could read the whole HR database.
  *
- * tick() is driven for real: pg_dump is faked (it writes a non-empty file),
- * everything else in child_process - icacls.exe included - is the REAL one, so
- * on Windows the resulting ACL is read back with icacls and checked.
+ * tick() is driven for real: pg_dump is faked (it streams a non-empty dump on
+ * stdout, which the job encrypts, SA-39), everything else in child_process -
+ * icacls.exe included - is the REAL one, so on Windows the resulting ACL is
+ * read back with icacls and checked.
  */
 const fs = require('fs');
 const os = require('os');
@@ -19,6 +20,26 @@ jest.mock('child_process', () => {
     const actual = jest.requireActual('child_process');
     return {
         ...actual,
+        // SA-39: pg_dump writes to STDOUT (encrypted on the fly), so it is
+        // spawned, not execFile'd. The fake streams a non-empty "dump", exits 0.
+        spawn: jest.fn((cmd, args, opts) => {
+            if (/pg_dump/i.test(String(cmd))) {
+                const { EventEmitter } = require('events');
+                const { PassThrough } = require('stream');
+                const child = new EventEmitter();
+                child.stdout = new PassThrough();
+                child.stderr = new PassThrough();
+                child.stdin = new PassThrough();
+                child.kill = () => {};
+                child.stdout.on('end', () => setImmediate(() => child.emit('close', 0)));
+                setImmediate(() => {
+                    child.stdout.end('PGDMP-fake-dump-content');
+                    child.stderr.end();
+                });
+                return child;
+            }
+            return actual.spawn(cmd, args, opts);
+        }),
         execFile: jest.fn((cmd, args, opts, cb) => {
             if (/pg_dump/i.test(cmd)) {
                 const f = args[args.indexOf('-f') + 1];
@@ -47,10 +68,13 @@ let dir;
 const saved = {};
 beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'c317-bkacl-'));
-    ['BACKUP_DIR', 'DATABASE_URL'].forEach((k) => {
+    ['BACKUP_DIR', 'DATABASE_URL', 'APP_KEY', 'BACKUP_KEY_MODE'].forEach((k) => {
         saved[k] = process.env[k];
     });
     process.env.BACKUP_DIR = dir;
+    // SA-39: backups are encrypted; the test key is derived from APP_KEY.
+    process.env.APP_KEY = 'acl-test-app-key-0123456789abcdef';
+    process.env.BACKUP_KEY_MODE = 'derived';
     process.env.DATABASE_URL = 'postgres://u:p@localhost:5432/acltestdb';
     mockIcaclsCalls.length = 0;
     mockState.icaclsMode = 'real';
@@ -73,7 +97,7 @@ afterEach(() => {
         }
     }
     fs.rmSync(dir, { recursive: true, force: true });
-    ['BACKUP_DIR', 'DATABASE_URL'].forEach((k) => {
+    ['BACKUP_DIR', 'DATABASE_URL', 'APP_KEY', 'BACKUP_KEY_MODE'].forEach((k) => {
         if (saved[k] === undefined) delete process.env[k];
         else process.env[k] = saved[k];
     });
@@ -93,7 +117,9 @@ test('a successful dump has its ACL restricted (SIDs, inheritance removed) and t
     expect(r.done).toBe(true);
     expect(r.status).toBe('ok');
     if (process.platform === 'win32') {
-        expect(mockIcaclsCalls).toHaveLength(1);
+        // The encrypted dump, then its manifest.
+        expect(mockIcaclsCalls).toHaveLength(2);
+        expect(mockIcaclsCalls[1][0]).toBe(r.file + '.manifest.json');
         expect(mockIcaclsCalls[0]).toEqual([
             r.file,
             '/inheritance:r',
@@ -118,6 +144,7 @@ test('a successful dump has its ACL restricted (SIDs, inheritance removed) and t
         expect(out).not.toMatch(/S-1-1-0\b/); // Everyone
     } else {
         expect((fs.statSync(r.file).mode & 0o777).toString(8)).toBe('600');
+        expect((fs.statSync(r.file + '.manifest.json').mode & 0o777).toString(8)).toBe('600');
     }
 });
 

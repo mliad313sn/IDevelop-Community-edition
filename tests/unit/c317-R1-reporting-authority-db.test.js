@@ -15,6 +15,7 @@
  *
  * Skipped (not failed) when the test database is not reachable.
  */
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 require('dotenv').config();
 
 const ROLLBACK = new Error('c317R1-rollback');
@@ -22,7 +23,7 @@ let db;
 let ready = false;
 
 beforeAll(async () => {
-    if (!/idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''))) return;
+    if (!isFixturesDatabaseUrl(process.env.DATABASE_URL)) return;
     db = require('../../src/config/database');
     try {
         await db.connect();

@@ -4,12 +4,17 @@ const db = require('../config/database');
 
 /**
  *   Dispute ladder with configurable SLAs (Settings → category 'disputes'):
- *     L0 (employee ↔ supervisor)  — l0SlaDays  → escalate to L1 (manager)
+ *     L0 (employee ↔ supervisor)  — the supervisor PROPOSES a rating (never
+ *          below the contested one, migration 194); the person accepts it
+ *          (resolved) or refuses it (escalated to L1 at once). l0SlaDays from
+ *          the proposal (or the opening) → escalate to L1 (manager)
  *     L1 (manager)                — l1SlaDays  → escalate to L2 (HR arbitration)
- *     L2 (HR = admin w/ arbitrate_disputes)    — l2SlaDays → auto-finalize with
- *          the supervisor's rating (opt-out via dispute.autoFinalizeOnExpiry);
- *          a review with NO supervisor rating (a rejection) is never
- *          auto-finalised — it is raised to HR once and waits for a decision
+ *     L2 (HR = admin w/ arbitrate_disputes)    — HR is reminded two days before
+ *          l2SlaDays runs out; auto-finalising with the supervisor's rating is
+ *          OFF by default (dispute.autoFinalizeOnExpiry, opt-in): the rating
+ *          stays provisional until HR decides. A review with NO supervisor
+ *          rating (a rejection) is never auto-finalised — it is raised to HR
+ *          once and waits for a decision
  *   so a dispute can never deadlock cycle close. Disputed rows stay
  *   self_assessments.locked_state='provisional' until resolved/finalized.
  *   A dispute may only be opened by the employee the review is about, on a
@@ -30,12 +35,14 @@ async function slaDays(key, envVar, def) {
     const env = envVar && process.env[envVar];
     return env && !Number.isNaN(Number(env)) ? Number(env) : def;
 }
+// OFF unless an administrator turned it on (migration 194): HR's silence never
+// makes a contested rating official by itself. Unreadable → off.
 async function autoFinalizeEnabled() {
     try {
-        const v = await AppSettingsModel.getValue('dispute.autoFinalizeOnExpiry', true);
+        const v = await AppSettingsModel.getValue('dispute.autoFinalizeOnExpiry', false);
         return v === true || v === 'true' || v === 1 || v === '1';
     } catch (_) {
-        return true;
+        return false;
     }
 }
 
@@ -325,6 +332,7 @@ class DisputeServiceV2 {
             currentLevel: Number(decidedRating),
             assessedBy,
             notes: 'Set by dispute resolution (final decided rating).',
+            validation: 'manager_validated',
         });
     }
 
@@ -485,7 +493,8 @@ class DisputeServiceV2 {
         const sc = await RBAC.scopeFilter(user, { empAlias: 'e' });
         return db.all(
             `SELECT ad.id, ad.state, ad.level, ad.reason, ad.opened_at, ad.escalated_at, ad.decided_rating,
-                    e.first_name, e.last_name, e.employee_number,
+                    ad.proposed_rating, ad.proposed_at, ad.employee_response,
+                    e.id AS employee_id, e.first_name, e.last_name, e.employee_number,
                     s.name AS skill_name, sa.self_rated_level, sr.supervisor_rated_level,
                     sa.superseded_at
              FROM assessment_disputes ad
@@ -521,6 +530,8 @@ class DisputeServiceV2 {
         const rows = await db.all(
             `SELECT ad.id, ad.state, ad.level, ad.reason, ad.opened_at,
                     ad.escalated_at, ad.resolved_at, ad.decided_rating, ad.final_level,
+                    ad.proposed_rating, ad.proposed_at, ad.proposal_note,
+                    ad.employee_response, ad.employee_response_at,
                     s.name AS skill_name,
                     sa.self_rated_level, sr.supervisor_rated_level, sr.gap,
                     sa.superseded_at,
@@ -547,7 +558,7 @@ class DisputeServiceV2 {
             `UPDATE assessment_disputes
              SET level = 'L1', state = 'escalated', escalated_at = now()
              WHERE level = 'L0' AND state = 'open'
-               AND opened_at < now() - (interval '1 day' * ?)
+               AND COALESCE(proposed_at, opened_at) < now() - (interval '1 day' * ?)
              RETURNING id, employee_id`,
             [days]
         );
@@ -593,6 +604,34 @@ class DisputeServiceV2 {
             await DisputeServiceV2._notify('admin', adminId, kind, payload);
         }
         return hr.length;
+    }
+
+    /**
+     * HR is reminded TWO DAYS before a level-2 dispute reaches its deadline
+     * (escalated_at + l2SlaDays), once per dispute: hr_reminded_at (migration
+     * 194) is set in the same statement that selects the row, so two ticks
+     * never remind twice. One notice per batch to every HR arbiter. Returns the
+     * number of disputes the reminder covered.
+     */
+    static async remindHrBeforeL2Deadline() {
+        const days = await slaDays('dispute.l2SlaDays', 'DISPUTE_L2_SLA_DAYS', 7);
+        const rows = await db.all(
+            `UPDATE assessment_disputes
+                SET hr_reminded_at = now()
+              WHERE level = 'L2' AND state IN ('escalated','open') AND hr_reminded_at IS NULL
+                AND escalated_at <= now() - (interval '1 day' * GREATEST(? - 2, 0))
+              RETURNING id`,
+            [days]
+        );
+        // Its own kind since wave 7 (dispute.hr_reminder): wave 6 sent it as
+        // dispute.escalated with `reminder: true`, rows that still read right.
+        if (rows.length) {
+            await DisputeServiceV2._notifyHr('dispute.hr_reminder', {
+                count: rows.length,
+                link: '/v2/slf/disputes',
+            });
+        }
+        return rows.length;
     }
 
     /**
@@ -877,7 +916,229 @@ class DisputeServiceV2 {
         throw e;
     }
 
-    /** L0 resolution by the supervisor (without escalation). */
+    /**
+     * LEVEL 0 PROPOSES, IT DOES NOT DECIDE (migration 194).
+     *
+     * The first rung is, most of the time, the very supervisor whose rating is
+     * contested. Their answer used to be final and could LOWER the rating, and
+     * the person had no say in it. Now:
+     *   - the L0 rung proposes a rating between the contested (supervisor)
+     *     rating and the person's own rating, never below the contested one
+     *     (l0Range);
+     *   - the person accepts it (resolved with that rating) or refuses it
+     *     (escalated to L1 at once) — respondToProposal;
+     *   - silence escalates to L1 once l0SlaDays have run from the proposal
+     *     (escalateOverdueL0).
+     * ONE proposal per dispute: a second one is refused, otherwise a proposer
+     * could keep a dispute at level 0 for ever by proposing again just before
+     * the deadline.
+     *
+     * Returns { proposed: true } on success; { proposed: false } when the
+     * dispute is no longer an open L0 one, or already carries a proposal
+     * (`alreadyProposed`); the route answers 409.
+     */
+    static async proposeL0({
+        disputeId,
+        decidedBy,
+        decidedRating,
+        reason,
+        decidedByAdminId = null,
+    }) {
+        decidedRating = DisputeServiceV2._requireRating(decidedRating);
+        DisputeServiceV2._requireReason(reason);
+        const id = Number(disputeId);
+        const row = await db.get(
+            `SELECT ad.state, ad.level, ad.proposed_at,
+                    sr.supervisor_rated_level AS sup, sa.self_rated_level AS self
+               FROM assessment_disputes ad
+               JOIN supervisor_reviews sr ON sr.id = ad.supervisor_review_id
+               LEFT JOIN self_assessment_rounds sa ON sa.id = sr.self_assessment_id
+              WHERE ad.id = ?`,
+            [id]
+        );
+        if (!row || row.state !== 'open' || row.level !== 'L0') return { proposed: false };
+        if (row.proposedAt) return { proposed: false, alreadyProposed: true };
+        const range = DisputeServiceV2.l0Range(row.sup, row.self);
+        if (decidedRating < range.min) {
+            const e = refuse(
+                400,
+                'DISPUTE_L0_LOWER',
+                'At level 0 the rating can be confirmed or raised, never lowered.'
+            );
+            e.i18n = { key: 'talentx:dsp_err_l0_lower' };
+            throw e;
+        }
+        if (decidedRating > range.max) {
+            const e = refuse(
+                400,
+                'DISPUTE_L0_RANGE',
+                'At level 0 the proposal lies between the contested rating and the employee’s own rating.'
+            );
+            e.i18n = { key: 'talentx:dsp_err_l0_range' };
+            throw e;
+        }
+        const { changes } = await db.run(
+            `UPDATE assessment_disputes
+                SET proposed_rating = ?, proposed_at = now(), proposed_by = ?,
+                    proposed_by_admin_id = ?, proposal_note = ?
+              WHERE id = ? AND state = 'open' AND level = 'L0' AND proposed_at IS NULL`,
+            [
+                decidedRating,
+                decidedBy == null ? null : Number(decidedBy),
+                decidedByAdminId == null ? null : Number(decidedByAdminId),
+                String(reason).trim().slice(0, 4000),
+                id,
+            ]
+        );
+        if (!changes) return { proposed: false };
+        // The person is told a proposal waits for their answer — no rating, no
+        // name and no text in the message (the catalogue rule). The date they
+        // have to answer by is the day the dispute goes up to the line without
+        // an answer (escalateOverdueL0: proposed_at + the level-0 delay).
+        const eid = await DisputeServiceV2.employeeFor(id).catch(() => null);
+        await DisputeServiceV2._notify('employee', eid, 'dispute.proposal', {
+            link: '/employee/supervisor-reviews',
+            respondBy: await DisputeServiceV2.respondByDay(new Date()),
+        });
+        return { proposed: true };
+    }
+
+    /**
+     * The calendar day ('YYYY-MM-DD', the app's zone) by which the person
+     * answers a proposal made at `from`: from + the level-0 delay. Null when
+     * it cannot be computed (the notice then carries no date, never a wrong one).
+     */
+    static async respondByDay(from = new Date()) {
+        try {
+            const days = await slaDays('dispute.l0SlaDays', 'DISPUTE_L0_SLA_DAYS', 5);
+            const t = from instanceof Date ? from.getTime() : NaN;
+            if (!Number.isFinite(t) || !Number.isFinite(days) || days < 0) return null;
+            return require('../utils/dateFormat').appDayIso(new Date(t + days * 86400000));
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /**
+     * The ratings a level-0 proposal may carry: from the contested (supervisor)
+     * rating up to the person's own rating. No supervisor rating (a rejected
+     * review): from 0. A self rating at or below the contested one: the
+     * contested rating only (confirm it). Pure.
+     */
+    static l0Range(sup, self) {
+        const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
+        const s = num(sup);
+        const me = num(self);
+        const min = s === null || !Number.isFinite(s) ? 0 : Math.max(0, Math.min(4, s));
+        const max = me === null || !Number.isFinite(me) ? 4 : Math.max(min, Math.min(4, me));
+        return { min, max };
+    }
+
+    /**
+     * The PERSON answers the level-0 proposal on their own dispute — the one
+     * act on their own record the dispute ladder gives them. Only the person
+     * the review is about (resolved from the review, never from the dispute
+     * row), only on an open L0 dispute that carries a proposal.
+     *   accept → resolved at L0 with the proposed rating, decided by its
+     *            proposer; the official level follows, as for any decision;
+     *   refuse → escalated to L1 at once, and the manager is told.
+     * Returns { resolved } or { escalated }; neither when there is nothing to
+     * answer (the route answers 409).
+     */
+    static async respondToProposal({ disputeId, employeeId, accept }) {
+        const id = Number(disputeId);
+        const owner = await DisputeServiceV2.employeeFor(id).catch(() => null);
+        if (owner === null) throw refuse(404, 'DISPUTE_NOT_FOUND', 'Dispute not found.');
+        if (Number(owner) !== Number(employeeId))
+            throw refuse(403, 'DISPUTE_NOT_OWNER', 'You can only answer your own dispute.');
+        if (accept) {
+            const res = await db.runTransaction(async () => {
+                // The proposer's note is appended under the same marker as any
+                // decision note, so splitReason attributes it to the decider.
+                const d = await db.get(
+                    `UPDATE assessment_disputes
+                        SET state = 'resolved', resolved_at = now(), final_level = 'L0',
+                            decided_by = proposed_by, decided_by_admin_id = proposed_by_admin_id,
+                            decided_rating = proposed_rating,
+                            employee_response = 'accepted', employee_response_at = now(),
+                            reason = COALESCE(reason, '') || E'\\n\\n[resolution:L0] ' || COALESCE(proposal_note, '')
+                      WHERE id = ? AND state = 'open' AND level = 'L0' AND proposed_at IS NOT NULL
+                      RETURNING supervisor_review_id, proposed_rating, proposed_by_admin_id`,
+                    [id]
+                );
+                if (!d) return { resolved: false };
+                const rating = Number(d.proposedRating);
+                await DisputeServiceV2._applyDecisionToReview(d.supervisorReviewId, rating);
+                // The admin account behind the proposal, else the system admin —
+                // never an employee id handed to an admins(id) column (the two id
+                // spaces overlap). The person who proposed stays on decided_by.
+                await DisputeServiceV2._applyDecidedRatingToSkill(
+                    d.supervisorReviewId,
+                    rating,
+                    d.proposedByAdminId != null ? d.proposedByAdminId : null,
+                    id
+                );
+                await db.run(
+                    `UPDATE self_assessment_rounds sa SET locked_state = 'finalized'
+                       FROM supervisor_reviews sr
+                      WHERE sr.id = ? AND sr.self_assessment_id = sa.id`,
+                    [d.supervisorReviewId]
+                );
+                return { resolved: true, rating };
+            });
+            if (res.resolved)
+                await DisputeServiceV2._auditLine(
+                    'DISPUTE_L0_PROPOSAL_ACCEPTED',
+                    id,
+                    Number(employeeId),
+                    `the employee accepted the level-0 proposal (rating ${Number(res.rating)})`
+                );
+            return { resolved: res.resolved === true };
+        }
+        const row = await db.get(
+            `UPDATE assessment_disputes
+                SET level = 'L1', state = 'escalated', escalated_at = now(),
+                    employee_response = 'refused', employee_response_at = now()
+              WHERE id = ? AND state = 'open' AND level = 'L0' AND proposed_at IS NOT NULL
+              RETURNING id`,
+            [id]
+        );
+        if (!row) return { resolved: false };
+        await DisputeServiceV2._auditLine(
+            'DISPUTE_L0_PROPOSAL_REFUSED',
+            id,
+            Number(employeeId),
+            'the employee refused the level-0 proposal: escalated to level 1'
+        );
+        const mgr = await DisputeServiceV2._managerOf(Number(owner)).catch(() => null);
+        if (mgr)
+            await DisputeServiceV2._notify(mgr.userType, mgr.id, 'dispute.escalated', {
+                link: '/v2/slf/disputes',
+            });
+        return { resolved: false, escalated: true };
+    }
+
+    /** One journal line for the person's own answer (actor_ref, never admin_id). */
+    static async _auditLine(action, disputeId, employeeId, details) {
+        try {
+            await require('./LogService').log({
+                actorRef: employeeId != null ? `employee:${Number(employeeId)}` : null,
+                action,
+                entityType: 'assessment_dispute',
+                entityId: Number(disputeId),
+                details,
+            });
+        } catch (_) {
+            /* best-effort */
+        }
+    }
+
+    /**
+     * L0 resolution by the supervisor (without escalation). Since migration
+     * 194 no route reaches it — /resolve-l0 PROPOSES (proposeL0) and the person
+     * decides. Kept for the maintenance paths and the tests of the finalisation
+     * it shares with the other levels.
+     */
     static async resolveL0({ disputeId, decidedBy, decidedRating, reason }) {
         decidedRating = DisputeServiceV2._requireRating(decidedRating);
         DisputeServiceV2._requireReason(reason);

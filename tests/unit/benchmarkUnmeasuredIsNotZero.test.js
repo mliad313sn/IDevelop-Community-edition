@@ -41,9 +41,10 @@ const fs = require('fs');
 const ROOT = path.join(__dirname, '../..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 // Needs a POPULATED database (several sites, assessed people, reviews): runs
 // only against an opt-in fixture database — see CONTRIBUTING.md.
-const HAS_DB = /idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''));
+const HAS_DB = isFixturesDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 const db = HAS_DB ? require('../../src/config/database') : null;
 const BenchmarkModel = HAS_DB ? require('../../src/models/BenchmarkModel') : null;
@@ -128,51 +129,17 @@ describe('the benchmark views never print a fabricated zero', () => {
         expect(role).toMatch(/rbMeasured === 0 \? '—'/);
     });
 
-    test('an unassessed heat cell shows a dash, not the coalesced 0', () => {
-        expect(role).toMatch(/<%= c\.assessed \? c\.actual : '—' %>/);
+    test('an unassessed heat cell says « Not assessed », hatched, never the coalesced 0', () => {
+        // the assessed branch is the only one that prints a level
+        expect(role).toMatch(/<% if \(c && c\.assessed\) \{/);
+        expect(role).toMatch(
+            /vh-c vh-c--unmeasured viz-hatch bm-unassessed"[\s\S]{0,240}?<span class="bm-na"><%= __\('dash:bm_not_assessed'\) %><\/span><\/td>/
+        );
         expect(role).not.toMatch(/not_assessed_paren'\) %>"><%= c\.actual %><\/td>/);
+        // never coloured as a level (no bm-heat-0 / data-bin on that branch)
+        expect(role).not.toMatch(/bm-heat-/);
     });
 });
 
 // ----------------------------------------------------------------------- NEW-3
-describe('the readiness KPI states its denominator the right way round', () => {
-    const js = read('public/js/dashboard.js');
-    // The window used to be 320 characters, sized for a one-line call. prettier
-    // lays the same call out one argument per line, which pushed grp(never) past
-    // the window and turned a pure reformat into a red test. 900 covers the
-    // multi-line form with room to spare; the regexes below tolerate whitespace.
-    const pick = (needle) => {
-        const i = js.indexOf(needle);
-        expect(i).toBeGreaterThan(-1);
-        return js.slice(i, i + 900);
-    };
-
-    test('rdBasedOnAssessed is called (expected, assessed) like its neighbour', () => {
-        expect(pick('I18N.rdBasedOnAssessed')).toMatch(
-            /grp\(expectedReq\),\s*grp\(assessedReq\),\s*coveragePct/
-        );
-    });
-
-    test('its inline fallback uses the same {1}-of-{0} convention as the locales', () => {
-        expect(pick('I18N.rdBasedOnAssessed')).toMatch(
-            /over the \{1\} of \{0\} requirements assessed/
-        );
-    });
-
-    test('the neighbouring LECTURE line is unchanged, so the two agree', () => {
-        expect(pick('I18N.rdReadBodyAssessedOnly')).toMatch(
-            /grp\(expected\),\s*grp\(assessed\),\s*coverage,\s*grp\(never\)/
-        );
-    });
-
-    test('both locales still expect {0}=expected and {1}=assessed', () => {
-        // The call site must match the locale, so pin the locale's own order too:
-        // if someone "fixes" the placeholders instead, this test says so rather
-        // than letting the two corrections cancel each other out.
-        for (const lang of ['fr', 'en']) {
-            const bag = JSON.parse(read(`locales/${lang}/dash.json`));
-            expect(bag.rd_based_on_assessed).toMatch(/\{1\}[^{]*\{0\}/);
-            expect(bag.rd_read_body_assessed_only).toMatch(/\{1\}[^{]*\{0\}/);
-        }
-    });
-});
+// the former dashboard page and public/js/dashboard.js were retired in wave 12 (D3); the server-rendered dashboard has its own tests (dash*.test.js)

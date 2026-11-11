@@ -33,7 +33,7 @@
 .sa-skill-levels li.is-selected { font-weight: 600; }
 .sa-lvl-tag, .sa-req-tag {
     display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 999px;
-    font-size: .7rem; font-weight: 600; border: 1px solid currentColor;
+    font-size: .75rem; font-weight: 600; border: 1px solid currentColor;
 }
 .sa-lvl-tag[hidden], .sa-req-tag[hidden] { display: none; }
 

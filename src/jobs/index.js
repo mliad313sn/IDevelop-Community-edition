@@ -11,7 +11,7 @@
  *   Every time-based tick MUST be declared in TICKS below — both runtimes
  *   iterate that registry, so a tick can never exist in one path only
  *   (the v3.22.3 telemetry-prune drift). Event-driven jobs (cycle.closed,
- *   notifications, lifecycle) stay outside the registry.
+ *   lifecycle) stay outside the registry.
  *
  *   Workers are intentionally thin — the heavy lifting lives in the
  *   *Service classes; jobs just call them.
@@ -55,31 +55,14 @@ const TICKS = [
         fn: () => require('../services/NotificationService').releaseSnoozed(),
     },
     {
-        name: 'priority-index.refresh',
-        cron: '0 * * * *',
-        everyMin: 60,
-        keep: 100,
-        fn: () => {
-            try {
-                return require('../services/PriorityIndexService').refresh();
-            } catch {
-                return null;
-            }
-        },
-    }, // service optional
-    {
         name: 'lms.sync.tick',
         cron: '0 * * * *',
         everyMin: 60,
         keep: 50,
-        fn: () => {
-            try {
-                return require('../services/LmsService').runScheduledSync();
-            } catch {
-                return null;
-            }
-        },
-    }, // hourly catalog + completion poll; service optional
+        // A missing or broken module must FAIL the run (JobRunService records
+        // it), never resolve null and be recorded as a success.
+        fn: () => require('../services/LmsService').runScheduledSync(),
+    }, // hourly catalog + completion poll (self-gated: nothing unless an LMS integration is enabled)
     {
         name: 'report-scheduler.tick',
         cron: '*/15 * * * *',
@@ -103,6 +86,22 @@ const TICKS = [
         bootRun: true,
         fn: () => require('./kpi-snapshot').tick(),
     }, // daily executive KPI-strip snapshot, org + per site (idempotent per day) — the ONLY source of the dashboard's "+x since" deltas
+    {
+        name: 'kpi-alerts.tick',
+        cron: '14 * * * *',
+        everyMin: 60,
+        keep: 30,
+        bootRun: false,
+        fn: () => require('./kpi-alerts').tick(),
+    }, // KPI threshold alerts: one claimed pass a day after KPI_ALERTS_HOUR (migration 186)
+    {
+        name: 'persona-digest.tick',
+        cron: '26 * * * *',
+        everyMin: 60,
+        keep: 30,
+        bootRun: false,
+        fn: () => require('./persona-digest').tick(),
+    }, // « What changed » summaries: nothing unless personaDigestsEnabled (migration 187)
     {
         name: 'manager-digest.tick',
         cron: '20 * * * *',
@@ -226,6 +225,15 @@ const TICKS = [
         keep: 30,
         fn: () => require('./audit-anchor').tick(),
     },
+    // Monthly seals of the audit log, then the sealed purge past
+    // auditLogRetentionYears (default 5). Hourly, self-gated to once a day.
+    {
+        name: 'audit-retention.tick',
+        cron: '43 * * * *',
+        everyMin: 60,
+        keep: 30,
+        fn: () => require('../services/AuditRetentionService').tick(),
+    },
     // 3.23.18: daily-gated retention sweep; report-only until retentionPurgeMode='apply'.
     {
         name: 'retention-purge.tick',
@@ -267,6 +275,17 @@ const TICKS = [
         keep: 30,
         fn: () => require('./hris-sync').tick(),
     },
+    // Re-scan uploads left 'pending' or held in 'scan_error' (scanner down at
+    // upload time) through the scanner chain; only such rows are touched, a
+    // verdict is never overwritten. A host with no scanner records 'not_scanned'.
+    {
+        name: 'malware-rescan.tick',
+        cron: '*/15 * * * *',
+        everyMin: 15,
+        keep: 50,
+        bootRun: true,
+        fn: () => require('../services/MalwareScanService').rescanQueued(),
+    },
     {
         name: 'telemetry-prune.tick',
         cron: '50 * * * *',
@@ -298,7 +317,6 @@ function boot() {
 
     const queues = {
         cycleEvents: new Queue('cycle-events', { connection }),
-        notifications: new Queue('notifications', { connection }),
         digests: new Queue('digests', { connection }),
         lifecycle: new Queue('lifecycle', { connection }),
     };
@@ -321,14 +339,10 @@ function boot() {
             { connection }
         ),
 
-        notifications: new Worker(
-            'notifications',
-            async (job) => {
-                const Notify = require('../services/NotificationService');
-                return Notify.send(job.data);
-            },
-            { connection }
-        ),
+        // No 'notifications' worker: nothing enqueued to it, and its handler
+        // marked a row 'sent' without sending anything. E-mail is delivered by
+        // NotificationService and its outbox drains in the release tick
+        // (notifications.release-snoozed).
 
         lifecycle: new Worker(
             'lifecycle',
@@ -364,8 +378,8 @@ function boot() {
 // ---------------------------------------------------------------------------
 // Redis-less fallback. The default single-box Windows install has no Redis, so
 // BullMQ stays disabled and the time-based business logic (dispute SLA
-// escalation, LMS catalog/completion sync, snoozed-notification release,
-// priority-index refresh) would otherwise NEVER run. This in-process scheduler
+// escalation, LMS catalog/completion sync, snoozed-notification release)
+// would otherwise NEVER run. This in-process scheduler
 // runs those same ticks via setInterval. Single-instance only — multi-instance
 // deployments MUST use Redis (this would double-run).
 // ---------------------------------------------------------------------------

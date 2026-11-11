@@ -147,32 +147,32 @@
                     <div class="rb-form-group">
                         <label id="lblFilterSites"><%= __('admin:rb_sites') %></label>
                         <div class="rb-check-actions">
-                            <button type="button" onclick="RB.checkAll('filterSites')"><%= __('admin:rb_select_all') %></button>
-                            <button type="button" onclick="RB.checkNone('filterSites')"><%= __('admin:rb_none') %></button>
+                            <button type="button" data-on-click="RB.checkAll" data-args='["filterSites"]'><%= __('admin:rb_select_all') %></button>
+                            <button type="button" data-on-click="RB.checkNone" data-args='["filterSites"]'><%= __('admin:rb_none') %></button>
                         </div>
                         <div class="rb-checkbox-group" id="filterSites" role="group" aria-labelledby="lblFilterSites"></div>
                     </div>
                     <div class="rb-form-group">
                         <label id="lblFilterDepts"><%= __('admin:rb_departments') %></label>
                         <div class="rb-check-actions">
-                            <button type="button" onclick="RB.checkAll('filterDepts')"><%= __('admin:rb_select_all') %></button>
-                            <button type="button" onclick="RB.checkNone('filterDepts')"><%= __('admin:rb_none') %></button>
+                            <button type="button" data-on-click="RB.checkAll" data-args='["filterDepts"]'><%= __('admin:rb_select_all') %></button>
+                            <button type="button" data-on-click="RB.checkNone" data-args='["filterDepts"]'><%= __('admin:rb_none') %></button>
                         </div>
                         <div class="rb-checkbox-group" id="filterDepts" role="group" aria-labelledby="lblFilterDepts"></div>
                     </div>
                     <div class="rb-form-group">
                         <label id="lblFilterDomains"><%= __('admin:rb_domains') %></label>
                         <div class="rb-check-actions">
-                            <button type="button" onclick="RB.checkAll('filterDomains')"><%= __('admin:rb_select_all') %></button>
-                            <button type="button" onclick="RB.checkNone('filterDomains')"><%= __('admin:rb_none') %></button>
+                            <button type="button" data-on-click="RB.checkAll" data-args='["filterDomains"]'><%= __('admin:rb_select_all') %></button>
+                            <button type="button" data-on-click="RB.checkNone" data-args='["filterDomains"]'><%= __('admin:rb_none') %></button>
                         </div>
                         <div class="rb-checkbox-group" id="filterDomains" role="group" aria-labelledby="lblFilterDomains"></div>
                     </div>
                     <div class="rb-form-group">
                         <label id="lblFilterRoles"><%= __('admin:rb_roles') %></label>
                         <div class="rb-check-actions">
-                            <button type="button" onclick="RB.checkAll('filterRoles')"><%= __('admin:rb_select_all') %></button>
-                            <button type="button" onclick="RB.checkNone('filterRoles')"><%= __('admin:rb_none') %></button>
+                            <button type="button" data-on-click="RB.checkAll" data-args='["filterRoles"]'><%= __('admin:rb_select_all') %></button>
+                            <button type="button" data-on-click="RB.checkNone" data-args='["filterRoles"]'><%= __('admin:rb_none') %></button>
                         </div>
                         <div class="rb-checkbox-group" id="filterRoles" role="group" aria-labelledby="lblFilterRoles"></div>
                     </div>
@@ -244,21 +244,21 @@
                 <div class="rb-right-panel active" id="rpanelSql">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                         <span
-                            style="font-size:11px;color:var(--rb-text-muted);font-weight:600"><%= __('admin:rb_sql_preview') %></span>
+                            style="font-size:12px;color:var(--rb-text-muted);font-weight:600"><%= __('admin:rb_sql_preview') %></span>
                         <button class="rb-btn small" id="rbCopySQL"><%= __('admin:rb_copy') %></button>
                     </div>
                     <div class="rb-sql-preview" id="rbSQLContent"><%= __('admin:rb_sql_empty') %></div>
                 </div>
                 <div class="rb-right-panel" id="rpanelData">
                     <div
-                        style="font-size:11px;color:var(--rb-text-muted);font-weight:600;margin-bottom:10px">
+                        style="font-size:12px;color:var(--rb-text-muted);font-weight:600;margin-bottom:10px">
                         <%= __('admin:rb_data_preview') %></div>
                     <div id="rbDataContent"
-                        style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--rb-text-secondary)"><%= __('admin:rb_data_empty') %></div>
+                        style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--rb-text-secondary)"><%= __('admin:rb_data_empty') %></div>
                 </div>
                 <div class="rb-right-panel" id="rpanelRules">
                     <div
-                        style="font-size:11px;color:var(--rb-text-muted);font-weight:600;margin-bottom:10px">
+                        style="font-size:12px;color:var(--rb-text-muted);font-weight:600;margin-bottom:10px">
                         <%= __('admin:rb_cond_fmt') %></div>
                     <div id="rbRulesContent" style="font-size:12px;color:var(--rb-text-secondary)">
                         <p><strong style="color:var(--rb-text-primary)"><%= __('admin:rb_readiness') %></strong><br>&lt;50 → <span

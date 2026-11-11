@@ -341,15 +341,20 @@ describe('P2-06 — « Revues à finaliser » dit MAINTENANT de quelle campagne 
         expect(sansMotif).toContain('UAT3C-CLOSURE');
     });
 
-    test('le sujet d’e-mail nomme la campagne, et reste celui d’avant sans payload', () => {
-        const sujet = N._subjectFor('cycle.escalation', 'fr', 'IDevelop', {
-            cycle: 'UAT3C-CLOSURE',
-            stage: 'closure_proposed',
-        });
-        expect(sujet).toContain('UAT3C-CLOSURE');
+    test('le titre de l’e-mail nomme la campagne ; le sujet reste neutre (SA-47)', () => {
+        const payload = { cycle: 'UAT3C-CLOSURE', stage: 'closure_proposed' };
+        // Le sujet ne porte ni code, ni chiffre, ni date : il est lu sur un écran
+        // verrouillé et dans des boîtes partagées.
+        expect(N._subjectFor('cycle.escalation', 'fr', 'IDevelop', payload)).toBe(
+            'IDevelop — Revues à finaliser'
+        );
         expect(N._subjectFor('cycle.escalation', 'fr', 'IDevelop')).toBe(
             'IDevelop — Revues à finaliser'
         );
+        // Le titre DANS l’e-mail, lui, nomme la campagne.
+        const mail = N._render({ kind: 'cycle.escalation', payload, locale: 'fr', brand: {} });
+        expect(mail.html).toContain('UAT3C-CLOSURE');
+        expect(mail.subject).not.toContain('UAT3C-CLOSURE');
     });
 
     test('un payload hostile ne casse ni ne déborde le libellé', () => {

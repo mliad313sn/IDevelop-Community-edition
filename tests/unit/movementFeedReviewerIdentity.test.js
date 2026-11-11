@@ -51,9 +51,10 @@ afterAll(async () => {
     await db.close().catch(() => {});
 });
 
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 // Needs a POPULATED database (reviews already decided): runs only against an
 // opt-in fixture database — see CONTRIBUTING.md.
-const HAS_FIXTURES = /idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''));
+const HAS_FIXTURES = isFixturesDatabaseUrl(process.env.DATABASE_URL);
 (HAS_FIXTURES ? describe : describe.skip)(
     'FMEA C2 — the movement feed attributes a review to the right person',
     () => {

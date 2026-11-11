@@ -1,14 +1,47 @@
-<% if (typeof breadcrumbs !== 'undefined' && breadcrumbs && breadcrumbs.length > 0) { %>
+<%#
+    The trail is DERIVED from the navigation config (src/config/navigation.js):
+    Tableau de bord › <section> › <entry> › <page>, with the names the rail uses.
+    Its root is the person's own home, like the logo.
+
+    It is shown on a page reached THROUGH a rail entry but deeper than it (a detail
+    page: /employees/12, /cycles/9…), or wherever a controller passes `breadcrumbs`
+    (its LAST crumb then names the page). A rail page itself needs no trail: the
+    rail already marks it (aria-current). A page the rail does not reach keeps the
+    controller's own trail, under the same root.
+%>
+<% const _bN = (typeof navConfig !== 'undefined' && navConfig) ? navConfig : null;
+   const _bUser = (typeof user !== 'undefined' && user) ? user : null;
+   const _bT = (k) => __(String(k).indexOf(':') === -1 ? 'chrome:' + k : k);
+   const _given = (typeof breadcrumbs !== 'undefined' && Array.isArray(breadcrumbs) && breadcrumbs.length) ? breadcrumbs : null;
+   const _pageTitle = _given ? _given[_given.length - 1].label : ((typeof title !== 'undefined' && title) ? title : null);
+   let _crumbs = null;
+   if (_bN && _bUser) {
+       const _tr = _bN.trail(locals, _pageTitle);
+       if (_tr && (_given || (_tr.length && !_tr[_tr.length - 1].labelKey))) {
+           _crumbs = _tr.map(function (c) { return { label: c.labelKey ? _bT(c.labelKey) : c.label, url: c.href }; });
+           // A controller crumb naming the rail entry itself adds nothing.
+           if (_crumbs.length > 1 && _crumbs[_crumbs.length - 1].label === _crumbs[_crumbs.length - 2].label) {
+               _crumbs.pop();
+               _crumbs[_crumbs.length - 1].url = null;
+           }
+       }
+   }
+   if (!_crumbs && _given) {
+       const _root = _bN && _bUser ? _bN.homeUrl(_bUser) : ((_bUser && _bUser.userType === 'employee') ? '/employee/dashboard' : '/dashboard');
+       _crumbs = [{ label: __('chrome:nav_breadcrumb_root'), url: _root }]
+           .concat(_given.map(function (c, i) { return { label: c.label, url: i === _given.length - 1 ? null : c.url }; }));
+   } %>
+<% if (_crumbs && _crumbs.length > 1) { %>
 <nav class="breadcrumbs" aria-label="<%= __('chrome:breadcrumb_aria') %>">
-    <a href="<%= (typeof user !== 'undefined' && user && user.userType === 'employee') ? '/employee/dashboard' : '/dashboard' %>"><i class="fas fa-home" aria-hidden="true"></i> <%= __('chrome:breadcrumb_home') %></a>
-    <% breadcrumbs.forEach(function(crumb, index) { %>
-        <span class="breadcrumbs-separator">›</span>
-        <% if (index === breadcrumbs.length - 1) { %>
-            <span class="breadcrumb-current"><%= crumb.label %></span>
+    <% _crumbs.forEach(function (crumb, index) { %>
+        <% if (index > 0) { %><span class="breadcrumbs-separator" aria-hidden="true">›</span><% } %>
+        <% if (index === _crumbs.length - 1) { %>
+            <span class="breadcrumb-current" aria-current="page"><%= crumb.label %></span>
+        <% } else if (crumb.url) { %>
+            <a href="<%= crumb.url %>"><% if (index === 0) { %><i class="fas fa-house" aria-hidden="true"></i> <% } %><%= crumb.label %></a>
         <% } else { %>
-            <a href="<%= crumb.url %>"><%= crumb.label %></a>
+            <span class="breadcrumb-section"><%= crumb.label %></span>
         <% } %>
     <% }); %>
 </nav>
 <% } %>
-

@@ -1,0 +1,38 @@
+<%#
+  status-badge — the shared status chip: an icon AND a text, never colour alone.
+  include('../partials/status-badge', { tone: 'ok', label: __('…'), n: 3 })
+  Locals:
+    tone       ok | warn | risk | info | neutral | unmeasured | accent (or a
+               workflow `state`: draft, submitted, approved, rejected, at_risk…)
+    label      TEXT, required — the icon is decorative, the text is the meaning;
+               pass a translated string
+    n          optional count rendered after the label
+    icon       optional Font Awesome class (fa-…) replacing the tone's default
+    text       true → sentence-case variant for long labels
+    title      optional tooltip
+    className  optional extra classes (escaped like every other value)
+  The client helper public/js/status-badge.js renders the same markup.
+%>
+<%
+  const _sbTones = ['ok', 'warn', 'risk', 'info', 'neutral', 'unmeasured', 'accent'];
+  const _sbAlias = { good: 'ok', success: 'ok', danger: 'risk', error: 'risk', warning: 'warn', primary: 'accent', muted: 'neutral' };
+  const _sbState = {
+    draft: 'neutral', pending: 'neutral', not_started: 'neutral', inactive: 'neutral',
+    submitted: 'info', under_review: 'info', active: 'info', in_progress: 'info', open: 'info',
+    changes_requested: 'warn', at_risk: 'warn', expiring: 'warn', overdue: 'warn', partial: 'warn',
+    approved: 'ok', completed: 'ok', closed_success: 'ok', valid: 'ok', done: 'ok', ready: 'ok',
+    rejected: 'risk', cancelled: 'risk', closed_failure: 'risk', expired: 'risk', failed: 'risk', not_ready: 'risk',
+    arbitration: 'accent', escalated: 'accent',
+    unmeasured: 'unmeasured', not_assessed: 'unmeasured', no_data: 'unmeasured', unknown: 'unmeasured'
+  };
+  const _sbIcon = { ok: 'fa-circle-check', warn: 'fa-triangle-exclamation', risk: 'fa-circle-xmark', info: 'fa-circle-info', neutral: 'fa-minus', unmeasured: 'fa-circle-question', accent: 'fa-diamond' };
+  let _sbT = String((typeof tone !== 'undefined' && tone) ? tone : (typeof state !== 'undefined' && state) ? state : 'neutral').toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(_sbAlias, _sbT)) _sbT = _sbAlias[_sbT];
+  if (_sbTones.indexOf(_sbT) < 0) _sbT = Object.prototype.hasOwnProperty.call(_sbState, _sbT) ? _sbState[_sbT] : 'neutral';
+  const _sbIc = (typeof icon !== 'undefined' && icon && /^fa-[a-z0-9-]+$/.test(String(icon))) ? icon : _sbIcon[_sbT];
+  const _sbLabel = (typeof label !== 'undefined' && label != null) ? String(label) : '';
+  const _sbN = (typeof n !== 'undefined' && n !== null && n !== '') ? n : null;
+  const _sbText = typeof text !== 'undefined' && !!text;
+  const _sbTitle = (typeof title !== 'undefined' && title) ? String(title) : '';
+  const _sbClass = (typeof className !== 'undefined' && className) ? String(className) : '';
+%><span class="badge badge--<%= _sbT %><%= _sbText ? ' badge--text' : '' %><%= _sbClass ? ' ' + _sbClass : '' %>" data-tone="<%= _sbT %>"<% if (_sbTitle) { %> title="<%= _sbTitle %>"<% } %>><i class="fas <%= _sbIc %> badge-ic" aria-hidden="true"></i><span class="badge-label"><%= _sbLabel %></span><% if (_sbN !== null) { %><span class="badge-n"><%= _sbN %></span><% } %></span>

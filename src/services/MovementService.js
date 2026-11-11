@@ -36,6 +36,8 @@ const KINDS = [
     'placement_cancelled',
     'assessment_cancelled',
     'account',
+    // A SuperAdmin reset for redo (MaintenanceService.resetAssessment, migration 181).
+    'assessment_reset',
 ];
 const STREAMS = ['movement', 'assessment', 'review'];
 

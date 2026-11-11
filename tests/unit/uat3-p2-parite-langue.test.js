@@ -167,10 +167,12 @@ describe('P2-02 — le positionnement 9-box se lit dans la langue de la page', (
 // =========================================================================
 describe('P2-03 — le plan créé avec le PIP est écrit dans la langue de la personne', () => {
     const src = read('src/services/DevelopmentTriggerService.js');
-    const TPL = new Function( // eslint-disable-line no-new-func
+    const TPL = new Function(
+        // eslint-disable-line no-new-func
         `${src.slice(src.indexOf('const COACHING_PIP_TEMPLATES'), src.indexOf('function planLocale'))}; return COACHING_PIP_TEMPLATES;`
     )();
-    const localeOf = new Function( // eslint-disable-line no-new-func
+    const localeOf = new Function(
+        // eslint-disable-line no-new-func
         `${src.slice(src.indexOf('function planLocale'), src.indexOf('class DevelopmentTriggerService'))}; return planLocale;`
     )();
 
@@ -365,7 +367,8 @@ describe('P2-17 — un refus de clé d API est une phrase, jamais une clé', () 
         expect(block).not.toMatch(/error: 'unknown owner profile'/);
         for (const k of KEYS) expect(block).toContain(k);
         // Le helper : un t() qui renvoie la clé retombe sur la phrase de référence.
-        const _akT = new Function( // eslint-disable-line no-new-func
+        const _akT = new Function(
+            // eslint-disable-line no-new-func
             `${src.slice(at(src, /const _akT =/), at(src, POST_KEYS))}; return _akT;`
         )();
         expect(_akT({ t: (x) => x }, 'ops_apikey_past_expiry', 'FALLBACK')).toBe('FALLBACK');

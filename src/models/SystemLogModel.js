@@ -125,8 +125,12 @@ class SystemLogModel extends BaseModel {
             params.push(f.requestId);
         }
         if (f.actor) {
-            where.push(`(${ilike('a.username')} OR ${ilike('sl.actor_ref')})`);
-            params.push('%' + f.actor + '%', '%' + f.actor + '%');
+            // Rows carry ids only, so a NAME typed here is matched against the
+            // people the refs point to (erased people never match a name).
+            where.push(`(${ilike('a.username')} OR ${ilike('sl.actor_ref')} OR (sl.actor_ref ~ '^(employee|manager|supervisor):[0-9]+$' AND EXISTS (
+                SELECT 1 FROM employees pe WHERE pe.id = split_part(sl.actor_ref, ':', 2)::bigint AND pe.erased_at IS NULL
+                   AND ${ilike("(pe.first_name || ' ' || pe.last_name)")})))`);
+            params.push('%' + f.actor + '%', '%' + f.actor + '%', '%' + f.actor + '%');
         }
         // Entity filter: canonical name matches every legacy spelling.
         if (f.entityType) {
@@ -192,7 +196,7 @@ class SystemLogModel extends BaseModel {
      * awaited per page so the caller can stream; keyset paging on id keeps it
      * O(1) per page whatever the offset. Returns the row count.
      */
-    async eachFilteredPage(f = {}, scope = null, onPage, pageSize = 1000) {
+    async eachFilteredPage(f = {}, scope = null, onPage, pageSize = 1000, opts = {}) {
         const { clause, params } = this._filterClause(f);
         const sc = this._scopeCond(scope);
         let where = clause;
@@ -215,7 +219,8 @@ class SystemLogModel extends BaseModel {
             );
             if (!rows.length) break;
             total += rows.length;
-            await onPage(rows);
+            // The export resolves names at read time too.
+            await onPage(await this.resolvePeople(rows, opts));
             lastId = Number(rows[rows.length - 1].id);
             if (rows.length < pageSize) break;
         }
@@ -235,7 +240,7 @@ class SystemLogModel extends BaseModel {
         };
     }
 
-    async findFiltered(f = {}, limit = 100, offset = 0, scope = null) {
+    async findFiltered(f = {}, limit = 100, offset = 0, scope = null, opts = {}) {
         const { clause, params } = this._filterClause(f);
         const sc = this._scopeCond(scope);
         let where = clause;
@@ -244,7 +249,7 @@ class SystemLogModel extends BaseModel {
             where = where ? `${where} AND ${sc.cond}` : `WHERE ${sc.cond}`;
             all.push(...sc.params);
         }
-        return db.all(
+        const rows = await db.all(
             `SELECT sl.*, a.username
                FROM system_logs sl LEFT JOIN admins a ON sl.admin_id = a.id
                ${where}
@@ -252,6 +257,147 @@ class SystemLogModel extends BaseModel {
               LIMIT ? OFFSET ?`,
             [...all, Number(limit), Number(offset)]
         );
+        return this.resolvePeople(rows, opts);
+    }
+
+    /**
+     * Names are resolved WHEN THE LOG IS READ, never stored. Rows carry refs
+     * (`employee:84`, `admin:3`, actor_ref, a person entity); this adds, per row:
+     *   actorName    the actor's display name (admin username, or the
+     *                employee's name) — also copied into `username` when the
+     *                admin join gave none, so the page and the CSV export show
+     *                it without change;
+     *   actorErasedId / subjectErasedId  set when that person is erased — the
+     *                view prints "Erased person #id" (localised);
+     *   subjectName  the person the row is about (entity employee / admin);
+     *   details      every `employee:<id>` / `admin:<id>` ref inside the text
+     *                followed by the name: `employee:84 (Jane Doe)`.
+     * Two queries per page, whatever its size. A failed lookup leaves the rows
+     * exactly as stored (refs only) — never a wrong name.
+     * `opts.erasedLabel(id)` words an erased person in the reader's language;
+     * English when the caller gives none.
+     */
+    async resolvePeople(rows, opts = {}) {
+        if (!Array.isArray(rows) || !rows.length) return rows;
+        const empIds = new Set();
+        const admIds = new Set();
+        const REF = /\b(employee|manager|supervisor|admin):(\d+)\b/g;
+        const note = (type, id) => {
+            const n = Number(id);
+            if (!Number.isInteger(n) || n <= 0) return;
+            (type === 'admin' ? admIds : empIds).add(n);
+        };
+        const detailsText = (d) =>
+            d == null ? '' : typeof d === 'object' ? JSON.stringify(d) : String(d);
+        for (const r of rows) {
+            const ar = String(r.actorRef || r.actor_ref || '');
+            const m = /^(employee|manager|supervisor|admin):(\d+)$/.exec(ar);
+            if (m) note(m[1], m[2]);
+            if (r.adminId || r.admin_id) note('admin', r.adminId || r.admin_id);
+            const et = String(r.entityType || r.entity_type || '');
+            const eid = r.entityId ?? r.entity_id;
+            if (['employee', 'employees'].includes(et)) note('employee', eid);
+            if (['admin', 'admins', 'localAdmins'].includes(et)) note('admin', eid);
+            for (const x of detailsText(r.details).matchAll(REF)) note(x[1], x[2]);
+        }
+        let emps = [];
+        let adms = [];
+        try {
+            [emps, adms] = await Promise.all([
+                empIds.size
+                    ? db.all(
+                          'SELECT id, first_name, last_name, erased_at FROM employees WHERE id = ANY(?)',
+                          [[...empIds]]
+                      )
+                    : [],
+                admIds.size
+                    ? db.all(
+                          'SELECT id, username, linked_employee_id FROM admins WHERE id = ANY(?)',
+                          [[...admIds]]
+                      )
+                    : [],
+            ]);
+        } catch (_) {
+            return rows;
+        }
+        const ERASED =
+            opts && typeof opts.erasedLabel === 'function'
+                ? (id) => String(opts.erasedLabel(id))
+                : (id) => `Erased person #${id}`;
+        const empName = new Map();
+        const empErased = new Set();
+        for (const e of emps || []) {
+            const id = Number(e.id);
+            if (e.erasedAt || e.erased_at) {
+                empErased.add(id);
+                empName.set(id, ERASED(id));
+            } else {
+                const n = [e.firstName ?? e.first_name, e.lastName ?? e.last_name]
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim();
+                if (n) empName.set(id, n);
+            }
+        }
+        const admName = new Map();
+        const admErasedEmp = new Map(); // admin id → erased linked employee id
+        for (const a of adms || []) {
+            const id = Number(a.id);
+            const linked = Number(a.linkedEmployeeId ?? a.linked_employee_id);
+            if (/^erased-/i.test(String(a.username || ''))) {
+                const who = Number.isInteger(linked) && linked > 0 ? linked : id;
+                admErasedEmp.set(id, who);
+                admName.set(id, ERASED(who));
+            } else if (a.username) admName.set(id, String(a.username));
+        }
+        const nameOf = (type, id) =>
+            type === 'admin' ? admName.get(Number(id)) : empName.get(Number(id));
+        const erasedOf = (type, id) => {
+            if (type === 'admin') return admErasedEmp.get(Number(id)) ?? null;
+            return empErased.has(Number(id)) ? Number(id) : null;
+        };
+        const withNames = (s) =>
+            s.replace(REF, (whole, type, id) => {
+                const n = nameOf(type, id);
+                if (!n) return whole;
+                // Inside JSON text the name must stay a valid string body.
+                return `${whole} (${JSON.stringify(n).slice(1, -1)})`;
+            });
+        return rows.map((r) => {
+            const out = { ...r };
+            const ar = String(r.actorRef || r.actor_ref || '');
+            const m = /^(employee|manager|supervisor|admin):(\d+)$/.exec(ar);
+            const adminId = r.adminId || r.admin_id;
+            if (adminId) {
+                out.actorName = admName.get(Number(adminId)) || r.username || null;
+                out.actorErasedId = erasedOf('admin', adminId);
+            } else if (m) {
+                out.actorName = nameOf(m[1], m[2]) || null;
+                out.actorErasedId = erasedOf(m[1], m[2]);
+            }
+            if (out.actorErasedId != null) out.username = ERASED(out.actorErasedId);
+            else if (!out.username && out.actorName) out.username = out.actorName;
+            const et = String(r.entityType || r.entity_type || '');
+            const eid = r.entityId ?? r.entity_id;
+            const stype = ['employee', 'employees'].includes(et)
+                ? 'employee'
+                : ['admin', 'admins', 'localAdmins'].includes(et)
+                  ? 'admin'
+                  : null;
+            if (stype && eid != null) {
+                out.subjectName = nameOf(stype, eid) || null;
+                out.subjectErasedId = erasedOf(stype, eid);
+            }
+            if (typeof r.details === 'string') out.details = withNames(r.details);
+            else if (r.details && typeof r.details === 'object') {
+                try {
+                    out.details = JSON.parse(withNames(JSON.stringify(r.details)));
+                } catch (_) {
+                    out.details = r.details;
+                }
+            }
+            return out;
+        });
     }
 
     async countFiltered(f = {}, scope = null) {
@@ -273,7 +419,7 @@ class SystemLogModel extends BaseModel {
     // Full correlated trail for one request id: audit rows + perf events, time-ordered.
     // Scope restricts the audit rows to the holder's clearance; perf_events carry no
     // actor/employee dimension, so they are a SuperAdmin-only infra signal.
-    async findByRequestId(requestId, scope = null) {
+    async findByRequestId(requestId, scope = null, opts = {}) {
         // request_id is a uuid column: anything else used to reach PG as a cast
         // error (22P02 → HTTP 500). An unknown id is an EMPTY trail.
         if (
@@ -297,7 +443,7 @@ class SystemLogModel extends BaseModel {
                       requestId,
                   ]),
         ]);
-        return { requestId, logs, perf };
+        return { requestId, logs: await this.resolvePeople(logs, opts), perf };
     }
 
     // "Conditions driving issues" — SQL-native aggregates over the structured columns.

@@ -1,0 +1,187 @@
+<%#
+  THE heatmap component. A server-rendered table (no Chart.js) plus progressive
+  behaviour from public/js/viz-heat.js (roving focus, tooltip, Enter = the cell's
+  link). Model = src/utils/heatModel.js (heatModel / coverageHeatModel):
+    kind 'attain'   % of the requirement credited (at most 100 %), orange below, « met » one calm state
+    kind 'deficit'  the missing level, orange only
+    kind 'coverage' « a of r » at the required level, orange only
+  Rules: "Not measured" is hatched, never coloured; fewer than 5 people is « < 5 »,
+  never coloured and never a link; colour is never the only carrier (the value
+  and ▼ are printed in the cell); aggregates only — a link opens an aggregate page.
+  Keyboard: one tab stop per grid, arrows / Home / End / PageUp / PageDown.
+  Phone (< 600 px): the cells furthest behind as a list, the full grid on demand.
+  Print: the full grid, the list and the buttons hidden, colours kept.
+  Locals: H (model), heatId, heatTitle?, heatSubtitle?, noneLabel?, topRows? (own
+  names: a page's `title` local is its page title), plus `__`, `lang`
+  and `numFmt` (utils/kpiFormat.forLang, set for every page by server.js).
+-%><%
+  var _H = (typeof H !== 'undefined' && H) ? H : null;
+  var _id = (typeof heatId !== 'undefined' && heatId) ? String(heatId) : 'vh';
+  var _F = (typeof numFmt !== 'undefined' && numFmt) ? numFmt : { num: function (v) { return v === null || v === undefined ? null : String(v); }, pct: function (v) { return v === null || v === undefined ? null : String(v) + ' %'; }, level: function (v) { return v === null || v === undefined ? null : String(v); } };
+  var _N = function (n) { return _F.num(n, 0); };
+  var _L1 = function (n) { return _F.level(n); };
+  var _P0 = function (v) { return _F.pct(v * 100, 0); };
+  var _P1 = function (v) { return _F.pct(v * 100, 1); };
+  var _title = (typeof heatTitle !== 'undefined' && heatTitle) ? heatTitle : null;
+  var _sub = (typeof heatSubtitle !== 'undefined' && heatSubtitle) ? heatSubtitle : null;
+  var _none = (typeof noneLabel !== 'undefined' && noneLabel) ? noneLabel : __('viz:no_site');
+  // the label separator in the reader's typography (res.locals.colon: « : » / ":")
+  var _colon = (typeof colon !== 'undefined' && colon) ? colon : ((typeof lang !== 'undefined' && lang === 'en') ? ':' : ' :');
+  var _top = (typeof topRows !== 'undefined' && topRows) ? Number(topRows) : ((_H && _H.topRows) || 0);
+  var _kind = _H && _H.kind ? _H.kind : 'attain';
+  var _BINS = { attain: ['below-3', 'below-2', 'below-1', 'at'], deficit: ['below-3', 'below-2', 'below-1', 'at'], coverage: ['below-3', 'below-2', 'below-1', 'at'] }[_kind] || [];
+  var colLabel = function (c) { return c.pooled ? __('viz:heat.pooled') : (c.none ? _none : (c.label || '—')); };
+  var rowsHead = __('viz:heat.rows_' + _kind);
+  var margRowLabel = _kind === 'coverage' ? __('viz:heat.marg_row_coverage') : (_kind === 'deficit' ? __('viz:heat.marg_row_deficit') : __('viz:heat.marg_row'));
+  // the value printed IN the cell: colour is never the only carrier
+  var valueText = function (c) {
+      if (c.state === 'na') return '·';
+      if (c.state === 'masked') return __('viz:heat.masked');
+      if (c.state === 'unmeasured') return __('viz:unmeasured');
+      if (_kind === 'attain') return _P0(c.value);
+      if (_kind === 'deficit') return c.bin === 'at' ? __('viz:heat.met') : __('viz:heat.short', { v: _L1(c.value) });
+      return c.bin === 'at' ? __('viz:heat.covered') : __('viz:heat.cov_cell', { a: _N(c.available), r: _N(c.required) });
+  };
+  var nText = function (c) {
+      if (c.state !== 'ok') return '';
+      if (_kind === 'coverage') { var u = (c.required || 0) - (c.measured || 0); return u > 0 ? __('viz:heat.cov_unassessed', { count: u }) : __('viz:heat.n', { n: _N(c.measured) }); }
+      return __('viz:heat.n', { n: _N(c.n) });
+  };
+  var tipLines = function (c) {
+      var l = [];
+      if (c.state === 'ok') {
+          if (_kind === 'attain') l.push(__('viz:heat.tip_level', { a: _L1(c.actual), r: _L1(c.required), p: _P0(c.value) }));
+          else if (_kind === 'deficit') l.push(c.bin === 'at' ? __('viz:heat.tip_met', { a: _L1(c.actual), r: _L1(c.required) }) : __('viz:heat.tip_deficit', { v: _L1(c.value), a: _L1(c.actual), r: _L1(c.required) }));
+          else l.push(__('viz:heat.tip_cov', { a: _N(c.available), r: _N(c.required), m: _N(c.measured) }));
+          if (_kind !== 'coverage') l.push(__('viz:heat.tip_n', { n: _N(c.n) }));
+          if (c.href) l.push(__('viz:heat.tip_drill'));
+      } else if (c.state === 'masked') l.push(__('viz:heat.tip_masked'));
+      else if (c.state === 'unmeasured') l.push(__('viz:heat.tip_unmeasured'));
+      else l.push(__('viz:heat.tip_na'));
+      return l;
+  };
+  var cellCls = function (c, extra) {
+      var k = 'vh-c' + (extra ? ' ' + extra : '');
+      if (c.state === 'masked') return k + ' vh-c--masked';
+      if (c.state === 'unmeasured') return k + ' vh-c--unmeasured viz-hatch';
+      if (c.state === 'na') return k + ' vh-c--na';
+      return k;
+  };
+  // the one sentence a reader should keep
+  var takeaway = null;
+  if (_H && _H.rows && _H.rows.length) {
+      if (_kind === 'attain' || _kind === 'coverage') {
+          var best = null;
+          _H.rows.forEach(function (r) { var k = r.cells.filter(function (c) { return c.below; }).length; if (k && (!best || k > best.k)) best = { r: r, k: k }; });
+          var m = _H.cols.length;
+          takeaway = best
+              ? (_kind === 'attain' ? __('viz:heat.tk_attain', { domain: best.r.label, k: _N(best.k), m: _N(m) }) : __('viz:heat.tk_coverage', { skill: best.r.label, k: _N(best.k), m: _N(m) }))
+              : (_kind === 'attain' ? __('viz:heat.tk_attain_none') : __('viz:heat.tk_coverage_none'));
+      } else if (_H.flat && _H.flat.length && _H.flat[0].bin !== 'at') {
+          var w = _H.flat[0];
+          takeaway = __('viz:heat.tk_deficit', { domain: w.row, where: w.pooled ? __('viz:heat.pooled') : (w.none ? _none : (w.col || '—')), v: _L1(w.value) });
+      }
+  }
+  var _entry = { done: false }; // roving tabindex: the first MEASURED cell of a grid is its one tab stop
+  var mainRows = _H && _H.rows ? (_top && _H.rows.length > _top ? _H.rows.slice(0, _top) : _H.rows) : [];
+  var moreRows = _H && _H.rows && _top && _H.rows.length > _top ? _H.rows.slice(_top) : [];
+  var _titleText = _title || __('viz:heat.title_' + _kind);
+-%>
+<figure class="vh" id="<%= _id %>" data-vh-kind="<%= _kind %>" aria-labelledby="<%= _id %>-h">
+    <figcaption class="vh-head">
+        <% if (_title) { %><h3 class="vh-title" id="<%= _id %>-h"><%= _title %></h3><% } else { %><span class="viz-live" id="<%= _id %>-h"><%= _titleText %></span><% } %>
+        <% if (_sub) { %><p class="viz-subtitle"><%= _sub %></p><% } %>
+        <% if (takeaway) { %><p class="vh-tk"><%= takeaway %></p><% } %>
+    </figcaption>
+<% if (!_H || !_H.rows || !_H.rows.length) { %>
+    <p class="vh-note"><%= __('viz:heat.empty') %></p>
+    <% if (_H && _H.unmeasuredRows) { %><p class="vh-note" data-heat-unmeasured="<%= _H.unmeasuredRows %>"><%= __('viz:heat.unmeasured_rows', { count: _H.unmeasuredRows }) %></p><% } %>
+<% } else { %>
+    <% var renderCell = function (r, c, j, cols, extraCls) {
+        var colText = colLabel(cols[j]);
+        var lines = tipLines(c);
+        var tip = r.label + ' — ' + colText + '\n' + lines.join('\n');
+        var spoken = r.label + ', ' + colText + _colon + ' ' + valueText(c) + (c.below ? ' ▼' : '') + '. ' + lines.join('. ');
+        var _tab = (c.state === 'ok' && !_entry.done) ? '0' : '-1'; if (_tab === '0') _entry.done = true;
+        var nt = nText(c); %><td role="gridcell" tabindex="<%= _tab %>" class="<%= cellCls(c, extraCls) %>"<% if (c.state === 'ok') { %> data-bin="<%= c.bin %>"<% if (c.below) { %> data-below="1"<% } %><% } %> data-tip="<%= tip %>"><% if (c.href && c.state === 'ok') { %><a class="vh-drill" href="<%= c.href %>" tabindex="-1" aria-hidden="true"><% } %><span class="vh-v<%= c.state === 'unmeasured' ? ' vh-v--sm' : '' %>" aria-hidden="true"><%= valueText(c) %><% if (c.below) { %><span class="vh-mk">▼</span><% } %></span><% if (nt) { %><span class="vh-n" aria-hidden="true"><%= nt %></span><% } %><% if (c.href && c.state === 'ok') { %></a><% } %><span class="viz-live"><%= spoken %></span></td><% }; %>
+    <% var gridTable = function (rows, first, tid) { _entry.done = false; %>
+    <table class="vh-grid" id="<%= tid %>" role="grid" aria-describedby="<%= _id %>-legend" aria-rowcount="<%= rows.length + (first ? 2 : 1) %>" aria-colcount="<%= _H.cols.length + 2 %>">
+        <caption class="viz-live"><%= __('viz:heat.caption', { title: _titleText }) %></caption>
+        <thead><tr>
+            <th scope="col" class="vh-corner"><%= rowsHead %></th>
+            <% _H.cols.forEach(function (c) { %><th scope="col" class="vh-colh<%= c.pooled ? ' vh-colh--pooled' : '' %>"<% if (c.pooled) { %> title="<%= __('viz:heat.pooled_tip', { list: c.pooled.map(function (p) { return p || _none; }).join(', ') }) %>"<% } %>><span class="vh-colt"><%= colLabel(c) %></span><% if (_kind !== 'coverage' && c.n) { %><span class="vh-coln"><%= __('viz:heat.n', { n: _N(c.n) }) %></span><% } %></th><% }); %>
+            <th scope="col" class="vh-colh vh-marg"><span class="vh-colt"><%= __('viz:heat.marg_col') %></span></th>
+        </tr></thead>
+        <tbody>
+        <% rows.forEach(function (r) { %>
+            <tr><th scope="row" class="vh-rowh"><%= r.label %></th>
+            <% r.cells.forEach(function (c, j) { %><% renderCell(r, c, j, _H.cols); %><% }); %>
+            <% renderCell(r, r.marg, 0, [{ label: __('viz:heat.marg_col') }], 'vh-marg'); %>
+            </tr>
+        <% }); %>
+        <% if (first) { %>
+            <tr class="vh-margrow"><th scope="row" class="vh-rowh"><%= margRowLabel %></th>
+            <% _H.cols.forEach(function (c, j) { %><% renderCell({ label: margRowLabel }, c.marg, j, _H.cols); %><% }); %>
+            <% renderCell({ label: margRowLabel }, _H.total || { state: 'na' }, 0, [{ label: __('viz:heat.marg_col') }], 'vh-marg'); %>
+            </tr>
+        <% } %>
+        </tbody>
+    </table>
+    <% }; %>
+    <% if (_H.layout === 'grid') { %>
+    <div class="vh-scroll" data-vh-scroll>
+        <% gridTable(mainRows, true, _id + '-grid'); %>
+    </div>
+    <% if (moreRows.length) { %>
+    <details class="vh-more">
+        <summary class="btn btn-sm btn-secondary"><%= __('viz:heat.more_rows', { count: _H.rows.length }) %></summary>
+        <div class="vh-scroll"><% gridTable(moreRows, false, _id + '-grid2'); %></div>
+    </details>
+    <% } %>
+    <% } %>
+    <ol class="vh-list<%= _H.layout === 'grid' ? '' : ' vh-list--only' %>" aria-label="<%= __('viz:heat.list_title') %>">
+        <% (_H.flat || []).forEach(function (x) { var _um = x.state === 'unmeasured'; var _nt = nText(x); %>
+        <li class="vh-item<%= _um ? ' vh-item--unmeasured' : '' %>"><% if (_um) { %><span class="vh-sw viz-hatch" aria-hidden="true"></span><% } else { %><span class="vh-sw" data-bin="<%= x.bin %>" aria-hidden="true"></span><% } %>
+            <span class="vh-item-t"><% if (x.href) { %><a class="vh-item-link" href="<%= x.href %>"><%= x.row %></a><% } else { %><%= x.row %><% } %></span>
+            <span class="vh-item-v"><%= valueText(x) %><% if (x.below) { %> ▼<% } %></span>
+            <span class="vh-item-m"><%= x.pooled ? __('viz:heat.pooled') : (x.none ? _none : (x.col || '—')) %><% if (_nt) { %> · <%= _nt %><% } %></span>
+        </li>
+        <% }); %>
+    </ol>
+    <% if (_H.layout === 'grid') { %><p class="vh-showgrid"><button type="button" class="btn btn-sm btn-secondary" data-vh-showgrid aria-controls="<%= _id %>-grid" aria-expanded="false" data-label-open="<%= __('viz:heat.show_grid') %>" data-label-close="<%= __('viz:heat.hide_grid') %>"><%= __('viz:heat.show_grid') %></button></p><% } %>
+    <p class="vh-legend" id="<%= _id %>-legend">
+        <% _BINS.filter(function (b) { return (_H.binsPresent || []).indexOf(b) >= 0; }).forEach(function (b) { %><span class="vh-key"><span class="vh-sw" data-bin="<%= b %>" aria-hidden="true"></span><%= __('viz:heat.bin_' + _kind + '_' + b.replace('-', '_')) %></span><% }); %>
+        <% if (_H.hasBelow) { %><span class="vh-key"><%= _kind === 'deficit' ? __('viz:heat.legend_below_deficit') : __('viz:heat.legend_below') %></span><% } %>
+        <% if (_H.hasMasked) { %><span class="vh-key"><span class="vh-sw vh-sw--masked" aria-hidden="true"></span><%= __('viz:heat.legend_masked') %></span><% } %>
+        <% if (_H.hasUnmeasured) { %><span class="vh-key"><span class="vh-sw viz-hatch" aria-hidden="true"></span><%= __('viz:unmeasured') %></span><% } %>
+    </p>
+    <% if (_H.restRows) { %><p class="vh-note"><%= __('viz:heat.rest_rows', { count: _H.restRows }) %></p><% } %>
+    <% if (_H.unmeasuredRows) { %><p class="vh-note" data-heat-unmeasured="<%= _H.unmeasuredRows %>"><%= __('viz:heat.unmeasured_rows', { count: _H.unmeasuredRows }) %></p><% } %>
+    <div role="tooltip" class="vh-tip" id="<%= _id %>-tip" hidden></div>
+    <details class="viz-data">
+        <summary class="viz-data-toggle btn btn-sm btn-secondary"><%= __('viz:chart.toggle_show') %></summary>
+        <div class="viz-table-wrap">
+            <table class="viz-table" id="<%= _id %>-data">
+                <caption class="viz-live"><%= __('viz:chart.table_caption', { title: _titleText }) %></caption>
+                <thead><tr><th scope="col"><%= rowsHead %></th><th scope="col"><%= __('viz:heat.col_col') %></th>
+                <% if (_kind === 'coverage') { %><th scope="col" class="viz-num"><%= __('viz:heat.col_avail') %></th><th scope="col" class="viz-num"><%= __('viz:heat.col_measured') %></th><th scope="col" class="viz-num"><%= __('viz:heat.col_req_people') %></th><th scope="col" class="viz-num"><%= __('viz:heat.col_pct') %></th>
+                <% } else { %><th scope="col" class="viz-num"><%= __('viz:heat.col_actual') %></th><th scope="col" class="viz-num"><%= __('viz:heat.col_required') %></th><th scope="col" class="viz-num"><%= _kind === 'deficit' ? __('viz:heat.col_gap') : __('viz:heat.col_pct') %></th><th scope="col" class="viz-num"><%= __('viz:heat.col_n') %></th><% } %>
+                </tr></thead>
+                <tbody>
+                <% var dataRow = function (rl, cl, c) { if (c.state === 'na') return; %>
+                    <tr><th scope="row"><%= rl %></th><td><%= cl %></td>
+                    <% if (c.state !== 'ok') { %><td class="viz-num viz-unmeasured-cell" colspan="4"><%= c.state === 'masked' ? __('viz:heat.tip_masked') : __('viz:unmeasured') %></td>
+                    <% } else if (_kind === 'coverage') { %><td class="viz-num"><%= _N(c.available) %></td><td class="viz-num"><%= _N(c.measured) %></td><td class="viz-num"><%= _N(c.required) %></td><td class="viz-num"><%= c.measured < 5 ? __('viz:small_n') : _P1(c.value) %></td>
+                    <% } else { %><td class="viz-num"><%= _L1(c.actual) %></td><td class="viz-num"><%= _L1(c.required) %></td><td class="viz-num"><%= _kind === 'deficit' ? (c.bin === 'at' ? __('viz:heat.met') : __('viz:heat.short', { v: _L1(c.value) })) : _P1(c.value) %></td><td class="viz-num"><%= _N(c.n) %></td><% } %>
+                    </tr>
+                <% }; %>
+                <% _H.rows.forEach(function (r) { r.cells.forEach(function (c, j) { dataRow(r.label, colLabel(_H.cols[j]), c); }); dataRow(r.label, __('viz:heat.marg_col'), r.marg); }); %>
+                <% _H.cols.forEach(function (c) { dataRow(margRowLabel, colLabel(c), c.marg); }); %>
+                <% if (_H.total) dataRow(margRowLabel, __('viz:heat.marg_col'), _H.total); %>
+                </tbody>
+            </table>
+            <% var pooledCol = _H.cols.filter(function (c) { return c.pooled; })[0]; if (pooledCol) { %><p class="vh-note"><%= __('viz:heat.pooled_tip', { list: pooledCol.pooled.map(function (p) { return p || _none; }).join(', ') }) %></p><% } %>
+        </div>
+    </details>
+<% } %>
+</figure>

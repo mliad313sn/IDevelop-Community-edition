@@ -3,6 +3,8 @@ const AdminModel = require('../models/AdminModel');
 const LogService = require('./LogService');
 const PasswordHistoryModel = require('../models/PasswordHistoryModel');
 const passwordValidator = require('../utils/passwordValidator');
+// Timing: a refused identifier costs the same bcrypt comparison as a real one.
+const { dummyCompare } = require('../utils/dummyBcrypt');
 
 class AuthService {
     async login(username, password, req) {
@@ -13,9 +15,11 @@ class AuthService {
         if (!admin && username && String(username).includes('@')) {
             const u = await require('./EmailAccountsService').uniqueAdminByEmail(username);
             if (u.ambiguous) {
+                await dummyCompare(password);
                 await LogService.log({
                     action: 'LOGIN_FAILED',
-                    details: `Login by e-mail refused: the address is shared by several admin accounts (username required): ${username}`,
+                    // Ids only: a typed identifier is fingerprinted, never stored.
+                    details: `Login by e-mail refused: the address is shared by several admin accounts (username required): ${require('./AuditRetentionService').fingerprint(username)}`,
                     ipAddress: req.ip,
                     userAgent: req.get('user-agent'),
                 });
@@ -32,12 +36,23 @@ class AuthService {
         }
 
         if (!admin || !admin.isActive) {
-            await LogService.log({
-                action: 'LOGIN_FAILED',
-                details: `Failed login attempt for username: ${username}`,
-                ipAddress: req.ip,
-                userAgent: req.get('user-agent'),
-            });
+            await dummyCompare(password); // same cost as a real wrong password
+            // An identifier unknown to the ADMIN table is not yet a failure: the
+            // sign-in strategy goes on to the employee table, and an ordinary
+            // employee sign-in (even a successful one) used to leave a spurious
+            // "unknown identifier" row here. The failure is written once, by
+            // EmployeeAuthService, only when BOTH lookups miss. A real but
+            // inactive admin account is still recorded here.
+            if (admin) {
+                await LogService.log({
+                    action: 'LOGIN_FAILED',
+                    entityType: 'admin',
+                    entityId: Number(admin.id),
+                    details: `Failed login attempt for admin #${admin.id} (account inactive)`,
+                    ipAddress: req.ip,
+                    userAgent: req.get('user-agent'),
+                });
+            }
             return { success: false, message: 'Invalid credentials' };
         }
 
@@ -46,9 +61,12 @@ class AuthService {
             const lockDate = new Date(admin.lockedUntil);
             const now = new Date();
             if (lockDate > now) {
+                await dummyCompare(password);
                 await LogService.log({
                     action: 'LOGIN_FAILED',
-                    details: `Login attempt for locked account: ${username}`,
+                    entityType: 'admin',
+                    entityId: Number(admin.id),
+                    details: `Login attempt for locked account admin #${admin.id}`,
                     ipAddress: req.ip,
                     userAgent: req.get('user-agent'),
                 });
@@ -68,7 +86,9 @@ class AuthService {
         if (!isValid) {
             await LogService.log({
                 action: 'LOGIN_FAILED',
-                details: `Failed login attempt for username: ${username}`,
+                entityType: 'admin',
+                entityId: Number(admin.id),
+                details: `Failed login attempt for admin #${admin.id} (wrong password)`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -88,7 +108,7 @@ class AuthService {
         await LogService.log({
             adminId: admin.id,
             action: 'LOGIN_SUCCESS',
-            details: `User logged in: ${username}`,
+            details: `Admin #${admin.id} logged in`,
             ipAddress: req.ip,
             userAgent: req.get('user-agent'),
         });
@@ -187,7 +207,7 @@ class AuthService {
             // the SECOND seed path (PostgresDatabase.seed is the other); both had
             // the same hardcoded default, so fixing only one would have left the
             // guessable credential reachable through this one.
-            const { seedAdminPassword } = require('../utils/bootstrapAdmin');
+            const { seedAdminPassword, printFirstRunBanner } = require('../utils/bootstrapAdmin');
             const { password, generated } = seedAdminPassword();
             const passwordHash = await bcrypt.hash(password, 12);
             await AdminModel.create({
@@ -201,14 +221,7 @@ class AuthService {
                 forcePasswordChange: 1,
             });
             if (generated) {
-                console.log('');
-                console.log('  ============================================================');
-                console.log('   FIRST-RUN SUPERADMIN — copy this now, it is shown ONCE');
-                console.log('     username : admin');
-                console.log(`     password : ${password}`);
-                console.log('   A password change is required at first sign-in.');
-                console.log('  ============================================================');
-                console.log('');
+                printFirstRunBanner(password);
             }
         }
     }

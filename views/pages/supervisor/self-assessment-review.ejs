@@ -1,50 +1,55 @@
 <div class="page-header">
   <h1><i class="fas fa-clipboard-check" aria-hidden="true"></i> <%= __('talentx:sar_title') %></h1>
   <p class="text-muted"><%= __('talentx:sar_intro_grouped') %> <strong><%= __('talentx:sar_intro_per_employee') %></strong>. <%= __('talentx:sar_intro_supervisor') %> <em><%= __('talentx:sar_intro_or') %></em> <%= __('talentx:sar_intro_rest') %></p>
-  <p class="text-muted" style="font-size:.85em"><%= __('talentx:sar_gap_hint_pre') %> <a href="/supervisor/gap-analysis"><%= __('talentx:sar_gap_analysis') %></a>.</p>
+  <p class="text-muted sa-hint"><%= __('talentx:sar_gap_hint_pre') %> <a href="/supervisor/gap-analysis"><%= __('talentx:sar_gap_analysis') %></a>.</p>
 </div>
 
-<div id="sa-analytics" class="card" style="margin-bottom:1rem;padding:.85rem 1rem;">
-  <strong><%= __('talentx:sar_pipeline') %></strong> <span id="sa-analytics-body"><%= __('talentx:sar_loading') %></span>
+<%# ONE filter bar (campaign, sort, the two tabs) instead of three stacked
+    cards; 44 px controls; the reviewer's rating has a visible label; people
+    with nothing left to decide fold under « Déjà traitées »; the shared status
+    badge replaces the page's colour map; IDevelop's tokens only. %>
+<div id="sa-analytics" class="card sa-analytics">
+  <strong><%= __('talentx:sar_pipeline') %></strong> <span id="sa-analytics-body"><%- include('../../partials/skeleton', { rows: 1, compact: true }) %></span>
 </div>
 
-<!-- Campaign filter + the two halves of the funnel (
-     "submitted work to review" (the queue) and "waiting for the employee"
-     (roster non-starters / in progress, chaseable from here). -->
-<div class="card" style="margin-bottom:1rem;padding:.7rem 1rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
-  <label for="sa-cycle" style="font-weight:600;font-size:.9rem;margin:0;"><%= __('admin:cyc_rv_cycle_label') %></label>
-  <select id="sa-cycle" class="form-control" style="width:auto;min-width:230px;">
-    <option value=""><%= __('admin:cyc_rv_all_cycles') %></option>
-  </select>
-  <a id="sa-cycle-console" class="btn btn-sm btn-secondary" href="/cycles" hidden><i class="fas fa-gauge-high" aria-hidden="true"></i> <%= __('admin:cyc_rv_open_console') %></a>
-  <span class="sa-tabs" role="tablist" style="margin-left:auto;display:inline-flex;gap:.25rem">
+<!-- Campaign filter, sort, and the two halves of the funnel: "submitted work
+     to review" (the queue) and "waiting for the employee" (roster non-starters
+     / in progress, chaseable from here). -->
+<div class="card sa-filterbar" role="group" aria-label="<%= __('talentx:sar_filters_label') %>">
+  <div class="sa-filter">
+    <label for="sa-cycle"><%= __('admin:cyc_rv_cycle_label') %></label>
+    <select id="sa-cycle" class="form-control">
+      <option value=""><%= __('admin:cyc_rv_all_cycles') %></option>
+    </select>
+  </div>
+  <a id="sa-cycle-console" class="btn btn-sm btn-secondary sa-filter-btn" href="/cycles" hidden><i class="fas fa-gauge-high" aria-hidden="true"></i> <%= __('admin:cyc_rv_open_console') %></a>
+  <!-- Sort / bring-forward controls. These reorder the VIEW only: every submitted
+       skill always stays in the queue (no subsetting, no hiding). -->
+  <div class="sa-filter">
+    <label for="sa-sort"><%= __('talentx:rvx_sort_label') %></label>
+    <select id="sa-sort" class="form-control">
+      <option value="all"><%= __('talentx:rvx_sort_all') %></option>
+      <option value="gap"><%= __('talentx:rvx_sort_gap') %></option>
+      <option value="critical"><%= __('talentx:rvx_sort_critical') %></option>
+      <option value="nojust"><%= __('talentx:rvx_sort_nojust') %></option>
+    </select>
+  </div>
+  <span class="sa-tabs" role="tablist">
     <button type="button" class="sa-tab on" role="tab" aria-selected="true" data-sa-tab="queue"><%= __('admin:cyc_rv_tab_queue') %></button>
-    <button type="button" class="sa-tab" role="tab" aria-selected="false" data-sa-tab="pending"><%= __('admin:cyc_rv_tab_pending') %> <span id="sa-pending-n" class="sa-badge" style="background:#c8514b" hidden>0</span></button>
+    <button type="button" class="sa-tab" role="tab" aria-selected="false" data-sa-tab="pending"><%= __('admin:cyc_rv_tab_pending') %> <span id="sa-pending-n" class="badge badge--warn" hidden>0</span></button>
   </span>
 </div>
+<p class="text-muted sa-hint"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('talentx:rvx_sort_hint') %></p>
 
-<div id="sa-pending" class="card" style="display:none;margin-bottom:1rem;padding:.85rem 1rem" role="tabpanel">
-  <p class="text-muted" style="font-size:.85rem;margin:0 0 .6rem"><%= __('admin:cyc_rv_pending_intro') %></p>
-  <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.6rem">
+<div id="sa-pending" class="card sa-panel" role="tabpanel" hidden>
+  <p class="text-muted sa-hint"><%= __('admin:cyc_rv_pending_intro') %></p>
+  <div class="sa-pending-tools">
     <button type="button" class="btn btn-sm btn-primary" id="sa-nudge-all" hidden><i class="fas fa-bell" aria-hidden="true"></i> <%= __('admin:cyc_nudge_all_mine') %></button>
-    <span id="sa-pending-hint" class="text-muted" style="font-size:.85rem"></span>
+    <span id="sa-pending-hint" class="text-muted sa-hint"></span>
   </div>
-  <div class="table-wrapper"><table class="table" id="sa-pending-table"><thead><tr>
-    <th><%= __('admin:cyc_th_person') %></th><th><%= __('admin:cyc_th_state') %></th><th><%= __('admin:cyc_th_skills') %></th><th><%= __('admin:cyc_th_last_nudge') %></th><th></th>
+  <div class="table-wrapper"><table class="table table-cards" id="sa-pending-table"><thead><tr>
+    <th scope="col"><%= __('admin:cyc_th_person') %></th><th scope="col"><%= __('admin:cyc_th_state') %></th><th scope="col"><%= __('admin:cyc_th_skills') %></th><th scope="col"><%= __('admin:cyc_th_last_nudge') %></th><th scope="col" class="col-actions"><span class="sr-only"><%= __('admin:cyc_nudge') %></span></th>
   </tr></thead><tbody><tr><td colspan="5"><em><%= __('admin:cyc_rv_pending_pick') %></em></td></tr></tbody></table></div>
-</div>
-
-<!-- Sort / bring-forward controls. These reorder the VIEW only: every submitted
-     skill always stays in the queue (no subsetting, no hiding). -->
-<div class="card" style="margin-bottom:1rem;padding:.7rem 1rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
-  <label for="sa-sort" style="font-weight:600;font-size:.9rem;margin:0;"><%= __('talentx:rvx_sort_label') %></label>
-  <select id="sa-sort" class="form-control" style="width:auto;min-width:230px;">
-    <option value="all"><%= __('talentx:rvx_sort_all') %></option>
-    <option value="gap"><%= __('talentx:rvx_sort_gap') %></option>
-    <option value="critical"><%= __('talentx:rvx_sort_critical') %></option>
-    <option value="nojust"><%= __('talentx:rvx_sort_nojust') %></option>
-  </select>
-  <span class="text-muted" style="font-size:.82rem"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('talentx:rvx_sort_hint') %></span>
 </div>
 
 <%# « Approuver les notes concordantes de mon équipe » — one click for the
@@ -69,11 +74,11 @@
 // le JS les re-rend à l'identique. `employees` absent = ancien chemin JS seul.
 var saRows = (typeof employees !== 'undefined' && Array.isArray(employees)) ? employees : null;
 function saCell(v) { return (v === null || v === undefined || v === '') ? '—' : String(v); }
+var saPendingRows = saRows ? saRows.filter(function (e) { return Number(e.pending) > 0; }) : [];
+var saDoneRows = saRows ? saRows.filter(function (e) { return !(Number(e.pending) > 0); }) : [];
+var saTh = { skill: __('talentx:skill'), req: __('talentx:rvx_required'), self: __('talentx:rvx_self'), val: __('talentx:rvx_last_validated'), just: __('talentx:rvx_justification'), state: __('talentx:state') };
 %>
-<div id="sa-people">
-<% if (saRows && saRows.length) { %>
-  <p class="text-muted" style="font-size:.82rem;margin:.2rem 0 .6rem"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('talentx:sar_server_rendered') %></p>
-  <% saRows.forEach(function (e) { %>
+<% function saEmpCard(e) { %>
   <div class="sa-emp">
     <div class="sa-emp-head">
       <div>
@@ -82,82 +87,146 @@ function saCell(v) { return (v === null || v === undefined || v === '') ? '—' 
       </div>
       <div class="sa-emp-counts">
         <% Object.keys(e.counts || {}).forEach(function (s) { %>
-          <span class="sa-badge" style="background:#5f6570"><%= __('talentx:sar_st_' + s) %> <%= e.counts[s] %></span>
+          <%- include('../../partials/status-badge', { state: s, label: __('talentx:sar_st_' + s), n: e.counts[s] }) %>
         <% }); %>
       </div>
     </div>
-    <div class="sa-detail open"><div class="table-wrapper"><table><thead><tr>
-      <th><%= __('talentx:skill') %></th>
-      <th class="sa-num"><%= __('talentx:rvx_required') %></th>
-      <th class="sa-num"><%= __('talentx:rvx_self') %></th>
-      <th class="sa-num"><%= __('talentx:rvx_last_validated') %></th>
-      <th><%= __('talentx:rvx_justification') %></th>
-      <th><%= __('talentx:state') %></th>
+    <div class="sa-detail open"><div class="table-wrapper"><table class="table table-cards sa-queue-table"><thead><tr>
+      <th scope="col"><%= saTh.skill %></th>
+      <th scope="col" class="sa-num"><%= saTh.req %></th>
+      <th scope="col" class="sa-num"><%= saTh.self %></th>
+      <th scope="col" class="sa-num"><%= saTh.val %></th>
+      <th scope="col"><%= saTh.just %></th>
+      <th scope="col"><%= saTh.state %></th>
     </tr></thead><tbody>
       <% (e.items || []).forEach(function (it) { %>
       <tr class="sa-row">
-        <td><%= it.skillName || ('#' + it.skillId) %><% if (it.skillId != null) { %><%- include('../../partials/skill-help', { sh: { id: 'r' + it.id + '-' + it.skillId, raw: it.skillHelp || null, mode: 'review', selected: it.selfRatedLevel, required: it.requiredLevel } }) %><% } %></td>
-        <td class="sa-num"><%= saCell(it.requiredLevel) %></td>
-        <td class="sa-num"><%= saCell(it.selfRatedLevel) %></td>
-        <td class="sa-num"><%= saCell(it.validatedLevel) %></td>
-        <td class="sa-just"><%= (it.employeeNotes == null || String(it.employeeNotes).trim() === '') ? __('talentx:rvx_no_justification') : String(it.employeeNotes) %></td>
-        <td><%= __('talentx:sar_st_' + it.workflowState) %></td>
+        <td data-label="<%= saTh.skill %>"><%= it.skillName || ('#' + it.skillId) %><% if (it.skillId != null) { %><%- include('../../partials/skill-help', { sh: { id: 'r' + it.id + '-' + it.skillId, raw: it.skillHelp || null, mode: 'review', selected: it.selfRatedLevel, required: it.requiredLevel } }) %><% } %></td>
+        <td class="sa-num" data-label="<%= saTh.req %>"><%= saCell(it.requiredLevel) %></td>
+        <td class="sa-num" data-label="<%= saTh.self %>"><%= saCell(it.selfRatedLevel) %></td>
+        <td class="sa-num" data-label="<%= saTh.val %>"><%= saCell(it.validatedLevel) %></td>
+        <td class="sa-just" data-label="<%= saTh.just %>"><%= (it.employeeNotes == null || String(it.employeeNotes).trim() === '') ? __('talentx:rvx_no_justification') : String(it.employeeNotes) %></td>
+        <td data-label="<%= saTh.state %>"><%- include('../../partials/status-badge', { state: it.workflowState, label: __('talentx:sar_st_' + it.workflowState) }) %></td>
       </tr>
       <% }); %>
     </tbody></table></div></div>
   </div>
-  <% }); %>
+<% } %>
+<div id="sa-people">
+<% if (saRows && saRows.length) { %>
+  <p class="text-muted sa-hint"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('talentx:sar_server_rendered') %></p>
+  <% saPendingRows.forEach(function (e) { saEmpCard(e); }); %>
+  <% if (saDoneRows.length) { %>
+  <details class="sa-done">
+    <summary class="btn btn-secondary btn-sm"><%= __('talentx:sar_done_section').replace('{n}', saDoneRows.length) %></summary>
+    <% saDoneRows.forEach(function (e) { saEmpCard(e); }); %>
+  </details>
+  <% } %>
 <% } else if (saRows) { %>
-  <div class="card" style="padding:1rem"><em><%= __('talentx:sar_nothing_awaiting') %></em></div>
+  <div class="card sa-panel"><em><%= __('talentx:sar_nothing_awaiting') %></em></div>
 <% } else { %>
-  <div class="card" style="padding:1rem"><%= __('talentx:loading') %></div>
+  <div class="card sa-panel"><%- include('../../partials/skeleton', { rows: 4 }) %></div>
 <% } %>
 </div>
 
+<%# Announcements of a multi-skill approval (the toast has its own region). %>
+<div id="sa-live" class="sr-only" role="status" aria-live="polite"></div>
+
 <!-- Thread drawer -->
-<div id="sa-thread" class="card" style="display:none;margin-top:1rem;padding:1rem;">
-  <h3><%= __('talentx:sar_discussion') %> <button class="btn btn-sm" onclick="document.getElementById('sa-thread').style.display='none'"><%= __('talentx:sar_close') %></button></h3>
+<div id="sa-thread" class="card sa-panel" hidden>
+  <h2 class="sa-thread-h"><%= __('talentx:sar_discussion') %> <button type="button" class="btn btn-sm btn-secondary" data-on-click="SA.closeThread" data-args='[]'><%= __('talentx:sar_close') %></button></h2>
   <div id="sa-thread-body"></div>
-  <div style="margin-top:.5rem;display:flex;gap:.5rem;">
-    <input id="sa-thread-input" class="form-control" placeholder="<%= __('talentx:sar_add_comment_ph') %>" style="flex:1;">
-    <button class="btn btn-secondary" onclick="SA.comment()"><%= __('talentx:sar_comment') %></button>
+  <div class="sa-thread-form">
+    <label class="sr-only" for="sa-thread-input"><%= __('talentx:sar_thread_input_label') %></label>
+    <input id="sa-thread-input" class="form-control" placeholder="<%= __('talentx:sar_add_comment_ph') %>">
+    <button type="button" class="btn btn-secondary" data-on-click="SA.comment" data-args='[]'><%= __('talentx:sar_comment') %></button>
   </div>
 </div>
 
-<style>
-.sa-emp{border:1px solid var(--border);border-radius:12px;margin:12px 0;background:var(--bg-card);overflow:hidden}
-.sa-emp-head{display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--bg-elevated);border-bottom:1px solid var(--border);flex-wrap:wrap}
-.sa-emp-name{font-weight:800;font-size:15px}
-.sa-emp-sub{color:var(--text-secondary);font-size:12px}
-.sa-emp-counts{display:flex;gap:6px;flex-wrap:wrap}
-.sa-emp-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
-.sa-badge{padding:2px 9px;border-radius:999px;color:#fff;font-size:.76rem;white-space:nowrap}
+<style nonce="<%= cspNonce %>">
+.sa-hint{font-size:.85rem}
+.sa-analytics{margin-bottom:var(--space-3);padding:var(--space-3) var(--space-4);display:flex;flex-direction:row;flex-wrap:wrap;gap:var(--space-2);align-items:center}
+/* the ONE filter bar: campaign, sort, the two tabs */
+/* .card is a flex COLUMN: the bar is a wrapping row */
+.sa-filterbar{margin-bottom:var(--space-2);padding:var(--space-3) var(--space-4);display:flex;flex-direction:row;gap:var(--space-3);align-items:flex-end;flex-wrap:wrap}
+.sa-filter{display:flex;flex-direction:column;gap:var(--space-1);min-width:min(230px,100%)}
+.sa-filter label{font-weight:600;font-size:.85rem;margin:0}
+.sa-filter .form-control,.sa-filter-btn{min-height:44px}
+.sa-filter-btn[hidden]{display:none}
+.sa-tabs{margin-left:auto;display:inline-flex;flex-wrap:wrap;gap:var(--space-1)}
+.sa-tab{min-height:44px;background:none;border:1px solid var(--border);border-radius:var(--radius-pill);padding:var(--space-2) var(--space-4);cursor:pointer;font-size:.85rem;color:inherit;display:inline-flex;align-items:center;gap:var(--space-2)}
+.sa-tab.on{background:var(--brand);color:var(--text-inverse);border-color:transparent}
+.sa-panel{margin-bottom:var(--space-4);padding:var(--space-4)}
+/* .card sets display:flex, which would beat the hidden attribute */
+.sa-panel[hidden]{display:none}
+.sa-pending-tools{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;margin-bottom:var(--space-3)}
+.sa-emp{border:1px solid var(--border);border-radius:var(--radius-lg);margin:var(--space-3) 0;background:var(--bg-card)}
+.sa-emp-head{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) var(--space-4);background:var(--bg-elevated);border-bottom:1px solid var(--border);flex-wrap:wrap;border-radius:var(--radius-lg) var(--radius-lg) 0 0}
+.sa-emp-name{font-weight:800;font-size:1rem}
+.sa-emp-sub{color:var(--text-secondary);font-size:.8rem}
+.sa-emp-counts{display:flex;gap:var(--space-1);flex-wrap:wrap}
+.sa-emp-actions{margin-left:auto;display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
+.sa-emp-actions .btn{min-height:44px}
 .sa-detail{display:none;padding:0}
-.sa-goals{padding:.6rem 1rem;margin:.5rem 0;border:1px solid var(--border-subtle,#e2e8f0);border-radius:10px;font-size:.9rem}
-.sa-goals-list{margin:.3rem 0 0;padding-left:1.1rem}
+.sa-goals{padding:var(--space-2) var(--space-4);margin:var(--space-2) 0;border:1px solid var(--border-subtle);border-radius:var(--radius-md);font-size:.9rem}
+.sa-goals-list{margin:var(--space-1) 0 0;padding-left:var(--space-5)}
 .sa-detail.open{display:block}
-.sa-detail table{width:100%;border-collapse:collapse;font-size:13.5px}
-.sa-detail th,.sa-detail td{padding:7px 12px;border-bottom:1px solid var(--border-subtle);text-align:left;vertical-align:middle}
-.sa-detail th{background:var(--bg-elevated);color:var(--text-secondary);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em}
-.sa-toggle{background:none;border:1px solid var(--border);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.83rem}
+.sa-queue-table{margin:0}
 .sa-num{text-align:center;font-variant-numeric:tabular-nums;font-weight:700}
 .sa-lvl-none{color:var(--text-secondary);font-weight:400}
-.sa-chip-crit{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:#b00020;color:#fff;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;vertical-align:middle}
-.sa-gap{display:inline-block;margin-left:5px;padding:0 6px;border-radius:999px;background:#a15400;color:#fff;font-size:.7rem;font-weight:700}
-.sa-gap-ok{background:#0f8a3c}
+.sa-chip-crit{display:inline-block;margin-left:var(--space-1);padding:1px var(--space-2);border-radius:var(--radius-pill);border:1px solid var(--red-text);color:var(--red-text);font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;vertical-align:middle}
+.sa-gap{display:inline-block;margin-left:var(--space-1);padding:0 var(--space-2);border-radius:var(--radius-pill);background:var(--amber-dim);color:var(--amber-text);font-size:.75rem;font-weight:700}
+.sa-gap-ok{background:var(--emerald-dim);color:var(--emerald-text)}
 .sa-just{max-width:280px}
 .sa-just>summary{cursor:pointer;color:var(--text-secondary);font-size:.85em;list-style:revert}
-.sa-just>div{margin-top:4px;padding:6px 8px;border-left:3px solid var(--border);background:var(--bg-elevated);border-radius:6px;white-space:pre-wrap;font-size:.86em;max-width:280px}
+.sa-just>div{margin-top:var(--space-1);padding:var(--space-2);border-left:3px solid var(--border);background:var(--bg-elevated);border-radius:var(--radius-sm);white-space:pre-wrap;font-size:.86em;max-width:280px}
 .sa-nojust{color:var(--text-secondary);font-size:.85em;font-style:italic}
 /* Bring-forward highlight: marks the rows the chosen sort put first. It NEVER
    hides a row — every skill stays visible and actionable. */
-.sa-hit>td:first-child{box-shadow:inset 3px 0 0 var(--accent, #6656f0)}
-.sa-tab{background:none;border:1px solid var(--border);border-radius:999px;padding:4px 12px;cursor:pointer;font-size:.85rem;color:inherit}
-.sa-tab.on{background:var(--accent,#6656f0);color:#111;border-color:transparent}
-.sa-team-card{margin-bottom:1rem;padding:.8rem 1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
-.sa-team-text{flex:1;min-width:260px}
-.sa-team-rule{font-size:.85rem;margin:.25rem 0 0}
-.sa-cycle-chip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.72rem;background:rgba(127,127,127,.18)}
+.sa-hit>td:first-child{box-shadow:inset 3px 0 0 var(--brand)}
+.sa-actions{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center;justify-content:flex-end}
+.sa-actions .btn{min-height:44px}
+.sa-rate{display:inline-flex;align-items:center;gap:var(--space-2)}
+.sa-rate-lbl{font-size:.85rem;font-weight:600;margin:0}
+.sa-rate-sel{width:auto;min-height:44px}
+.sa-done{margin-top:var(--space-4)}
+.sa-done>summary{min-height:44px}
+.sa-thread-h{font-size:1.05rem;display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap}
+.sa-thread-form{margin-top:var(--space-2);display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.sa-thread-form .form-control{flex:1 1 220px;min-height:44px}
+.sa-thread-form .btn{min-height:44px}
+.sa-thread-item{padding:var(--space-2) 0;border-bottom:1px solid var(--border-subtle)}
+.sa-thread-when{font-size:.8rem}
+.sa-team-card{margin-bottom:var(--space-4);padding:var(--space-3) var(--space-4);display:flex;flex-direction:row;gap:var(--space-4);align-items:center;flex-wrap:wrap}
+.sa-team-text{flex:1;min-width:min(260px, 100%)}
+.sa-team-rule{font-size:.85rem;margin:var(--space-1) 0 0}
+.sa-team-card .btn{min-height:44px}
+.sa-cycle-chip{display:inline-block;padding:1px var(--space-2);border-radius:var(--radius-pill);font-size:.75rem;background:var(--bg-inset)}
+/* Multi-skill approval: a 44 px box per line, its reason written under it when
+   unavailable, the shared .bulk-bar under the card (style.css). */
+.sa-col-sel{width:56px;text-align:center}
+.sa-sel{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin:0;cursor:pointer}
+.sa-sel input{width:20px;height:20px;margin:0;cursor:pointer}
+.sa-sel input:disabled{cursor:not-allowed}
+.sa-sel-why{display:block;font-size:.75rem;color:var(--text-secondary);max-width:9rem;margin:0 auto}
+.sa-sel-why[hidden]{display:none}
+.sa-selall{display:inline-flex;align-items:center;gap:var(--space-2);min-height:44px;margin:0;font-weight:600;font-size:.85rem;cursor:pointer}
+.sa-selall input{width:20px;height:20px;margin:0}
+.sa-reason{display:flex;flex-direction:column;gap:var(--space-1);flex:1 1 220px}
+.sa-reason[hidden]{display:none}
+.sa-reason label{font-size:.85rem;font-weight:600;margin:0}
+.sa-reason .form-control{min-height:44px}
+.sa-row--refused>td{background:var(--red-dim)}
+.sa-row-err{display:block;margin-top:var(--space-1);color:var(--red-text);font-size:.85rem;font-weight:600}
+.sa-bulk{margin:var(--space-3) var(--space-4)}
+.sa-bulk-err{flex:1 1 100%;margin:0;color:var(--red-text);font-weight:600}
+.sa-bulk-err[hidden]{display:none}
+@media (max-width:767.98px){
+  .sa-tabs{margin-left:0}
+  .sa-emp-actions{margin-left:0;width:100%}
+  .sa-actions{justify-content:flex-start}
+  .sa-filter{flex:1 1 100%}
+}
 </style>
 
 <%# public/js/sa-console-net.js porte la discipline de réseau : une redirection ou
@@ -165,6 +234,8 @@ function saCell(v) { return (v === null || v === undefined || v === '') ? '—' 
     DANS la zone concernée. Chargé avant le script de la page (non différé) pour
     que SAConsoleNet existe au premier appel. %>
 <script src="/js/sa-console-net.js?v=<%= assetVersion %>"></script>
+<script src="/js/status-badge.js?v=<%= assetVersion %>"></script>
+<script src="/js/sa-review-bulk.js?v=<%= assetVersion %>"></script>
 <link rel="stylesheet" href="/css/sa-skill-help.css?v=<%= assetVersion %>">
 <script src="/js/sa-skill-help.js?v=<%= assetVersion %>"></script>
 <script nonce="<%= cspNonce %>">
@@ -205,7 +276,7 @@ const SA_GOALS = {
 };
 const SA_T = {
   approve: <%- JSON.stringify(__('talentx:approve')) %>,
-  rateLbl: <%- JSON.stringify(__('talentx:sar_rate_lbl')) %>,
+  rateLbl: <%- JSON.stringify(__('talentx:sar_rate_my')) %>,
   rateTitle: <%- JSON.stringify(__('talentx:sar_rate_title')) %>,
   requestChanges: <%- JSON.stringify(__('talentx:sar_request_changes')) %>,
   teamTitle: <%- JSON.stringify(__('talentx:sar_team_title')) %>,
@@ -222,6 +293,7 @@ const SA_T = {
   askComment: <%- JSON.stringify(__('talentx:sar_ask_comment')) %>,
   askRejectReason: <%- JSON.stringify(__('talentx:sar_ask_reject_reason')) %>,
   done: <%- JSON.stringify(__('talentx:sar_done')) %>,
+  doneSection: <%- JSON.stringify(__('talentx:sar_done_section')) %>,
   approveAllConfirm: <%- JSON.stringify(__('talentx:sar_approve_all_confirm')) %>,
   approveAllConfirmShort: <%- JSON.stringify(__('talentx:sar_approve_all_confirm_short')) %>,
   approveAll: <%- JSON.stringify(__('talentx:approve_all')) %>,
@@ -263,11 +335,42 @@ const SA_T = {
   nudgeLocked: <%- JSON.stringify(__('admin:cyc_nudge_locked_hint')) %>,
   overdue: <%- JSON.stringify(__('admin:cyc_overdue', { days: '%days%' })) %>,
   progressOf: <%- JSON.stringify(__('admin:cyc_progress_of', { done: '%done%', total: '%total%' })) %>,
+  thPerson: <%- JSON.stringify(__('admin:cyc_th_person')) %>,
+  thState: <%- JSON.stringify(__('admin:cyc_th_state')) %>,
+  thSkills: <%- JSON.stringify(__('admin:cyc_th_skills')) %>,
+  thLastNudge: <%- JSON.stringify(__('admin:cyc_th_last_nudge')) %>,
   cycStates: <%- include('../../partials/json-script', { v: { not_started: __('admin:cyc_kpi_not_started'), in_progress: __('admin:cyc_kpi_in_progress'), in_review: __('admin:cyc_kpi_in_review'), approved: __('admin:cyc_kpi_approved'), excluded: __('admin:cyc_kpi_excluded') } }) %>,
   cycStatus: <%- include('../../partials/json-script', { v: { open: enumLabel('cycle_status', 'open'), locked: enumLabel('cycle_status', 'locked') } }) %>,
   SL: <%- include('../../partials/json-script', { v: { draft: __('talentx:sar_st_draft'), submitted: __('talentx:sar_st_submitted'), under_review: __('talentx:sar_st_under_review'), changes_requested: __('talentx:sar_st_changes_requested'), reviewed: __('talentx:sar_st_reviewed'), arbitration: __('talentx:sar_st_arbitration'), approved: __('talentx:sar_st_approved'), rejected: __('talentx:sar_st_rejected') } }) %>,
   AUTH: <%- include('../../partials/json-script', { v: { employee: __('talentx:sar_author_employee'), manager: __('talentx:sar_author_manager'), supervisor: __('talentx:sar_author_supervisor'), admin: __('talentx:sar_author_admin') } }) %>,
   notConfirmed: <%- JSON.stringify(__('talentx:sar_not_confirmed')) %>,
+  // Multi-skill approval of one person (approve-selected).
+  B: <%- include('../../partials/json-script', { v: {
+    canBulk: typeof canBulk === 'undefined' ? false : !!canBulk,
+    colSel: __('talentx:sab_col_select'),
+    selectAll: __('talentx:sab_select_all'),
+    selectAllAria: __('talentx:sab_select_all_aria'),
+    selectRow: __('talentx:sab_select_row'),
+    selectedOne: __('talentx:sab_selected_one'),
+    selectedOther: __('talentx:sab_selected_other'),
+    approveOne: __('talentx:sab_approve_one'),
+    approveOther: __('talentx:sab_approve_other'),
+    clear: __('talentx:sab_clear'),
+    barLabel: __('talentx:sab_bar_label'),
+    confirmTitleOne: __('talentx:sab_confirm_title_one'),
+    confirmTitleOther: __('talentx:sab_confirm_title_other'),
+    confirmBodyOne: __('talentx:sab_confirm_body_one'),
+    confirmBodyOther: __('talentx:sab_confirm_body_other'),
+    doneOne: __('talentx:sab_done_one'),
+    doneOther: __('talentx:sab_done_other'),
+    refusedLive: __('talentx:sab_refused_live'),
+    whyArbitration: __('talentx:sab_why_arbitration'),
+    whyReason: __('talentx:sab_why_reason'),
+    reasonLabel: __('talentx:sab_reason_label'),
+    reasonPh: __('talentx:sab_reason_ph'),
+    reasonNeeded: __('talentx:sab_reason_needed'),
+    saving: __('talentx:sab_saving')
+  } }) %>,
   statsUnavailable: <%- JSON.stringify(__('talentx:sar_stats_unavailable')) %>,
   statsAllCycles: <%- JSON.stringify(__('talentx:sar_stats_all_cycles')) %>,
   nothingAwaitingCycle: <%- JSON.stringify(__('talentx:sar_nothing_awaiting_cycle')) %>,
@@ -307,7 +410,6 @@ const SA = {
   current: null,
   sortMode: 'all',
   ACT_STATES: ['submitted','under_review','reviewed','arbitration'],
-  STATES: { draft:'#5f6570', submitted:'#1b56b8', under_review:'#a15400', changes_requested:'#c62828', reviewed:'#1b7e3a', arbitration:'#7a3cc4', approved:'#0f8a3c', rejected:'#b00020' },
   // UNE REDIRECTION EST UN ÉCHEC. L'ancien helper envoyait Content-Type seul, donc
   // une session expirée recevait `302 → /login?expired=1`, fetch la SUIVAIT, la page
   // HTML arrivait en 200, `r.ok` valait true et `r.json` était avalé en `{}` :
@@ -317,22 +419,169 @@ const SA = {
     try {
       return await SAConsoleNet.api(path, method, body);
     } catch (err) {
-      (window.toast||alert)(err.message, 'error');
+      window.toast(err.message, 'error');
       if (err.code === 'session') SAConsoleNet.navigate('/login?expired=1');
       err.__saReported = true; // déjà dit à l'utilisateur : pas deux fois (voir plus bas)
       throw err;
     }
   },
-  badge(s, n){ return '<span class="sa-badge" style="background:'+(this.STATES[s]||'#555')+'">'+escapeHtml((SA_T.SL&&SA_T.SL[s])||s)+(n!=null?(' '+n):'')+'</span>'; },
+  // The shared status badge: one tone per state, an icon and a text.
+  badge(s, n){ return saBadge(s, (SA_T.SL&&SA_T.SL[s])||(SA_T.cycStates&&SA_T.cycStates[s])||s, n==null?null:n); },
   rateSelect(it){
     // The reviewer's OWN rating (0–4), pre-filled with the self-rating. On approve
     // this is what becomes the official skill level — no more silent rubber-stamp.
     const cur = (it.selfRatedLevel!=null ? String(it.selfRatedLevel) : '');
-    let opts = '';
+    // No self level: an empty first option, so the browser never silently
+    // proposes « 0 » as the level to approve.
+    let opts = cur === '' ? '<option value="" selected>—</option>' : '';
     for (let i=0;i<=4;i++){ opts += '<option value="'+i+'"'+(String(i)===cur?' selected':'')+'>'+i+'</option>'; }
     // data-self carries the employee's own rating so act can tell an OVERRIDE
     // from an agreement and demand a short reason for the former.
-    return '<span class="sa-rate" title="'+escapeHtml(SA_T.rateTitle)+'">'+escapeHtml(SA_T.rateLbl)+' <select id="sa-rate-'+it.id+'" class="sa-rate-sel" data-self="'+escapeHtml(cur)+'" aria-label="'+escapeHtml(SA_T.rateTitle)+'">'+opts+'</select></span>';
+    // A VISIBLE label « Ma note » tied to the control (it was a 19 px bare select).
+    return '<span class="sa-rate"><label class="sa-rate-lbl" for="sa-rate-'+it.id+'">'+escapeHtml(SA_T.rateLbl)+'</label> <select id="sa-rate-'+it.id+'" class="form-control sa-rate-sel" data-sa-rate="'+Number(it.id)+'" data-self="'+escapeHtml(cur)+'" title="'+escapeHtml(SA_T.rateTitle)+'">'+opts+'</select></span>'+
+      // The reason for a changed rating can be written ON THE LINE, so a changed
+      // line may join a multi-skill approval once its reason is there.
+      '<span class="sa-reason" id="sa-reason-wrap-'+Number(it.id)+'" hidden><label for="sa-reason-'+Number(it.id)+'">'+escapeHtml(SA_T.B.reasonLabel)+'</label>'+
+      '<input type="text" id="sa-reason-'+Number(it.id)+'" class="form-control" data-sa-reason="'+Number(it.id)+'" maxlength="500" placeholder="'+escapeHtml(SA_T.B.reasonPh)+'"></span>';
+  },
+  // ---- multi-skill approval of one person (approve-selected) ---------------
+  items: {},
+  groups: {},
+  /** The line's current proposal, read from the page (level chosen, reason typed). */
+  lineOf(id){
+    const it = this.items[id] || {};
+    const sel = document.getElementById('sa-rate-'+Number(id));
+    const rs = document.getElementById('sa-reason-'+Number(id));
+    return { id: Number(id), state: it.workflowState, self: sel ? sel.getAttribute('data-self') : (it.selfRatedLevel==null?'':String(it.selfRatedLevel)), chosen: sel ? sel.value : '', reason: rs ? rs.value : '' };
+  },
+  /** The selection cell: a 44 px box, or the reason it is unavailable, written. */
+  selCell(it){
+    if (!SA_T.B.canBulk) return '';
+    const L = ' data-label="'+escapeHtml(SA_T.B.colSel)+'"';
+    const el = SABulkRules.eligibility({ state: it.workflowState, self: it.selfRatedLevel, chosen: it.selfRatedLevel, reason: '' });
+    if (!el.show) return '<td class="sa-col-sel"'+L+'></td>';
+    const why = el.why==='arbitration' ? SA_T.B.whyArbitration : (el.why==='reason' ? SA_T.B.whyReason : '');
+    const aria = SABulkRules.fill(SA_T.B.selectRow, { skill: it.skillName || ('#'+it.skillId) });
+    const id = Number(it.id);
+    return '<td class="sa-col-sel"'+L+'><label class="sa-sel"><input type="checkbox" class="sa-sel-cb" data-sa-sel="'+id+'" aria-label="'+escapeHtml(aria)+'" aria-describedby="sa-why-'+id+'"'+(el.selectable?'':' disabled')+'></label>'+
+      '<span class="sa-sel-why" id="sa-why-'+id+'"'+(why?'':' hidden')+'>'+escapeHtml(why)+'</span></td>';
+  },
+  cardEl(empId){ return document.querySelector('.sa-emp[data-emp="'+Number(empId)+'"]'); },
+  rowEl(id){ return document.querySelector('tr.sa-row[data-sa-id="'+Number(id)+'"]'); },
+  nameOf(empId){ const g = this.groups[empId]; return g ? ((g.firstName||'')+' '+(g.lastName||'')).trim() : ''; },
+  /** Re-evaluate one line's box after its rating or reason changed. */
+  refreshLine(id){
+    const line = this.lineOf(id);
+    const wrap = document.getElementById('sa-reason-wrap-'+Number(id));
+    if (wrap) wrap.hidden = !SABulkRules.isOverride(line.self, line.chosen);
+    const cb = document.querySelector('[data-sa-sel="'+Number(id)+'"]');
+    if (!cb) return;
+    const el = SABulkRules.eligibility(line);
+    cb.disabled = !el.selectable;
+    if (cb.disabled) cb.checked = false;
+    const why = document.getElementById('sa-why-'+Number(id));
+    if (why) { const w = el.why==='arbitration' ? SA_T.B.whyArbitration : (el.why==='reason' ? SA_T.B.whyReason : ''); why.textContent = w; why.hidden = !w; }
+    const card = cb.closest('.sa-emp'); if (card) this.paintBar(card.getAttribute('data-emp'));
+  },
+  selectedIds(empId){
+    const card = this.cardEl(empId); if (!card) return [];
+    return Array.prototype.map.call(card.querySelectorAll('.sa-sel-cb:checked:not(:disabled)'), function(cb){ return Number(cb.getAttribute('data-sa-sel')); });
+  },
+  /** The bar: hidden until one box is ticked; the count and « Approve N skills ». */
+  paintBar(empId){
+    const card = this.cardEl(empId); if (!card) return;
+    const bar = card.querySelector('.sa-bulk'); if (!bar) return;
+    const n = this.selectedIds(empId).length;
+    bar.hidden = n === 0;
+    const c = bar.querySelector('[data-sa-count]'); if (c) c.textContent = SABulkRules.plural(n, SA_T.B.selectedOne, SA_T.B.selectedOther);
+    const go = bar.querySelector('[data-sa-bulk]'); if (go && !go.hasAttribute('aria-busy')) go.textContent = SABulkRules.plural(n, SA_T.B.approveOne, SA_T.B.approveOther);
+    if (n === 0) { const er = bar.querySelector('.sa-bulk-err'); if (er) { er.hidden = true; er.textContent = ''; } }
+    const all = card.querySelector('[data-sa-all]');
+    if (all) {
+      const boxes = Array.prototype.filter.call(card.querySelectorAll('.sa-sel-cb'), function(b){ return !b.disabled; });
+      const on = boxes.filter(function(b){ return b.checked; }).length;
+      all.checked = boxes.length > 0 && on === boxes.length;
+      all.indeterminate = on > 0 && on < boxes.length;
+      all.disabled = boxes.length === 0;
+    }
+  },
+  /** « Select all » — the selectable lines of that person only. */
+  selectAll(empId, on){
+    const card = this.cardEl(empId); if (!card) return;
+    const det = document.getElementById('sa-detail-'+Number(empId));
+    if (on && det && !det.classList.contains('open')) this.toggle(empId);
+    card.querySelectorAll('.sa-sel-cb').forEach(function(cb){ if (!cb.disabled) cb.checked = !!on; });
+    this.paintBar(empId);
+  },
+  clearSel(empId){ const card = this.cardEl(empId); if (!card) return; card.querySelectorAll('.sa-sel-cb').forEach(function(cb){ cb.checked = false; }); this.paintBar(empId); },
+  announce(msg){ const el = document.getElementById('sa-live'); if (!el) return; el.textContent = ''; setTimeout(function(){ el.textContent = String(msg||''); }, 30); },
+  clearRefusals(card){
+    if (!card) return;
+    card.querySelectorAll('.sa-row--refused').forEach(function(tr){ tr.classList.remove('sa-row--refused'); });
+    card.querySelectorAll('.sa-row-err').forEach(function(e){ e.remove(); });
+    const er = card.querySelector('.sa-bulk-err'); if (er) { er.hidden = true; er.textContent = ''; }
+  },
+  /** A refused line says why, on the line (text only). */
+  markRefused(id, reason){
+    const tr = this.rowEl(id); if (!tr) return;
+    tr.classList.add('sa-row--refused');
+    const cell = tr.querySelector('td:not(.sa-col-sel)'); if (!cell) return;
+    const old = cell.querySelector('.sa-row-err'); if (old) old.remove();
+    const p = document.createElement('span'); p.className = 'sa-row-err'; p.id = 'sa-err-'+Number(id); p.textContent = String(reason||'');
+    cell.appendChild(p);
+  },
+  /** « Approve N skills »: one confirmation, one request, all or nothing. */
+  async approveSelected(empId){
+    const ids = this.selectedIds(empId);
+    if (!ids.length) return;
+    const self = this;
+    const card = this.cardEl(empId);
+    const n = ids.length, name = this.nameOf(empId);
+    const built = SABulkRules.itemsFor(ids.map(function(id){ return self.lineOf(id); }));
+    this.clearRefusals(card);
+    if (built.missingReason.length) {
+      built.missingReason.forEach(function(id){ self.markRefused(id, SA_T.B.reasonNeeded); });
+      const first = document.getElementById('sa-reason-'+built.missingReason[0]);
+      if (first) { const w = document.getElementById('sa-reason-wrap-'+built.missingReason[0]); if (w) w.hidden = false; first.focus(); }
+      window.toast(SA_T.B.reasonNeeded, 'error');
+      return;
+    }
+    const ok = await window.confirmDialog({
+      title: SABulkRules.plural(n, SA_T.B.confirmTitleOne, SA_T.B.confirmTitleOther),
+      body: SABulkRules.fill(SABulkRules.plural(n, SA_T.B.confirmBodyOne, SA_T.B.confirmBodyOther), { name: name }),
+      confirmLabel: SABulkRules.plural(n, SA_T.B.approveOne, SA_T.B.approveOther)
+    });
+    if (!ok) return;
+    const go = card && card.querySelector('[data-sa-bulk]');
+    if (go) { go.setAttribute('aria-busy', 'true'); go.disabled = true; go.textContent = SA_T.B.saving; }
+    let j;
+    try {
+      j = await SAConsoleNet.api('/api/self-assessment/employee/'+Number(empId)+'/approve-selected', 'POST', { items: built.items });
+    } catch (err) {
+      if (go) { go.removeAttribute('aria-busy'); go.disabled = false; }
+      this.paintBar(empId);
+      if (err && err.code === 'session') { window.toast(err.message, 'error'); SAConsoleNet.navigate('/login?expired=1'); return; }
+      // The selection is KEPT; every refused line says why, on the line.
+      const refused = (err && err.body && Array.isArray(err.body.refused)) ? err.body.refused : [];
+      refused.forEach(function(r){ self.markRefused(r.id, r.reason); });
+      const msg = (err && err.message) || SA_T.notConfirmed;
+      const er = card && card.querySelector('.sa-bulk-err');
+      if (er) { er.textContent = msg; er.hidden = false; }
+      window.toast(msg, 'error');
+      this.announce(refused.length ? SABulkRules.fill(SA_T.B.refusedLive, { n: refused.length }) : msg);
+      return;
+    }
+    const res = (j && j.result) || {};
+    if (!Array.isArray(res.approved) || !res.approved.length) {
+      if (go) { go.removeAttribute('aria-busy'); go.disabled = false; }
+      window.toast(SA_T.notConfirmed, 'error');
+      await this.load();
+      return;
+    }
+    const done = SABulkRules.fill(SABulkRules.plural(res.approved.length, SA_T.B.doneOne, SA_T.B.doneOther), { name: name });
+    window.toast(done, 'success');
+    this.announce(done);
+    await this.load();
   },
   // ---- decision context (per skill) -----------------------------------
   lvl(v){ return (v===null||v===undefined||v==='') ? null : Number(v); },
@@ -388,14 +637,16 @@ const SA = {
     // at the end of the gap sort — still present, never removed.
     const gap = (req!==null && self!==null) ? (req - self) : -999;
     const hasJust = !!((it.employeeNotes==null? '' : String(it.employeeNotes)).trim());
-    return '<tr class="sa-row" data-idx="'+idx+'" data-gap="'+gap+'" data-crit="'+(crit?1:0)+'" data-just="'+(hasJust?1:0)+'">'+
-      '<td>'+escapeHtml(it.skillName||('#'+it.skillId))+(crit?'<span class="sa-chip-crit" title="'+escapeHtml(SA_T.rvxCriticalTitle)+'">'+escapeHtml(SA_T.rvxCritical)+'</span>':'')+this.helpPanel(it)+'</td>'+
-      '<td class="sa-num">'+this.requiredCell(it)+'</td>'+
-      '<td class="sa-num">'+this.selfCell(it)+'</td>'+
-      '<td class="sa-num">'+this.validatedCell(it)+'</td>'+
-      '<td>'+this.justificationCell(it)+'</td>'+
-      '<td>'+this.badge(it.workflowState)+'</td>'+
-      '<td>'+this.rowActions(it)+'</td></tr>';
+    const L = (s) => ' data-label="'+escapeHtml(s)+'"';
+    return '<tr class="sa-row" data-sa-id="'+Number(it.id)+'" data-idx="'+idx+'" data-gap="'+gap+'" data-crit="'+(crit?1:0)+'" data-just="'+(hasJust?1:0)+'">'+
+      this.selCell(it)+
+      '<td'+L(SA_T.skill)+'>'+escapeHtml(it.skillName||('#'+it.skillId))+(crit?'<span class="sa-chip-crit" title="'+escapeHtml(SA_T.rvxCriticalTitle)+'">'+escapeHtml(SA_T.rvxCritical)+'</span>':'')+this.helpPanel(it)+'</td>'+
+      '<td class="sa-num"'+L(SA_T.rvxRequired)+'>'+this.requiredCell(it)+'</td>'+
+      '<td class="sa-num"'+L(SA_T.rvxSelf)+'>'+this.selfCell(it)+'</td>'+
+      '<td class="sa-num"'+L(SA_T.rvxValidated)+'>'+this.validatedCell(it)+'</td>'+
+      '<td'+L(SA_T.rvxJustification)+'>'+this.justificationCell(it)+'</td>'+
+      '<td'+L(SA_T.state)+'>'+this.badge(it.workflowState)+'</td>'+
+      '<td class="col-actions cell-actions sa-col-actions">'+this.rowActions(it)+'</td></tr>';
   },
   /**
    * Reorder the already-loaded rows. This ONLY moves rows (and marks the ones the
@@ -425,9 +676,10 @@ const SA = {
   rowActions(it){
     const id = it.id, st = it.workflowState, A = [];
     if (this.ACT_STATES.includes(st)) { A.push(this.rateSelect(it)); A.push(b(id,SA_T.approve,'approve','btn-success')); A.push(b(id,SA_T.requestChanges,'request-changes','btn-warning')); A.push(b(id,SA_T.reject,'reject','btn-danger')); }
-    A.push('<button class="btn btn-sm" onclick="SA.openThread('+id+')">'+SA_T.discuss+' ('+(it.commentCount||0)+')</button>');
-    return A.join(' ');
-    function b(id,label,action,cls){ return '<button class="btn btn-sm '+cls+'" data-action="'+action+'" onclick="SA.act('+id+',this.dataset.action)">'+label+'</button>'; }
+    // « Discuter (0) » said nothing: the count shows only when there is one.
+    A.push('<button class="btn btn-sm btn-secondary" data-on-click="SA.openThread" data-args="'+escapeHtml(JSON.stringify([id]))+'">'+SA_T.discuss+(it.commentCount?' ('+it.commentCount+')':'')+'</button>');
+    return '<div class="sa-actions">'+A.join(' ')+'</div>';
+    function b(id,label,action,cls){ return '<button class="btn btn-sm '+cls+'" data-action="'+action+'" data-on-click="SA.act" data-args="'+escapeHtml(JSON.stringify([id, action]))+'">'+label+'</button>'; }
   },
   async act(id, action){
     let body = {};
@@ -445,7 +697,8 @@ const SA = {
         body.supervisorLevel = sel.value;
         const self0 = sel.getAttribute('data-self') || '';
         if (self0 !== '' && String(sel.value) !== String(self0)) {
-          const why = await ask(SA_T.rvxAskOverride.replace('{self}', self0).replace('{mine}', sel.value));
+          const typed = document.getElementById('sa-reason-'+Number(id));
+          const why = (typed && String(typed.value).trim()) ? typed.value : await ask(SA_T.rvxAskOverride.replace('{self}', self0).replace('{mine}', sel.value));
           if (why===null || !String(why).trim()) return;
           body.recommendation = { gapReason: String(why).trim() };
         }
@@ -455,11 +708,11 @@ const SA = {
     // l'évaluation mise à jour. Une réponse sans `assessment` n'est pas un succès.
     const j = await this.api('/api/self-assessment/'+id+'/'+action, 'POST', body);
     if (!SAConsoleNet.confirmed(j, 'assessment')) {
-      (window.toast||function(){})(SA_T.notConfirmed, 'error');
+      window.toast(SA_T.notConfirmed, 'error');
       await this.load();
       return;
     }
-    (window.toast||function(){})(SA_T.done, 'success');
+    window.toast(SA_T.done, 'success');
     await this.load();
   },
   async approveAll(empId, n){
@@ -494,11 +747,11 @@ const SA = {
   async openThread(id){
     this.current = id;
     const j = await this.api('/api/self-assessment/'+id+'/thread');
-    document.getElementById('sa-thread').style.display='block';
+    document.getElementById('sa-thread').hidden = false;
     document.getElementById('sa-thread-body').innerHTML = j.comments.length
-      ? j.comments.map(c=>'<div style="padding:.4rem 0;border-bottom:1px solid #eee;"><strong>'+escapeHtml((SA_T.AUTH&&SA_T.AUTH[c.authorType])||c.authorType)+'</strong>: '+escapeHtml(c.body)+' <span class="text-muted" style="font-size:.8em">'+escapeHtml(new Date(c.createdAt).toLocaleString(SA_T.lang))+'</span></div>').join('')
+      ? j.comments.map(c=>'<div class="sa-thread-item"><strong>'+escapeHtml((SA_T.AUTH&&SA_T.AUTH[c.authorType])||c.authorType)+'</strong>: '+escapeHtml(c.body)+' <span class="text-muted sa-thread-when">'+escapeHtml(new Date(c.createdAt).toLocaleString(SA_T.lang))+'</span></div>').join('')
       : '<em>'+SA_T.noComments+'</em>';
-    document.getElementById('sa-thread').scrollIntoView({behavior:'smooth'});
+    document.getElementById('sa-thread').scrollIntoView({behavior: (window.MOTION && window.MOTION.reduce) ? 'auto' : 'smooth'});
   },
   async comment(){
     const v = document.getElementById('sa-thread-input').value.trim();
@@ -507,6 +760,7 @@ const SA = {
     document.getElementById('sa-thread-input').value='';
     await this.openThread(this.current); await this.load();
   },
+  closeThread(){ document.getElementById('sa-thread').hidden = true; },
   toggle(empId){ const d=document.getElementById('sa-detail-'+empId); if(!d) return; const open=d.classList.toggle('open'); const b=document.getElementById('sa-toggle-'+empId); if(b) b.setAttribute('aria-expanded', open?'true':'false'); if (open) SA_GOALS.load(empId); },
   // ---- campaign filter + "waiting for the employee" tab ------------
   cycleId: '',
@@ -531,8 +785,8 @@ const SA = {
   },
   showTab(name){
     document.querySelectorAll('[data-sa-tab]').forEach(b => { const on = b.getAttribute('data-sa-tab') === name; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
-    document.getElementById('sa-pending').style.display = name === 'pending' ? '' : 'none';
-    document.getElementById('sa-people').style.display = name === 'pending' ? 'none' : '';
+    document.getElementById('sa-pending').hidden = name !== 'pending';
+    document.getElementById('sa-people').hidden = name === 'pending';
     if (name === 'pending') this.loadPending();
   },
   async loadPending(){
@@ -557,18 +811,19 @@ const SA = {
     all.hidden = !(open && j.rows.length);
     badge.hidden = !j.rows.length; badge.textContent = String(j.rows.length);
     if (!j.rows.length) { tb.innerHTML = '<tr><td colspan="5"><em>'+SA_T.pendingNone+'</em></td></tr>'; return; }
+    const L = (s) => ' data-label="'+escapeHtml(s)+'"';
     tb.innerHTML = j.rows.map(p => '<tr>'+
-      '<td><a href="/employees/'+p.employeeId+'">'+escapeHtml(p.fullName)+'</a>'+(p.serviceName?' <span class="sa-emp-sub">'+escapeHtml(p.serviceName)+'</span>':'')+'</td>'+
-      '<td>'+this.badge(p.state)+'</td>'+
-      '<td>'+escapeHtml(this.fmt(SA_T.progressOf, { done: p.approvedSkills, total: p.expectedSkills }))+'</td>'+
-      '<td>'+(p.lastNudgeAt ? escapeHtml(new Date(p.lastNudgeAt).toLocaleDateString(SA_T.lang)) : '—')+'</td>'+
-      '<td>'+(open ? '<button type="button" class="btn btn-sm btn-primary" data-sa-nudge="'+p.employeeId+'"><i class="fas fa-bell" aria-hidden="true"></i> '+SA_T.nudge+'</button>' : '')+'</td></tr>').join('');
+      '<td'+L(SA_T.thPerson)+'><a href="/employees/'+p.employeeId+'">'+escapeHtml(p.fullName)+'</a>'+(p.serviceName?' <span class="sa-emp-sub">'+escapeHtml(p.serviceName)+'</span>':'')+'</td>'+
+      '<td'+L(SA_T.thState)+'>'+this.badge(p.state)+'</td>'+
+      '<td'+L(SA_T.thSkills)+'>'+escapeHtml(this.fmt(SA_T.progressOf, { done: p.approvedSkills, total: p.expectedSkills }))+'</td>'+
+      '<td'+L(SA_T.thLastNudge)+'>'+(p.lastNudgeAt ? escapeHtml(new Date(p.lastNudgeAt).toLocaleDateString(SA_T.lang)) : '—')+'</td>'+
+      '<td class="col-actions cell-actions">'+(open ? '<button type="button" class="btn btn-sm btn-primary" data-sa-nudge="'+p.employeeId+'"><i class="fas fa-bell" aria-hidden="true"></i> '+SA_T.nudge+'</button>' : '')+'</td></tr>').join('');
   },
   async nudge(body, ask){
     const ok = await window.confirmDialog(ask);
     if (!ok) return;
     const j = await this.api('/cycles/'+this.cycleId+'/nudge', 'POST', body);
-    (window.toast||function(){})(this.fmt(SA_T.nudgeDone, { sent: j.sent, managers: j.reviewersNotified, today: j.alreadyToday, locked: j.lockedSkipped }), j.sent ? 'success' : 'warning');
+    window.toast(this.fmt(SA_T.nudgeDone, { sent: j.sent, managers: j.reviewersNotified, today: j.alreadyToday, locked: j.lockedSkipped }), j.sent ? 'success' : 'warning');
     await this.loadPending();
   },
   async load(){
@@ -585,33 +840,58 @@ const SA = {
     this.renderQueue(qr);
     this.renderStats(ar);
   },
-  /** La file. Un refus s'écrit DANS la zone, avec de quoi réessayer. */
+  /** One person's card (head, goals as context, detail table). */
+  empCard(e){
+    const counts = (e.cycles || []).map(c => this.cycleChip(c)).join(' ') + ' ' + Object.keys(e.counts).map(s=>this.badge(s, e.counts[s])).join(' ');
+    const rows = e.items.map((it, i)=>this.row(it, i)).join('');
+    const approveBtn = e.pending>0 ? '<button class="btn btn-success btn-sm" data-on-click="SA.approveAll" data-args="'+escapeHtml(JSON.stringify([e.employeeId, e.pending]))+'"><i class="fas fa-check-double" aria-hidden="true"></i> '+SA_T.approveAll+' ('+e.pending+')</button>' : saBadge('ok', SA_T.allDone);
+    const name = (e.firstName+' '+e.lastName).trim();
+    const empId = Number(e.employeeId);
+    // « Select all » and the bar « Approve N skills » (all or nothing, one
+    // notification) — offered only to whom the bulk guard lets through.
+    const selectable = e.items.filter(it => SABulkRules.eligibility({ state: it.workflowState, self: it.selfRatedLevel, chosen: it.selfRatedLevel }).selectable).length;
+    const selAll = (SA_T.B.canBulk && e.pending > 0 && selectable > 0)
+      ? '<label class="sa-selall"><input type="checkbox" data-sa-all="'+empId+'" aria-label="'+escapeHtml(SABulkRules.fill(SA_T.B.selectAllAria, { name: name, n: selectable }))+'"> <span>'+escapeHtml(SA_T.B.selectAll)+'</span></label>'
+      : '';
+    const bar = SA_T.B.canBulk
+      ? '<div class="bulk-bar sa-bulk" id="sa-bulk-'+empId+'" hidden role="region" aria-live="polite" tabindex="-1" aria-label="'+escapeHtml(SABulkRules.fill(SA_T.B.barLabel, { name: name }))+'">'+
+          '<span class="bulk-bar-count" data-sa-count></span>'+
+          '<p class="sa-bulk-err" hidden></p>'+
+          '<div class="bulk-bar-actions"><button type="button" class="btn btn-secondary" data-sa-clear="'+empId+'">'+escapeHtml(SA_T.B.clear)+'</button>'+
+          '<button type="button" class="btn btn-primary" data-sa-bulk="'+empId+'"></button></div></div>'
+      : '';
+    return '<div class="sa-emp" data-emp="'+empId+'"><div class="sa-emp-head">'+
+      '<div><div class="sa-emp-name">'+escapeHtml(name)+'</div><div class="sa-emp-sub">'+SA_T.skillsPending.replace('{total}', e.total).replace('{pending}', e.pending)+'</div></div>'+
+      '<div class="sa-emp-counts">'+counts+'</div>'+
+      '<div class="sa-emp-actions"><button type="button" class="btn btn-sm btn-secondary" id="sa-toggle-'+e.employeeId+'" aria-expanded="false" aria-controls="sa-detail-'+e.employeeId+'" data-on-click="SA.toggle" data-args="'+escapeHtml(JSON.stringify([e.employeeId]))+'">'+SA_T.details+'</button>'+selAll+approveBtn+'</div></div>'+
+      '<div class="sa-detail" id="sa-detail-'+e.employeeId+'">'+(SA_GOALS.on ? '<div class="sa-goals" id="sa-goals-'+e.employeeId+'"></div>' : '')+'<div class="table-wrapper"><table class="table table-cards sa-queue-table"><thead><tr>'+
+        (SA_T.B.canBulk ? '<th scope="col" class="sa-col-sel"><span class="sr-only">'+escapeHtml(SA_T.B.colSel)+'</span></th>' : '')+
+        '<th scope="col">'+SA_T.skill+'</th>'+
+        '<th scope="col" class="sa-num">'+SA_T.rvxRequired+'</th>'+
+        '<th scope="col" class="sa-num">'+SA_T.rvxSelf+'</th>'+
+        '<th scope="col" class="sa-num">'+SA_T.rvxValidated+'</th>'+
+        '<th scope="col">'+SA_T.rvxJustification+'</th>'+
+        '<th scope="col">'+SA_T.state+'</th>'+
+        '<th scope="col" class="col-actions sa-col-actions">'+SA_T.actions+'</th>'+
+      '</tr></thead><tbody>'+rows+'</tbody></table></div></div>'+bar+'</div>';
+  },
+  /** La file. Un refus s'écrit DANS la zone, avec de quoi réessayer.
+   *  People with nothing left to decide fold under « Déjà traitées ». */
   renderQueue(res){
     const wrap = document.getElementById('sa-people');
     if (res.error) { wrap.innerHTML = SAConsoleNet.failureCard(res.error, 'queue', 'load_failed'); return; }
     const q = res.value || {};
     const list = q.employees || [];
+    // The model the selection reads (state and self level of every line).
+    this.groups = {}; this.items = {};
+    list.forEach(e => { this.groups[e.employeeId] = e; (e.items || []).forEach(it => { this.items[it.id] = it; }); });
     if (!list.length) { wrap.innerHTML = this.emptyQueueCard(); }
     else {
-      wrap.innerHTML = list.map(e=>{
-        const counts = (e.cycles || []).map(c => this.cycleChip(c)).join(' ') + ' ' + Object.keys(e.counts).map(s=>this.badge(s, e.counts[s])).join(' ');
-        const rows = e.items.map((it, i)=>this.row(it, i)).join('');
-        const approveBtn = e.pending>0 ? '<button class="btn btn-success btn-sm" onclick="SA.approveAll('+e.employeeId+','+e.pending+')"><i class="fas fa-check-double" aria-hidden="true"></i> '+SA_T.approveAll+' ('+e.pending+')</button>' : '<span class="sa-badge" style="background:#0f8a3c">'+SA_T.allDone+'</span>';
-        return '<div class="sa-emp"><div class="sa-emp-head">'+
-          '<div><div class="sa-emp-name">'+escapeHtml(e.firstName+' '+e.lastName)+'</div><div class="sa-emp-sub">'+SA_T.skillsPending.replace('{total}', e.total).replace('{pending}', e.pending)+'</div></div>'+
-          '<div class="sa-emp-counts">'+counts+'</div>'+
-          '<div class="sa-emp-actions"><button class="sa-toggle" id="sa-toggle-'+e.employeeId+'" aria-expanded="false" aria-controls="sa-detail-'+e.employeeId+'" onclick="SA.toggle('+e.employeeId+')">'+SA_T.details+'</button>'+approveBtn+'</div></div>'+
-          '<div class="sa-detail" id="sa-detail-'+e.employeeId+'">'+(SA_GOALS.on ? '<div class="sa-goals" id="sa-goals-'+e.employeeId+'"></div>' : '')+'<div class="table-wrapper"><table><thead><tr>'+
-            '<th>'+SA_T.skill+'</th>'+
-            '<th class="sa-num">'+SA_T.rvxRequired+'</th>'+
-            '<th class="sa-num">'+SA_T.rvxSelf+'</th>'+
-            '<th class="sa-num">'+SA_T.rvxValidated+'</th>'+
-            '<th>'+SA_T.rvxJustification+'</th>'+
-            '<th>'+SA_T.state+'</th>'+
-            '<th style="min-width:300px">'+SA_T.actions+'</th>'+
-          '</tr></thead><tbody>'+rows+'</tbody></table></div></div></div>';
-      }).join('');
+      const pending = list.filter(e => Number(e.pending) > 0), done = list.filter(e => !(Number(e.pending) > 0));
+      wrap.innerHTML = pending.map(e => this.empCard(e)).join('') +
+        (done.length ? '<details class="sa-done"><summary class="btn btn-secondary btn-sm">'+escapeHtml(String(SA_T.doneSection).replace('{n}', done.length))+'</summary>'+done.map(e => this.empCard(e)).join('')+'</details>' : '');
       this.applySort();
+      Object.keys(this.groups).forEach(id => this.paintBar(id));
     }
   },
   /**
@@ -619,11 +899,11 @@ const SA = {
    * qu'un filtre de campagne était actif — il y avait du travail, ailleurs.
    */
   emptyQueueCard(){
-    if (!this.cycleId) return '<div class="card" style="padding:1rem"><em>'+escapeHtml(SA_T.nothingAwaiting)+'</em></div>';
+    if (!this.cycleId) return '<div class="card sa-panel"><em>'+escapeHtml(SA_T.nothingAwaiting)+'</em></div>';
     const c = (this.cycles || []).find(x => String(x.id) === String(this.cycleId));
     const code = c ? (c.code || c.id) : this.cycleId;
-    return '<div class="card" style="padding:1rem"><em>'+escapeHtml(String(SA_T.nothingAwaitingCycle).replace('{code}', code))+'</em> '+
-      '<button type="button" class="btn btn-sm" data-sa-clear-cycle="1">'+escapeHtml(SA_T.seeAllCycles)+'</button></div>';
+    return '<div class="card sa-panel"><em>'+escapeHtml(String(SA_T.nothingAwaitingCycle).replace('{code}', code))+'</em> '+
+      '<button type="button" class="btn btn-sm btn-secondary" data-sa-clear-cycle="1">'+escapeHtml(SA_T.seeAllCycles)+'</button></div>';
   },
   /**
    * Le bandeau. Il compte TOUTES les campagnes (completionStats n'accepte pas de
@@ -640,14 +920,25 @@ const SA = {
     }
     const stats = (res.value && res.value.stats) || {};
     const body = (stats.byState||[]).map(s=>this.badge(s.state, s.n)).join(' ') || '<em>'+escapeHtml(SA_T.none)+'</em>';
-    el.innerHTML = body + (this.cycleId ? ' <span class="text-muted" style="font-size:.8rem">('+escapeHtml(SA_T.statsAllCycles)+')</span>' : '');
+    el.innerHTML = body + (this.cycleId ? ' <span class="text-muted sa-hint">('+escapeHtml(SA_T.statsAllCycles)+')</span>' : '');
   }
 };
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// The shared status badge (public/js/status-badge.js, every value escaped); a
+// plain escaped chip if the script did not load.
+function saBadge(tone, label, n){
+  if (window.StatusBadge && typeof window.StatusBadge.html === 'function') return window.StatusBadge.html(tone, label, n);
+  return '<span class="badge">'+escapeHtml(label == null ? '' : label)+(n != null ? ' '+escapeHtml(n) : '')+'</span>';
+}
 function ask(msg){ return window.promptDialog(msg); }
 // « Demander des modifications » : four ready-made reasons plus free text.
 function askChanges(){ return window.promptDialog(SA_T.askComment, '', { title: SA_T.rcTitle, multiline: true, required: true, choices: SA_T.rcReasons, choicePlaceholder: SA_T.rcPick, placeholder: SA_T.rcFreePh }); }
-// Les boutons appellent SA.act/SA.approveAll par onclick : l'erreur déjà
+// CSP : les boutons sont câblés par csp-actions.js (data-on-click: SA.<method>),
+// qui exige SA sur window ; les méthodes lisent this.*, donc chacune est liée à SA,
+// comme l'ancien appel en ligne SA.x().
+Object.keys(SA).forEach(function(k){ if(typeof SA[k]==='function') SA[k]=SA[k].bind(SA); });
+window.SA = SA;
+// Les boutons appellent SA.act()/SA.approveAll() via data-on-click : l'erreur déjà
 // montrée à l'utilisateur ressortait ensuite en « Uncaught (in promise) ». Un
 // refus se dit UNE fois, dans l'interface, pas deux fois dont une dans la console.
 window.addEventListener('unhandledrejection', function(ev){
@@ -656,6 +947,24 @@ window.addEventListener('unhandledrejection', function(ev){
 (function(){
   const team = document.getElementById('sa-team-approve');
   if (team) team.addEventListener('click', function(){ SA.approveTeam().catch(function(){ /* already shown */ }); });
+  const people = document.getElementById('sa-people');
+  if (people) {
+    people.addEventListener('change', function(ev){
+      const t = ev.target; if (!t || !t.getAttribute) return;
+      if (t.hasAttribute('data-sa-all')) { SA.selectAll(t.getAttribute('data-sa-all'), t.checked); return; }
+      if (t.hasAttribute('data-sa-sel')) { const c = t.closest('.sa-emp'); if (c) SA.paintBar(c.getAttribute('data-emp')); return; }
+      if (t.hasAttribute('data-sa-rate')) SA.refreshLine(t.getAttribute('data-sa-rate'));
+    });
+    people.addEventListener('input', function(ev){
+      const t = ev.target; if (t && t.hasAttribute && t.hasAttribute('data-sa-reason')) SA.refreshLine(t.getAttribute('data-sa-reason'));
+    });
+    people.addEventListener('click', function(ev){
+      const go = ev.target.closest && ev.target.closest('[data-sa-bulk]');
+      if (go && !go.disabled) { SA.approveSelected(go.getAttribute('data-sa-bulk')).catch(function(){ /* already shown */ }); return; }
+      const cl = ev.target.closest && ev.target.closest('[data-sa-clear]');
+      if (cl) SA.clearSel(cl.getAttribute('data-sa-clear'));
+    });
+  }
   const sel = document.getElementById('sa-sort');
   if (sel) sel.addEventListener('change', function(){ SA.sortMode = sel.value; SA.applySort(); });
   const cyc = document.getElementById('sa-cycle');
@@ -663,7 +972,7 @@ window.addEventListener('unhandledrejection', function(ev){
     SA.cycleId = cyc.value;
     const link = document.getElementById('sa-cycle-console');
     if (link) { link.hidden = !SA.cycleId; link.href = '/cycles/' + SA.cycleId; }
-    SA.load(); if (document.getElementById('sa-pending').style.display !== 'none') SA.loadPending();
+    SA.load(); if (!document.getElementById('sa-pending').hidden) SA.loadPending();
   });
   document.querySelectorAll('[data-sa-tab]').forEach(function(b){ b.addEventListener('click', function(){ SA.showTab(b.getAttribute('data-sa-tab')); }); });
   const all = document.getElementById('sa-nudge-all');

@@ -482,13 +482,17 @@ const METRIC_DIRECTION = Object.freeze({
 // the one renderer of a value
 // ---------------------------------------------------------------------------
 
+// One rounding for the text AND the colour (utils/displayedValue): a value
+// printed "80,0 %" is never coloured as below an 80 % threshold.
+const { displayedValue } = require('../utils/displayedValue');
+
 function frNum(n) {
     if (n === null || n === undefined) return null;
-    return String(Math.round(Number(n) * 10) / 10).replace('.', ',');
+    return String(displayedValue(Number(n), 1)).replace('.', ',');
 }
 function enNum(n) {
     if (n === null || n === undefined) return null;
-    return String(Math.round(Number(n) * 10) / 10);
+    return String(displayedValue(Number(n), 1));
 }
 
 /**
@@ -697,7 +701,8 @@ function cell(value, opts = {}) {
     }
 
     const n = Number(value);
-    const color = _colorFor(n, thresholds);
+    // Decide on the value the reader sees (a % is printed with one decimal).
+    const color = _colorFor(unit === 'pct' ? displayedValue(n, 1) : n, thresholds);
     let fr, en;
     if (unit === 'pct') {
         fr = `${frNum(n)} %`;
@@ -733,6 +738,24 @@ function cell(value, opts = {}) {
         color,
         hint: null,
     };
+}
+
+/**
+ * The K2 bands as cell thresholds: `good` is the readiness threshold of the
+ * settings (KpiService.readinessThreshold, app_readiness_threshold()), `warn`
+ * the K2 watch floor. A settings failure falls back to the KPI module's own
+ * default (80), never to a stricter or looser private value.
+ */
+async function _k2Thresholds() {
+    const { BANDS } = require('../utils/kpiPredicates');
+    let good = 80;
+    try {
+        const t = Number(await require('./KpiService').readinessThreshold());
+        if (Number.isFinite(t)) good = t;
+    } catch (_) {
+        /* keep the KPI default */
+    }
+    return { good, warn: BANDS.K2.warn, direction: 'higher' };
 }
 
 /** Colour, applied ONLY to a real number (never inside the null branches). */
@@ -1182,12 +1205,16 @@ async function blocksA(ctx) {
     // ---- A4 9-box placements awaiting approval -----------------------------
     // COUNT ONLY — never a name, never a box, never a performance/potential
     // pair. Restricted source, so R2 suppresses it under the floor.
+    // The awaiting-approval value of the CHECK on nine_box_evaluations.status
+    // is 'under_review' (draft | under_review | approved | rejected |
+    // archived). The former literal 'submitted' is in no CHECK: the section
+    // could never count anything and a placement under review went unseen.
     {
         const f = scope.filter('e', 'id');
         const rows = await db.all(
             `SELECT e.department_id AS "departmentId", COUNT(*)::int AS n
                FROM nine_box_evaluations nb JOIN employees e ON e.id = nb.employee_id
-              WHERE nb.status = 'submitted'${f.clause} GROUP BY 1`,
+              WHERE nb.status = 'under_review'${f.clause} GROUP BY 1`,
             [...f.params]
         );
         const by = _indexBy(rows, 'departmentId', 'n');
@@ -1651,12 +1678,23 @@ async function blocksB(ctx) {
         // "stalled for more than 21 days" counts back from TODAY, not from
         // a period end: on the yearly catch-up window the two are 60 days apart.
         const stalledBefore = new Date(observedAt.getTime() - 21 * 86400000);
+        // coaching_plans.progress is NOT NULL DEFAULT 0, so a 0 is a measurement
+        // only when somebody RECORDED it (CoachingPlanService.updateProgress
+        // audits COACHING_PROGRESS). A plan nobody has updated yet is not
+        // « stalled », it is not measured yet. Stalled = active, open for more
+        // than 21 days, and a recorded progress still at 0. The audit spelling
+        // is matched in every variant (SystemLogModel.entityTypeVariants).
+        const logTypes = require('../models/SystemLogModel').entityTypeVariants('coaching_plan');
         const rows = await db.all(
             `SELECT e.department_id AS "departmentId", COUNT(*)::int AS n
                FROM coaching_plans c JOIN employees e ON e.id = c.employee_id
               WHERE c.state = 'active' AND COALESCE(c.progress, 0) = 0
-                AND c.created_at < ?${f.clause} GROUP BY 1`,
-            [stalledBefore, ...f.params]
+                AND c.created_at < ?
+                AND EXISTS (SELECT 1 FROM system_logs l
+                             WHERE l.entity_type = ANY(?) AND l.entity_id = c.id
+                               AND l.action = 'COACHING_PROGRESS')${f.clause}
+              GROUP BY 1`,
+            [stalledBefore, logTypes, ...f.params]
         );
         const by = _indexBy(rows, 'departmentId', 'n');
         const lines = _onGrid(grid, by)
@@ -1677,8 +1715,8 @@ async function blocksB(ctx) {
                     lines,
                     source: 'coaching_plans',
                     rule: {
-                        fr: 'state = active, progression 0, ouvert depuis plus de 21 jours',
-                        en: 'state = active, progress 0, open for more than 21 days',
+                        fr: 'state = active, progression enregistrée à 0 (jamais la valeur par défaut), ouvert depuis plus de 21 jours',
+                        en: 'state = active, recorded progress still 0 (never the default), open for more than 21 days',
                     },
                     link: '/coaching/plans',
                 })
@@ -2299,6 +2337,12 @@ async function footer(ctx) {
     const { scope, grid } = ctx;
     if (!grid.length) return { units: [], totals: null };
 
+    // Average readiness is the K2 indicator: its colour follows the KPI
+    // module's bands (kpiPredicates.BANDS.K2: compliant from the readiness
+    // threshold of the settings, watch from 50), the same as the dashboard,
+    // never a private 80 / 60 pair.
+    const k2Thresholds = await _k2Thresholds();
+
     const fc = scope.filter('c', 'employee_id');
     const cov = await db.all(
         `SELECT c.department_id AS "departmentId",
@@ -2393,7 +2437,7 @@ async function footer(ctx) {
                     fr: `(sur ${measuredPeople} personne${measuredPeople > 1 ? 's' : ''} mesurée${measuredPeople > 1 ? 's' : ''} sur ${u.headcount})`,
                     en: `(over ${measuredPeople} of ${u.headcount} people measured)`,
                 },
-                thresholds: { good: 80, warn: 60, direction: 'higher' },
+                thresholds: k2Thresholds,
             }),
             // matrix completion.
             d3Completion: cell(requiredCells ? assessedCells : null, {

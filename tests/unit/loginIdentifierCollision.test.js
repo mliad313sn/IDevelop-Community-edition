@@ -251,8 +251,8 @@ describe("the door upstream: an administration account may not be created on a p
 
     test('AdminController calls it at BOTH doors — creation AND rename — and says why', () => {
         const ctrl = read('src/controllers/AdminController.js');
-        expect(ctrl).toMatch(/if \(await _employeeLoginExists\(username\)\) \{/); // create
-        expect(ctrl).toMatch(/if \(await _employeeLoginExists\(wanted, linkedTo\)\) \{/); // rename
+        expect(ctrl).toMatch(/if \(await _employeeUsernameTaken\(username\)\) \{/); // create
+        expect(ctrl).toMatch(/if \(await _employeeUsernameTaken\(wanted, linkedTo\)\) \{/); // rename
         expect(ctrl).toMatch(/flash:adm_username_is_employee_login/);
     });
 

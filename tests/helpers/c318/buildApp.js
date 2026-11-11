@@ -70,6 +70,13 @@ function compiledServerPath() {
         "[].push('uncaughtException',",
         "process.on('uncaughtException'"
     );
+    // server.js says when ITS i18n middleware is live (see i18nReady)
+    src = replaceOnce(
+        src,
+        '_i18nHandle = i18n.handle;',
+        '_i18nHandle = i18n.handle; globalThis.__c318I18nReady = true;',
+        '_i18nHandle = i18n.handle;'
+    );
     const rootLit = JSON.stringify(ROOT.replace(/\\/g, '/'));
     src = src.replace(/require\('\.\//g, `require(${rootLit} + '/`);
     src = src.replace(/\b__dirname\b/g, rootLit);
@@ -87,6 +94,31 @@ function compiledServerPath() {
 function loadApp() {
     // eslint-disable-next-line security/detect-non-literal-require
     return require(compiledServerPath());
+}
+
+/**
+ * Wait until server.js's OWN i18n middleware is live, instead of a fixed sleep.
+ * server.js starts i18next asynchronously and, until its `_i18nHandle` is set,
+ * renders the raw keys. Watching i18next.isInitialized is not enough: a suite
+ * that already called src/config/i18n.init() itself has an initialised singleton
+ * while server.js's own init is still running. The compiled server sets
+ * globalThis.__c318I18nReady on the very line that installs the handle
+ * (compiledServerPath). IDevelop's i18n is unconditional, so the wait is too;
+ * only a missing i18next (key pass-through mode) means there is nothing to wait for.
+ */
+async function i18nReady(timeoutMs = 60000) {
+    try {
+        require('i18next');
+    } catch (_) {
+        return false;
+    }
+    const t0 = Date.now();
+    while (!globalThis.__c318I18nReady) {
+        if (Date.now() - t0 > timeoutMs)
+            throw new Error(`server.js i18n middleware not live after ${timeoutMs} ms`);
+        await new Promise((r) => setTimeout(r, 20));
+    }
+    return true;
 }
 
 /** express-session cookie for a session id (cookie-signature algorithm). */
@@ -181,4 +213,12 @@ function listRoutes(app) {
     });
 }
 
-module.exports = { ROOT, loadApp, mintSession, signedCookie, listRoutes, compiledServerPath };
+module.exports = {
+    ROOT,
+    loadApp,
+    i18nReady,
+    mintSession,
+    signedCookie,
+    listRoutes,
+    compiledServerPath,
+};

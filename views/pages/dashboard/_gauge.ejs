@@ -1,0 +1,30 @@
+<%#
+  The overall health score as a half-circle gauge (server SVG, no canvas).
+  No score below 3 measured areas: the gauge says « Not measured » and draws
+  no needle. A partial score says how many areas it covers.
+  Locals: G (DashboardHomeService.globalGauge), threshold.
+-%><%
+  var _F = numFmt;
+  var _icon = { good: '✓', warn: '!', risk: '▲' };
+  var _cx = 110, _cy = 110, _r = 90;
+  var _pt = function (v) { var a = Math.PI * (1 - Math.max(0, Math.min(100, v)) / 100); return [(_cx + _r * Math.cos(a)).toFixed(1), (_cy - _r * Math.sin(a)).toFixed(1)]; };
+  var _arc = function (from, to) { var a = _pt(from), b = _pt(to); return 'M ' + a[0] + ' ' + a[1] + ' A ' + _r + ' ' + _r + ' 0 0 1 ' + b[0] + ' ' + b[1]; };
+  var _has = G && G.score !== null && G.score !== undefined;
+  var _thr = (typeof threshold !== 'undefined' && threshold) ? Number(threshold) : 80;
+  var _t1 = _pt(_thr), _tIn = (function () { var a = Math.PI * (1 - _thr / 100); return [(_cx + (_r - 16) * Math.cos(a)).toFixed(1), (_cy - (_r - 16) * Math.sin(a)).toFixed(1)]; })();
+  var _label = _has ? _F.pct(G.score, 1) : __('viz:unmeasured');
+-%>
+<div class="ds-gauge" id="ds-gauge" data-score="<%= _has ? G.score : '' %>">
+    <svg viewBox="0 0 220 130" role="img" aria-label="<%= __('dash:d3_ov_gauge_title') %>: <%= _label %>" focusable="false">
+        <path class="ds-gauge-track" d="<%= _arc(0, 100) %>" fill="none" stroke-width="16" stroke-linecap="round"></path>
+        <% if (_has && G.score > 0) { %><path class="ds-gauge-arc" d="<%= _arc(0, G.score) %>" fill="none" stroke-width="16" stroke-linecap="round"></path><% } %>
+        <line class="ds-gauge-tick" x1="<%= _t1[0] %>" y1="<%= _t1[1] %>" x2="<%= _tIn[0] %>" y2="<%= _tIn[1] %>" stroke-width="2"></line>
+        <% if (_has) { %><text class="ds-gauge-score" x="110" y="105" text-anchor="middle"><%= _label %></text>
+        <% } else { %><text class="ds-gauge-none" x="110" y="105" text-anchor="middle"><%= _label %></text><% } %>
+    </svg>
+    <div>
+        <% if (_has && G.status) { %><p><span class="viz-chip viz-chip--<%= G.status %>"><span class="viz-chip-icon" aria-hidden="true"><%= _icon[G.status] %></span><span><%= __('viz:status.' + G.status) %></span></span></p><% } %>
+        <% if (!_has) { %><p class="ds-note"><%= __('dash:d3_ov_gauge_none') %></p>
+        <% } else if (G.partial) { %><p class="ds-note"><%= __('dash:d3_ov_gauge_partial', { n: G.measuredCount, total: G.total }) %></p><% } %>
+    </div>
+</div>

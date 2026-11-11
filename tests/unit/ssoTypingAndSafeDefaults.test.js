@@ -104,9 +104,13 @@ describe('disabling MFA takes effect immediately (L5-10)', () => {
     test('the enrolment cache lives where disable() can clear it', () => {
         const m = read('src/services/MfaService.js');
         expect(m).toMatch(/MfaService\.forgetEnrolment\(userType, userId\);/);
+        // The gate moved from server.js to middleware/mfaEnforcement (the inline
+        // copy was removed with the fail-closed policy); it reads the SAME
+        // MfaService cache.
+        const gate = read('src/middleware/mfaEnforcement.js');
+        expect(gate).toMatch(/MfaService\.hasFreshEnrolment\(mfaType, u\.id, 5 \* 60_000\)/);
         const server = read('server.js');
-        expect(server).toMatch(/MfaService\.hasFreshEnrolment\('admin', u\.id, 5 \* 60_000\)/);
-        expect(server).not.toMatch(/mfaPolicyCache\.active/);
+        expect(server).not.toMatch(/mfaPolicyCache/);
     });
 
     test('a cleared entry stops satisfying the gate', () => {

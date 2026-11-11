@@ -162,9 +162,10 @@ beforeEach(() => {
 // =========================================================================
 describe('E-02 — la demande de modification est atteignable depuis les écrans', () => {
     test('la barre latérale porte l’entrée de menu et ses deux clés, FR et EN', () => {
-        const sidebar = read('views/partials/sidebar.ejs');
-        expect(sidebar).toContain('href="/assessment-changes"');
-        expect(sidebar).toContain('chrome:nav_acr_title');
+        // The rail is rendered from the navigation config: the entry lives there.
+        const nav = read('src/config/navigation.js');
+        expect(nav).toContain("href: '/assessment-changes'");
+        expect(nav).toContain("title: 'nav_acr_title'");
         for (const lg of ['fr', 'en']) {
             const chrome = json(`locales/${lg}/chrome.json`);
             expect(typeof chrome.nav_acr).toBe('string');

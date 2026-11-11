@@ -1,0 +1,39 @@
+<%#
+  « Measurability », right under the health score it qualifies: on how many
+  people of the scope the score is computed (K1's own denominator, people
+  with a verdict), and, apart, the people without requirements for their role,
+  the partly assessed and the « not yet assessed » (measurable, just not
+  assessed yet: never folded into « not measurable »). The health axes not
+  measured yet are named. Counts only, never a name; fewer than 5 people:
+  counts, no %. The chip is coloured only below 100 %.
+  Locals: MZ (DashboardHomeService.measurability) or null.
+-%><%
+  var _m = (typeof MZ !== 'undefined' && MZ) ? MZ : null;
+  if (_m) {
+  var _F = numFmt;
+  var _N = function (n) { return _F.num(n, 0); };
+  var _axes = (_m.axesMissing || []).map(function (k) { return __('dash:d3_ov_axis_' + k); });
+  var _parts = [];
+  if (!_m.emptyScope) {
+      _parts.push(_m.pct === null || _m.pct === undefined
+          ? __('dash:d3_mz_head_counts', { m: _N(_m.scored), p: _N(_m.population), count: _m.population })
+          : __('dash:d3_mz_head_pct', { m: _N(_m.scored), p: _N(_m.population), pct: _F.pct(_m.pct, 0), count: _m.population }));
+      if (_m.noRequirement) _parts.push(__('dash:d3_mz_noreq', { n: _N(_m.noRequirement), count: _m.noRequirement }));
+      if (_m.partial) _parts.push(__('dash:d3_mz_partial', { n: _N(_m.partial), count: _m.partial }));
+      if (_m.notAssessed) _parts.push(__('dash:d3_mz_unassessed', { n: _N(_m.notAssessed), count: _m.notAssessed }));
+  }
+  if (_axes.length) _parts.push(__('dash:d3_mz_axes', { list: _axes.join(', '), count: _axes.length }));
+-%>
+<div class="ds-measurability" id="ds-measurability" data-measurability="<%= _m.emptyScope ? 'empty' : (_m.complete ? 'complete' : 'partial') %>">
+    <p class="ds-note">
+        <strong><%= __('dash:d3_mz_label') %></strong>
+        <% if (_m.emptyScope) { %>
+            <span class="viz-chip viz-chip--unmeasured"><span class="viz-chip-icon" aria-hidden="true">—</span><span><%= __('viz:unmeasured') %></span></span>
+        <% } else if (!_m.complete) { %>
+            <span class="viz-chip viz-chip--warn"><span class="viz-chip-icon" aria-hidden="true">!</span><span><%= __('dash:d3_mz_to_complete') %></span></span>
+        <% } %>
+        <% if (_parts.length) { %><span data-measurability-value data-not-assessed="<%= _m.notAssessed || 0 %>"><%= _parts.join(__('dash:d3_mz_join')) %>.</span><% } %>
+    </p>
+    <% if (!_m.emptyScope && (_m.notAssessed || _m.partial || _m.noRequirement)) { %><p class="ds-note"><%= __('dash:d3_mz_note') %></p><% } %>
+</div>
+<% } %>

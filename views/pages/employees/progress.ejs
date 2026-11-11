@@ -8,6 +8,14 @@
     <% } %>
 </div>
 
+<% if (selfView) { %>
+<link rel="stylesheet" href="/css/emp-loop.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
+<%# « What changed » — the person's own validated progress (hidden when unreadable). %>
+<% if (typeof changes !== 'undefined' && changes) { %>
+<%- include('../../partials/emp-changes', { chg: changes }) %>
+<% } %>
+<details class="sa-rule emp-status-line" id="progRule"><summary><%= __('employee:sa_rule_sum') %></summary><p><%= __('employee:sa_rule_body') %></p></details>
+<% } %>
 <% if (!selfView) { %>
 <p class="help-text" style="margin-bottom:1rem;">
     <strong><%= employee.fullName %></strong>
@@ -87,6 +95,7 @@
     <% } else { %>
     <p class="help-text" style="margin-bottom:.75rem;">
         <%= __('compliance:prog_meas_count', { n: meas.skills.length, rounds: meas.roundsTotal }) %></p>
+    <p class="help-text" style="margin-bottom:.75rem;" id="progDeltaNote"><%= __('employee:prog_delta_note') %></p>
     <div class="table-wrapper">
         <table class="table">
             <thead><tr>
@@ -96,6 +105,7 @@
                 <th><%= __('compliance:prog_meas_th_campaign') %></th>
                 <th><%= __('compliance:prog_meas_th_self') %></th>
                 <th><%= __('compliance:prog_meas_th_supervisor') %></th>
+                <th><%= __('employee:prog_validated') %></th>
                 <th><%= __('compliance:prog_meas_th_state') %></th>
                 <th><%= __('compliance:prog_meas_evolution') %></th>
             </tr></thead>
@@ -113,6 +123,8 @@
                         <td style="font-size:.82rem;"><%= r.cycleLabel || __('compliance:prog_meas_off_cycle') %></td>
                         <td><%= r.selfRatedLevel != null ? r.selfRatedLevel : '—' %></td>
                         <td><%= r.supervisorRatedLevel != null ? r.supervisorRatedLevel : '—' %></td>
+                        <%# only an approved round carries a validated level %>
+                        <td data-validated="<%= r.validatedLevel != null ? r.validatedLevel : '' %>"><% if (r.validatedLevel != null) { %><strong><%= r.validatedLevel %></strong><% } else if (r.pending) { %><span class="text-muted"><%= __('employee:prog_pending') %></span><% } else { %>—<% } %></td>
                         <td><span class="badge"><%= __('talentx:sar_st_' + r.state, { defaultValue: r.state }) %></span></td>
                         <% if (i === 0) { %>
                         <td rowspan="<%= s.rounds.length %>">

@@ -2101,8 +2101,11 @@ class SkillMatrixWorkbookService {
                     continue;
                 }
                 await db.run(
-                    'UPDATE skillAssessments SET currentLevel = ?, assessedBy = ?, notes = COALESCE(?, notes), assessedAt = COALESCE(?::timestamptz, now()) WHERE id = ?',
-                    [a.currentLevel, rowAssessor, notes, assessedAt, existing.id]
+                    // A changed imported level is unproven ('self'); an unchanged
+                    // one keeps its provenance.
+                    // (SET expressions read the OLD row: the CASE compares the stored level.)
+                    `UPDATE skillAssessments SET currentLevel = ?, assessedBy = ?, notes = COALESCE(?, notes), assessedAt = COALESCE(?::timestamptz, now()), validation = CASE WHEN currentLevel = ? THEN validation ELSE 'self' END WHERE id = ?`,
+                    [a.currentLevel, rowAssessor, notes, assessedAt, a.currentLevel, existing.id]
                 );
                 results.assessments.updated++;
             } else {

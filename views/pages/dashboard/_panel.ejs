@@ -1,0 +1,23 @@
+<%#
+  One context tab of the dashboard: the inline panel of /dashboard and the
+  fragment of /dashboard/panel. Aggregates only — never a name. The tab id
+  comes from DashboardHomeService (a fixed list), never from the request.
+  Locals: panel (DashboardHomeService.tabModel), ctx.
+-%><%
+  var P = panel || {};
+  var _units = { site: __('dash:d3_unit_site'), department: __('dash:d3_unit_department') };
+-%>
+<div class="ds-panel-body" data-tab-body="<%= P.id %>">
+<% if (P.tileModels && P.tileModels.length) { %>
+    <div class="viz-kpi-row" id="ds-<%= P.id %>-tiles">
+        <% P.tileModels.forEach(function (k) { %><%- include('../../partials/kpi-tile', { vizKpi: Object.assign({}, k, { id: k.id + '-' + P.id }) }) %><% }); %>
+    </div>
+<% } %>
+<% if (P.id === 'overview') { %><%- include('_tab-overview', { P: P, units: _units }) %>
+<% } else if (P.id === 'readiness') { %><%- include('_tab-readiness', { P: P, units: _units }) %>
+<% } else if (P.id === 'safety') { %><%- include('_tab-safety', { P: P, units: _units }) %>
+<% } else if (P.id === 'talent') { %><%- include('_tab-talent', { P: P }) %>
+<% } else if (P.id === 'development') { %><%- include('_tab-development', { P: P, units: _units }) %>
+<% } else if (P.id === 'assessments') { %><%- include('_tab-assessments', { P: P }) %>
+<% } %>
+</div>

@@ -9,7 +9,7 @@ const db = require('../config/database');
  * tamper-evident, hash-chained audit log (immutable by DB trigger, a compliance
  * artifact). Only operational telemetry with no evidentiary value is pruned:
  *   - perf_events (slow requests / slow queries / DB error codes)
- *   - notifications that are read AND older than the window
+ *   - notifications older than the window (read, and unread: see below)
  *   - reminder_log (the exactly-once nudge ledger — one row per reminder sent)
  * Retention is env-configurable; runs idempotently (hourly tick, cheap DELETE).
  *
@@ -23,14 +23,33 @@ const db = require('../config/database');
 const ENV_PERF_DAYS = Number(process.env.PERF_EVENTS_RETENTION_DAYS) || 30;
 const ENV_NOTIF_DAYS = Number(process.env.NOTIFICATION_RETENTION_DAYS) || 120;
 const ENV_REMINDER_DAYS = Number(process.env.REMINDER_LOG_RETENTION_DAYS) || 180;
+/**
+ * RETENTION PER CATEGORY: two categories that were kept forever.
+ *   - UNREAD notifications. Only read ones were pruned, so a notice nobody
+ *     opened lived for ever. Setting `unreadNotificationRetentionDays`; when
+ *     unset it FOLLOWS `notificationRetentionDays` (default 120 days), the same
+ *     window as read ones. A notification still scheduled for later
+ *     (release_at in the future) is never pruned.
+ *   - REJECTED sign-up applicants (onboarding_requests): name, e-mail, password
+ *     hash, IdP subject and decision note of a person who never became an
+ *     employee. Setting `onboardingRejectedRetentionDays`, default 180 days
+ *     after the decision. The row is PSEUDONYMISED, not deleted (the decision,
+ *     its date and who decided stay for the audit of the onboarding queue).
+ * 0 (or negative / NaN) = keep forever, like every other window here.
+ */
+const ENV_ONBOARDING_REJECTED_DAYS = Number(process.env.ONBOARDING_REJECTED_RETENTION_DAYS) || 180;
 
 async function tick() {
     let perf = 0,
         notif = 0,
-        reminders = 0;
+        reminders = 0,
+        unread = 0,
+        applicants = 0;
     let perfDays = ENV_PERF_DAYS,
         notifDays = ENV_NOTIF_DAYS,
         reminderDays = ENV_REMINDER_DAYS;
+    let unreadDays = null,
+        applicantDays = ENV_ONBOARDING_REJECTED_DAYS;
     try {
         const AppSettingsModel = require('../models/AppSettingsModel');
         perfDays = Number(
@@ -42,9 +61,18 @@ async function tick() {
         reminderDays = Number(
             await AppSettingsModel.getValue('reminderLogRetentionDays', ENV_REMINDER_DAYS)
         );
+        unreadDays = await AppSettingsModel.getValue('unreadNotificationRetentionDays', null);
+        applicantDays = Number(
+            await AppSettingsModel.getValue(
+                'onboardingRejectedRetentionDays',
+                ENV_ONBOARDING_REJECTED_DAYS
+            )
+        );
     } catch {
         /* settings unavailable → env/default */
     }
+    // Unset → the same window as read notifications.
+    unreadDays = unreadDays == null || unreadDays === '' ? notifDays : Number(unreadDays);
     // 0 (or negative/NaN) = "keep forever" per the getValue convention — NOT
     // "delete everything older than now". Skip the prune in that case.
     if (Number.isFinite(perfDays) && perfDays > 0) {
@@ -74,6 +102,36 @@ async function tick() {
             /* notifications schema variant */
         }
     }
+    if (Number.isFinite(unreadDays) && unreadDays > 0) {
+        try {
+            const r = await db.run(
+                `DELETE FROM notifications
+                  WHERE read_at IS NULL
+                    AND created_at < now() - (? || ' days')::interval
+                    AND (release_at IS NULL OR release_at <= now())`,
+                [unreadDays]
+            );
+            unread = (r && (r.changes ?? r.rowCount)) || 0;
+        } catch (e) {
+            /* notifications schema variant */
+        }
+    }
+    if (Number.isFinite(applicantDays) && applicantDays > 0) {
+        try {
+            const r = await db.run(
+                `UPDATE onboarding_requests
+                    SET email = ('purged-onb-' || id || '@erased.local'), first_name = NULL, last_name = NULL,
+                        password_hash = NULL, external_id = NULL, decision_note = NULL
+                  WHERE status = 'rejected'
+                    AND COALESCE(decided_at, requested_at) < now() - (? || ' days')::interval
+                    AND email::text NOT LIKE '%@erased.local'`,
+                [applicantDays]
+            );
+            applicants = (r && (r.changes ?? r.rowCount)) || 0;
+        } catch (e) {
+            /* table absent on older schemas */
+        }
+    }
     if (Number.isFinite(reminderDays) && reminderDays > 0) {
         try {
             const r = await db.run(
@@ -93,12 +151,12 @@ async function tick() {
     } catch (e) {
         /* table absent before migration 111 */
     }
-    if (perf || notif || reminders || jobRuns) {
+    if (perf || notif || reminders || jobRuns || unread || applicants) {
         console.log(
-            `[telemetry-prune] removed perf_events=${perf}, notifications=${notif}, reminder_log=${reminders}, job_runs=${jobRuns}`
+            `[telemetry-prune] removed perf_events=${perf}, notifications=${notif}, unread_notifications=${unread}, reminder_log=${reminders}, job_runs=${jobRuns}; rejected applicants pseudonymised=${applicants}`
         );
     }
-    return { perf, notif, reminders, jobRuns };
+    return { perf, notif, reminders, jobRuns, unread, applicants };
 }
 
 module.exports = { tick };

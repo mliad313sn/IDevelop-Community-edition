@@ -14,12 +14,12 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
 
 <div class="search-bar" style="margin:.6rem 0"><div class="search-input-wrapper"><input type="search" class="search-input" data-table-search="#org-sites-table, #org-depts-table, #org-svcs-table, #org-emps-table" placeholder="<%= __('common:filter_list') %>" aria-label="<%= __('common:filter_list') %>"></div></div>
 <div class="tabs">
-    <button class="tab <%= activeTab === 'sites' ? 'active' : '' %>" onclick="showTab(event, 'sites')"><i class="fas fa-building" aria-hidden="true"></i> <%= __('admin:sites') %><span data-ts-count="#org-sites-table"></span></button>
-    <button class="tab <%= activeTab === 'departments' ? 'active' : '' %>" onclick="showTab(event, 'departments')"><i class="fas fa-landmark" aria-hidden="true"></i>
+    <button class="tab <%= activeTab === 'sites' ? 'active' : '' %>" data-tab="sites" data-on-click="showTab" data-args='["$el","sites"]'><i class="fas fa-building" aria-hidden="true"></i> <%= __('admin:sites') %><span data-ts-count="#org-sites-table"></span></button>
+    <button class="tab <%= activeTab === 'departments' ? 'active' : '' %>" data-tab="departments" data-on-click="showTab" data-args='["$el","departments"]'><i class="fas fa-landmark" aria-hidden="true"></i>
         <%= __('admin:departments') %><span data-ts-count="#org-depts-table"></span></button>
-    <button class="tab <%= activeTab === 'services' ? 'active' : '' %>" onclick="showTab(event, 'services')"><i class="fas fa-gear" aria-hidden="true"></i>
+    <button class="tab <%= activeTab === 'services' ? 'active' : '' %>" data-tab="services" data-on-click="showTab" data-args='["$el","services"]'><i class="fas fa-gear" aria-hidden="true"></i>
         <%= __('admin:services') %><span data-ts-count="#org-svcs-table"></span></button>
-    <button class="tab <%= activeTab === 'employees' ? 'active' : '' %>" onclick="showTab(event, 'employees')"><i class="fas fa-users" aria-hidden="true"></i>
+    <button class="tab <%= activeTab === 'employees' ? 'active' : '' %>" data-tab="employees" data-on-click="showTab" data-args='["$el","employees"]'><i class="fas fa-users" aria-hidden="true"></i>
         <%= __('admin:employees') %><span data-ts-count="#org-emps-table"></span></button>
 </div>
 
@@ -28,7 +28,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2><%= __('admin:sites') %></h2>
         <% if (canManage ) { %>
-            <button class="btn btn-primary" onclick="showModal('createSiteModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:create_site') %></button>
+            <button class="btn btn-primary" data-on-click="showModal" data-args='["createSiteModal"]'><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:create_site') %></button>
             <% } %>
     </div>
 
@@ -55,7 +55,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                                 <h3><%= __('admin:no_sites_found') %></h3>
                                 <p><%= __('admin:get_started_site') %></p>
                                 <% if (canManage ) { %>
-                                    <button class="btn btn-primary" onclick="showModal('createSiteModal')"><%= __('admin:create_site') %></button>
+                                    <button class="btn btn-primary" data-on-click="showModal" data-args='["createSiteModal"]'><%= __('admin:create_site') %></button>
                                     <% } %>
                             </div>
                         </td>
@@ -85,7 +85,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                                     <td>
                                         <div class="table-actions">
                                             <button class="btn btn-sm"
-                                                onclick='editSite(<%= JSON.stringify(site) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                                data-on-click="editSite" data-args="<%= JSON.stringify([site]) %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
                                             <%- include('./_unit-actions', { kind: 'site', unit: site, from: 'hub' }) %>
                                         </div>
                                     </td>
@@ -106,7 +106,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2><%= __('admin:departments') %></h2>
         <% if (canManage ) { %>
-            <button class="btn btn-primary" onclick="showModal('createDepartmentModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:create_department') %></button>
+            <button class="btn btn-primary" data-on-click="showModal" data-args='["createDepartmentModal"]'><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:create_department') %></button>
             <% } %>
     </div>
 
@@ -133,7 +133,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                                 <h3><%= __('admin:no_departments_found') %></h3>
                                 <p><%= __('admin:get_started_department') %></p>
                                 <% if (canManage ) { %>
-                                    <button class="btn btn-primary" onclick="showModal('createDepartmentModal')"><%= __('admin:create_department') %></button>
+                                    <button class="btn btn-primary" data-on-click="showModal" data-args='["createDepartmentModal"]'><%= __('admin:create_department') %></button>
                                     <% } %>
                             </div>
                         </td>
@@ -163,7 +163,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                                     <td>
                                         <div class="table-actions">
                                             <button class="btn btn-sm"
-                                                onclick='editDepartment(<%= JSON.stringify(dept) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                                data-on-click="editDepartment" data-args="<%= JSON.stringify([dept]) %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
                                             <%- include('./_unit-actions', { kind: 'department', unit: dept, from: 'hub' }) %>
                                         </div>
                                     </td>
@@ -184,7 +184,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2><%= __('admin:services') %></h2>
         <% if (canManage ) { %>
-            <button class="btn btn-primary" onclick="showModal('createServiceModal')"><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:create_service') %></button>
+            <button class="btn btn-primary" data-on-click="showModal" data-args='["createServiceModal"]'><i class="fas fa-plus" aria-hidden="true"></i> <%= __('admin:create_service') %></button>
             <% } %>
     </div>
 
@@ -212,7 +212,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                                 <h3><%= __('admin:no_services_found') %></h3>
                                 <p><%= __('admin:get_started_service') %></p>
                                 <% if (canManage ) { %>
-                                    <button class="btn btn-primary" onclick="showModal('createServiceModal')"><%= __('admin:create_service') %></button>
+                                    <button class="btn btn-primary" data-on-click="showModal" data-args='["createServiceModal"]'><%= __('admin:create_service') %></button>
                                     <% } %>
                             </div>
                         </td>
@@ -239,7 +239,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                                     <td>
                                         <div class="table-actions">
                                             <button class="btn btn-sm"
-                                                onclick='editService(<%= JSON.stringify(service) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                                data-on-click="editService" data-args="<%= JSON.stringify([service]) %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
                                             <%- include('./_unit-actions', { kind: 'service', unit: service, from: 'hub' }) %>
                                         </div>
                                     </td>
@@ -349,7 +349,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
         <div class="modal-content">
             <div class="modal-header">
                 <h2><%= __('admin:create_site') %></h2>
-                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('createSiteModal')">&times;</button>
+                <button type="button" class="close" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["createSiteModal"]'>&times;</button>
             </div>
             <div class="modal-body">
                 <form action="/organization/sites" method="POST">
@@ -369,7 +369,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                     <div class="modal-footer">
                         <button type="submit" class="btn btn-primary"><%= __('admin:create') %></button>
                         <button type="button" class="btn btn-secondary"
-                            onclick="hideModal('createSiteModal')"><%= __('admin:cancel') %></button>
+                            data-on-click="hideModal" data-args='["createSiteModal"]'><%= __('admin:cancel') %></button>
                     </div>
                 </form>
             </div>
@@ -380,7 +380,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
         <div class="modal-content">
             <div class="modal-header">
                 <h2><%= __('admin:edit_site') %></h2>
-                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editSiteModal')">&times;</button>
+                <button type="button" class="close" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["editSiteModal"]'>&times;</button>
             </div>
             <div class="modal-body">
                 <form id="editSiteForm" method="POST">
@@ -400,7 +400,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                     <div class="modal-footer">
                         <button type="submit" class="btn btn-primary"><%= __('admin:update') %></button>
                         <button type="button" class="btn btn-secondary"
-                            onclick="hideModal('editSiteModal')"><%= __('admin:cancel') %></button>
+                            data-on-click="hideModal" data-args='["editSiteModal"]'><%= __('admin:cancel') %></button>
                     </div>
                 </form>
             </div>
@@ -412,7 +412,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
         <div class="modal-content">
             <div class="modal-header">
                 <h2><%= __('admin:create_department') %></h2>
-                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('createDepartmentModal')">&times;</button>
+                <button type="button" class="close" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["createDepartmentModal"]'>&times;</button>
             </div>
             <div class="modal-body">
                 <form action="/organization/departments" method="POST">
@@ -443,7 +443,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                     <div class="modal-footer">
                         <button type="submit" class="btn btn-primary"><%= __('admin:create') %></button>
                         <button type="button" class="btn btn-secondary"
-                            onclick="hideModal('createDepartmentModal')"><%= __('admin:cancel') %></button>
+                            data-on-click="hideModal" data-args='["createDepartmentModal"]'><%= __('admin:cancel') %></button>
                     </div>
                 </form>
             </div>
@@ -454,7 +454,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
         <div class="modal-content">
             <div class="modal-header">
                 <h2><%= __('admin:edit_department') %></h2>
-                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editDepartmentModal')">&times;</button>
+                <button type="button" class="close" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["editDepartmentModal"]'>&times;</button>
             </div>
             <div class="modal-body">
                 <form id="editDepartmentForm" method="POST">
@@ -485,7 +485,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                     <div class="modal-footer">
                         <button type="submit" class="btn btn-primary"><%= __('admin:update') %></button>
                         <button type="button" class="btn btn-secondary"
-                            onclick="hideModal('editDepartmentModal')"><%= __('admin:cancel') %></button>
+                            data-on-click="hideModal" data-args='["editDepartmentModal"]'><%= __('admin:cancel') %></button>
                     </div>
                 </form>
             </div>
@@ -497,7 +497,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
         <div class="modal-content">
             <div class="modal-header">
                 <h2><%= __('admin:create_service') %></h2>
-                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('createServiceModal')">&times;</button>
+                <button type="button" class="close" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["createServiceModal"]'>&times;</button>
             </div>
             <div class="modal-body">
                 <form action="/organization/services" method="POST">
@@ -528,7 +528,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                     <div class="modal-footer">
                         <button type="submit" class="btn btn-primary"><%= __('admin:create') %></button>
                         <button type="button" class="btn btn-secondary"
-                            onclick="hideModal('createServiceModal')"><%= __('admin:cancel') %></button>
+                            data-on-click="hideModal" data-args='["createServiceModal"]'><%= __('admin:cancel') %></button>
                     </div>
                 </form>
             </div>
@@ -539,7 +539,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
         <div class="modal-content">
             <div class="modal-header">
                 <h2><%= __('admin:edit_service') %></h2>
-                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editServiceModal')">&times;</button>
+                <button type="button" class="close" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["editServiceModal"]'>&times;</button>
             </div>
             <div class="modal-body">
                 <form id="editServiceForm" method="POST">
@@ -570,13 +570,17 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                     <div class="modal-footer">
                         <button type="submit" class="btn btn-primary"><%= __('admin:update') %></button>
                         <button type="button" class="btn btn-secondary"
-                            onclick="hideModal('editServiceModal')"><%= __('admin:cancel') %></button>
+                            data-on-click="hideModal" data-args='["editServiceModal"]'><%= __('admin:cancel') %></button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
+    <% } %>
 
+    <%# CSP: the page script is rendered for every viewer — the tab buttons
+        (data-on-click="showTab") are shown to read-only viewers too, and used to throw
+        a ReferenceError for them because the script sat inside the canManage block. %>
     <script nonce="<%= cspNonce %>">
         /* Deactivation is reversible but it hides the unit from every list, dropdown,
            cascade and report filter — so it gets a real explanation (unit name, how
@@ -605,7 +609,7 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
             document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
             const pane = document.getElementById(tabName + '-tab');
             if (pane) pane.classList.add('active');
-            const btn = document.querySelector('.tab[onclick*="\'' + tabName + '\'"]');
+            const btn = document.querySelector('.tab[data-tab="' + tabName + '"]');
             if (btn) btn.classList.add('active');
             const q = document.querySelector('input[data-table-search]');
             if (q) { q.value = term || ''; q.dispatchEvent(new Event('input', { bubbles: true })); }
@@ -620,7 +624,10 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
         });
 
         // Tab switching
-        function showTab(event, tabName) {
+        // Called from data-on-click with the tab BUTTON itself ("$el"), never the
+        // event: csp-actions delegates from document, so event.currentTarget would be
+        // the document. An event is still accepted for any legacy caller.
+        function showTab(btnOrEvent, tabName) {
             // Hide all tabs
             document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.remove('active');
@@ -629,10 +636,13 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
                 btn.classList.remove('active');
             });
 
-            // Show selected tab. Use currentTarget (the button) — event.target could be
-            // the inner <i> glyph, which would leave the tab button un-highlighted.
+            // Show selected tab. Highlight the button — the event target could be the
+            // inner <i> glyph, which would leave the tab button un-highlighted.
             document.getElementById(tabName + '-tab').classList.add('active');
-            (event.currentTarget || event.target).classList.add('active');
+            const btn = btnOrEvent && btnOrEvent.nodeType === 1
+                ? btnOrEvent
+                : document.querySelector('.tab[data-tab="' + tabName + '"]');
+            if (btn) btn.classList.add('active');
         }
 
         // Site edit function
@@ -664,4 +674,3 @@ const canManage = (typeof canManageOrg !== 'undefined') ? canManageOrg : (user &
             showModal('editServiceModal');
         }
     </script>
-    <% } %>

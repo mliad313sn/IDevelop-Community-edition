@@ -205,7 +205,8 @@ describe('the notification centre is filterable and paged', () => {
 
     test('the state/family filters are validated, never interpolated', () => {
         expect(ctl).toMatch(/\['unread', 'read'\]\.includes/);
-        expect(ctl).toMatch(/\/\^\[a-z_\]\{1,32\}\$\/\.test/);
+        // digits too: the 360° feedback family is `feedback360`
+        expect(ctl).toMatch(/\/\^\[a-z0-9_\]\{1,32\}\$\/\.test/);
         expect(svc).toMatch(/split_part\(kind, '\.', 1\) = \?/);
     });
 

@@ -7,14 +7,14 @@
 <form method="GET" action="/benchmark" class="benchmark-filter-bar">
     <div class="filter-group">
         <label for="bm-domain"><%= __('dash:pillar_domain') %></label>
-        <select id="bm-domain" name="domainName" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-domain" name="domainName" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_pillars') %></option>
             <% pillars.forEach(function(p){ %><option value="<%= p.name %>" <%= filters.domainName === p.name ? 'selected' : '' %>><%= p.name %></option><% }); %>
         </select>
     </div>
     <div class="filter-group">
         <label for="bm-sub"><%= __('dash:sub_domain') %></label>
-        <select id="bm-sub" name="subDomainId" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-sub" name="subDomainId" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_subdomains') %></option>
             <% var _bp = {}; subDomains.forEach(function(sd){ (_bp[sd.domainName]=_bp[sd.domainName]||[]).push(sd); }); Object.keys(_bp).forEach(function(pil){ %>
                 <optgroup label="<%= pil %>"><% _bp[pil].forEach(function(sd){ %><option value="<%= sd.id %>" <%= String(filters.subDomainId) === String(sd.id) ? 'selected' : '' %>><%= sd.name %></option><% }); %></optgroup>
@@ -23,28 +23,28 @@
     </div>
     <div class="filter-group">
         <label for="bm-rf"><%= __('dash:role_family') %></label>
-        <select id="bm-rf" name="roleFamilyId" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-rf" name="roleFamilyId" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_families') %></option>
             <% roleFamilies.forEach(function(rf){ %><option value="<%= rf.id %>" <%= String(filters.roleFamilyId) === String(rf.id) ? 'selected' : '' %>><%= rf.name %></option><% }); %>
         </select>
     </div>
     <div class="filter-group">
         <label for="bm-role"><%= __('dash:role') %></label>
-        <select id="bm-role" name="roleName" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-role" name="roleName" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_roles_lc') %></option>
             <% roles.forEach(function(r){ %><option value="<%= r.name %>" <%= filters.roleName === r.name ? 'selected' : '' %>><%= r.name %></option><% }); %>
         </select>
     </div>
     <div class="filter-group">
         <label for="bm-cat"><%= __('dash:category') %></label>
-        <select id="bm-cat" name="category" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-cat" name="category" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_types') %></option>
             <% ['Technical','Behavioral','Safety','Compliance'].forEach(function(c){ %><option value="<%= c %>" <%= filters.category === c ? 'selected' : '' %>><%= c %></option><% }); %>
         </select>
     </div>
     <div class="filter-group">
         <label for="bm-min"><%= __('dash:min_required') %></label>
-        <select id="bm-min" name="minLevel" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-min" name="minLevel" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:any_level') %></option>
             <% [1,2,3,4].forEach(function(n){ %><option value="<%= n %>" <%= String(filters.minLevel) === String(n) ? 'selected' : '' %>>&ge; <%= n %></option><% }); %>
         </select>
@@ -54,7 +54,7 @@
         <input id="bm-q" type="search" name="skillQuery" class="form-control form-control-sm" placeholder="<%= __('dash:skill_name_placeholder') %>" value="<%= filters.skillQuery || '' %>" style="min-width:150px;">
     </div>
     <div class="filter-group" style="align-self:flex-end;">
-        <label class="bm-check"><input type="checkbox" name="criticalOnly" value="true" <%= filters.criticalOnly ? 'checked' : '' %> onchange="this.form.submit()"> <%= __('dash:critical_only') %></label>
+        <label class="bm-check"><input type="checkbox" name="criticalOnly" value="true" <%= filters.criticalOnly ? 'checked' : '' %> data-submit-on-change> <%= __('dash:critical_only') %></label>
     </div>
     <div class="filter-group" style="align-self:flex-end;">
         <button type="submit" class="btn btn-sm btn-secondary"><%= __('dash:apply') %></button>
@@ -63,21 +63,21 @@
     <!-- Fit-table scope (org unit): narrows the "Benchmark Fit by Role" table + drill-through, not the matrix. -->
     <div class="filter-group bm-orgunit">
         <label for="bm-site"><%= __('dash:site') %> <span class="bm-scopehint"><%= __('dash:fit_hint') %></span></label>
-        <select id="bm-site" name="siteName" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-site" name="siteName" class="form-control form-control-sm" data-submit-on-change>
             <%# %><% if ((sites||[]).length !== 1) { %><option value=""><%= __('dash:all_sites_lc') %></option><% } %>
             <% (sites||[]).forEach(function(s){ %><option value="<%= s.name %>" <%= filters.siteName === s.name ? 'selected' : '' %>><%= s.name %></option><% }); %>
         </select>
     </div>
     <div class="filter-group bm-orgunit">
         <label for="bm-dept"><%= __('dash:department') %> <span class="bm-scopehint"><%= __('dash:fit_hint') %></span></label>
-        <select id="bm-dept" name="departmentName" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-dept" name="departmentName" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_departments_lc') %></option>
             <% (departments||[]).forEach(function(dp){ %><option value="<%= dp.name %>" <%= filters.departmentName === dp.name ? 'selected' : '' %>><%= dp.name %></option><% }); %>
         </select>
     </div>
     <div class="filter-group bm-orgunit">
         <label for="bm-svc"><%= __('dash:service') %> <span class="bm-scopehint"><%= __('dash:fit_hint') %></span></label>
-        <select id="bm-svc" name="serviceName" class="form-control form-control-sm" onchange="this.form.submit()">
+        <select id="bm-svc" name="serviceName" class="form-control form-control-sm" data-submit-on-change>
             <option value=""><%= __('dash:all_services_lc') %></option>
             <% (services||[]).forEach(function(sv){ %><option value="<%= sv.name %>" <%= filters.serviceName === sv.name ? 'selected' : '' %>><%= sv.name %></option><% }); %>
         </select>
@@ -100,7 +100,7 @@
 </div>
 <div class="bm-legend" aria-hidden="true">
     <span><%= __('dash:required_level_colon') %></span>
-    <% [__('dash:none_lc'), __('dash:basic_awareness_lc'), __('dash:guided_lc'), __('dash:autonomous_lc'), __('dash:expert_lc')].forEach(function(l,i){ %><span class="bm-legend-item"><span class="bm-legend-swatch bm-heat-<%= i %>"><%= i %></span> <%= l %></span><% }); %>
+    <% [__('dash:none_lc'), __('dash:basic_awareness_lc'), __('dash:guided_lc'), __('dash:autonomous_lc'), __('dash:expert_lc')].forEach(function(l,i){ %><span class="bm-legend-item"><span class="bm-legend-swatch vh-sw" data-bin="seq-<%= i %>"><%= i %></span> <%= l %></span><% }); %>
     <span class="bm-legend-item"><span class="bm-legend-swatch bm-empty">·</span> <%= __('dash:no_requirement') %></span>
 </div>
 
@@ -125,7 +125,7 @@
                             <td class="sticky-col skill-col" title="<%= sk.category %>"><span class="bm-cat-dot bm-cat-<%= sk.category %>"></span><%= sk.name %></td>
                             <td class="delta-col <%= sk.variation >= 2 ? 'delta-hi' : (sk.variation === 1 ? 'delta-mid' : '') %>"><%= sk.variation %></td>
                             <% matrix.roles.forEach(function(r){ var c = sk.cells[r.id]; %>
-                                <% if (c) { %><td class="bm-cell bm-heat-<%= c.level %> <%= c.critical ? 'bm-critical' : '' %>" title="<%= r.name %> — <%= __('dash:required_level_lc') %> <%= c.level %><%= c.critical ? ' ' + __('dash:critical_paren') : '' %>"><%= c.level %><% if (c.critical) { %><span class="bm-crit-corner" aria-hidden="true">◤</span><% } %></td><% } else { %><td class="bm-cell bm-empty" title="<%= r.name %> — <%= __('dash:no_requirement') %>">·</td><% } %>
+                                <% if (c) { %><td class="bm-cell vh-c <%= c.critical ? 'bm-critical' : '' %>" data-bin="seq-<%= Math.max(0, Math.min(4, Math.round(Number(c.level) || 0))) %>" title="<%= r.name %> — <%= __('dash:required_level_lc') %> <%= c.level %><%= c.critical ? ' ' + __('dash:critical_paren') : '' %>"><%= c.level %><% if (c.critical) { %><span class="bm-crit-corner" aria-hidden="true">◤</span><% } %></td><% } else { %><td class="bm-cell bm-empty" title="<%= r.name %> — <%= __('dash:no_requirement') %>">·</td><% } %>
                             <% }); %>
                         </tr>
                     <% }); %>
@@ -143,7 +143,7 @@
         <p class="section-subtitle"><%= __('dash:bm_fit_sub') %></p>
     </div>
     <label class="bm-band-ctl"><%= __('dash:show') %>
-        <select id="bm-fit-band" class="form-control form-control-sm" onchange="bmFilterFitBand(this.value)">
+        <select id="bm-fit-band" class="form-control form-control-sm" data-on-change="bmFilterFitBand" data-args='["$value"]'>
             <option value="all"><%= __('dash:all_roles_lc') %></option>
             <option value="low"><%= __('dash:fit_lt_50') %></option>
             <option value="mid"><%= __('dash:fit_50_79') %></option>
@@ -175,7 +175,7 @@
                         are literally true but read as an all-clear. A dash says what is actually
                         known. Same rule as the fit columns beside them. %>
                     <% var measured = f.measuredOccupants == null ? null : Number(f.measuredOccupants); %>
-                    <td style="text-align:center;<%= measured !== 0 && f.occupantsCriticalGap>0 ? 'color:#F44336;font-weight:700;' : '' %>"><% if (measured === 0) { %><span class="bm-nodata" title="<%= __('dash:no_occupants_assessed') %>">—</span><% } else { %><%= f.occupantsCriticalGap %><% } %></td>
+                    <td style="text-align:center;<%= measured !== 0 && f.occupantsCriticalGap>0 ? 'color:var(--viz-risk);font-weight:700;' : '' %>"><% if (measured === 0) { %><span class="bm-nodata" title="<%= __('dash:no_occupants_assessed') %>">—</span><% } else { %><%= f.occupantsCriticalGap %><% } %></td>
                     <td style="text-align:center;"><% if (measured === 0) { %><span class="bm-nodata" title="<%= __('dash:no_occupants_assessed') %>">—</span><% } else { %><%= f.occupantsReady %>/<%= f.occupants %><% } %></td>
                 </tr>
             <% }); } %>
@@ -183,10 +183,24 @@
     </table>
 </div>
 
+<% if (typeof coverageHeat !== 'undefined' && coverageHeat && !coverageHeat.emptyScope) { %>
+<!-- Critical-skill coverage by site: the heatmap component (aggregates only) -->
+<section class="bm-coverage" aria-labelledby="bm-cov-title">
+    <div class="section-divider" style="margin-top:22px;">
+        <h2 class="section-title" id="bm-cov-title"><span class="section-icon"><i class="fas fa-shield-halved" aria-hidden="true"></i></span> <%= __('viz:heat.title_coverage') %></h2>
+        <p class="section-subtitle"><%= __('viz:heat.sub_coverage') %> <%= __('dash:bm_cov_scope') %></p>
+    </div>
+    <div class="viz-chart">
+        <%- include('../../partials/viz/heat', { H: coverageHeat, heatId: 'bm-cov', topRows: 10 }) %>
+    </div>
+</section>
+<%- include('../../partials/viz/scripts', { viz: { heat: true } }) %>
+<% } %>
+
 <style>
 .benchmark-filter-bar { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; background:var(--bg-subtle); border:1px solid var(--border-color,#2a2a2a); border-radius:12px; padding:12px 14px; margin-bottom:12px; }
 .benchmark-filter-bar .filter-group { display:flex; flex-direction:column; gap:4px; }
-.benchmark-filter-bar label { font-size:.72rem; letter-spacing:.03em; color:var(--text-secondary); }
+.benchmark-filter-bar label { font-size:.75rem; letter-spacing:.03em; color:var(--text-secondary); }
 .benchmark-filter-bar select { min-width:150px; }
 .bm-check { flex-direction:row !important; align-items:center; gap:6px; text-transform:none !important; font-size:.85rem !important; color:var(--text-primary) !important; }
 .bm-meta { font-size:.82rem; color:var(--text-secondary); margin:8px 2px 12px; }
@@ -203,35 +217,32 @@
 .benchmark-matrix thead .sticky-col { z-index:4; }
 .benchmark-matrix .skill-col { min-width:240px; max-width:320px; white-space:normal; }
 .benchmark-matrix .delta-col { text-align:center; color:var(--text-secondary); }
-.delta-hi { color:#fff; background:rgba(220,53,69,.35); font-weight:700; }
-.delta-mid { color:var(--text-primary); background:rgba(255,192,0,.18); }
+.delta-hi { color:var(--vh-ink-below-2); background:var(--vh-below-2); font-weight:700; }
+.delta-mid { color:var(--vh-ink-below-1); background:var(--vh-below-1); }
 .bm-group-row td { background:var(--bg-subtle); font-size:.82rem; color:var(--text-secondary); }
 .bm-group-sep { color:var(--text-muted); }
-.bm-group-count { font-size:.7rem; background:var(--brand,#7C6CFF); color:#1a1a1a; border-radius:999px; padding:0 7px; margin-left:6px; }
+.bm-group-count { font-size:.75rem; background:var(--brand,#7C6CFF); color:#1a1a1a; border-radius:999px; padding:0 7px; margin-left:6px; }
 .bm-cell { text-align:center; font-variant-numeric:tabular-nums; position:relative; }
 .bm-empty { color:var(--text-muted); opacity:.5; }
 .bm-critical { box-shadow: inset 3px 0 0 var(--brand,#7C6CFF); }
-.bm-crit-corner { position:absolute; top:-1px; right:1px; font-size:.6em; line-height:1; color:var(--brand,#7C6CFF); }
-/* Required-level heat ramp (0→4). Scoped bm-heat-* so it never collides with the
-   dashboard's proficiency .heat-* scale; clearer luminance steps for dark mode. */
-.bm-heat-0 { background:rgba(120,120,120,.10); }
-.bm-heat-1 { background:rgba(244,67,54,.30); }
-.bm-heat-2 { background:rgba(255,152,0,.32); }
-.bm-heat-3 { background:rgba(139,195,74,.36); }
-.bm-heat-4 { background:rgba(76,175,80,.48); }
+.bm-crit-corner { position:absolute; top:-1px; right:1px; font-size:.75rem; line-height:1; color:var(--brand-text, var(--brand)); }
+/* Required level 0-4 on the heatmap's sequential scale (public/css/viz.css,
+   .vh-c[data-bin="seq-N"]): a level is a quantity, not a judgement, so it is
+   never drawn red-to-green. A compact cell for the matrix. */
+.benchmark-matrix .vh-c { height:auto; border-radius:6px; padding:3px 6px; font-weight:600; }
 .bm-cat-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:middle; }
 .bm-cat-Technical { background:#198754; } .bm-cat-Behavioral { background:#0d6efd; } .bm-cat-Safety { background:#dc3545; } .bm-cat-Compliance { background:#6f42c1; }
 .bm-fit-table td { vertical-align:middle; }
-.bm-cov-low { color:#FF9800; font-weight:600; }
+.bm-cov-low { color:var(--viz-warn); font-weight:600; }
 .bm-nodata { display:inline-block; padding:2px 10px; border-radius:6px; background:var(--bg-subtle); border:1px dashed var(--border-color,#3a3a3a); color:var(--text-muted); font-size:.78rem; }
 .bm-legend { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; font-size:.76rem; color:var(--text-secondary); margin:0 2px 12px; }
 .bm-legend-item { display:inline-flex; align-items:center; gap:5px; }
 .bm-legend-swatch { display:inline-flex; align-items:center; justify-content:center; width:20px; height:18px; border-radius:4px; font-variant-numeric:tabular-nums; color:var(--text-primary); }
 .bm-fitbar { position:relative; height:20px; background:var(--bg-subtle); border-radius:6px; overflow:hidden; min-width:140px; }
-.bm-fitbar-fill { height:100%; background:#4CAF50; }
-.bm-fitbar-fill.fit-good { background:#4CAF50; } .bm-fitbar-fill.fit-mid { background:#FF9800; } .bm-fitbar-fill.fit-low { background:#F44336; }
+.bm-fitbar-fill { height:100%; background:var(--viz-good); }
+.bm-fitbar-fill.fit-good { background:var(--viz-good); } .bm-fitbar-fill.fit-mid { background:var(--viz-warn); } .bm-fitbar-fill.fit-low { background:var(--viz-risk); }
 .bm-fitbar-label { position:absolute; top:0; left:8px; line-height:20px; font-size:.75rem; font-weight:600; color:var(--text-primary); mix-blend-mode:difference; }
-.bm-band-ctl { font-size:.72rem; letter-spacing:.03em; color:var(--text-secondary); display:flex; align-items:center; gap:6px; }
+.bm-band-ctl { font-size:.75rem; letter-spacing:.03em; color:var(--text-secondary); display:flex; align-items:center; gap:6px; }
 .bm-band-ctl select { min-width:130px; }
 .bm-scopehint { text-transform:none; letter-spacing:0; color:var(--brand,#7C6CFF); font-weight:600; }
 .bm-orgunit label { white-space:nowrap; }

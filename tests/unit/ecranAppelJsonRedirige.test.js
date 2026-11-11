@@ -284,7 +284,9 @@ describe('(2) serveur · la navigation de page garde exactement son ancien 302',
         ['requireEmployeeOrManager', auth.requireEmployeeOrManager, '/login'],
         ['requireAdmin', auth.requireAdmin, '/login'],
         ['requireManagerOrAdmin', auth.requireManagerOrAdmin, '/login'],
-        ['requireSuperAdmin', auth.requireSuperAdmin, '/dashboard'],
+        // An anonymous visitor goes to /login like every other guard (it used
+        // to bounce via /dashboard, whose own guard then lost the path).
+        ['requireSuperAdmin', auth.requireSuperAdmin, '/login'],
     ])('%s · visiteur non connecté → 302 %s + message', (_n, guard, where) => {
         const req = reqOf({ authed: false, headers: HTML });
         const res = fakeRes();

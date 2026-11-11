@@ -53,6 +53,9 @@ const STATUS = Object.freeze({
     EXPIRING: 'EXPIRING',
     BLOCKED: 'BLOCKED',
     NOT_CONFIGURED: 'NOT_CONFIGURED',
+    // Every enforced blocking reason is covered by a running,
+    // time-boxed human waiver. Authorised BY DEROGATION: never read as CLEARED.
+    WAIVED: 'WAIVED',
 });
 
 const REASON = Object.freeze({
@@ -102,11 +105,14 @@ function applicableRules(employee, rules) {
             // merges to exactly the shape it always had.
             if (r.requireValidated) merged.requireValidated = true;
             if (age) merged.maxAgeMonths = age;
+            if (r.legallyMandatory) merged.legallyMandatory = true;
             bySkill.set(k, merged);
         } else {
             prev.minLevel = Math.max(prev.minLevel, Number(r.minLevel));
             prev.certRequired = prev.certRequired || !!r.certRequired;
             if (r.requireValidated) prev.requireValidated = true;
+            // One legally mandatory rule on the skill makes it unwaivable.
+            if (r.legallyMandatory) prev.legallyMandatory = true;
             if (age) prev.maxAgeMonths = prev.maxAgeMonths ? Math.min(prev.maxAgeMonths, age) : age;
         }
     }
@@ -140,7 +146,8 @@ function dateOnly(at) {
  *                   assessedAt: Map<skillId, date>        (date of the resolved level),
  *                   validated: Map<skillId, {level, assessedAt}> (latest SUPERVISOR-validated),
  *                   certs:  Map<skillId, {certStatus, expiresOn, daysLeft}>,
- *                   lapsed: Map<skillId, {lapseReason, lastExpiresOn}> }
+ *                   lapsed: Map<skillId, {lapseReason, lastExpiresOn}>,
+ *                   waivers: Map<skillId, {id, expiresAt}>  (running waivers only) }
  * @param opts     { warningDays, now }
  */
 function evaluate(employee, rules, facts, { warningDays = DEFAULT_WARNING_DAYS, now } = {}) {
@@ -151,6 +158,7 @@ function evaluate(employee, rules, facts, { warningDays = DEFAULT_WARNING_DAYS, 
             blocking: code !== REASON.CERT_EXPIRING,
             skillId: rule ? rule.skillId : null,
             skillName: rule ? rule.skillName : null,
+            ...(rule && rule.legallyMandatory ? { legallyMandatory: true } : {}),
             ...extra,
         });
 
@@ -252,17 +260,49 @@ function evaluate(employee, rules, facts, { warningDays = DEFAULT_WARNING_DAYS, 
         }
     }
 
-    const blocking = reasons.some((r) => r.blocking);
+    // A running human waiver covers the BLOCKING reasons of its skill,
+    // never a legally mandatory rule (fail closed even if a waiver row exists:
+    // the rule may have been marked mandatory after the grant), never a reason
+    // without a skill (a leaver, no role). The reason stays listed, tagged.
+    const waivers = facts.waivers || new Map();
+    let waiverUntil = null;
+    if (waivers.size) {
+        const bySkill = new Map(rules.map((r) => [Number(r.skillId), r]));
+        for (const x of reasons) {
+            if (!x.blocking || x.skillId == null) continue;
+            const w = waivers.get(Number(x.skillId));
+            const rule = bySkill.get(Number(x.skillId));
+            if (!w || !w.expiresAt || !rule || rule.legallyMandatory) continue;
+            x.waived = true;
+            x.waiverId = w.id;
+            x.waiverExpiresAt = w.expiresAt;
+            if (!waiverUntil || w.expiresAt < waiverUntil) waiverUntil = w.expiresAt;
+        }
+    }
+
+    const blocking = reasons.some((r) => r.blocking && !r.waived);
+    const waived = reasons.some((r) => r.waived);
     const warning = reasons.some((r) => !r.blocking);
     return finish(
-        blocking ? STATUS.BLOCKED : warning ? STATUS.EXPIRING : STATUS.CLEARED,
+        blocking
+            ? STATUS.BLOCKED
+            : waived
+              ? STATUS.WAIVED
+              : warning
+                ? STATUS.EXPIRING
+                : STATUS.CLEARED,
         reasons,
-        nextExpiry
+        nextExpiry,
+        blocking ? null : waiverUntil
     );
 }
 
-function finish(status, reasons, nextExpiry) {
-    return { status, reasons, nextExpiry: nextExpiry || null };
+function finish(status, reasons, nextExpiry, waiverUntil = null) {
+    const out = { status, reasons, nextExpiry: nextExpiry || null };
+    // Only carried when a waiver is in force, so an answer without one keeps
+    // exactly the shape it always had.
+    if (waiverUntil) out.waiverUntil = waiverUntil;
+    return out;
 }
 
 const reasonKey = (r) => `${r.code}:${r.skillId == null ? '-' : r.skillId}`;
@@ -272,20 +312,30 @@ const reasonKey = (r) => `${r.code}:${r.skillId == null ? '-' : r.skillId}`;
  * the ENFORCE rules alone (`enforcedStatus`, the one that closes the gate).
  * Reasons that only an observe rule produces are tagged `observe: true`.
  * Rules without a mode (created before migration 155) are enforce.
+ * A LEGALLY MANDATORY rule is enforced whatever its stored mode.
  */
 function evaluateWithModes(employee, rules, facts, opts) {
     const all = evaluate(employee, applicableRules(employee, rules), facts, opts);
-    const enforceRules = rules.filter((r) => r.mode !== MODE.OBSERVE);
+    const enforceRules = rules.filter((r) => r.mode !== MODE.OBSERVE || r.legallyMandatory);
     if (enforceRules.length === rules.length) return { ...all, enforcedStatus: all.status };
     const enforced = evaluate(employee, applicableRules(employee, enforceRules), facts, opts);
     const enforcedKeys = new Set(enforced.reasons.map(reasonKey));
     for (const x of all.reasons) if (!enforcedKeys.has(reasonKey(x))) x.observe = true;
-    return { ...all, enforcedStatus: enforced.status };
+    const out = { ...all, enforcedStatus: enforced.status };
+    // An observe rule may keep the SHOWN status BLOCKED while the enforced
+    // answer is WAIVED — the waiver's end date must still travel with it.
+    if (!out.waiverUntil && enforced.waiverUntil) out.waiverUntil = enforced.waiverUntil;
+    return out;
 }
 
 /** The status that actually closes the gate (enforce rules only). */
 function effectiveStatus(r) {
     return r.enforcedStatus || r.status;
+}
+
+/** Is the gate open only BY DEROGATION (a running human waiver)? */
+function isWaived(r) {
+    return effectiveStatus(r) === STATUS.WAIVED || r.status === STATUS.WAIVED;
 }
 
 /**
@@ -295,10 +345,12 @@ function effectiveStatus(r) {
  * keeps its fingerprint and nothing is re-logged on upgrade.
  */
 function fingerprint(result) {
+    // A waived reason carries its end date, so a grant, a renewal and an
+    // end are each ONE recorded change (and each reaches the webhook).
     const parts = result.reasons
         .map(
             (r) =>
-                `${r.code}:${r.skillId == null ? '-' : r.skillId}:${r.expiresOn || ''}${r.observe ? ':o' : ''}`
+                `${r.code}:${r.skillId == null ? '-' : r.skillId}:${r.expiresOn || ''}${r.observe ? ':o' : ''}${r.waived ? `:w${r.waiverExpiresAt || ''}` : ''}`
         )
         .sort();
     const eff = effectiveStatus(result);
@@ -314,6 +366,9 @@ function fingerprint(result) {
  */
 function isCleared(r) {
     if (r.status === STATUS.CLEARED || r.status === STATUS.EXPIRING) return true;
+    // A running human waiver lets the person through — BY DEROGATION: the
+    // API also says `waived: true` and until when, never a plain CLEARED.
+    if (r.status === STATUS.WAIVED) return true;
     if (r.status !== STATUS.BLOCKED) return false;
     return effectiveStatus(r) !== STATUS.BLOCKED;
 }
@@ -332,6 +387,10 @@ function toApi(r) {
             }
             if (x.expiresOn) o.expiresOn = x.expiresOn;
             if (x.observe) o.observe = true;
+            if (x.waived) {
+                o.waived = true;
+                o.waiverExpiresAt = x.waiverExpiresAt;
+            }
             return o;
         }),
         nextExpiry: r.nextExpiry || null,
@@ -339,6 +398,13 @@ function toApi(r) {
     };
     if (r.reasons.some((x) => x.observe)) {
         out.observe = true;
+        out.enforcedStatus = effectiveStatus(r);
+    }
+    // An access granted by derogation is flagged with its end, everywhere
+    // this shape travels (API, webhook). Its end returns the computed status.
+    if (isWaived(r)) {
+        out.waived = true;
+        out.waiverExpiresAt = r.waiverUntil || null;
         out.enforcedStatus = effectiveStatus(r);
     }
     return out;
@@ -457,6 +523,7 @@ const SafetyGateService = {
     evaluateWithModes,
     effectiveStatus,
     isCleared,
+    isWaived,
     fingerprint,
     toApi,
     scopeAllowsSafetyRead,
@@ -513,7 +580,7 @@ const SafetyGateService = {
         const newSecret = String(webhookSecret || '');
         if (enabled && !newSecret && !(current && current.secret)) fail('secret_required');
         const storedSecret = newSecret
-            ? secretBox.encrypt(newSecret)
+            ? secretBox.encrypt(newSecret, 'safety_gate')
             : current
               ? current.secret
               : null;
@@ -574,7 +641,7 @@ const SafetyGateService = {
                     s.name AS "siteName", gr.skill_id AS "skillId", sk.name AS "skillName",
                     gr.min_level AS "minLevel", gr.cert_required AS "certRequired",
                     gr."mode" AS "mode", gr.require_validated AS "requireValidated",
-                    gr.max_age_months AS "maxAgeMonths",
+                    gr.max_age_months AS "maxAgeMonths", gr.legally_mandatory AS "legallyMandatory",
                     gr.is_active AS "isActive", gr.deactivated_reason AS "deactivatedReason",
                     gr.updated_at AS "updatedAt"
                FROM safety_gate_rules gr
@@ -599,6 +666,7 @@ const SafetyGateService = {
         mode,
         requireValidated,
         maxAgeMonths,
+        legallyMandatory,
     }) {
         const rid = parseInt(roleId, 10);
         const kid = parseInt(skillId, 10);
@@ -624,6 +692,7 @@ const SafetyGateService = {
             mode: m,
             requireValidated: !!requireValidated,
             maxAgeMonths: age,
+            legallyMandatory: !!legallyMandatory,
         };
     },
 
@@ -639,8 +708,9 @@ const SafetyGateService = {
         if (dup) failWith('duplicate_rule');
         const row = await db.get(
             `INSERT INTO safety_gate_rules (role_id, site_id, skill_id, min_level, cert_required,
-                                            mode, require_validated, max_age_months, created_by, updated_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+                                            mode, require_validated, max_age_months, legally_mandatory,
+                                            created_by, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
             [
                 rid,
                 sid,
@@ -650,6 +720,7 @@ const SafetyGateService = {
                 r.mode,
                 r.requireValidated,
                 r.maxAgeMonths,
+                r.legallyMandatory,
                 actor ? actor.id : null,
                 actor ? actor.id : null,
             ]
@@ -659,7 +730,7 @@ const SafetyGateService = {
             'SAFETY_GATE_RULE_ADDED',
             'safety_gate_rule',
             row.id,
-            `role=${rid}, site=${sid == null ? 'all' : sid}, skill=${kid}, minLevel=${lvl}, certRequired=${r.certRequired}, mode=${r.mode}, requireValidated=${r.requireValidated}, maxAgeMonths=${r.maxAgeMonths == null ? '-' : r.maxAgeMonths}`
+            `role=${rid}, site=${sid == null ? 'all' : sid}, skill=${kid}, minLevel=${lvl}, certRequired=${r.certRequired}, mode=${r.mode}, requireValidated=${r.requireValidated}, maxAgeMonths=${r.maxAgeMonths == null ? '-' : r.maxAgeMonths}, legallyMandatory=${r.legallyMandatory}`
         );
         await this.recomputeForRole(rid, 'rule_change').catch((e) =>
             console.error('[safety-gate] recompute after rule add failed:', e && e.message)
@@ -700,7 +771,8 @@ const SafetyGateService = {
         const rid = parseInt(id, 10);
         if (!Number.isFinite(rid)) failWith('not_found');
         const rule = await db.get(
-            `SELECT id, site_id AS "siteId", role_id AS "roleId", mode
+            `SELECT id, site_id AS "siteId", role_id AS "roleId", mode,
+                    legally_mandatory AS "legallyMandatory"
                FROM safety_gate_rules WHERE id = ? AND is_active`,
             [rid]
         );
@@ -712,17 +784,37 @@ const SafetyGateService = {
     /**
      * move a rule between OBSERVE and ENFORCE. Audited; the role is
      * recomputed so the change of answer is recorded (and notified) at once.
+     * Loosening (→ OBSERVE) is refused on a legally mandatory rule,
+     * needs a reason (audited) and, on a site-less rule, SuperAdmin. Tightening
+     * (→ ENFORCE) stays open to whoever may manage the rule.
      */
-    async setRuleMode(id, mode, actor) {
+    async setRuleMode(id, mode, actor, reason) {
         const m = String(mode || '');
         if (m !== MODE.OBSERVE && m !== MODE.ENFORCE) failWith('bad_mode');
         const rule = await this._ruleInReach(id, actor);
         if (rule.mode === m) return { id: Number(rule.id), mode: m, unchanged: true };
+        const why = String(reason || '').trim();
+        if (m === MODE.OBSERVE) {
+            // `subject: 'mode'` lets the page name THIS refusal (safety:err_*_mode).
+            const refuse = (code, status) => {
+                try {
+                    failWith(code, status);
+                } catch (e) {
+                    e.subject = 'mode';
+                    throw e;
+                }
+            };
+            if (rule.legallyMandatory) refuse('legally_mandatory', 409);
+            if (rule.siteId == null) assertSuperAdmin(actor);
+            if (!why) refuse('reason_required', 400);
+        }
+        // The SQL guard re-checks the legal flag, so a rule marked mandatory
+        // between the read and the write is never loosened.
         const row = await db.get(
             `UPDATE safety_gate_rules SET mode = ?, updated_by = ?, updated_at = now()
-              WHERE id = ? AND is_active
+              WHERE id = ? AND is_active AND (? = 'enforce' OR NOT COALESCE(legally_mandatory, false))
               RETURNING id, role_id AS "roleId", mode`,
-            [m, actor ? actor.id : null, Number(rule.id)]
+            [m, actor ? actor.id : null, Number(rule.id), m]
         );
         if (!row) failWith('not_found');
         await audit(
@@ -730,12 +822,68 @@ const SafetyGateService = {
             'SAFETY_GATE_RULE_MODE_CHANGED',
             'safety_gate_rule',
             row.id,
-            `${rule.mode || MODE.ENFORCE} -> ${m}`
+            `${rule.mode || MODE.ENFORCE} -> ${m}${why ? ` ; reason: ${why.slice(0, 200)}` : ''}`
         );
         await this.recomputeForRole(row.roleId, 'rule_change').catch((e) =>
             console.error('[safety-gate] recompute after mode change failed:', e && e.message)
         );
         return row;
+    },
+
+    /**
+     * Mark a rule as a LEGALLY MANDATORY certification (no waiver ever
+     * lifts it). Setting it: whoever may manage the rule. Lifting it
+     * weakens safety: SuperAdmin only, with a reason. Setting it ends every
+     * running waiver on the rule's skill for the people the rule covers —
+     * recorded, never deleted — and the role is recomputed at once.
+     */
+    async setRuleLegal(id, legallyMandatory, reason, actor) {
+        const want = !!legallyMandatory;
+        const rule = await this._ruleInReach(id, actor);
+        const why = String(reason || '').trim();
+        if (!want) {
+            assertSuperAdmin(actor);
+            if (!why) failWith('reason_required');
+        }
+        const row = await db.get(
+            `UPDATE safety_gate_rules SET legally_mandatory = ?, updated_by = ?, updated_at = now()
+              WHERE id = ? AND is_active AND legally_mandatory IS DISTINCT FROM ?
+              RETURNING id, role_id AS "roleId", site_id AS "siteId", skill_id AS "skillId"`,
+            [want, actor ? actor.id : null, Number(rule.id), want]
+        );
+        if (!row) return { id: Number(rule.id), legallyMandatory: want, unchanged: true };
+        await audit(
+            actor,
+            'SAFETY_GATE_RULE_LEGAL_CHANGED',
+            'safety_gate_rule',
+            row.id,
+            `legallyMandatory -> ${want}${why ? ` ; reason: ${why.slice(0, 200)}` : ''}`
+        );
+        if (want) {
+            const ended = await db.all(
+                `UPDATE safety_gate_waivers w
+                    SET state = 'revoked', ended_at = now(), ended_reason = 'legally_mandatory',
+                        revoked_by_ref = ?
+                   FROM employees e
+                  WHERE w.state = 'active' AND w.skill_id = ? AND e.id = w.employee_id
+                    AND e.role_id = ? AND (CAST(? AS bigint) IS NULL OR e.site_id = ?)
+                  RETURNING w.id`,
+                [actorRefOf(actor), row.skillId, row.roleId, row.siteId, row.siteId]
+            );
+            for (const w of ended || []) {
+                await audit(
+                    actor,
+                    'SAFETY_GATE_WAIVER_REVOKED',
+                    'safety_gate_waiver',
+                    w.id,
+                    'rule marked legally mandatory'
+                );
+            }
+        }
+        await this.recomputeForRole(row.roleId, 'rule_change').catch((e) =>
+            console.error('[safety-gate] recompute after legal change failed:', e && e.message)
+        );
+        return { id: Number(row.id), legallyMandatory: want };
     },
 
     /**
@@ -864,7 +1012,7 @@ const SafetyGateService = {
                   `SELECT gr.role_id AS "roleId", gr.site_id AS "siteId", gr.skill_id AS "skillId",
                         gr.min_level AS "minLevel", gr.cert_required AS "certRequired", sk.name AS "skillName",
                         gr."mode" AS "mode", gr.require_validated AS "requireValidated",
-                        gr.max_age_months AS "maxAgeMonths"
+                        gr.max_age_months AS "maxAgeMonths", gr.legally_mandatory AS "legallyMandatory"
                    FROM safety_gate_rules gr JOIN skills sk ON sk.id = gr.skill_id
                   WHERE gr.is_active AND gr.role_id IN (${roleIds.map(() => '?').join(',')})`,
                   roleIds
@@ -884,6 +1032,7 @@ const SafetyGateService = {
                     validated: new Map(),
                     certs: new Map(),
                     lapsed: new Map(),
+                    waivers: new Map(),
                 },
             ])
         );
@@ -959,6 +1108,35 @@ const SafetyGateService = {
                         lapseReason: r.lapseReason,
                         lastExpiresOn: r.lastExpiresOn || null,
                     });
+            }
+            // Running waivers only: the window is read against the database
+            // clock, so an expired waiver stops counting at once (lazy), before
+            // the job has even marked it expired. Read last, after the three
+            // reads above, and never allowed to withhold the answer: without it
+            // the person is simply evaluated with no waiver (fail closed).
+            let waiverRows = [];
+            try {
+                const readWaivers = () =>
+                    db.all(
+                        `SELECT w.id, w.employee_id AS "employeeId", w.skill_id AS "skillId",
+                                to_char(w.expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "expiresAt"
+                           FROM safety_gate_waivers w
+                          WHERE w.state = 'active' AND w.starts_at <= now() AND w.expires_at > now()
+                            AND w.employee_id IN (${eIn}) AND w.skill_id IN (${kIn})`,
+                        p
+                    );
+                // A savepoint keeps a caller's transaction usable if this read fails.
+                waiverRows =
+                    (await (typeof db.runInSavepoint === 'function'
+                        ? db.runInSavepoint(readWaivers)
+                        : readWaivers())) || [];
+            } catch (e) {
+                waiverRows = [];
+            }
+            for (const r of waiverRows) {
+                const f = facts.get(Number(r.employeeId));
+                if (f && r.expiresAt)
+                    f.waivers.set(Number(r.skillId), { id: Number(r.id), expiresAt: r.expiresAt });
             }
         }
 
@@ -1097,9 +1275,13 @@ const SafetyGateService = {
                 `${previousStatus || 'none'} -> ${r.status}${enforced !== r.status ? ` (enforced: ${enforced})` : ''} [${r.reasons.map((x) => x.code).join(',') || '-'}] (${source})`,
                 enforced === STATUS.BLOCKED ? 'warn' : 'info'
             );
+            // While waived, every recorded change (grant, renewal — a new end
+            // date) is sent, so the access system never keeps a stale end.
             if (
                 prev &&
-                (previousStatus !== r.status || previousEnforced !== enforced) &&
+                (previousStatus !== r.status ||
+                    previousEnforced !== enforced ||
+                    enforced === STATUS.WAIVED) &&
                 cfg.webhookEnabled &&
                 cfg.webhookUrl
             ) {
@@ -1112,7 +1294,25 @@ const SafetyGateService = {
             // (the conditional upsert above returns the row to ONE writer), and
             // only a change of enforced status notifies — a new reason on an
             // already-blocked person does not.
+            //
+            // Leaving WAIVED (the waiver expired, was revoked, or the data
+            // now clears the person) is ONE notification that says so and what
+            // the computed status is now — whichever path noticed it first (the
+            // job, the nightly sweep, an API read): the upsert above elects one.
             if (
+                previousEnforced === STATUS.WAIVED &&
+                enforced !== STATUS.WAIVED &&
+                r.isActive !== false
+            ) {
+                await require('./SafetyWaiverService')
+                    .notifyWaiverEnded(r, enforced)
+                    .catch((e) =>
+                        console.error(
+                            '[safety-gate] waiver-end notification failed:',
+                            e && e.message
+                        )
+                    );
+            } else if (
                 r.isActive !== false &&
                 enforced !== previousEnforced &&
                 (enforced === STATUS.BLOCKED || enforced === STATUS.EXPIRING)
@@ -1155,6 +1355,10 @@ const SafetyGateService = {
         const L = LOCALE_TEXT;
         const head = (lng) => (blocked ? L[lng].notif_blocked : L[lng].notif_expiring);
         const sent = [];
+        // ONE language per mail, and the subject is the catalogue's: it never
+        // states the clearance status nor names the person (it is read on lock
+        // screens). The reasons are in the body, the detail behind the link.
+        // Each mail is written in its recipient's e-mail language (`content`).
 
         const personResult = await NotificationService.notify({
             userType: 'employee',
@@ -1168,9 +1372,10 @@ const SafetyGateService = {
                 reason: fr,
                 link: '/v2/idp',
             },
-            subject: `${head('fr')} / ${head('en')}`,
-            html: `<p>${esc(head('fr'))} : ${esc(fr)}.</p><p>${esc(L.fr.notif_plan)}</p><p style="color:#888;">${esc(head('en'))}: ${esc(en)}. ${esc(L.en.notif_plan)}</p>`,
-            text: `${head('fr')} : ${fr}. ${L.fr.notif_plan}\n${head('en')}: ${en}. ${L.en.notif_plan}`,
+            content: (B) => ({
+                title: B.pick(head('fr'), head('en')),
+                blocks: [B.para(`${fr}.`, `${en}.`), B.para(L.fr.notif_plan, L.en.notif_plan)],
+            }),
         });
         sent.push({ userType: 'employee', id: r.employeeId, result: personResult });
 
@@ -1191,9 +1396,10 @@ const SafetyGateService = {
                     reason: `${who} — ${fr}`,
                     link: lineLink,
                 },
-                subject: `${head('fr')} — ${who} / ${head('en')}`,
-                html: `<p><strong>${esc(who)}</strong> — ${esc(head('fr'))} : ${esc(fr)}.</p><p style="color:#888;">${esc(head('en'))}: ${esc(en)}.</p>`,
-                text: `${who} — ${head('fr')} : ${fr}.\n${head('en')}: ${en}.`,
+                content: (B) => ({
+                    title: B.pick(head('fr'), head('en')),
+                    blocks: [B.para(`${who} — ${fr}.`, `${who} — ${en}.`)],
+                }),
             });
             sent.push({ userType: x.userType, id: x.id, result: res });
         }
@@ -1370,7 +1576,16 @@ function stripScores(r) {
     if (r.skillId != null) o.skillId = r.skillId;
     if (r.expiresOn) o.expiresOn = r.expiresOn;
     if (r.observe) o.observe = true;
+    if (r.waived) {
+        o.waived = true;
+        o.waiverExpiresAt = r.waiverExpiresAt || null;
+    }
     return o;
+}
+
+function actorRefOf(actor) {
+    if (!actor || actor.id == null) return 'system';
+    return `${actor.userType === 'admin' ? 'admin' : 'employee'}:${Number(actor.id)}`;
 }
 
 function failWith(code, status = 400) {
@@ -1444,3 +1659,5 @@ async function audit(actor, action, entityType, entityId, details, severity) {
 }
 
 module.exports = SafetyGateService;
+// Shared with SafetyWaiverService: one audit, one error shape, one text source.
+module.exports._internal = { failWith, audit, actorRefOf, esc, reasonSummary, LOCALE_TEXT };

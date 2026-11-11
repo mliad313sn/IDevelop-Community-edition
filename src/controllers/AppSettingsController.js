@@ -1,9 +1,11 @@
+const { containedUploadPath } = require('../utils/uploadTempPath');
 const PRODUCT = require('../config/product');
 const AppSettingsModel = require('../models/AppSettingsModel');
 const RBACService = require('../services/RBACService');
 const LogService = require('../services/LogService');
 const EmailService = require('../services/EmailService');
 const { validationResult } = require('express-validator');
+const { isSecurityClassSetting, canEditSetting } = require('../utils/securitySettings');
 
 class AppSettingsController {
     async index(req, res) {
@@ -32,6 +34,13 @@ class AppSettingsController {
             const jobState = [];
             settings.forEach((setting) => {
                 setting.rule = AppSettingsModel.ruleFor(setting.settingKey);
+                // Security-class settings are read-only below SuperAdmin (the
+                // update handler refuses them server-side whatever the page shows).
+                setting.securityClass = isSecurityClassSetting(
+                    setting.settingKey,
+                    setting.category
+                );
+                setting.locked = !canEditSetting(req.user, setting.settingKey, setting.category);
                 if (setting.rule.readOnly) {
                     jobState.push(setting);
                     return;
@@ -223,6 +232,14 @@ class AppSettingsController {
                         ),
                     },
                     {
+                        name: 'BACKUP_KEY_MODE / BACKUP_OFFHOST_DIR',
+                        value: `${e.BACKUP_KEY_MODE || autoDetect} / ${e.BACKUP_OFFHOST_DIR || T('env_v_unset', '(unset)')}`,
+                        note: T(
+                            'env_note_BACKUP_ENCRYPTION',
+                            'Backup encryption key store, and the off-host copy folder'
+                        ),
+                    },
+                    {
                         name: 'SQL_CONSOLE_BACKUP_DIR',
                         value:
                             e.SQL_CONSOLE_BACKUP_DIR ||
@@ -279,6 +296,23 @@ class AppSettingsController {
                 ];
             }
 
+            // The copilot egress gate (blocked reason, recorded transfer basis).
+            // A failure here never blocks the settings page.
+            let copilotPolicy = null;
+            try {
+                copilotPolicy = await require('../services/CopilotService').policyStatus();
+            } catch (_) {
+                copilotPolicy = null;
+            }
+            // The one named plaintext SMTP relay: permanent warning (and the
+            // SuperAdmin form). A read failure never blocks the page.
+            let smtpRelay = null;
+            try {
+                smtpRelay = await EmailService.plaintextRelayStatus();
+            } catch (_) {
+                smtpRelay = null;
+            }
+
             res.render('pages/app-settings/index', {
                 title: req.t ? req.t('chrome:pt_app_settings') : 'App Settings',
                 settings,
@@ -286,6 +320,9 @@ class AppSettingsController {
                 jobState,
                 settingError,
                 envInfo,
+                copilotPolicy,
+                smtpRelay,
+                isSuperAdmin: Boolean(req.user && req.user.role === 'superadmin'),
                 // Copilot provider presets — shown in the test card so an admin
                 // sees the supported engines + default models without docs.
                 copilotPresets: require('../services/CopilotService').presets(),
@@ -407,23 +444,36 @@ class AppSettingsController {
                 );
                 return res.redirect('/app-settings');
             }
-            const SENSITIVE_CATEGORIES = new Set(['onboarding', 'copilot']);
-            if (
-                SENSITIVE_CATEGORIES.has(currentSetting.category) &&
-                !(req.user && req.user.role === 'superadmin')
-            ) {
-                req.flash(
-                    'error',
-                    req.t
-                        ? req.t('flash:settings_onboarding_superadmin')
-                        : 'Only SuperAdmins can change self-service onboarding settings.'
-                );
-                return res.redirect('/app-settings');
+            // Every SECURITY-CLASS setting (auth, session, MFA, SSO, onboarding,
+            // retention, AI/copilot, API, backup, mail server, HRIS, public base
+            // URL) is read-only below SuperAdmin: refused here, whatever the page
+            // shows (a superset of the former onboarding/copilot-only rule).
+            if (!canEditSetting(req.user, currentSetting.settingKey, currentSetting.category)) {
+                try {
+                    await LogService.log({
+                        adminId: req.user ? req.user.id : null,
+                        action: 'APP_SETTING_UPDATE_REFUSED',
+                        entityType: 'appSetting',
+                        entityId: id,
+                        category: 'security',
+                        severity: 'warn',
+                        details: `Security-class setting ${currentSetting.settingKey} is SuperAdmin-only`,
+                        ipAddress: req.ip,
+                        userAgent: req.get ? req.get('user-agent') : null,
+                    });
+                } catch (_) {
+                    /* audit best-effort */
+                }
+                return refuse('security_superadmin', { key: currentSetting.settingKey });
             }
 
             // Secret fields are shown blank in the UI; an empty submission means
             // "leave unchanged" rather than "erase the stored secret".
-            const isSecretKey = /password|secret|pass$/i.test(currentSetting.settingKey);
+            // One definition of "secret" (AppSettingsModel): …token / …apiKey too.
+            const isSecretKey = AppSettingsModel.isSecretKey(
+                currentSetting.settingKey,
+                currentSetting.settingType
+            );
             if (isSecretKey && (settingValue === undefined || String(settingValue).trim() === '')) {
                 req.flash(
                     'success',
@@ -497,7 +547,10 @@ class AppSettingsController {
             }
 
             // Never echo a changed secret into the audit log.
-            const isSecret = /password|secret|pass$/i.test(currentSetting.settingKey);
+            const isSecret = AppSettingsModel.isSecretKey(
+                currentSetting.settingKey,
+                currentSetting.settingType
+            );
             const logDetail = isSecret
                 ? `Updated ${currentSetting.settingKey}`
                 : `Updated ${currentSetting.settingKey}: ${currentSetting.settingValue} → ${validatedValue}`;
@@ -511,6 +564,32 @@ class AppSettingsController {
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
+            // The nationality switch (sensitive data) is also recorded as a
+            // security event of its own.
+            if (
+                require('../utils/featureFlags').NATIONALISATION_SETTING_KEYS.includes(
+                    currentSetting.settingKey
+                )
+            ) {
+                try {
+                    await LogService.log({
+                        adminId: req.user.id,
+                        action:
+                            currentSetting.settingKey === 'featureLocalContent'
+                                ? 'NATIONALISATION_FEATURE_TOGGLED'
+                                : 'NATIONALISATION_SETTING_CHANGED',
+                        entityType: 'appSetting',
+                        entityId: id,
+                        category: 'security',
+                        severity: 'warn',
+                        details: logDetail,
+                        ipAddress: req.ip,
+                        userAgent: req.get('user-agent'),
+                    });
+                } catch (_) {
+                    /* the APP_SETTING_UPDATED entry above is the record */
+                }
+            }
 
             req.flash(
                 'success',
@@ -553,7 +632,7 @@ class AppSettingsController {
 
             // Always invalidate first so the test reflects the latest saved config.
             EmailService.invalidate();
-            const verify = await EmailService.verify();
+            const verify = await EmailService.checkConnection();
             if (!verify.ok) {
                 try {
                     await AppSettingsModel.setValue(
@@ -576,7 +655,7 @@ class AppSettingsController {
                 return res.redirect('/app-settings');
             }
 
-            const result = await EmailService.sendTest(to);
+            const result = await EmailService.sendTest(to, { locale: req.language });
             await LogService.log({
                 adminId: req.user.id,
                 action: result.sent ? 'EMAIL_TEST_SENT' : 'EMAIL_TEST_FAILED',
@@ -795,16 +874,30 @@ class AppSettingsController {
                     hex,
                     'Brand accent color (hex) replacing the default gold across the UI'
                 );
-                const ratio = branding.contrastRatio(hex, '#0F1222'); // main dark surface
-                // Low contrast is a WARNING, not an error — the change applied. Fold it
-                // into the success message so the admin doesn't see a red "error" next
-                // to a green "success" for the same save.
-                if (ratio < 3) {
-                    warnings.push(
-                        req.t
-                            ? req.t('flash:brand_low_contrast', { ratio: ratio.toFixed(1) })
-                            : `low contrast on the dark theme (${ratio.toFixed(1)}:1 — aim for 3:1+); consider a lighter shade`
-                    );
+                // The colours actually rendered are computed per mode for WCAG AA
+                // (branding.accentTokens): the save says which ratios hold and
+                // whether the colour had to move to reach them. Never an error:
+                // the change applied, so it is folded into the success message.
+                const rep = branding.accentReport(hex);
+                const fx = (n) => n.toFixed(1);
+                warnings.push(
+                    req.t
+                        ? req.t('flash:brand_contrast_report', {
+                              inkLight: fx(rep.light.ink),
+                              inkDark: fx(rep.dark.ink),
+                              textLight: fx(rep.light.text),
+                              textDark: fx(rep.dark.text),
+                          })
+                        : 'contrast computed for both modes'
+                );
+                if (rep.adjusted.length) {
+                    const key =
+                        rep.adjusted.length === 2
+                            ? 'flash:brand_adjusted_both'
+                            : rep.adjusted[0] === 'dark'
+                              ? 'flash:brand_adjusted_dark'
+                              : 'flash:brand_adjusted_light';
+                    warnings.push(req.t ? req.t(key) : 'the colour was adjusted to stay readable');
                 }
             }
 
@@ -812,8 +905,10 @@ class AppSettingsController {
             const readImage = (file, maxKb) => {
                 if (!file) return { skip: true };
                 try {
-                    const buf = fs.readFileSync(file.path);
-                    fs.unlinkSync(file.path);
+                    const src = containedUploadPath(file.path);
+                    if (!src) return { error: 'Could not read the uploaded file.' };
+                    const buf = fs.readFileSync(src);
+                    fs.unlinkSync(src);
                     if (buf.length > maxKb * 1024)
                         return { error: `File too large (max ${maxKb} KB).` };
                     const ext = require('path').extname(file.originalname).toLowerCase();
@@ -962,6 +1057,19 @@ class AppSettingsController {
                     req.t
                         ? req.t('flash:settings_reset_superadmin')
                         : 'Only SuperAdmins can reset settings'
+                );
+                return res.redirect('/app-settings');
+            }
+            // The typed word, checked here too (4.0.0 port, wave 10): the form
+            // asks for it, but a POST without it — or with another word —
+            // changes nothing.
+            const { typedWordMatches } = require('../utils/typedConfirmation');
+            if (!typedWordMatches('settingsReset', req.body && req.body.confirm)) {
+                req.flash(
+                    'error',
+                    req.t
+                        ? req.t('flash:settings_reset_word_mismatch')
+                        : 'Reset cancelled: the confirmation word does not match. Nothing was changed.'
                 );
                 return res.redirect('/app-settings');
             }

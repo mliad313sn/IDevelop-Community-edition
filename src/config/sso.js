@@ -657,17 +657,15 @@ function registerOidc(passport) {
     const tokenURL = env('OIDC_TOKEN_URL');
     const userInfoURL = env('OIDC_USERINFO_URL');
     const callbackURL = env('OIDC_REDIRECT_URL');
-    if (
-        !(
-            issuer &&
-            clientID &&
-            clientSecret &&
-            authorizationURL &&
-            tokenURL &&
-            userInfoURL &&
-            callbackURL
-        )
-    ) {
+    if (!(
+        issuer &&
+        clientID &&
+        clientSecret &&
+        authorizationURL &&
+        tokenURL &&
+        userInfoURL &&
+        callbackURL
+    )) {
         return null;
     }
 
@@ -794,9 +792,12 @@ function registerSaml(passport, opts = {}) {
                 cacheProvider: SamlSec.requestCache,
                 passReqToCallback: true,
                 wantAssertionsSigned: true,
-                // Default to requiring the whole SAML response signed (defence-in-depth);
-                // set SAML_WANT_RESPONSE_SIGNED=0 only for an IdP that signs the assertion
-                // but not the response envelope.
+                // STRICT by default: the whole SAML response must be signed as well as
+                // the assertion (defence-in-depth). A SuperAdmin may relax it to
+                // assertion-only signing with the « Strict » switch on the SSO page
+                // (setting samlStrict, read through SsoSettingsService.getOverrides as
+                // SAML_WANT_RESPONSE_SIGNED '1'/'0'); before the setting is stored,
+                // SAML_WANT_RESPONSE_SIGNED=0 in the environment still relaxes it.
                 wantAuthnResponseSigned: env('SAML_WANT_RESPONSE_SIGNED') !== '0',
                 disableRequestedAuthnContext: true,
                 signatureAlgorithm: 'sha256',
@@ -1339,7 +1340,33 @@ function isDegraded() {
     return isSsoIntended() && _enabled.size === 0;
 }
 
+/**
+ * The SAML reply URL saved in the app (and registered at the IdP) can differ
+ * from the canonical one, e.g. ".../auth/saml/saml/callback": a path no route
+ * answered, so every sign-in POST from the IdP hit the origin guard and read
+ * {"error":"cross_origin_blocked"}. The SAML ACS is therefore answered at the
+ * CONFIGURED path too, with exactly the same handler (signature, destination =
+ * the configured URL, replay and state checks). Only a path that cannot shadow
+ * an app page qualifies: it must end in /callback and must not be the
+ * canonical one (nor its /login-prefixed twin, which is routed already).
+ * @returns {string|null} the extra ACS path, or null
+ */
+const CANONICAL_SAML_ACS = '/auth/sso/saml/callback';
+function samlCallbackAliasPath() {
+    let p;
+    try {
+        p = new URL(env('SAML_CALLBACK_URL')).pathname.replace(/\/+$/, '');
+    } catch (_) {
+        return null;
+    }
+    if (!p || p === CANONICAL_SAML_ACS || !/\/callback$/i.test(p)) return null;
+    if (/^\/login\/auth\/sso\/[^/]+\/callback$/i.test(p)) return null; // routed already
+    return p;
+}
+
 module.exports = {
+    samlCallbackAliasPath,
+    CANONICAL_SAML_ACS,
     configureSso,
     reloadSso,
     getEnabledProviders,

@@ -16,7 +16,7 @@
     box-shadow: var(--shadow-lg);
     cursor: pointer;
     font-size: 24px;
-    z-index: 1000;
+    z-index: var(--z-fixed);
     transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     border: none;
 }
@@ -41,7 +41,7 @@
     border-radius: 12px;
     box-shadow: var(--shadow-xl);
     border: 1px solid var(--border);
-    z-index: 999;
+    z-index: var(--z-drawer);
     overflow: hidden;
     opacity: 0;
     transform: translateY(20px);
@@ -185,7 +185,7 @@
     display: inline-block;
     padding: 2px 6px;
     border-radius: 4px;
-    font-size: 0.7rem;
+    font-size: .75rem;
     font-weight: bold;
     margin-right: 5px;
     background-color: var(--bg-inset);
@@ -287,7 +287,7 @@
 
 .help-highlight {
     animation: pulseHighlight 1.5s infinite;
-    z-index: 1050;
+    z-index: var(--z-popover);
     position: relative;
     border-radius: 4px;
     scroll-margin-top: 100px;

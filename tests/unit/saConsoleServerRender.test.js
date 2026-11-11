@@ -163,7 +163,8 @@ describe('la vue rend vraiment ces lignes', () => {
 
     test('file vide = « rien en attente » ; modèle absent = le chemin JS reprend la main', () => {
         expect(render([])).toContain('Rien en attente de votre revue.');
-        expect(render(null)).toMatch(/<div id="sa-people">[\s\S]{0,120}Chargement…/);
+        // the loading placeholder keeps the shape of what is coming (skeleton)
+        expect(render(null)).toMatch(/<div id="sa-people">[\s\S]{0,120}data-skeleton/);
     });
 
     test("aucun état de base ne fuit à l'écran : les libellés passent par le catalogue", () => {

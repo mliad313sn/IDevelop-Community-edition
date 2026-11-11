@@ -4,6 +4,75 @@ const fs = require('fs');
 const path = require('path');
 
 class SnapshotService {
+    /** A settings row that holds a secret (by key, or because its value is sealed). */
+    static isSecretSetting(row) {
+        if (!row) return false;
+        const key = row.settingKey != null ? row.settingKey : row.setting_key;
+        const val = row.settingValue != null ? row.settingValue : row.setting_value;
+        const AppSettingsModel = require('../models/AppSettingsModel');
+        return (
+            AppSettingsModel.isSecretKey(
+                key,
+                row.settingType != null ? row.settingType : row.setting_type
+            ) ||
+            require('../utils/secretBox').isEncrypted(val) ||
+            val === AppSettingsModel.SECRET_MASK
+        );
+    }
+
+    static withoutSecretSettings(rows) {
+        return Array.isArray(rows) ? rows.filter((r) => !SnapshotService.isSecretSetting(r)) : rows;
+    }
+
+    /**
+     * Put the live secret rows back after the wipe, exactly as they were
+     * (sealed value included). No id: the snapshot's own rows own the ids, and
+     * the secret row keeps its key, which is what everything reads by.
+     */
+    async _restoreLiveSecretSettings(rows) {
+        for (const r of rows || []) {
+            const row = { ...r };
+            delete row.id;
+            delete row.updatedByUsername;
+            await db.run('DELETE FROM app_settings WHERE setting_key = ?', [
+                row.settingKey != null ? row.settingKey : row.setting_key,
+            ]);
+            await this._restoreRows('app_settings', [row]);
+        }
+    }
+
+    /**
+     * Remove secret settings from snapshots taken before secrets were masked (they copied
+     * every app_settings row, SMTP password and LLM key included). Idempotent,
+     * best-effort; returns how many snapshots were rewritten. The snapshot keeps
+     * everything else — nothing is deleted but the secret rows.
+     */
+    async scrubSecretsFromStoredSnapshots() {
+        let rows;
+        try {
+            rows = await db.all(
+                // (`->` not `?`: a `?` would be read as a bind placeholder.)
+                "SELECT id, snapshot_data FROM snapshots WHERE (snapshot_data -> 'data') IS NOT NULL AND (snapshot_data -> 'secretsOmitted') IS NULL"
+            );
+        } catch (_) {
+            return 0;
+        }
+        let n = 0;
+        for (const r of rows || []) {
+            const data =
+                typeof r.snapshotData === 'string' ? JSON.parse(r.snapshotData) : r.snapshotData;
+            if (!data || !data.data) continue;
+            data.data.appSettings = SnapshotService.withoutSecretSettings(data.data.appSettings);
+            data.secretsOmitted = true;
+            await db.run('UPDATE snapshots SET snapshot_data = ? WHERE id = ?', [
+                JSON.stringify(data),
+                r.id,
+            ]);
+            n++;
+        }
+        return n;
+    }
+
     // Create a snapshot of the entire database
     async createSnapshot(name, description, createdBy) {
         try {
@@ -61,8 +130,15 @@ class SnapshotService {
             // Admin Scopes
             snapshotData.data.adminScopes = await db.all('SELECT * FROM adminScopes');
 
-            // App Settings
-            snapshotData.data.appSettings = await db.all('SELECT * FROM appSettings');
+            // App Settings — WITHOUT secrets: a snapshot is a jsonb copy that
+            // outlives any key rotation and is restorable by design, so a stored
+            // credential (SMTP password, LLM key, SSO client secret …) is never
+            // copied into it, not even as ciphertext. The rows are omitted; the
+            // restore keeps whatever secret is live at that moment.
+            snapshotData.data.appSettings = SnapshotService.withoutSecretSettings(
+                await db.all('SELECT * FROM appSettings')
+            );
+            snapshotData.secretsOmitted = true;
 
             // Save snapshot
             const snapshot = await SnapshotModel.create({
@@ -150,6 +226,10 @@ class SnapshotService {
                     'ALTER TABLE assessment_history DISABLE TRIGGER trg_assessment_history_immutable'
                 )
                 .catch(() => {});
+            // The live secret settings, read BEFORE the wipe deletes app_settings.
+            const liveSecretSettings = (await db.all('SELECT * FROM appSettings')).filter((r) =>
+                SnapshotService.isSecretSetting(r)
+            );
             // Wipe the captured tables AND every table that (transitively) references
             // them — computed from live FK metadata, in child→parent order — so the
             // DELETE never fails on a workflow table (supervisor_reviews, PIP, IDP,
@@ -192,7 +272,14 @@ class SnapshotService {
             await this._restoreRows('skill_assessments', D.skillAssessments);
             await this._restoreRows('assessment_history', D.assessmentHistory);
             await this._restoreRows('admin_scopes', D.adminScopes);
-            await this._restoreRows('app_settings', D.appSettings);
+            // Secrets: never taken FROM a snapshot (an old snapshot may still
+            // hold one in clear, or a mask) — the live ones read before the wipe
+            // are put back verbatim (still sealed).
+            await this._restoreRows(
+                'app_settings',
+                SnapshotService.withoutSecretSettings(D.appSettings)
+            );
+            await this._restoreLiveSecretSettings(liveSecretSettings);
 
             // Note: admins (and password hashes) are intentionally NOT restored —
             // snapshots never capture credential material.

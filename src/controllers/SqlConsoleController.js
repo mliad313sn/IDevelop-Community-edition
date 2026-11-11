@@ -1,6 +1,6 @@
 'use strict';
 
-const fs = require('fs');
+const { uploadedPath, discardUpload } = require('../utils/uploadTempPath');
 const SqlConsoleService = require('../services/SqlConsoleService');
 const LogService = require('../services/LogService');
 const RBACService = require('../services/RBACService');
@@ -68,7 +68,9 @@ class SqlConsoleController {
 
     async execute(req, res) {
         if (this._denied(req, res)) return;
-        const sql = (req.body && req.body.sql) || '';
+        // Only a string is SQL: a parsed object or array (`sql[]=…`, a JSON
+        // object with its own `length`) never reaches the tokeniser's loops.
+        const sql = req.body && typeof req.body.sql === 'string' ? req.body.sql : '';
         // Omitting `dryRun` means "execute" (what the console's own UI relies on).
         // But once a client SENDS the field, any value that is not an explicit no
         // means SIMULATE. The old `String(x) === 'true'` did the reverse: a JSON
@@ -170,8 +172,8 @@ class SqlConsoleController {
         if (this._denied(req, res)) return;
         if (!req.file) return res.status(400).json({ success: false, error: 'No file uploaded' });
         try {
-            const sql = await SqlConsoleService.generateFromExcelFile(req.file.path);
-            fs.unlink(req.file.path, () => {});
+            const sql = await SqlConsoleService.generateFromExcelFile(uploadedPath(req.file));
+            discardUpload(req.file);
 
             await LogService.log({
                 adminId: req.user.id,
@@ -184,7 +186,7 @@ class SqlConsoleController {
 
             res.json({ success: true, sql });
         } catch (error) {
-            if (req.file && fs.existsSync(req.file.path)) fs.unlink(req.file.path, () => {});
+            discardUpload(req.file);
             console.error('SQL console from-excel error:', error);
             res.status(500).json({ success: false, error: error.message });
         }

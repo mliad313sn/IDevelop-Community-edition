@@ -92,6 +92,9 @@
 
 <div class="card" style="padding:1.25rem;max-width:860px;margin-bottom:1.5rem;">
     <h2 style="margin:0 0 1rem;font-size:1.05rem;"><%= __('admin:new_schedule') %></h2>
+    <% if (typeof formError !== 'undefined' && formError) { %>
+        <div class="alert alert-danger" role="alert" style="margin-bottom:1rem;"><%= formError %></div>
+    <% } %>
     <% if (!templates || !templates.length) { %>
         <p class="text-muted"><%= __('admin:no_templates') %></p>
     <% } else { %>
@@ -103,9 +106,17 @@
                 <% templates.forEach(function(t){ %><option value="<%= t.id %>"><%= t.name %></option><% }); %>
             </select>
         </div>
+        <%# SA-38: recipients are ACCOUNTS whose clearance covers this report,
+            never a typed address. %>
         <div class="form-group" style="margin:0;min-width:260px;flex:2;">
-            <label for="rs-rcp"><%= __('admin:recipients') %> <small style="color:var(--text-muted);"><%= __('admin:recipients_hint') %></small></label>
-            <input id="rs-rcp" name="recipients" type="text" required class="form-control" placeholder="hr@site.com, gm@site.com">
+            <label for="rs-rcp"><%= __('reports:sched_recipients_label') %> <small style="color:var(--text-muted);"><%= __('reports:sched_recipients_hint') %></small></label>
+            <% if (typeof accounts !== 'undefined' && accounts && accounts.length) { %>
+            <select id="rs-rcp" name="recipientAccounts" multiple required class="form-control" size="<%= Math.min(6, accounts.length) %>">
+                <% accounts.forEach(function(a){ %><option value="<%= a.token %>"><%= a.name %></option><% }); %>
+            </select>
+            <% } else { %>
+            <p id="rs-rcp" class="text-muted" style="margin:0;"><%= __('reports:sched_no_eligible_account') %></p>
+            <% } %>
         </div>
         <div class="form-group" style="margin:0;">
             <label for="rs-freq"><%= __('admin:frequency') %></label>
@@ -144,9 +155,29 @@
                     <tr<%- s.isActive === false ? ' class="sched-paused"' : '' %>>
                         <td><strong><%= s.templateName %></strong><% if (s.isActive === false) { %> <span class="badge badge-warning"><%= __('admin:ops_sched_paused') %></span><% } %></td>
                         <td><%= s.ownerName || '—' %></td>
-                        <td style="font-size:.82rem;color:var(--text-secondary);max-width:260px;overflow:hidden;text-overflow:ellipsis;" title="<%= s.recipients %>"><%= s.recipients %></td>
+                        <td style="font-size:.82rem;color:var(--text-secondary);max-width:260px;">
+                            <%= (s.recipientNames && s.recipientNames.length) ? s.recipientNames.join(', ') : '—' %>
+                            <% if (s.enabled === false) { %>
+                              <div class="sched-err"><span class="badge badge-warning"><%= __('reports:sched_disabled_badge') %></span>
+                                <%= s.disabledReason === 'legacy_outside_address' ? __('reports:sched_disabled_legacy_outside_address') : (s.disabledReason || '') %></div>
+                              <% if (s.recipients) { %><div class="sched-err"><%= __('reports:sched_legacy_addresses', { list: s.recipients }) %></div><% } %>
+                            <% } %>
+                            <% if (typeof accounts !== 'undefined' && accounts && accounts.length) { %>
+                            <details class="sched-edit">
+                              <summary><%= __('reports:sched_edit_recipients') %></summary>
+                              <form method="POST" action="/reports/schedules/<%= s.id %>/recipients">
+                                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                                <select name="recipientAccounts" multiple required class="form-control" size="<%= Math.min(5, accounts.length) %>" aria-label="<%= __('reports:sched_recipients_label') %>">
+                                  <% accounts.forEach(function(a){ %><option value="<%= a.token %>" <%= (s.recipientTokens || []).indexOf(a.token) > -1 ? 'selected' : '' %>><%= a.name %></option><% }); %>
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-primary" style="margin-top:.3rem;"><%= __('reports:sched_save_recipients') %></button>
+                              </form>
+                            </details>
+                            <% } %>
+                        </td>
                         <td><%= enumLabel('schedule_frequency', s.frequency) %><%= s.frequency==='weekly' && s.dayOfWeek!=null ? ' (' + [__('admin:day_sun_short'),__('admin:day_mon_short'),__('admin:day_tue_short'),__('admin:day_wed_short'),__('admin:day_thu_short'),__('admin:day_fri_short'),__('admin:day_sat_short')][s.dayOfWeek] + ')' : '' %> · <%= String(s.hour).padStart(2,'0') %>:00</td>
-                        <td><%= fmtDateTime(s.lastRunAt) %></td>
+                        <td><%= fmtDateTime(s.lastRunAt) %>
+                            <% if (s.lastRun && s.lastRun.purgedAt) { %><div class="sched-err text-muted"><%= __('reports:sched_copy_expired') %></div><% } else if (s.lastRun) { %><div class="sched-err"><a href="/reports/schedules/runs/<%= s.lastRun.id %>"><i class="fas fa-download" aria-hidden="true"></i> <%= __('reports:sched_download_copy') %></a></div><% } %></td>
                         <td><%= s.nextRunAt ? fmtDateTime(s.nextRunAt) : '—' %></td>
                         <td>
                             <% if (!s.lastStatus) { %><span class="text-muted">—</span>
@@ -185,4 +216,6 @@
   /* a paused schedule and a failure reason must be readable on the row. */
   .sched-paused td{opacity:.7}
   .sched-err{font-size:.78rem;color:var(--text-secondary);max-width:26rem;white-space:normal;margin-top:.2rem}
+  .sched-edit{margin-top:.35rem}
+  .sched-edit summary{cursor:pointer;font-size:.78rem}
 </style>

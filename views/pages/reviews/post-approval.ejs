@@ -40,7 +40,7 @@
                 <% items.forEach(function (r) { %>
                 <tr>
                     <td><a href="/employees/<%= r.employeeId %>"><%= r.employeeName %></a>
-                        <div style="font-size:.74rem;color:var(--text-muted);"><%= r.employeeNumber %> · <%= r.siteName || '—' %></div></td>
+                        <div style="font-size:.75rem;color:var(--text-muted);"><%= r.employeeNumber %> · <%= r.siteName || '—' %></div></td>
                     <td style="font-size:.85rem;"><%= r.skillName || '—' %></td>
                     <td style="white-space:nowrap;">
                         <span class="text-muted"><%= r.approvedLevel === null ? '—' : r.approvedLevel %></span>
@@ -53,7 +53,7 @@
                     <td>
                         <span class="badge <%= r.state === 'pending' ? 'badge-warning' : (r.state === 'approved' ? 'badge-success' : 'badge-danger') %>">
                             <%= __('admin:par_state_' + r.state) %></span>
-                        <% if (r.decidedByName) { %><div style="font-size:.74rem;color:var(--text-muted);"><%= r.decidedByName %></div><% } %>
+                        <% if (r.decidedByName) { %><div style="font-size:.75rem;color:var(--text-muted);"><%= r.decidedByName %></div><% } %>
                     </td>
                     <td style="text-align:right;white-space:nowrap;">
                         <% if (r.state === 'pending' && canDecide) { %>

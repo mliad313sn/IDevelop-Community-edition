@@ -137,13 +137,16 @@ describe('M-06 — la console ne construit plus ses boutons sur le seul état', 
 
     test('approve / reject / archive / disclose sont conditionnés par canApprove', () => {
         expect(view).toMatch(/const mayApprove = ev\.canApprove === true/);
-        expect(view).toMatch(/open && mayApprove\?'<button[^']*NB\.act\('\+id\+',\\'approve/);
+        // CSP (SA-14): buttons carry a delegated action — nbOn('click','NB.act',[id,'…']).
         expect(view).toMatch(
-            /ev\.status==='approved' && mayApprove\?'<button[^']*NB\.act\('\+id\+',\\'archive/
+            /open && mayApprove\?'<button[^']*'\+nbOn\('click','NB\.act',\[id,'approve'\]\)/
+        );
+        expect(view).toMatch(
+            /ev\.status==='approved' && mayApprove\?'<button[^']*'\+nbOn\('click','NB\.act',\[id,'archive'\]\)/
         );
         // La divulgation est dans la MÊME branche que l'archivage.
         const approvedBranch = view.slice(view.indexOf("ev.status==='approved' && mayApprove"));
-        expect(approvedBranch.slice(0, 600)).toMatch(/NB\.disclose\('\+id\+'/);
+        expect(approvedBranch.slice(0, 600)).toMatch(/nbOn\('click','NB\.disclose',\[id,/);
     });
 
     test('submit est conditionné par canDraft', () => {
@@ -151,7 +154,7 @@ describe('M-06 — la console ne construit plus ses boutons sur le seul état', 
             /const mayApprove = ev\.canApprove === true, mayDraft = ev\.canDraft === true/
         );
         expect(view).toMatch(
-            /ev\.status==='draft' && mayDraft\?'<button[^']*NB\.act\('\+id\+',\\'submit/
+            /ev\.status==='draft' && mayDraft\?'<button[^']*'\+nbOn\('click','NB\.act',\[id,'submit'\]\)/
         );
     });
 

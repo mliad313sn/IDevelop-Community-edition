@@ -37,7 +37,20 @@ function homeFor(userType) {
     return '/dashboard';
 }
 
-function authAudit(req, action, details, adminId = null) {
+/**
+ * Ids only: the audit text names the person by a REF, never by a username,
+ * e-mail or employee number. SystemLogModel.resolvePeople turns `employee:84`,
+ * `manager:84` or `admin:3` into the name when the log is read (and into
+ * "Erased person #id" after an erasure).
+ */
+function subjectRef(user) {
+    if (!user || user.id == null) return 'unknown';
+    const t =
+        user.userType === 'admin' ? 'admin' : user.userType === 'manager' ? 'manager' : 'employee';
+    return `${t}:${Number(user.id)}`;
+}
+
+function recordAccountEvent(req, action, details, adminId = null) {
     try {
         LogService.log({
             adminId,
@@ -50,6 +63,36 @@ function authAudit(req, action, details, adminId = null) {
     } catch (_) {
         /* logging must never break auth */
     }
+}
+
+/**
+ * A SAML response refused by the library used to read only "the response was
+ * rejected (signature, certificate, audience or validity)". Maps node-saml's
+ * message to a code that the test-result page and the SSO_ERROR audit line
+ * explain with the next step (admin:ssof_fail_<code>, FR/EN). The usual Entra
+ * cause, a Signing Option that leaves the response envelope unsigned while this
+ * application requires it signed, gets its own name.
+ */
+function samlRefusalCode(err) {
+    const m = String((err && err.message) || err || '');
+    if (/signature/i.test(m)) return 'sso_saml_signature';
+    if (/audience/i.test(m)) return 'sso_saml_audience';
+    if (/issuer/i.test(m)) return 'sso_issuer';
+    // A malformed timestamp ("Error parsing NotBefore: 'x' is not a valid date")
+    // is a broken response, not a clock problem.
+    if (/Error parsing (NotBefore|NotOnOrAfter)/i.test(m)) return 'sso_saml_invalid';
+    // node-saml's time refusals: "SAML assertion not yet valid" (this server's
+    // clock is BEHIND the IdP), "SAML assertion expired: clocks skewed too much" /
+    // "...: assertion too old", "No valid subject confirmation found among those
+    // available in the SAML assertion" (every SubjectConfirmationData out of time).
+    if (
+        /not yet valid|NotBefore|NotOnOrAfter|expired|too early|too old|clock|subject ?confirmation/i.test(
+            m
+        )
+    )
+        return 'sso_saml_clock';
+    if (/InResponseTo/i.test(m)) return 'sso_saml_inresponseto';
+    return 'sso_saml_invalid';
 }
 
 class SsoController {
@@ -83,7 +126,7 @@ class SsoController {
         if (!isTest && req.isAuthenticated && req.isAuthenticated()) {
             return res.redirect(homeFor(req.user && req.user.userType));
         }
-        authAudit(req, 'SSO_INITIATE', `Single sign-on requested via ${provider.key}`);
+        recordAccountEvent(req, 'SSO_INITIATE', `Single sign-on requested via ${provider.key}`);
         passport.authenticate(provider.strategyName, provider.authOptions)(req, res, next);
     }
 
@@ -106,10 +149,10 @@ class SsoController {
                 if (t) {
                     SsoTest.setResult(t.nonce, {
                         ok: false,
-                        code: 'sso_saml_invalid',
+                        code: samlRefusalCode(err),
                         detail: String(err.message || err),
                     });
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'SSO_TEST_SIGNIN',
                         `${provider.key}: test sign-in refused (${err.message || err})`
@@ -118,17 +161,17 @@ class SsoController {
                         `/app-settings/sso/test-result/${encodeURIComponent(t.nonce)}`
                     );
                 }
-                authAudit(
+                recordAccountEvent(
                     req,
                     'SSO_ERROR',
-                    `SSO sign-in error via ${provider.key}: ${err.message || err}`
+                    `SSO sign-in error via ${provider.key}: ${err.message || err} [${samlRefusalCode(err)}]`
                 );
                 return flashAndLogin(req, res, 'flash:sso_failed', FB_FAILED);
             }
             if (!user) {
                 // A test sign-in from the SSO settings: show the diagnostic, never log in.
                 if (info && info.test) {
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'SSO_TEST_SIGNIN',
                         `${provider.key}: test sign-in completed (no session created)`
@@ -140,7 +183,7 @@ class SsoController {
                 // Auto-onboarded: an unknown identity that we parked as a pending
                 // request — send to the holding page, not a denial.
                 if (info && info.onboarding) {
-                    authAudit(
+                    recordAccountEvent(
                         req,
                         'SSO_ONBOARDING',
                         `${provider.key}: identity parked for onboarding`
@@ -154,7 +197,7 @@ class SsoController {
                 // parsed as `((info && info.message) || req.t) ? …`: it always
                 // dropped the reason, and called req.t when it was undefined.)
                 const reason = (info && (info.code || info.message)) || 'unknown';
-                authAudit(req, 'SSO_DENIED', `${provider.key}: ${reason}`);
+                recordAccountEvent(req, 'SSO_DENIED', `${provider.key}: ${reason}`);
                 if (reason === 'superadmin_sso_forbidden')
                     alertSuperadminSso(info && info.adminId, `${provider.key}: ${reason}`);
                 if (reason === 'sso_not_linked') {
@@ -176,10 +219,13 @@ class SsoController {
                 mapped: {},
             };
             // Deep link (SP-initiated ?RelayState=/path, or the IdP portal's
-            // RelayState): only ever one of our own pages.
-            const relay = safeRelayPath(
-                (req.body && req.body.RelayState) || (req.query && req.query.RelayState)
-            );
+            // RelayState): only ever one of our own pages. Otherwise the page an
+            // auth guard bounced to /login (utils/returnTo: a short signed cookie;
+            // it rides the OIDC/Entra GET callback, not a cross-site SAML POST).
+            const relay =
+                safeRelayPath(
+                    (req.body && req.body.RelayState) || (req.query && req.query.RelayState)
+                ) || safeRelayPath(require('../utils/returnTo').takeReturnTo(req));
             // An identity linked DIRECTLY to an admin (D3a). Refused exactly as
             // before 3.23.19 unless the SuperAdmin switched admin SSO on; then
             // the admin is re-checked and must present a second factor.
@@ -191,10 +237,10 @@ class SsoController {
             // Per-user authentication policy (migration 55): 'local_only'
             // refuses SSO for this account even though the identity resolves.
             if (String(user.authPolicy || user.auth_policy || 'any') === 'local_only') {
-                authAudit(
+                recordAccountEvent(
                     req,
                     'SSO_DENIED',
-                    `${provider.key}: account "${user.username || user.employeeNumber}" is restricted to local password sign-in (auth policy local_only)`
+                    `${provider.key}: account ${subjectRef(user)} is restricted to local password sign-in (auth policy local_only)`
                 );
                 // UX-3 / EXC (3.23.21): while SSO is enforced a password is open
                 // only to an employee a SuperAdmin listed as an SSO exception —
@@ -239,7 +285,7 @@ class SsoController {
                             : null;
                     if (why) {
                         // Not offered; the person still signs in as themselves.
-                        authAudit(
+                        recordAccountEvent(
                             req,
                             'SSO_DENIED',
                             `${provider.key}: ${why} — employee #${user.id} not offered admin account(s) #${candidates.map((c) => c.id).join(', #')} (link method ${ctx.linkMethod || 'unknown'})`
@@ -253,7 +299,7 @@ class SsoController {
                         audits: [
                             [
                                 'LOGIN_SUCCESS',
-                                `${user.userType} "${user.username || user.employeeNumber}" signed in via SSO (${provider.key})`,
+                                `${subjectRef(user)} signed in via SSO (${provider.key})`,
                                 null,
                             ],
                         ],
@@ -342,7 +388,7 @@ class SsoController {
                     audits: [
                         [
                             'LOGIN_SUCCESS',
-                            `${user.userType} "${user.username || user.employeeNumber}" signed in via SSO (${c.provider}) — chose the employee account`,
+                            `${subjectRef(user)} signed in via SSO (${c.provider}) — chose the employee account`,
                             null,
                         ],
                     ],
@@ -466,7 +512,7 @@ function flashAndLogin(req, res, key, fallback, to = '/login') {
 }
 
 function deny(req, res, providerKey, reason, detail = '', adminId = null) {
-    authAudit(
+    recordAccountEvent(
         req,
         'SSO_DENIED',
         `${providerKey}: ${reason}${detail ? ` — ${detail}` : ''}`,
@@ -517,7 +563,7 @@ function alertSuperadminSso(adminId, detail) {
 
 function failed(req, res, providerKey, err) {
     console.error(`SSO sign-in error [${providerKey}]:`, err);
-    authAudit(
+    recordAccountEvent(
         req,
         'SSO_ERROR',
         `SSO sign-in error via ${providerKey}: ${(err && err.message) || err}`
@@ -567,7 +613,7 @@ function establish(
                 }
                 if (init) init(req.session);
                 for (const [action, details, adminId] of audits)
-                    authAudit(req, action, details, adminId);
+                    recordAccountEvent(req, action, details, adminId);
                 Promise.resolve(after && after())
                     .catch(() => {})
                     .then(() => {
@@ -600,7 +646,7 @@ function startChoice(req, res, data) {
                 nonce: crypto.randomBytes(24).toString('base64url'),
                 at: Date.now(),
             };
-            authAudit(
+            recordAccountEvent(
                 req,
                 'SSO_CHOOSER',
                 `${data.provider}: employee #${data.employeeId} is the linked person of admin account(s) #${data.adminIds.join(', #')} — account choice offered`
@@ -622,32 +668,25 @@ async function adminDirect(req, res, providerKey, user, ctx, relay) {
             res,
             providerKey,
             'admin_sso_disabled',
-            `admin account "${user.username}" attempted SSO — admins must use password + MFA`,
+            `admin account admin:${user.id} attempted SSO — admins must use password + MFA`,
             user.id
         );
     }
     const el = await AdminSso.eligibility(user.id, { skipSwitch: true });
-    if (!el.ok) return deny(req, res, providerKey, el.reason, `admin "${user.username}"`, user.id);
+    if (!el.ok) return deny(req, res, providerKey, el.reason, `admin:${user.id}`, user.id);
     // never on an e-mail-like alias when the assertion carries another stable
     // id; S4: only an identity a SuperAdmin linked (or an onboarding merge).
     if (ctx.aliasMatch === true)
-        return deny(req, res, providerKey, 'admin_uid_alias', `admin "${user.username}"`, user.id);
+        return deny(req, res, providerKey, 'admin_uid_alias', `admin:${user.id}`, user.id);
     if (ctx.unstableUid === true)
-        return deny(
-            req,
-            res,
-            providerKey,
-            'admin_uid_unstable',
-            `admin "${user.username}"`,
-            user.id
-        );
+        return deny(req, res, providerKey, 'admin_uid_unstable', `admin:${user.id}`, user.id);
     if (!AdminSso.isTrustedLinkMethod(ctx.linkMethod))
         return deny(
             req,
             res,
             providerKey,
             'admin_link_untrusted',
-            `admin "${user.username}" (link method ${ctx.linkMethod || 'unknown'})`,
+            `admin:${user.id} (link method ${ctx.linkMethod || 'unknown'})`,
             user.id
         );
     return finishAdmin(req, res, {
@@ -679,21 +718,14 @@ async function finishAdmin(
     // C1a: re-assert on the database role at the last step (fail closed).
     const sa = await AdminSso.assertNotSuperadmin(admin.id);
     if (!sa.ok)
-        return deny(
-            req,
-            res,
-            provider,
-            sa.reason,
-            `admin "${admin.username}" (${method})`,
-            admin.id
-        );
+        return deny(req, res, provider, sa.reason, `admin:${admin.id} (${method})`, admin.id);
     const mode = await AdminSso.secondFactor(admin.id, mfaAsserted);
     const viaEmployeeId = method === 'linked-person' ? employeeId : null;
     if (mode === 'local' || mode === 'code') {
-        authAudit(
+        recordAccountEvent(
             req,
             mode === 'local' ? 'MFA_CHALLENGE' : 'MFA_ENROL_CODE_REQUESTED',
-            `${mode === 'local' ? 'MFA code' : 'One-time enrolment code'} requested for admin "${admin.username}" (first factor: SSO via ${provider}, ${method})`,
+            `${mode === 'local' ? 'MFA code' : 'One-time enrolment code'} requested for admin:${admin.id} (first factor: SSO via ${provider}, ${method})`,
             admin.id
         );
         const pending = {
@@ -725,7 +757,7 @@ async function finishAdmin(
             res,
             provider,
             'admin_mfa_required',
-            `admin "${admin.username}" (${method}): no local MFA, no IdP-asserted MFA, no enrolment code`,
+            `admin:${admin.id} (${method}): no local MFA, no IdP-asserted MFA, no enrolment code`,
             admin.id
         );
     }
@@ -796,7 +828,7 @@ async function submitEnrolCode(req, res) {
         const r = await AdminSso.consumeEnrolCode(p.id, req.body && req.body.code);
         if (!r.ok) {
             p.fails = Number(p.fails || 0) + 1;
-            authAudit(
+            recordAccountEvent(
                 req,
                 'MFA_ENROL_CODE_FAILED',
                 `Wrong enrolment code for admin #${p.id} (${r.reason})`,
@@ -858,14 +890,10 @@ function ssoAdminAudits(admin, provider, method, mfa) {
     return [
         [
             'SSO_LOGIN',
-            `admin "${admin.username}" signed in via SSO — provider=${provider} method=${method} mfa=${mfa}`,
+            `admin:${admin.id} signed in via SSO — provider=${provider} method=${method} mfa=${mfa}`,
             Number(admin.id),
         ],
-        [
-            'LOGIN_SUCCESS',
-            `admin "${admin.username}" signed in via SSO (${provider})`,
-            Number(admin.id),
-        ],
+        ['LOGIN_SUCCESS', `admin:${admin.id} signed in via SSO (${provider})`, Number(admin.id)],
     ];
 }
 
@@ -898,3 +926,4 @@ controller.issueEnrolCode = async function issueEnrolCode(req, res) {
     return res.redirect(`/admins/${Number(req.params.id)}`);
 };
 module.exports = controller;
+module.exports._samlRefusalCode = samlRefusalCode;

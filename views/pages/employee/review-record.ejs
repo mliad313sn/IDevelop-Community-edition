@@ -1,0 +1,132 @@
+<%#
+  The end-of-campaign record (4.0.0 port, wave 5) — the person's OWN records.
+  Two modes:
+    records (list)  the locked / closed campaigns the person had ratings in;
+    record  (one)   ReviewRecordService.view: the frozen snapshot once
+                    acknowledged, else what an acknowledgement would freeze.
+  Skill names, domains and the reviewer's reasons are read live (never stored).
+  « I have read it » is a reading, never an agreement: the page says so.
+%><%
+  const _day = (v) => (v ? (typeof fmtDate === 'function' ? fmtDate(v) : String(v).slice(0, 10)) : '');
+  const _lvl = (n) => (n === null || n === undefined ? '—' : String(n));
+  const _max = (typeof commentMax === 'number') ? commentMax : 4000;
+%>
+<link rel="stylesheet" href="/css/emp-loop.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
+<div class="page-header">
+    <h1><i class="fas fa-file-signature" aria-hidden="true"></i> <%= __('employee:rr_title') %></h1>
+    <% if (record) { %><a href="/employee/review-record" class="btn btn-sm btn-secondary">← <%= __('employee:rr_back_list') %></a><% } %>
+</div>
+<p class="help-text"><%= __('employee:rr_intro') %></p>
+
+<% if (!record) { const _list = Array.isArray(records) ? records : []; %>
+<section class="card rr-card" aria-labelledby="rrListH">
+    <h2 id="rrListH"><%= __('employee:rr_list_title') %></h2>
+    <% if (!_list.length) { %>
+        <p class="text-muted"><%= __('employee:rr_list_none') %></p>
+    <% } else { %>
+    <ul class="rr-list">
+        <% _list.forEach(function (c) { %>
+        <li>
+            <a href="/employee/review-record/<%= Number(c.id) %>"><%= c.label || __('employee:rr_campaign_unnamed') %></a>
+            <span class="rr-meta"><%= __('employee:rr_cycle_' + (c.status === 'closed' ? 'closed' : 'locked')) %><% if (c.closedAt) { %> · <%= _day(c.closedAt) %><% } %></span>
+            <% if (c.acknowledgedAt) { %>
+                <%- include('../../partials/status-badge', { state: 'done', label: __('employee:rr_read_on', { date: _day(c.acknowledgedAt) }) }) %>
+            <% } else { %>
+                <%- include('../../partials/status-badge', { state: 'pending', label: __('employee:rr_to_read') }) %>
+            <% } %>
+        </li>
+        <% }); %>
+    </ul>
+    <% } %>
+</section>
+<% } else { const r = record; %>
+<section class="card rr-card" aria-labelledby="rrH" data-rr-cycle="<%= Number(r.cycle.id) %>" data-rr-ack="<%= r.acknowledged ? '1' : '0' %>">
+    <h2 id="rrH"><%= r.cycle.label || __('employee:rr_campaign_unnamed') %> <span class="rr-meta">· <%= __('employee:rr_cycle_' + (r.cycle.status === 'closed' ? 'closed' : 'locked')) %></span></h2>
+    <% if (r.acknowledged) { %>
+        <p class="rr-ack"><%- include('../../partials/status-badge', { state: 'done', label: __('employee:rr_read_on', { date: _day(r.acknowledgedAt) }) }) %> <span class="rr-meta"><%= __('employee:rr_frozen_note') %></span></p>
+    <% } else { %>
+        <p class="rr-meta"><%= __('employee:rr_live_note') %></p>
+    <% } %>
+
+    <ul class="rr-counts">
+        <li><strong><%= r.counts.skills || 0 %></strong> <%= __('employee:rr_count_skills') %></li>
+        <li><strong><%= r.counts.validated || 0 %></strong> <%= __('employee:rr_count_validated') %></li>
+        <li><strong><%= r.counts.adjusted || 0 %></strong> <%= __('employee:rr_count_adjusted') %></li>
+        <% if (r.counts.pending) { %><li><strong><%= r.counts.pending %></strong> <%= __('employee:rr_count_pending') %></li><% } %>
+        <% if (r.counts.disputes) { %><li><strong><%= r.counts.disputes %></strong> <%= __('employee:rr_count_disputes') %></li><% } %>
+    </ul>
+
+    <% if (!r.skills.length) { %>
+        <p class="text-muted"><%= __('employee:rr_no_skills') %></p>
+    <% } else { %>
+    <div class="rr-tablewrap">
+    <table class="table rr-table">
+        <caption class="sr-only"><%= __('employee:rr_table_caption') %></caption>
+        <thead><tr>
+            <th scope="col"><%= __('employee:th_domain') %></th>
+            <th scope="col"><%= __('employee:th_skill') %></th>
+            <th scope="col"><%= __('employee:rr_th_self') %></th>
+            <th scope="col"><%= __('employee:rr_th_validated') %></th>
+            <th scope="col"><%= __('employee:rr_th_note') %></th>
+        </tr></thead>
+        <tbody>
+        <% r.skills.forEach(function (s) { %>
+            <tr data-skill-id="<%= s.skillId %>">
+                <td class="text-muted"><%= s.domainName || '—' %></td>
+                <th scope="row"><%= s.skillName || __('employee:rr_skill_gone') %></th>
+                <td><%= _lvl(s.self) %></td>
+                <td><% if (s.validated === null) { %><span class="text-muted"><%= s.pending ? __('employee:rr_pending') : '—' %></span><% } else { %><strong><%= s.validated %></strong><% } %></td>
+                <td>
+                    <% if (s.adjusted) { %><span class="rr-adjusted"><%= __('employee:rr_adjusted') %></span><% if (s.reason) { %> — « <%= s.reason %> »<% } %><% } %>
+                    <% if (s.disputeOpen) { %><%- include('../../partials/status-badge', { state: 'escalated', label: __('employee:rr_dispute_open') }) %><% } %>
+                </td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table>
+    </div>
+    <% } %>
+
+    <h3 class="rr-h3"><%= __('employee:rr_plans_title') %></h3>
+    <% if (!r.plans.length) { %>
+        <p class="text-muted"><%= __('employee:rr_plans_none') %></p>
+    <% } else { %>
+    <ul class="rr-plans">
+        <% r.plans.forEach(function (p) { %>
+        <li><%- include('../../partials/status-badge', { state: p.status === 'active' ? 'active' : 'draft', label: __('employee:rr_plan_' + (p.status === 'active' ? 'active' : 'draft')) }) %>
+            <%= __('employee:rr_plan_line', { objectives: p.objectives, actions: p.actions }) %><% if (p.endsOn) { %> · <%= __('employee:rr_plan_ends', { date: _day(p.endsOn) }) %><% } %></li>
+        <% }); %>
+    </ul>
+    <% } %>
+</section>
+
+<section class="card rr-card" aria-labelledby="rrActH">
+    <h2 id="rrActH"><%= r.acknowledged ? __('employee:rr_comment_title') : __('employee:rr_ack_title') %></h2>
+    <% if (!r.acknowledged) { %>
+    <p><%= __('employee:rr_ack_body') %></p>
+    <form method="post" action="/employee/review-record/<%= Number(r.cycle.id) %>/acknowledge">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="form-group">
+            <label for="rrComment"><%= __('employee:rr_comment_label') %> (<%= __('employee:rr_optional') %>)</label>
+            <textarea id="rrComment" name="comment" rows="3" maxlength="<%= _max %>" class="form-control" aria-describedby="rrCommentHelp"></textarea>
+            <p class="help-text" id="rrCommentHelp"><%= __('employee:rr_comment_help') %></p>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i> <%= __('employee:rr_ack_cta') %></button>
+    </form>
+    <% } else { %>
+    <% if (r.comment) { %>
+        <blockquote class="rr-comment"><%= r.comment %></blockquote>
+        <p class="rr-meta"><%= __('employee:rr_comment_on', { date: _day(r.commentAt) }) %></p>
+    <% } %>
+    <form method="post" action="/employee/review-record/<%= Number(r.cycle.id) %>/comment">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="form-group">
+            <label for="rrComment" class="required"><%= r.comment ? __('employee:rr_comment_change') : __('employee:rr_comment_label') %></label>
+            <textarea id="rrComment" name="comment" rows="3" required maxlength="<%= _max %>" class="form-control" aria-describedby="rrCommentHelp"><%= r.comment || '' %></textarea>
+            <p class="help-text" id="rrCommentHelp"><%= __('employee:rr_comment_help') %></p>
+        </div>
+        <button type="submit" class="btn btn-secondary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('employee:rr_comment_save') %></button>
+    </form>
+    <% } %>
+</section>
+<% } %>

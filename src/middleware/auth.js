@@ -9,9 +9,9 @@ const { safeBackUrl } = require('../utils/safeRedirect');
 const bcrypt = require('bcrypt');
 
 // A bcrypt hash of a random secret per cost, so a refused identifier costs the
-// same comparison as a real one (A1 / S8 anti-enumeration). Built on first use.
-const _dummyHashes = new Map();
-const APP_BCRYPT_COST = 10; // the cost every password is hashed with (AuthService, resets)
+// same comparison as a real one (A1 / S8 anti-enumeration). Built on first use,
+// shared with AuthService and EmployeeAuthService (src/utils/dummyBcrypt.js).
+const { APP_BCRYPT_COST, dummyHash } = require('../utils/dummyBcrypt');
 function bcryptCost(hash) {
     const m = /^\$2[aby]?\$(\d{2})\$/.exec(String(hash || ''));
     const n = m ? Number(m[1]) : APP_BCRYPT_COST;
@@ -42,13 +42,16 @@ function superadminCost() {
     }
     return _superCost;
 }
-function dummyHash(cost = APP_BCRYPT_COST) {
-    if (!_dummyHashes.has(cost))
-        _dummyHashes.set(
-            cost,
-            bcrypt.hash(require('crypto').randomBytes(18).toString('base64'), cost)
-        );
-    return _dummyHashes.get(cost);
+/**
+ * Ids only: how an audit line names whoever a typed identifier points at —
+ * `admin:<id>` / `employee:<id>` (resolved to the name when the log is read by
+ * SystemLogModel.resolvePeople), else the keyed `fp:<10 hex>` fingerprint
+ * AuthService and EmployeeAuthService use for an unknown identifier.
+ */
+function auditWho(admin, emp, typed) {
+    if (admin && admin.id != null) return `admin:${Number(admin.id)}`;
+    if (emp && emp.id != null) return `employee:${Number(emp.id)}`;
+    return require('../services/AuditRetentionService').fingerprint(typed);
 }
 
 // Audit a refused/accepted break-glass attempt WITHOUT awaiting it: the time the
@@ -134,7 +137,7 @@ async function enforcedPasswordLogin(req, username, password, ctx) {
             authLog(
                 ctx,
                 'LOGIN_SSO_EXCEPTION',
-                `password sign-in for "${String(username || '').slice(0, 64)}" accepted while SSO is enforced — SSO exception set by a SuperAdmin`,
+                `password sign-in for ${auditWho(null, r.employee || emp, username)} accepted while SSO is enforced — SSO exception set by a SuperAdmin`,
                 null
             );
             return [await asPersonPrincipal(r.employee)];
@@ -148,13 +151,15 @@ async function enforcedPasswordLogin(req, username, password, ctx) {
     const dummyCost = superadminCost() || bcryptCost(stored);
     const hash = isSuper && admin.passwordHash ? admin.passwordHash : await dummyHash(dummyCost);
     const match = await bcrypt.compare(String(password || ''), hash).catch(() => false);
-    const name = String(username || '').slice(0, 64);
+    // Ids only: the subject ref when the identifier names an account, else the
+    // short fingerprint — never the identifier as typed.
+    const name = auditWho(admin, emp, username);
 
     if (!isSuper) {
         authLog(
             ctx,
             'LOGIN_BLOCKED',
-            `${admin || emp ? 'password_login_blocked_sso_enforced' : 'password_login_unknown_sso_enforced'}: password sign-in for "${name}" refused — SSO is enforced`,
+            `${admin || emp ? 'password_login_blocked_sso_enforced' : 'password_login_unknown_sso_enforced'}: password sign-in for ${name} refused — SSO is enforced`,
             admin ? admin.id : null
         );
         await noteEnforcedFailure(username, ctx.ip); // the SAME throttle for every identifier
@@ -172,7 +177,7 @@ async function enforcedPasswordLogin(req, username, password, ctx) {
         authLog(
             ctx,
             'LOGIN_FAILED',
-            `${why}: SuperAdmin break-glass sign-in for "${name}" refused`,
+            `${why}: SuperAdmin break-glass sign-in for ${name} refused`,
             admin.id
         );
         if (!match) Promise.resolve(recordLoginAttempt(username, ctx.ip, false)).catch(() => {});
@@ -272,7 +277,7 @@ passport.use(
                                 entityType: 'employee',
                                 entityId: Number(asPerson.employee.id),
                                 actorRef: `employee:${asPerson.employee.id}`,
-                                details: `Identifier "${username}" names BOTH an administration account (#${adminResult.admin.id}, ${adminResult.admin.role}, linked to no employee) and employee #${asPerson.employee.id}, and the password opens both. Signed in as the PERSON; the administration account is unreachable by password until one of the two logins is renamed.`,
+                                details: `One identifier names BOTH an administration account (admin:${Number(adminResult.admin.id)}, ${adminResult.admin.role}, linked to no employee) and employee:${Number(asPerson.employee.id)}, and the password opens both. Signed in as the PERSON; the administration account is unreachable by password until one of the two logins is renamed.`,
                                 ipAddress: ctx.ip,
                                 userAgent: ctx.get('user-agent'),
                             });
@@ -466,6 +471,49 @@ function denyJson(req, res, key, fallback) {
         .json({ ok: false, error: msg, code: authed ? key : 'session_expired' });
 }
 
+/**
+ * BACK TO THE REQUESTED PAGE AFTER SIGN-IN.
+ *
+ * A link received by e-mail leads to a protected page; the anonymous visitor
+ * was sent to /login with a red « Please log in » banner and, once signed in,
+ * landed on their dashboard: the link was lost. Now, when a PAGE navigation
+ * (GET document) is sent to /login by a guard, its path is remembered (a short
+ * signed cookie, utils/returnTo — never the session, so an anonymous hit
+ * creates no session row) and the sign-in (password, MFA, SSO) goes back to
+ * it. The rules of the path are in utils/returnTo.
+ */
+const { safeReturnPath, setReturnTo, peekReturnTo, takeReturnTo } = require('../utils/returnTo');
+
+/** Is this an anonymous top-level page navigation (worth coming back to)? */
+function isDocumentGet(req) {
+    if (!req || req.method !== 'GET' || wantsJson(req)) return false;
+    const mode = req.get && req.get('sec-fetch-mode');
+    const dest = req.get && req.get('sec-fetch-dest');
+    if (mode || dest) return mode === 'navigate' && (!dest || dest === 'document');
+    return true;
+}
+
+/** Remember where an anonymous page navigation was going. Never throws. */
+function rememberReturnTo(req, res) {
+    try {
+        if (!isDocumentGet(req)) return false;
+        return setReturnTo(req, res || req.res, String(req.originalUrl || req.url || ''));
+    } catch (_) {
+        return false;
+    }
+}
+
+/**
+ * The anonymous visitor is sent to /login. A page navigation is remembered and
+ * gets NO red error banner (the login page shows a neutral notice instead); any
+ * other request (a form POST from an expired page…) keeps the error flash.
+ */
+function bounceToLogin(req, res, key, fallback) {
+    if (!rememberReturnTo(req, res) && typeof req.flash === 'function')
+        req.flash('error', req.t ? req.t(`flash:${key}`) : fallback);
+    return res.redirect('/login');
+}
+
 // Middleware to check if user is authenticated
 const requireAuth = (req, res, next) => {
     if (req.isAuthenticated()) {
@@ -473,8 +521,7 @@ const requireAuth = (req, res, next) => {
     }
     if (wantsJson(req))
         return denyJson(req, res, 'login_required', 'Please log in to access this page');
-    req.flash('error', req.t ? req.t('flash:login_required') : 'Please log in to access this page');
-    res.redirect('/login');
+    return bounceToLogin(req, res, 'login_required', 'Please log in to access this page');
 };
 
 /**
@@ -510,6 +557,9 @@ function denyUserType(req, res, key, fallback) {
     // a plus de session du tout — sinon l'écran dit « hors de votre périmètre » à
     // quelqu'un dont le vrai problème est qu'il doit se reconnecter.
     if (wantsJson(req)) return denyJson(req, res, key, fallback);
+    // An anonymous page navigation is remembered, without the red banner.
+    if (!(typeof req.isAuthenticated === 'function' && req.isAuthenticated()))
+        return bounceToLogin(req, res, key, fallback);
     if (typeof req.flash === 'function') req.flash('error', msg);
     return res.redirect(homeFor(req));
 }
@@ -539,6 +589,13 @@ const requireEmployeeOrManager = (req, res, next) => {
             'employee_or_manager_required',
             'Employee or Manager access required'
         );
+    if (!req.isAuthenticated())
+        return bounceToLogin(
+            req,
+            res,
+            'employee_or_manager_required',
+            'Employee or Manager access required'
+        );
     req.flash(
         'error',
         req.t ? req.t('flash:employee_or_manager_required') : 'Employee or Manager access required'
@@ -562,6 +619,8 @@ const requireAdmin = (req, res, next) => {
         return next();
     }
     if (wantsJson(req)) return denyJson(req, res, 'admin_access_required', 'Admin access required');
+    if (!req.isAuthenticated())
+        return bounceToLogin(req, res, 'admin_access_required', 'Admin access required');
     req.flash('error', req.t ? req.t('flash:admin_access_required') : 'Admin access required');
     res.redirect('/login');
 };
@@ -593,13 +652,20 @@ const requireManagerOrAdmin = (req, res, next) => {
             .status(403)
             .json({ error: 'Access denied. Manager or admin privileges required.' });
     }
+    if (!req.isAuthenticated())
+        return bounceToLogin(
+            req,
+            res,
+            'manager_or_admin_required',
+            'Access denied. Manager or admin privileges required.'
+        );
     req.flash(
         'error',
         req.t
             ? req.t('flash:manager_or_admin_required')
             : 'Access denied. Manager or admin privileges required.'
     );
-    res.redirect(req.isAuthenticated() ? '/employee/dashboard' : '/login');
+    res.redirect('/employee/dashboard');
 };
 
 // Middleware to check if user is SuperAdmin
@@ -618,6 +684,22 @@ const requireSuperAdmin = (req, res, next) => {
             'superadmin_required',
             'Access denied. SuperAdmin privileges required.'
         );
+    // An anonymous PAGE navigation goes to /login and comes back after it (it
+    // used to bounce via /dashboard, whose own guard then lost the path).
+    // (bounceToLogin itself remembers only a page navigation.)
+    if (!req.isAuthenticated())
+        return bounceToLogin(
+            req,
+            res,
+            'superadmin_required',
+            'Access denied. SuperAdmin privileges required.'
+        );
+    // A SIGNED-IN person opening a SuperAdmin-only PAGE (health, maintenance,
+    // sessions, SSO, API keys, notifications, HRIS…) gets the explanatory 403
+    // page — the one every other permission guard renders — instead of a bounce
+    // to /dashboard with a toast that says nothing about what was hit or who can
+    // help. Form posts keep the redirect below: the write endpoints rely on it.
+    if (isDocumentGet(req)) return requireSuperAdminPage(req, res, next);
     req.flash(
         'error',
         req.t
@@ -669,15 +751,15 @@ async function denyPermission(req, res, slugs) {
 
     const authed = typeof req.isAuthenticated === 'function' && req.isAuthenticated();
 
-    // 2) Not signed in — unchanged: flash + bounce to the login screen.
+    // 2) Not signed in — bounce to the login screen (a page navigation is
+    //    remembered and comes back after sign-in, without the red banner).
     if (!authed) {
-        req.flash(
-            'error',
-            req.t
-                ? req.t('flash:no_permission')
-                : 'Access denied. You do not have permission for this action.'
+        return bounceToLogin(
+            req,
+            res,
+            'no_permission',
+            'Access denied. You do not have permission for this action.'
         );
-        return res.redirect('/login');
     }
 
     // 3) Signed in — render the explanatory 403. Any failure here degrades to the
@@ -842,8 +924,7 @@ const requireSuperAdminPage = async (req, res, next) => {
             .json({ error: 'Access denied. You do not have permission for this action.' });
     }
     if (!(req.isAuthenticated && req.isAuthenticated())) {
-        req.flash('error', req.t ? req.t('flash:no_permission') : 'Access denied.');
-        return res.redirect('/login');
+        return bounceToLogin(req, res, 'no_permission', 'Access denied.');
     }
     try {
         const t = (key, fallback) => (req.t ? req.t(key, { defaultValue: fallback }) : fallback);
@@ -889,6 +970,11 @@ module.exports = {
     requireManagerOrAnyPermission,
     requireAdmin,
     requireReadWrite,
+    // Back to the requested page after sign-in (utils/returnTo).
+    safeReturnPath,
+    rememberReturnTo,
+    peekReturnTo,
+    takeReturnTo,
     // Amendment A1 (3.23.19) — exported for the behavioural tests.
     _enforcedPasswordLogin: enforcedPasswordLogin,
     _resetSuperadminCostCache: () => {

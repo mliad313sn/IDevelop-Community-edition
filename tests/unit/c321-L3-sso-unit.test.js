@@ -151,7 +151,7 @@ describe('ANN — planning', () => {
         expect(p.leadHours).toBe(48);
         expect(p.goLiveAt.getTime() - p.dueAt.getTime()).toBe(48 * 3600 * 1000);
     });
-    test('the notice: FR first, the date, the provider, only a /login link, never a password', () => {
+    test('the notice: one language, the date, the provider, only a /login link, never a password', () => {
         const m = Inv.composeAnnouncement({
             rec: { firstName: 'Awa' },
             provider: 'Contoso',
@@ -160,15 +160,15 @@ describe('ANN — planning', () => {
             app: 'MonApp',
             url: 'https://app.example.test',
         });
-        expect(m.subject).toBe(
-            '[MonApp] À partir du 12 octobre 2026 : connexion avec votre compte Contoso / [MonApp] From 12 October 2026: sign in with your Contoso account'
-        );
+        // The subject is the catalogue's: no date, no provider, one language.
+        expect(m.subject).toBe('MonApp — Connexion avec votre compte d’entreprise : ce qui change');
         expect(m.text.indexOf('Bonjour Awa')).toBe(0);
+        expect(m.text).not.toMatch(/Hello Awa|From 12 October/);
         expect(m.text).toMatch(
             /À partir du 12 octobre 2026, vous vous connecterez à MonApp avec votre compte Contoso/
         );
         expect(m.text).toMatch(/Un problème \? Contactez le support RH\./);
-        const links = [...m.html.matchAll(/href="([^"]+)"/g)].map((x) => x[1]);
+        const links = [...new Set([...m.html.matchAll(/href="([^"]+)"/g)].map((x) => x[1]))];
         expect(links).toEqual(['https://app.example.test/login']);
         expect(m.html).not.toMatch(/token|reset-password/i);
     });
@@ -176,7 +176,7 @@ describe('ANN — planning', () => {
 
 describe('UX-11 — the invitation text', () => {
     const Inv = require('../../src/services/SsoInviteService');
-    const m = Inv.compose({
+    const args = {
         rec: { type: 'employee', isAdmin: false, firstName: 'Awa' },
         provider: 'Contoso',
         variant: 'standard',
@@ -185,14 +185,18 @@ describe('UX-11 — the invitation text', () => {
         app: 'MonApp',
         url: 'https://app.example.test',
         buttons: { fr: 'Se connecter avec Contoso', en: 'Sign in with Contoso' },
-    });
-    const [fr, en] = m.text.split('\n\n----\n\n');
+    };
+    // One language per mail: the French and the English invitations.
+    const m = Inv.compose(args);
+    const fr = m.text;
+    const en = Inv.compose({ ...args, lang: 'en' }).text;
     test("EN uses ':' with no space before it; FR keeps ' :'", () => {
-        expect(fr).toMatch(/^Avantages : /m);
-        expect(fr).toMatch(/^Comment faire :$/m);
-        expect(en).toMatch(/^Benefits: /m);
-        expect(en).toMatch(/^How to sign in:$/m);
-        expect(en).not.toMatch(/ :/);
+        expect(fr).toMatch(/^Avantages$/m);
+        expect(fr).toMatch(/^Comment faire$/m);
+        expect(fr).toMatch(/Un problème \? /);
+        expect(en).toMatch(/^Benefits$/m);
+        expect(en).toMatch(/^How to sign in$/m);
+        expect(en.split('\n--\n')[0]).not.toMatch(/ :/);
     });
     test('step 2 quotes the button text itself (never « Se connecter avec Sign in with … »)', () => {
         expect(fr).toMatch(/2\. Cliquez « Se connecter avec Contoso »\./);

@@ -1,16 +1,28 @@
 <%
-  // Exposure by site — readiness, continuity and certification on ONE row per
-  // site. Rendered entirely server-side (no inline script, so no CSP nonce is
+  // Exposure by site — readiness, level, coverage, continuity and
+  // certifications on ONE row per site, every column being the dashboard
+  // indicator for that site (SiteExposureService, KPI contract kpi-2).
+  // Rendered entirely server-side (no inline script, so no CSP nonce is
   // needed and the page works with JavaScript disabled).
   //
-  // readiness is NULL when nobody at the site has an assessed requirement. It
-  // renders as a dash with an explanation, never as "0 %".
+  // A site under 5 people prints counts only (no %, no status); unmeasured
+  // is « — » with its reason, never 0 %; « No site » is its own row.
   var R      = rows || [];
-  var T      = totals || {};
+  var O      = (typeof totals !== 'undefined' && totals) ? totals : null;
+  var WK     = (typeof weakest !== 'undefined' && weakest) ? weakest : null;
   var SCOPE  = scope || {};
+  var CAPS   = SCOPE.caps || { continuity: false, safety: false };
   var KP     = typeof showKeyPerson !== 'undefined' ? showKeyPerson : false;
-  function pctCell(v) { return (v === null || v === undefined) ? null : v; }
+  var _F     = numFmt;
+  var _num   = function (v) { return v !== null && v !== undefined && isFinite(Number(v)); };
+  var STCLS  = { compliant: 'good', watch: 'warn', at_risk: 'bad' };
+  function siteName(r) { return r.noSite ? __('viz:no_site') : r.siteName; }
 %>
+<%# One % cell: the value coloured by its KPI status; a small site or a small
+    n prints counts only; nothing measured is « — » with its reason. %>
+<% var pctCell = function (x, small) { %><% if (!x) { %><span class="text-muted">—</span><% } else if (!small && _num(x.value)) { %><span class="<%= STCLS[x.status] || '' %>"><%= _F.pct(x.value, 0) %></span><% } else if (_num(x.numerator) && _num(x.denominator) && Number(x.denominator) > 0) { %><span class="text-muted" title="<%= __('viz:small_n') %>"><%= __('viz:tile.of', { a: _F.num(x.numerator, 0), b: _F.num(x.denominator, 0) }) %></span><% } else if (x.status === 'small_n' || small) { %><span class="text-muted" title="<%= __('viz:small_n') %>"><%= __('exec:se_small') %></span><% } else { %><span class="text-muted" title="<%= __('exec:se_readiness_null_help') %>">—</span><% } %><% }; %>
+<% var countCell = function (v, tone, small) { %><% if (!_num(v)) { %><span class="text-muted">—</span><% } else { %><span class="<%= !small && Number(v) > 0 ? tone : '' %>"><%= _F.num(v, 0) %></span><% } %><% }; %>
+<% var k7Cell = function (x, small) { %><% if (!x) { %><span class="text-muted">—</span><% } else if (!_num(x.value)) { %><span class="text-muted"><%= x.status === 'not_configured' ? __('kpi:status_not_configured') : __('viz:unmeasured') %></span><% } else { countCell(x.value, 'bad', small); } %><% }; %>
 
 <div class="page-header">
   <h1><i class="fas fa-map-location-dot" aria-hidden="true"></i> <%= __('exec:se_title') %></h1>
@@ -36,92 +48,101 @@
     <p class="text-muted"><%= __('exec:se_empty_body') %></p>
   </div>
 <% } else { %>
+  <% if (WK) { %>
+  <%# Two measures, two questions: never two contradictory « weakest » sites. %>
+  <p class="card se-weakest" id="se-weakest" data-same="<%= WK.same ? '1' : '0' %>">
+    <i class="fas fa-circle-info" aria-hidden="true"></i>
+    <% if (WK.level && WK.same) { %>
+      <%= __('exec:se_weakest_one', { site: WK.ready.siteName || '—', rv: _F.pct(WK.ready.value, 0), lv: _F.pct(WK.level.value, 0) }) %>
+    <% } else if (WK.level) { %>
+      <%= __('exec:se_weakest_two', { ready: WK.ready.siteName || '—', rv: _F.pct(WK.ready.value, 0), rn: _F.num(WK.ready.numerator, 0), rd: _F.num(WK.ready.denominator, 0), level: WK.level.siteName || '—', lv: _F.pct(WK.level.value, 0) }) %>
+    <% } else { %>
+      <%= __('exec:se_weakest_ready', { ready: WK.ready.siteName || '—', rv: _F.pct(WK.ready.value, 0), rn: _F.num(WK.ready.numerator, 0), rd: _F.num(WK.ready.denominator, 0) }) %>
+    <% } %>
+  </p>
+  <% } %>
   <div class="card table-card">
     <div class="table-scroll">
       <table class="table" id="se-table">
         <thead>
           <tr>
-            <th><%= __('exec:se_site') %></th>
-            <th class="num"><%= __('exec:se_headcount') %></th>
-            <th class="num"><%= __('exec:se_measured') %></th>
-            <th class="num"><%= __('exec:se_readiness') %></th>
-            <th class="num"><%= __('exec:se_coverage') %></th>
-            <% if (KP) { %>
-              <th class="num sep"><%= __('exec:se_sole_holders') %></th>
-              <th class="num"><%= __('exec:se_no_qualified') %></th>
-              <th class="num"><%= __('exec:se_never_measured') %></th>
+            <th scope="col"><%= __('exec:se_site') %></th>
+            <th scope="col" class="num"><%= __('exec:se_headcount') %></th>
+            <th scope="col" class="num"><%= __('kpi:k1_name') %></th>
+            <th scope="col" class="num"><%= __('exec:se_readiness') %></th>
+            <th scope="col" class="num"><%= __('exec:se_coverage') %></th>
+            <% if (CAPS.continuity) { %><th scope="col" class="num sep"><%= __('exec:se_k7') %></th><% } %>
+            <% if (KP) { %><th scope="col" class="num"><%= __('exec:se_all_sole') %></th><% } %>
+            <% if (CAPS.safety) { %>
+              <th scope="col" class="num sep"><%= __('exec:se_certs_expired') %></th>
+              <th scope="col" class="num"><%= __('exec:se_certs_expiring') %></th>
+              <th scope="col" class="num"><%= __('exec:se_certs_missing') %></th>
             <% } %>
-            <th class="num sep"><%= __('exec:se_certs_expiring') %></th>
-            <th class="num"><%= __('exec:se_certs_expired') %></th>
-            <th class="num"><%= __('exec:se_lapse_impact') %></th>
-            <th><%= __('exec:se_drill') %></th>
+            <th scope="col"><%= __('exec:se_drill') %></th>
           </tr>
         </thead>
         <tbody>
-          <% R.forEach(function (r) { %>
-            <tr>
-              <td><strong><%= r.siteName %></strong></td>
-              <td class="num"><%= r.headcount %></td>
-              <td class="num"><%= r.measured %></td>
-              <td class="num">
-                <% if (r.readiness === null) { %>
-                  <span class="text-muted" title="<%= __('exec:se_readiness_null_help') %>">—</span>
-                <% } else { %>
-                  <span class="<%= r.readiness >= 80 ? 'good' : (r.readiness >= 50 ? 'warn' : 'bad') %>"><%= r.readiness %> %</span>
-                <% } %>
-              </td>
-              <td class="num"><% if (r.coverage === null) { %><span class="text-muted">—</span><% } else { %><%= r.coverage %> %<% } %></td>
-              <% if (KP) { %>
-                <td class="num sep"><span class="<%= r.soleHolder > 0 ? 'bad' : '' %>"><%= r.soleHolder %></span></td>
-                <td class="num"><span class="<%= r.noQualified > 0 ? 'warn' : '' %>"><%= r.noQualified %></span></td>
-                <%# An unknown, deliberately styled muted so it never reads as a gap. %>
-                <td class="num"><span class="text-muted"><%= r.neverMeasured %></span></td>
+          <% R.forEach(function (r) { var c8 = r.k8 || {}; %>
+            <tr data-site="<%= r.noSite ? 'none' : r.siteId %>"<%= r.smallN ? ' data-small-n' : '' %>>
+              <th scope="row"><strong><%= siteName(r) %></strong></th>
+              <td class="num"><%= _F.num(r.headcount, 0) %></td>
+              <td class="num"><% pctCell(r.k1, r.smallN); %></td>
+              <td class="num"><% pctCell(r.k2, r.smallN); %></td>
+              <td class="num"><% pctCell(r.k3, r.smallN); %></td>
+              <% if (CAPS.continuity) { %><td class="num sep"><% k7Cell(r.k7, r.smallN); %></td><% } %>
+              <% if (KP) { %><td class="num"><% countCell(r.allSole, 'warn', r.smallN); %></td><% } %>
+              <% if (CAPS.safety) { %>
+                <td class="num sep"><% if (r.k8 && c8.status === 'not_configured') { %><span class="text-muted"><%= __('kpi:status_not_configured') %></span><% } else if (r.k8) { countCell(c8.expired, 'bad', r.smallN); } else { %><span class="text-muted">—</span><% } %></td>
+                <td class="num"><% if (r.k8) { countCell(c8.expiring, 'warn', r.smallN); } else { %><span class="text-muted">—</span><% } %></td>
+                <td class="num"><span class="text-muted"><%= r.k8 && _num(c8.missing) ? _F.num(c8.missing, 0) : '—' %></span></td>
               <% } %>
-              <td class="num sep"><span class="<%= r.certsExpiring90d > 0 ? 'warn' : '' %>"><%= r.certsExpiring90d %></span></td>
-              <td class="num"><span class="<%= r.certsExpired > 0 ? 'bad' : '' %>"><%= r.certsExpired %></span></td>
-              <td class="num"><span class="<%= r.lapseImpact > 0 ? 'bad' : '' %>"><%= r.lapseImpact %></span></td>
-              <td><a class="btn btn-sm btn-secondary" href="/dashboard?siteName=<%= encodeURIComponent(r.siteName) %>"><%= __('exec:se_drill') %></a></td>
+              <%# The drill opens the dashboard scoped to THIS site by id (names
+                  repeat; the dashboard validates the id against the reader's clearance). %>
+              <td><a class="btn btn-sm btn-secondary" href="/dashboard?site=<%= encodeURIComponent(r.noSite || r.siteId == null ? 'none' : String(r.siteId)) %>"><%= __('exec:se_drill') %></a></td>
             </tr>
           <% }); %>
         </tbody>
+        <% if (O) { var o8 = (O.k8 && O.k8.breakdown) || {}; %>
         <tfoot>
+          <%# The footer IS the organisation's indicator (the dashboard's figure),
+              never a sum or a mean of the site percentages. %>
           <tr>
-            <td><strong><%= __('exec:se_total') %></strong></td>
-            <td class="num"><strong><%= T.headcount || 0 %></strong></td>
-            <td class="num"><strong><%= T.measured || 0 %></strong></td>
-            <%# No org readiness in the footer: averaging site averages would be a
-                different number from the dashboard's. Coverage IS re-derived from
-                the summed numerator/denominator, so it matches exactly. %>
-            <td class="num"><span class="text-muted">—</span></td>
-            <td class="num"><strong><% if (T.coverage === null) { %>—<% } else { %><%= T.coverage %> %<% } %></strong></td>
-            <% if (KP) { %>
-              <td class="num sep"><strong><%= T.soleHolder || 0 %></strong></td>
-              <td class="num"><strong><%= T.noQualified || 0 %></strong></td>
-              <td class="num"><span class="text-muted"><%= T.neverMeasured || 0 %></span></td>
+            <th scope="row"><strong><%= __('exec:se_total') %></strong></th>
+            <td class="num"><strong><%= _F.num(O.headcount, 0) %></strong></td>
+            <td class="num"><strong><% pctCell(O.k1, false); %></strong></td>
+            <td class="num"><strong><% pctCell(O.k2, false); %></strong></td>
+            <td class="num"><strong><% pctCell(O.k3, false); %></strong></td>
+            <% if (CAPS.continuity) { %><td class="num sep"><strong><% k7Cell(O.k7, false); %></strong></td><% } %>
+            <% if (KP) { %><td class="num"><span class="text-muted">—</span></td><% } %>
+            <% if (CAPS.safety) { %>
+              <td class="num sep"><strong><% if (O.k8) { countCell(o8.expiredPeople, 'bad', false); } else { %>—<% } %></strong></td>
+              <td class="num"><strong><% if (O.k8) { countCell(o8.expiringPeople, 'warn', false); } else { %>—<% } %></strong></td>
+              <td class="num"><span class="text-muted"><%= O.k8 && _num(o8.missingPeople) ? _F.num(o8.missingPeople, 0) : '—' %></span></td>
             <% } %>
-            <td class="num sep"><strong><%= T.certsExpiring90d || 0 %></strong></td>
-            <td class="num"><strong><%= T.certsExpired || 0 %></strong></td>
-            <td class="num"><strong><%= T.lapseImpact || 0 %></strong></td>
             <td></td>
           </tr>
         </tfoot>
+        <% } %>
       </table>
     </div>
   </div>
+  <p class="text-muted footnote"><%= __('exec:se_footnote') %><% if (KP) { %> <%= __('exec:se_all_sole_note') %><% } %></p>
   <p class="text-muted footnote"><%= __('exec:bp_footnote') %></p>
 <% } %>
 
 <style>
 .scope-line { font-size:.85rem; margin:.2rem 0 .8rem; }
 .page-actions { display:flex; gap:.5rem; flex-wrap:wrap; margin:0 0 1rem; }
+.se-weakest { padding:.75rem 1rem; margin:0 0 1rem; display:flex; gap:.5rem; align-items:baseline; }
 .table-card { padding:0; }
 .table-scroll { overflow-x:auto; }
 .table .num { text-align:right; }
+.table tbody th, .table tfoot th { text-align:left; font-weight:inherit; }
 .table .sep { border-left:1px solid var(--border-light,rgba(255,255,255,.12)); }
 .table .good { color:var(--success,#2DD4A0); font-weight:700; }
 .table .warn { color:var(--warn,#b45309); font-weight:700; }
 .table .bad  { color:var(--danger,#F06060); font-weight:700; }
-.table tfoot td { border-top:2px solid var(--border-light,rgba(255,255,255,.18)); }
+.table tfoot td, .table tfoot th { border-top:2px solid var(--border-light,rgba(255,255,255,.18)); }
 .footnote { font-size:.75rem; margin-top:.6rem; }
 .empty-card { padding:2.5rem 1.5rem; text-align:center; }
 .empty-icon { font-size:2.2rem; color:var(--text-muted,#8a93a6); margin-bottom:.6rem; display:block; }

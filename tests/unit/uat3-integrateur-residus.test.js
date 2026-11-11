@@ -169,16 +169,19 @@ SELECT zzz_del();`;
 });
 
 describe('le verrou d enrolement MFA parle la langue de la session', () => {
-    const serverSrc = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    // The inline gate of server.js was removed; the policy (with its grace
+    // period, failing closed) is enforced by middleware/mfaEnforcement, whose
+    // holdOnSetup() writes the one enrolment flash.
+    const serverSrc = fs.readFileSync(
+        path.join(ROOT, 'src', 'middleware', 'mfaEnforcement.js'),
+        'utf8'
+    );
 
     // On n'EPINGLE PAS le texte source : une premiere version de ce test lisait
     // la source et restait VERTE quand on remettait l'anglais en dur (mutation
     // `req.t ?` -> `false ?`). On EXTRAIT donc l'expression reellement ecrite
     // dans le fichier et on l'EXECUTE, avec puis sans traducteur.
-    const bloc = serverSrc.slice(
-        serverSrc.indexOf('MfaService.isPrivileged'),
-        serverSrc.indexOf("/v2/uam/mfa/manage'")
-    );
+    const bloc = serverSrc.slice(serverSrc.indexOf('function holdOnSetup'));
     const m = /req\.flash\(\s*'error',\s*([\s\S]*?)\s*\);/.exec(bloc);
     const argument = m && m[1];
 

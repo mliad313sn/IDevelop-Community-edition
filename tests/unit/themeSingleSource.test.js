@@ -110,7 +110,9 @@ describe('what legitimately differs is data, not code', () => {
 
     test('the accent expands into the whole token family, so one value restyles everything', () => {
         const branding = fs.readFileSync(path.join(ROOT, 'src/utils/branding.js'), 'utf8');
-        expect(branding).toMatch(/--brand:/);
+        // every brand token, the accent text included (computed per mode)
+        expect(branding).toMatch(/'--brand':/);
+        expect(branding).toMatch(/'--brand-text':/);
         expect(branding).toMatch(/accentColor/);
     });
 

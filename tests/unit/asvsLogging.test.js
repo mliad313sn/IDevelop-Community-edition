@@ -50,7 +50,8 @@ describe('security events are written to the audit trail', () => {
         ['API key revoked', 'src/services/ApiKeyService.js', "'API_KEY_REVOKED'"],
         ['re-authentication', 'src/middleware/recentAuth.js', "'REAUTH_FAILED'"],
         ['CSRF rejection', 'server.js', "action: 'CSRF_REJECTED'"],
-        ['cross-origin rejection', 'server.js', "'CROSS_ORIGIN_BLOCKED'"],
+        // The origin guard moved to src/middleware/httpHardening.js (testable).
+        ['cross-origin rejection', 'src/middleware/httpHardening.js', "'CROSS_ORIGIN_BLOCKED'"],
     ])('%s', (_label, file, needle) => {
         expect(read(file)).toContain(needle);
     });

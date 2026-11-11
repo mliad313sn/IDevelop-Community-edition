@@ -1,0 +1,128 @@
+<%
+// The person's own safety clearance. A waiver is named as such, with its end
+// date: « authorised by waiver » is never shown as « cleared ».
+function reasonText(x) {
+    var s = __('safety:reason_' + x.code);
+    if (x.skillName) s = x.skillName + ' — ' + s;
+    if (x.expiresOn) s += ' (' + __('safety:expires_on', { date: fmtPeriodBound(x.expiresOn) }) + ')';
+    if (x.waived) s += ' — ' + __('safety:status_WAIVED_until', { date: fmtDateTime(x.waiverExpiresAt) });
+    if (x.legallyMandatory) s += ' — ' + __('safety:legal_badge');
+    return s;
+}
+function prefix(x) {
+    if (x.observe) return __('safety:prefix_observe');
+    if (x.waived) return __('safety:prefix_waived');
+    return x.blocking ? __('safety:prefix_blocking') : __('safety:prefix_warning');
+}
+%>
+<div class="page-header" style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;justify-content:space-between;">
+    <h1><i class="fas fa-helmet-safety" aria-hidden="true"></i> <%= __('safety:me_title') %></h1>
+    <% if (locals.teamLink) { %>
+    <a class="btn btn-secondary" href="/safety-gate"><i class="fas fa-users" aria-hidden="true"></i> <%= __('safety:me_team_link') %></a>
+    <% } %>
+</div>
+<p class="help-text" style="margin-bottom:1rem;"><%= __('safety:me_intro') %></p>
+
+<section class="card sg-me" aria-labelledby="sg-me-status">
+    <h2 class="sg-h2" id="sg-me-status"><%= __('safety:me_status') %></h2>
+    <% if (!me) { %>
+        <p><%= __('safety:me_none') %></p>
+    <% } else { %>
+        <p class="sg-me-state" data-status="<%= waived ? 'WAIVED' : enforced %>">
+            <% if (waived) { %>
+                <strong class="sg-waived"><%= __('safety:status_WAIVED_until', { date: fmtDateTime(me.waiverUntil) }) %></strong>
+            <% } else { %>
+                <strong><%= __('safety:status_' + enforced) %></strong>
+            <% } %>
+        </p>
+        <% if (me.reasons.length) { %>
+        <ul class="sg-reasons">
+            <% me.reasons.forEach(function (x) { %>
+            <li><strong><%= prefix(x) %></strong> <%= reasonText(x) %></li>
+            <% }); %>
+        </ul>
+        <% } %>
+    <% } %>
+</section>
+
+<% if (canContest) { %>
+<section class="card sg-me" aria-labelledby="sg-me-contest">
+    <h2 class="sg-h2" id="sg-me-contest"><%= __('safety:contest_open') %></h2>
+    <p class="help-text"><%= __('safety:me_contest_help') %></p>
+    <form method="POST" action="/safety-gate/contests" class="sg-stack">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="employeeId" value="<%= me.employeeId %>">
+        <input type="hidden" name="back" value="me">
+        <label for="sg-me-reason"><%= __('safety:contest_reason') %></label>
+        <textarea id="sg-me-reason" name="reason" class="form-control" rows="3" maxlength="2000" required></textarea>
+        <button type="submit" class="btn btn-primary"><%= __('safety:contest_submit') %></button>
+    </form>
+</section>
+<% } %>
+
+<h2 class="sg-h2"><%= __('safety:me_contests') %></h2>
+<div class="card" style="padding:0;margin-bottom:1.2rem;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('safety:th_date') %></th>
+                <th><%= __('safety:th_contest_reason') %></th>
+                <th><%= __('safety:th_decision') %></th>
+            </tr></thead>
+            <tbody>
+            <% if (!contests.length) { %>
+                <tr><td colspan="3" class="text-muted" style="text-align:center;padding:1rem;"><%= __('safety:contests_none_me') %></td></tr>
+            <% } %>
+            <% contests.forEach(function (c) { %>
+                <tr>
+                    <td class="sg-small"><%= fmtDateTime(c.createdAt) %></td>
+                    <td class="sg-small"><%= c.reason %></td>
+                    <td class="sg-small"><strong><%= __('safety:contest_state_' + c.state) %></strong>
+                        <% if (c.decisionReason) { %><div><%= c.decisionReason %></div><% } %>
+                        <% if (c.remedy) { %><div class="sg-sub"><%= __('safety:remedy_' + c.remedy) %><%= c.correctionPointer ? ' — ' + c.correctionPointer : '' %></div><% } %></td>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<h2 class="sg-h2"><%= __('safety:me_waivers') %></h2>
+<div class="card" style="padding:0;margin-bottom:1.2rem;">
+    <div class="table-wrapper" style="margin:0;box-shadow:none;border:none;">
+        <table class="table">
+            <thead><tr>
+                <th><%= __('safety:th_skill') %></th>
+                <th><%= __('safety:th_status') %></th>
+                <th><%= __('safety:th_waiver_reason') %></th>
+            </tr></thead>
+            <tbody>
+            <% if (!waivers.length) { %>
+                <tr><td colspan="3" class="text-muted" style="text-align:center;padding:1rem;"><%= __('safety:waivers_none_me') %></td></tr>
+            <% } %>
+            <% waivers.forEach(function (w) { %>
+                <tr>
+                    <td class="sg-small"><%= w.skillName %></td>
+                    <td class="sg-small">
+                        <% if (w.state === 'active' && w.running) { %><strong class="sg-waived"><%= __('safety:status_WAIVED_until', { date: fmtDateTime(w.expiresAt) }) %></strong>
+                        <% } else { %><%= __('safety:waiver_state_' + (w.state === 'active' ? 'expired' : w.state)) %><% } %>
+                    </td>
+                    <td class="sg-small"><%= w.reason %></td>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.sg-h2{font-size:1.05rem;margin:.4rem 0 .6rem}
+.sg-me{padding:.9rem 1.1rem;margin-bottom:1.2rem}
+.sg-me-state{font-size:1.1rem;margin:.2rem 0 .5rem}
+.sg-waived{color:var(--warning,#b45309)}
+.sg-reasons{margin:0;padding-left:1.1rem;font-size:.88rem}
+.sg-stack{display:flex;flex-direction:column;gap:6px;max-width:560px}
+.sg-stack label{font-size:.8rem;color:var(--text-muted)}
+.sg-sub{font-size:.75rem;color:var(--text-muted)}
+.sg-small{font-size:.83rem}
+</style>

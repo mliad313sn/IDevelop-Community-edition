@@ -6,7 +6,8 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const HAS_DB = !!process.env.DATABASE_URL;
+const { isTestDatabaseUrl } = require('../helpers/testDatabase');
+const HAS_DB = isTestDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 
 suite('Dashboard & Reports data layer (integration, read-only)', () => {

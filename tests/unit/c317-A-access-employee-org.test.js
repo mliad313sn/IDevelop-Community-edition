@@ -27,6 +27,13 @@ const mockDb = {
     withActor: jest.fn(async (_w, fn) => fn()),
 };
 jest.mock('../../src/config/database', () => mockDb);
+
+/** The e-mail-changed notice is fire-and-forget: wait (bounded) until it is sent. */
+async function sent() {
+    const EmailService = require('../../src/services/EmailService');
+    for (let i = 0; i < 100 && !EmailService.send.mock.calls.length; i++)
+        await new Promise((r) => setTimeout(r, 10));
+}
 jest.mock('../../src/models/EmployeeModel', () => ({
     findById: jest.fn(),
     update: jest.fn(async () => ({})),
@@ -207,6 +214,7 @@ describe("A-3 — changing another person's e-mail takes CREDENTIAL authority", 
         );
         expect(burn).toBeDefined();
         expect(burn[1]).toEqual(['employee', 142]);
+        await sent(); // the notice to the old address is rendered and sent in the background
         expect(EmailService.send).toHaveBeenCalledWith(
             expect.objectContaining({ to: 'owner@corp.test' })
         );
@@ -265,6 +273,7 @@ describe("A-3 / S-08 — /account: changing one's own address needs the current 
         expect(
             mockDb.run.mock.calls.some(([sql]) => /DELETE FROM password_reset_tokens/.test(sql))
         ).toBe(true);
+        await sent();
         expect(EmailService.send).toHaveBeenCalledWith(
             expect.objectContaining({ to: 'me@corp.test' })
         );

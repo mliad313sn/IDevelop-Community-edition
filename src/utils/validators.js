@@ -13,18 +13,24 @@ const { safeBackUrl } = require('./safeRedirect');
 /** Never echo credentials back into a page. */
 const SECRET_FIELD = /pass|pwd|secret|token|_csrf|otp|mfa/i;
 
+/** Keys that would reach Object.prototype through a draft (CWE-1321). */
+const UNSAFE_KEY = new Set(['__proto__', 'constructor', 'prototype']);
+
 function safeDraft(body) {
-    const out = {};
+    // Collected in a Map, so no posted field name is ever used as a property key
+    // on a live object (CWE-1321; CodeQL js/remote-property-injection). The draft
+    // only travels as JSON, where the entries become plain data again.
+    const out = new Map();
     Object.entries(body || {}).forEach(([k, v]) => {
-        if (SECRET_FIELD.test(k)) return;
+        if (UNSAFE_KEY.has(k) || SECRET_FIELD.test(k)) return;
         if (v == null) return;
         // Scalars and small arrays (checkbox groups); files/objects never belong in a draft.
-        if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === 'string').slice(0, 200);
+        if (Array.isArray(v)) out.set(k, v.filter((x) => typeof x === 'string').slice(0, 200));
         else if (typeof v === 'object')
-            out[k] = v; // scopes[idx][type] — qs-parsed nested object
-        else out[k] = String(v).slice(0, 4000);
+            out.set(k, v); // scopes[idx][type] — qs-parsed nested object
+        else out.set(k, String(v).slice(0, 4000));
     });
-    return out;
+    return Object.fromEntries(out);
 }
 
 /**
@@ -75,7 +81,16 @@ function keepDraft(req, route) {
             JSON.stringify({ ...safeDraft(req.body), __from: String(req.path || '') })
         );
     }
-    return to;
+    // The caller's own route is a literal; a derived one is kept on this site.
+    if (route) return route;
+    return localRedirectPath(to);
+}
+
+/** `p` when it is a path on this site ("/x", never "//host" or "/\host"), else "/". */
+function localRedirectPath(p) {
+    const s = String(p || '');
+    if (s.startsWith('/') && !s.startsWith('//') && !s.startsWith('/\\')) return s;
+    return '/';
 }
 
 /** Translate a `validation:<key>` message (or pass any other text through). */
@@ -217,8 +232,18 @@ const adminEmailRules = () => [
 
 const requireCharClasses = () => require('./passwordValidator').requireCharClasses();
 
+// A NEW admin username is letters, digits and "_ . @ -" only, 2 to 64
+// characters. Applied on create only: existing usernames that predate the rule
+// keep working (update and sign-in are unchanged).
+const ADMIN_USERNAME_RE = /^[\w.@-]{2,64}$/;
+
 const adminValidation = [
     body('username').trim().notEmpty().withMessage('validation:username_required'),
+    body('username')
+        .if((value) => typeof value === 'string' && value.trim() !== '')
+        .trim()
+        .matches(ADMIN_USERNAME_RE)
+        .withMessage('validation:username_charset'),
     ...adminEmailRules(),
     body('password').isLength({ min: 12 }).withMessage('validation:pw_min_length'),
     // Character classes only when the organisation opts in (ASVS 2.1.9: no
@@ -257,7 +282,68 @@ const assessmentValidation = [
     handleValidationErrors,
 ];
 
+/*
+ * A free-text REASON is at most 2 000 characters, server-side, wherever it
+ * enters. One guard for every route (server.js mounts it after the body parsers
+ * and the CSRF check) instead of dozens of call sites: any body field named
+ * `reason`, `motif` or `...Reason` / `..._reason` (top level or nested, as in the
+ * JSON bulk endpoints) longer than the cap is refused with a 400 (JSON) or a
+ * flashed error and a redirect back to the form with what was typed (forms).
+ * Multipart bodies are parsed later by multer and are not covered here.
+ */
+const REASON_MAX = 2000;
+const REASON_FIELD = /^(?:reason|motif)$|(?:Reason|_reason|_motif)$/;
+
+/** The first over-long reason field in `body` (depth-bounded), or null. */
+function overlongReasonField(body, max = REASON_MAX, depth = 0) {
+    if (body == null || typeof body !== 'object' || depth > 4) return null;
+    for (const [k, v] of Object.entries(body)) {
+        if (typeof v === 'string') {
+            if (REASON_FIELD.test(k) && v.length > max) return k;
+        } else if (v && typeof v === 'object') {
+            const hit = overlongReasonField(v, max, depth + 1);
+            if (hit) return hit;
+        }
+    }
+    return null;
+}
+
+/** True when a free-text reason is longer than the cap (for direct use in a controller). */
+function reasonTooLong(value, max = REASON_MAX) {
+    return typeof value === 'string' && value.length > max;
+}
+
+function reasonTooLongMessage(req) {
+    const fallback = 'The reason cannot exceed 2,000 characters.';
+    if (!req || typeof req.t !== 'function') return fallback;
+    const s = req.t('validation:reason_too_long', { defaultValue: fallback });
+    return typeof s === 'string' && s && s !== 'validation:reason_too_long' ? s : fallback;
+}
+
+function reasonLengthGuard(req, res, next) {
+    const field = overlongReasonField(req.body);
+    if (!field) return next();
+    const message = reasonTooLongMessage(req);
+    const wantsJson =
+        String(req.path || '').startsWith('/api/') ||
+        req.xhr ||
+        /json/i.test(String(req.headers['content-type'] || '')) ||
+        /json/i.test(String(req.headers.accept || ''));
+    if (wantsJson || typeof req.flash !== 'function' || !req.session) {
+        return res
+            .status(400)
+            .json({ error: message, code: 'reason_too_long', field, max: REASON_MAX });
+    }
+    req.flash('error', message);
+    return res.redirect(keepDraft(req));
+}
+
 module.exports = {
+    REASON_MAX,
+    ADMIN_USERNAME_RE,
+    overlongReasonField,
+    reasonTooLong,
+    reasonLengthGuard,
     handleValidationErrors,
     keepDraft,
     safeDraft,

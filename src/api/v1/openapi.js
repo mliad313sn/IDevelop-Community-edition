@@ -50,7 +50,18 @@ module.exports = {
                     // .readiness_assessed_only). null — never 0 — when nobody
                     // has ever been assessed.
                     readinessPercent: { type: 'number', nullable: true },
-                    isReady: { type: 'boolean', nullable: true },
+                    // Legacy flag (deprecated, kept unchanged in v1): readiness
+                    // over every requirement and every critical skill met.
+                    isReady: { type: 'boolean', nullable: true, deprecated: true },
+                    // K1 four-state (KpiService), the rule of the reports and of
+                    // the Power BI feed v2.
+                    readinessState: {
+                        type: 'string',
+                        nullable: true,
+                        enum: ['ready', 'not_ready', 'partial', 'not_assessed', 'no_requirement'],
+                    },
+                    // true only for "ready", false only for "not_ready", null otherwise.
+                    readyForRole: { type: 'boolean', nullable: true },
                     totalRequired: { type: 'integer' },
                     skillsMet: { type: 'integer' },
                     // Coverage always travels with the score.

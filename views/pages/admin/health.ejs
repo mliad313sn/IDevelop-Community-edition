@@ -48,6 +48,10 @@ var never = (ticks || []).filter(function (t) { return !t.last; }).length;
   <div class="card hl-card <%= database.migrations && database.migrations.pending.length ? 'hl-warn' : '' %>"><div class="hl-k"><%= __('admin:health_kpi_migrations') %></div><div class="hl-v"><%= database.migrations ? database.migrations.pending.length : '—' %></div><div class="hl-sub"><%= database.migrations ? __('admin:health_migrations_applied', { n: database.migrations.applied, latest: database.migrations.latest || '—' }) : __('admin:health_never_measured') %></div></div>
   <div class="card hl-card <%= license && license.warn ? 'hl-bad' : '' %>"><div class="hl-k"><%= __('admin:health_kpi_license') %></div><div class="hl-v hl-v-sm"><% if (!license) { %>—<% } else if (license.unmanaged) { %><%= __('admin:health_license_unmanaged') %><% } else if (license.expired) { %><%= __('admin:health_license_expired') %><% } else if (license.overSeat) { %><%= __('admin:health_license_overseat') %><% } else { %><%= __('admin:health_license_ok') %><% } %></div><div class="hl-sub"><% if (license && license.seats != null) { %><%= license.seatsUsed %> / <%= license.seats %> <%= __('admin:health_license_seats') %><% } else if (license) { %><%= license.seatsUsed %> <%= __('admin:health_license_seats') %><% } %> · <a href="/admin/license"><%= __('admin:lic_banner_manage') %></a></div></div>
   <div class="card hl-card <%= typeof sqlConsoleEnabled !== 'undefined' && sqlConsoleEnabled ? 'hl-warn' : '' %>" data-health-sql-console><div class="hl-k"><%= __('admin:health_kpi_sql_console') %></div><div class="hl-v hl-v-sm"><%= typeof sqlConsoleEnabled !== 'undefined' && sqlConsoleEnabled ? __('admin:health_sql_console_on') : __('admin:health_sql_console_off') %></div><div class="hl-sub"><%= __('admin:health_sql_console_hint') %></div></div>
+  <%# Which antivirus scans uploads (MalwareScanService.status: clamd, then Defender). %>
+  <% var _av = (typeof malwareScan !== 'undefined' && malwareScan) ? malwareScan : null; %>
+  <% var _avEngine = function (e) { return e === 'clamd' ? __('admin:health_av_engine_clamd') : e === 'defender' ? __('admin:health_av_engine_defender') : e; }; %>
+  <div class="card hl-card <%= _av && _av.alert ? 'hl-warn' : '' %>" data-health-av><div class="hl-k"><%= __('admin:health_kpi_av') %></div><div class="hl-v hl-v-sm"><% if (!_av) { %><%= __('admin:health_never_measured') %><% } else if (_av.engine) { %><%= _avEngine(_av.engine) %><% } else { %><%= __('admin:health_av_none') %><% } %></div><div class="hl-sub"><% if (_av) { %><%= _av.requireMalwareScan ? __('admin:health_av_required_on') : __('admin:health_av_required_off') %><% } %></div></div>
 </div>
 
 <!-- ── Ticks ─────────────────────────────────────────────────────────────── -->
@@ -108,6 +112,21 @@ var never = (ticks || []).filter(function (t) { return !t.last; }).length;
     <div><span class="hl-k"><%= __('admin:health_bk_next') %></span><%= _fdt(backup.nextRunAt) %> · <%= __('admin:health_bk_keep', { n: backup.keep || __('admin:health_bk_keep_all') }) %></div>
     <div><span class="hl-k"><%= __('admin:health_bk_disk') %></span><%= backup.files.length %> <%= __('admin:health_bk_files') %> · <%= mb(backup.totalBytes) %><% if (backup.disk) { %> · <%= __('admin:health_bk_free', { free: gb(backup.disk.freeBytes), total: gb(backup.disk.totalBytes) }) %><% } %></div>
   </div>
+  <%# SA-39 — Encryption key, verification, key availability, off-host copy.
+      Every legacy plaintext file is flagged « non chiffrée », and a backup whose
+      key this server no longer holds is named loudly: it cannot be restored here. %>
+  <% var bk = backup.encryption || {}; %>
+  <div class="hl-kv" id="backup-encryption">
+    <div><span class="hl-k"><%= __('admin:bkp_key_label') %></span><% if (bk.protection === 'dpapi-localmachine') { %><span class="badge badge-success"><%= __('admin:bkp_key_dpapi', { id: bk.keyId }) %></span><% } else if (bk.protection === 'app-key-derived') { %><span class="badge badge-warning"><%= __('admin:bkp_key_derived', { id: bk.keyId }) %></span><% } else if (bk.ok && bk.pending) { %><span class="badge"><%= __('admin:bkp_key_pending') %></span><% } else { %><span class="badge badge-danger"><%= __('admin:bkp_key_error', { error: bk.error || '—' }) %></span><% } %><% if (bk.retiredKeys) { %> · <%= __('admin:bkp_key_retired', { n: bk.retiredKeys }) %><% } %></div>
+    <div><span class="hl-k"><%= __('admin:bkp_verify_label') %></span><span class="<%= /^failed/.test(String(backup.lastVerify || '')) ? 'badge badge-danger' : '' %>"><%= backup.lastVerify || __('admin:health_never_measured') %></span></div>
+    <div><span class="hl-k"><%= __('admin:bkp_keycheck_label') %></span><span class="<%= /^failed/.test(String(backup.lastKeyCheck || '')) ? 'badge badge-danger' : '' %>"><%= backup.lastKeyCheck || __('admin:health_never_measured') %></span></div>
+    <div><span class="hl-k"><%= __('admin:bkp_offhost_label') %></span><% if (backup.offHost && backup.offHost.dir) { %><code><%= backup.offHost.dir %></code> · <span class="<%= /^failed/.test(String(backup.offHost.lastStatus || '')) ? 'badge badge-danger' : '' %>"><%= backup.offHost.lastStatus || __('admin:health_never_measured') %></span><% } else { %><span class="badge badge-warning"><%= __('admin:bkp_offhost_unset_badge') %></span><% } %></div>
+  </div>
+  <% if (bk.protection === 'dpapi-localmachine' && !bk.exportedAt) { %><p class="hl-alert" role="alert"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('admin:bkp_key_not_exported') %></p><% } else if (bk.protection === 'dpapi-localmachine') { %><p class="text-muted"><%= __('admin:bkp_key_exported', { date: _fdt(bk.exportedAt) }) %></p><% } %>
+  <% if (bk.protection === 'app-key-derived') { %><p class="hl-alert" role="note"><i class="fas fa-key" aria-hidden="true"></i> <%= __('admin:bkp_key_derived_hint') %></p><% } %>
+  <% if (backup.unreadableCount > 0) { %><p class="hl-alert" role="alert"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('admin:bkp_unreadable_warn', { n: backup.unreadableCount }) %></p><% } %>
+  <% if (!(backup.offHost && backup.offHost.dir)) { %><p class="hl-alert" role="note"><%= __('admin:bkp_offhost_unset') %></p><% } %>
+  <% if (backup.plaintextCount > 0) { %><p class="hl-alert" role="note"><i class="fas fa-lock-open" aria-hidden="true"></i> <%= __('admin:bkp_plain_warn', { n: backup.plaintextCount }) %></p><% } %>
   <form method="POST" action="/admin/health/backup" data-confirm="<%= __('admin:health_backup_confirm') %>" data-confirm-title="<%= __('admin:health_backup_now') %>" style="margin:.6rem 0 1rem">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <button type="submit" class="btn btn-primary"><i class="fas fa-download" aria-hidden="true"></i> <%= __('admin:health_backup_now') %></button>
@@ -146,10 +165,10 @@ var never = (ticks || []).filter(function (t) { return !t.last; }).length;
   <% if (backup.files.length) { %>
   <div class="hl-scroll">
     <table class="table">
-      <thead><tr><th><%= __('admin:health_col_file') %></th><th><%= __('admin:health_col_size') %></th><th><%= __('admin:health_col_date') %></th></tr></thead>
+      <thead><tr><th><%= __('admin:health_col_file') %></th><th><%= __('admin:health_col_size') %></th><th><%= __('admin:health_col_date') %></th><th><%= __('admin:bkp_col_state') %></th></tr></thead>
       <tbody>
       <% backup.files.slice(0, 20).forEach(function (f) { %>
-        <tr class="<%= f.empty ? 'hl-row-bad' : '' %>"><td><code><%= f.name %></code><% if (f.empty) { %> <span class="badge badge-danger"><%= __('admin:health_bk_empty') %></span><% } %></td><td><%= mb(f.sizeBytes) %></td><td><%= _fdt(f.modifiedAt) %></td></tr>
+        <tr class="<%= f.empty ? 'hl-row-bad' : '' %>"><td><code><%= f.name %></code><% if (f.empty) { %> <span class="badge badge-danger"><%= __('admin:health_bk_empty') %></span><% } %></td><td><%= mb(f.sizeBytes) %></td><td><%= _fdt(f.modifiedAt) %></td><td><% if (f.encrypted) { %><span class="badge badge-success"><%= __('admin:bkp_enc') %></span><% if (!f.hasManifest) { %> <span class="badge badge-danger"><%= __('admin:bkp_no_manifest') %></span><% } %><% } else { %><span class="badge badge-warning"><%= __('admin:bkp_plain') %></span><% } %></td></tr>
       <% }); %>
       </tbody>
     </table>
@@ -158,12 +177,36 @@ var never = (ticks || []).filter(function (t) { return !t.last; }).length;
   <% } %>
   <h3 class="hl-h3"><%= __('admin:health_rp_title') %> <span class="chip"><%= restorePoints.length %></span></h3>
   <% if (restorePoints.length) { %>
-  <ul class="hl-list"><% restorePoints.forEach(function (r) { %><li><code><%= r.name %></code> · <%= mb(r.sizeBytes) %> · <%= _fdt(r.createdAt) %></li><% }); %></ul>
+  <ul class="hl-list"><% restorePoints.forEach(function (r) { %><li><code><%= r.name %></code> · <%= mb(r.sizeBytes) %> · <%= _fdt(r.createdAt) %> · <% if (r.encrypted) { %><span class="badge badge-success"><%= __('admin:bkp_enc') %></span><% } else { %><span class="badge badge-warning"><%= __('admin:bkp_plain') %></span><% } %></li><% }); %></ul>
   <% } else { %><p class="text-muted"><%= __('admin:health_rp_none') %></p><% } %>
   <h3 class="hl-h3"><%= __('admin:health_reset_bk_title') %> <span class="chip"><%= resetBackups.length %></span></h3>
   <% if (resetBackups.length) { %>
   <ul class="hl-list"><% resetBackups.forEach(function (r) { %><li><code><%= r.name %></code> · <%= mb(r.sizeBytes) %> · <%= _fdt(r.createdAt) %></li><% }); %></ul>
   <% } else { %><p class="text-muted"><%= __('admin:health_reset_bk_none') %></p><% } %>
+</section>
+
+<!-- ── Upload antivirus ──────────────────────────────────────────────────── -->
+<section class="card hl-section" id="malware-scan">
+  <h2 class="hl-h2"><i class="fas fa-shield-virus" aria-hidden="true"></i> <%= __('admin:health_av_title') %></h2>
+  <% if (_av && _av.alert) { %>
+  <div class="hz-callout hz-sec-warn" role="status"><p><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('compliance:av_no_scanner_alert') %></p></div>
+  <% } %>
+  <% if (_av) { %>
+  <div class="hl-kv">
+    <div><span class="hl-k"><%= __('admin:health_av_engine') %></span><%= _av.engine ? _avEngine(_av.engine) : __('admin:health_av_none') %></div>
+    <div><span class="hl-k"><%= __('admin:health_av_policy') %></span><%= _av.requireMalwareScan ? __('admin:health_av_required_on') : __('admin:health_av_required_off') %> · <a href="/app-settings"><code>requireMalwareScan</code></a></div>
+    <div><span class="hl-k"><%= __('admin:health_av_checked') %></span><%= _av.checkedAt ? _fdt(_av.checkedAt) : '—' %></div>
+  </div>
+  <h3 class="hl-h3"><%= __('admin:health_av_counts') %></h3>
+  <% var _avCounts = _av.counts || {};
+     var _avLabels = { clean: __('admin:health_av_st_clean'), quarantined: __('admin:health_av_st_quarantined'), not_scanned: __('admin:health_av_st_not_scanned'), scan_error: __('admin:health_av_st_scan_error'), pending: __('admin:health_av_st_pending') };
+     var _avKeys = Object.keys(_avLabels).filter(function (k) { return _avCounts[k]; }); %>
+  <% if (_avKeys.length) { %>
+  <ul class="hl-list"><% _avKeys.forEach(function (k) { %><li><%= _avLabels[k] %><%= colon %> <strong><%= _avCounts[k] %></strong></li><% }); %></ul>
+  <% } else { %><p class="text-muted"><%= __('admin:health_av_no_files') %></p><% } %>
+  <% } else { %>
+  <p class="text-muted"><%= __('admin:health_never_measured') %></p>
+  <% } %>
 </section>
 
 <!-- ── SMTP ──────────────────────────────────────────────────────────────── -->
@@ -199,10 +242,10 @@ var never = (ticks || []).filter(function (t) { return !t.last; }).length;
 </section>
 
 <style>
-  .hl-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:14px}
+  .hl-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
   .hl-card{padding:12px 14px;border-left:4px solid transparent}
   .hl-bad{border-left-color:#ef4444}.hl-warn{border-left-color:#f59e0b}
-  .hl-k{font-size:.72rem;letter-spacing:.04em;color:var(--text-secondary)}
+  .hl-k{font-size:.75rem;letter-spacing:.04em;color:var(--text-secondary)}
   .hl-v{font-size:1.5rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--text-primary)}
   .hl-v-sm{font-size:1rem}
   .hl-sub{font-size:.76rem;color:var(--text-muted)}
@@ -214,8 +257,9 @@ var never = (ticks || []).filter(function (t) { return !t.last; }).length;
   .hl-scroll{overflow-x:auto}
   .hl-right{text-align:right}
   .hl-err{max-width:28rem;white-space:normal;font-size:.8rem;color:var(--text-secondary)}
+  .hl-alert{margin:.4rem 0;padding:.3rem .7rem;font-size:.85rem;border-left:3px solid var(--warning);background:var(--warning-bg)}
   .hl-row-bad td{background:rgba(239,68,68,.08)}.hl-row-warn td{background:rgba(245,158,11,.08)}
-  .hl-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:6px 18px;font-size:.9rem}
+  .hl-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px, 100%), 1fr));gap:6px 18px;font-size:.9rem}
   .hl-kv .hl-k{display:block}
   .hl-list,.hl-fail{margin:0;padding-left:18px;font-size:.85rem}
   .chip{display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(127,127,127,.15);font-size:.75rem}

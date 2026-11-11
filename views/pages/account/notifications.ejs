@@ -7,11 +7,11 @@
 
     <div class="np-row">
         <div class="np-label">
-            <strong><%= __('chrome:notif_prefs_email_label') %></strong>
+            <strong id="np-email-l"><%= __('chrome:notif_prefs_email_label') %></strong>
             <span class="np-hint"><%= __('chrome:notif_prefs_email_hint') %></span>
         </div>
         <label class="np-switch">
-            <input type="checkbox" name="emailEnabled" <%= prefs.emailEnabled ? 'checked' : '' %>>
+            <input type="checkbox" name="emailEnabled" aria-labelledby="np-email-l" <%= prefs.emailEnabled ? 'checked' : '' %>>
             <span class="np-slider"></span>
         </label>
     </div>
@@ -28,6 +28,87 @@
     </div>
 
     <p class="np-note"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('chrome:notif_prefs_quiet_detail') %></p>
+    <% if (prefs.siteQuiet) { %>
+    <p class="np-note"><i class="fas fa-building" aria-hidden="true"></i> <%= __('chrome:notif_prefs_site_quiet', { start: prefs.siteQuiet.start, end: prefs.siteQuiet.end }) %></p>
+    <% } %>
+
+    <% if (Array.isArray(prefs.categories)) { %>
+    <%# Migration 183 — what reaches the mailbox, per category. In-app is always
+        on; a mandatory row (workplace safety, account security) is greyed and
+        cannot be switched off: the grid never offers a switch that would not
+        work. One form, one save: the grid, the summary, the language and the
+        .ics switch are saved with the e-mail switch and quiet hours above. %>
+    <input type="hidden" name="grid" value="1">
+    <div class="np-section">
+        <h2 class="np-h2"><%= __('chrome:notif_prefs_grid_title') %></h2>
+        <p class="np-hint"><%= __('chrome:notif_prefs_grid_hint') %></p>
+        <div class="np-table-wrap">
+        <table class="np-grid">
+            <caption class="sr-only"><%= __('chrome:notif_prefs_grid_title') %></caption>
+            <thead>
+                <tr>
+                    <th scope="col"><%= __('chrome:notif_prefs_grid_category') %></th>
+                    <th scope="col"><%= __('chrome:notif_prefs_grid_inapp') %></th>
+                    <th scope="col"><%= __('chrome:notif_prefs_grid_email') %></th>
+                </tr>
+            </thead>
+            <tbody>
+            <% prefs.categories.forEach(function (c) { var lbl = __('chrome:notif_cat_' + c.key); %>
+                <tr class="<%= c.mandatory ? 'np-mandatory' : '' %>">
+                    <th scope="row">
+                        <%= lbl %>
+                        <% if (c.mandatory) { %><span class="np-badge"><%= __('chrome:notif_prefs_mandatory') %></span><% } %>
+                    </th>
+                    <td><input type="checkbox" checked disabled aria-label="<%= __('chrome:notif_prefs_grid_inapp') %> — <%= lbl %>"></td>
+                    <td><input type="checkbox" name="cat_<%= c.key %>_email" <%= c.email ? 'checked' : '' %> <%= c.mandatory ? 'disabled' : '' %> aria-label="<%= __('chrome:notif_prefs_grid_email') %> — <%= lbl %>"></td>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table>
+        </div>
+        <p class="np-note"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('chrome:notif_prefs_mandatory_note') %></p>
+    </div>
+
+    <div class="np-row">
+        <div class="np-label">
+            <label for="np-cadence"><strong><%= __('chrome:notif_prefs_digest_label') %></strong></label>
+            <span class="np-hint"><%= __('chrome:notif_prefs_digest_hint') %><% if (prefs.digestCadenceIsDefault) { %> <%= __('chrome:notif_prefs_default_marker') %><% } %></span>
+        </div>
+        <select id="np-cadence" name="digestCadence" class="form-control np-select">
+            <% ['daily', 'weekly', 'off'].forEach(function (c) { %>
+            <option value="<%= c %>" <%= prefs.digestCadence === c ? 'selected' : '' %>><%= __('chrome:notif_prefs_digest_' + c) %></option>
+            <% }); %>
+        </select>
+    </div>
+    <% if (prefs.stepdownAt && prefs.stepdownFrom) { %>
+    <p class="np-note np-warn" role="status"><i class="fas fa-circle-pause" aria-hidden="true"></i> <%= __('chrome:notif_prefs_stepdown_note', { from: __('chrome:notif_prefs_digest_' + prefs.stepdownFrom), to: __('chrome:notif_prefs_digest_' + prefs.digestCadence) }) %>
+        <button type="submit" form="np-reactivate" class="btn btn-secondary btn-sm"><%= __('chrome:notif_prefs_reactivate') %></button>
+    </p>
+    <% } %>
+
+    <div class="np-row">
+        <div class="np-label">
+            <label for="np-locale"><strong><%= __('chrome:notif_prefs_lang_label') %></strong></label>
+            <span class="np-hint"><%= __('chrome:notif_prefs_lang_hint') %></span>
+        </div>
+        <select id="np-locale" name="emailLocale" class="form-control np-select">
+            <option value="" <%= !prefs.emailLocale ? 'selected' : '' %>><%= __('chrome:notif_prefs_lang_default', { lang: __('chrome:notif_prefs_lang_' + (prefs.defaultLocale === 'en' ? 'en' : 'fr')) }) %></option>
+            <option value="fr" <%= prefs.emailLocale === 'fr' ? 'selected' : '' %> lang="fr">Français</option>
+            <option value="en" <%= prefs.emailLocale === 'en' ? 'selected' : '' %> lang="en">English</option>
+        </select>
+    </div>
+
+    <div class="np-row">
+        <div class="np-label">
+            <strong id="np-ics-l"><%= __('chrome:notif_prefs_ics_label') %></strong>
+            <span class="np-hint"><%= __('chrome:notif_prefs_ics_hint') %></span>
+        </div>
+        <label class="np-switch">
+            <input type="checkbox" name="icsEnabled" aria-labelledby="np-ics-l" <%= prefs.icsEnabled !== false ? 'checked' : '' %>>
+            <span class="np-slider"></span>
+        </label>
+    </div>
+    <% } %>
 
     <div class="np-actions">
         <button type="submit" class="btn btn-primary"><i class="fas fa-check" aria-hidden="true"></i> <%= __('chrome:notif_prefs_save') %></button>
@@ -37,6 +118,12 @@
         <a href="/account" class="btn btn-secondary"><i class="fas fa-id-badge" aria-hidden="true"></i> <%= __('chrome:profile_title') %></a>
     </div>
 </form>
+<% if (prefs.stepdownAt && prefs.stepdownFrom) { %>
+<form method="POST" action="/account/notifications" id="np-reactivate" hidden>
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="action" value="reactivate_digest">
+</form>
+<% } %>
 
 <%#
     LOT BILAN B3 — cadence of the department brief, on THIS page on purpose: it
@@ -99,11 +186,23 @@
 .np-note{margin:14px 0 0;padding:12px 14px;border-radius:10px;background:var(--bg-subtle,#f8fafc);border:1px solid var(--border-color,#e2e8f0);font-size:.85rem;line-height:1.55;color:var(--text-muted,#64748b)}
 .np-times label{margin-left:10px;font-size:.9rem;color:var(--text-muted,#64748b)}
 .np-times input{margin-left:6px}
-.np-actions{display:flex;gap:10px;padding:18px 0}
+.np-actions{display:flex;flex-wrap:wrap;gap:10px;padding:18px 0}
 .np-switch{position:relative;display:inline-block;width:48px;height:26px;flex:0 0 48px}
 .np-switch input{opacity:0;width:0;height:0}
 .np-slider{position:absolute;inset:0;cursor:pointer;background:#cbd5e1;border-radius:999px;transition:.2s}
 .np-slider::before{content:"";position:absolute;height:20px;width:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
 .np-switch input:checked + .np-slider{background:var(--brand,#5140d9)}
 .np-switch input:checked + .np-slider::before{transform:translateX(22px)}
+.np-switch input:focus-visible + .np-slider{outline:2px solid var(--brand,#5140d9);outline-offset:2px}
+.np-section{padding:18px 0;border-bottom:1px solid var(--border-color,#f1f5f9)}
+.np-h2{font-size:1rem;margin:0 0 4px}
+.np-table-wrap{overflow-x:auto;margin-top:10px}
+.np-grid{width:100%;border-collapse:collapse;font-size:.9rem}
+.np-grid th,.np-grid td{padding:8px 10px;border-bottom:1px solid var(--border-color,#f1f5f9);text-align:center}
+.np-grid th[scope=row],.np-grid thead th:first-child{text-align:left;font-weight:600}
+.np-grid input[type=checkbox]{width:18px;height:18px}
+.np-mandatory th,.np-mandatory td{color:var(--text-muted,#64748b);background:var(--bg-subtle,#f8fafc)}
+.np-badge{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;border:1px solid var(--border-color,#e2e8f0);font-size:.75rem;font-weight:600}
+.np-select{max-width:240px}
+.np-warn{border-color:#b45309}
 </style>

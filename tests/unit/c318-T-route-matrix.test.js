@@ -63,10 +63,11 @@ jest.mock('../../src/controllers/LocalContentController', () => {
 const fs = require('fs');
 const path = require('path');
 const request = require('supertest');
-const { loadApp, listRoutes, mintSession } = require('../helpers/c318/buildApp');
+const { loadApp, i18nReady, listRoutes, mintSession } = require('../helpers/c318/buildApp');
 const storeState = require('../helpers/c318/sessionStoreMock').state;
 
-const ENABLED = /idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''));
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
+const ENABLED = isFixturesDatabaseUrl(process.env.DATABASE_URL);
 const d = ENABLED ? describe : describe.skip;
 jest.setTimeout(20 * 60 * 1000);
 
@@ -472,7 +473,7 @@ d('c318 T — route × role access matrix (HTTP, idevelop_fixtures, rolled back)
             /* key passthrough */
         }
         app = loadApp();
-        await new Promise((r) => setTimeout(r, 300)); // let server.js's own i18n init settle
+        await i18nReady(); // server.js's own i18n middleware is live
         routes = listRoutes(app);
         const mig = await require('../../src/controllers/HealthController').migrationsState();
         PENDING = (mig && mig.pending) || [];

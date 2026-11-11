@@ -2,7 +2,8 @@
 /**
  * Web security baseline of server.js, pinned so that the About page's
  * "Web application protection" claims stay true:
- *  - a fresh CSP nonce per request, and no 'unsafe-inline' for scripts;
+ *  - a fresh CSP nonce per request, no 'unsafe-inline' for scripts, and no inline
+ *    event handler (script-src-attr 'none', SA-14);
  *  - objects blocked, base-uri and form-action locked, anti-clickjacking;
  *  - httpOnly, SameSite session cookies with a bounded lifetime;
  *  - bounded request bodies;
@@ -27,6 +28,9 @@ describe('Content Security Policy', () => {
         expect(s).toMatch(/'nonce-\$\{res\.locals\.cspNonce\}'/);
         expect(s).not.toMatch(/unsafe-inline|unsafe-eval/);
     });
+    test("inline event handlers never run: script-src-attr is 'none' (SA-14)", () => {
+        expect(directive('scriptSrcAttr')).toMatch(/^\s*"'none'"\s*$/);
+    });
     test('objects blocked, base-uri, form-action and framing locked to self', () => {
         expect(directive('objectSrc')).toMatch(/'none'/);
         expect(directive('baseUri')).toMatch(/^\s*"'self'"\s*$/);
@@ -45,7 +49,8 @@ describe('session cookie', () => {
         const cookie = SRC.slice(SRC.indexOf('cookie: {'), SRC.indexOf('cookie: {') + 400);
         expect(cookie).toMatch(/httpOnly:\s*true/);
         expect(cookie).toMatch(/sameSite:\s*'(lax|strict)'/);
-        expect(cookie).toMatch(/maxAge:\s*Number\(process\.env\.SESSION_MAX_HOURS \|\| 24\)/);
+        // Absolute ceiling 12 h by default since migration 162 (ASVS 3.3.2; it was 24 h).
+        expect(cookie).toMatch(/maxAge:\s*Number\(process\.env\.SESSION_MAX_HOURS \|\| 12\)/);
     });
     test('proxies are not trusted by default', () => {
         expect(SRC).toMatch(/app\.set\('trust proxy', false\)/);
@@ -63,7 +68,12 @@ describe('request bodies and CSRF', () => {
     });
     test('state-changing requests carry a synchroniser token or get 403', () => {
         expect(SRC).toMatch(/csrfSync\(/);
-        expect(SRC).toMatch(/req\.body\._csrf\)\s*\|\|\s*req\.headers\['x-csrf-token'\]/);
+        // Body `_csrf`, the x-csrf-token header, or ?_csrf= on a multipart request
+        // (httpHardening.csrfTokenFromRequest, SA-15).
+        expect(SRC).toMatch(/getTokenFromRequest:\s*httpHardening\.csrfTokenFromRequest/);
+        const H = require('../../src/middleware/httpHardening');
+        expect(H.csrfTokenFromRequest({ body: { _csrf: 'b' }, headers: {} })).toBe('b');
+        expect(H.csrfTokenFromRequest({ headers: { 'x-csrf-token': 'h' } })).toBe('h');
         expect(SRC).toMatch(/status\(403\)\.send\('Invalid CSRF token'\)/);
     });
 });

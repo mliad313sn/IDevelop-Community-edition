@@ -77,7 +77,7 @@ function _t(req, key, params, fallback) {
  * accounts are declared to be the same human — so its own login is not a
  * collision with itself.
  */
-async function _employeeLoginExists(username, exceptEmployeeId = null) {
+async function _employeeUsernameTaken(username, exceptEmployeeId = null) {
     if (!username) return false;
     try {
         const EmployeeModel = require('../models/EmployeeModel');
@@ -662,7 +662,7 @@ async function _deactivateAdmin(req, admin, reason) {
         action: 'ADMIN_DEACTIVATED',
         entityType: 'admin',
         entityId: id,
-        details: `Deactivated admin: ${admin.username} (${admin.role}); reason: ${reason}; ${perms.length} grant(s) and ${scopes.length} scope(s) kept and flagged revoked; ${sessions} session(s) revoked; ${keys} API key(s) revoked`,
+        details: `Deactivated admin: admin:${Number(id)} (${admin.role}); reason: ${reason}; ${perms.length} grant(s) and ${scopes.length} scope(s) kept and flagged revoked; ${sessions} session(s) revoked; ${keys} API key(s) revoked`,
         ipAddress: req.ip,
         userAgent: req.get('user-agent'),
     });
@@ -715,7 +715,7 @@ async function _reactivateAdmin(req, admin, reason) {
         action: 'ADMIN_REACTIVATED',
         entityType: 'admin',
         entityId: id,
-        details: `Reactivated admin: ${admin.username} (${admin.role}); reason: ${reason}; ${perms.length} grant(s) and ${scopes.length} scope(s) restored; password change forced at next login`,
+        details: `Reactivated admin: admin:${Number(id)} (${admin.role}); reason: ${reason}; ${perms.length} grant(s) and ${scopes.length} scope(s) restored; password change forced at next login`,
         ipAddress: req.ip,
         userAgent: req.get('user-agent'),
     });
@@ -1436,7 +1436,7 @@ class AdminController {
             // the detail of their own team). Giving an existing person an
             // administration access is "Grant admin access", which LINKS the two
             // accounts (admins.linked_employee_id) instead of shadowing one.
-            if (await _employeeLoginExists(username)) {
+            if (await _employeeUsernameTaken(username)) {
                 req.flash(
                     'error',
                     _t(
@@ -1485,7 +1485,7 @@ class AdminController {
                 action: 'ADMIN_CREATED',
                 entityType: 'admin',
                 entityId: result.admin.id,
-                details: `Created admin: ${req.body.username} [${req.body.role}; ${profileNote}; perms: ${grantedPerms.join(', ') || 'none'}; expires: ${accessExpiry || 'never'}]`,
+                details: `Created admin: admin:${Number(result.admin.id)} [${req.body.role}; ${profileNote}; perms: ${grantedPerms.join(', ') || 'none'}; expires: ${accessExpiry || 'never'}]`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -1621,7 +1621,7 @@ class AdminController {
                 // case and keeps its own username.
                 const wanted = req.body.username.trim();
                 const linkedTo = admin.linkedEmployeeId || admin.linked_employee_id || null;
-                if (await _employeeLoginExists(wanted, linkedTo)) {
+                if (await _employeeUsernameTaken(wanted, linkedTo)) {
                     req.flash(
                         'error',
                         _t(
@@ -1775,7 +1775,7 @@ class AdminController {
                 action: 'ADMIN_UPDATED',
                 entityType: 'admin',
                 entityId: id,
-                details: `Updated admin: ${req.body.username} [${accessEditable ? req.body.role : admin.role}; ${profileNote}; perms: ${grantedPerms ? grantedPerms.join(', ') || 'none' : 'unchanged'}; expires: ${accessEditable ? accessExpiry || 'never' : 'unchanged'}${scopeDelta ? `; scopes +${scopeDelta.added}/-${scopeDelta.removed}/=${scopeDelta.kept}` : ''}${passwordChanged ? `; password changed, ${killedSessions} session(s) revoked` : ''}${promotedToSuper ? `; promoted to SuperAdmin: linked person removed, ${promotedSessions} session(s) revoked` : ''}${stateNote}]`,
+                details: `Updated admin: admin:${Number(id)} [${accessEditable ? req.body.role : admin.role}; ${profileNote}; perms: ${grantedPerms ? grantedPerms.join(', ') || 'none' : 'unchanged'}; expires: ${accessEditable ? accessExpiry || 'never' : 'unchanged'}${scopeDelta ? `; scopes +${scopeDelta.added}/-${scopeDelta.removed}/=${scopeDelta.kept}` : ''}${passwordChanged ? `; password changed, ${killedSessions} session(s) revoked` : ''}${promotedToSuper ? `; promoted to SuperAdmin: linked person removed, ${promotedSessions} session(s) revoked` : ''}${stateNote}]`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -1914,7 +1914,7 @@ class AdminController {
                 action: 'ADMIN_PASSWORD_RESET',
                 entityType: 'admin',
                 entityId: id,
-                details: `Reset password for admin: ${admin.username} (${wasChosen ? 'chosen by superadmin' : 'random'}); ${killed} active session(s) revoked`,
+                details: `Reset password for admin: admin:${Number(admin.id)} (${wasChosen ? 'chosen by superadmin' : 'random'}); ${killed} active session(s) revoked`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -2018,7 +2018,7 @@ class AdminController {
                 action: 'ADMIN_ACCOUNT_UNLOCKED',
                 entityType: 'admin',
                 entityId: id,
-                details: `Unlocked admin account: ${admin.username} (cleared failed-login lockout)`,
+                details: `Unlocked admin account: admin:${Number(admin.id)} (cleared failed-login lockout)`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -2106,7 +2106,7 @@ class AdminController {
                 action: 'ADMIN_FORCE_PASSWORD_CHANGE',
                 entityType: 'admin',
                 entityId: id,
-                details: `Flagged admin for forced password change: ${admin.username}; ${killed} active session(s) revoked`,
+                details: `Flagged admin for forced password change: admin:${Number(admin.id)}; ${killed} active session(s) revoked`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -2173,7 +2173,7 @@ class AdminController {
                 action: 'ADMIN_WORKSPACE_UPDATED',
                 entityType: 'admin',
                 entityId: id,
-                details: `Updated workspace components for ${admin.username}: ${Object.keys(prefs).length} explicit override(s)`,
+                details: `Updated workspace components for admin:${Number(admin.id)}: ${Object.keys(prefs).length} explicit override(s)`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -2344,7 +2344,7 @@ class AdminController {
                 action: 'ADMIN_ACCESS_EXTENDED',
                 entityType: 'admin',
                 entityId: admin.id,
-                details: `Extended access for ${admin.username} by ${months} months → ${iso} (${permRows} grant row(s), ${scopeRows} scope row(s))`,
+                details: `Extended access for admin:${Number(admin.id)} by ${months} months → ${iso} (${permRows} grant row(s), ${scopeRows} scope row(s))`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -2586,7 +2586,7 @@ class AdminController {
                 entityType: 'admin',
                 entityId: id,
                 category: 'security',
-                details: `MFA reset for admin ${admin.username} by SuperAdmin; reason: ${reason}; secret ${r.hadSecret ? 'removed' : 'absent'}, ${r.backupCodesRemoved} backup code(s) removed, ${killed} session(s) revoked; re-enrolment required`,
+                details: `MFA reset for admin:${Number(admin.id)} by SuperAdmin; reason: ${reason}; secret ${r.hadSecret ? 'removed' : 'absent'}, ${r.backupCodesRemoved} backup code(s) removed, ${killed} session(s) revoked; re-enrolment required`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -2650,7 +2650,7 @@ class AdminController {
                 entityType: 'admin',
                 entityId: id,
                 category: 'security',
-                details: `Closed ${killed} session(s) of admin ${admin.username}${isSelf ? ' (own other devices)' : ''}`,
+                details: `Closed ${killed} session(s) of admin:${Number(admin.id)}${isSelf ? ' (own other devices)' : ''}`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });
@@ -2777,7 +2777,7 @@ class AdminController {
                         action: 'ADMIN_UPDATED',
                         entityType: 'admin',
                         entityId: admin.id,
-                        details: `Applied access profile ${profileKey} to ${admin.username} (bulk); perms: ${perms.join(', ') || 'none'}`,
+                        details: `Applied access profile ${profileKey} to admin:${Number(admin.id)} (bulk); perms: ${perms.join(', ') || 'none'}`,
                         ipAddress: req.ip,
                         userAgent: req.get('user-agent'),
                     });
@@ -2903,6 +2903,6 @@ module.exports._internals = {
     scopeRowsFromBody: _scopeRowsFromBody,
     containsScope: _containsScope,
     canManageTargetAdmin: _canManageTargetAdmin,
-    employeeLoginExists: _employeeLoginExists,
+    employeeLoginExists: _employeeUsernameTaken,
     LIST_SORT,
 };

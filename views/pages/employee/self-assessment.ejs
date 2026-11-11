@@ -6,7 +6,13 @@
    const saTotal = (typeof locals.saTotal === 'number') ? locals.saTotal : _saList.length;
    const saRated = (typeof locals.saRated === 'number') ? locals.saRated : _saList.filter((x) => x.selfRatedLevel != null).length;
    const saRemaining = (typeof locals.saRemaining === 'number') ? locals.saRemaining : (saTotal - saRated);
-   const saEstimateMin = (typeof locals.saEstimateMin === 'number') ? locals.saEstimateMin : Math.max(1, Math.round((saRemaining * 8) / 60)); %>
+   const saEstimateMin = (typeof locals.saEstimateMin === 'number') ? locals.saEstimateMin : Math.max(1, Math.round((saRemaining * 15) / 60));
+   // An honest range: 15 to 20 seconds per skill still to rate (4.0.0 port, wave 5).
+   const saEstimateLo = (typeof locals.saEstimateLo === 'number') ? locals.saEstimateLo : Math.max(1, Math.round((saRemaining * 15) / 60));
+   const saEstimateHi = (typeof locals.saEstimateHi === 'number') ? locals.saEstimateHi : Math.max(saEstimateLo, Math.round((saRemaining * 20) / 60));
+   // No open campaign and the person's latest campaign LOCKED: every save is
+   // refused (409 cycle_locked), so the page is read-only.
+   const _ro = locals.saReadOnly === true; %>
 <style nonce="<%= cspNonce %>">
     /* A never-rated skill is visually distinct from a deliberate "0 — None": muted
        until the person makes a choice, so an unrated row doesn't masquerade as a 0. */
@@ -64,6 +70,7 @@
         <strong><%= __('employee:sa_locked_campaign_title') %></strong> &mdash;
         <%= __('employee:sa_no_campaign_last', { label: _locked.label || _locked.code, date: _lcDate }) %>
         <%= __('employee:sa_locked_body') %>
+        <% if (_ro) { %><br><span data-sa-readonly="1"><%= __('employee:sa_readonly_note') %></span><% } %>
         <% } else { %>
         <strong><%= __('employee:sa_no_campaign_title') %></strong> &mdash; <%= __('employee:sa_no_campaign_body') %>
         <% } %>
@@ -72,6 +79,8 @@
 <% } %>
 
 <link rel="stylesheet" href="/css/sa-skill-help.css?v=<%= assetVersion %>">
+<%# The page CSS lives in its own file, on the design tokens. %>
+<link rel="stylesheet" href="/css/self-assessment.css?v=<%= assetVersion %>">
 <div class="assessment-info">
     <%# 3.23.21: « Comment bien vous auto-évaluer » replaces the one-line
         instructions. Open the first time; sa-skill-help.js folds it once read. %>
@@ -96,26 +105,36 @@
         </dl>
     </div>
     <p class="sa-scale-ref"><strong><%= __('employee:th_required_level') %></strong> <%= __('employee:sa_req_note_mid') %> <span class="sa-crit-key"><%= __('employee:critical_badge') %></span> <%= __('employee:sa_req_note_post') %></p>
+    <%# The capability rule (src/utils/capability.js) in the employee's words:
+        reaching the required level is « met »; a higher level never offsets a gap. %>
+    <details class="sa-scale-ref sa-rule" id="saRule">
+        <summary><%= __('employee:sa_rule_sum') %></summary>
+        <p><%= __('employee:sa_rule_body') %></p>
+    </details>
     <p class="sa-scale-ref sa-estimate">
         <i class="fas fa-clock" aria-hidden="true"></i>
         <%# rendered server-side, so the first paint already says
             "Environ 2 min" instead of an em dash that only JS could fill. %>
-        <%= __('employee:sa_estimate_pre') %> <strong id="saEstimate"><%= saEstimateMin %></strong> <%= __('employee:sa_minutes') %> <%= __('employee:sa_estimate_post') %>
+        <%# a range, and leave to split the work into several sittings %>
+        <%= __('employee:sa_estimate_pre') %> <strong id="saEstimate" data-min="<%= saEstimateMin %>"><%= saEstimateLo === saEstimateHi ? saEstimateLo : __('employee:sa_estimate_range', { lo: saEstimateLo, hi: saEstimateHi }) %></strong> <%= __('employee:sa_minutes') %> <%= __('employee:sa_estimate_post') %> — <%= __('employee:sa_estimate_split') %>
     </p>
 </div>
 
 <% if (!skillsWithAssessments || !skillsWithAssessments.length) { %>
-<div class="empty-state" style="text-align:center;padding:2.5rem 1rem;max-width:52ch;margin:1.5rem auto">
-    <div style="font-size:2.5rem;color:var(--brand,#6656f0);margin-bottom:.5rem"><i class="fas fa-clipboard-list" aria-hidden="true"></i></div>
+<div class="empty-state sa-empty-state">
+    <div class="sa-empty-state-ico" aria-hidden="true"><i class="fas fa-clipboard-list"></i></div>
     <h2><%= __('employee:sa_no_skills_title') %></h2>
     <p class="text-muted"><%= __('employee:sa_no_skills_body') %></p>
 </div>
 <% } else { %>
-<form id="selfAssessmentForm">
+<form id="selfAssessmentForm"<%= _ro ? ' data-readonly=1' : '' %>>
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
 
-    <!-- STICKY action bar: progress + filters + save/submit always reachable
-         (previously the Submit button sat below ~5 phone-screens of table). -->
+    <!-- STICKY action bar: progress + save/submit always reachable
+         (previously the Submit button sat below ~5 phone-screens of table).
+         ONLY the progress line, the autosave state and the two buttons stay
+         sticky: with the filter chips and the tools inside, the bar covered
+         about half of a phone screen. -->
     <div class="sa-bar" id="saBar">
         <div class="sa-bar-row">
             <div class="sa-progress-text">
@@ -123,19 +142,30 @@
                 <span class="sa-progress-sub" id="saZeroNote"><%= saRemaining ? ' · ' + saRemaining + ' ' + __('employee:sa_still_zero') : ' · ' + __('employee:sa_all_rated') %></span>
             </div>
             <div class="sa-bar-actions">
+                <%# the offline / sync status docks here (sync-indicator.js), never
+                    floating over the content or the help button %>
+                <span class="sa-sync-slot" id="saSyncSlot"></span>
+                <% if (!_ro) { %>
                 <span class="sa-autosave" id="saAutosave" aria-live="polite"></span>
                 <button type="button" id="saveDraftBtn" class="btn btn-secondary btn-sm"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('employee:sa_save_draft') %></button>
                 <button type="button" id="submitBtn" class="btn btn-primary btn-sm"><i class="fas fa-file-export" aria-hidden="true"></i> <%= __('employee:sa_submit_review') %></button>
+                <% } %>
             </div>
         </div>
         <div class="sa-progress-bar"><div class="sa-progress-fill" id="saProgressFill" style="width:<%= saTotal ? Math.round((saRated / saTotal) * 100) : 0 %>%"></div></div>
+    </div>
+
+    <!-- Filters and tools: NOT sticky. Open on a wide screen (script below), folded on a phone. -->
+    <details class="sa-tools-wrap" id="saToolsWrap">
+        <summary class="btn btn-secondary btn-sm"><i class="fas fa-sliders" aria-hidden="true"></i> <%= __('employee:sa_tools_summary') %></summary>
+        <div class="sa-tools-body">
         <div class="sa-filters" role="group" aria-label="<%= __('employee:sa_filter_aria') %>">
             <button type="button" class="sa-chip is-active" data-filter="all"><%= __('employee:sa_filter_all') %></button>
             <button type="button" class="sa-chip" data-filter="unrated"><%= __('employee:sa_filter_unrated') %> <span class="sa-chip-n" id="chipUnrated">0</span></button>
             <button type="button" class="sa-chip" data-filter="critical"><%= __('employee:sa_filter_critical') %> <span class="sa-chip-n" id="chipCritical">0</span></button>
             <button type="button" class="sa-chip" data-filter="gap"><%= __('employee:sa_filter_gap') %> <span class="sa-chip-n" id="chipGap">0</span></button>
             <label class="sa-toggle">
-                <input type="checkbox" id="saShowCurrent"> <%= __('employee:sa_show_current') %>
+                <input type="checkbox" id="saShowCurrent"> <span><%= __('employee:sa_show_current') %></span>
             </label>
         </div>
         <!-- Power tools: find a skill in a 161-item list, jump straight to the
@@ -156,9 +186,11 @@
             </button>
             <span class="sa-kbd-hint"><%= __('employee:sa_kbd_hint') %></span>
         </div>
-    </div>
+        </div>
+    </details>
 
     <!-- Inline submit confirmation (replaces browser confirm dialog) -->
+    <% if (!_ro) { %>
     <div class="sa-confirm" id="saConfirm" role="alertdialog" aria-live="assertive" aria-describedby="saConfirmMsg" hidden>
         <span class="sa-confirm-msg" id="saConfirmMsg"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('employee:sa_confirm_msg') %></span>
         <span class="sa-confirm-actions">
@@ -166,6 +198,7 @@
             <button type="button" id="saConfirmNo" class="btn btn-secondary btn-sm"><%= __('employee:sa_cancel') %></button>
         </span>
     </div>
+    <% } %>
 
     <%
     // Group requirements by pillar/domain — a 44-to-161-row flat table is the
@@ -218,14 +251,15 @@
                     data-required="<%= skill.requiredLevel %>">
                     <th scope="row" class="sa-skill-cell" data-label="<%= __('employee:th_skill') %>">
                         <%# The SEARCH reads .sa-skill-name only — never the description. %>
-                        <span class="sa-skill-name"><%= skill.skillName %></span>
+                        <span class="sa-skill-name" id="sk-name-<%= skill.skillId %>"><%= skill.skillName %></span>
                         <% if (skill.isCritical) { %> <span class="sa-crit-key"><%= __('employee:critical_badge') %><span class="sr-only"> — <%= __('employee:critical_title') %></span></span><% } %>
                         <%- include('../../partials/skill-help', { sh: { id: skill.skillId, raw: skill.skillHelp || null, resolved: _shRes, mode: 'self', selected: _shSel, required: skill.requiredLevel } }) %>
                     </th>
                     <%# D5 (PO): the required level is hidden until THIS row is rated, so it
                         cannot anchor the answer; the « Critique » badge stays visible. %>
                     <td data-label="<%= __('employee:th_required_level') %>" class="sa-req-cell" data-req-cell<%= _shRated ? ' data-revealed=1' : '' %>><% if (_shRated) { %><%= skill.requiredLevel %><% var _gap = _shCore ? _shCore.gapText(_shSel, skill.requiredLevel, { met: __('employee:sa_req_met'), gap: __('employee:sa_req_gap', { n: '%n%' }) }) : ''; if (_gap) { %><span class="sa-req-gap"> · <%= _gap %></span><% } %><% } else { %><span aria-hidden="true">—</span><span class="sr-only"><%= __('employee:sa_req_hidden_sr') %></span><% } %></td>
-                    <td class="sa-col-current" data-label="<%= __('employee:th_current_level') %>"><%= skill.currentSkillLevel %></td>
+                    <%# never a « 0 » for a skill nobody has assessed %>
+                    <td class="sa-col-current" data-label="<%= __('employee:th_current_level') %>"><%= (skill.currentSkillLevel === null || skill.currentSkillLevel === undefined) ? '—' : skill.currentSkillLevel %></td>
                     <%# An assessment that has left the employee's hands is read-only.
                         Two reasons this must show in the markup, not just on the server:
                         · `data-answered` drives collect(), and it was '1' for every
@@ -235,12 +269,18 @@
                           worse than one that is visibly locked.
                         The server refuses these regardless (SelfAssessmentService); this
                         makes the page honest about it. %>
-                    <% const saLocked = ['submitted', 'reviewed', 'approved'].includes(skill.status); %>
-                    <td data-label="<%= __('employee:th_self_rating') %>">
+                    <% const saLocked = ['submitted', 'reviewed', 'approved'].includes(skill.status);
+                       // A locked campaign makes the whole page read-only.
+                       const rowRO = saLocked || _ro; %>
+                    <td class="sa-rate-cell" data-label="<%= __('employee:th_self_rating') %>">
+                        <%# a real <label> for every rating select; its accessible name
+                            is « Your rating for » + THIS row's skill name %>
+                        <label class="sr-only" for="sa-rate-<%= skill.skillId %>" id="sk-rlbl-<%= skill.skillId %>"><%= __('employee:aria_self_rating_for') %></label>
                         <select name="assessments[<%= skill.skillId %>][selfRatedLevel]"
+                                id="sa-rate-<%= skill.skillId %>"
                                 class="self-rating-select<%= skill.selfRatedLevel == null ? ' sa-unanswered' : '' %><%= saLocked ? ' sa-locked' : '' %>"
                                 data-skill-id="<%= skill.skillId %>"
-                                data-answered="<%= (skill.selfRatedLevel != null && !saLocked) ? '1' : '0' %>"
+                                data-answered="<%= (skill.selfRatedLevel != null && !rowRO) ? '1' : '0' %>"
                                 <%# data-rated is "a level was saved", INDEPENDENT of the lock.
                                     data-answered means "editable AND rated" and drives collect(),
                                     so it is deliberately 0 on locked rows — but the PROGRESS
@@ -249,9 +289,9 @@
                                     /employee/assessment-status correctly said 3 of 49.
                                     Completion was structurally unreachable. %>
                                 data-rated="<%= skill.selfRatedLevel != null ? '1' : '0' %>"
-                                <%= saLocked ? 'disabled' : '' %>
-                                aria-label="<%= __('employee:aria_self_rating_for') %> <%= skill.skillName %><%= saLocked ? ' — ' + __('employee:sa_locked_aria') : '' %>"
-                                aria-describedby="sk-desc-<%= skill.skillId %> sk-lvl-<%= skill.skillId %><%= saLocked ? ' sk-lock-' + skill.skillId : '' %>"
+                                <%= rowRO ? 'disabled' : '' %>
+                                aria-labelledby="sk-rlbl-<%= skill.skillId %> sk-name-<%= skill.skillId %><%= saLocked ? ' sk-lock-' + skill.skillId : '' %>"
+                                aria-describedby="sk-desc-<%= skill.skillId %> sk-lvl-<%= skill.skillId %>"
                                 required>
                             <%# A never-rated skill must NOT sit on "0 - Aucun": the control then
                                 looks answered when it is not, and — worse — choosing 0 with the
@@ -267,6 +307,15 @@
                             <option value="3" <%= skill.selfRatedLevel === 3 ? 'selected' : '' %>><%= __('employee:opt_3') %></option>
                             <option value="4" <%= skill.selfRatedLevel === 4 ? 'selected' : '' %>><%= __('employee:opt_4') %></option>
                         </select>
+                        <%# On a phone or a touch screen, five large 0-4 buttons: one tap
+                            per skill. The <select> above stays the value holder, the
+                            no-JS fallback and the keyboard model (0-4, J/K); the buttons
+                            only drive it. Shown by the page script. %>
+                        <div class="sa-seg" role="radiogroup" data-seg-for="<%= skill.skillId %>" aria-label="<%= __('employee:sa_seg_aria', { skill: skill.skillName }) %>" hidden>
+                            <% [0, 1, 2, 3, 4].forEach(function (n) { var _on = skill.selfRatedLevel === n; %>
+                            <button type="button" class="sa-seg-b" role="radio" data-v="<%= n %>" aria-checked="<%= _on ? 'true' : 'false' %>" tabindex="<%= (_on || (skill.selfRatedLevel == null && n === 0)) ? '0' : '-1' %>"<%= rowRO ? ' disabled' : '' %>><span class="sa-seg-n"><%= n %></span><span class="sa-seg-w"><%= __('employee:scale_' + n + '_word') %></span></button>
+                            <% }); %>
+                        </div>
                         <%#  (a): the badge said « Validé » on EVERY locked row —
                             submitted and reviewed rows included — two columns away from a
                             Statut column reading « Soumis », and « Validé » is the label of
@@ -278,26 +327,16 @@
                         <p class="sa-level-line" id="sk-lvl-<%= skill.skillId %>" aria-live="polite"><% if (_shRated) { %><%= __('employee:sa_level_line', { n: _shSel }) %> <%= _shLevelText %><% } %></p>
                         <input type="hidden" name="assessments[<%= skill.skillId %>][skillId]" value="<%= skill.skillId %>">
                     </td>
-                    <td data-label="<%= __('employee:th_status') %>">
-                        <% if (skill.status === 'draft') { %>
-                            <span class="badge badge-secondary"><%= __('employee:state_draft') %></span>
-                        <% } else if (skill.status === 'submitted' || skill.status === 'under_review') { %>
-                            <span class="badge badge-info"><%= __('employee:state_submitted') %></span>
-                        <% } else if (skill.status === 'reviewed') { %>
-                            <span class="badge badge-success"><%= __('employee:state_reviewed') %></span>
-                        <% } else if (skill.status === 'approved') { %>
-                            <span class="badge badge-success"><%= __('employee:state_approved') %></span>
-                        <% } else if (skill.status === 'changes_requested') { %>
-                            <span class="badge badge-warning"><%= __('employee:state_changes_requested') %></span>
-                        <% } else if (skill.status === 'rejected') { %>
-                            <span class="badge badge-danger"><%= __('employee:state_rejected') %></span>
-                        <% } else if (skill.status === 'arbitration') { %>
-                            <span class="badge badge-warning"><%= __('employee:state_arbitration') %></span>
-                        <% } else { %>
-                            <span class="badge"><%= __('employee:sa_status_not_started') %></span>
-                        <% } %>
+                    <td class="sa-status-cell" data-status="<%= skill.status || 'not_started' %>" data-label="<%= __('employee:th_status') %>">
+                        <%# The shared status badge (icon and text, never colour alone). %>
+                        <% const _stKey = skill.status === 'submitted' || skill.status === 'under_review' ? 'state_submitted'
+                               : ['draft', 'reviewed', 'approved', 'changes_requested', 'rejected', 'arbitration'].includes(skill.status) ? 'state_' + skill.status
+                               : 'sa_status_not_started';
+                           const _stTone = skill.status === 'reviewed' ? 'ok' : (skill.status || 'not_started'); %>
+                        <%- include('../../partials/status-badge', { state: _stTone, label: __('employee:' + _stKey) }) %>
                     </td>
-                    <td data-label="<%= __('employee:th_notes') %>">
+                    <% var _hasNote = !!(skill.selfAssessment && skill.selfAssessment.notes); %>
+                    <td class="sa-notes-cell<%= (!rowRO || _hasNote || saLocked) ? '' : ' sa-notes-empty' %>" data-label="<%= __('employee:th_notes') %>">
                         <%# The NOTE follows the LOCK of the row it belongs to.
                             It used to stay editable on a submitted/approved row while
                             `data-answered` was '0', so collect() never picked the row up:
@@ -307,10 +346,12 @@
                             The server refuses these rows regardless (SelfAssessmentService
                             returns {skipped:true}); readonly makes the page honest about it
                             BEFORE the person spends effort on text nobody will read. %>
+                        <%# on a phone the note folds behind « Add a note » (open when it holds text) %>
+                        <% if (!rowRO) { %><button type="button" class="btn btn-secondary btn-sm sa-note-add" data-note-for="<%= skill.skillId %>" aria-expanded="false" hidden><i class="fas fa-plus" aria-hidden="true"></i> <%= __('employee:sa_add_note') %></button><% } %>
                         <textarea name="assessments[<%= skill.skillId %>][notes]"
-                                  class="form-control<%= saLocked ? ' sa-locked' : '' %>"
+                                  class="form-control<%= saLocked ? ' sa-locked' : '' %><%= _hasNote ? ' sa-note-has' : '' %>"
                                   rows="2"
-                                  <%= saLocked ? 'readonly' : '' %>
+                                  <%= rowRO ? 'readonly' : '' %>
                                   aria-label="<%= __('employee:aria_notes_for') %> <%= skill.skillName %><%= saLocked ? ' — ' + __('employee:sa_locked_aria') : '' %>"
                                   <% if (saLocked) { %>title="<%= __('employee:sa_notes_locked_title') %>"<% } %>
                                   data-default-ph="<%= saLocked ? __('employee:sa_notes_locked_ph') : __('employee:sa_notes_placeholder') %>"
@@ -329,141 +370,9 @@
 </form>
 <% } %>
 
-<div id="toastContainer" class="toast-container" aria-live="assertive"></div>
 
-<style>
-/* --- deadline banner --- */
-.sa-deadline{display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:10px 16px;border-radius:10px;
-    background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;font-size:.92rem}
-.sa-deadline-soon{background:#fffbeb;border-color:#fde68a;color:#92400e}
-.sa-deadline-over{background:#fef2f2;border-color:#fecaca;color:#991b1b}
-
-/* --- sticky action bar ---
-   `top` is the fixed top bar's height, not 0: with top:0 the bar stuck UNDER the
-   48px .topbar (z-index 150) once the page scrolled — the autosave state and the
-   Save/Submit buttons were fully masked exactly while the person was rating
-   (measured: #saAutosave at y=25, buttons 28/28px hidden after 600px of scroll).
-   z-index 30 stays: the bar no longer shares a single pixel with the top bar. */
-.sa-bar{position:sticky;top:var(--topbar-height,48px);z-index:30;margin:0 0 14px;padding:10px 14px;background:var(--bg-subtle,#f8fafc);
-    border:1px solid var(--border,#e2e8f0);border-radius:10px;box-shadow:0 2px 10px rgba(2,32,71,.06)}
-.sa-bar-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
-.sa-bar-actions{display:flex;align-items:center;gap:8px}
-.sa-autosave{font-size:.8rem;color:var(--text-secondary,#64748b);min-width:90px;text-align:right}
-/* A failed autosave must not read like the quiet grey of a saved one: unsaved
-   work is the one state on this bar the reader has to act on. */
-.sa-autosave-failed{color:var(--danger,#b91c1c);font-weight:600}
-.sa-autosave-retry{background:none;border:0;padding:0;font:inherit;color:inherit;
-    text-decoration:underline;cursor:pointer}
-.sa-progress-text{font-size:.92rem}
-.sa-progress-sub{color:var(--text-secondary,#64748b);font-size:.85rem}
-.sa-progress-bar{height:8px;margin-top:8px;background:var(--bg-inset,#e2e8f0);border-radius:999px;overflow:hidden}
-.sa-progress-fill{height:100%;width:0;background:linear-gradient(90deg,#2563eb,#0ea5e9);border-radius:999px;transition:width .3s ease}
-
-/* --- power tools row --- */
-.sa-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
-.sa-search{max-width:260px;height:32px;padding:2px 10px;font-size:.85rem}
-.sa-kbd-hint{font-size:.76rem;color:var(--text-secondary,#64748b)}
-tr.sa-focus{outline:2px solid #2563eb;outline-offset:-2px;background:rgba(37,99,235,.16)}
-
-/* --- filter chips --- */
-.sa-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
-.sa-chip{border:1px solid var(--border,#cbd5e1);background:var(--bg-elevated,#fff);border-radius:999px;padding:4px 12px;
-    font-size:.82rem;cursor:pointer;color:var(--text-primary,#0f172a)}
-.sa-chip.is-active{background:#2563eb;border-color:#2563eb;color:#fff}
-.sa-chip-n{opacity:.75;font-variant-numeric:tabular-nums}
-.sa-toggle{display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--text-secondary,#64748b);margin-left:auto}
-
-/* --- sections ---
-   NOTE: no `overflow:hidden` here. An ancestor with overflow other than
-   `visible` creates a scroll container and silently breaks `position:sticky`
-   on the action bar (measured: the bar scrolled away with the page). */
-.sa-section{margin:0 0 12px;border:1px solid var(--border,#e2e8f0);border-radius:10px;background:var(--bg-card,#fff)}
-.sa-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;
-    cursor:pointer;background:var(--bg-subtle,#f8fafc);font-weight:600;list-style:none}
-.sa-section-head::-webkit-details-marker{display:none}
-.sa-section-head::before{content:'▸';margin-right:8px;transition:transform .2s;display:inline-block}
-.sa-section[open] .sa-section-head::before{transform:rotate(90deg)}
-.sa-section-title{flex:1}
-.sa-section-meta{display:flex;align-items:center;gap:8px;font-weight:400;font-size:.82rem;color:var(--text-secondary,#64748b)}
-.sa-section-bar{width:70px;height:6px;background:var(--bg-inset,#e2e8f0);border-radius:999px;overflow:hidden}
-.sa-section-fill{display:block;height:100%;width:0;background:#22c55e;transition:width .3s}
-/* Theme-agnostic success tint: a translucent green reads on BOTH the default
-   dark theme and light, and the head text keeps the theme's own color (the old
-   #f0fdf4 turned near-white text invisible on dark). */
-.sa-section.is-complete .sa-section-head{background:rgba(34,197,94,.14)}
-/* Deterministic collapse: don't rely on the browser hiding <details> content —
-   a display override on table elements defeats it (measured: 526px of
-   "collapsed" content still rendered). */
-.sa-section:not([open]) .sa-table{display:none}
-.sa-table{margin:0}
-.sa-skill-cell{font-weight:600;text-align:left}
-.sa-empty{padding:1.5rem;text-align:center;color:var(--text-secondary,#64748b)}
-.sa-estimate{margin-top:6px}
-
-/* current-level column hidden by default (anti-anchoring); toggle reveals it */
-.sa-col-current{display:none}
-body.sa-show-current .sa-col-current{display:table-cell}
-
-/* --- mobile: turn each row into a card (7-col table was unusable on a phone) ---
-   The `:where(.sa-section[open])` scope matters: a blanket `display:block` on
-   table elements ALSO overrides the browser's hiding of a CLOSED <details>,
-   so collapsed sections stayed fully rendered (measured: 526px of "hidden"
-   content). Scoping the card layout to open sections keeps collapse working. */
-@media (max-width:780px){
-    .sa-table thead{display:none}
-    .sa-section[open] .sa-table,
-    .sa-section[open] .sa-table tbody,
-    .sa-section[open] .sa-table tr,
-    .sa-section[open] .sa-table td,
-    .sa-section[open] .sa-table th{display:block;width:100%}
-    .sa-table tr{border:1px solid var(--border,#e2e8f0);border-radius:10px;margin:10px;padding:10px}
-    /* The rows above are display:block, i.e. cards. The global .table rule sets a
-       600px floor for wide scrolling tables — keeping it here would make a stack
-       of cards scroll sideways on a 375px phone, which is exactly what a field
-       supervisor cannot use one-handed. Release the floor for the card layout. */
-    .sa-table{min-width:0}
-    .sa-table td,.sa-table th{border:none;padding:4px 0}
-    .sa-table td[data-label]::before{content:attr(data-label) ' : ';font-weight:600;color:var(--text-secondary,#64748b);font-size:.8rem}
-    body.sa-show-current .sa-col-current{display:block}
-    .sa-skill-cell{font-size:1rem}
-    /* `width:100%; justify-content:flex-end` with NO wrap made this row overflow
-       to the LEFT once the two button labels no longer fitted: measured at 375px
-       the "Enregistrer le brouillon" button sat at left:-49px (-104px at 320px)
-       with no scrollable ancestor — unreachable, and invisible to the usual
-       horizontal-overflow check, which only ever looks at the RIGHT edge
-       (documentElement.scrollWidth was exactly 375). Wrapping is the fix: a
-       wrapped flex line cannot start before the container's content box. */
-    .sa-bar-actions{width:100%;flex-wrap:wrap;justify-content:flex-start;row-gap:8px}
-    .sa-bar-actions .btn{flex:1 1 auto;justify-content:center}
-    .sa-autosave{flex:1 1 100%;min-width:0;text-align:left}
-}
-
-/* --- rating control target size (WCAG 2.2 SC 2.5.8, minimum 24x24 CSS px) ---
-   Measured before this rule: all 50 rating dropdowns rendered 19px tall — under
-   the minimum, on the one control this page exists to operate, 50 times per
-   campaign, often on a phone in the field. 36px is comfortable for a thumb and
-   leaves the 24px floor well behind. Width is left to the content. */
-.self-rating-select{min-height:36px;padding:6px 10px;font-size:.9rem;line-height:1.3;max-width:100%}
-
-.sa-locked{opacity:.62;cursor:not-allowed}
-textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
-.sa-lock-badge{display:inline-block;margin-left:6px;font-size:.72rem;padding:1px 7px;border-radius:999px;
-    background:var(--bg-subtle,#f1f5f9);border:1px solid var(--border,#e2e8f0);color:var(--text-secondary,#64748b);white-space:nowrap}
-.sa-confirm{display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;
-    margin:0 0 16px;padding:12px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;color:#92400e}
-.sa-confirm[hidden]{display:none}
-.sa-confirm-actions{display:flex;gap:8px}
-.btn-sm{padding:5px 12px;font-size:.85rem}
-.toast-container{position:fixed;top:18px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:10px}
-.toast{min-width:240px;max-width:380px;padding:12px 16px;border-radius:10px;color:#fff;font-size:.92rem;
-    box-shadow:0 8px 24px rgba(2,32,71,.18);opacity:0;transform:translateY(-8px);transition:opacity .25s,transform .25s}
-.toast.show{opacity:1;transform:translateY(0)}
-.toast-success{background:#15803d}.toast-error{background:#b91c1c}.toast-info{background:#1d4ed8}
-.sa-scale-ref{margin:8px 0 0;font-size:.85rem;color:var(--text-secondary,#64748b)}
-.sa-scale-ref span[title]{cursor:help;border-bottom:1px dotted currentColor}
-.sa-crit-key{display:inline-block;font-size:.68rem;letter-spacing:.03em;color:#b91c1c;
-    border:1px solid #b91c1c;border-radius:999px;padding:0 6px;vertical-align:middle}
-</style>
+<%# The page CSS (deadline banner, sticky bar, chips, sections, card rows on a
+    phone) is public/css/self-assessment.css. %>
 
 <!-- Offline resilience: cache ratings locally (IndexedDB) and replay when back online. -->
 <!--
@@ -476,6 +385,21 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
 <script nonce="<%= cspNonce %>">
     window.APP_DRAFT_OWNER = '<%= user && user.id ? user.id : "" %>';
 </script>
+<%# The sync status speaks the page language: labels from locales/*/employee.json
+    in a JSON data block (never executed). `locked` keeps it quiet on a read-only
+    page, where nothing can be saved. %>
+<script type="application/json" id="syncI18n"><%- include('../../partials/json-script', { v: {
+    locked: _ro,
+    synced: __('employee:sync_synced'),
+    online: __('employee:sync_online'),
+    offline: __('employee:sync_offline'),
+    offlineOne: __('employee:sync_offline_one', { n: '%n%' }),
+    offlineOther: __('employee:sync_offline_other', { n: '%n%' }),
+    syncingOne: __('employee:sync_syncing_one', { n: '%n%' }),
+    syncingOther: __('employee:sync_syncing_other', { n: '%n%' }),
+    failedOne: __('employee:sync_failed_one', { n: '%n%' }),
+    failedOther: __('employee:sync_failed_other', { n: '%n%' })
+} }) %></script>
 <script src="/js/draft-store.js?v=<%= assetVersion %>"></script>
 <script src="/js/sync-indicator.js?v=<%= assetVersion %>"></script>
 <%# 3.23.21: the strings sa-skill-help.js needs — a JSON data
@@ -498,8 +422,12 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
     const SA_USER_ID = '<%= user && user.id ? user.id : "0" %>';
     // The REAL campaign id, so an offline draft can state which campaign it
     // belongs to and the server can refuse to re-file it into a later one.
-    const SA_CYCLE_ID = '<%= typeof cycle !== "undefined" && cycle && cycle.id ? cycle.id : "" %>';
+    const SA_CYCLE_ID = <%- JSON.stringify(typeof cycle !== "undefined" && cycle && cycle.id != null ? String(cycle.id) : null) %>;
+    // A read-only page (locked campaign): no autosave, no save, no submit.
+    const SA_FORM = document.getElementById('selfAssessmentForm');
+    const SA_RO = !!(SA_FORM && SA_FORM.dataset.readonly);
     const SA_I18N = {
+        range: <%- JSON.stringify(__('employee:sa_estimate_range', { lo: '%lo%', hi: '%hi%' })) %>,
         stillZero: <%- JSON.stringify(__('employee:sa_still_zero')) %>,
         allRated: <%- JSON.stringify(__('employee:sa_all_rated')) %>,
         draftSaved: <%- JSON.stringify(__('employee:sa_toast_draft_saved')) %>,
@@ -546,15 +474,14 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
     const confirmBox = document.getElementById('saConfirm');
     const autosaveEl = document.getElementById('saAutosave');
 
+    // The app-wide toast (public/js/ui-feedback.js): one component, an icon and
+    // a spoken kind, an error that stays until it is dismissed.
     function toast(msg, type) {
-        const c = document.getElementById('toastContainer');
-        const t = document.createElement('div');
-        t.className = 'toast toast-' + (type || 'info');
-        t.textContent = msg;
-        c.appendChild(t);
-        requestAnimationFrame(() => t.classList.add('show'));
-        setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, type === 'error' ? 5000 : 3000);
+        if (typeof window.toast === 'function') window.toast(msg, type || 'info');
     }
+    // Filters and tools are folded on a phone, open on a wide screen.
+    const toolsWrap = document.getElementById('saToolsWrap');
+    if (toolsWrap && window.matchMedia && window.matchMedia('(min-width: 780px)').matches) toolsWrap.open = true;
 
     // "Answered" = the person made a deliberate choice, INCLUDING a considered "0 — None".
     // Seeded server-side from whether a level was ever saved (null = never rated), and set
@@ -582,10 +509,12 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
         fillEl.style.width = total ? Math.round((rated / total) * 100) + '%' : '0%';
         zeroEl.textContent = zeros ? ' · ' + zeros + ' ' + SA_I18N.stillZero : ' · ' + SA_I18N.allRated;
 
-        // Time estimate: ~8s per remaining skill, floor of 1 minute.
-        // The server rendered the same figure; JS only keeps it live while rating.
+        // Time estimate: 15 to 20 s per remaining skill, floor of 1 minute.
+        // The server rendered the same range; JS only keeps it live while rating.
+        const lo = Math.max(1, Math.round((zeros * 15) / 60));
+        const hi = Math.max(lo, Math.round((zeros * 20) / 60));
         document.getElementById('saEstimate').textContent =
-            String(Math.max(1, Math.round((zeros * 8) / 60)));
+            lo === hi ? String(lo) : SA_I18N.range.replace('%lo%', String(lo)).replace('%hi%', String(hi));
 
         // Per-section progress + completion state.
         document.querySelectorAll('[data-section]').forEach((sec) => {
@@ -664,8 +593,12 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
         row.classList.add('sa-focus');
         const sec = row.closest('[data-section]');
         if (sec && !sec.open) sec.open = true;
+        // Where the five buttons replace the list, focus them.
+        const seg = segActive() ? row.querySelector('.sa-seg') : null;
+        const segBtn = seg && (seg.querySelector('.sa-seg-b[aria-checked="true"]') || seg.querySelector('.sa-seg-b'));
         const sel = row.querySelector('.self-rating-select');
-        if (sel) sel.focus({ preventScroll: true });
+        if (segBtn) segBtn.focus({ preventScroll: true });
+        else if (sel) sel.focus({ preventScroll: true });
         // scrollIntoView({block:'center'}) centred the row in the VIEWPORT, and the
         // sticky #saBar (top: --topbar-height) covers its upper part: on a short or
         // narrow viewport the centred row — and the <select> that now holds the
@@ -674,10 +607,16 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
         // the target is computed: the row is centred where there is room (1280x800:
         // identical to before), otherwise it sits 8 px below the bar. One scroll,
         // no motion added; smooth only when the person has not asked for less.
+        // On a phone the bar sits at the BOTTOM (thumb zone): it then covers the
+        // bottom of the screen, not the top.
         const bar = document.getElementById('saBar');
-        const covered = bar ? (parseFloat(getComputedStyle(bar).top) || 0) + bar.offsetHeight : 0;
+        const barAtBottom = !!(bar && getComputedStyle(bar).position === 'fixed');
+        const covered = bar && !barAtBottom ? (parseFloat(getComputedStyle(bar).top) || 0) + bar.offsetHeight : 0;
         const r = row.getBoundingClientRect();
-        const rowTop = Math.max((window.innerHeight - r.height) / 2, covered + 8);
+        const room = window.innerHeight - (barAtBottom ? bar.offsetHeight : 0);
+        const rowTop = barAtBottom
+            ? Math.max(56, Math.min((room - r.height) / 2, room - r.height - 8))
+            : Math.max((window.innerHeight - r.height) / 2, covered + 8);
         const reduce = !!(window.MOTION && window.MOTION.reduce);
         window.scrollTo({ top: Math.max(0, window.scrollY + r.top - rowTop), behavior: reduce ? 'auto' : 'smooth' });
     }
@@ -712,7 +651,17 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
         if (/^(INPUT|TEXTAREA)$/.test(tag) || (e.target && e.target.isContentEditable)) return;
         // Don't hijack keys while a button/link (toolbar, filter chip, "Next unrated")
         // is focused — a digit there must not silently rate a background row.
-        if (tag === 'BUTTON' || tag === 'A') return;
+        // The five level buttons of a row ARE the rating control: 0-4 and J/K keep
+        // working on them (the same keyboard model as the list).
+        const onSeg = tag === 'BUTTON' && e.target.classList.contains('sa-seg-b');
+        if ((tag === 'BUTTON' && !onSeg) || tag === 'A') return;
+        if (onSeg && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            // radiogroup arrows: move between the five levels of THIS row
+            const btns = Array.from(e.target.parentElement.querySelectorAll('.sa-seg-b'));
+            const i = btns.indexOf(e.target) + (e.key === 'ArrowRight' ? 1 : -1);
+            if (btns[i]) { e.preventDefault(); btns[i].focus(); }
+            return;
+        }
         // A focused native <select> (rows auto-focus their rating select) must keep
         // its own keyboard behavior — Arrow/Home/End/Space change the rating for
         // keyboard & screen-reader users. Don't hijack those (WCAG 2.1.1). The j/k
@@ -731,7 +680,7 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
             const sel = (tag === 'SELECT' && e.target.classList.contains('self-rating-select'))
                 ? e.target
                 : (tag === 'SELECT' ? null : (ownRow && ownRow.querySelector('.self-rating-select')));
-            if (!sel) return;
+            if (!sel || sel.disabled) return; // a locked row / read-only page is never rated
             e.preventDefault();
             sel.value = e.key;
             sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -757,10 +706,63 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
         try { localStorage.setItem('saShowCurrent', this.checked ? '1' : '0'); } catch (_) { /* noop */ }
     });
 
-    selects.forEach((s) => s.addEventListener('change', () => { markAnswered(s); updateProgress(); applyFilter(); }));
+    selects.forEach((s) => s.addEventListener('change', () => { markAnswered(s); updateProgress(); applyFilter(); syncSeg(s); }));
 
-    // Persist each rating to the local draft store on change/blur so a network drop
-    // (common on remote sites / mobile) never loses work; sync-indicator.js replays it.
+    // ---- five large 0-4 buttons on phones / touch screens ----
+    // The <select> stays the single source of truth (collect(), autosave, the
+    // keyboard 0-4 / J/K model): a tap sets it and fires the same `change`,
+    // then moves on to the next unrated skill — one tap per skill.
+    function syncSeg(s) {
+        const seg = document.querySelector('.sa-seg[data-seg-for="' + s.dataset.skillId + '"]');
+        if (!seg) return;
+        seg.querySelectorAll('.sa-seg-b').forEach((b) => {
+            const on = s.dataset.rated === '1' && b.dataset.v === s.value;
+            b.setAttribute('aria-checked', on ? 'true' : 'false');
+            b.tabIndex = on ? 0 : -1;
+        });
+        if (!seg.querySelector('.sa-seg-b[aria-checked="true"]')) {
+            const first = seg.querySelector('.sa-seg-b');
+            if (first) first.tabIndex = 0;
+        }
+    }
+    document.body.classList.add('sa-seg-js');
+    document.querySelectorAll('.sa-seg').forEach((seg) => { seg.hidden = false; });
+    document.querySelectorAll('.sa-note-add').forEach((b) => { b.hidden = false; });
+    function segActive() {
+        const any = document.querySelector('.sa-seg');
+        return !!(any && any.offsetParent !== null);
+    }
+    document.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('.sa-seg-b') : null;
+        if (btn) {
+            const sel = document.getElementById('sa-rate-' + btn.parentElement.dataset.segFor);
+            if (!sel || sel.disabled || btn.disabled) return;
+            sel.value = btn.dataset.v;
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            // auto-advance (as with the keyboard): the next unrated skill
+            const nextBtn = document.getElementById('saNextUnrated');
+            if (nextBtn && selects.some((x) => !isRated(x))) nextBtn.click();
+            return;
+        }
+        const add = e.target && e.target.closest ? e.target.closest('.sa-note-add') : null;
+        if (add) {
+            const row = add.closest('tr');
+            const ta = row && row.querySelector('textarea');
+            if (!ta) return;
+            const open = !ta.classList.contains('sa-note-open');
+            ta.classList.toggle('sa-note-open', open);
+            add.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) ta.focus();
+        }
+    });
+
+    // Persist a rating to the local draft store so a network drop (common on
+    // remote sites / mobile) never loses work; sync-indicator.js replays it.
+    // ONLY work that could not reach the server is queued on the device — while
+    // offline, after a failed save, or when the page is left with a save still
+    // pending. A rating the server accepted leaves no local copy (IndexedDB is
+    // readable by the next user of a shared device).
+    const dirty = new Set();
     function cacheDraft(select) {
         if (!window.AppDraftStore) return;
         const row = select.closest('tr');
@@ -774,6 +776,21 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
             });
         } catch (_) { /* best-effort; IndexedDB may be unavailable */ }
     }
+    function queueDirty() {
+        dirty.forEach((s) => cacheDraft(s));
+    }
+    function forgetSaved(sentSkillIds, skipped) {
+        if (!window.AppDraftStore || !window.AppDraftStore.markSyncedFor) return;
+        const refused = new Set((skipped || []).map((x) => String(x && x.skillId)));
+        sentSkillIds.forEach((skillId) => {
+            if (refused.has(String(skillId))) return;
+            window.AppDraftStore.markSyncedFor({ userId: SA_USER_ID, cycleId: SA_CYCLE_ID, skillId })
+                .catch(() => { /* store unavailable */ });
+        });
+        selects.forEach((s) => { if (!refused.has(String(s.dataset.skillId))) dirty.delete(s); });
+    }
+    // Leaving the page with a change not yet sent: keep it on the device.
+    window.addEventListener('pagehide', () => { if (dirty.size) queueDirty(); });
 
     function collect() {
         // Only send skills the employee actually rated. A never-touched <select>
@@ -794,14 +811,17 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
 
     async function post(url, okMsg, opts) {
         const silent = opts && opts.silent;
+        const sent = collect();
         try {
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ assessments: collect() }),
+                body: JSON.stringify({ assessments: sent }),
             });
             const result = await res.json().catch(() => ({}));
             if (res.ok && result.success) {
+                // The server holds these now: no copy stays on the device.
+                forgetSaved(sent.map((a) => a.skillId), result.skipped);
                 // A 200 with a non-empty `skipped` list is a PARTIAL save: the server
                 // declined those rows (already submitted/approved, or a closed
                 // campaign). Reporting a plain success over them is the same lie as
@@ -822,9 +842,13 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
                 // decides; nobody is told their work is safe when it is not.
                 return { ok: true, skipped };
             }
+            // A refusal (4xx) is not a network problem: replaying it would be
+            // refused again. A server error is queued for the replay.
+            if (res.status >= 500) queueDirty();
             if (!silent) toast(SA_I18N.errPrefix + errMessage(result, res.status), 'error');
             return { ok: false, skipped: [] };
         } catch (e) {
+            queueDirty(); // the save did not reach the server: keep it on the device
             if (!silent) toast(SA_I18N.errNetwork, 'error');
             return { ok: false, skipped: [] };
         }
@@ -886,13 +910,22 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
         renderAutosave('pending');
         autosaveTimer = setTimeout(runAutosave, 2500);
     }
-    selects.forEach((s) => {
-        s.addEventListener('change', () => { cacheDraft(s); scheduleAutosave(); });
+    // A change is queued on the device only while offline; online, the
+    // autosave sends it and a failure queues it (post() above).
+    function noteChange(s) {
+        dirty.add(s);
+        if (!navigator.onLine) cacheDraft(s);
+        scheduleAutosave();
+    }
+    // A read-only page never queues, autosaves or sends.
+    if (!SA_RO) selects.forEach((s) => {
+        s.addEventListener('change', () => noteChange(s));
         const row = s.closest('tr');
         const ta = row ? row.querySelector('textarea') : null;
-        if (ta) ta.addEventListener('blur', () => { cacheDraft(s); scheduleAutosave(); });
+        if (ta) ta.addEventListener('blur', () => noteChange(s));
     });
 
+    if (!SA_RO) {
     document.getElementById('saveDraftBtn').addEventListener('click', function () {
         this.disabled = true;
         post('/employee/self-assessment/save-draft', SA_I18N.draftSaved).finally(() => { this.disabled = false; });
@@ -917,6 +950,7 @@ textarea.sa-locked{cursor:default;background:var(--bg-subtle,#f8fafc)}
         const r = await post('/employee/self-assessment/submit', SA_I18N.submitted);
         if (!r.ok || r.skipped.length) { this.disabled = false; } else { confirmBox.hidden = true; }
     });
+    } // !SA_RO
 
     updateProgress();
     applyFilter();

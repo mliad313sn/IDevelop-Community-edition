@@ -42,7 +42,8 @@
     <%= __('admin:lc_help') %>
 </div>
 
-<% if (!home) { %>
+<%# Only when people really have no operating country (a site without a country, no fallback). %>
+<% if (!home && kpi && Number(kpi.noCountry) > 0) { %>
     <div class="card" style="padding:14px 18px;border-left:3px solid var(--amber,#F5A623);margin-bottom:1.25rem;">
         <i class="fas fa-triangle-exclamation" aria-hidden="true" style="color:var(--amber,#F5A623);"></i>
         <%= __('admin:lc_no_home_country') %> <a href="/app-settings"><%= __('admin:lc_open_settings') %></a>
@@ -67,9 +68,13 @@
                     <% (typeof byCountry !== 'undefined' ? byCountry : []).forEach(function(r){ %>
                         <tr>
                             <td><strong><%= r.name %></strong></td>
+                            <% if (r.masked) { %>
+                            <td colspan="3" class="lc-muted"><%= __(r.masked === 'small' ? 'admin:lc_masked_small' : 'admin:lc_masked_complement') %></td>
+                            <% } else { %>
                             <td style="text-align:center;"><%= r.headcount %></td>
                             <td><%- natBar(r.nationals, r.expats) %></td>
                             <td style="text-align:center;<%= r.expats>0?'color:var(--amber-text);font-weight:600;':'' %>"><%= r.expats %></td>
+                            <% } %>
                         </tr>
                     <% }); %>
                 </tbody>
@@ -85,9 +90,13 @@
                     <% (byDepartment||[]).forEach(function(r){ %>
                         <tr>
                             <td><strong><%= r.name %></strong></td>
+                            <% if (r.masked) { %>
+                            <td colspan="3" class="lc-muted"><%= __(r.masked === 'small' ? 'admin:lc_masked_small' : 'admin:lc_masked_complement') %></td>
+                            <% } else { %>
                             <td style="text-align:center;"><%= r.headcount %></td>
                             <td><%- natBar(r.nationals, r.expats) %></td>
                             <td style="text-align:center;<%= r.expats>0?'color:var(--amber-text);font-weight:600;':'' %>"><%= r.expats %></td>
+                            <% } %>
                         </tr>
                     <% }); %>
                 </tbody>
@@ -103,9 +112,13 @@
                     <% (byFamily||[]).forEach(function(r){ %>
                         <tr>
                             <td><strong><%= r.name %></strong></td>
+                            <% if (r.masked) { %>
+                            <td colspan="3" class="lc-muted"><%= __(r.masked === 'small' ? 'admin:lc_masked_small' : 'admin:lc_masked_complement') %></td>
+                            <% } else { %>
                             <td style="text-align:center;"><%= r.headcount %></td>
                             <td><%- natBar(r.nationals, r.expats) %></td>
                             <td style="text-align:center;<%= r.expats>0?'color:var(--amber-text);font-weight:600;':'' %>"><%= r.expats %></td>
+                            <% } %>
                         </tr>
                     <% }); %>
                 </tbody>
@@ -121,9 +134,13 @@
                     <% (bySite||[]).forEach(function(r){ %>
                         <tr>
                             <td><strong><%= r.name %></strong></td>
+                            <% if (r.masked) { %>
+                            <td colspan="3" class="lc-muted"><%= __(r.masked === 'small' ? 'admin:lc_masked_small' : 'admin:lc_masked_complement') %></td>
+                            <% } else { %>
                             <td style="text-align:center;"><%= r.headcount %></td>
                             <td><%- natBar(r.nationals, r.expats) %></td>
                             <td style="text-align:center;"><%= r.expats %></td>
+                            <% } %>
                         </tr>
                     <% }); %>
                 </tbody>
@@ -414,8 +431,8 @@
 .lc-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .lc-bar { position:relative; height:18px; background:var(--bg-subtle); border-radius:6px; overflow:hidden; min-width:120px; }
 .lc-bar-fill { height:100%; } .lc-bar-fill.fit-good { background:var(--emerald,#2DD4A0); } .lc-bar-fill.fit-mid { background:var(--amber,#F5A623); } .lc-bar-fill.fit-low { background:var(--red,#F06060); }
-.lc-bar-label { position:absolute; top:0; left:8px; line-height:18px; font-size:.72rem; font-weight:600; color:var(--text-primary); }
-.btn-xs { padding:2px 9px; font-size:.72rem; border-radius:6px; }
+.lc-bar-label { position:absolute; top:0; left:8px; line-height:18px; font-size:.75rem; font-weight:600; color:var(--text-primary); }
+.btn-xs { padding:2px 9px; font-size:.75rem; border-radius:6px; }
 .lc-tabs a.tab { text-decoration:none; }
 .lc-notice { padding:14px 18px; margin-bottom:1rem; }
 .lc-notice-error { border-left:3px solid var(--red,#F06060); }

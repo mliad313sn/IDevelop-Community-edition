@@ -24,7 +24,7 @@ const val = function (k) { return d[k] != null ? String(d[k]) : (k === 'opensAt'
   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
   <div class="form-row">
     <div class="form-group">
-      <label for="cyc-code"><%= __('admin:cyc_th_code') %> *</label>
+      <label for="cyc-code" class="required"><%= __('admin:cyc_th_code') %></label>
       <input type="text" id="cyc-code" name="code" class="form-control" required maxlength="40" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" value="<%= val('code') %>" placeholder="<%= __('admin:cyc_code_ph') %>">
       <small class="text-muted"><%= __('admin:cyc_code_hint') %></small>
     </div>
@@ -35,11 +35,11 @@ const val = function (k) { return d[k] != null ? String(d[k]) : (k === 'opensAt'
   </div>
   <div class="form-row">
     <div class="form-group">
-      <label for="cyc-opens"><%= __('admin:cyc_th_opens') %> *</label>
+      <label for="cyc-opens" class="required"><%= __('admin:cyc_th_opens') %></label>
       <input type="date" id="cyc-opens" name="opensAt" class="form-control" required value="<%= val('opensAt') %>">
     </div>
     <div class="form-group">
-      <label for="cyc-closes"><%= __('admin:cyc_th_closes') %> *</label>
+      <label for="cyc-closes" class="required"><%= __('admin:cyc_th_closes') %></label>
       <input type="date" id="cyc-closes" name="closesAt" class="form-control" required value="<%= val('closesAt') %>">
       <small class="text-muted"><%= __('admin:cyc_closes_hint') %></small>
     </div>

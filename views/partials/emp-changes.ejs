@@ -1,0 +1,44 @@
+<%#
+  « What changed since… » for the signed-in person (4.0.0 port, wave 5).
+  Locals: chg = EmployeeHomeService.changesSince (non-null).
+  Counts and the person's OWN skills only — no ranking, no other name. A count
+  is printed only when it was read and is above 0; a source that could not be
+  read prints nothing (never a 0). Only validated levels count.
+%><%
+  const _c = chg || {};
+  const _a = _c.anchor || {};
+  const _d = (v) => (v ? (typeof fmtDate === 'function' ? fmtDate(v) : String(v).slice(0, 10)) : '');
+  const _title = _a.kind === 'digest'
+      ? __('employee:chg_title_digest', { date: _d(_a.date) })
+      : __('employee:chg_title_window', { days: _a.days || 90 });
+  const _lines = [];
+  if (_c.gapsClosed > 0) _lines.push(__('employee:chg_gaps_closed', { count: _c.gapsClosed }));
+  if (_c.actionsDone > 0) _lines.push(__('employee:chg_actions', { count: _c.actionsDone }));
+  if (_c.trainingsDone > 0) _lines.push(__('employee:chg_trainings', { count: _c.trainingsDone }));
+  const _ups = Array.isArray(_c.uplifts) ? _c.uplifts : [];
+  const _more = Math.max(0, (Number(_c.upliftsTotal) || 0) - _ups.length);
+%>
+<section class="card emp-changes" id="empChanges" aria-labelledby="empChgH">
+    <h2 class="emp-section-h" id="empChgH"><span><i class="fas fa-arrow-trend-up" aria-hidden="true"></i> <%= _title %></span></h2>
+    <div class="emp-changes-body">
+    <% if (!_ups.length && !_lines.length) { %>
+        <p class="emp-changes-since"><%= __('employee:chg_none') %></p>
+    <% } else { %>
+        <% if (_lines.length) { %>
+        <ul class="emp-changes-counts">
+            <% _lines.forEach(function (l) { %><li><span aria-hidden="true">✓</span> <%= l %></li><% }); %>
+        </ul>
+        <% } %>
+        <% if (_ups.length) { %>
+        <ul class="emp-changes-ups" aria-label="<%= __('employee:chg_ups_aria') %>">
+            <% _ups.forEach(function (u) { %>
+            <li><span aria-hidden="true">▲</span>
+                <%= u.from == null ? __('employee:chg_uplift_first', { skill: u.skillName || '—', to: u.to }) : __('employee:chg_uplift', { skill: u.skillName || '—', from: u.from, to: u.to }) %><% if (u.source && u.source !== 'other') { %> <span class="emp-changes-src"><%= __('employee:chg_src_' + u.source) %></span><% } %></li>
+            <% }); %>
+            <% if (_more) { %><li class="emp-changes-src"><%= __('employee:chg_more', { count: _more }) %></li><% } %>
+        </ul>
+        <% } %>
+    <% } %>
+    <p class="emp-changes-src"><%= __('employee:chg_validated_note') %></p>
+    </div>
+</section>

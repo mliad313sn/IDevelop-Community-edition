@@ -8,9 +8,12 @@
         <% } %>
         <% if (typeof can !== 'function' || can('manage_app_settings')) { %>
         <%# the shared confirmation dialog, not the browser's native confirm. %>
+        <%# The typed word is checked by the server too (AppSettingsController.reset). %>
         <form action="/app-settings/reset" method="POST" style="display: inline;"
-            data-confirm="<%= __('admin:reset_settings_confirm') %>" data-confirm-danger>
+            data-confirm="<%= __('admin:reset_settings_confirm') %>" data-confirm-danger data-settings-reset>
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label for="settings-reset-word"><%= __('admin:reset_settings_word_label') %></label>
+            <input type="text" id="settings-reset-word" name="confirm" required autocomplete="off" spellcheck="false" maxlength="32" placeholder="<%= __('admin:reset_settings_word') %>">
             <button type="submit" class="btn btn-secondary"><i class="fas fa-arrows-rotate" aria-hidden="true"></i> <%= __('admin:reset_to_defaults') %></button>
         </form>
         <% } %>
@@ -18,6 +21,11 @@
 </div>
 <% if (typeof can === 'function' && !can('manage_app_settings')) { %>
 <div class="alert alert-info" role="status" style="margin:0 0 1rem;padding:.6rem .9rem;border-radius:8px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.35);font-size:.88rem;"><i class="fas fa-circle-info" aria-hidden="true"></i> <%= __('admin:read_only_notice') %></div>
+<% } %>
+
+<%# Security-class settings are SuperAdmin-only (refused server-side too). %>
+<% if (user && user.role !== 'superadmin' && (settings || []).some(function (s) { return s.locked; })) { %>
+<div class="card hz-callout hz-sec-note" role="status" data-settings-locked-notice><p><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:set_security_notice') %></p></div>
 <% } %>
 
 <div class="help-text" style="margin-bottom: 2rem;">
@@ -46,15 +54,30 @@
     // blank that reads like a missing value.
     const modifiedCell = (s) => (s.updatedAt ? _fdt(s.updatedAt) + ' · ' + (s.updatedByUsername || __('admin:set_modified_by_system')) : __('admin:set_never_modified'));
     const _se = (typeof settingError !== 'undefined' && settingError) ? settingError : null;
-    const refusedValueOf = (s) => (_se && Number(_se.id) === Number(s.id) ? String(_se.value == null ? '' : _se.value) : s.settingValue); %>
+    const refusedValueOf = (s) => (_se && Number(_se.id) === Number(s.id) ? String(_se.value == null ? '' : _se.value) : s.settingValue);
+    // The SENSITIVE switches (nationality = the localContent module, shared
+    // computer, mandatory MFA) come first, in a band of their own: each row says
+    // what ON / OFF does, and a change of state asks for confirmation.
+    const _sensitiveKeys = ['featureLocalContent', 'kioskModeEnabled', 'mfaRequiredForPrivileged', 'mfaRequiredForManagers'];
+    const _isOn = (v) => v === 'true' || v === '1';
+    const _groups = [];
+    const _sensRows = _sensitiveKeys.map(function (k) { return (settings || []).find(function (x) { return x.settingKey === k && !(x.rule && x.rule.readOnly); }); }).filter(Boolean);
+    if (_sensRows.length) _groups.push({ key: 'sensitive', name: __('admin:set_sensitive_band_title'), icon: 'fa-triangle-exclamation', rows: _sensRows, sensitive: true });
+    Object.keys(categories).forEach(function (c) {
+        const rows = (settingsByCategory[c] || []).filter(function (x) { return _sensitiveKeys.indexOf(x.settingKey) === -1; });
+        if (rows.length) _groups.push({ key: c, name: categories[c].name, icon: categories[c].icon, rows: rows });
+    }); %>
 
-    <% Object.keys(categories).forEach(category=> { %>
-        <% if (settingsByCategory[category] && settingsByCategory[category].length> 0) { %>
-            <div class="dashboard-section">
+    <%# « Sur cette page »: the settings page is long; one link per group. %>
+    <%- include('../../partials/page-toc', { tocId: 'settingsToc', tocItems: _groups.map(function (g) { return { id: 'set-' + g.key, label: g.name, icon: g.icon }; }) }) %>
+
+    <% _groups.forEach(function (g) { %>
+            <div class="dashboard-section<%= g.sensitive ? ' settings-sensitive-band' : '' %>" id="set-<%= g.key %>"<% if (g.sensitive) { %> data-sensitive-band<% } %>>
                 <h2>
-                    <i class="fas <%= categories[category].icon %>" aria-hidden="true"></i>
-                        <%= categories[category].name %>
+                    <i class="fas <%= g.icon %>" aria-hidden="true"></i>
+                        <%= g.name %>
                 </h2>
+                <% if (g.sensitive) { %><p class="help-text"><%= __('admin:set_sensitive_band_intro') %></p><% } %>
 
                 <div class="table-wrapper">
                     <table class="table">
@@ -68,18 +91,20 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <% settingsByCategory[category].forEach(function(setting) { const nm = settingName(setting.settingKey); %>
-                                <tr>
+                            <% g.rows.forEach(function(setting) { const nm = settingName(setting.settingKey); %>
+                                <tr<% if (g.sensitive) { %> class="setting setting--sensitive" data-sensitive="<%= setting.settingKey %>"<% } %>>
                                     <td>
                                         <strong><%= nm || setting.settingKey %></strong>
+                                        <% if (g.sensitive) { %> <%- include('../../partials/sensitive-chip') %><% } %>
                                         <% if (nm) { %><br><small style="color:var(--text-muted,#94a3b8)"><code><%= setting.settingKey %></code></small><% } %>
                                         <% if (setting.rule && setting.rule.restart) { %> <span class="badge badge-warning" title="<%= __('admin:set_restart_required_hint') %>"><%= __('admin:set_restart_required') %></span><% } %>
+                                        <% if (g.sensitive) { %><p class="setting-consequence"><%= __('admin:set_sensitive_consequence_' + setting.settingKey) %></p><% } %>
                                     </td>
                                     <td>
                                         <% if (setting.settingType==='boolean' ) { %>
                                             <span
-                                                class="badge <%= setting.settingValue === 'true' ? 'badge-success' : 'badge-secondary' %>">
-                                                <%= setting.settingValue==='true' ? __('admin:enabled') : __('admin:disabled') %>
+                                                class="badge <%= _isOn(setting.settingValue) ? 'badge-success' : 'badge-secondary' %>">
+                                                <%= _isOn(setting.settingValue) ? __('admin:enabled') : __('admin:disabled') %>
                                             </span>
                                             <% } else if (isSecretKey(setting.settingKey)) { %>
                                                 <code><%= setting.settingValue ? '••••••••' : __('admin:not_set') %></code>
@@ -96,9 +121,14 @@
                                     <td>
                                         <% const editPayload = Object.assign({}, isSecretKey(setting.settingKey)
                                               ? Object.assign({}, setting, { settingValue: '' })
-                                              : setting, { rule: setting.rule || {} }); %>
-                                        <button class="btn btn-sm"
-                                            onclick='editSetting(<%= JSON.stringify(editPayload) %>)'><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                              : setting, { rule: setting.rule || {}, sensitive: !!g.sensitive }); %>
+                                        <% if (setting.locked) { %>
+                                            <%# Security-class: SuperAdmin only (AppSettingsController refuses the write too). %>
+                                            <span class="badge badge-secondary hz-locked-badge" title="<%= __('admin:set_security_locked_hint') %>" data-setting-locked><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:set_security_locked_badge') %></span>
+                                        <% } else { %>
+                                        <button type="button" class="btn btn-sm"
+                                            data-on-click="editSetting" data-args="<%= JSON.stringify([editPayload]) %>"><i class="fas fa-pen" aria-hidden="true"></i> <%= __('admin:edit') %></button>
+                                        <% } %>
                                     </td>
                                 </tr>
                                 <% }); %>
@@ -106,7 +136,6 @@
                     </table>
                 </div>
             </div>
-            <% } %>
                 <% }); %>
 
                     <% if (typeof jobState !== 'undefined' && jobState && jobState.length) { %>
@@ -161,6 +190,13 @@
                                 <i class="fas fa-paper-plane" aria-hidden="true"></i> <%= __('admin:send_test_email') %>
                             </button>
                         </form>
+                        <%# The one named unencrypted SMTP relay: warning + SuperAdmin form. %>
+                        <%- include('../../partials/smtp-plaintext-relay', {
+                            smtpRelay: (typeof smtpRelay !== 'undefined') ? smtpRelay : null,
+                            showForm: true,
+                            isSuperAdmin: (typeof isSuperAdmin !== 'undefined') ? isSuperAdmin : false,
+                            csrfToken: csrfToken
+                        }) %>
                     </div>
 
                     <% if (typeof can !== 'function' || can('manage_app_settings')) { %>
@@ -181,7 +217,7 @@
                             </div>
                         </div>
                         <form id="brandingForm" action="/app-settings/branding" method="POST" enctype="multipart/form-data"
-                              style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;align-items:end;">
+                              style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px, 100%), 1fr));gap:14px;align-items:end;">
                             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                             <div class="form-group" style="margin:0;">
                                 <label for="brandAppName"><%= __('admin:brand_name') %></label>
@@ -193,12 +229,12 @@
                             </div>
                             <div class="form-group" style="margin:0;">
                                 <label for="brandAccentColor"><%= __('admin:brand_accent') %></label>
-                                <div style="display:flex;gap:8px;align-items:center;">
-                                    <input type="color" id="brandAccentPick" aria-label="<%= __('admin:brand_accent') %>" value="<%= _b.accentColor || '#7C6CFF' %>" style="width:44px;height:38px;padding:2px;border:1px solid var(--border-light);border-radius:8px;background:transparent;"
-                                        oninput="document.getElementById('brandAccentColor').value=this.value">
-                                    <input type="text" id="brandAccentColor" name="brandAccentColor" value="<%= _b.accentColor || '' %>" placeholder="#7C6CFF" pattern="#?[0-9a-fA-F]{6}" class="form-control" style="max-width:120px;">
+                                <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                                    <input type="color" id="brandAccentPick" aria-label="<%= __('admin:brand_accent') %>" value="<%= _b.accentColor || '#7C6CFF' %>" style="width:44px;height:38px;padding:2px;border:1px solid var(--border-light);border-radius:8px;background:transparent;">
+                                    <input type="text" id="brandAccentColor" name="brandAccentColor" value="<%= _b.accentColor || '' %>" placeholder="#7C6CFF" pattern="#?[0-9a-fA-F]{6}" maxlength="7" aria-describedby="brandAccentHint" class="form-control" style="max-width:120px;">
                                     <label style="font-size:.8rem;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" name="clearAccent" value="1"> <%= __('admin:brand_clear') %></label>
                                 </div>
+                                <small id="brandAccentHint" style="color:var(--text-secondary);"><%= __('admin:brand_accent_hint') %></small>
                             </div>
                             <div class="form-group" style="margin:0;">
                                 <label for="logoFile"><%= __('admin:brand_logo') %></label>
@@ -285,6 +321,12 @@
                     <!-- Test Copilot LLM Connection -->
                     <div class="dashboard-section">
                         <h2><i class="fas fa-robot" aria-hidden="true"></i> <%= __('admin:copilot_test_title') %></h2>
+                        <%# Copilot egress gate: blocked reason, private-host allow-list, transfer basis. %>
+                        <%- include('../../partials/copilot-egress-gate', {
+                            copilotPolicy: (typeof copilotPolicy !== 'undefined') ? copilotPolicy : null,
+                            isSuperAdmin: (typeof isSuperAdmin !== 'undefined') ? isSuperAdmin : false,
+                            csrfToken: csrfToken
+                        }) %>
                         <div class="help-text" style="margin-bottom: 1rem;">
                             <%= __('admin:copilot_test_help') %>
                         </div>
@@ -360,7 +402,7 @@
                         <div class="modal-content">
                             <div class="modal-header">
                                 <h2><%= __('admin:edit_setting') %></h2>
-                                <button type="button" class="close" aria-label="<%= __('common:close') %>" onclick="hideModal('editSettingModal')">&times;</button>
+                                <button type="button" class="close" aria-label="<%= __('common:close') %>" data-on-click="hideModal" data-args='["editSettingModal"]'>&times;</button>
                             </div>
                             <div class="modal-body">
                                 <form id="editSettingForm" method="POST">
@@ -394,7 +436,7 @@
                                     <div class="modal-footer">
                                         <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('admin:save_changes') %></button>
                                         <button type="button" class="btn btn-secondary"
-                                            onclick="hideModal('editSettingModal')"><%= __('admin:cancel') %></button>
+                                            data-on-click="hideModal" data-args='["editSettingModal"]'><%= __('admin:cancel') %></button>
                                     </div>
                                 </form>
                             </div>
@@ -414,6 +456,7 @@
                             email: <%- JSON.stringify(__('admin:set_hint_email')) %>,
                             host: <%- JSON.stringify(__('admin:set_hint_host')) %>,
                             domains: <%- JSON.stringify(__('admin:set_hint_domains')) %>,
+                            cidrs: <%- JSON.stringify(__('admin:set_hint_cidrs')) %>,
                             optional: <%- JSON.stringify(__('admin:set_hint_optional')) %>
                         };
                         function ruleText(rule) {
@@ -428,9 +471,13 @@
                             if (rule.kind === 'email') parts.push(RULE_T.email);
                             if (rule.kind === 'host') parts.push(RULE_T.host);
                             if (rule.kind === 'domains') parts.push(RULE_T.domains);
+                            if (rule.kind === 'cidrs') parts.push(RULE_T.cidrs);
                             if (rule.optional) parts.push(RULE_T.optional);
                             return parts.join(' · ');
                         }
+                        // The sensitive switches: consequence, verb-first confirm labels, name.
+                        const SENS = <%- include('../../partials/json-script', { v: _sensitiveKeys.reduce(function (o, k) { o[k] = { consequence: __('admin:set_sensitive_consequence_' + k), on: __('admin:set_sensitive_on_' + k), off: __('admin:set_sensitive_off_' + k), name: settingName(k) || k }; return o; }, {}) }) %>;
+                        const SENS_LC = <%- include('../../partials/json-script', { v: { body: __('admin:set_lc_toggle_confirm'), title: __('admin:set_lc_toggle_confirm_title') } }) %>;
                         function editSetting(setting, error) {
                             document.getElementById('editSettingId').value = setting.id;
                             document.getElementById('editSettingKey').value = setting.settingKey;
@@ -446,6 +493,9 @@
                             const help = document.getElementById('editSettingHelp');
 
                             container.innerHTML = '';
+                            // A sensitive switch confirms a CHANGE of state (armed below).
+                            const _form = document.getElementById('editSettingForm');
+                            ['data-confirm', 'data-confirm-title', 'data-confirm-yes', 'data-confirm-danger'].forEach(function (a) { _form.removeAttribute(a); });
 
                             if (setting.settingType === 'boolean') {
                                 const select = document.createElement('select');
@@ -457,12 +507,30 @@
                                 select.style.padding = '0.75rem 1rem';
                                 select.style.border = '2px solid var(--border)';
                                 select.style.borderRadius = '6px';
+                                // A stored '1' reads ON and '0' reads OFF (the getValue rule).
+                                const wasOn = setting.settingValue === 'true' || setting.settingValue === '1';
                                 select.innerHTML = `
-            <option value="true" ${setting.settingValue === 'true' ? 'selected' : ''}>${<%- JSON.stringify(__('admin:enabled')) %>}</option>
-            <option value="false" ${setting.settingValue === 'false' ? 'selected' : ''}>${<%- JSON.stringify(__('admin:disabled')) %>}</option>
+            <option value="true" ${wasOn ? 'selected' : ''}>${<%- JSON.stringify(__('admin:enabled')) %>}</option>
+            <option value="false" ${wasOn ? '' : 'selected'}>${<%- JSON.stringify(__('admin:disabled')) %>}</option>
         `;
                                 container.appendChild(select);
                                 help.textContent = <%- JSON.stringify(__('admin:boolean_help')) %>;
+                                const _s = setting.sensitive ? SENS[setting.settingKey] : null;
+                                if (_s) {
+                                    const arm = function () {
+                                        const wantOn = select.value === 'true';
+                                        ['data-confirm', 'data-confirm-title', 'data-confirm-yes', 'data-confirm-danger'].forEach(function (a) { _form.removeAttribute(a); });
+                                        if (wantOn === wasOn) return;
+                                        // Nationality ON keeps its legal-basis wording.
+                                        const lc = setting.settingKey === 'featureLocalContent' && wantOn;
+                                        _form.setAttribute('data-confirm', lc ? SENS_LC.body : _s.consequence);
+                                        _form.setAttribute('data-confirm-title', lc ? SENS_LC.title : _s.name);
+                                        _form.setAttribute('data-confirm-yes', wantOn ? _s.on : _s.off);
+                                        if (!wantOn) _form.setAttribute('data-confirm-danger', '');
+                                    };
+                                    select.addEventListener('change', arm);
+                                    arm();
+                                }
                             } else if (setting.settingType === 'number') {
                                 const input = document.createElement('input');
                                 input.type = 'number';
@@ -479,7 +547,7 @@
                                 container.appendChild(input);
                                 help.textContent = <%- JSON.stringify(__('admin:number_help')) %>;
                             } else {
-                                const isSecret = /password|secret|pass$/i.test(setting.settingKey || '');
+                                const isSecret = /password|secret/i.test(setting.settingKey || '') || /pass$/i.test(setting.settingKey || '');
                                 const input = document.createElement('input');
                                 input.type = isSecret ? 'password' : 'text';
                                 input.id = 'editSettingValue';

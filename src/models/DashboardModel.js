@@ -466,8 +466,12 @@ class DashboardModel {
                 -- KPI would read 1/303 = 0.3 % instead of 100 %, and the
                 -- snapshot job would persist that into the trend for good.
                 -- Same rule as readiness_assessed_only.
+                -- A COMPLIANCE %: never rounded UP (utils/displayedValue, safety
+                -- exception). ROUND(…, 1) printed 1 999 of 2 000 critical
+                -- requirements met as "100 %"; FLOOR to the printed decimal keeps
+                -- a single shortfall visible (99.9 %).
                 CASE WHEN SUM(critical_assessed) > 0
-                     THEN ROUND(100.0 * SUM(critical_met) / NULLIF(SUM(critical_assessed), 0), 1)
+                     THEN FLOOR(1000.0 * SUM(critical_met) / NULLIF(SUM(critical_assessed), 0)) / 10
                 END as criticalCompliance,
                 SUM(critical_assessed) as criticalAssessedRequirements,
                 SUM(critical_expected) as criticalExpectedRequirements,
@@ -966,10 +970,13 @@ class DashboardModel {
                             AND rsr.requiredLevel > 0`;
         }
 
+        // Against a requirement the radar plots the CREDITED level
+        // min(level, required) (src/utils/capability.js): no surplus above it.
+        const levelExpr = joinRequired ? 'LEAST(c.level, rsr.requiredLevel)' : 'c.level';
         const sql = `
             SELECT
                 c.domainName,
-                ROUND(AVG(c.level), 2) as avgLevel
+                ROUND(AVG(${levelExpr}), 2) as avgLevel
             FROM v_domain_capability c
             JOIN v_employee_details e ON e.employeeId = c.employeeId
             ${joinRequired}
@@ -1098,7 +1105,9 @@ class DashboardModel {
             `SELECT
                  g.domainId,
                  g.domainName,
-                 ROUND(AVG(CASE WHEN g.isAssessed = 1 THEN g.actualLevel END), 2)   as avgActual,
+                 -- the CREDITED level (src/utils/capability.js): a surplus never
+                 -- lifts a domain above its requirement nor offsets a gap
+                 ROUND(AVG(CASE WHEN g.isAssessed = 1 THEN LEAST(g.actualLevel, g.requiredLevel) END), 2) as avgActual,
                  ROUND(AVG(CASE WHEN g.isAssessed = 1 THEN g.requiredLevel END), 2) as avgRequired,
                  COUNT(DISTINCT CASE WHEN g.isAssessed = 1 THEN g.employeeId END)::int as assessedCount,
                  COUNT(DISTINCT g.skillId)::int                                     as requiredSkillCount,
@@ -1435,7 +1444,7 @@ class DashboardModel {
         const filterClause = this._buildFilterClause(filters, params, 'g');
         const rows = await db.all(
             `SELECT COALESCE(sk.category, 'Technical') AS domainName,
-                    ROUND(AVG(CASE WHEN g.isAssessed = 1 THEN g.actualLevel END), 2)   AS avgActual,
+                    ROUND(AVG(CASE WHEN g.isAssessed = 1 THEN LEAST(g.actualLevel, g.requiredLevel) END), 2) AS avgActual,
                     ROUND(AVG(CASE WHEN g.isAssessed = 1 THEN g.requiredLevel END), 2) AS avgRequired,
                     COUNT(DISTINCT CASE WHEN g.isAssessed = 1 THEN g.employeeId END)::int AS assessedCount,
                     COUNT(DISTINCT g.skillId)::int                                        AS requiredSkillCount,

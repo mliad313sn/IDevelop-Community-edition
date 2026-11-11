@@ -21,6 +21,14 @@
  * Approving, requesting changes and arbitrating stay with the direct
  * supervisor/manager.
  *
+ * 4.0.0 port (wave 2) — the AUTHORITY LADDER (services/AuthorityService). The
+ * facts (the person behind the account, the discriminator, the clearance, the
+ * sub-tree) are now resolved once, by AuthorityService.relation, for every
+ * review service. The rule above is STRICT mode, the default on new installs
+ * and upgrades, and this file still pins it. Only the SuperAdmin setting
+ * `authority.ladder = extended` lets the line above act, as the manager, and
+ * that widening lives in AuthorityService alone.
+ *
  * Two further holes in the same function are pinned here:
  *   - `manager_id` is POLYMORPHIC (employee or admin) and the id spaces overlap.
  *     Without `manager_type`, the employee whose id equalled the ADMIN id
@@ -39,6 +47,8 @@ const ROOT = path.join(__dirname, '..', '..');
 const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
 const SVC = ['src', 'services', 'SelfAssessmentWorkflowService.js'];
 
+const AUTH = () => read('src', 'services', 'AuthorityService.js');
+
 const authority = () => {
     const src = read(...SVC);
     const start = src.indexOf('async resolveAuthority(');
@@ -49,17 +59,14 @@ const authority = () => {
 };
 
 describe('the reviewer scope is the sub-tree, like the list beside it', () => {
-    test('inScope falls back to the transitive governs() test', () => {
-        // Spelled `governs(personId, …)` since the lot "autorité" (2026-09-15):
-        // the sub-tree is resolved for the PERSON acting, which for an
+    test('inScope falls back to the transitive governs() test, for the PERSON acting', () => {
+        // The sub-tree is resolved for the PERSON acting, which for an
         // administration account is `admins.linked_employee_id`, not the admin
-        // row id. Same predicate, same transitivity — the id handed to it is now
-        // the human's, so a supervisor signed in on their admin account keeps
-        // their own sub-tree instead of losing it.
-        expect(authority()).toMatch(/await EmployeeModel\.governs\(personId, employeeId\)/);
-        expect(authority()).toMatch(
-            /const personId = await GovernanceService\.actingPersonId\(user\)/
-        );
+        // row id — in the one resolver every review service shares.
+        expect(AUTH()).toContain('await EmployeeModel.governs(personId, eid)');
+        expect(AUTH()).toContain('await GovernanceService.actingPersonId(user)');
+        expect(authority()).toContain('AuthorityService.relation(user, employee)');
+        expect(authority()).toMatch(/const inScope = Boolean\([\s\S]{0,160}rel\.inLine/);
     });
 
     test('it is the SAME helper the queue is scoped by', () => {
@@ -73,19 +80,13 @@ describe('the reviewer scope is the sub-tree, like the list beside it', () => {
         );
     });
 
-    test('the coaching service, the precedent, still does the same thing', () => {
+    test('the coaching service, the precedent, resolves through the same relation', () => {
         // Named so that if someone "simplifies" the coaching one away, this test
-        // says why it was there.
-        //
-        // Spelled `governs(personId, …)` since the lot "talent" (2026-09-18)
-        // brought coaching into line with this service: the sub-tree is resolved
-        // for the PERSON acting, which for an administration account is
-        // admins.linked_employee_id, not the admin row id. Same predicate, same
-        // transitivity — what is asserted is that coaching still consults the
-        // transitive helper at all, not which variable name holds the id.
+        // says why it was there: coaching reads the same sub-tree, for the same
+        // person, through the same resolver.
         const coaching = read('src', 'services', 'CoachingPlanService.js');
-        expect(coaching).toMatch(/await GovernanceService\.actingPersonId\(user\)/);
-        expect(coaching).toMatch(/await EmployeeModel\.governs\(personId, employeeId\)/);
+        expect(coaching).toContain('AuthorityService.relation(user, employee)');
+        expect(coaching).toMatch(/rel\.inLine/);
     });
 });
 
@@ -96,35 +97,44 @@ describe('the sub-tree grants reading, never acting', () => {
         expect(a).toMatch(/canView,/);
     });
 
-    test('canSupervise and canManage still require the DIRECT link', () => {
+    test('canSupervise and canManage still require the DIRECT link (strict mode)', () => {
         const a = authority();
-        // Re-expressed as the INVARIANT rather than one literal spelling, when
-        // the lot "autorité" split `inScope` (clearance UNION reporting line —
-        // what may be READ) from `inClearance` (admin scopes alone — what a
-        // bounded admin may ACT on). The rule protected here has not moved:
-        //   * the two act-level rights are built from the DIRECT flags
-        //     isSupervisor / isManager, never from the transitive sub-tree;
-        //   * a Viewer never acts;
-        //   * a local admin acts only inside their own clearance.
+        // The INVARIANT, not one literal spelling. The strict half of each
+        // act-level right (today's rule, the default) is built from the DIRECT
+        // flags isSupervisor / isManager, never from the transitive sub-tree; a
+        // Viewer never acts; a local admin acts only inside their clearance.
         const canSupervise = a.slice(
-            a.indexOf('const canSupervise ='),
-            a.indexOf('const canManage =')
+            a.indexOf('const strictSupervise ='),
+            a.indexOf('const strictManage =')
         );
-        const canManage = a.slice(a.indexOf('const canManage ='), a.indexOf('const canView ='));
+        const canManage = a.slice(
+            a.indexOf('const strictManage ='),
+            a.indexOf('const supervise =')
+        );
 
         expect(canSupervise).toMatch(/isSupervisor/);
         expect(canSupervise).toMatch(/isManager/);
         expect(canSupervise).toMatch(/!isViewer/);
         expect(canSupervise).toMatch(/isLocalAdmin && inClearance/);
         // THE line that must never appear here: the sub-tree grants reading only.
-        expect(canSupervise).not.toMatch(/governs|inScope/);
+        expect(canSupervise).not.toMatch(/governs|inScope|inLine|isLineAbove/);
 
         expect(canManage).toMatch(/isManager/);
         expect(canManage).toMatch(/!isViewer/);
         expect(canManage).toMatch(/isLocalAdmin && inClearance/);
         // Managing is narrower than supervising: the supervisor flag is absent.
         expect(canManage).not.toMatch(/isSupervisor/);
-        expect(canManage).not.toMatch(/governs|inScope/);
+        expect(canManage).not.toMatch(/governs|inScope|inLine|isLineAbove/);
+
+        // The rights handed out are the strict ones, plus the ladder ONLY in
+        // extended mode — decided in AuthorityService, never here.
+        expect(a).toMatch(
+            /AuthorityService\.allows\(rel, 'sa\.approve', \{\s*strict: strictSupervise/
+        );
+        expect(a).toMatch(
+            /AuthorityService\.allows\(rel, 'sa\.validate', \{ strict: strictManage \}\)/
+        );
+        expect(AUTH()).toMatch(/rel\.mode === 'extended' && def\.widens !== false/);
     });
 
     test('the read gates use canView, and the write gates do not', () => {
@@ -149,7 +159,11 @@ describe('the sub-tree grants reading, never acting', () => {
 
 describe('manager_id is polymorphic and must be read with its discriminator', () => {
     test('isManager requires manager_type === employee', () => {
-        expect(authority()).toMatch(/employee\.managerType === 'employee'/);
+        expect(AUTH()).toMatch(/employee\.managerType === 'employee'/);
+        expect(AUTH()).toMatch(/employee\.managerType === 'admin'/);
+        expect(authority()).toMatch(
+            /const isManager = Boolean\(rel\.isDirectManager \|\| rel\.isAdminManager\)/
+        );
     });
 
     test('the list-side helper has always required it, and still does', () => {

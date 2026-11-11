@@ -277,6 +277,27 @@ class LifecycleService {
     }
 
     static async onJoiner({ employeeId }) {
+        // K14 « Time to reach the role » (migration 188): a joiner's first role
+        // starts on the arrival's effective date (today when it has none). Set
+        // once, never over a date already captured; a later role change is
+        // stamped by the database trigger.
+        try {
+            await db.runInSavepoint(() =>
+                db.run(
+                    `UPDATE employees
+                    SET role_start_date = COALESCE(
+                        (SELECT le.effective_at::date FROM lifecycle_events le
+                          WHERE le.employee_id = employees.id AND le.kind = 'joiner'
+                            AND le.effective_at IS NOT NULL
+                          ORDER BY le.id DESC LIMIT 1),
+                        CURRENT_DATE)
+                  WHERE id = ? AND role_id IS NOT NULL AND role_start_date IS NULL`,
+                    [employeeId]
+                )
+            );
+        } catch (e) {
+            console.error('[lifecycle] role start date not stamped:', e && e.message);
+        }
         const cycle = await db.get(
             `SELECT id FROM assessment_cycles WHERE status='open' ORDER BY closes_at LIMIT 1`
         );
@@ -307,7 +328,7 @@ class LifecycleService {
         } catch (e) {
             console.error(
                 '[lifecycle] joiner enrolment failed for employee',
-                employeeId,
+                Number(employeeId),
                 e && e.message
             );
         }
@@ -374,7 +395,7 @@ class LifecycleService {
             } catch (e) {
                 console.error(
                     '[lifecycle] mover shell seeding failed for employee',
-                    employeeId,
+                    Number(employeeId),
                     e && e.message
                 );
             }
@@ -406,7 +427,7 @@ class LifecycleService {
             } catch (e) {
                 console.error(
                     '[lifecycle] nationalisation plan flag FAILED for mover',
-                    employeeId,
+                    Number(employeeId),
                     e && e.message
                 );
             }
@@ -643,6 +664,21 @@ class LifecycleService {
              WHERE e.id = ?`,
             [employeeId]
         );
+        // K19 (capability lost to departures): what the leaver takes away, read
+        // AT THE EVENT and before the switch-off below
+        // (ExecutiveKpiService.captureLeaverCapability), then written into the
+        // event's payload. A real departure only. In a savepoint, so a failed
+        // read never aborts the departure: the event then stays « not measured ».
+        let capability = null;
+        if (isDeparture) {
+            try {
+                capability = await db.runInSavepoint(() =>
+                    require('./ExecutiveKpiService').captureLeaverCapability(employeeId)
+                );
+            } catch (_) {
+                capability = null;
+            }
+        }
         await db.run(
             `UPDATE employees SET is_active = false, is_account_active = false WHERE id = ?`,
             [employeeId]
@@ -722,7 +758,7 @@ class LifecycleService {
             // retaining admin access is a standing privilege, not a missed notice.
             console.error(
                 '[lifecycle] leaver admin-account revoke FAILED for employee',
-                employeeId,
+                Number(employeeId),
                 e && e.message
             );
         }
@@ -759,7 +795,7 @@ class LifecycleService {
             } catch (e) {
                 console.error(
                     '[lifecycle] nationalisation plan flag FAILED for employee',
-                    employeeId,
+                    Number(employeeId),
                     e && e.message
                 );
             }
@@ -771,7 +807,7 @@ class LifecycleService {
             } catch (e) {
                 console.error(
                     '[lifecycle] leaver plan closure FAILED for employee',
-                    employeeId,
+                    Number(employeeId),
                     e && e.message
                 );
             }
@@ -809,7 +845,7 @@ class LifecycleService {
             } catch (e) {
                 console.error(
                     '[lifecycle] legal hold carry-over FAILED for employee',
-                    employeeId,
+                    Number(employeeId),
                     e && e.message
                 );
             }
@@ -820,7 +856,7 @@ class LifecycleService {
                     payload = COALESCE(payload, '{}'::jsonb) || jsonb_build_object(
                         'revokedAdminIds', ?::jsonb, 'revokedApiKeyIds', ?::jsonb,
                         'leaverClosed', ?::jsonb, 'reportsToReassign', ?::jsonb,
-                        'leftovers', ?::jsonb)
+                        'leftovers', ?::jsonb, 'capability', ?::jsonb)
              WHERE employee_id = ? AND kind = 'leaver' AND processed_at IS NULL AND ${ACTIONABLE}`,
             [
                 JSON.stringify(revokedAdminIds),
@@ -828,6 +864,7 @@ class LifecycleService {
                 JSON.stringify(leaverClosed),
                 JSON.stringify(orphanedReports.map((r) => r.id)),
                 JSON.stringify(leftovers),
+                JSON.stringify(capability),
                 employeeId,
             ]
         );
@@ -1133,8 +1170,11 @@ class LifecycleService {
         };
         const okrs = await safe(() =>
             db.all(
+                // goals.status CHECK: active | at_risk | done | cancelled. The
+                // former NOT IN ('completed', 'archived') named values that do
+                // not exist, so a finished ('done') goal was listed as open.
                 `SELECT id, title FROM goals
-                  WHERE employee_id = ? AND COALESCE(status, 'active') NOT IN ('completed', 'cancelled', 'archived')
+                  WHERE employee_id = ? AND COALESCE(status, 'active') NOT IN ('done', 'cancelled')
                   ORDER BY id LIMIT 50`,
                 [id]
             )

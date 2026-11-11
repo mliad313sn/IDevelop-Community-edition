@@ -1243,7 +1243,7 @@ describe('A-07 — a FROZEN flow title is repaired at render time', () => {
             2
         );
         const job = fs.readFileSync(path.join(ROOT, 'src/jobs/dept-brief.js'), 'utf8');
-        expect(job).toMatch(/text: resolveFlowTitle\(l\)\.fr/);
+        expect(job).toMatch(/text: T\.pick\(resolveFlowTitle\(l\)\)/);
         expect(job).not.toMatch(/text: l\.title\.fr/);
     });
 });

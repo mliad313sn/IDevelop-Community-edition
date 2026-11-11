@@ -1,0 +1,69 @@
+<%# « À traiter »: everything waiting on this person, grouped by kind
+    (TasksController). Each line: what, how many, the verb, one link to a page
+    this person can open (route guard and module checked server-side). %>
+<div class="page-header">
+    <h1><i class="fas fa-list-check" aria-hidden="true"></i> <%= __('chrome:nav_tasks') %></h1>
+</div>
+<p class="todo-intro"><%= __('chrome:todo_intro') %></p>
+
+<% if (!complete) { %>
+<div class="alert alert-warning" role="status">
+    <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+    <span><%= __('chrome:todo_incomplete') %></span>
+</div>
+<% } %>
+
+<% if (!groups.length) { %>
+    <% if (complete) { %>
+    <div class="card">
+        <%- include('../../partials/empty-state', { icon: 'fa-circle-check', title: __('chrome:todo_empty'), text: __('chrome:todo_empty_text') }) %>
+    </div>
+    <% } %>
+<% } else { %>
+    <p class="todo-total" aria-live="polite"><%= __('chrome:todo_total', { count: total }) %></p>
+    <% groups.forEach(function (g) { %>
+    <section class="card todo-group" aria-labelledby="todo-g-<%= g.kind %>">
+        <h2 class="todo-group-h" id="todo-g-<%= g.kind %>">
+            <%= __('chrome:todo_group_' + g.kind) %>
+            <% if (g.count !== null) { %><span class="todo-pill" aria-label="<%= __('chrome:todo_count_aria', { count: g.count }) %>"><%= g.count %></span><% } %>
+        </h2>
+        <ul class="todo-list">
+            <% g.items.forEach(function (it) { %>
+            <li class="todo-row<%= it.overdue ? ' is-overdue' : '' %>">
+                <i class="fas <%= /^fa-[a-z0-9-]+$/.test(String(it.icon || '')) ? it.icon : 'fa-circle-dot' %> todo-ic" aria-hidden="true"></i>
+                <span class="todo-main">
+                    <span class="todo-label"><%= it.label %></span>
+                    <% if (it.overdue) { %><span class="todo-overdue"><i class="fas fa-clock" aria-hidden="true"></i> <%= __('chrome:todo_overdue') %></span><% } %>
+                </span>
+                <span class="todo-n" aria-label="<%= __('chrome:todo_count_aria', { count: it.count }) %>"><%= it.count %></span>
+                <a class="btn btn-sm <%= it.info ? 'btn-secondary' : 'btn-primary' %> todo-go" href="<%= /^\/(?![\/\\])/.test(String(it.href || '')) ? it.href : '#' %>">
+                    <%= it.verb %><span class="sr-only"> — <%= it.label %></span>
+                    <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                </a>
+            </li>
+            <% }); %>
+        </ul>
+    </section>
+    <% }); %>
+<% } %>
+
+<style>
+.todo-intro{color:var(--text-secondary);margin:-.25rem 0 1rem;max-width:70ch}
+.todo-total{font-weight:600;margin:0 0 .75rem}
+.todo-group{margin-bottom:1rem;padding:1rem 1.15rem}
+.todo-group-h{display:flex;align-items:center;gap:.6rem;font-size:1.05rem;margin:0 0 .5rem}
+.todo-pill{background:var(--brand-subtle);color:var(--brand-text);border-radius:999px;font-size:.8rem;font-weight:700;padding:1px 9px}
+.todo-list{list-style:none;margin:0;padding:0}
+.todo-row{display:flex;align-items:center;gap:.75rem;padding:.6rem 0;border-top:1px solid var(--border);min-height:44px}
+.todo-row:first-child{border-top:0}
+.todo-ic{width:20px;text-align:center;color:var(--brand-text)}
+.todo-main{flex:1;display:flex;flex-direction:column;gap:.15rem;min-width:0}
+.todo-overdue{font-size:.8rem;color:var(--danger);font-weight:600}
+.todo-n{font-weight:700;font-size:1.05rem;min-width:2ch;text-align:right}
+.todo-go{display:inline-flex;align-items:center;gap:.4rem;min-height:44px;white-space:nowrap}
+@media (max-width:640px){
+  .todo-row{flex-wrap:wrap}
+  .todo-main{flex-basis:calc(100% - 4rem)}
+  .todo-go{margin-left:auto}
+}
+</style>

@@ -141,7 +141,7 @@
             <% if (canViewEmployees) { %><a href="/employees/<%= e.id %>"><strong><%= personName(e) %></strong></a><% } else { %><strong><%= personName(e) %></strong><% } %>
             <div class="acc-muted"><%= e.employeeNumber %> · <%= e.roleName %><% if (e.noEmail) { %> · <span style="color:#b45309;"><%= __('admin:acc_no_email_chip') %></span><% } else { %> · <%= e.email %><% } %></div>
             <% if (e.openRequestKind) { %><div class="acc-muted" style="color:#b45309;"><i class="fas fa-hand" aria-hidden="true"></i> <%= __('admin:acc_request_' + e.openRequestKind, { who: e.openRequestBy || '', date: fmtDate(e.openRequestAt) }) %>
-              <button type="button" class="btn btn-sm acc-decline" data-req="<%= e.openRequestId %>" style="padding:0 6px;font-size:.72rem;"><%= __('admin:acc_request_decline') %></button></div><% } %>
+              <button type="button" class="btn btn-sm acc-decline" data-req="<%= e.openRequestId %>" style="padding:0 6px;font-size:.75rem;"><%= __('admin:acc_request_decline') %></button></div><% } %>
           </td>
           <td style="font-size:.85rem;"><%= e.siteName %> / <%= e.departmentName %></td>
           <td style="font-size:.85rem;"><code><%= e.username || '—' %></code><div class="acc-muted"><%= __('admin:acc_kind_' + e.kind) %><% if (e.authPolicy && e.authPolicy !== 'any') { %> · <%= __('admin:ap_policy_' + (e.authPolicy === 'sso_only' ? 'sso' : e.authPolicy === 'local_only' ? 'local' : 'mfa')) %><% } %></div></td>

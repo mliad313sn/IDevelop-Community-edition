@@ -20,10 +20,16 @@
  *               Mounted AFTER requireAuth. Writes need manage_compliance AND
  *               (3.23.21 SEC-1, enforced in the service) SuperAdmin for the
  *               settings / site-less rules, site clearance for a site rule.
+ *               /safety-gate/me         the person's own status,
+ *                                       waivers and contests
+ *               POST /waivers, /waivers/:id/renew|revoke, /contests,
+ *               /contests/:id/decide    human intervention (SafetyWaiverService
+ *                                       decides who may act).
  */
 
 const express = require('express');
 const SafetyGateService = require('../services/SafetyGateService');
+const SafetyWaiverService = require('../services/SafetyWaiverService');
 const { requireApiKey, apiKeyScopeOf } = require('../middleware/apiAuth');
 const { requireManagerOrAnyPermission, requirePermission } = require('../middleware/auth');
 
@@ -126,15 +132,54 @@ pageRouter.get('/', canView, async (req, res) => {
             SafetyGateService.formOptions(),
             SafetyGateService.getSettings(),
         ]);
-        const counts = { CLEARED: 0, EXPIRING: 0, BLOCKED: 0, NOT_CONFIGURED: 0 };
+        const counts = { CLEARED: 0, EXPIRING: 0, BLOCKED: 0, NOT_CONFIGURED: 0, WAIVED: 0 };
         rows.forEach((r) => {
             counts[r.status] = (counts[r.status] || 0) + 1;
         });
+        // Who may act on each listed person (their line, or HSE within
+        // clearance; never the person), and the running waivers and open
+        // contests the actor can see.
+        const blockedRows = rows.filter((r) => r.status === 'BLOCKED');
+        const [authority, waivers, contests] = await Promise.all([
+            SafetyWaiverService.authorityMany(
+                req.user,
+                blockedRows.map((r) => r.employeeId)
+            ),
+            SafetyWaiverService.listRunningWaivers(req.user),
+            SafetyWaiverService.listContests(req.user, { openOnly: true }),
+        ]);
+        const waiverAuthority = await SafetyWaiverService.authorityMany(
+            req.user,
+            waivers.map((w) => w.employeeId)
+        );
+        const canDecide = require('../services/RBACService').hasPermission(
+            req.user,
+            'manage_compliance'
+        );
         // a person blocked ONLY by observe-mode rules is listed (the status
         // is computed and shown) but flagged: access control is not closed.
-        const blocked = rows
-            .filter((r) => r.status === 'BLOCKED')
-            .map((r) => ({ ...r, observeOnly: SafetyGateService.isCleared(r) }));
+        const blocked = blockedRows.map((r) => {
+            const auth = authority.get(Number(r.employeeId)) || null;
+            const enforcedBlocked = SafetyGateService.effectiveStatus(r) === 'BLOCKED';
+            return {
+                ...r,
+                observeOnly: SafetyGateService.isCleared(r),
+                authority: auth,
+                canContest: auth === 'line' && enforcedBlocked,
+                waivable: enforcedBlocked
+                    ? r.reasons.filter(
+                          (x) =>
+                              x.blocking &&
+                              !x.observe &&
+                              !x.waived &&
+                              x.skillId != null &&
+                              !x.legallyMandatory
+                      )
+                    : [],
+                legalOnly: r.reasons.some((x) => x.blocking && !x.observe && x.legallyMandatory),
+            };
+        });
+        const waived = rows.filter((r) => SafetyGateService.isWaived(r));
         // UX-6: nothing measured anywhere and only unconfigured roles → say
         // "no critical skill is configured", not "nobody is blocked".
         const rulesNone =
@@ -156,6 +201,13 @@ pageRouter.get('/', canView, async (req, res) => {
             filters,
             settings,
             canConfigure,
+            waived,
+            waivers: waivers.map((w) => ({
+                ...w,
+                authority: waiverAuthority.get(Number(w.employeeId)) || null,
+            })),
+            contests: contests.map((c) => ({ ...c, canDecide })),
+            hoursMax: SafetyWaiverService.HOURS_MAX,
         });
     } catch (e) {
         console.error('[safety-gate] page failed:', e && e.message);
@@ -228,8 +280,39 @@ function flashError(req, e) {
         'reason_required',
         'not_found',
         'forbidden',
+        // Waivers and contests
+        'bad_hours',
+        'not_waivable',
+        'not_blocking',
+        'legally_mandatory',
+        'waiver_exists',
+        'renewal_exhausted',
+        'waiver_not_running',
+        'not_blocked',
+        'contest_exists',
+        'contest_closed',
+        'self_decision',
+        'bad_decision',
+        'bad_remedy',
+        'pointer_required',
+        'waiver_cooldown',
+        'waiver_cap',
     ];
-    if (code && known.includes(code)) {
+    // A waiver / contest / decision refusal names ITS subject (« le motif
+    // de la dérogation… »), not the rule-deactivation / settings wording.
+    const SUBJECTS = ['waiver', 'waiver_end', 'contest', 'decision'];
+    const subject = e && SUBJECTS.includes(e.subject) ? e.subject : null;
+    if (code && e.subject === 'mode' && ['reason_required', 'legally_mandatory'].includes(code)) {
+        // Loosening a rule to OBSERVE names THAT refusal.
+        req.flash('error', t(req, `safety:err_mode_${code}`, code));
+    } else if (
+        code &&
+        known.includes(code) &&
+        subject &&
+        ['reason_required', 'forbidden'].includes(code)
+    ) {
+        req.flash('error', t(req, `safety:err_${code}_${subject}`, code));
+    } else if (code && known.includes(code)) {
         req.flash('error', t(req, `safety:err_${code}`, code));
     } else {
         console.error('[safety-gate] write failed:', e && e.message);
@@ -249,6 +332,7 @@ function ruleFromBody(b) {
         mode: b.mode,
         requireValidated: checked(b.requireValidated),
         maxAgeMonths: b.maxAgeMonths,
+        legallyMandatory: checked(b.legallyMandatory),
     };
 }
 
@@ -280,7 +364,8 @@ pageRouter.post('/config/rules', canManage, async (req, res) => {
 
 pageRouter.post('/config/rules/:id/mode', canManage, async (req, res) => {
     try {
-        await SafetyGateService.setRuleMode(req.params.id, (req.body || {}).mode, req.user);
+        const b = req.body || {};
+        await SafetyGateService.setRuleMode(req.params.id, b.mode, req.user, b.reason);
         req.flash('success', t(req, 'safety:rule_mode_changed', 'Rule mode changed.'));
     } catch (e) {
         flashError(req, e);
@@ -296,6 +381,144 @@ pageRouter.post('/config/rules/:id/deactivate', canManage, async (req, res) => {
         flashError(req, e);
     }
     return res.redirect('/safety-gate/config');
+});
+
+// Legally mandatory certification: no waiver ever lifts the rule.
+// Setting it: whoever may manage the rule; lifting it: SuperAdmin + reason
+// (both enforced in the service).
+pageRouter.post('/config/rules/:id/legal', canManage, async (req, res) => {
+    const b = req.body || {};
+    try {
+        await SafetyGateService.setRuleLegal(
+            req.params.id,
+            checked(b.legallyMandatory),
+            b.reason,
+            req.user
+        );
+        req.flash('success', t(req, 'safety:rule_legal_changed', 'Rule updated.'));
+    } catch (e) {
+        flashError(req, e);
+    }
+    return res.redirect('/safety-gate/config');
+});
+
+// ---------------------------------------------------------------------------
+// Human path: waivers and contests. Authority is decided by the
+// service (line = direct supervisor / manager; HSE = manage_compliance within
+// clearance; never the person themselves), so each route only needs a session.
+// ---------------------------------------------------------------------------
+
+const back = (req) => ((req.body || {}).back === 'me' ? '/safety-gate/me' : '/safety-gate');
+
+pageRouter.post('/waivers', async (req, res) => {
+    const b = req.body || {};
+    try {
+        await SafetyWaiverService.grantWaiver(
+            { employeeId: b.employeeId, skillId: b.skillId, hours: b.hours, reason: b.reason },
+            req.user
+        );
+        req.flash('success', t(req, 'safety:waiver_granted', 'Waiver granted.'));
+    } catch (e) {
+        flashError(req, e);
+    }
+    return res.redirect(back(req));
+});
+
+pageRouter.post('/waivers/:id/renew', async (req, res) => {
+    const b = req.body || {};
+    try {
+        await SafetyWaiverService.renewWaiver(
+            req.params.id,
+            { hours: b.hours, reason: b.reason },
+            req.user
+        );
+        req.flash('success', t(req, 'safety:waiver_renewed', 'Waiver renewed.'));
+    } catch (e) {
+        flashError(req, e);
+    }
+    return res.redirect(back(req));
+});
+
+pageRouter.post('/waivers/:id/revoke', async (req, res) => {
+    try {
+        await SafetyWaiverService.revokeWaiver(req.params.id, (req.body || {}).reason, req.user);
+        req.flash('success', t(req, 'safety:waiver_revoked', 'Waiver ended.'));
+    } catch (e) {
+        flashError(req, e);
+    }
+    return res.redirect(back(req));
+});
+
+pageRouter.post('/contests', async (req, res) => {
+    const b = req.body || {};
+    try {
+        await SafetyWaiverService.submitContest(
+            { employeeId: b.employeeId, reason: b.reason },
+            req.user
+        );
+        req.flash('success', t(req, 'safety:contest_submitted', 'Contest submitted.'));
+    } catch (e) {
+        flashError(req, e);
+    }
+    return res.redirect(back(req));
+});
+
+pageRouter.post('/contests/:id/decide', canManage, async (req, res) => {
+    const b = req.body || {};
+    try {
+        await SafetyWaiverService.decideContest(
+            req.params.id,
+            {
+                decision: b.decision,
+                reason: b.reason,
+                remedy: b.remedy,
+                skillId: b.skillId,
+                hours: b.hours,
+                correctionPointer: b.correctionPointer,
+            },
+            req.user
+        );
+        req.flash('success', t(req, 'safety:contest_decided', 'Decision recorded.'));
+    } catch (e) {
+        flashError(req, e);
+    }
+    return res.redirect('/safety-gate');
+});
+
+/**
+ * The person's own page: their status (WAIVED is said as such, with its end),
+ * the reasons, their waivers and contests, and the contest form when the
+ * ENFORCED answer is BLOCKED. An employee / manager session only.
+ */
+pageRouter.get('/me', async (req, res) => {
+    const u = req.user;
+    if (!u || (u.userType !== 'employee' && u.userType !== 'manager'))
+        return res.redirect('/safety-gate');
+    try {
+        const [rows, mine] = await Promise.all([
+            SafetyGateService.computeFor({ employeeIds: [Number(u.id)] }, null, {
+                source: 'ui',
+            }),
+            SafetyWaiverService.forEmployee(u.id),
+        ]);
+        const me = rows[0] || null;
+        const enforced = me ? SafetyGateService.effectiveStatus(me) : null;
+        return res.render('pages/safety-gate/me', {
+            title: t(req, 'safety:me_title', 'My safety clearance'),
+            me,
+            enforced,
+            waived: me ? SafetyGateService.isWaived(me) : false,
+            waivers: mine.waivers,
+            contests: mine.contests,
+            canContest: enforced === 'BLOCKED' && !mine.contests.some((c) => c.state === 'open'),
+            // A manager acts for their team from the main page.
+            teamLink: u.userType === 'manager',
+        });
+    } catch (e) {
+        console.error('[safety-gate] my page failed:', e && e.message);
+        req.flash('error', t(req, 'flash:generic_error', 'Something went wrong.'));
+        return res.redirect('/dashboard');
+    }
 });
 
 pageRouter.post('/config/settings', canManage, async (req, res) => {

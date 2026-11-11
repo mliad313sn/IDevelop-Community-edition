@@ -30,6 +30,10 @@
 const db = require('../config/database');
 
 const ENV_HOUR = Number(process.env.REMINDER_HOUR) || 8;
+// The development loop (4.0.0 port, wave 4): the owner's actions due within
+// this many days, or overdue, are reminded once a week, grouped.
+const IDP_DUE_DAYS = 7;
+const IDP_DUE_KIND = 'idp.action_due';
 // How far ahead a plan end-date counts as "coming due" (and how long a proposed
 // PIP may sit unactivated before the owner is nudged).
 const PLAN_DUE_DAYS = Number(process.env.TALENT_PLAN_DUE_DAYS) || 14;
@@ -277,6 +281,52 @@ async function tick() {
                 if (ok) out.lms++;
                 else await release('lms.due', 'employee', empId, r.id, wk);
             }
+        }
+    } catch (_) {
+        /* best-effort */
+    }
+
+    // 2b) The OWNER of a development plan is reminded of their own actions due
+    //     within IDP_DUE_DAYS or overdue (4.0.0 port, wave 4): ONE grouped
+    //     reminder per person per week (week claim), digest tier, counts and a
+    //     date only. An action without a due date is never "due", and one the
+    //     person already reported done waits on the line, not on them. The kind
+    //     belongs to the development module: with the module off it is never
+    //     emitted. Reporting or validating an action closes it (markActed).
+    try {
+        const owners = await db.all(
+            `SELECT DISTINCT p.employee_id AS "employeeId"
+               FROM idp_plans p
+               JOIN idp_actions a ON a.idp_id = p.id
+               JOIN employees e ON e.id = p.employee_id AND e.is_active = true AND e.erased_at IS NULL
+              WHERE p.status = 'active'
+                AND a.status IN ('pending', 'in_progress')
+                AND a.reported_done_at IS NULL
+                AND a.due_on IS NOT NULL
+                AND a.due_on <= CURRENT_DATE + ?::int`,
+            [IDP_DUE_DAYS]
+        );
+        out.idpDue = 0;
+        const Loop = require('../services/DevelopmentLoopService');
+        for (const o of owners || []) {
+            const empId = Number(o.employeeId);
+            const d = await Loop.dueActions(empId, { days: IDP_DUE_DAYS, now });
+            if (!d) continue;
+            if (!(await claim(IDP_DUE_KIND, 'employee', empId, 0, wk))) continue;
+            const ok = await send(N, {
+                userType: 'employee',
+                userId: empId,
+                kind: IDP_DUE_KIND,
+                category: 'talent',
+                payload: {
+                    link: '/employee/my-development',
+                    count: d.count,
+                    overdue: d.overdue,
+                    dueOn: d.dueOn,
+                },
+            });
+            if (ok) out.idpDue++;
+            else await release(IDP_DUE_KIND, 'employee', empId, 0, wk);
         }
     } catch (_) {
         /* best-effort */
@@ -678,7 +728,7 @@ async function tick() {
 
     if (process.env.NODE_ENV !== 'test')
         console.log(
-            `[reminders] idp:${out.idp} lms:${out.lms} survey:${out.survey} access:${out.access} ninebox:${out.ninebox} plans:${out.plans} handover:${out.handover} dueLeavers:${out.dueLeavers} dormant:${out.dormant} accessExpiry:${out.accessExpiry}`
+            `[reminders] idp:${out.idp} idpDue:${out.idpDue || 0} lms:${out.lms} survey:${out.survey} access:${out.access} ninebox:${out.ninebox} plans:${out.plans} handover:${out.handover} dueLeavers:${out.dueLeavers} dormant:${out.dormant} accessExpiry:${out.accessExpiry}`
         );
     return out;
 }

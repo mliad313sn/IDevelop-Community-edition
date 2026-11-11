@@ -338,12 +338,12 @@ IDENT_PAIRS.sort((a, b) => b[0].length - a[0].length);
 function rewriteSqliteFunctions(sql) {
     let out = sql;
     // strftime('%Y-%m', col) → to_char(col, 'YYYY-MM')
-    out = out.replace(/strftime\s*\(\s*'%Y-%m'\s*,\s*([^)]+)\s*\)/gi, "to_char($1, 'YYYY-MM')");
-    out = out.replace(
-        /strftime\s*\(\s*'%Y-%m-%d'\s*,\s*([^)]+)\s*\)/gi,
-        "to_char($1, 'YYYY-MM-DD')"
-    );
-    out = out.replace(/strftime\s*\(\s*'%Y'\s*,\s*([^)]+)\s*\)/gi, "to_char($1, 'YYYY')");
+    // The column is captured up to the closing parenthesis and trimmed in the
+    // replacer: a `\s*` next to `[^)]+` would backtrack on long runs of spaces.
+    const toChar = (fmt) => (_, col) => `to_char(${col.trim()}, '${fmt}')`;
+    out = out.replace(/strftime\s*\(\s*'%Y-%m'\s*,([^)]+)\)/gi, toChar('YYYY-MM'));
+    out = out.replace(/strftime\s*\(\s*'%Y-%m-%d'\s*,([^)]+)\)/gi, toChar('YYYY-MM-DD'));
+    out = out.replace(/strftime\s*\(\s*'%Y'\s*,([^)]+)\)/gi, toChar('YYYY'));
     // datetime('now', '-7 days') → now - interval '7 days'
     out = out.replace(
         /datetime\s*\(\s*'now'\s*,\s*'-(\d+)\s+(day|days|month|months|year|years)'\s*\)/gi,
@@ -1050,7 +1050,7 @@ class PostgresDatabase {
 
     async seed() {
         const bcrypt = require('bcrypt');
-        const { seedAdminPassword } = require('../utils/bootstrapAdmin');
+        const { seedAdminPassword, printFirstRunBanner } = require('../utils/bootstrapAdmin');
         const existing = await this.get('SELECT id FROM admins WHERE username = ?', ['admin']);
         if (!existing) {
             // SECURITY — the bootstrap password is generated per install, never a
@@ -1074,14 +1074,7 @@ class PostgresDatabase {
                 ['admin', 'admin@localhost', hash, 'superadmin', true, true]
             );
             if (generated) {
-                console.log('');
-                console.log('  ============================================================');
-                console.log('   FIRST-RUN SUPERADMIN — copy this now, it is shown ONCE');
-                console.log('     username : admin');
-                console.log(`     password : ${password}`);
-                console.log('   A password change is required at first sign-in.');
-                console.log('  ============================================================');
-                console.log('');
+                printFirstRunBanner(password);
             } else {
                 console.log(
                     '✓ Default SuperAdmin created from BOOTSTRAP_ADMIN_PASSWORD (change required at first login)'

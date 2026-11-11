@@ -40,6 +40,9 @@ let _cacheAt = 0;
 
 function normalizeHex(v) {
     const s = String(v || '').trim();
+    // A colour is at most 7 characters (#rrggbb): anything longer is refused
+    // before any pattern runs.
+    if (s.length > 7) return null;
     // Accept 3-digit shorthand (#fff) by expanding each nibble, plus full 6-digit.
     const short = /^#?([0-9a-f]{3})$/i.exec(s);
     if (short)
@@ -95,23 +98,156 @@ function contrastRatio(hexA, hexB) {
     return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
-/** The :root override block replacing the stock accent token family with the brand accent. */
+// ---- the brand accent, resolved for contrast per mode -------------------------
+
+/**
+ * The surfaces and the button ink of each mode of public/css/horizon.css
+ * (Dusk = `:root`, Daylight = `:root[data-theme='light']`): bg-base, bg-panel,
+ * bg-card and bg-elevated, then --text-inverse, the ink every filled brand
+ * control carries. tests/unit/brandAccentContrast.test.js reads the stylesheet
+ * and fails when these drift from it.
+ */
+const MODES = Object.freeze({
+    dark: Object.freeze({
+        surfaces: Object.freeze(['#18172c', '#1d1c35', '#23213f', '#2c2a4d']),
+        ink: '#18172c',
+        card: '#23213f',
+        // Dusk raises a colour toward white to gain contrast on its dark surfaces.
+        toward: 1,
+        hover: 0.1,
+        pressed: -0.08,
+        dim: 0.16,
+        subtle: 0.1,
+        glow: 0.35,
+    }),
+    light: Object.freeze({
+        surfaces: Object.freeze(['#f7f6fc', '#ffffff', '#ffffff', '#f1eff9']),
+        ink: '#ffffff',
+        card: '#ffffff',
+        // Daylight lowers a colour toward black.
+        toward: -1,
+        hover: -0.08,
+        pressed: -0.16,
+        dim: 0.1,
+        subtle: 0.06,
+        glow: 0.28,
+    }),
+});
+/** WCAG 2.2 AA: text 4.5:1, a graphical mark or a control boundary 3:1. */
+const AA_TEXT = 4.5;
+const AA_MARK = 3;
+
+/** `hex` blended at opacity `a` over `under` (what a translucent chip shows). */
+function over(hex, under, a) {
+    const c = hexToRgb(hex);
+    const u = hexToRgb(under);
+    const m = (x, y) => Math.round(x * a + y * (1 - a));
+    return (
+        '#' +
+        [m(c.r, u.r), m(c.g, u.g), m(c.b, u.b)].map((v) => v.toString(16).padStart(2, '0')).join('')
+    );
+}
+
+const lowestOn = (hex, list) => Math.min(...list.map((s) => contrastRatio(hex, s)));
+
+/**
+ * The colour closest to `hex`, moving in steps of 2.5 % toward white (dir 1) or
+ * black (dir -1), that satisfies `ok`. Pure white and pure black end the walk,
+ * and on either one every check of this file holds, so the result never fails.
+ */
+function nearest(hex, dir, ok) {
+    for (let i = 0; i <= 40; i++) {
+        const c = i === 0 ? hex : shade(hex, dir * i * 0.025);
+        if (ok(c)) return c;
+    }
+    return dir > 0 ? '#ffffff' : '#000000';
+}
+
+/**
+ * Every brand token of ONE mode, computed rather than trusted:
+ *   - the fill, its hover and pressed states each carry the mode's button ink
+ *     at 4.5:1 or more, and the fill stands out 3:1 from every surface;
+ *   - --brand-text reads at 4.5:1 on every surface and on its own tinted chip;
+ *   - the tints keep the mode's own opacities.
+ * A brand that already passes is returned unchanged; one that does not is
+ * moved the least it takes, never left failing. `adjusted` says whether the
+ * fill moved, so App Settings can say so.
+ */
+function accentTokens(hex, mode) {
+    const h = normalizeHex(hex);
+    if (!h) return null;
+    const M = MODES[mode === 'dark' ? 'dark' : 'light'];
+    const states = (f) => [f, shade(f, M.hover), shade(f, M.pressed)];
+    const fillOk = (f) =>
+        Math.min(...states(f).map((x) => contrastRatio(x, M.ink))) >= AA_TEXT &&
+        lowestOn(f, M.surfaces) >= AA_MARK;
+    const fill = nearest(h, M.toward, fillOk);
+    const textOk = (t) =>
+        lowestOn(t, M.surfaces) >= AA_TEXT && contrastRatio(t, over(t, M.card, M.dim)) >= AA_TEXT;
+    const text = nearest(h, M.toward, textOk);
+    return {
+        adjusted: fill !== h,
+        tokens: {
+            '--brand': fill,
+            '--brand-hover': shade(fill, M.hover),
+            '--brand-pressed': shade(fill, M.pressed),
+            '--brand-text': text,
+            '--brand-dim': rgba(fill, M.dim),
+            '--brand-subtle': rgba(fill, M.subtle),
+            '--brand-glow': rgba(fill, M.glow),
+            '--hz-glow-a': rgba(fill, M.dim),
+        },
+    };
+}
+
+/** Four :root pseudo-classes out-rank the colour themes of horizon.css
+ *  (:root[data-theme][data-palette]): an organisation's accent wins over a
+ *  person's colour theme, in both modes. */
+const OVERRIDE = ':root:root:root:root';
+
+/**
+ * The white-label block: one rule per mode, and the Daylight tokens again for
+ * paper (print is always light, public/css/print.css). Every view that inlines
+ * `branding.accentCss` gets it: the layout, the sign-in pages and the error
+ * page (views/partials/brand-accent.ejs).
+ */
 function buildAccentCss(hex) {
     const h = normalizeHex(hex);
     if (!h) return '';
-    // Four :root pseudo-classes out-rank the colour-theme selectors of
-    // public/css/horizon.css (:root[data-theme][data-palette]), so an
-    // organisation's own accent always wins over a user's colour theme.
+    const decl = (mode) =>
+        Object.entries(accentTokens(h, mode).tokens)
+            .map(([k, v]) => `${k}:${v};`)
+            .join('');
     return (
-        ':root:root:root:root{' +
-        `--brand:${h};` +
-        `--brand-hover:${shade(h, 0.1)};` +
-        `--brand-pressed:${shade(h, -0.1)};` +
-        `--brand-dim:${rgba(h, 0.12)};` +
-        `--brand-glow:${rgba(h, 0.4)};` +
-        `--brand-subtle:${rgba(h, 0.06)};` +
-        '}'
+        `${OVERRIDE}:not([data-theme='light']){${decl('dark')}}` +
+        `${OVERRIDE}[data-theme='light']{${decl('light')}}` +
+        `@media print{${OVERRIDE}:root{${decl('light')}}}`
     );
+}
+
+/**
+ * What App Settings tells the administrator after a save: the ratios actually
+ * rendered in each mode, and whether the colour had to move to reach them.
+ */
+function accentReport(hex) {
+    const h = normalizeHex(hex);
+    if (!h) return null;
+    const out = { adjusted: [] };
+    for (const mode of ['light', 'dark']) {
+        const r = accentTokens(h, mode);
+        const M = MODES[mode];
+        const t = r.tokens;
+        out[mode] = {
+            ink: Math.min(
+                ...[t['--brand'], t['--brand-hover'], t['--brand-pressed']].map((x) =>
+                    contrastRatio(x, M.ink)
+                )
+            ),
+            text: lowestOn(t['--brand-text'], M.surfaces),
+        };
+        if (r.adjusted) out.adjusted.push(mode);
+    }
+    return out;
 }
 
 // ---- chart identity ----------------------------------------------------------
@@ -371,7 +507,10 @@ module.exports = {
     invalidate,
     normalizeHex,
     contrastRatio,
+    accentTokens,
+    accentReport,
     buildAccentCss,
+    MODES,
     buildChartCss,
     editionRow,
     CHART_IDENTITY,

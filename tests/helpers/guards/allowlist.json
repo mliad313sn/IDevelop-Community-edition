@@ -1,0 +1,272 @@
+{
+  "_doc": "Intentional exceptions of the c334-GUARD-* suites, rebuilt from IDevelop's own schema. Every entry needs a `reason` of at least 8 characters; keys other than reason/id must equal the probe's (an entry without `table` matches the column in every table). Sections: enumLiterals (file, col, literal), staticLocaleKeys (key), legacySpellings (table, col, value), hyphenValues (table, col, value), localeStates (table, col, prefix, value), dateIso (file, col), unconstrainedColumns (table?, col), routes (method, url), ticks (name or file).",
+  "enumLiterals": [
+    {
+      "file": "src/services/CycleService.js",
+      "col": "kind",
+      "literal": "cycle.not_started",
+      "reason": "table-context false positive: the literal is compared with reminder_log.kind (rl2, no CHECK, open vocabulary of reminder keys); nudge_log, whose kind is constrained, is only joined in the same statement"
+    },
+    {
+      "file": "src/services/CycleService.js",
+      "col": "kind",
+      "literal": "cycle.manual_nudge",
+      "reason": "same statement as cycle.not_started: reminder_log.kind, not nudge_log.kind"
+    }
+  ],
+  "staticLocaleKeys": [
+    {
+      "key": "viz:themechange",
+      "reason": "a DOM CustomEvent name dispatched by public/js/chart-theme.js, not a locale key"
+    }
+  ],
+  "legacySpellings": [
+    {
+      "table": "system_logs",
+      "col": "entity_type",
+      "value": "nineBox",
+      "reason": "history: spelling of nine_box written before migration 112 normalised the writer (LogService); the log is append-only and hash-chained, so it is never rewritten, and SystemLogModel.entityTypeVariants matches every spelling"
+    },
+    {
+      "table": "system_logs",
+      "col": "entity_type",
+      "value": "selfAssessment",
+      "reason": "history: spelling of self_assessment written before migration 112 (see nineBox)"
+    },
+    {
+      "table": "system_logs",
+      "col": "entity_type",
+      "value": "skillAssessment",
+      "reason": "history: spelling of skill_assessment written before migration 112 (see nineBox)"
+    },
+    {
+      "table": "system_logs",
+      "col": "entity_type",
+      "value": "coachingPlan",
+      "reason": "history: spelling of coaching_plan written before migration 112 (see nineBox)"
+    },
+    {
+      "table": "system_logs",
+      "col": "entity_type",
+      "value": "appSetting",
+      "reason": "history: spelling of app_setting written before migration 112 (see nineBox)"
+    },
+    {
+      "table": "system_logs",
+      "col": "entity_type",
+      "value": "supervisorReview",
+      "reason": "history: spelling of supervisor_review written before migration 112 (see nineBox)"
+    },
+    {
+      "table": "system_logs",
+      "col": "entity_type",
+      "value": "apiKey",
+      "reason": "history: spelling of api_key written before migration 112 (see nineBox)"
+    }
+  ],
+  "hyphenValues": [
+    {
+      "table": "training_plan_items",
+      "col": "status",
+      "value": "in-progress",
+      "reason": "dormant table: no writer in src/ (KpiService only reads 'completed' items); align the hyphenated CHECK when the table is revived"
+    },
+    {
+      "table": "training_plan_items",
+      "col": "training_type",
+      "value": "on-the-job",
+      "reason": "dormant table, no writer in src/: align when revived"
+    },
+    {
+      "table": "training_plan_items",
+      "col": "training_type",
+      "value": "self-study",
+      "reason": "dormant table, no writer in src/: align when revived"
+    }
+  ],
+  "localeStates": [],
+  "dateIso": [],
+  "unconstrainedColumns": [
+    {
+      "col": "action",
+      "reason": "free text: audit and event-ledger action names are an open vocabulary (system_logs, *_events, retention_ledger, lc_nationalisation_events…)"
+    },
+    {
+      "table": "perf_events",
+      "col": "kind",
+      "reason": "free text: telemetry event names, open vocabulary (the literals found are object keys of the telemetry payloads)"
+    },
+    {
+      "table": "feedback_notes",
+      "col": "kind",
+      "reason": "free text: dotted feedback keys (recognition.received…), open vocabulary"
+    },
+    {
+      "table": "maker_checker_requests",
+      "col": "kind",
+      "reason": "free text: one dotted request key per governed action; most literals found are object keys of the request payloads, not kinds"
+    },
+    {
+      "table": "notification_preferences",
+      "col": "kind",
+      "reason": "free text: notification catalogue keys (src/services/notificationCatalogue.js) plus __all__, open vocabulary"
+    },
+    {
+      "table": "notification_category_prefs",
+      "col": "category",
+      "reason": "the notification categories of the catalogue; a new family adds a category without a migration"
+    },
+    {
+      "table": "notification_category_prefs",
+      "col": "channel",
+      "reason": "TEXT on purpose (migration 183): 'email' is the only stored channel today, the in-app channel is never stored, and a later channel needs no ALTER"
+    },
+    {
+      "table": "notifications",
+      "col": "ref_type",
+      "reason": "free text: the kind of object a notification is about, open vocabulary"
+    },
+    {
+      "table": "system_logs",
+      "col": "severity",
+      "reason": "LogService.normalizeSeverity folds every writer into info / warn / error / critical; older rows of the append-only, hash-chained log keep 'warning' and are never rewritten; the 'action' literal belongs to the department brief's sections"
+    },
+    {
+      "table": "system_logs",
+      "col": "category",
+      "reason": "free text: audit categories written by LogService, open vocabulary"
+    },
+    {
+      "table": "employee_movements",
+      "col": "source",
+      "reason": "free text: provenance of a movement (account, dsr_erase, maintenance…), written by several services"
+    },
+    {
+      "table": "admin_access_events",
+      "col": "source",
+      "reason": "free text: provenance of an access event"
+    },
+    {
+      "table": "admin_access_events",
+      "col": "change_type",
+      "reason": "append-only access-review ledger: the five change kinds come from AccessReviewService; constrain in a migration of its own if the ledger is reworked"
+    },
+    {
+      "table": "handover_items",
+      "col": "kind",
+      "reason": "handover item kinds (access, contact, knowledge, task) are written only by HandoverService from a value it checks"
+    },
+    {
+      "table": "reminder_log",
+      "col": "target_type",
+      "reason": "the claim table of every reminder: admin, employee and survey targets today, passed by each job; open by design"
+    },
+    {
+      "table": "user_identities",
+      "col": "link_method",
+      "reason": "account-linking provenance: an alias row inherits the method of the row it aliases, so the set is owned by the SSO services"
+    },
+    {
+      "table": "kpi_targets",
+      "col": "scope_type",
+      "reason": "constrained by the two-column CHECK chk_kpi_targets_scope (org with no id, site with an id), which a single-column scan does not read"
+    },
+    {
+      "table": "coaching_plans",
+      "col": "context_type",
+      "reason": "polymorphic reference kind beside context_id (skill_gap, pip, idp)"
+    },
+    {
+      "table": "idp_plan_events",
+      "col": "actor_type",
+      "reason": "event-ledger actor kind, append-only history"
+    },
+    {
+      "table": "nine_box_events",
+      "col": "actor_type",
+      "reason": "event-ledger actor kind, append-only history"
+    },
+    {
+      "table": "self_assessment_events",
+      "col": "actor_type",
+      "reason": "event-ledger actor kind, append-only history"
+    },
+    {
+      "table": "nine_box_events",
+      "col": "from_status",
+      "reason": "ledger copy of nine_box_evaluations.status, which is constrained at the source"
+    },
+    {
+      "table": "nine_box_events",
+      "col": "to_status",
+      "reason": "ledger copy of nine_box_evaluations.status, which is constrained at the source"
+    },
+    {
+      "table": "self_assessment_events",
+      "col": "to_state",
+      "reason": "ledger copy of self_assessment_rounds.workflow_state, which is constrained at the source"
+    },
+    {
+      "table": "retention_ledger",
+      "col": "category",
+      "reason": "free text: retention rule family"
+    },
+    {
+      "table": "retention_ledger",
+      "col": "subject_type",
+      "reason": "one value by design: only employees are retention subjects"
+    },
+    {
+      "table": "erasure_tombstones",
+      "col": "subject_type",
+      "reason": "one value by design: only employees are erased"
+    },
+    {
+      "table": "erasure_tombstones",
+      "col": "method",
+      "reason": "erasure method label written by the privacy and retention services"
+    },
+    {
+      "table": "sso_migration_invites",
+      "col": "trigger",
+      "reason": "provenance of an invitation (manual or scheduled)"
+    },
+    {
+      "table": "talent_placements",
+      "col": "box",
+      "reason": "false positive: the literal is a column name in a column list; the box is the 9-box cell computed by NineBoxService"
+    },
+    {
+      "table": "pips",
+      "col": "outcome",
+      "reason": "outcome note beside pips.state, which is constrained; 'withdrawn' is the only literal"
+    },
+    {
+      "table": "lms_courses",
+      "col": "type",
+      "reason": "the course type comes from the external LMS feed, open vocabulary"
+    },
+    {
+      "table": "report_templates",
+      "col": "data_source",
+      "reason": "a report-builder data-source id, open vocabulary"
+    },
+    {
+      "table": "training_plan_items",
+      "col": "training_method",
+      "reason": "dormant table, no writer in src/"
+    },
+    {
+      "table": "skill_suggestions",
+      "col": "source",
+      "reason": "free text: provenance label of a suggestion"
+    },
+    {
+      "table": "safety_gate_status_history",
+      "col": "source",
+      "reason": "free text: provenance of a recompute"
+    }
+  ],
+  "routes": [],
+  "ticks": []
+}

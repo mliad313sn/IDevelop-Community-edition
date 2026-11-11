@@ -1,0 +1,85 @@
+<%#
+    « How is it calculated? » — the indicator definitions of the KPI module
+    (src/services/KpiService.js CONTRACTS). Definitions only, no figure.
+    Server-rendered, no script. Every entry carries an anchor (#K1 … #K16) so a
+    report can link to it. `entries` already omits the indicators of a module
+    that is off, and carries a list link only when the reader's navigation
+    offers that page (KpiGlossaryController.entries).
+%>
+<%
+  var E = (typeof entries !== 'undefined' && entries) ? entries : [];
+  var THR = (typeof threshold !== 'undefined' && threshold != null) ? threshold : 80;
+  var FIELDS = [
+    ['def', 'label_definition'],
+    ['formula', 'label_formula'],
+    ['den', 'label_denominator'],
+    ['incl', 'label_inclusion'],
+    ['bands', 'label_thresholds']
+  ];
+%>
+<div class="page-header">
+    <h1><i class="fas fa-calculator" aria-hidden="true"></i> <%= __('kpi:glossary_title') %></h1>
+</div>
+<p class="text-muted"><%= __('kpi:glossary_subtitle') %></p>
+<p class="text-muted"><%= __('kpi:glossary_modules_note') %></p>
+
+<nav class="card kpi-glossary-toc" aria-label="<%= __('kpi:glossary_toc') %>">
+    <h2 class="h3"><%= __('kpi:glossary_toc') %></h2>
+    <ul>
+        <% E.forEach(function (c) { %>
+        <li><a href="#<%= c.id %>"><%= c.id %> — <%= __('kpi:' + c.key + '_name') %></a></li>
+        <% }) %>
+    </ul>
+</nav>
+
+<section class="card" aria-labelledby="kpi-common-title">
+    <h2 id="kpi-common-title" class="h3"><%= __('kpi:common_title') %></h2>
+    <ul>
+        <li><%= __('kpi:common_population') %></li>
+        <li><%= __('kpi:common_unmeasured') %></li>
+        <li><%= __('kpi:common_small_n') %></li>
+        <li><%= __('kpi:common_requirements') %></li>
+        <li><%= __('kpi:common_bands', { threshold: THR }) %></li>
+        <li><%= __('kpi:common_freshness') %></li>
+        <li><%= __('kpi:common_delta') %></li>
+        <li><%= __('kpi:common_drill') %></li>
+        <li><%= __('kpi:common_modules') %></li>
+        <li id="capability-rule"><%= __('kpi:common_capability') %></li>
+        <li id="freshness"><%= __('kpi:common_fresh_assessed') %></li>
+    </ul>
+</section>
+
+<% E.forEach(function (c) { %>
+<section class="card kpi-glossary-entry" id="<%= c.id %>" aria-labelledby="<%= c.id %>-title" data-kpi="<%= c.id %>">
+    <h2 id="<%= c.id %>-title" class="h3"><span class="badge"><%= c.id %></span> <%= __('kpi:' + c.key + '_name') %></h2>
+    <dl>
+        <% FIELDS.forEach(function (f) { %>
+        <dt><%= __('kpi:' + f[1]) %></dt>
+        <dd><%= __('kpi:' + c.key + '_' + f[0]) %></dd>
+        <% }) %>
+        <% if (c.id === 'K14') { %>
+        <dt><%= __('kpi:status_not_measured') %></dt>
+        <dd><%= __('kpi:k14_not_captured') %></dd>
+        <% } %>
+        <dt><%= __('kpi:label_freshness') %></dt>
+        <dd><%= __('kpi:freshness_' + c.freshness) %></dd>
+        <dt><%= __('kpi:label_owner') %></dt>
+        <dd><%= __('kpi:owner_' + c.owner) %></dd>
+        <dt><%= __('kpi:label_list') %></dt>
+        <dd>
+            <% if (c.planTypes && c.planTypes.some(function (t) { return t.listHref; })) { %>
+            <% c.planTypes.forEach(function (t) { if (!t.listHref) return; %>
+            <a href="<%= t.listHref %>" data-kpi-list="<%= c.id %>"><%= __('kpi:glossary_list_link') %> (<%= __('reports:dr_type_' + t.type) %>)</a>
+            <% }) %>
+            <% } else if (c.listHref) { %>
+            <a href="<%= c.listHref %>" data-kpi-list="<%= c.id %>"><%= __('kpi:glossary_list_link') %></a>
+            <% } else { %>
+            <%= __('kpi:glossary_no_list') %>
+            <% } %>
+        </dd>
+    </dl>
+</section>
+<% }) %>
+
+<p class="text-muted"><%= __('kpi:glossary_contract', { version: contractVersion }) %></p>
+<p class="text-muted" id="contract-changes"><%= __('kpi:glossary_contract_changed') %></p>

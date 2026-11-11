@@ -41,6 +41,18 @@ function clampCoverageLevel(v) {
     );
 }
 
+/** The deactivation reason, trimmed; refused (400 reason_required) when empty. */
+function requireReason(reason) {
+    const why = String(reason == null ? '' : reason).trim();
+    if (!why) {
+        const e = new Error('reason_required');
+        e.code = 'reason_required';
+        e.status = 400;
+        throw e;
+    }
+    return why.slice(0, 1000);
+}
+
 class CoverageService {
     static async createRule(
         {
@@ -358,8 +370,24 @@ class CoverageService {
         );
     }
 
-    static async deleteRule(ruleId) {
-        return db.run('DELETE FROM coverage_rules WHERE id = ?', [ruleId]);
+    /**
+     * A coverage rule is never deleted (SA-43): it is deactivated with who,
+     * when and why. v_coverage_status, the evaluation and the prediction read
+     * active rules only, so it leaves every list and job.
+     * @returns the row, or null when no active rule matched.
+     * @throws .code 'reason_required' (400)
+     */
+    static async deactivateRule(ruleId, reason, actorRef = null) {
+        const why = requireReason(reason);
+        const row = await db.get(
+            `UPDATE coverage_rules
+                SET is_active = false, deactivated_reason = ?, deactivated_at = now(),
+                    deactivated_by = ?, updated_at = now()
+              WHERE id = ? AND is_active
+              RETURNING *`,
+            [why, actorRef, Number(ruleId)]
+        );
+        return row || null;
     }
 
     // ---- Who gets told when a rule breaches --------------------------------
@@ -569,8 +597,23 @@ class CoverageService {
         );
     }
 
-    static async deleteAbsence(absenceId) {
-        return db.run('DELETE FROM planned_absences WHERE id = ?', [absenceId]);
+    /**
+     * A planned absence is never deleted (SA-43): it is cancelled with who,
+     * when and why; the lists and the prediction skip it.
+     * @returns the row, or null when no active absence matched.
+     * @throws .code 'reason_required' (400)
+     */
+    static async deactivateAbsence(absenceId, reason, actorRef = null) {
+        const why = requireReason(reason);
+        const row = await db.get(
+            `UPDATE planned_absences
+                SET is_active = false, deactivated_reason = ?, deactivated_at = now(),
+                    deactivated_by = ?, updated_at = now()
+              WHERE id = ? AND is_active
+              RETURNING *`,
+            [why, actorRef, Number(absenceId)]
+        );
+        return row || null;
     }
 
     /** Upcoming/current absences for the caller's scope (ids: null = all). */
@@ -585,7 +628,7 @@ class CoverageService {
                     pa.starts_on AS "startsOn", pa.ends_on AS "endsOn", pa.kind, pa.note
                FROM planned_absences pa
                JOIN employees e ON e.id = pa.employee_id AND e.is_active
-              WHERE pa.ends_on >= CURRENT_DATE${scope}
+              WHERE pa.ends_on >= CURRENT_DATE AND pa.is_active${scope}
               ORDER BY pa.starts_on ASC
               LIMIT ?`,
             params
@@ -623,7 +666,7 @@ class CoverageService {
                       AND (r.service_id    IS NULL OR ed.service_id    = r.service_id)
                       AND NOT EXISTS (
                             SELECT 1 FROM planned_absences pa
-                             WHERE pa.employee_id = ed.employee_id
+                             WHERE pa.employee_id = ed.employee_id AND pa.is_active
                                AND d.day BETWEEN pa.starts_on AND pa.ends_on)
                       AND (NOT r.require_valid_cert OR EXISTS (
                             SELECT 1 FROM v_certification_current cc

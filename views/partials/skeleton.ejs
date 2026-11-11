@@ -1,0 +1,19 @@
+<%#
+  skeleton — the loading placeholder that keeps the shape of what is coming (a
+  few lines or a few table rows) instead of the word « Chargement… ». Announced
+  once to assistive tech (common:loading_skeleton_sr); to the eye, plain blocks
+  that shimmer unless motion is reduced.
+    include('../partials/skeleton', { rows: 3 })                       → 3 lines
+    include('../partials/skeleton', { rows: 3, cols: 5, table: true }) → 3 table rows (inside a <td colspan>)
+    include('../partials/skeleton', { rows: 2, compact: true })         → short lines (tile / inline)
+-%><%
+  var _skRows = Math.max(1, Math.min(8, Number(typeof rows !== 'undefined' ? rows : 3) || 3));
+  var _skCols = Math.max(1, Math.min(8, Number(typeof cols !== 'undefined' ? cols : 1) || 1));
+  var _skTable = typeof table !== 'undefined' && !!table;
+  var _skCompact = typeof compact !== 'undefined' && !!compact;
+-%><div class="skeleton<%= _skTable ? ' skeleton--table' : '' %><%= _skCompact ? ' skeleton--compact' : '' %>" role="status" aria-live="polite" data-skeleton>
+<span class="sr-only"><%= __('common:loading_skeleton_sr') %></span>
+<% for (var _r = 0; _r < _skRows; _r++) { %>
+<span class="skeleton-row" aria-hidden="true"><% for (var _c = 0; _c < _skCols; _c++) { %><span class="skeleton-line"></span><% } %></span>
+<% } %>
+</div>

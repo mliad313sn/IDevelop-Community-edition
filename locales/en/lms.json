@@ -98,5 +98,10 @@
   "upl_accept": "Validate",
   "upl_decline": "Decline",
   "upl_failed": "The decision could not be saved.",
-  "upl_confirm_decline": "Decline this proposal? The official level stays unchanged and the course remains recorded as evidence."
+  "upl_err_bad_decision": "Unknown decision: choose “Validate” or “Decline”.",
+  "upl_err_not_found": "This completed course cannot be found.",
+  "upl_err_not_pending": "A decision has already been made on this course.",
+  "upl_err_forbidden": "Only this employee's manager or an authorised administrator can decide.",
+  "upl_decline_reason_prompt": "Why is this proposal declined? The official level stays unchanged and the course remains recorded as evidence; your reason is kept with the decision.",
+  "upl_err_reason_required": "A reason is required to decline a proposal."
 }

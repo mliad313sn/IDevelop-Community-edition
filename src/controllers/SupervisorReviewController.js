@@ -144,10 +144,22 @@ class SupervisorReviewController {
                     error: req.t ? req.t('flash:invalid_identifier') : 'Identifiant invalide',
                 });
             }
+            // A level outside the 0-4 scale is the caller's fault: 400, in words
+            // that name the scale (it used to say "invalid identifier" and let 7
+            // or -1 through to the database).
             const level = Number(supervisorRatedLevel);
-            if (!Number.isInteger(level)) {
+            if (
+                supervisorRatedLevel === undefined ||
+                supervisorRatedLevel === null ||
+                supervisorRatedLevel === '' ||
+                !Number.isInteger(level) ||
+                level < 0 ||
+                level > 4
+            ) {
                 return res.status(400).json({
-                    error: req.t ? req.t('flash:invalid_identifier') : 'Identifiant invalide',
+                    error: req.t
+                        ? req.t('assess:svr_err_level_range')
+                        : 'The validated level must be a whole number from 0 to 4.',
                 });
             }
 
@@ -178,9 +190,24 @@ class SupervisorReviewController {
                 message: 'Review completed successfully',
             });
         } catch (error) {
+            // A refusal (review already decided, round no longer awaiting review,
+            // a concurrent completion, level out of range) carries its status and
+            // catalogue key: say it with the right code, instead of "try again"
+            // for an operation that can never succeed.
+            if (error && error.status >= 400 && error.status < 500) {
+                const key = error.i18n && error.i18n.key;
+                return res.status(error.status).json({
+                    error: key && req.t ? req.t(key) : error.message,
+                    code: error.code || undefined,
+                });
+            }
             console.error('Complete review error:', error);
             // Don't leak raw DB/driver messages to the supervisor's alert.
-            res.status(500).json({ error: 'Could not complete the review. Please try again.' });
+            res.status(500).json({
+                error: req.t
+                    ? req.t('assess:svr_err_complete_failed')
+                    : 'The review could not be saved. Please try again.',
+            });
         }
     }
 

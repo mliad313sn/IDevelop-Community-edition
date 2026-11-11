@@ -13,6 +13,7 @@
  *     demoted admins with an SSO path again (flagged).
  * SSO enforcement is faked (config/sso). Skipped when the test DB is unreachable.
  */
+const { isFixturesDatabaseUrl } = require('../helpers/testDatabase');
 require('dotenv').config();
 
 const mockSso = { enforced: true };
@@ -23,7 +24,7 @@ let db;
 let ready = false;
 
 beforeAll(async () => {
-    if (!/idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''))) return;
+    if (!isFixturesDatabaseUrl(process.env.DATABASE_URL)) return;
     db = require('../../src/config/database');
     try {
         await db.connect();
@@ -60,7 +61,7 @@ async function inRollback(fn) {
 }
 
 test('the migration really is on the test database (the DB tests below are not vacuous)', () => {
-    if (!/idevelop_fixtures/.test(String(process.env.DATABASE_URL || ''))) return;
+    if (!isFixturesDatabaseUrl(process.env.DATABASE_URL)) return;
     expect(ready).toBe(true);
 });
 

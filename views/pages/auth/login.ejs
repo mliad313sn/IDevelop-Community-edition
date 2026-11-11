@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
-        rel="stylesheet" media="print" onload="this.media='all'">
+        rel="stylesheet" media="print" data-async-css>
     <noscript>
         <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     </noscript>
@@ -37,12 +37,21 @@
         .login-breakglass-link { text-align: center; margin-top: 1.5rem; font-size: .78rem; }
         .login-breakglass-link a { color: var(--text-muted, #888); }
         .login-breakglass-banner { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 14px; padding: 10px 14px; font-size: .88rem; border-radius: 10px; background: rgba(220, 38, 38, .08); border: 1px solid rgba(220, 38, 38, .35); }
+        .login-shared-device { margin: 0 0 1rem; padding: .6rem .8rem; border: 1px solid var(--border-color, #444); border-radius: 10px; }
+        .login-shared-device label { display: flex; align-items: center; gap: .5rem; margin: 0; font-weight: 600; cursor: pointer; }
+        .login-shared-device input[type="checkbox"] { width: auto; margin: 0; }
+        .login-shared-device input[disabled] + span { opacity: .85; }
+        .login-shared-device .login-help-text { display: block; margin: .25rem 0 0 1.6rem; text-align: left; }
     </style>
     <!-- Prevent theme flash: apply saved theme before paint -->
     <script nonce="<%= cspNonce %>">
         (function(){var d=document.documentElement,t=null,p=null;try{t=localStorage.getItem('theme');p=localStorage.getItem('palette');}catch(e){}var dk=t==='dark'||(t!=='light'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);if(!dk)d.setAttribute('data-theme','light');if(p&&p!=='iris')d.setAttribute('data-palette',p);})();
     </script>
     <%- include('../../partials/pwa-head') %>
+    <script src="/js/csp-actions.js?v=<%= assetVersion %>" defer></script>
+    <script src="/js/shared-device.js?v=<%= assetVersion %>" defer data-mode="login"></script>
+    <%# The sign-out redirect lands here: draft-store.js honours the app_drafts_wipe cookie at once. %>
+    <script src="/js/draft-store.js?v=<%= assetVersion %>" defer></script>
 </head>
 
 <body class="login-page">
@@ -94,6 +103,25 @@
             </div>
         <% } %>
 
+        <%# « Shared computer » — one box for BOTH ways in. It belongs to the password
+            form (form="loginForm") and shared-device.js mirrors it into a short-lived
+            cookie so the SSO button carries it through the identity provider. From an
+            address a SuperAdmin declared as a shared computer it is ticked and locked
+            (the server applies it anyway). It exists only while kioskModeEnabled is ON. %>
+        <% const _kioskForced = typeof kioskForced !== 'undefined' && !!kioskForced;
+           const _kioskChecked = _kioskForced || (typeof kioskChecked !== 'undefined' && !!kioskChecked); %>
+        <% if (typeof kioskEnabled !== 'undefined' && kioskEnabled) { %>
+        <div class="login-shared-device" data-kiosk-box>
+            <label for="sharedDevice">
+                <input type="checkbox" id="sharedDevice" name="sharedDevice" value="1" form="loginForm"
+                    aria-describedby="sharedDeviceHelp"
+                    <%= _kioskChecked ? 'checked' : '' %> <%= _kioskForced ? 'disabled data-kiosk-forced' : '' %>>
+                <span><i class="fas fa-users" aria-hidden="true"></i> <%= __('auth:kiosk_checkbox') %></span>
+            </label>
+            <small id="sharedDeviceHelp" class="login-help-text"><%= _kioskForced ? __('auth:kiosk_checkbox_forced') : __('auth:kiosk_checkbox_help', { minutes: (typeof kioskIdleMinutes !== 'undefined' && kioskIdleMinutes) ? kioskIdleMinutes : 5 }) %></small>
+        </div>
+        <% } %>
+
         <% if (_enforced && !_breakglass) { %>
             <div class="login-sso-only">
                 <% _providers.forEach(function (p) { %>
@@ -116,7 +144,7 @@
         <% } %>
 
         <% if (_showForm) { %>
-            <form action="/login" method="POST" class="login-form">
+            <form action="/login" method="POST" class="login-form" id="loginForm">
                 <% if (typeof csrfToken !=='undefined' && csrfToken) { %>
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                     <% } %>

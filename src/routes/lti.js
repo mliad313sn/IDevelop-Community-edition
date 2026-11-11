@@ -126,12 +126,28 @@ router.get(
         }
 
         // Auto-submitting form POSTs the id_token to the Tool's redirect_uri.
+        // No inline handler (CSP script-src-attr 'none'): a nonce'd script submits
+        // it. This one response may post to the registered tool's origin (the
+        // app-wide form-action 'self' would block the launch).
+        const cspNonce =
+            (res.locals && res.locals.cspNonce) || crypto.randomBytes(16).toString('base64');
+        let toolOrigin = "'none'";
+        try {
+            toolOrigin = new URL(redirectUri).origin;
+        } catch (_) {
+            /* validated above */
+        }
+        res.set(
+            'Content-Security-Policy',
+            `default-src 'none'; script-src 'nonce-${cspNonce}'; form-action ${toolOrigin}; base-uri 'none'; frame-ancestors 'self'`
+        );
         res.set('Content-Type', 'text/html').send(
-            `<!doctype html><html><body onload="document.forms[0].submit()">
+            `<!doctype html><html><body>
          <form method="post" action="${esc(redirectUri)}">
            <input type="hidden" name="id_token" value="${esc(launch.idToken)}">
            <input type="hidden" name="state" value="${esc(launch.state)}">
-         </form><noscript><button type="submit">Continue</button></noscript></body></html>`
+           <noscript><button type="submit">Continue</button></noscript>
+         </form><script nonce="${cspNonce}">document.forms[0].submit();</script></body></html>`
         );
     })
 );

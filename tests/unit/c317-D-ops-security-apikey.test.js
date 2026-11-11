@@ -95,7 +95,7 @@ describe('config/app — apiKey resolution', () => {
     test('API_KEY equal to APP_KEY is refused (null) with a boot warning', () => {
         const cfg = loadConfig({ APP_KEY, API_KEY: APP_KEY, NODE_ENV: 'development' });
         expect(cfg.apiKey).toBeNull();
-        expect(cfg.apiKeyRefused).toMatch(/APP_KEY/);
+        expect(cfg.legacySharedKeyNotice).toMatch(/APP_KEY/);
         expect(console.warn).toHaveBeenCalledWith(expect.stringMatching(/API_KEY.*APP_KEY/));
     });
 

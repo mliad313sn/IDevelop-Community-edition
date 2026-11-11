@@ -19,13 +19,19 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
     <div class="page-actions">
         <a href="/system-logs/export?format=csv<%= _xq %>" class="btn btn-secondary" title="<%= __('syslogs:log_export_filtered_title') %>"><%= __('syslogs:export_csv') %></a>
         <a href="/system-logs/export?format=json<%= _xq %>" class="btn btn-secondary" title="<%= __('syslogs:log_export_filtered_title') %>"><%= __('syslogs:export_json') %></a>
+        <% if (typeof user !== 'undefined' && user && user.role === 'superadmin') { %>
+        <button type="button" class="btn btn-secondary" id="sl-verify-btn" title="<%= __('syslogs:verify_title') %>" data-on-click="SL.verifyChain"><i class="fas fa-shield-halved" aria-hidden="true"></i> <%= __('syslogs:verify_btn') %></button>
+        <% } %>
     </div>
 </div>
+<% if (typeof user !== 'undefined' && user && user.role === 'superadmin') { %>
+<p id="sl-verify-out" class="sl-verify" role="status" aria-live="polite" hidden></p>
+<% } %>
 
 <div class="sl-tabs" role="tablist" aria-label="<%= __('syslogs:views_label') %>">
-    <button class="btn btn-primary" id="sl-tab-entries-btn" role="tab" aria-selected="true" aria-controls="sl-tab-entries" onclick="SL.tab('entries')"><i class="fas fa-list" aria-hidden="true"></i> <%= __('syslogs:tab_entries') %></button>
-    <button class="btn btn-secondary" id="sl-tab-issues-btn" role="tab" aria-selected="false" aria-controls="sl-tab-issues" onclick="SL.tab('issues')"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('syslogs:tab_issues') %></button>
-    <button class="btn btn-secondary" id="sl-tab-analytics-btn" role="tab" aria-selected="false" aria-controls="sl-tab-analytics" onclick="SL.tab('analytics')"><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('syslogs:tab_analytics') %></button>
+    <button class="btn btn-primary" id="sl-tab-entries-btn" role="tab" aria-selected="true" aria-controls="sl-tab-entries" data-on-click="SL.tab" data-args='["entries"]'><i class="fas fa-list" aria-hidden="true"></i> <%= __('syslogs:tab_entries') %></button>
+    <button class="btn btn-secondary" id="sl-tab-issues-btn" role="tab" aria-selected="false" aria-controls="sl-tab-issues" data-on-click="SL.tab" data-args='["issues"]'><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <%= __('syslogs:tab_issues') %></button>
+    <button class="btn btn-secondary" id="sl-tab-analytics-btn" role="tab" aria-selected="false" aria-controls="sl-tab-analytics" data-on-click="SL.tab" data-args='["analytics"]'><i class="fas fa-chart-line" aria-hidden="true"></i> <%= __('syslogs:tab_analytics') %></button>
 </div>
 
 <div id="sl-tab-entries" role="tabpanel" aria-labelledby="sl-tab-entries-btn">
@@ -94,16 +100,17 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
         <% logs.forEach(function(log) { var det = log.details == null ? '' : (typeof log.details === 'object' ? JSON.stringify(log.details) : String(log.details)); %>
         <tr>
             <td><%= _fd(log.createdAt) %></td>
-            <td><%= log.username || log.actorRef || log.actor_ref || __('syslogs:system') %></td>
+            <%# Rows store ids; the name is resolved on read (SystemLogModel.resolvePeople). %>
+            <td><% if (log.actorErasedId != null) { %><em class="sl-erased"><%= __('syslogs:erased_person', { id: log.actorErasedId }) %></em><% } else { %><%= log.username || log.actorName || log.actorRef || log.actor_ref || __('syslogs:system') %><% if (log.actorRef && (log.username || log.actorName)) { %> <small class="sl-ref"><%= log.actorRef %></small><% } %><% } %></td>
             <td><span class="badge badge-info"><%= log.action %></span></td>
             <td><%= log.category || '—' %></td>
             <td><% if (log.severity) { %><span class="sl-sev sl-sev-<%= log.severity %>"><%= __('syslogs:log_sev_' + log.severity, { defaultValue: log.severity }) %></span><% } else { %>—<% } %></td>
-            <td><% if (log.entityType) { %><%= log.entityType %><%= log.entityId != null ? ' #' + log.entityId : '' %><% } else { %>—<% } %></td>
+            <td><% if (log.entityType) { %><%= log.entityType %><%= log.entityId != null ? ' #' + log.entityId : '' %><% if (log.subjectErasedId != null) { %> <em class="sl-erased"><%= __('syslogs:erased_person', { id: log.subjectErasedId }) %></em><% } else if (log.subjectName) { %> <small class="sl-ref"><%= log.subjectName %></small><% } %><% } else { %>—<% } %></td>
             <td><% if (log.statusCode) { %><span class="sl-sc sl-sc-<%= String(log.statusCode).charAt(0) %>"><%= log.statusCode %></span><% } else { %>—<% } %></td>
             <td class="<%= log.latencyMs != null && log.latencyMs >= 1500 ? 'sl-slow' : '' %>"><%= log.latencyMs != null ? log.latencyMs + 'ms' : '—' %></td>
             <td class="log-details" title="<%= det %>"><%= det || '—' %></td>
             <td><%= log.ipAddress || '—' %></td>
-            <td><% if (log.requestId) { %><button type="button" class="sl-reqlink" title="<%= __('syslogs:view_trail_title') %>" data-request-id="<%= log.requestId %>" onclick="SL.openTrail(this.dataset.requestId)"><i class="fas fa-link" aria-hidden="true"></i></button><% } else { %>—<% } %></td>
+            <td><% if (log.requestId) { %><button type="button" class="sl-reqlink" title="<%= __('syslogs:view_trail_title') %>" data-request-id="<%= log.requestId %>" data-on-click="SL.openTrail" data-args="<%= JSON.stringify([String(log.requestId)]) %>"><i class="fas fa-link" aria-hidden="true"></i></button><% } else { %>—<% } %></td>
         </tr>
         <% }); %>
     </tbody>
@@ -130,7 +137,7 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
 <div id="sl-tab-issues" style="display:none" role="tabpanel" aria-labelledby="sl-tab-issues-btn">
     <div class="sl-controls">
         <label for="sl-idays"><%= __('syslogs:window') %></label>
-        <select id="sl-idays" onchange="SL.loadIssues(true)">
+        <select id="sl-idays" data-on-change="SL.loadIssues" data-args='[true]'>
             <option value="1"><%= __('syslogs:last_24h') %></option>
             <option value="7" selected><%= __('syslogs:last_7d') %></option>
             <option value="30"><%= __('syslogs:last_30d') %></option>
@@ -153,11 +160,11 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
 </div>
 
 <!-- Request trail modal -->
-<div id="sl-trail" class="sl-trail-overlay" style="display:none" onclick="if(event.target===this)SL.closeTrail()">
+<div id="sl-trail" class="sl-trail-overlay" style="display:none" data-on-click="SL.overlayClick" data-args='["$event","$el"]'>
     <div class="sl-trail-card" role="dialog" aria-modal="true" aria-label="<%= __('syslogs:trail_title') %>">
         <div class="sl-trail-head">
             <strong><%= __('syslogs:trail_title') %> <code id="sl-trail-id"></code></strong>
-            <button class="btn btn-sm btn-secondary" onclick="SL.closeTrail()"><%= __('syslogs:close') %></button>
+            <button class="btn btn-sm btn-secondary" data-on-click="SL.closeTrail" data-args='[]'><%= __('syslogs:close') %></button>
         </div>
         <div id="sl-trail-body" class="sl-trail-body"><%= __('syslogs:js_loading') %></div>
     </div>
@@ -166,7 +173,7 @@ var opt = function (value, label, selected) { return '<option value="' + esc(val
 <div id="sl-tab-analytics" style="display:none" role="tabpanel" aria-labelledby="sl-tab-analytics-btn">
     <div class="sl-controls">
         <label for="sl-days"><%= __('syslogs:window') %></label>
-        <select id="sl-days" onchange="SL.loadAnalytics(true)">
+        <select id="sl-days" data-on-change="SL.loadAnalytics" data-args='[true]'>
             <option value="7"><%= __('syslogs:last_7d') %></option>
             <option value="30" selected><%= __('syslogs:last_30d') %></option>
             <option value="90"><%= __('syslogs:last_90d') %></option>
@@ -207,7 +214,24 @@ const SL = {
     fails: <%- JSON.stringify(__('syslogs:js_fails')) %>,
     noTrail: <%- JSON.stringify(__('syslogs:js_no_trail')) %>,
     anomalyPrefix: <%- JSON.stringify(__('syslogs:js_anomaly_prefix')) %>,
-    anomalySuffix: <%- JSON.stringify(__('syslogs:js_anomaly_suffix')) %>
+    anomalySuffix: <%- JSON.stringify(__('syslogs:js_anomaly_suffix')) %>,
+    verifyRunning: <%- JSON.stringify(__('syslogs:verify_running')) %>,
+    verifyOk: <%- JSON.stringify(__('syslogs:verify_ok')) %>,
+    verifyBroken: <%- JSON.stringify(__('syslogs:verify_broken')) %>
+  },
+  // The one chain verifier (fn_system_logs_verify): accepts attested erasures
+  // and sealed purges, flags any other change. SuperAdmin only (server-side too).
+  async verifyChain(){
+    const out=document.getElementById('sl-verify-out'); if(!out) return;
+    out.hidden=false; out.className='sl-verify'; out.textContent=this.t.verifyRunning;
+    try{
+      const r=await fetch('/v2/cap/audit/verify',{headers:{'Accept':'application/json'}});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error||this.t.loadFailed);
+      const fill=(s)=>String(s).replace('{rows}',d.hashedRows).replace('{redacted}',d.redactedRows||0)
+        .replace('{seals}',d.seals||0).replace('{ids}',(d.brokenAt||[]).join(', '));
+      out.className='sl-verify '+(d.intact?'sl-verify-ok':'sl-verify-bad');
+      out.textContent=fill(d.intact?this.t.verifyOk:this.t.verifyBroken);
+    }catch(e){ out.className='sl-verify sl-verify-bad'; out.textContent=this.t.loadFailed+' '+(e.message||''); }
   },
   tab(which){
     document.getElementById('sl-tab-entries').style.display   = which==='entries'?'':'none';
@@ -243,7 +267,7 @@ const SL = {
       document.getElementById('sl-i-lockouts').innerHTML=rows(d.lockouts,x=>
         '<tr><td>'+this.esc(x.who)+'</td><td class="sl-n">'+x.fails+' '+this.esc(this.t.fails)+'</td></tr>');
       document.getElementById('sl-i-recent').innerHTML=rows(d.recentSlow,x=>
-        '<tr><td>'+this.esc(x.at)+'</td><td>'+this.esc(x.kind)+'</td><td>'+this.esc(x.route||'')+'</td><td class="sl-n">'+(x.latencyMs!=null?x.latencyMs+'ms':'')+(x.pgCode?' '+this.esc(x.pgCode):'')+'</td><td>'+(x.requestId?'<button type="button" class="sl-reqlink" data-request-id="'+this.esc(x.requestId)+'" onclick="SL.openTrail(this.dataset.requestId)"><i class="fas fa-link"></i></button>':'')+'</td></tr>');
+        '<tr><td>'+this.esc(x.at)+'</td><td>'+this.esc(x.kind)+'</td><td>'+this.esc(x.route||'')+'</td><td class="sl-n">'+(x.latencyMs!=null?x.latencyMs+'ms':'')+(x.pgCode?' '+this.esc(x.pgCode):'')+'</td><td>'+(x.requestId?'<button type="button" class="sl-reqlink" data-request-id="'+this.esc(x.requestId)+'" data-on-click="SL.openTrail" data-args="'+this.esc(JSON.stringify([String(x.requestId)]))+'"><i class="fas fa-link"></i></button>':'')+'</td></tr>');
       this.issuesLoaded=true; st.textContent='';
     }catch(e){ st.textContent=this.t.error+e.message; }
   },
@@ -264,6 +288,8 @@ const SL = {
     }catch(e){ body.textContent=this.t.error+e.message; }
   },
   closeTrail(){ document.getElementById('sl-trail').style.display='none'; },
+  // A click on the dimmed backdrop itself (not the card) closes the trail.
+  overlayClick(ev, overlay){ if(ev && ev.target===overlay) this.closeTrail(); },
   axis(){ const c=getComputedStyle(document.documentElement).getPropertyValue('--text-secondary')||'#94a3b8';
     return {ticks:{color:c},grid:{color:'rgba(148,163,184,.15)'}}; },
   bar(id,labels,data,color){ if(this.charts[id])this.charts[id].destroy();
@@ -304,6 +330,11 @@ const SL = {
     }catch(e){ st.textContent=this.t.error+e.message; }
   }
 };
+// CSP: controls are wired by csp-actions.js (data-on-click: SL.<method>), which
+// needs SL on window and calls with this = the element — the methods use this.*,
+// so each is bound to SL, exactly as the old inline SL.x() calls.
+Object.keys(SL).forEach(function(k){ if(typeof SL[k]==='function') SL[k]=SL[k].bind(SL); });
+window.SL = SL;
 </script>
 
 <style>
@@ -319,6 +350,11 @@ const SL = {
 
 /* Analytics tab */
 .sl-tabs { display:flex; gap:8px; margin: 4px 0 18px; }
+.sl-erased { color: var(--text-secondary); font-style: italic; }
+.sl-ref { color: var(--text-secondary); font-size: .75rem; }
+.sl-verify { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-light); }
+.sl-verify-ok { border-color: var(--success, #10b981); }
+.sl-verify-bad { border-color: var(--danger, #dc2626); font-weight: 600; }
 .sl-controls { display:flex; align-items:center; gap:10px; margin-bottom:14px; color:var(--text-secondary); font-size:.85rem; }
 .sl-controls select { padding:6px 8px; background:var(--bg-subtle); color:var(--text-primary); border:1px solid var(--border-light); border-radius:var(--radius-sm); }
 .sl-status { color:var(--text-muted); }
@@ -367,12 +403,12 @@ const SL = {
 /* Filter bar */
 .sl-filterbar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; background:var(--bg-subtle); border:1px solid var(--border-light); border-radius:var(--radius-md); padding:10px 12px; margin-bottom:12px; }
 .sl-fg { display:flex; flex-direction:column; gap:4px; }
-.sl-fg label { font-size:.7rem; letter-spacing:.03em; color:var(--text-secondary); }
+.sl-fg label { font-size:.75rem; letter-spacing:.03em; color:var(--text-secondary); }
 .sl-fg input, .sl-fg select { padding:5px 8px; background:var(--bg-elevated); color:var(--text-primary); border:1px solid var(--border-light); border-radius:var(--radius-sm); font-size:.85rem; }
 .sl-chk { flex-direction:row; align-items:center; gap:6px; font-size:.85rem; color:var(--text-primary); text-transform:none; }
 .sl-fg-err input, .sl-fg-err select { border-color:#ef4444; }
-.sl-err { font-size:.72rem; color:#f87171; text-transform:none; letter-spacing:0; max-width:220px; }
-.sl-sev { display:inline-block; padding:1px 7px; border-radius:6px; font-size:.74rem; font-weight:600; }
+.sl-err { font-size:.75rem; color:#f87171; text-transform:none; letter-spacing:0; max-width:220px; }
+.sl-sev { display:inline-block; padding:1px 7px; border-radius:6px; font-size:.75rem; font-weight:600; }
 .sl-sev-info { background:rgba(59,130,246,.15); color:#60a5fa; } .sl-sev-warn { background:rgba(245,158,11,.18); color:#fbbf24; }
 .sl-sev-error, .sl-sev-critical { background:rgba(239,68,68,.20); color:#f87171; }
 /* Status code chips */
@@ -398,7 +434,7 @@ const SL = {
 .sl-trail-row { padding:8px 10px; border-left:3px solid var(--border-light); margin-bottom:8px; background:var(--bg-subtle); border-radius:0 8px 8px 0; }
 .sl-trail-row.sl-trail-error { border-left-color:#ef4444; } .sl-trail-row.sl-trail-warn { border-left-color:#f59e0b; } .sl-trail-row.sl-trail-info { border-left-color:#3b82f6; }
 .sl-trail-t { color:var(--text-muted); font-size:.78rem; margin-right:8px; font-variant-numeric:tabular-nums; }
-.sl-trail-badge { display:inline-block; font-size:.68rem; background:var(--bg-elevated); border:1px solid var(--border-light); border-radius:6px; padding:0 6px; margin-right:8px; color:var(--text-secondary); }
+.sl-trail-badge { display:inline-block; font-size:.75rem; background:var(--bg-elevated); border:1px solid var(--border-light); border-radius:6px; padding:0 6px; margin-right:8px; color:var(--text-secondary); }
 .sl-trail-label { font-weight:600; font-size:.86rem; }
 .sl-trail-detail { color:var(--text-secondary); font-size:.8rem; margin-top:4px; word-break:break-word; font-family:ui-monospace,monospace; }
 @media (max-width:900px){ .sl-issue-grid{grid-template-columns:1fr;} }

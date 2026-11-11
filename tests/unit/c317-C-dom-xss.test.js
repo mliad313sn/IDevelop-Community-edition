@@ -110,10 +110,36 @@ function datasetOf(attrs) {
     });
     return d;
 }
-/** Compile + run an inline handler as the browser would (decoded body, this = element). */
+/** The click handler a tag declares: a delegated data-on-click or an inline onclick. */
+const clickOf = (tag) => tag.attrs['data-on-click'] || tag.attrs.onclick || '';
+/**
+ * Click a tag as the browser would.
+ *  - data-on-click (CSP, SA-14): dispatched by the REAL public/js/csp-actions.js
+ *    loaded into the sandbox — the handler path is resolved on window and the
+ *    DECODED data-args JSON becomes the arguments ("$el" = the element). Nothing
+ *    in the attribute is ever compiled as code.
+ *  - onclick (legacy): compiled from the decoded body with this = element.
+ */
 function click(ctx, tag) {
-    ctx.__el = { dataset: datasetOf(tag.attrs), getAttribute: (k) => tag.attrs[k] };
+    const el = {
+        nodeType: 1,
+        parentNode: null,
+        dataset: datasetOf(tag.attrs),
+        getAttribute: (k) => (k in tag.attrs ? tag.attrs[k] : null),
+        hasAttribute: (k) => k in tag.attrs,
+    };
+    ctx.__el = el;
     try {
+        if (tag.attrs['data-on-click']) {
+            if (!ctx.__cspActions) vm.runInContext(read('public/js/csp-actions.js'), ctx);
+            ctx.__cspActions.handle('click', {
+                target: el,
+                cancelBubble: false,
+                preventDefault() {},
+                stopPropagation() {},
+            });
+            return null;
+        }
         vm.runInContext('(function(){\n' + tag.attrs.onclick + '\n}).call(__el)', ctx);
         return null;
     } catch (e) {
@@ -296,9 +322,11 @@ describe('1. coaching plans console — an employee name never runs as script', 
     test('clicking « Start a plan » passes the exact name and executes nothing', async () => {
         const S = await boot();
         const buttons = parseTags(S.document.getElementById('cp-roster-body').innerHTML).filter(
-            (t) => t.tag === 'button' && t.attrs.onclick
+            (t) => t.tag === 'button' && /CP\.start/.test(clickOf(t))
         );
         expect(buttons).toHaveLength(3);
+        // No value is spliced into code: no inline handler at all.
+        buttons.forEach((b) => expect(b.attrs.onclick).toBeUndefined());
         buttons.forEach((b) => expect(click(S.ctx, b)).toBeNull()); // O'Brien used to throw a SyntaxError
         expect(S.alerts).toEqual([]);
         expect(vm.runInContext('__calls', S.ctx)).toEqual([
@@ -406,7 +434,7 @@ describe('3. LMS hub — skill names and provider names stay inert', () => {
             S.ctx
         );
         const btns = parseTags(html).filter(
-            (t) => t.tag === 'button' && /LMS\.(test|sync)/.test(t.attrs.onclick || '')
+            (t) => t.tag === 'button' && /LMS\.(test|sync)/.test(clickOf(t))
         );
         expect(btns).toHaveLength(2);
         btns.forEach((b) => expect(click(S.ctx, b)).toBeNull());
@@ -438,7 +466,7 @@ describe('4. data management — a snapshot name never runs as script', () => {
             { filename: file }
         );
         const btn = parseTags(html).find(
-            (t) => t.tag === 'button' && /restoreSnapshot/.test(t.attrs.onclick || '')
+            (t) => t.tag === 'button' && /restoreSnapshot/.test(clickOf(t))
         );
         expect(btn).toBeDefined();
         const S = makeSandbox();
@@ -479,8 +507,8 @@ describe('5. report builder — filter tags, SQL preview, section width', () => 
         S.qsa['#filterSites input:checked'] = [evil];
         S.qsa['#filterSites input'] = [evil, other];
         vm.runInContext('RB.applyFilters()', S.ctx);
-        const tag = parseTags(S.document.getElementById('rbFilterTags').innerHTML).find(
-            (t) => t.attrs.onclick
+        const tag = parseTags(S.document.getElementById('rbFilterTags').innerHTML).find((t) =>
+            clickOf(t)
         );
         expect(tag).toBeDefined();
         S.qsa['#filterSites input:checked'] = [];

@@ -8,8 +8,9 @@
  *     (L6-09), on /about (L4-15) or in the session-device description (L6-12);
  *   - every native confirm()/prompt() is gone from views/** (L6-19);
  *   - /admins/:id* only matches a numeric id (L6-24);
- *   - /account/my-access and /action-center redirect (L5C-07);
- *   - /setup is SuperAdmin-only (L5C-08) and its banner follows it;
+ *   - /account/my-access and /action-center redirect (L5C-07; the latter to /tasks);
+ *   - /setup is read-only for the other administrators (4.0.0 decision 13);
+ *     its dismiss and its dashboard banner stay SuperAdmin-only (L5C-08);
  *   - the 403 page names contactable SuperAdmins by DISPLAY NAME, never a demo
  *     login and never an e-mail (L5C-12);
  *   - every sidebar href has a help entry (L6-21);
@@ -251,19 +252,27 @@ describe('L6-24 / L5C-07 / L5C-08 — routes', () => {
         expect(routes).toMatch(
             /router\.get\(\s*'\/account\/my-access'[\s\S]{0,120}redirect\(302, '\/mon-acces'\)/
         );
+        // /action-center now leads to « À traiter » (or the person's home).
         expect(routes).toMatch(
-            /router\.get\(\s*'\/action-center'[\s\S]{0,120}redirect\(302, '\/notifications'\)/
+            /router\.get\(\s*'\/action-center',[\s\S]{0,160}TasksController'\)\.legacyActionCenter/
         );
+        const tasks = read('src/controllers/TasksController.js');
+        expect(tasks).toMatch(/res\.redirect\(301, '\/tasks'\)/);
     });
 
-    test('/setup is SuperAdmin-only and answers with the explanatory 403', () => {
-        expect(routes).toMatch(/router\.get\(\s*'\/setup',\s*requireSuperAdminPage/);
+    test('/setup: read-only for the other administrators, dismiss SuperAdmin-only (owner decision 13 of 4.0.0)', () => {
+        // the checklist is open to every administrator (scoped counts, no
+        // SuperAdmin link, no dismiss: SetupController); dismissing the banner
+        // stays SuperAdmin-only
+        expect(routes).toMatch(/router\.get\(\s*'\/setup',\s*requireAdmin,/);
+        expect(routes).toMatch(/router\.post\(\s*'\/setup\/dismiss',\s*requireSuperAdmin,/);
         const auth = read('src/middleware/auth.js');
         expect(auth).toMatch(/const requireSuperAdminPage = async \(req, res, next\)/);
         expect(auth).toMatch(/superAdminOnly: true/);
-        // and the dashboard banner follows the page, so nobody is nagged to a wall
-        expect(read('src/controllers/DashboardController.js')).toMatch(
-            /userType === 'admin' && req\.user\.role === 'superadmin'/
+        // and the dashboard's getting-started line follows the page, so nobody is
+        // nagged to a wall: SuperAdmin only (DashboardHomeService.setupItems)
+        expect(read('src/services/DashboardHomeService.js')).toMatch(
+            /if \(ctx\.caps\.superAdmin\) \{\s+try \{\s+const AppSettingsModel/
         );
     });
 });
@@ -297,15 +306,16 @@ describe('L5C-12 — the 403 page names a real, contactable person', () => {
     });
 });
 
-describe('L6-21 — every sidebar destination has contextual help', () => {
-    test('the diff between sidebar hrefs and help.js entries is empty', () => {
-        const sidebar = read('views/partials/sidebar.ejs');
+describe('L6-21 — every rail destination has contextual help', () => {
+    test('the diff between navigation hrefs and help.js entries is empty', () => {
+        const NAV = require('../../src/config/navigation');
         const help = read('public/js/help.js');
         const hrefs = [
             ...new Set(
-                [...sidebar.matchAll(/href="(\/[^"<%]*)"/g)]
-                    .map((m) => m[1])
-                    .filter((h) => !h.startsWith('/lang/'))
+                [...Object.values(NAV.CATALOGUE), ...NAV.ACCOUNT_MENU]
+                    .map((d) => d.href)
+                    .filter(Boolean)
+                    .map((h) => h.split(/[?#]/)[0])
             ),
         ];
         const keys = new Set([...help.matchAll(/^\s{8}'(\/[^']*)':\s*\{/gm)].map((m) => m[1]));
@@ -332,28 +342,31 @@ describe('L6-21 — every sidebar destination has contextual help', () => {
 });
 
 describe('L6-31 — the rail is cut by task and gated on real capabilities', () => {
-    const sidebar = read('views/partials/sidebar.ejs');
+    const NAV = require('../../src/config/navigation');
+    const config = read('src/config/navigation.js');
 
-    test('the four groups exist and the two old ones are gone', () => {
-        for (const k of [
-            'section_accounts',
-            'section_campaigns',
-            'section_data',
-            'section_settings',
-            'section_help',
-        ]) {
-            expect(sidebar).toContain(`chrome:${k}`);
+    test('the sections exist in both locales and the two old ones are gone', () => {
+        const keys = new Set();
+        for (const tree of Object.values(NAV.SECTIONS))
+            for (const k of Object.keys(tree)) keys.add(k);
+        expect(keys.size).toBeGreaterThan(8);
+        for (const k of keys) {
             expect(FR_CHROME[k]).toBeTruthy();
             expect(EN_CHROME[k]).toBeTruthy();
         }
-        expect(sidebar).not.toContain('chrome:section_administration');
-        expect(sidebar).not.toContain('chrome:section_configuration');
-        // the 13-link wall is gone, so nothing needs to open folded except Talents
-        expect(sidebar).toMatch(/CLOSED_BY_DEFAULT = \['section_talent'\]/);
+        expect(keys.has('section_administration')).toBe(false);
+        expect(keys.has('section_configuration')).toBe(false);
+        // every group opens folded (4.0.0 port, wave 11): the current page's
+        // group opens in the browser, a read-only account's framework and
+        // reports are unfolded
+        expect([...keys].filter((k) => !NAV.CLOSED_BY_DEFAULT.includes(k))).toEqual([]);
+        expect(NAV.OPEN_FOR_READ_ONLY).toEqual(['section_reference', 'section_reports']);
     });
 
     test('entries are gated through can(), never a hand-written role list', () => {
-        expect(sidebar).toMatch(/const _can = \(s\) => \(typeof can === 'function'\) && can\(s\)/);
+        expect(config).toMatch(
+            /const can = \(s\) => typeof L\.can === 'function' && !!L\.can\(s\)/
+        );
         for (const slug of [
             'manage_invitations',
             'manage_onboarding',
@@ -368,11 +381,12 @@ describe('L6-31 — the rail is cut by task and gated on real capabilities', () 
             'view_app_settings',
             'view_employees',
         ]) {
-            expect(sidebar).toContain(`_can('${slug}')`);
+            expect(config).toContain(`can('${slug}')`);
         }
     });
 
     test('the pages that had no way in are linked (L1-10, L4-20)', () => {
+        const hrefs = new Set(Object.values(NAV.CATALOGUE).map((d) => d.href));
         for (const href of [
             '/admin/delegation',
             '/setup',
@@ -381,7 +395,7 @@ describe('L6-31 — the rail is cut by task and gated on real capabilities', () 
             '/guide',
             '/about',
         ]) {
-            expect(sidebar).toContain(`href="${href}"`);
+            expect(hrefs.has(href)).toBe(true);
         }
     });
 });
@@ -439,12 +453,15 @@ describe('rule 1 — a measured number, never a placeholder', () => {
             'views/pages/admins/accounts.ejs',
             'views/pages/skill-matrix/index.ejs',
             'views/pages/lifecycle/index.ejs',
-            'views/pages/dashboard.ejs',
             'views/pages/maker-checker/index.ejs',
         ];
         for (const p of pages) {
             expect(`${p}:${/\.length !== 1\) \{ %>/.test(read(p))}`).toBe(`${p}:true`);
         }
+        // the dashboard scope bar offers a site list only when there is a choice
+        expect(read('views/partials/scope-bar.ejs')).toMatch(
+            /if \(\(_f\.sites \|\| \[\]\)\.length \+ \(_f\.noSite \? 1 : 0\) > 1\) \{ %>/
+        );
     });
 
     test('L6-16 — the framework weight is measured, and absent when there is nothing to measure', () => {

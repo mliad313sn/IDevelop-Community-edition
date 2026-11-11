@@ -43,8 +43,19 @@ class SkillAssessmentModel extends BaseModel {
         ]);
     }
 
+    /**
+     * `validation` (enum skill_validation, migration 29) says where the official
+     * level comes from. Every write carries it, and an update RESETS it: a new
+     * level written without a stated provenance is 'self' (unproven), so an
+     * earlier 'manager_validated' never sticks to a level nobody validated.
+     * Callers writing an assessor's, a reviewer's or an arbiter's decision pass
+     * validation: 'manager_validated'.
+     */
     async upsert(data) {
         const existing = await this.findByEmployeeIdAndSkillId(data.employeeId, data.skillId);
+        const validation = SkillAssessmentModel.VALIDATIONS.includes(data.validation)
+            ? data.validation
+            : 'self';
 
         if (existing) {
             return await this.update(existing.id, {
@@ -52,9 +63,10 @@ class SkillAssessmentModel extends BaseModel {
                 assessedBy: data.assessedBy,
                 assessedAt: new Date().toISOString(),
                 notes: data.notes || null,
+                validation,
             });
         } else {
-            return await this.create(data);
+            return await this.create({ ...data, validation });
         }
     }
 
@@ -98,5 +110,7 @@ class SkillAssessmentModel extends BaseModel {
         return r ? Number(r.n) : 0;
     }
 }
+
+SkillAssessmentModel.VALIDATIONS = Object.freeze(['self', 'manager_validated', 'evidence_backed']);
 
 module.exports = new SkillAssessmentModel();

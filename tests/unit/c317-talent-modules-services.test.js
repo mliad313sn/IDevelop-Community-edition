@@ -321,7 +321,7 @@ describe('DEI — declared labels are validated before storage', () => {
     test.each(['<img src=x onerror=alert(1)>', '"><script>x</script>', 'a'.repeat(65)])(
         'refuses %s',
         async (bad) => {
-            await expect(DEI.setDemographics(1, { gender: bad })).rejects.toMatchObject({
+            await expect(DEI.declare(1, { gender: bad }, { consent: true })).rejects.toMatchObject({
                 status: 400,
                 code: 'dei_invalid_gender',
             });
@@ -329,17 +329,20 @@ describe('DEI — declared labels are validated before storage', () => {
         }
     );
 
-    test('accepts ordinary labels in any script', async () => {
-        mockDb.get.mockResolvedValue({ employeeId: 1 });
-        await DEI.setDemographics(1, {
+    test('accepts ordinary labels in any script', () => {
+        expect(
+            DEI.validate({
+                gender: 'Femme',
+                ageBand: '36-45',
+                nationality: 'Sénégalaise',
+                ethnicity: 'Peul (Fulani)',
+            })
+        ).toMatchObject({
             gender: 'Femme',
             ageBand: '36-45',
             nationality: 'Sénégalaise',
             ethnicity: 'Peul (Fulani)',
         });
-        const params = mockDb.get.mock.calls[0][1];
-        expect(params.slice(1, 4)).toEqual(['Femme', 'Peul (Fulani)', '36-45']);
-        expect(params[5]).toBe('Sénégalaise');
     });
 });
 

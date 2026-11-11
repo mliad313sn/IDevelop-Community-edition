@@ -30,7 +30,7 @@
  * existing quiet-hours deferral, the per-user email opt-out and the `digest`
  * category switch already live — this job adds no new delivery path. Like
  * manager_digest / dept_digest the kind is deliberately absent from
- * KIND_POLICY: it composes its own branded bilingual email and is gated by the
+ * KIND_POLICY: it composes its own mail (renderEmail blocks, one language) and is gated by the
  * email category, not by a per-kind tier.
  */
 
@@ -61,8 +61,7 @@ async function collect(managerId, ids) {
     // query" path. A monthly batch has no latency budget worth the risk.
     const certs = await db
         .all(
-            `SELECT cc.full_name AS "fullName", cc.skill_name AS "skillName",
-                cc.expires_on AS "expiresOn", cc.days_to_expiry::int AS "days"
+            `SELECT cc.employee_id AS "employeeId", cc.days_to_expiry::int AS "days"
            FROM v_certification_current cc
           WHERE cc.employee_id IN (${ph})
             AND cc.expires_on IS NOT NULL
@@ -106,33 +105,32 @@ async function collect(managerId, ids) {
     return { certs, noBench, newlyHigh: Number(newlyHigh && newlyHigh.n) || 0 };
 }
 
-/** Branded bilingual brief. Sections render only when they have content. */
-function renderHtml(
-    recipientName,
-    { certs, noBench, newlyHigh },
-    { branding = null, monthLabel = '' } = {}
-) {
-    const T = require('../utils/emailTemplate');
-    const appUrl = T.baseUrl();
-    const accent = branding && branding.accentColor;
+/**
+ * The brief as renderEmail blocks, in ONE language. Sections render only when
+ * they have content. Returns { title, blocks }.
+ */
+function renderBlocks({ certs, noBench, newlyHigh }, { lang = 'fr', monthLabel = '' } = {}) {
+    const T = require('../utils/emailTemplate').blocks(lang);
     const blocks = [];
     const urgentCerts = certs.filter((c) => Number(c.days) <= 30).length;
 
     blocks.push(
         T.kpis([
             {
-                label: 'Certifications (90 j)',
+                label: T.pick('Certifications (90 jours)', 'Certifications (90 days)'),
                 value: certs.length,
                 color: certs.length ? '#b45309' : '#15803d',
-                sub: urgentCerts ? `${urgentCerts} à ≤30 j` : undefined,
+                sub: urgentCerts
+                    ? T.pick(`${urgentCerts} à 30 jours ou moins`, `${urgentCerts} within 30 days`)
+                    : undefined,
             },
             {
-                label: 'Postes clés sans relève',
+                label: T.pick('Postes clés sans relève', 'Key positions with no bench'),
                 value: noBench.length,
                 color: noBench.length ? '#b91c1c' : '#15803d',
             },
             {
-                label: 'Risque de départ (nouveau)',
+                label: T.pick('Risque de départ (nouveau)', 'Retention risk (new)'),
                 value: newlyHigh,
                 color: newlyHigh ? '#b45309' : '#15803d',
             },
@@ -147,42 +145,23 @@ function renderHtml(
                 '#b45309'
             )
         );
-        blocks.push(
-            T.table(
-                [
-                    { fr: 'Collaborateur', en: 'Team member' },
-                    { fr: 'Certification' },
-                    { fr: 'Échéance', en: 'Expiry' },
-                ],
-                certs.slice(0, 12).map((c) => [
-                    { text: c.fullName, bold: true },
-                    c.skillName,
-                    {
-                        text:
-                            Number(c.days) < 0
-                                ? `${c.expiresOn} — expirée / expired`
-                                : `${c.expiresOn} — ${c.days} j`,
-                        color: Number(c.days) <= 30 ? '#b91c1c' : '#b45309',
-                        bold: Number(c.days) <= 30,
-                    },
-                ])
-            )
-        );
-        if (certs.length > 12) {
-            blocks.push(
-                T.para(`… et ${certs.length - 12} autre(s).`, `… and ${certs.length - 12} more.`)
-            );
-        }
+        // No person is named in a digest (wave 12, D3): counts by window and a
+        // link to the page that holds the list under its own guard.
+        const expired = certs.filter((c) => Number(c.days) < 0).length;
+        const people = new Set(certs.map((c) => c.employeeId)).size;
         blocks.push(
             T.para(
-                "Planifiez la revalidation (VOC) avant l'échéance : une certification expirée ramène la préparation de la personne à 0 sur cette compétence et peut rompre une règle de couverture.",
-                'Schedule the revalidation (VOC) before the due date: a lapsed certification drops that person’s readiness to 0 on the skill and can breach a coverage rule.'
+                `${certs.length} certification(s) de ${people} personne(s) : ${expired} expirée(s), ${urgentCerts} à 30 jours ou moins.`,
+                `${certs.length} certification(s) held by ${people} person(s): ${expired} expired, ${urgentCerts} within 30 days.`
             )
         );
-        if (appUrl)
-            blocks.push(
-                T.cta('Ouvrir la conformité', 'Open compliance', appUrl + '/compliance', accent)
-            );
+        blocks.push(
+            T.para(
+                "Planifiez la revalidation avant l'échéance : une certification expirée ramène la préparation de la personne à 0 sur cette compétence et peut rompre une règle de couverture.",
+                'Schedule the revalidation before the due date: a lapsed certification drops that person’s readiness to 0 on the skill and can breach a coverage rule.'
+            )
+        );
+        blocks.push(T.button('Voir la liste', 'See the list', '/compliance'));
     }
 
     if (noBench.length) {
@@ -216,10 +195,7 @@ function renderHtml(
                 'Name at least one successor, or an emergency cover, for each of these positions: with no named bench, a departure translates straight into an operational interruption.'
             )
         );
-        if (appUrl)
-            blocks.push(
-                T.cta('Ouvrir la continuité', 'Open continuity', appUrl + '/v2/continuity', accent)
-            );
+        blocks.push(T.button('Ouvrir la continuité', 'Open continuity', '/v2/continuity'));
     }
 
     if (newlyHigh) {
@@ -236,15 +212,6 @@ function renderHtml(
                 `${newlyHigh} person(s) in your scope moved to high retention risk since the last brief. The named detail stays inside the app, where your clearance applies.`
             )
         );
-        if (appUrl)
-            blocks.push(
-                T.cta(
-                    'Voir le risque de rétention',
-                    'View retention risk',
-                    appUrl + '/v2/continuity',
-                    accent
-                )
-            );
     }
 
     blocks.push(
@@ -254,30 +221,21 @@ function renderHtml(
         )
     );
 
-    return T.wrap({
-        branding,
-        title: `Planification des effectifs${monthLabel ? ` — ${monthLabel}` : ''}`,
-        intro: `Bonjour ${recipientName},`,
+    const month = monthLabel ? ` — ${monthLabel}` : '';
+    return {
+        title: T.pick(`Planification des effectifs${month}`, `Workforce planning${month}`),
         blocks,
-    });
+    };
 }
 
-function renderText({ certs, noBench, newlyHigh }) {
-    const lines = [];
-    if (certs.length) {
-        lines.push(`Certifications à renouveler (90 j) : ${certs.length}`);
-        for (const c of certs.slice(0, 12)) {
-            lines.push(
-                `  - ${c.fullName} — ${c.skillName} — ${c.expiresOn} (${Number(c.days) < 0 ? 'expirée' : c.days + ' j'})`
-            );
-        }
-    }
-    if (noBench.length) {
-        lines.push(`Postes critiques sans successeur : ${noBench.length}`);
-        for (const r of noBench.slice(0, 12)) lines.push(`  - ${r.roleName ?? r.role_name}`);
-    }
-    if (newlyHigh) lines.push(`Risque de départ passé en élevé ce mois-ci : ${newlyHigh}`);
-    return lines.join('\n');
+/** The rendered HTML of the brief (tests and previews; no database, stock branding). */
+function renderHtml(recipientName, data, opts = {}) {
+    const lang = opts.lang || 'fr';
+    const { title, blocks } = renderBlocks(data, { ...opts, lang });
+    return require('../utils/emailTemplate').compose(
+        { kind: 'planning.digest', title, blocks, locale: lang, ctaUrl: '/v2/continuity' },
+        { brand: opts.branding || {}, recipientName }
+    ).html;
 }
 
 async function tick() {
@@ -298,12 +256,8 @@ async function tick() {
     const mo = monthBucket(now);
     const EmployeeModel = require('../models/EmployeeModel');
     const N = require('../services/NotificationService');
-    let branding = null;
-    try {
-        branding = await require('../utils/branding').getBranding();
-    } catch {
-        /* stock identity */
-    }
+    // ONE language per mail; the subject is the catalogue's (no month, no figure).
+    const lang = await require('../utils/emailTemplate').mailLang();
     const monthLabel = now.toISOString().slice(0, 7);
 
     const managers = await db.all(`
@@ -326,11 +280,13 @@ async function tick() {
             // Claim BEFORE sending: exactly one brief per manager per month.
             if (!(await claim('planning.digest', 'employee', mgrId, 0, mo))) continue;
 
-            const html = renderHtml(mgr.firstName ?? mgr.first_name ?? '', data, {
-                branding,
-                monthLabel,
-            });
-            const subject = `[IDevelop] Planification des effectifs / Workforce planning — ${monthLabel}`;
+            // The manager's own e-mail language, else the site's.
+            const mlang = await require('../utils/emailTemplate').recipientLang(
+                'employee',
+                mgrId,
+                lang
+            );
+            const mail = renderBlocks(data, { lang: mlang, monthLabel });
             const r = await N.notify({
                 userType: 'employee',
                 userId: mgrId,
@@ -343,9 +299,10 @@ async function tick() {
                     noBench: data.noBench.length,
                     newlyHigh: data.newlyHigh,
                 },
-                subject,
-                html,
-                text: renderText(data),
+                locale: mlang,
+                title: mail.title,
+                blocks: mail.blocks,
+                ctaUrl: '/v2/continuity',
             });
             if (r && r.inapp && r.inapp !== 'error') {
                 out.sent++;
@@ -376,4 +333,4 @@ async function tick() {
 
 // `tick` is the job surface; `__test` exposes the pure-ish pieces so the
 // section/anti-noise rules can be asserted without standing up a scheduler.
-module.exports = { tick, __test: { collect, renderHtml, renderText } };
+module.exports = { tick, __test: { collect, renderBlocks, renderHtml } };

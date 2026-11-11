@@ -540,26 +540,48 @@ describe("F13 report-scheduler replays a schedule under its creator's OWN identi
                 ].includes(ds),
         }));
         jest.doMock('../../src/services/ReportDataService', () => ({}));
+        // SA-38: recipients are accounts, validated by the scheduler (its own
+        // tests cover the clearance check); here they are accepted.
+        const setRecipients = jest.fn(async () => {});
+        jest.doMock('../../src/jobs/report-scheduler', () => ({
+            validateRecipients: jest.fn(async () => ({
+                ok: true,
+                accounts: [{ type: 'admin', id: 1 }],
+            })),
+            setRecipients,
+            eligibleAccounts: jest.fn(async () => []),
+            nextRunAt: () => null,
+        }));
         const ReportController = require('../../src/controllers/ReportController');
         mockDb.get.mockResolvedValue({ id: 5, dataSource: 'readiness' });
         const req = {
-            body: { templateId: '5', frequency: 'daily', hour: '6', recipients: 'a@b.co' },
+            body: {
+                templateId: '5',
+                frequency: 'daily',
+                hour: '6',
+                recipientAccounts: ['admin:1'],
+            },
             user: { id: 137, userType: 'manager' },
             flash: jest.fn(),
+            get: () => '',
         };
         const res = { redirect: jest.fn() };
         await ReportController.createSchedule(req, res);
-        const [sql, params] = lastCall(mockDb.run);
+        const [sql, params] = mockDb.get.mock.calls.find((c) =>
+            /INSERT INTO report_schedules/.test(c[0])
+        );
         expect(sql).toMatch(
             /INSERT INTO report_schedules \(template_id, recipients, frequency, day_of_week, hour, created_by, creator_role, creator_type\)/
         );
+        expect(params[1]).toBe(''); // never a typed address
         expect(params[5]).toBe(137);
         expect(params[7]).toBe('employee');
+        expect(setRecipients).toHaveBeenCalledWith(5, [{ type: 'admin', id: 1 }]);
 
         mockDb.all.mockResolvedValue([]);
         await ReportController.listSchedules(
             { user: { id: 137, userType: 'manager', role: 'manager' }, t: null, flash: jest.fn() },
-            { render: jest.fn(), redirect: jest.fn() }
+            { render: jest.fn(), redirect: jest.fn(), status: () => ({ render: jest.fn() }) }
         );
         const [listSql, listParams] = mockDb.all.mock.calls[0];
         expect(listSql).toMatch(/WHERE s\.created_by = \? AND s\.creator_type = \?/);

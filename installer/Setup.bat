@@ -286,7 +286,7 @@ echo.
 echo   ^>^> Running the go-live reset ^(a pg_dump backup is taken first^)...
 echo.
 pushd "%APPDIR%"
-"%NODEEXE%" scripts\reset-for-golive.js --confirm
+"%NODEEXE%" scripts\reset-for-golive.js --confirm --confirm-word=PRODUCTION
 set "RC=!errorlevel!"
 popd
 call :slog "Production readiness - finished (exit !RC!)"

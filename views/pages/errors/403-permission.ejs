@@ -42,7 +42,7 @@
         <% missing.forEach(function (p) { %>
         <li style="padding:.5rem 0; border-top:1px solid var(--border-color,#e2e8f0);">
             <strong><%= p.label %></strong>
-            <% if (p.write) { %><span class="badge badge-warning" style="font-size:.65rem;"><%= __('admin:write_badge') %></span><% } %>
+            <% if (p.write) { %><span class="badge badge-warning" style="font-size:.75rem;"><%= __('admin:write_badge') %></span><% } %>
             <code style="font-size:.75rem; opacity:.75; margin-left:.35rem;"><%= p.slug %></code>
             <div class="text-muted" style="font-size:.86rem; margin-top:.2rem;"><%= p.description %></div>
         </li>

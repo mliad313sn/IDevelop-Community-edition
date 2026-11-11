@@ -40,12 +40,14 @@ describe('ApiKeyService', () => {
         });
         const p = await ApiKeyService.validate('rawkey');
         // Per-profile keys carry the owning admin (clearance) + optional expiry.
+        // A key may use ?apiKey= only when flagged (migration 163); strictly false here.
         expect(p).toEqual({
             id: 7,
             label: 'powerbi',
             scope: 'powerbi.read',
             ownerAdminId: 3,
             expiresAt: null,
+            allowQueryKey: false,
         });
         expect(db.get).toHaveBeenCalledWith(expect.stringContaining('FROM api_keys'), [
             ApiKeyService.hashKey('rawkey'),

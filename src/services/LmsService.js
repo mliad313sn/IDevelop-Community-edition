@@ -154,7 +154,7 @@ class LmsService {
                 // Encrypted at rest like auth_config (S-10). secretBox.encrypt is
                 // a pass-through when no APP_KEY/SESSION_SECRET is set (dev), and
                 // verifyWebhookSecret still reads legacy clear values.
-                webhookSecret ? secretBox.encrypt(String(webhookSecret)) : null,
+                webhookSecret ? secretBox.encrypt(String(webhookSecret), 'lms') : null,
                 enabled === true || enabled === 'true',
             ]
         );
@@ -163,7 +163,7 @@ class LmsService {
         if (authConfig != null && authConfig !== '') {
             const obj = typeof authConfig === 'string' ? JSON.parse(authConfig) : authConfig;
             const stored = secretBox.isEnabled()
-                ? JSON.stringify({ _enc: secretBox.encrypt(JSON.stringify(obj)) })
+                ? JSON.stringify({ _enc: secretBox.encrypt(JSON.stringify(obj), 'lms') })
                 : JSON.stringify(obj);
             await db.run(
                 'UPDATE lms_integrations SET auth_config = ?, updated_at = now() WHERE provider = ?',
@@ -212,7 +212,7 @@ class LmsService {
         );
         if (!cfg || !cfg.enabled) return false;
         if (!cfg.webhookSecret) return false; // a secret MUST be configured — never an open POST
-        // Stored encrypted (enc:v1:…) since 3.23.17; a legacy clear value is
+        // Stored encrypted (secretBox, enc:v2 now, enc:v1 before); a legacy clear value is
         // returned unchanged by decrypt. A blob that cannot be decrypted
         // (rotated key, corruption) fails CLOSED.
         let expected;
@@ -336,7 +336,7 @@ class LmsService {
     static async assignCourse(
         employeeId,
         courseId,
-        { assignedBy = null, sourceActionId = null, dueAt = null } = {}
+        { assignedBy = null, sourceActionId = null, dueAt = null, notifyLearner = true } = {}
     ) {
         const course = await db.get('SELECT * FROM lms_courses WHERE id = ?', [courseId]);
         if (!course) throw new Error('Course not found');
@@ -416,17 +416,20 @@ class LmsService {
         // — pg warns "client.query when the client is already executing a query"
         // and the enclosing transaction can end up aborted. The try/catch keeps the
         // original promise: a notification failure never blocks the assignment.
-        try {
-            await require('./NotificationService').notify({
-                userType: 'employee',
-                userId: Number(employeeId),
-                kind: 'lms.assigned',
-                category: 'talent',
-                payload: { link: '/employee/my-learning', courseTitle: course.title },
-            });
-        } catch (_) {
-            /* never block assignment */
-        }
+        // `notifyLearner: false` is for a caller whose own message already says
+        // a course was assigned (the certificate-expiry mail): one mail, not two.
+        if (notifyLearner !== false)
+            try {
+                await require('./NotificationService').notify({
+                    userType: 'employee',
+                    userId: Number(employeeId),
+                    kind: 'lms.assigned',
+                    category: 'talent',
+                    payload: { link: '/employee/my-learning', courseTitle: course.title },
+                });
+            } catch (_) {
+                /* never block assignment */
+            }
         return { ...enrollment, pushState, pushError };
     }
 
@@ -550,7 +553,25 @@ class LmsService {
             // nagging about a course that was already done).
             const enrollment = await this._closeEnrollment(employeeId, courseId, completedAt);
             const applied = await this._proposeSkillUplifts(row.id, employeeId, courseId);
+            // Nothing to propose (the course maps no skill, or the level is
+            // already reached): the completion is still EVIDENCE. The plan action
+            // it served is reported done for the line to validate; it never
+            // closes itself and never moves a level. In a savepoint: a plan-side
+            // failure never costs the completion.
+            let reportedActions = [];
+            if (
+                employeeId &&
+                courseId &&
+                (applied.reason === 'no_mapping' || applied.reason === 'already_met')
+            ) {
+                reportedActions = await db
+                    .runInSavepoint(() =>
+                        require('./IDPService').reportActionsFromTraining({ employeeId, courseId })
+                    )
+                    .catch(() => []);
+            }
             return {
+                reportedActions,
                 completionId: row.id,
                 employeeId,
                 courseId,
@@ -751,8 +772,10 @@ class LmsService {
                 'SELECT current_level FROM skill_assessments WHERE employee_id = ? AND skill_id = ?',
                 [c.employeeId, m.skillId]
             );
-            const from = cur ? Number(cur.currentLevel) : 0;
-            if (from >= target) continue;
+            // Never assessed = not measured, never level 0 (the evidence row a
+            // plan action keeps, and the audit line, say "not assessed").
+            const from = cur && cur.currentLevel != null ? Number(cur.currentLevel) : null;
+            if (from != null && from >= target) continue;
             out.push({ skillId: Number(m.skillId), skillName: m.skillName, from, to: target });
         }
         return out;
@@ -765,6 +788,17 @@ class LmsService {
      * can judge the work, not for whoever happens to be privileged.
      */
     static async _mayDecide(user, employeeId) {
+        if (await LmsService._mayDecideStrict(user, employeeId)) return true;
+        // The authority ladder, extended mode only (AuthorityService): a local
+        // admin in clearance decides without approve_assessments. Strict mode
+        // (the default) adds nothing.
+        if (!user || !employeeId) return false;
+        return (await require('./AuthorityService').widen(user, 'lms.uplift', Number(employeeId)))
+            .ok;
+    }
+
+    /** The pre-ladder rule (strict mode): see _mayDecide's doc comment above. */
+    static async _mayDecideStrict(user, employeeId) {
         if (!user || !employeeId) return false;
         const RBACService = require('./RBACService');
         // NEVER one's own uplift — whichever account is used: an admin account
@@ -805,12 +839,24 @@ class LmsService {
      * actor_ref, and the note names the provenance. The deciding human is on
      * the record even where the FK cannot hold them.
      */
-    static async decideUplift(user, completionId, decision) {
+    static async decideUplift(user, completionId, decision, { reason = null } = {}) {
+        // Every refusal carries a stable `code` (an lms: locale key): the route
+        // answers in the reader's language, never with this English message.
         const id = Number(completionId);
         const accept = decision === 'accept';
+        // Who decided, when and why are on the row (SA-43); a decline needs its
+        // reason, because the person's training is refused as evidence.
+        const why = String(reason == null ? '' : reason)
+            .trim()
+            .slice(0, 2000);
+        const decidedBy =
+            user && user.id != null
+                ? `${user.userType === 'admin' ? 'admin' : 'employee'}:${Number(user.id)}`
+                : null;
         if (!accept && decision !== 'decline') {
             const e = new Error("decision must be 'accept' or 'decline'");
             e.status = 400;
+            e.code = 'upl_err_bad_decision';
             throw e;
         }
         const c = await db.get(
@@ -820,50 +866,136 @@ class LmsService {
         if (!c) {
             const e = new Error('Completion not found');
             e.status = 404;
+            e.code = 'upl_err_not_found';
             throw e;
         }
         if (c.applied === true || c.reviewReason !== 'awaiting_supervisor') {
             const e = new Error('This completion is not awaiting a decision');
             e.status = 409;
+            e.code = 'upl_err_not_pending';
             throw e;
         }
         if (!(await this._mayDecide(user, Number(c.employeeId)))) {
             const e = new Error('Not authorized: supervisor/manager of this employee only');
             e.status = 403;
+            e.code = 'upl_err_forbidden';
             throw e;
         }
 
         if (!accept) {
+            if (!why) {
+                const e = new Error('A reason is required to decline');
+                e.status = 400;
+                e.code = 'upl_err_reason_required';
+                throw e;
+            }
             await db.run(
-                "UPDATE lms_completions SET applied = false, review_reason = 'declined_by_supervisor' WHERE id = ?",
-                [id]
+                `UPDATE lms_completions
+                    SET applied = false, review_reason = 'declined_by_supervisor',
+                        decided_by_ref = ?, decided_at = now(), decision_reason = ?
+                  WHERE id = ?`,
+                [decidedBy, why, id]
             );
+            await this._auditDecision(user, id, c.employeeId, 'decline', why, []);
+            await this._tellLearner(Number(c.employeeId), id, 'decline', 0, why);
             return { completionId: id, decision: 'decline', raisedSkills: [] };
         }
 
         const proposals = await this._proposalFor(id);
         const adminId = await this._decidingAdminId(user);
         const raised = [];
+        let closedActions = [];
         await db.withActor(user, async () => {
             for (const p of proposals) {
                 await db.run(
-                    `INSERT INTO skill_assessments (employee_id, skill_id, current_level, assessed_by, notes)
-                     VALUES (?, ?, ?, ?, 'Set from a supervisor-validated training completion')
+                    `INSERT INTO skill_assessments (employee_id, skill_id, current_level, assessed_by, notes, validation)
+                     VALUES (?, ?, ?, ?, 'Set from a supervisor-validated training completion', 'manager_validated')
                      ON CONFLICT (employee_id, skill_id) DO UPDATE SET
                        current_level = EXCLUDED.current_level, assessed_by = EXCLUDED.assessed_by,
-                       assessed_at = now(), notes = EXCLUDED.notes`,
+                       assessed_at = now(), notes = EXCLUDED.notes, validation = EXCLUDED.validation`,
                     [c.employeeId, p.skillId, p.to, adminId]
                 );
                 raised.push(p);
             }
             await db.run(
-                'UPDATE lms_completions SET applied = ?, review_reason = NULL WHERE id = ?',
-                [raised.length > 0, id]
+                `UPDATE lms_completions
+                    SET applied = ?, review_reason = NULL,
+                        decided_by_ref = ?, decided_at = now(), decision_reason = ?
+                  WHERE id = ?`,
+                [raised.length > 0, decidedBy, why || null, id]
             );
+            // The accepted completion closes the plan action that ordered the
+            // course (lms_enrollments.source_action_id), with its evidence row
+            // (source "training"), in the same transaction as the level.
+            if (c.courseId) {
+                closedActions = await require('./IDPService').closeActionsFromTraining({
+                    employeeId: Number(c.employeeId),
+                    courseId: Number(c.courseId),
+                    raised,
+                    user,
+                });
+            }
         });
+        await this._auditDecision(user, id, c.employeeId, 'accept', why, raised);
         // Benches move only once a human has accepted the level.
         if (raised.length) await this._reevaluateSuccessors(Number(c.employeeId));
-        return { completionId: id, decision: 'accept', raisedSkills: raised };
+        await this._tellLearner(Number(c.employeeId), id, 'accept', raised.length, null);
+        return { completionId: id, decision: 'accept', raisedSkills: raised, closedActions };
+    }
+
+    /**
+     * The LEARNER is told what their line decided: the level validated on N
+     * skills, or the training not accepted as evidence, with the written
+     * reason readable in the app only (payload.reason: the notification centre
+     * shows it, a mail never carries it). The proposal the line received is
+     * marked acted. Counts only: no skill, no level, no name. Never blocks.
+     */
+    static async _tellLearner(employeeId, completionId, decision, count, reason) {
+        try {
+            const NotificationService = require('./NotificationService');
+            await NotificationService.markActed({
+                refType: 'lms_completion',
+                refId: Number(completionId),
+            });
+            const accept = decision === 'accept';
+            if (accept && !(count > 0)) return;
+            await NotificationService.notify({
+                userType: 'employee',
+                userId: Number(employeeId),
+                kind: accept ? 'lms.uplift_accepted' : 'lms.uplift_declined',
+                category: 'talent',
+                payload: {
+                    link: '/employee/my-learning',
+                    completionId: Number(completionId),
+                    ...(accept ? { skills: Number(count) } : { reason: reason || null }),
+                },
+            });
+        } catch (_) {
+            /* never block the decision on a notification */
+        }
+    }
+
+    /** One audit line per uplift decision, accepted or declined (ids, levels, reason). */
+    static async _auditDecision(user, completionId, employeeId, decision, why, raised) {
+        try {
+            await require('./LogService').log({
+                adminId: user && user.userType === 'admin' ? Number(user.id) : null,
+                actorRef:
+                    user && user.id != null
+                        ? `${user.userType === 'admin' ? 'admin' : 'employee'}:${Number(user.id)}`
+                        : undefined,
+                action: decision === 'accept' ? 'LMS_UPLIFT_ACCEPTED' : 'LMS_UPLIFT_DECLINED',
+                entityType: 'lms_completion',
+                entityId: Number(completionId),
+                details: `employee #${Number(employeeId)}${
+                    raised && raised.length
+                        ? `; ${raised.map((p) => `skill #${p.skillId}: ${p.from == null ? 'not assessed' : p.from} -> ${p.to}`).join(', ')}`
+                        : ''
+                }${why ? `; reason: ${why.slice(0, 200)}` : ''}${require('./AuthorityService').auditAs(user, employeeId)}`,
+            });
+        } catch (e) {
+            console.error('[lms] decision audit failed:', e && e.message);
+        }
     }
 
     /** The admins(id) the FK can hold for this decider. */
@@ -882,7 +1014,8 @@ class LmsService {
                  FROM successors s
                  JOIN succession_plans sp ON sp.id = s.plan_id
                  JOIN roles r ON r.id = sp.position_role_id
-                 WHERE s.candidate_employee_id = ? AND sp.status <> 'archived' AND s.source <> 'manual'`,
+                 WHERE s.candidate_employee_id = ? AND sp.status <> 'archived' AND s.source <> 'manual'
+                   AND s.state = 'active'`,
                 [employeeId]
             );
             for (const r of rows) {
@@ -935,6 +1068,30 @@ class LmsService {
     }
 
     /**
+     * The courses a plan action can be given: those mapped to the action's
+     * skill first (with the level they propose), then the rest of the
+     * catalogue. { mapped, others, catalogue }: catalogue = number of courses
+     * known (0 = no LMS: the action is planned offline instead).
+     */
+    static async coursesForSkill(skillId, { limit = 200 } = {}) {
+        const sid = Number(skillId) || 0;
+        const cap = Math.min(Math.max(Number(limit) || 200, 1), 500);
+        const rows = await db.all(
+            `SELECT c.id, c.title, c.provider, c.duration_minutes AS "durationMinutes",
+                    m.level_delta AS "levelTo"
+               FROM lms_courses c
+               LEFT JOIN course_skill_map m ON m.course_id = c.id AND m.skill_id = ?
+              ORDER BY (m.skill_id IS NULL), c.title
+              LIMIT ?`,
+            [sid, cap]
+        );
+        const mapped = [];
+        const others = [];
+        for (const r of rows || []) (r.levelTo != null ? mapped : others).push(r);
+        return { mapped, others, catalogue: (rows || []).length };
+    }
+
+    /**
      * For each skill gap, if a mapped course exists, auto-enroll the employee.
      * Best-effort and idempotent (assignCourse upserts). Returns the assignments.
      */
@@ -975,7 +1132,7 @@ class LmsService {
                  -- requirement is a reason to assess, not to buy a course.
                  SELECT (g->>'skillId')::bigint AS skill_id, COUNT(*) AS demand
                  FROM successors s, jsonb_array_elements(s.gap_summary) g
-                 WHERE g->>'current' IS NOT NULL
+                 WHERE g->>'current' IS NOT NULL AND s.state = 'active'
                  GROUP BY 1
                  UNION ALL
                  SELECT o.skill_id, COUNT(*) FROM idp_objectives o

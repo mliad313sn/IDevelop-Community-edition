@@ -1,0 +1,45 @@
+<%#
+  « Talent »: the 9-box positions as a doughnut (server SVG) with its table.
+  Approved positions only; cells of fewer than 5 people grouped, never one
+  small cell alone; « Not placed » apart. Counts only.
+  Locals: P (tabModel 'talent').
+-%><%
+  var _F = numFmt;
+  var NB = P.nineBox || null;
+  var _slices = (NB && NB.slices) || [];
+  var _total = _slices.reduce(function (s, x) { return s + x.count; }, 0);
+  var _cls = function (s) { return s.kind === 'cell' ? s.zone : s.kind; };
+  var _label = function (s) { return s.kind === 'cell' ? __('talentx:' + s.key) : (s.kind === 'others' ? __('dash:d3_tl_others') : __('dash:d3_tl_not_placed')); };
+  var _paths = [];
+  var _acc = 0, _R = 80, _r = 48, _c = 90;
+  var _pt = function (a, rad) { return [(_c + rad * Math.sin(a)).toFixed(2), (_c - rad * Math.cos(a)).toFixed(2)]; };
+  _slices.forEach(function (s) {
+      if (!_total || !s.count) return;
+      var a0 = 2 * Math.PI * _acc / _total; _acc += s.count; var a1 = 2 * Math.PI * _acc / _total;
+      if (a1 - a0 >= 2 * Math.PI - 1e-6) a1 = a0 + 2 * Math.PI - 1e-3;
+      var big = a1 - a0 > Math.PI ? 1 : 0;
+      var p0 = _pt(a0, _R), p1 = _pt(a1, _R), q1 = _pt(a1, _r), q0 = _pt(a0, _r);
+      _paths.push({ cls: _cls(s), d: 'M ' + p0.join(' ') + ' A ' + _R + ' ' + _R + ' 0 ' + big + ' 1 ' + p1.join(' ') + ' L ' + q1.join(' ') + ' A ' + _r + ' ' + _r + ' 0 ' + big + ' 0 ' + q0.join(' ') + ' Z' });
+  });
+  var _gridHref = (ctx && ctx.navVisible && ctx.navVisible.nine_box) ? '/talent/nine-box' : null;
+-%>
+<section class="ds-card" id="ds-ninebox" aria-labelledby="ds-ninebox-h">
+    <h3 id="ds-ninebox-h"><%= __('dash:d3_tl_title') %></h3>
+    <p class="ds-sub"><%= __('dash:d3_tl_sub') %></p>
+    <% if (!NB || !NB.placed) { %>
+        <p class="ds-note"><%= __('dash:d3_tl_none') %></p>
+    <% } else { %>
+    <div class="ds-pair">
+        <svg class="ds-svg-chart ds-donut" viewBox="0 0 180 180" role="img" aria-label="<%= __('dash:d3_tl_title') %>: <%= __('dash:d3_tl_total', { placed: _F.num(NB.placed, 0), notPlaced: _F.num(NB.notPlaced, 0) }) %>" focusable="false">
+            <% _paths.forEach(function (p) { %><path class="ds-slice--<%= p.cls %>" d="<%= p.d %>"></path><% }); %>
+        </svg>
+        <div>
+            <ul class="ds-legend">
+                <% _slices.forEach(function (s) { %><li><span class="ds-swatch ds-swatch--<%= _cls(s) %>" aria-hidden="true"></span><span><%= _label(s) %></span><strong><%= _F.num(s.count, 0) %></strong><% if (s.pct !== null && s.pct !== undefined) { %><span class="ds-note">(<%= _F.pct(s.pct, 1) %>)</span><% } %></li><% }); %>
+            </ul>
+            <p class="ds-note"><%= __('dash:d3_tl_total', { placed: _F.num(NB.placed, 0), notPlaced: _F.num(NB.notPlaced, 0) }) %></p>
+            <% if (_gridHref) { %><p><a class="btn btn-sm btn-secondary" href="<%= _gridHref %>"><%= __('dash:d3_tl_open') %></a></p><% } %>
+        </div>
+    </div>
+    <% } %>
+</section>

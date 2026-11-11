@@ -17,7 +17,8 @@ const fs = require('fs');
 const ROOT = path.join(__dirname, '../..');
 const norm = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8').replace(/\s+/g, ' ');
 
-const HAS_DB = !!process.env.DATABASE_URL;
+const { isTestDatabaseUrl } = require('../helpers/testDatabase');
+const HAS_DB = isTestDatabaseUrl(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 const db = HAS_DB ? require('../../src/config/database') : null;
 

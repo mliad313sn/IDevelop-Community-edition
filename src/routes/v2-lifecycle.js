@@ -280,11 +280,57 @@ router.post(
                 message: say(req, r.scheduled ? 'leaver_scheduled' : 'leaver_recorded'),
             });
         }
+        // A joiner or mover changes a person's placement, role and access, so
+        // the leaver rule applies (SA-43): a reason, edit_employees (or
+        // SuperAdmin) to RECORD it, an audit line on every path. A manager (or
+        // an admin without edit_employees) may only REQUEST it, decided by an
+        // admin through POST /events/:id/decide (kind-agnostic).
+        if (!reason) return refuse(req, res, 400, 'lc_reason_required');
+        const KIND_UP = kind.toUpperCase();
+        if (!canDecideLeaver(req.user)) {
+            const row = await db.get(
+                `INSERT INTO lifecycle_events (employee_id, kind, payload, reason, effective_at, requested_by)
+                 VALUES (?, ?, ?::jsonb, ?, NULL, ?) RETURNING id`,
+                [
+                    Number(employeeId),
+                    kind,
+                    JSON.stringify({ ...(payload || {}), ...(actorRef ? { actorRef } : {}) }),
+                    reason,
+                    actorRef,
+                ]
+            );
+            await LogService.log({
+                adminId: req.user.userType === 'admin' ? req.user.id : null,
+                actorRef,
+                action: `LIFECYCLE_${KIND_UP}_REQUESTED`,
+                entityType: 'employee',
+                entityId: Number(employeeId),
+                details: `${kind} requested for employee #${employeeId} — ${reason}`,
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent'),
+            });
+            return res.status(202).json({
+                ok: true,
+                requested: true,
+                id: row ? Number(row.id) : null,
+                message: say(req, 'jm_requested'),
+            });
+        }
         const r = await LifecycleService.record(kind, Number(employeeId), {
             payload: payload || {},
             reason,
             effectiveAt: null,
             actorRef,
+        });
+        await LogService.log({
+            adminId: req.user.id,
+            actorRef,
+            action: `LIFECYCLE_${KIND_UP}_RECORDED`,
+            entityType: 'employee',
+            entityId: Number(employeeId),
+            details: `${kind} recorded for employee #${employeeId} — ${reason}`,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
         });
         res.json({
             ok: true,
@@ -304,8 +350,12 @@ router.post(
         const eventId = Number(req.params.id);
         if (!Number.isInteger(eventId) || eventId <= 0)
             return refuse(req, res, 400, 'invalid_event_id');
-        const ev = await db.get('SELECT employee_id FROM lifecycle_events WHERE id = ?', [eventId]);
+        const ev = await db.get('SELECT employee_id, kind FROM lifecycle_events WHERE id = ?', [
+            eventId,
+        ]);
         if (!ev) return refuse(req, res, 404, 'event_not_found');
+        // Requests exist for joiners and movers too: log THEIR kind.
+        const evKind = KINDS.includes(ev.kind) ? ev.kind : 'leaver';
         if (!(await inScope(req.user, ev.employeeId)))
             return refuse(req, res, 403, 'not_authorized_employee');
         const note = typeof req.body.note === 'string' ? req.body.note.slice(0, 500) : null;
@@ -318,10 +368,10 @@ router.post(
             await LogService.log({
                 adminId: req.user.id,
                 actorRef: LifecycleService.actorRef(req.user),
-                action: out.declined ? 'LIFECYCLE_LEAVER_DECLINED' : 'LIFECYCLE_LEAVER_APPROVED',
+                action: `LIFECYCLE_${evKind.toUpperCase()}_${out.declined ? 'DECLINED' : 'APPROVED'}`,
                 entityType: 'lifecycle_event',
                 entityId: eventId,
-                details: `${out.declined ? 'Declined' : 'Approved'} departure request #${eventId} for employee #${ev.employeeId}${note ? ` — ${note}` : ''}`,
+                details: `${out.declined ? 'Declined' : 'Approved'} ${evKind === 'leaver' ? 'departure' : evKind} request #${eventId} for employee #${ev.employeeId}${note ? ` — ${note}` : ''}`,
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent'),
             });

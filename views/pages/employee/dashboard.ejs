@@ -3,6 +3,28 @@
     <p><%= __('employee:dash_purpose') %><% if (employee && employee.roleName) { %> — <strong><%= employee.roleName %></strong><% } %></p>
 </div>
 
+<%# Wave 12 (D3) — « Next step »: the ONE thing to do now (EmployeeHomeService),
+    from the person's own data; the destination is a fixed path. %>
+<link rel="stylesheet" href="/css/emp-loop.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '' %>">
+<% if (typeof nextStep !== 'undefined' && nextStep) {
+   const _nx = nextStep.extra || {};
+   const _lk = (typeof lockedCycle !== 'undefined' && lockedCycle) ? lockedCycle : null; %>
+<section class="card emp-next" id="empNext" aria-labelledby="empNextH" data-next="<%= nextStep.key %>">
+    <h2 id="empNextH" class="emp-section-h"><i class="fas fa-arrow-right" aria-hidden="true"></i> <%= __('employee:next_title') %></h2>
+    <p class="emp-sub"><%= __('employee:next_' + nextStep.key) %><% if (_nx.title) { %> — <strong><%= _nx.title %></strong><% } %></p>
+    <% if (_nx.date) { %><p class="emp-sub"><%= __('employee:next_due_on', { date: typeof fmtDate === 'function' ? fmtDate(_nx.date) : _nx.date }) %></p><% } %>
+    <% if (nextStep.key === 'dev_gaps_open' && _nx.count) { %><p class="emp-sub"><%= __('employee:next_gaps_count', { count: _nx.count }) %></p><% } %>
+    <% if (nextStep.key === 'sa_locked' && _lk) { %><p class="emp-sub" data-sa-locked="1"><%= __('employee:next_sa_locked_named', { label: _lk.label || _lk.code || '' }) %></p><% } %>
+    <a class="btn btn-primary" href="<%= nextStep.href %>"><%= __('employee:next_' + nextStep.key + '_cta') %></a>
+</section>
+<% } %>
+
+<%# « What changed since your last summary » — validated levels, gaps closed,
+    actions and trainings done. Hidden when it could not be established. %>
+<% if (typeof changes !== 'undefined' && changes) { %>
+<%- include('../../partials/emp-changes', { chg: changes }) %>
+<% } %>
+
 <%# 3.23.18 (UX-03) — « À faire ». The rail's first entry lands here, so the page
     opens on what is waiting for the person, read from the SAME source as the
     bell (/api/my-actions), before the overview. Without JavaScript, or if the
@@ -98,12 +120,26 @@
   <a href="/employee/self-assessment" class="btn btn-primary emp-firstrun-cta"><i class="fas fa-play" aria-hidden="true"></i> <%= __('employee:firstrun_cta') %></a>
 </div>
 <% } %>
+<%# Where the person stands, in one sentence. Never « 0 skills met » for
+    skills nobody has assessed: with nothing assessed, it says so. %>
+<% if (snapshot.total > 0) {
+   const _assessed = snapshot.total - (snapshot.unmeasured || 0);
+   const _st = !_assessed ? 'none_assessed' : (!snapshot.met ? 'none_met' : (snapshot.met === snapshot.total ? 'all_met' : 'met')); %>
+<p class="emp-status-line" data-st="<%= _st %>">
+  <% if (_st === 'none_assessed') { %><%= snapshot.total === 1 ? __('employee:st_none_assessed_one') : __('employee:st_none_assessed', { total: snapshot.total }) %>
+  <% } else if (_st === 'none_met') { %><%= __('employee:st_none_met', { assessed: _assessed }) %>
+  <% } else if (_st === 'all_met') { %><%= __('employee:st_all_met', { total: snapshot.total }) %>
+  <% } else { %><%= __('employee:st_met', { met: snapshot.met, total: snapshot.total }) %><% } %>
+  <% if (_assessed && snapshot.unmeasured) { %> <%= __('employee:st_unassessed', { count: snapshot.unmeasured }) %><% } %>
+</p>
+<details class="sa-rule emp-status-line" id="empRule"><summary><%= __('employee:sa_rule_sum') %></summary><p><%= __('employee:sa_rule_body') %></p></details>
+<% } %>
 <!-- Snapshot stat cards -->
 <div class="emp-cards<%= nbVisible ? '' : ' emp-cards-3' %>">
   <div class="emp-stat">
     <div class="emp-n" style="color:#2563eb"><%= snapshot.readiness === null ? '—' : snapshot.readiness + '%' %></div>
     <div class="emp-l"><%= __('employee:stat_role_readiness') %></div>
-    <div class="emp-sub"><%= snapshot.met %>/<%= snapshot.total %> <%= __('employee:stat_skills_met') %><% if (snapshot.coverage && snapshot.coverage.expectedSkills > 0 && snapshot.coverage.assessedSkills < snapshot.coverage.expectedSkills) { %> · <span title="<%= __('employee:stat_coverage_title') %>"><%= snapshot.coverage.assessedSkills %>/<%= snapshot.coverage.expectedSkills %> <%= __('employee:stat_coverage_assessed') %></span><% } %></div>
+    <div class="emp-sub"><% const _noneAssessed = !!(snapshot.coverage && snapshot.coverage.expectedSkills > 0 && snapshot.coverage.assessedSkills === 0); %><% if (_noneAssessed) { %><%= __('employee:stat_none_assessed') %><% } else { %><%= snapshot.met %>/<%= snapshot.total %> <%= __('employee:stat_skills_met') %><% } %><% if (!_noneAssessed && snapshot.coverage && snapshot.coverage.expectedSkills > 0 && snapshot.coverage.assessedSkills < snapshot.coverage.expectedSkills) { %> · <span title="<%= __('employee:stat_coverage_title') %>"><%= snapshot.coverage.assessedSkills %>/<%= snapshot.coverage.expectedSkills %> <%= __('employee:stat_coverage_assessed') %></span><% } %></div>
   </div>
   <div class="emp-stat">
     <div class="emp-n" style="color:<%= snapshot.gaps ? '#b45309' : '#0f8a3c' %>"><%= snapshot.gaps %></div>
@@ -143,7 +179,7 @@
           <%# Only a MEASURED critical shortfall earns the red row. %>
           <tr<%= g.assessed && Number(g.gap) > 0 && g.isCritical ? ' style="background:rgba(200,80,75,.12)"' : '' %>>
             <td class="text-muted" style="font-size:.82rem"><%= g.domainName || '—' %></td>
-            <td><%= g.skillName %><%= g.isCritical ? ' <span class="emp-crit">' + __('employee:critical_badge') + '</span>' : '' %></td>
+            <td><%= g.skillName %><% if (g.isCritical) { %> <span class="emp-crit"><%= __('employee:critical_badge') %></span><% } %></td>
             <td><%= g.required %></td>
             <td>
               <%# Never print a 0 that was never observed: an unmeasured skill is
@@ -184,6 +220,12 @@
       </div>
       <div class="nb-axes"><span>← <%= __('employee:nb_axis_perf') %> →</span><span class="nb-yaxis">↑ <%= __('employee:nb_axis_pot') %></span></div>
       <p class="emp-sub" style="margin-top:.5rem"><%= __('employee:nb_placed') %> <%= nb.approvedAt ? new Date(nb.approvedAt).toLocaleDateString(typeof lang !== "undefined" ? lang : undefined) : '' %>. <%= __('employee:nb_performance') %> <strong><%= nbBand(nb.performance) %></strong>, <%= __('employee:nb_potential_lc') %> <strong><%= nbBand(nb.potential) %></strong>.</p>
+      <%# The DIRECTION of the move only: no reason, no calibration note, no
+          previous box. Nothing for a first placement or an undisclosed one. %>
+      <% const NB_MV_GLYPH = { stable: '→', up: '↑', down: '↓', lateral: '↔' };
+         if (nb.movementDirection && NB_MV_GLYPH[nb.movementDirection]) { %>
+      <p class="emp-sub emp-nb-move"><%= __('talentx:nb_mv_employee_line') %> <strong><span aria-hidden="true"><%= NB_MV_GLYPH[nb.movementDirection] %></span> <%= __('talentx:nb_mv_' + nb.movementDirection) %></strong></p>
+      <% } %>
       <%# Explainer: what the box means, how it was decided, and the one next
           step that belongs to the person — the conversation with their manager. %>
       <details class="emp-nb-explain">
@@ -319,14 +361,14 @@
 .emp-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
 .emp-stat{background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:14px 16px}
 .emp-n{font-size:1.9rem;font-weight:800;line-height:2.1rem}
-.emp-l{color:var(--text-secondary,#64748b);font-size:.74rem;text-transform:uppercase;letter-spacing:.03em;margin-top:4px}
+.emp-l{color:var(--text-secondary,#64748b);font-size:.75rem;text-transform:uppercase;letter-spacing:.03em;margin-top:4px}
 .emp-sub{color:var(--text-tertiary,#94a3b8);font-size:.8rem;margin-top:4px}
 .emp-states{display:flex;flex-wrap:wrap;gap:5px}
-.emp-badge{padding:2px 8px;border-radius:999px;color:#fff;font-size:.72rem;text-transform:capitalize}
+.emp-badge{padding:2px 8px;border-radius:999px;color:#fff;font-size:.75rem;text-transform:capitalize}
 .emp-grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
 .emp-section-h{display:flex;justify-content:space-between;align-items:center;font-weight:700;padding:.85rem 1rem;border-bottom:1px solid var(--line,#eef2f7)}
 .emp-link{font-size:.8rem;color:#2563eb;text-decoration:none;font-weight:600}
-.emp-crit{background:#fee2e2;color:#b91c1c;border-radius:6px;padding:1px 6px;font-size:.7rem;font-weight:700;margin-left:4px}
+.emp-crit{background:#fee2e2;color:#b91c1c;border-radius:6px;padding:1px 6px;font-size:.75rem;font-weight:700;margin-left:4px}
 .emp-gap{background:#b45309;color:#fff;border-radius:999px;padding:1px 9px;font-size:.78rem;font-weight:700}
 .emp-gap.crit{background:#b91c1c}
 .emp-met{color:#0f8a3c;font-weight:700;font-size:.82rem}
@@ -334,8 +376,8 @@
 .nb-cell{border:1px solid var(--border,#e2e8f0);border-radius:8px;background:var(--bg-subtle,#f8fafc);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
 .nb-mine{background:#dcfce7;border:2px solid #0f8a3c}
 .nb-dot{color:#0f8a3c;font-size:1.1rem;line-height:1}
-.nb-lbl{font-size:.66rem;color:#166534;font-weight:700;padding:0 2px}
-.nb-axes{display:flex;justify-content:space-between;color:var(--text-tertiary,#94a3b8);font-size:.72rem;margin-top:6px}
+.nb-lbl{font-size:.75rem;color:#166534;font-weight:700;padding:0 2px}
+.nb-axes{display:flex;justify-content:space-between;color:var(--text-tertiary,#94a3b8);font-size:.75rem;margin-top:6px}
 /* The gap table has five columns and cannot compress to a phone rail; scroll it
    inside its own card instead of letting the whole page scroll sideways. */
 .emp-tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}

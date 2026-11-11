@@ -1,0 +1,43 @@
+<%#
+  The ONE SMTP relay allowed without TLS: permanent warning while it is in use,
+  and the SuperAdmin form that names (or withdraws) it with a mandatory reason
+  (SmtpRelayController, EmailService.setPlaintextRelay, audited).
+  Locals: smtpRelay (EmailService.plaintextRelayStatus()), showForm (settings
+  page only), isSuperAdmin, csrfToken. The dashboard includes it with
+  showForm=false. No script, no inline handler (CSP).
+%>
+<% const _sr = (typeof smtpRelay !== 'undefined' && smtpRelay) ? smtpRelay : null; %>
+<% const _srForm = typeof showForm !== 'undefined' && showForm && typeof isSuperAdmin !== 'undefined' && isSuperAdmin; %>
+<% const _srAt = function (v) { try { return typeof fmtDateTime === 'function' ? fmtDateTime(v) : v; } catch (_) { return v; } }; %>
+<% if (_sr && _sr.active) { %>
+<div class="card hz-callout hz-sec-warn" role="alert" id="smtp-plaintext-warning">
+    <p><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> <strong><%= __('admin:smtp_relay_warn_title') %></strong> — <%= __('admin:smtp_relay_warn_body', { host: _sr.host }) %></p>
+    <% if (_sr.reason || _sr.setBy) { %>
+    <dl class="hz-sec-dl">
+        <% if (_sr.reason) { %><dt><%= __('admin:smtp_relay_warn_reason') %></dt><dd><%= _sr.reason %></dd><% } %>
+        <% if (_sr.setBy) { %><dt><%= __('admin:smtp_relay_warn_by') %></dt><dd><%= _sr.setBy.username || _sr.setBy.id || '—' %> · <%= _sr.setBy.at ? _srAt(_sr.setBy.at) : '—' %></dd><% } %>
+    </dl>
+    <% } %>
+</div>
+<% } %>
+<% if (_srForm) { %>
+<section id="smtp-plaintext-relay" class="card hz-sec-panel" aria-labelledby="smtp-relay-title">
+    <h3 id="smtp-relay-title"><i class="fas fa-envelope-circle-check" aria-hidden="true"></i> <%= __('admin:smtp_relay_title') %></h3>
+    <p class="text-muted"><%= __('admin:smtp_relay_help') %></p>
+    <% if (!_sr || !_sr.active) { %><p class="hz-sec-ok"><i class="fas fa-lock" aria-hidden="true"></i> <%= __('admin:smtp_relay_none') %></p><% } %>
+    <form method="POST" action="/app-settings/smtp/plaintext-relay" class="hz-sec-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="form-group">
+            <label for="smtpRelayHost"><%= __('admin:smtp_relay_host') %></label>
+            <input id="smtpRelayHost" name="host" class="form-control" maxlength="255" autocomplete="off" value="<%= (_sr && _sr.active) ? _sr.host : '' %>">
+        </div>
+        <div class="form-group hz-sec-form__wide">
+            <label for="smtpRelayReason" class="required"><%= __('admin:smtp_relay_reason') %></label>
+            <textarea id="smtpRelayReason" name="reason" class="form-control" rows="2" minlength="10" maxlength="1000" required></textarea>
+        </div>
+        <div>
+            <button type="submit" class="btn btn-secondary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> <%= __('admin:smtp_relay_save') %></button>
+        </div>
+    </form>
+</section>
+<% } %>
