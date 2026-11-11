@@ -28,6 +28,12 @@ jest.mock('../../src/jobs/reminders', () => ({ claim: mockClaim, release: mockRe
 const CycleService = require('../../src/services/CycleService');
 
 const SUPER = { userType: 'admin', role: 'superadmin', id: 1, username: 'admin' };
+// A deadline N days ahead, yyyy-MM-dd: reopen and extend refuse past dates, so
+// these tests must not carry a fixed date that the calendar will overtake.
+const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+const NEW_DEADLINE = inDays(60);
+const EXTENDED_DEADLINE = inDays(90);
+const EXCLUDED_UNTIL = inDays(120);
 const MANAGER = { userType: 'manager', id: 136, username: 'qa.manager' };
 
 /** The last audit row LogService received for `action`. */
@@ -79,22 +85,22 @@ describe('reopen — locked → open, audited, dates in yyyy-MM-dd (L2-03, L6-11
     test('writes the new deadline and names the previous one as a date', async () => {
         mockDb.get.mockResolvedValue(lockedCycle);
         mockDb.all.mockResolvedValue([]);
-        const r = await CycleService.reopen(9, '2026-10-31', SUPER);
+        const r = await CycleService.reopen(9, NEW_DEADLINE, SUPER);
 
-        expect(r).toMatchObject({ reopened: true, closesAt: '2026-10-31' });
+        expect(r).toMatchObject({ reopened: true, closesAt: NEW_DEADLINE });
         const sql = mockDb.run.mock.calls.map((c) => String(c[0])).join(' ');
         expect(sql).toMatch(/UPDATE assessment_cycles[\s\S]*status\s*=\s*'open'/);
         expect(sql).toMatch(/reopen_count\s*=\s*reopen_count\s*\+\s*1/);
 
         const a = auditFor('cycle_reopened');
-        expect(a.details).toContain('nouvelle échéance 2026-10-31');
+        expect(a.details).toContain(`nouvelle échéance ${NEW_DEADLINE}`);
         expect(a.details).toContain('(précédente 2026-08-31)');
         expect(a.details).not.toMatch(/Mon|Tue|Wed|Thu|Fri|Sat|Sun/);
     });
 
     test('refuses a cycle that is not locked, a missing date and a date in the past', async () => {
         mockDb.get.mockResolvedValue({ ...lockedCycle, status: 'open' });
-        await expect(CycleService.reopen(9, '2026-10-31', SUPER)).rejects.toThrow(
+        await expect(CycleService.reopen(9, NEW_DEADLINE, SUPER)).rejects.toThrow(
             'cycle_not_locked'
         );
         mockDb.get.mockResolvedValue(lockedCycle);
@@ -113,15 +119,15 @@ describe('extendDeadline — open only, same date discipline (L2-27)', () => {
             status: 'open',
             closesAt: new Date('2026-10-31T00:00:00.000Z'),
         });
-        const r = await CycleService.extendDeadline(9, '2026-11-15', SUPER);
-        expect(r).toMatchObject({ extended: true, closesAt: '2026-11-15' });
+        const r = await CycleService.extendDeadline(9, EXTENDED_DEADLINE, SUPER);
+        expect(r).toMatchObject({ extended: true, closesAt: EXTENDED_DEADLINE });
         const a = auditFor('cycle_deadline_extended');
-        expect(a.details).toContain('déplacée au 2026-11-15');
+        expect(a.details).toContain(`déplacée au ${EXTENDED_DEADLINE}`);
         expect(a.details).toContain('(précédente 2026-10-31)');
     });
     test('refuses a locked cycle', async () => {
         mockDb.get.mockResolvedValue({ id: 9, status: 'locked' });
-        await expect(CycleService.extendDeadline(9, '2026-11-15', SUPER)).rejects.toThrow(
+        await expect(CycleService.extendDeadline(9, EXTENDED_DEADLINE, SUPER)).rejects.toThrow(
             'cycle_not_open'
         );
     });
@@ -241,7 +247,7 @@ describe('excludeBulk — one request, one audit row per person, category + reas
         const r = await CycleService.excludeBulk(
             9,
             { employeeIds: [96, 97, 99] },
-            { reason: 'Rotation site', category: 'long_leave', until: '2026-12-31' },
+            { reason: 'Rotation site', category: 'long_leave', until: EXCLUDED_UNTIL },
             SUPER
         );
 
@@ -255,7 +261,7 @@ describe('excludeBulk — one request, one audit row per person, category + reas
         excluded.forEach((a) => {
             expect(a.details).toContain('absence longue durée'); // the FR label of long_leave
             expect(a.details).toContain('Rotation site');
-            expect(a.details).toContain("jusqu'au 2026-12-31");
+            expect(a.details).toContain(`jusqu'au ${EXCLUDED_UNTIL}`);
             expect(a.details).toContain('par admin:1'); // actor named on every row, by ref (ids only)
         });
 
