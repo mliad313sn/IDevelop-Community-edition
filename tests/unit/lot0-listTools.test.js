@@ -244,3 +244,21 @@ describe('client toolkit (source pins)', () => {
         );
     });
 });
+
+describe('safeFilename — an ASCII .csv name, in linear time', () => {
+    test('accents dropped, separators collapsed, dashes trimmed', () => {
+        expect(L.safeFilename('Rapport été.csv')).toBe('Rapport-ete.csv');
+        expect(L.safeFilename('--a b--')).toBe('a-b.csv');
+        expect(L.safeFilename('../../etc/passwd')).toBe('..-..-etc-passwd.csv');
+    });
+    test('empty or all-dash input falls back to export.csv', () => {
+        expect(L.safeFilename(null)).toBe('export.csv');
+        expect(L.safeFilename('----')).toBe('export.csv');
+    });
+    test('a long run of dashes does not backtrack; names are capped at 200 chars', () => {
+        expect(L.safeFilename(`${'-'.repeat(150)}a`)).toBe('a.csv');
+        const t = Date.now();
+        expect(L.safeFilename(`${'-'.repeat(100000)}a`)).toBe('export.csv');
+        expect(Date.now() - t).toBeLessThan(200);
+    });
+});

@@ -129,11 +129,18 @@ function sortLinks(query, whitelist, sort, { basePath = '' } = {}) {
 
 /** Filename safe for Content-Disposition (ASCII, no path separators). */
 function safeFilename(name) {
-    const s = String(name || 'export.csv')
+    const dashed = String(name || 'export.csv')
+        .slice(0, 200)
         .normalize('NFD')
         .replace(/[̀-ͯ]/g, '')
-        .replace(/[^A-Za-z0-9._-]+/g, '-')
-        .replace(/^-+|-+$/g, '');
+        .replace(/[^A-Za-z0-9._-]+/g, '-');
+    // Trim leading/trailing dashes with index scans: a `-+$` regex backtracks
+    // polynomially on long runs of dashes that do not reach the end.
+    let start = 0;
+    let end = dashed.length;
+    while (start < end && dashed[start] === '-') start++;
+    while (end > start && dashed[end - 1] === '-') end--;
+    const s = dashed.slice(start, end);
     return /\.csv$/i.test(s) ? s : `${s || 'export'}.csv`;
 }
 
