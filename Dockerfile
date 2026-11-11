@@ -18,8 +18,8 @@
 #     HIGH findings besides the app's own). Run operator scripts with `node
 #     scripts/<name>.js`, which is all the matching npm scripts do.
 
-# node:22-alpine, multi-arch index digest resolved 2026-09-29 (Node 22.23.x).
-ARG NODE_IMAGE=node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
+# node:22-alpine, multi-arch index digest resolved 2026-11-11 (Node 22.23.4, Alpine 3.24.4).
+ARG NODE_IMAGE=node:22-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202
 
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app

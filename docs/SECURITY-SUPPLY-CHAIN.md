@@ -39,7 +39,7 @@ Run every local check at once with `npm run security:check` (policy, lockfile,
 
 | Control                                                                                                                                        | Standard                                            | Verify                                                                                          |
 | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Base image `node:22-alpine` pinned by multi-arch index digest (resolved 2026-09-29), Dependabot `docker` proposes digest bumps                 | CIS 4.2; Scorecard Pinned-Dependencies; SSDF PW.4.1 | `docker buildx imagetools inspect node:22-alpine` shows the digest in the `ARG NODE_IMAGE` line |
+| Base image `node:22-alpine` pinned by multi-arch index digest (resolved 2026-11-11), Dependabot `docker` proposes digest bumps                 | CIS 4.2; Scorecard Pinned-Dependencies; SSDF PW.4.1 | `docker buildx imagetools inspect node:22-alpine` shows the digest in the `ARG NODE_IMAGE` line |
 | Multi-stage build; production dependencies only, from the lockfile (`npm ci --omit=dev`); `NODE_ENV=production`                                | CIS 4.3; SSDF PW.6.2                                | `docker run --rm --entrypoint ls <image> node_modules/jest` fails                               |
 | Non-root runtime user `app` (UID/GID 10001); code and `node_modules` root-owned and read-only to it                                            | CIS 4.1                                             | `docker image inspect -f '{{.Config.User}}' <image>` → `app:app`                                |
 | npm, npx, corepack and yarn removed from the runtime stage (not needed at run time; were the source of the image's only non-app HIGH findings) | CIS 4.3                                             | `docker run --rm --entrypoint which <image> npm` prints nothing                                 |
@@ -110,4 +110,4 @@ import staging folder were writable while the code tree was not.
 | aquasecurity/trivy-action                          | v0.36.0 | `ed142fd0673e97e23eac54620cfb913e5ce36c25`                                |
 | actions/attest-build-provenance                    | v4.2.2  | `4d101475d8b20a2381f78447822ac1eab6504dd8`                                |
 | gitleaks binary (linux x64)                        | v8.30.1 | sha256 `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb` |
-| node:22-alpine (index)                             | 22.23.x | `sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402` |
+| node:22-alpine (index)                             | 22.23.x | `sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202` |
